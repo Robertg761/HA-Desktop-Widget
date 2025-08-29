@@ -1,6 +1,8 @@
 const { ipcRenderer } = require('electron');
 const axios = require('axios');
 const Chart = require('chart.js/auto');
+require('chartjs-adapter-date-fns');
+const { shouldIgnoreShortcut } = require('./keyboard');
 
 let CONFIG = null;
 let WS = null;
@@ -424,7 +426,7 @@ function createCameraCard(entityId) {
   
   const img = document.createElement('img');
   img.className = 'camera-img';
-  img.src = `${CONFIG.homeAssistant.url}/api/camera_proxy/${entityId}?token=${CONFIG.homeAssistant.token}&t=${Date.now()}`;
+  img.src = `ha://camera/${entityId}?t=${Date.now()}`;
   img.alt = entity ? (entity.attributes.friendly_name || entityId) : entityId;
   img.onerror = () => {
     img.style.display = 'none';
@@ -447,9 +449,9 @@ function createCameraCard(entityId) {
 }
 
 function refreshCamera(entityId) {
-  const img = document.querySelector(`.camera img[alt*="${entityId.split('.')[1]}"]`);
+  const img = document.querySelector(`.camera img[alt*=\"${entityId.split('.')[1]}\"]`);
   if (img) {
-    img.src = `${CONFIG.homeAssistant.url}/api/camera_proxy/${entityId}?token=${CONFIG.homeAssistant.token}&t=${Date.now()}`;
+    img.src = `ha://camera/${entityId}?t=${Date.now()}`;
   }
 }
 
@@ -643,14 +645,14 @@ function getDragAfterElement(container, y) {
 
 // Filter modal
 function showFilterModal() {
-  const modal = document.getElementById('filter-modal');
+  let modal = document.getElementById('filter-modal');
   if (!modal) {
-    const newModal = document.createElement('div');
-    newModal.id = 'filter-modal';
-    newModal.className = 'modal';
-    newModal.setAttribute('role', 'dialog');
-    newModal.setAttribute('aria-modal', 'true');
-    newModal.innerHTML = `
+    modal = document.createElement('div');
+    modal.id = 'filter-modal';
+    modal.className = 'modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.innerHTML = `
       <div class="modal-content modal-scrollable" role="document">
         <h2 id="filter-title">Filter Entities</h2>
         <div class="filter-section">
@@ -672,7 +674,7 @@ function showFilterModal() {
         </div>
       </div>
     `;
-    document.body.appendChild(newModal);
+    document.body.appendChild(modal);
   }
   
   // Populate filters
@@ -1673,12 +1675,27 @@ async function init() {
         if (e.target.id === 'filter-modal') window.closeFilterModal?.();
       }
     });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeSettings();
-        window.closeFilterModal?.();
-      }
-    });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeSettings();
+      window.closeFilterModal?.();
+    }
+  });
+  
+  // Global Ctrl+Tab guard & handler
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey && e.key === 'Tab')) return;
+    const target = e.target;
+    if (shouldIgnoreShortcut(target)) { return; }
+    e.preventDefault();
+    const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+    const current = tabs.findIndex(t => t.classList.contains('active'));
+    let next = current + (e.shiftKey ? -1 : 1);
+    if (next < 0) next = tabs.length - 1;
+    if (next >= tabs.length) next = 0;
+    tabs[next].focus();
+    tabs[next].click();
+  });
     
     // Initial render after a short delay to ensure DOM is ready
     setTimeout(() => {

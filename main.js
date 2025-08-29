@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
+const axios = require('axios');
 
 let mainWindow;
 let tray;
@@ -316,8 +317,50 @@ app.on('before-quit', () => {
   isQuitting = true;
 });
 
+// Register custom protocol before creating window
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'ha', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true } }
+]);
+
 app.whenReady().then(() => {
   loadConfig();
+
+  // Camera proxy: ha://camera/<entityId>
+  try {
+    protocol.registerBufferProtocol('ha', async (request, respond) => {
+      try {
+        const url = new URL(request.url);
+        if (url.hostname !== 'camera') {
+          respond({ statusCode: 404 });
+          return;
+        }
+        const entityId = decodeURIComponent(url.pathname.replace(/^\//, ''));
+        const haUrl = (config && config.homeAssistant && config.homeAssistant.url) || '';
+        const token = (config && config.homeAssistant && config.homeAssistant.token) || '';
+        if (!haUrl || !token || !entityId) {
+          respond({ statusCode: 403 });
+          return;
+        }
+        const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy/${entityId}`;
+        const res = await axios.get(upstream, {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: 'arraybuffer',
+          validateStatus: () => true
+        });
+        if (res.status >= 200 && res.status < 300) {
+          const contentType = res.headers['content-type'] || 'image/jpeg';
+          respond({ data: Buffer.from(res.data), mimeType: contentType, statusCode: 200 });
+        } else {
+          respond({ statusCode: res.status || 502 });
+        }
+      } catch (err) {
+        respond({ statusCode: 500 });
+      }
+    });
+  } catch (e) {
+    console.error('Failed to register ha:// protocol', e);
+  }
+
   createWindow();
   createTray();
   setupAutoUpdates();
