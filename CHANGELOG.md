@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2025-08-29
+
+Highlights
+- Design tokens and layout rhythm for consistent, polished UI (spacing, radius, surfaces, shadows)
+- Responsive dashboard grid with section header/toolbar pattern
+- Card polish: subtle elevation, hover, compact ghost buttons, stronger focus states
+- Micro-interactions: visible drop placeholder while dragging, entry animations, skeleton loaders
+- Edit mode UX: Save / Discard / + Add toolbar always visible; Add Entities drawer no longer auto-opens; changes staged until Save
+- Drag-and-drop: only persists on Save; better placeholder positioning in wrapping grid
+- A11y: icon-only remove (×) buttons get aria-label; remove buttons always visible in edit mode
+- Toolbar spacing added so buttons don’t crowd the first entity
+- Camera stability: preserve dashboard camera card while Live; avoid UI teardown; keep controls visible on stop
+
+## [1.2.0] - 2025-08-15
+
+Dashboard & Editing
+- “Reset size” button on each entity card in edit mode to clear custom sizing and revert to defaults
+- Drag-and-drop logic updated to consider both horizontal and vertical pointer position for flexible wrapping layouts
+- Entity selector reworked into a docked drawer with toggle; draggable header; dashboard resizes so drawer doesn’t obscure content
+- Camera edit-mode growth fix: camera embed height only adjusts if a custom or inline size is set (prevents unwanted growth entering edit mode)
+- Edit button moved above entities; improved entity card spacing/padding to prevent overflow and uneven layout
+
 ## [1.1.0] - 2025-08-29
 
 Highlights

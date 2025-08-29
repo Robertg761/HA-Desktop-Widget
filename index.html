@@ -183,16 +183,16 @@
             <h2 id="settings-title">Settings</h2>
             <div class="settings-form">
                 <div class="form-group">
-                    <label for="ha-url">Home Assistant URL:</label>
+                    <label for="ha-url">Home Assistant URL <span class="info-icon" title="Your Home Assistant base URL, e.g. http://homeassistant.local:8123 or https://ha.example.com">ℹ</span>:</label>
                     <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
                 </div>
                 <div class="form-group">
-                    <label for="ha-token">Access Token:</label>
+                    <label for="ha-token">Access Token <span class="info-icon" title="Create a long-lived access token in your HA profile. Keep it secret.">ℹ</span>:</label>
                     <input type="password" id="ha-token" placeholder="Your long-lived access token">
                     <small>Create a token in Home Assistant: Profile → Long-Lived Access Tokens</small>
                 </div>
                 <div class="form-group">
-                    <label for="update-interval">Update Interval (seconds):</label>
+                    <label for="update-interval">Update Interval (seconds) <span class="info-icon" title="How often the dashboard refreshes snapshot data. Live streams are unaffected.">ℹ</span>:</label>
                     <input type="number" id="update-interval" min="1" max="60" value="5">
                 </div>
                 <div class="form-group">
@@ -216,12 +216,31 @@
                     <small>Hold Ctrl to select multiple</small>
                 </div>
                 <div class="form-group">
-                    <label for="favorite-entities">Favorite Entities (comma-separated)</label>
+                    <label for="favorite-entities">Favorite Entities <span class="info-icon" title="Quick access list on the default Dashboard. Start typing to search and click to add.">ℹ</span></label>
                     <input id="favorite-entities" type="text" placeholder="sensor.outdoor_temp, sensor.humidity">
                 </div>
                 <div class="form-group">
-                    <label for="camera-entities">Camera Entities (comma-separated)</label>
+                    <label for="camera-entities">Camera Entities <span class="info-icon" title="Cameras shown on the Cameras tab and for quick access. Start typing to search and click to add.">ℹ</span></label>
                     <input id="camera-entities" type="text" placeholder="camera.front_door, camera.driveway">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="motion-popup-enabled">
+                        Enable motion pop-up (show camera when motion detected)
+                        <span class="info-icon" title="When a motion sensor triggers, the matching camera pops up with live video.">ℹ</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="motion-popup-cameras">Motion Pop-up Cameras <span class="info-icon" title="Which cameras are eligible for motion pop-ups. Start typing to search and click to add.">ℹ</span></label>
+                    <input id="motion-popup-cameras" type="text" placeholder="camera.front_door, camera.driveway">
+                </div>
+                <div class="form-group">
+                    <label for="motion-popup-autohide">Auto-hide after (seconds) <span class="info-icon" title="How long the motion pop-up stays visible without interaction.">ℹ</span></label>
+                    <input id="motion-popup-autohide" type="number" min="3" max="120" value="12">
+                </div>
+                <div class="form-group">
+                    <label for="motion-popup-cooldown">Cooldown per camera (seconds) <span class="info-icon" title="Minimum delay before the same camera can pop up again.">ℹ</span></label>
+                    <input id="motion-popup-cooldown" type="number" min="0" max="600" value="30">
                 </div>
                 <div class="form-group">
                     <label for="density-select">Density</label>

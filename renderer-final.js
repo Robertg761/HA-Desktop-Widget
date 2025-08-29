@@ -1,17 +1,45 @@
 const { ipcRenderer } = require('electron');
 const axios = require('axios');
 const Chart = require('chart.js/auto');
-require('chartjs-adapter-date-fns');
+let __chartDateAdapterLoaded = false;
+try {
+  require('chartjs-adapter-date-fns');
+  __chartDateAdapterLoaded = true;
+} catch (e) {
+  console.warn('Chart.js date adapter not loaded:', e?.message || e);
+}
+let Hls = null;
+try {
+  Hls = require('hls.js');
+} catch (e) {
+  console.warn('hls.js not available:', e?.message || e);
+}
 const { shouldIgnoreShortcut } = require('./keyboard');
 
 let CONFIG = null;
 let WS = null;
+const PENDING_WS = new Map();
+let WS_ID = 1000;
 let STATES = {};
 let SERVICES = {};
 let AREAS = {};
 let HISTORY_CHART = null;
 let CAMERA_REFRESH_INTERVAL = null;
+let LIVE_CAMERAS = new Set();
+const LIVE_SNAPSHOT_INTERVALS = new Map();
+const ACTIVE_HLS = new Map();
 let DASHBOARD_LAYOUT = [];
+let DRAG_PLACEHOLDER = null;
+let EDIT_SNAPSHOT_LAYOUT = null;
+// Dashboard camera state and timers
+const DASHBOARD_CAMERA_EXPANDED = new Set();
+const TIMER_MAP = new Map();
+let TIMER_TICK = null;
+// Motion popup state
+let MOTION_POPUP = null;
+let MOTION_POPUP_TIMER = null;
+let MOTION_POPUP_CAMERA = null;
+const MOTION_LAST_TRIGGER = new Map();
 let EDIT_MODE = false;
 let FILTERS = {
   domains: ['light', 'switch', 'sensor', 'climate', 'media_player', 'scene', 'automation', 'camera'],
@@ -55,6 +83,14 @@ function connectWebSocket() {
     try {
       const msg = JSON.parse(event.data);
       
+      // Resolve any pending request promises first
+      if (msg.type === 'result' && PENDING_WS.has(msg.id)) {
+        const pending = PENDING_WS.get(msg.id);
+        PENDING_WS.delete(msg.id);
+        pending.resolve(msg);
+        return;
+      }
+      
       if (msg.type === 'auth_required') {
         WS.send(JSON.stringify({
           type: 'auth',
@@ -93,9 +129,11 @@ function connectWebSocket() {
         setStatus(false);
       } else if (msg.type === 'event' && msg.event && msg.event.event_type === 'state_changed') {
         const entity = msg.event.data.new_state;
+        const oldEntity = msg.event.data.old_state;
         if (entity) {
           STATES[entity.entity_id] = entity;
           updateEntityInUI(entity);
+          handleMotionEvent(entity, oldEntity);
         }
       } else if (msg.type === 'result' && msg.result) {
         if (Array.isArray(msg.result) && msg.result.length > 0) {
@@ -167,6 +205,8 @@ function createEntityCard(entity, options = {}) {
   const card = document.createElement('div');
   card.className = 'entity-card';
   card.dataset.entityId = entity.entity_id;
+  if (options?.context) card.dataset.context = options.context;
+  
   
   // Make draggable in edit mode
   if (EDIT_MODE) {
@@ -179,6 +219,7 @@ function createEntityCard(entity, options = {}) {
     };
     card.ondragend = () => {
       card.classList.remove('dragging');
+      try { if (DRAG_PLACEHOLDER && DRAG_PLACEHOLDER.parentNode) DRAG_PLACEHOLDER.remove(); } catch (_) {}
     };
   }
 
@@ -276,6 +317,11 @@ function createEntityCard(entity, options = {}) {
       state.textContent = `${Math.round(temp)}°`;
       left.appendChild(state);
     }
+  } else if (domain === 'timer') {
+    const state = document.createElement('div');
+    state.className = 'entity-state big';
+    left.appendChild(state);
+    updateTimerCountdown(entity, state);
   }
 
   const right = document.createElement('div');
@@ -350,11 +396,131 @@ function createEntityCard(entity, options = {}) {
     right.appendChild(createMediaControls(entity));
   }
   
-  // Add remove button in edit mode
+  // Camera entity specialized layout for dashboard
+  if (domain === 'camera' && options?.context === 'dashboard') {
+    card.classList.add('camera-card');
+
+    // Controls
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'btn btn-secondary';
+    const expanded = DASHBOARD_CAMERA_EXPANDED.has(entity.entity_id);
+    expandBtn.textContent = expanded ? 'Collapse' : 'Expand';
+    expandBtn.title = expanded ? 'Collapse camera' : 'Expand camera';
+
+    const liveBtn = document.createElement('button');
+    liveBtn.className = 'btn btn-secondary';
+    liveBtn.textContent = LIVE_CAMERAS.has(entity.entity_id) ? '⏹ Stop' : '▶ Live';
+    liveBtn.title = LIVE_CAMERAS.has(entity.entity_id) ? 'Stop live view' : 'Play live view';
+
+    // Header row (name + buttons)
+    const headerRow = document.createElement('div');
+    headerRow.className = 'camera-card-header';
+    headerRow.appendChild(left);
+    // Only show Live button when expanded
+    if (expanded) right.appendChild(liveBtn);
+    right.appendChild(expandBtn);
+    if (EDIT_MODE) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn btn-danger';
+      removeBtn.textContent = '×';
+      removeBtn.setAttribute('aria-label', 'Remove card');
+      removeBtn.title = 'Remove from dashboard';
+      removeBtn.onclick = () => removeFromDashboard(entity.entity_id);
+      right.appendChild(removeBtn);
+    }
+    headerRow.appendChild(right);
+
+    // Embed area below header
+    const embed = document.createElement('div');
+    embed.className = 'camera-embed';
+    if (!expanded) embed.classList.add('collapsed');
+    embed.style.display = expanded ? 'block' : 'none';
+
+    const img = document.createElement('img');
+    img.className = 'camera-img';
+    img.alt = entity.attributes?.friendly_name || entity.entity_id;
+    img.src = `ha://camera/${entity.entity_id}?t=${Date.now()}`;
+    img.onerror = () => { img.style.display = 'none'; };
+    const liveBadge = document.createElement('span');
+    liveBadge.className = 'camera-live-badge hidden';
+    liveBadge.textContent = 'LIVE';
+    const loading = document.createElement('div');
+    loading.className = 'camera-loading';
+    loading.innerHTML = '<div class="spinner"></div>';
+    embed.appendChild(img);
+    embed.appendChild(liveBadge);
+    embed.appendChild(loading);
+
+    expandBtn.onclick = async () => {
+      const nowExpanded = embed.classList.contains('collapsed');
+      if (nowExpanded) {
+        embed.classList.remove('collapsed');
+        embed.style.display = 'block';
+        DASHBOARD_CAMERA_EXPANDED.add(entity.entity_id);
+        // Show live button when expanded
+        if (!right.contains(liveBtn)) {
+          right.insertBefore(liveBtn, expandBtn);
+        }
+      } else {
+        // Collapse: hide embed and hide live button; stop stream if running
+        embed.classList.add('collapsed');
+        embed.style.display = 'none';
+        DASHBOARD_CAMERA_EXPANDED.delete(entity.entity_id);
+        if (LIVE_CAMERAS.has(entity.entity_id)) {
+          LIVE_CAMERAS.delete(entity.entity_id);
+          clearSnapshotLive(entity.entity_id);
+          stopHlsStream(entity.entity_id, embed);
+          liveBtn.textContent = '▶ Live';
+          liveBtn.title = 'Play live view';
+          liveBadge.classList.add('hidden');
+          loading.classList.remove('show');
+          img.style.display = 'block';
+          img.src = `ha://camera/${entity.entity_id}?t=${Date.now()}`;
+        }
+        if (right.contains(liveBtn)) right.removeChild(liveBtn);
+      }
+      expandBtn.textContent = embed.classList.contains('collapsed') ? 'Expand' : 'Collapse';
+      expandBtn.title = embed.classList.contains('collapsed') ? 'Expand camera' : 'Collapse camera';
+    };
+
+    liveBtn.onclick = async () => {
+      if (LIVE_CAMERAS.has(entity.entity_id)) {
+        LIVE_CAMERAS.delete(entity.entity_id);
+        clearSnapshotLive(entity.entity_id);
+        stopHlsStream(entity.entity_id, embed);
+        liveBtn.textContent = '▶ Live';
+        liveBtn.title = 'Play live view';
+        liveBadge.classList.add('hidden');
+        loading.classList.remove('show');
+        img.style.display = 'block';
+        img.src = `ha://camera/${entity.entity_id}?t=${Date.now()}`;
+      } else {
+        LIVE_CAMERAS.add(entity.entity_id);
+        liveBtn.textContent = '⏹ Stop';
+        liveBtn.title = 'Stop live view';
+        liveBadge.classList.remove('hidden');
+        loading.classList.add('show');
+        clearSnapshotLive(entity.entity_id);
+        // Try HLS; fallback to MJPEG
+        const ok = await startHlsStream(entity.entity_id, embed, img);
+        loading.classList.remove('show');
+        if (!ok) {
+          img.src = `ha://camera_stream/${entity.entity_id}?t=${Date.now()}`;
+        }
+      }
+    };
+
+    card.appendChild(headerRow);
+    card.appendChild(embed);
+    return card;
+  }
+
   if (EDIT_MODE) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'btn btn-danger';
     removeBtn.textContent = '×';
+    removeBtn.setAttribute('aria-label', 'Remove card');
+    removeBtn.title = 'Remove from dashboard';
     removeBtn.style.marginLeft = '10px';
     removeBtn.onclick = () => removeFromDashboard(entity.entity_id);
     right.appendChild(removeBtn);
@@ -409,6 +575,7 @@ function createCameraCard(entityId) {
   
   const card = document.createElement('div');
   card.className = 'camera';
+  card.dataset.entityId = entityId;
   
   const header = document.createElement('div');
   header.className = 'camera-header';
@@ -418,17 +585,30 @@ function createCameraCard(entityId) {
   
   const refreshBtn = document.createElement('button');
   refreshBtn.className = 'btn btn-secondary';
+  refreshBtn.title = 'Refresh snapshot';
   refreshBtn.textContent = '🔄';
   refreshBtn.onclick = () => refreshCamera(entityId);
+
+  const liveBtn = document.createElement('button');
+  liveBtn.className = 'btn btn-secondary';
+  liveBtn.title = 'Play live view';
+  liveBtn.textContent = LIVE_CAMERAS.has(entityId) ? '⏹ Stop' : '▶ Live';
+  liveBtn.onclick = () => toggleCameraLive(entityId, liveBtn);
   
   header.appendChild(name);
   header.appendChild(refreshBtn);
+  header.appendChild(liveBtn);
   
   const img = document.createElement('img');
   img.className = 'camera-img';
-  img.src = `ha://camera/${entityId}?t=${Date.now()}`;
+  img.src = LIVE_CAMERAS.has(entityId) ? `ha://camera_stream/${entityId}?t=${Date.now()}` : `ha://camera/${entityId}?t=${Date.now()}`;
   img.alt = entity ? (entity.attributes.friendly_name || entityId) : entityId;
   img.onerror = () => {
+    // If stream fails, fallback to snapshot live loop
+    if (img.src.includes('camera_stream/')) {
+      startSnapshotLive(entityId, img);
+      return;
+    }
     img.style.display = 'none';
     const existingError = card.querySelector('.camera-error');
     if (!existingError) {
@@ -449,10 +629,175 @@ function createCameraCard(entityId) {
 }
 
 function refreshCamera(entityId) {
-  const img = document.querySelector(`.camera img[alt*=\"${entityId.split('.')[1]}\"]`);
+  if (LIVE_CAMERAS.has(entityId)) return; // don't refresh while streaming
+  const img = document.querySelector(`.camera img[alt*="${entityId.split('.')[1]}"]`);
   if (img) {
     img.src = `ha://camera/${entityId}?t=${Date.now()}`;
   }
+}
+
+function wsRequest(payload) {
+  return new Promise((resolve, reject) => {
+    if (!WS || WS.readyState !== WebSocket.OPEN) {
+      reject(new Error('WebSocket not connected'));
+      return;
+    }
+    const id = WS_ID++;
+    const msg = { id, ...payload };
+    PENDING_WS.set(id, { resolve, reject });
+    try {
+      WS.send(JSON.stringify(msg));
+    } catch (e) {
+      PENDING_WS.delete(id);
+      reject(e);
+      return;
+    }
+    setTimeout(() => {
+      if (PENDING_WS.has(id)) {
+        PENDING_WS.delete(id);
+        reject(new Error('WebSocket request timeout'));
+      }
+    }, 15000);
+  });
+}
+
+async function getHlsStreamUrl(entityId) {
+  try {
+    const res = await wsRequest({ type: 'camera/stream', entity_id: entityId, format: 'hls' });
+    if (res && res.success && res.result && (res.result.url || res.result)) {
+      const rawUrl = typeof res.result === 'string' ? res.result : res.result.url;
+      const abs = new URL(rawUrl, (CONFIG && CONFIG.homeAssistant && CONFIG.homeAssistant.url) || '');
+      // Proxy through ha://hls to keep Authorization header handling in main
+      return `ha://hls${abs.pathname}${abs.search || ''}`;
+    }
+  } catch (e) {
+    console.warn('HLS stream request failed:', e?.message || e);
+  }
+  return null;
+}
+
+async function startHlsStream(entityId, card, img) {
+  const hlsUrl = await getHlsStreamUrl(entityId);
+  if (!hlsUrl) return false;
+
+  let video = card.querySelector('video.camera-video');
+  if (!video) {
+    video = document.createElement('video');
+    video.className = 'camera-video';
+    video.muted = true; // avoid autoplay issues
+    video.playsInline = true;
+    video.autoplay = true;
+    video.controls = false;
+    card.appendChild(video);
+  }
+  img.style.display = 'none';
+  video.style.display = 'block';
+
+  // Clean up any existing HLS instance
+  const existing = ACTIVE_HLS.get(entityId);
+  if (existing) {
+    try { existing.hls?.destroy(); } catch (_) {}
+    try { existing.video.pause(); existing.video.removeAttribute('src'); existing.video.load(); } catch (_) {}
+    ACTIVE_HLS.delete(entityId);
+  }
+
+  if (Hls && Hls.isSupported()) {
+    const hls = new Hls({ lowLatencyMode: true, backBufferLength: 90 });
+    hls.loadSource(hlsUrl);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.ERROR, (_evt, data) => {
+      console.warn('HLS error', data?.details || data);
+      if (data?.fatal) {
+        try { hls.destroy(); } catch (_) {}
+        ACTIVE_HLS.delete(entityId);
+        // Fallback to MJPEG if fatal error
+        video.style.display = 'none';
+        img.style.display = 'block';
+        img.src = `ha://camera_stream/${entityId}?t=${Date.now()}`;
+      }
+    });
+    ACTIVE_HLS.set(entityId, { hls, video });
+    return true;
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari
+    video.src = hlsUrl;
+    ACTIVE_HLS.set(entityId, { hls: null, video });
+    return true;
+  }
+  return false;
+}
+
+function stopHlsStream(entityId, card) {
+  const active = ACTIVE_HLS.get(entityId);
+  if (active) {
+    try { active.hls?.destroy(); } catch (_) {}
+    try { active.video.pause(); active.video.removeAttribute('src'); active.video.load(); } catch (_) {}
+    try { active.video.remove(); } catch (_) {}
+    ACTIVE_HLS.delete(entityId);
+    const img = card?.querySelector('.camera-img');
+    if (img) { img.style.display = 'block'; }
+    return true;
+  }
+  return false;
+}
+
+async function toggleCameraLive(entityId, btn) {
+  const card = btn.closest('.camera');
+  const img = card?.querySelector('.camera-img');
+  if (!img) return;
+  if (LIVE_CAMERAS.has(entityId)) {
+    // Stop live (HLS or MJPEG or snapshot loop)
+    LIVE_CAMERAS.delete(entityId);
+    clearSnapshotLive(entityId);
+    stopHlsStream(entityId, card);
+    btn.textContent = '▶ Live';
+    btn.title = 'Play live view';
+    img.src = `ha://camera/${entityId}?t=${Date.now()}`;
+  } else {
+    LIVE_CAMERAS.add(entityId);
+    btn.textContent = '⏹ Stop';
+    btn.title = 'Stop live view';
+    clearSnapshotLive(entityId);
+    // Prefer HLS if available; fallback to MJPEG, then snapshot loop
+    const hlsStarted = await startHlsStream(entityId, card, img);
+    if (!hlsStarted) {
+      img.src = `ha://camera_stream/${entityId}?t=${Date.now()}`;
+    }
+  }
+}
+
+function startSnapshotLive(entityId, imgEl) {
+  // Fallback live by rapidly refreshing snapshots
+  clearSnapshotLive(entityId);
+  const interval = setInterval(() => {
+    if (!LIVE_CAMERAS.has(entityId)) { clearSnapshotLive(entityId); return; }
+    imgEl.src = `ha://camera/${entityId}?t=${Date.now()}`;
+  }, 800);
+  LIVE_SNAPSHOT_INTERVALS.set(entityId, interval);
+}
+
+function clearSnapshotLive(entityId) {
+  const h = LIVE_SNAPSHOT_INTERVALS.get(entityId);
+  if (h) {
+    clearInterval(h);
+    LIVE_SNAPSHOT_INTERVALS.delete(entityId);
+  }
+}
+
+function stopAllCameraStreams() {
+  LIVE_CAMERAS.clear();
+  LIVE_SNAPSHOT_INTERVALS.forEach((h) => clearInterval(h));
+  LIVE_SNAPSHOT_INTERVALS.clear();
+  // Stop all HLS instances and remove videos
+  document.querySelectorAll('#cameras-tab .camera').forEach(card => {
+    const entityId = card.getAttribute('data-entity-id');
+    stopHlsStream(entityId, card);
+  });
+  document.querySelectorAll('#cameras-tab .camera-img').forEach(img => {
+    // Clearing src stops MJPEG stream
+    img.src = '';
+    img.style.display = 'block';
+  });
 }
 
 // Service calls
@@ -514,37 +859,107 @@ function adjustClimateTemp(entityId, delta) {
 
 // Dashboard customization
 function enableEditMode() {
+  // Snapshot current layout so we can discard if needed
+  EDIT_SNAPSHOT_LAYOUT = Array.isArray(DASHBOARD_LAYOUT) ? [...DASHBOARD_LAYOUT] : [];
   EDIT_MODE = true;
   document.body.classList.add('edit-mode');
   renderDashboard();
-  
-  // Add entity selector
-  showEntitySelector();
+  // Do NOT auto-open the entity selector; user will click +Add
 }
 
-function disableEditMode() {
+function disableEditMode(save = true) {
+  // If discarding, revert to snapshot
+  if (!save && Array.isArray(EDIT_SNAPSHOT_LAYOUT)) {
+    DASHBOARD_LAYOUT = [...EDIT_SNAPSHOT_LAYOUT];
+  }
+  EDIT_SNAPSHOT_LAYOUT = null;
   EDIT_MODE = false;
   document.body.classList.remove('edit-mode');
+  // Close entity drawer and cleanup
+  try {
+    const selector = document.getElementById('entity-selector');
+    if (selector) {
+      selector.classList.add('closed');
+      selector.style.display = 'none';
+    }
+    const dash = document.querySelector('.dashboard-container');
+    if (dash) dash.classList.remove('with-entity-drawer');
+    const toggle = document.getElementById('entity-drawer-toggle');
+    if (toggle) toggle.remove();
+  } catch (_) {}
   hideEntitySelector();
-  saveDashboardLayout();
+  if (save) {
+    saveDashboardLayout();
+  }
   renderDashboard();
 }
+
+function openEntityDrawer() {
+  // Ensure selector exists, then open it
+  showEntitySelector();
+  const selector = document.getElementById('entity-selector');
+  if (selector) {
+    selector.classList.remove('closed');
+    selector.style.display = 'block';
+    const dash = document.querySelector('.dashboard-container');
+    if (dash) dash.classList.add('with-entity-drawer');
+  }
+}
+function closeEntityDrawer() {
+  const selector = document.getElementById('entity-selector');
+  if (selector) {
+    selector.classList.add('closed');
+    const dash = document.querySelector('.dashboard-container');
+    if (dash) dash.classList.remove('with-entity-drawer');
+  }
+}
+window.openAddDrawer = openEntityDrawer;
 
 function showEntitySelector() {
   let selector = document.getElementById('entity-selector');
   if (!selector) {
     selector = document.createElement('div');
     selector.id = 'entity-selector';
-    selector.className = 'entity-selector';
+    selector.className = 'entity-selector docked closed';
     selector.innerHTML = `
-      <h3>Add Entities</h3>
+      <div class="drawer-actions">
+        <h3 class="drag-handle">Add Entities</h3>
+        <button id="entity-drawer-close" class="btn btn-secondary" title="Close">×</button>
+      </div>
       <input type="text" id="entity-search-add" placeholder="Search entities...">
       <div id="available-entities"></div>
-      <button class="btn btn-primary" onclick="disableEditMode()">Done Editing</button>
     `;
     document.body.appendChild(selector);
+
+    // Close button for drawer
+    const closeBtn = selector.querySelector('#entity-drawer-close');
+    if (closeBtn) closeBtn.onclick = closeEntityDrawer;
+
+    // Make selector draggable via header
+    const handle = selector.querySelector('.drag-handle');
+    let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    const onMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const nextLeft = Math.max(0, Math.min(window.innerWidth - selector.offsetWidth, startLeft + dx));
+      const nextTop = Math.max(0, Math.min(window.innerHeight - selector.offsetHeight, startTop + dy));
+      selector.style.left = `${nextLeft}px`;
+      selector.style.top = `${nextTop}px`;
+      selector.style.right = 'auto';
+    };
+    const onUp = () => { dragging = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    handle.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startX = e.clientX; startY = e.clientY;
+      const rect = selector.getBoundingClientRect();
+      startLeft = rect.left; startTop = rect.top;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
   }
   
+  // Keep it in the DOM but don't auto-open; caller will open it
   selector.style.display = 'block';
   
   const searchInput = document.getElementById('entity-search-add');
@@ -552,9 +967,15 @@ function showEntitySelector() {
   
   const renderAvailable = (filter = '') => {
     container.innerHTML = '';
+    const f = (filter || '').toLowerCase();
     const available = Object.keys(STATES)
       .filter(id => !DASHBOARD_LAYOUT.includes(id))
-      .filter(id => id.toLowerCase().includes(filter.toLowerCase()))
+      .filter(id => {
+        const e = STATES[id];
+        const idMatch = id.toLowerCase().includes(f);
+        const nameMatch = ((e?.attributes?.friendly_name || '').toLowerCase()).includes(f);
+        return idMatch || nameMatch;
+      })
       .slice(0, 50);
     
     available.forEach(entityId => {
@@ -598,6 +1019,8 @@ window.removeFromDashboard = function(entityId) {
 };
 
 window.disableEditMode = disableEditMode;
+window.saveEdit = function() { disableEditMode(true); };
+window.discardEdit = function() { disableEditMode(false); };
 
 function saveDashboardLayout() {
   CONFIG.dashboardLayout = DASHBOARD_LAYOUT;
@@ -607,40 +1030,85 @@ function saveDashboardLayout() {
 function setupDragAndDrop() {
   const container = document.getElementById('dashboard-custom');
   if (!container) return;
-  
+
+  if (!DRAG_PLACEHOLDER) {
+    DRAG_PLACEHOLDER = document.createElement('div');
+    DRAG_PLACEHOLDER.className = 'drop-placeholder';
+  }
+
   container.ondragover = (e) => {
     e.preventDefault();
-    const dragging = document.querySelector('.dragging');
-    const afterElement = getDragAfterElement(container, e.clientY);
+    const dragging = document.querySelector('.entity-card.dragging');
+    if (!dragging) return;
+    const afterElement = getDragAfterElement(container, e.clientX, e.clientY);
+    if (!DRAG_PLACEHOLDER.parentNode) {
+      container.appendChild(DRAG_PLACEHOLDER);
+    }
     if (afterElement == null) {
-      container.appendChild(dragging);
+      container.appendChild(DRAG_PLACEHOLDER);
     } else {
-      container.insertBefore(dragging, afterElement);
+      container.insertBefore(DRAG_PLACEHOLDER, afterElement);
     }
   };
-  
+
   container.ondrop = (e) => {
     e.preventDefault();
-    // Update layout order
+    const dragging = document.querySelector('.entity-card.dragging');
+    if (dragging && DRAG_PLACEHOLDER && DRAG_PLACEHOLDER.parentNode === container) {
+      container.insertBefore(dragging, DRAG_PLACEHOLDER);
+    }
+    if (DRAG_PLACEHOLDER && DRAG_PLACEHOLDER.parentNode) {
+      DRAG_PLACEHOLDER.remove();
+    }
+    // Update layout order (do not persist until user clicks Save)
     const cards = container.querySelectorAll('.entity-card');
     DASHBOARD_LAYOUT = Array.from(cards).map(card => card.dataset.entityId);
-    saveDashboardLayout();
   };
 }
 
-function getDragAfterElement(container, y) {
+
+function getDragAfterElement(container, x, y) {
   const draggableElements = [...container.querySelectorAll('.entity-card:not(.dragging)')];
-  
-  return draggableElements.reduce((closest, child) => {
+  // Find the closest element below the pointer (by center) in a wrapped grid
+  const result = draggableElements.reduce((closest, child) => {
     const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    
-    if (offset < 0 && offset > closest.offset) {
-      return { offset: offset, element: child };
-    } else {
-      return closest;
+    const centerY = box.top + box.height / 2;
+    const centerX = box.left + box.width / 2;
+    const offsetY = y - centerY;
+    const dist = Math.hypot(centerX - x, centerY - y);
+    if (offsetY < 0 && dist < closest.dist) {
+      return { dist, element: child };
     }
-  }, { offset: Number.NEGATIVE_INFINITY }).element;
+    return closest;
+  }, { dist: Number.POSITIVE_INFINITY, element: null });
+  return result.element;
+}
+
+function renderSkeletonCards(container, count = 4) {
+  try {
+    for (let i = 0; i < count; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'entity-card';
+      const left = document.createElement('div');
+      left.style.flex = '1';
+      const line1 = document.createElement('div'); line1.className = 'skeleton'; line1.style.height = '14px'; line1.style.width = `${60 + Math.round(Math.random()*30)}%`;
+      const line2 = document.createElement('div'); line2.className = 'skeleton'; line2.style.height = '10px'; line2.style.width = `${30 + Math.round(Math.random()*40)}%`; line2.style.marginTop = '8px';
+      left.appendChild(line1); left.appendChild(line2);
+      const right = document.createElement('div'); right.style.width = '80px'; right.style.height = '28px'; right.className = 'skeleton';
+      sk.appendChild(left); sk.appendChild(right);
+      container.appendChild(sk);
+    }
+  } catch (_) {}
+}
+function renderSkeletonWeather(container, count = 2) {
+  try {
+    for (let i = 0; i < count; i++) {
+      const w = document.createElement('div');
+      w.className = 'weather-widget skeleton';
+      w.style.height = '120px';
+      container.appendChild(w);
+    }
+  } catch (_) {}
 }
 
 // Filter modal
@@ -775,7 +1243,8 @@ function renderWeather() {
   
   // Check if STATES is populated
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading entities...</p>';
+    container.innerHTML = '';
+    renderSkeletonCards(container, 4);
     return;
   }
   
@@ -1005,8 +1474,14 @@ function populateEntityInspector() {
   
   const renderList = (filter = '') => {
     listContainer.innerHTML = '';
+    const f = (filter || '').toLowerCase();
     const filtered = Object.values(STATES)
-      .filter(e => e.entity_id.toLowerCase().includes(filter.toLowerCase()))
+      .filter(e => {
+        const idMatch = e.entity_id.toLowerCase().includes(f);
+        const name = (e.attributes?.friendly_name || '').toLowerCase();
+        const nameMatch = name.includes(f);
+        return idMatch || nameMatch;
+      })
       .slice(0, 50);
     
     filtered.forEach(entity => {
@@ -1030,6 +1505,10 @@ function setupTabs() {
       if (CAMERA_REFRESH_INTERVAL) {
         clearInterval(CAMERA_REFRESH_INTERVAL);
         CAMERA_REFRESH_INTERVAL = null;
+      }
+      const prevActive = document.querySelector('.tab-btn.active');
+      if (prevActive && prevActive.dataset.tab === 'cameras') {
+        stopAllCameraStreams();
       }
       // Deactivate all tabs and contents
       tabs.forEach(t => t.classList.remove('active'));
@@ -1149,38 +1628,57 @@ function renderActiveTab() {
 
 // Render functions for each tab
 function renderDashboard() {
-  // Check if we have a custom dashboard layout
-  if (DASHBOARD_LAYOUT && DASHBOARD_LAYOUT.length > 0) {
+  const dashboardTab = document.getElementById('dashboard-tab');
+  const toolbarHTML = EDIT_MODE
+    ? `
+      <button class="btn btn-primary" onclick="saveEdit()">Save changes</button>
+      <button class="btn btn-secondary" onclick="discardEdit()">Discard</button>
+      <button class="btn btn-secondary" onclick="openAddDrawer()">+ Add</button>
+    `
+    : `<button class="btn btn-secondary" onclick="enableEditMode()">Edit</button>`;
+
+  // If we have a custom layout OR we are in edit mode (even with empty layout), render the custom dashboard shell
+  if ((DASHBOARD_LAYOUT && DASHBOARD_LAYOUT.length > 0) || EDIT_MODE) {
     const container = document.getElementById('dashboard-custom');
     if (!container) {
-      // Create custom dashboard container
-      const dashboardTab = document.getElementById('dashboard-tab');
       dashboardTab.innerHTML = `
         <div class="section">
-          <h3 class="section-title">
-            My Dashboard
-            <button class="btn btn-secondary" style="float: right;" onclick="enableEditMode()">Edit</button>
-          </h3>
-          <div id="dashboard-custom" class="entity-list"></div>
+          <div class="section-header">
+            <h3 class="section-title">My Dashboard</h3>
+          </div>
+          <div class="section-toolbar">${toolbarHTML}</div>
+          <div id="dashboard-custom" class="entity-grid"></div>
         </div>
       `;
+    } else {
+      // If container exists, update toolbar in place when toggling modes
+      const toolbar = container.parentElement.querySelector('.section-toolbar');
+      if (toolbar) toolbar.innerHTML = toolbarHTML;
     }
-    
+
     const customContainer = document.getElementById('dashboard-custom');
+    customContainer.classList.add('entity-grid');
     customContainer.innerHTML = '';
-    
+
     DASHBOARD_LAYOUT.forEach(entityId => {
       const entity = STATES[entityId];
       if (entity && !FILTERS.hidden.includes(entityId)) {
-        const card = createEntityCard(entity);
-        if (card) customContainer.appendChild(card);
+        const card = createEntityCard(entity, { context: 'dashboard' });
+        if (card) {
+          card.classList.add('enter');
+          customContainer.appendChild(card);
+          requestAnimationFrame(() => {
+            card.classList.add('enter-active');
+            const onEnd = () => { card.classList.remove('enter', 'enter-active'); card.removeEventListener('transitionend', onEnd); };
+            card.addEventListener('transitionend', onEnd);
+          });
+        }
       }
     });
-    
+
     setupDragAndDrop();
   } else {
-    // Default dashboard
-    const dashboardTab = document.getElementById('dashboard-tab');
+    // Default dashboard (not in edit mode and no custom layout)
     let favoritesHTML = '';
     const favs = (CONFIG.favoriteEntities || []).filter(id => STATES[id]);
     if (favs.length > 0) {
@@ -1192,23 +1690,33 @@ function renderDashboard() {
     }
     dashboardTab.innerHTML = `
       <div class="section">
-        <h3 class="section-title">
-          Dashboard
-          <button class="btn btn-secondary" style="float: right;" onclick="enableEditMode()">Customize</button>
-        </h3>
+        <div class="section-header">
+          <h3 class="section-title">Dashboard</h3>
+        </div>
+        <div class="section-toolbar">
+          <button class="btn btn-secondary" onclick="enableEditMode()">Customize</button>
+        </div>
         <p style="text-align: center; padding: 20px;">
           Click "Customize" to create your personalized dashboard
         </p>
       </div>
       ${favoritesHTML}
     `;
-    
+
     if (favs.length > 0) {
       const favList = document.getElementById('favorites-list');
       favs.forEach(id => {
         const e = STATES[id];
-        const card = createEntityCard(e);
-        if (card) favList.appendChild(card);
+        const card = createEntityCard(e, { context: 'dashboard' });
+        if (card) {
+          card.classList.add('enter');
+          favList.appendChild(card);
+          requestAnimationFrame(() => {
+            card.classList.add('enter-active');
+            const onEnd = () => { card.classList.remove('enter', 'enter-active'); card.removeEventListener('transitionend', onEnd); };
+            card.addEventListener('transitionend', onEnd);
+          });
+        }
       });
     }
   }
@@ -1226,7 +1734,8 @@ function renderScenes() {
   
   // Check if STATES is populated
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading entities...</p>';
+    container.innerHTML = '';
+    renderSkeletonCards(container, 4);
     return;
   }
   
@@ -1259,7 +1768,8 @@ function renderAutomations() {
   
   // Check if STATES is populated
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading entities...</p>';
+    container.innerHTML = '';
+    renderSkeletonCards(container, 4);
     return;
   }
   
@@ -1292,7 +1802,8 @@ function renderMediaPlayers() {
   
   // Check if STATES is populated
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading entities...</p>';
+    container.innerHTML = '';
+    renderSkeletonCards(container, 4);
     return;
   }
   
@@ -1316,6 +1827,8 @@ function renderMediaPlayers() {
 function renderCameras() {
   const container = document.getElementById('cameras-container');
   if (!container) return;
+  // Hide motion popup when entering cameras, but leave user control if they want to keep it
+  hideMotionPopup(true);
   
   container.innerHTML = '';
   
@@ -1346,9 +1859,9 @@ function renderCameras() {
     if (card) container.appendChild(card);
   });
   
-  // Auto-refresh cameras every 10 seconds
+  // Auto-refresh cameras every 10 seconds (snapshots only)
   CAMERA_REFRESH_INTERVAL = setInterval(() => {
-    cameraIds.forEach(refreshCamera);
+    cameraIds.forEach(id => { if (!LIVE_CAMERAS.has(id)) refreshCamera(id); });
   }, 10000);
 }
 
@@ -1358,7 +1871,16 @@ function updateEntityInUI(entity) {
   // Update entity card if it exists
   const cards = document.querySelectorAll(`.entity-card[data-entity-id="${entity.entity_id}"]`);
   cards.forEach(card => {
-    const newCard = createEntityCard(entity);
+    // Preserve dashboard camera cards while live to avoid tearing down streams/UI
+    const isDashboard = card.dataset.context === 'dashboard' || !!card.closest('#dashboard-custom');
+    const isCamera = entity.entity_id.startsWith('camera.');
+    if (isDashboard && isCamera) {
+      if (LIVE_CAMERAS.has(entity.entity_id)) {
+        return; // don't touch while streaming
+      }
+    }
+    const ctx = card.dataset.context || (card.closest('#dashboard-custom') ? 'dashboard' : null);
+    const newCard = ctx ? createEntityCard(entity, { context: ctx }) : createEntityCard(entity);
     if (newCard) card.replaceWith(newCard);
   });
   setLastUpdate();
@@ -1416,6 +1938,10 @@ async function openSettings() {
   const alwaysOnTop = document.getElementById('always-on-top');
   const favoritesInput = document.getElementById('favorite-entities');
   const camerasInput = document.getElementById('camera-entities');
+  const motionEnabled = document.getElementById('motion-popup-enabled');
+  const motionCams = document.getElementById('motion-popup-cameras');
+  const motionAutoHide = document.getElementById('motion-popup-autohide');
+  const motionCooldown = document.getElementById('motion-popup-cooldown');
   const showDetails = document.getElementById('show-details');
   const themeSelect = document.getElementById('theme-select');
   const highContrast = document.getElementById('high-contrast');
@@ -1429,6 +1955,11 @@ async function openSettings() {
   if (alwaysOnTop) alwaysOnTop.checked = CONFIG.alwaysOnTop !== false;
   if (favoritesInput) favoritesInput.value = (CONFIG.favoriteEntities || []).join(', ');
   if (camerasInput) camerasInput.value = (CONFIG.cameraEntities || []).join(', ');
+  const mp = CONFIG.motionPopup || {};
+  if (motionEnabled) motionEnabled.checked = !!mp.enabled;
+  if (motionCams) motionCams.value = (mp.cameras || []).join(', ');
+  if (motionAutoHide) motionAutoHide.value = Math.max(3, Math.min(120, parseInt(mp.autoHideSeconds || 12, 10)));
+  if (motionCooldown) motionCooldown.value = Math.max(0, Math.min(600, parseInt(mp.cooldownSeconds || 30, 10)));
   if (opacitySlider) {
     opacitySlider.value = CONFIG.opacity || 0.95;
     if (opacityValue) opacityValue.textContent = `${Math.round((CONFIG.opacity || 0.95) * 100)}%`;
@@ -1454,6 +1985,11 @@ async function openSettings() {
   populateDomainFilters();
   populateAreaFilter();
 
+  // Searchable entity inputs
+  setupEntitySearchInput('favorite-entities');
+  setupEntitySearchInput('camera-entities', ['camera']);
+  setupEntitySearchInput('motion-popup-cameras', ['camera']);
+
   modal.classList.remove('hidden');
   modal.style.display = 'grid';
   trapFocus(modal);
@@ -1473,8 +2009,13 @@ async function saveSettings() {
   const tokenInput = document.getElementById('ha-token');
   const intervalInput = document.getElementById('update-interval');
   const alwaysOnTop = document.getElementById('always-on-top');
+  const prevAlwaysOnTop = CONFIG.alwaysOnTop;
   const favoritesInput = document.getElementById('favorite-entities');
   const camerasInput = document.getElementById('camera-entities');
+  const motionEnabled = document.getElementById('motion-popup-enabled');
+  const motionCams = document.getElementById('motion-popup-cameras');
+  const motionAutoHide = document.getElementById('motion-popup-autohide');
+  const motionCooldown = document.getElementById('motion-popup-cooldown');
   const showDetails = document.getElementById('show-details');
   const themeSelect = document.getElementById('theme-select');
   const highContrast = document.getElementById('high-contrast');
@@ -1487,6 +2028,13 @@ async function saveSettings() {
   if (alwaysOnTop) CONFIG.alwaysOnTop = alwaysOnTop.checked;
   if (favoritesInput) CONFIG.favoriteEntities = favoritesInput.value.split(',').map(s => s.trim()).filter(Boolean);
   if (camerasInput) CONFIG.cameraEntities = camerasInput.value.split(',').map(s => s.trim()).filter(Boolean);
+
+  // Motion popup config
+  CONFIG.motionPopup = CONFIG.motionPopup || {};
+  if (motionEnabled) CONFIG.motionPopup.enabled = !!motionEnabled.checked;
+  if (motionCams) CONFIG.motionPopup.cameras = motionCams.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (motionAutoHide) CONFIG.motionPopup.autoHideSeconds = Math.max(3, Math.min(120, parseInt(motionAutoHide.value || 12, 10)));
+  if (motionCooldown) CONFIG.motionPopup.cooldownSeconds = Math.max(0, Math.min(600, parseInt(motionCooldown.value || 30, 10)));
 
   // UI preferences
   CONFIG.ui = CONFIG.ui || {};
@@ -1512,6 +2060,21 @@ async function saveSettings() {
   
   try {
     await ipcRenderer.invoke('update-config', CONFIG);
+
+    // Apply Always on Top immediately if changed
+    if (prevAlwaysOnTop !== CONFIG.alwaysOnTop) {
+      try {
+        const res = await ipcRenderer.invoke('set-always-on-top', CONFIG.alwaysOnTop);
+        const state = await ipcRenderer.invoke('get-window-state');
+        if (!res?.applied || state?.alwaysOnTop !== CONFIG.alwaysOnTop) {
+          if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
+            await ipcRenderer.invoke('restart-app');
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
     closeSettings();
     
     // Apply UI changes
@@ -1729,3 +2292,245 @@ ipcRenderer.on('open-settings', () => {
 });
 
 window.addEventListener('DOMContentLoaded', init);
+
+
+// Entity suggestion helpers for settings
+function setupEntitySearchInput(inputId, allowedDomains = null) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  let box = input.parentElement.querySelector('.entity-suggestions');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'entity-suggestions';
+    input.parentElement.appendChild(box);
+  }
+  const closeBox = () => { box.classList.remove('open'); box.innerHTML = ''; };
+  const parseList = () => input.value.split(',').map(s => s.trim()).filter(Boolean);
+  const setList = (list) => { input.value = Array.from(new Set(list)).join(', '); };
+
+  const build = (q) => {
+    const query = (q || '').toLowerCase();
+    const items = Object.keys(STATES).filter(id => {
+      if (allowedDomains && allowedDomains.length) {
+        const dom = id.split('.')[0];
+        if (!allowedDomains.includes(dom)) return false;
+      }
+      if (!query) return true;
+      const e = STATES[id];
+      const name = (e?.attributes?.friendly_name || '').toLowerCase();
+      return id.toLowerCase().includes(query) || name.includes(query);
+    }).slice(0, 50);
+
+    box.innerHTML = '';
+    items.forEach(id => {
+      const e = STATES[id];
+      const item = document.createElement('div');
+      item.className = 'entity-suggestion-item';
+      const name = document.createElement('span');
+      name.className = 'entity-suggestion-name';
+      name.textContent = e?.attributes?.friendly_name || id;
+      const sid = document.createElement('span');
+      sid.className = 'entity-suggestion-id';
+      sid.textContent = id;
+      item.appendChild(name);
+      item.appendChild(sid);
+      item.onclick = () => {
+        const list = parseList();
+        if (!list.includes(id)) list.push(id);
+        setList(list);
+        closeBox();
+      };
+      box.appendChild(item);
+    });
+    box.classList.toggle('open', items.length > 0);
+  };
+
+  input.addEventListener('input', () => {
+    const raw = input.value;
+    const last = raw.split(',').pop().trim();
+    build(last);
+  });
+  input.addEventListener('focus', () => { build(''); });
+  input.addEventListener('blur', () => setTimeout(closeBox, 150));
+}
+
+// Timer countdown support
+function formatDuration(ms) {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  if (hh > 0) return `${hh}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+  return `${mm}:${String(ss).padStart(2,'0')}`;
+}
+
+function getTimerEnd(entity) {
+  const fin = entity.attributes?.finishes_at;
+  if (fin) {
+    const t = new Date(fin).getTime();
+    if (!isNaN(t)) return t;
+  }
+  const rem = entity.attributes?.remaining;
+  if (rem) {
+    // HH:MM:SS
+    const parts = rem.split(':').map(n => parseInt(n, 10));
+    if (parts.length === 3 && parts.every(x => !isNaN(x))) {
+      const ms = ((parts[0]*3600)+(parts[1]*60)+parts[2]) * 1000;
+      return Date.now() + ms;
+    }
+  }
+  return null;
+}
+
+function updateTimerCountdown(entity, el) {
+  if (!el) return;
+  if (entity.state !== 'active') {
+    el.textContent = entity.state || '';
+    TIMER_MAP.delete(entity.entity_id);
+    if (TIMER_MAP.size === 0 && TIMER_TICK) { clearInterval(TIMER_TICK); TIMER_TICK = null; }
+    return;
+  }
+  const end = getTimerEnd(entity);
+  if (!end) { el.textContent = 'running'; return; }
+  TIMER_MAP.set(entity.entity_id, { el, end });
+  el.textContent = formatDuration(end - Date.now());
+  if (!TIMER_TICK) {
+    TIMER_TICK = setInterval(() => {
+      const now = Date.now();
+      for (const [id, rec] of Array.from(TIMER_MAP.entries())) {
+        const left = rec.end - now;
+        if (left <= 0) {
+          rec.el.textContent = '0:00';
+          TIMER_MAP.delete(id);
+        } else {
+          rec.el.textContent = formatDuration(left);
+        }
+      }
+      if (TIMER_MAP.size === 0) { clearInterval(TIMER_TICK); TIMER_TICK = null; }
+    }, 1000);
+  }
+}
+
+// Motion detection handling and popup UI
+function handleMotionEvent(newState, oldState) {
+  try {
+    const mp = CONFIG?.motionPopup || {};
+    if (!mp.enabled) return;
+    if (!newState || newState.entity_id?.startsWith('binary_sensor.') !== true) return;
+    if (newState.state !== 'on') return;
+    const dc = (newState.attributes?.device_class || '').toLowerCase();
+    if (dc !== 'motion' && dc !== 'occupancy' && dc !== 'moving') return;
+    const selectedCams = (mp.cameras || []).filter(id => id.startsWith('camera.'));
+    if (selectedCams.length === 0) return;
+
+    // Heuristic match: link motion sensor to camera by slug or friendly name overlap
+    const motionId = newState.entity_id;
+    const motionName = (newState.attributes?.friendly_name || '').toLowerCase();
+
+    let matchCam = null;
+    for (const camId of selectedCams) {
+      const slug = camId.split('.')[1];
+      const camName = (STATES?.[camId]?.attributes?.friendly_name || camId).toLowerCase();
+      if (motionId.includes(slug) || motionName.includes(slug) || motionName.includes(camName) || camName.includes(motionName)) {
+        matchCam = camId;
+        break;
+      }
+    }
+    if (!matchCam) {
+      // If no heuristic match, bail out quietly
+      return;
+    }
+
+    const cooldownMs = Math.max(0, (mp.cooldownSeconds || 30) * 1000);
+    const last = MOTION_LAST_TRIGGER.get(matchCam) || 0;
+    const now = Date.now();
+    if (now - last < cooldownMs) return;
+    MOTION_LAST_TRIGGER.set(matchCam, now);
+
+    showMotionPopup(matchCam);
+  } catch (e) {
+    console.warn('handleMotionEvent error:', e?.message || e);
+  }
+}
+
+async function showMotionPopup(cameraId) {
+  try {
+    const mp = CONFIG?.motionPopup || {};
+    if (!MOTION_POPUP) {
+      MOTION_POPUP = document.createElement('div');
+      MOTION_POPUP.id = 'motion-popup';
+      MOTION_POPUP.className = 'motion-popup';
+      MOTION_POPUP.innerHTML = `
+        <div class="motion-popup-header">
+          <span class="motion-popup-title"></span>
+          <button class="motion-popup-close" title="Close">✕</button>
+        </div>
+        <div class="motion-popup-body"></div>
+      `;
+      document.body.appendChild(MOTION_POPUP);
+      MOTION_POPUP.querySelector('.motion-popup-close').onclick = () => hideMotionPopup();
+      MOTION_POPUP.addEventListener('mouseenter', () => { if (MOTION_POPUP_TIMER) { clearTimeout(MOTION_POPUP_TIMER); MOTION_POPUP_TIMER = null; } });
+      MOTION_POPUP.addEventListener('mouseleave', () => {
+        const ms = Math.max(3000, (mp.autoHideSeconds || 12) * 1000);
+        if (MOTION_POPUP_TIMER) clearTimeout(MOTION_POPUP_TIMER);
+        MOTION_POPUP_TIMER = setTimeout(() => hideMotionPopup(), ms);
+      });
+    }
+
+    const title = MOTION_POPUP.querySelector('.motion-popup-title');
+    const body = MOTION_POPUP.querySelector('.motion-popup-body');
+
+    // If switching camera, stop existing stream and clear body
+    if (MOTION_POPUP_CAMERA && MOTION_POPUP_CAMERA !== cameraId) {
+      stopHlsStream(MOTION_POPUP_CAMERA, body);
+      try { body.innerHTML = ''; } catch (_) {}
+    }
+
+    MOTION_POPUP_CAMERA = cameraId;
+    title.textContent = (STATES?.[cameraId]?.attributes?.friendly_name || cameraId) + ' — Motion detected';
+
+    // Ensure we have an image element for MJPEG fallback
+    let img = body.querySelector('img.camera-img');
+    if (!img) {
+      img = document.createElement('img');
+      img.className = 'camera-img';
+      body.appendChild(img);
+    }
+
+    // Start HLS within popup body (works like a "card")
+    const hlsStarted = await startHlsStream(cameraId, body, img);
+    if (!hlsStarted) {
+      img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
+      img.style.display = 'block';
+    }
+
+    MOTION_POPUP.style.display = 'block';
+
+    if (MOTION_POPUP_TIMER) { clearTimeout(MOTION_POPUP_TIMER); MOTION_POPUP_TIMER = null; }
+    const ms = Math.max(3000, (mp.autoHideSeconds || 12) * 1000);
+    MOTION_POPUP_TIMER = setTimeout(() => hideMotionPopup(), ms);
+  } catch (e) {
+    console.warn('showMotionPopup error:', e?.message || e);
+  }
+}
+
+function hideMotionPopup(silent = false) {
+  try {
+    if (!MOTION_POPUP) return;
+    if (MOTION_POPUP_TIMER) { clearTimeout(MOTION_POPUP_TIMER); MOTION_POPUP_TIMER = null; }
+    const body = MOTION_POPUP.querySelector('.motion-popup-body');
+    if (MOTION_POPUP_CAMERA) {
+      stopHlsStream(MOTION_POPUP_CAMERA, body);
+      // Clear MJPEG
+      const img = body.querySelector('img.camera-img');
+      if (img) { img.src = ''; }
+    }
+    MOTION_POPUP.style.display = 'none';
+    if (!silent) {
+      MOTION_POPUP_CAMERA = null;
+    }
+  } catch (e) {
+    console.warn('hideMotionPopup error:', e?.message || e);
+  }
+}

@@ -6,7 +6,7 @@ A transparent, always-on-top desktop widget for Home Assistant that provides qui
 [![Release (Windows)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Current version: 1.1.0
+Current version: 1.3.0
 
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 

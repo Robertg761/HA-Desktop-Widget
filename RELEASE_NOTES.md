@@ -1,41 +1,29 @@
-# HA Desktop Widget v1.1.0 (Draft)
+# HA Desktop Widget v1.3.0
 
-Accessibility & UX
-- ARIA roles for tabs/tabpanels; labeled tabs
-- Keyboard navigation for tabs (ArrowLeft/Right, Home, End)
-- Modal focus traps for Settings and Filter; focus restored on close
-- Density selector (Comfortable/Compact) in Settings; compact CSS variants
-- Improved typography for sensor/climate values
+Highlights
+- Design tokens and layout rhythm (spacing, radius, shadows, surface colors) for a cleaner, consistent UI
+- Responsive dashboard grid (auto-fill, min card width), consistent toolbar/header structure
+- Polished entity cards: subtle elevation, hover raise, compact ghost buttons, stronger focus states
+- Micro-interactions: drop placeholder while dragging, entry animations for new cards, skeleton loaders for slow lists
+- Edit mode UX: visible Save / Discard / + Add toolbar; Add Entities drawer no longer auto-opens; staged changes until Save
 
-Tabs & Navigation
-- Scrollable tab bar with ◀ ▶ buttons and mouse wheel horizontal scroll
-- Active tab auto-scrolls into view
-- Shortcuts: Ctrl+Tab (next), Ctrl+Shift+Tab (previous)
-- Hidden scrollbar for cleaner look
+Editing & Layout
+- Drag-and-drop reorder now uses a visible placeholder and only persists on Save
+- Remove (×) button always visible in edit mode (including camera/doorbell cards)
+- Extra spacing below toolbar so top row doesn’t crowd the first entity
+Camera stability
 
-Layout & Spacing
-- Increased spacing in sections, entity lists, and cards
-- Larger gaps between sliders/buttons; consistent label spacing
-- Global line-height adjustments
+- Dashboard camera: preserve controls and avoid teardown while Live is active; keep options visible on stop
+- HLS fallback to MJPEG when necessary remains intact
+Additional improvements
+- A11y: aria-labels on icon-only buttons (remove)
 
-Connection & Stability
-- Fixed renderer syntax error that could block WebSocket init (stuck “Connecting…”) 
-- Clear connection status indicator and initial subscriptions after auth
+- Skeleton placeholders for Scenes, Automations, Media, Weather lists
+- Minor layout tidy-ups and consistent styling across themes
 
-Modals & Overlays
-- Correct z-index for Settings/Filter modals and loading overlay (above sticky tab bar)
 
-Auto-update & Tray
-- Integrated electron-updater; tray menu: Settings, Check for Updates
-- Minimize-to-tray / close-to-tray behavior
 
-Build & Release
-- GitHub Actions (tag push v*) builds and uploads artifacts to a draft GitHub Release
-- NSIS installer and Portable artifact naming
 
-Config & Security
-- Config stored in OS userData; legacy config migrated
-- config.json excluded from packaging and VCS
 
 Notes
 - Recommended: add custom icon at build/icon.ico (256×256) and optional tray icon.

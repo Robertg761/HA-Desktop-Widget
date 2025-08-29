@@ -254,6 +254,32 @@ ipcMain.handle('set-opacity', (event, opacity) => {
   saveConfig();
 });
 
+ipcMain.handle('set-always-on-top', (event, value) => {
+  const flag = !!value;
+  config.alwaysOnTop = flag;
+  try {
+    mainWindow.setAlwaysOnTop(flag);
+  } catch (e) {
+    // ignore
+  }
+  saveConfig();
+  return { applied: mainWindow?.isAlwaysOnTop?.() === flag };
+});
+
+ipcMain.handle('get-window-state', () => {
+  return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
+});
+
+ipcMain.handle('restart-app', () => {
+  try {
+    isQuitting = true;
+    app.relaunch();
+    app.exit(0);
+  } catch (e) {
+    // ignore
+  }
+});
+
 ipcMain.handle('minimize-window', () => {
   if (mainWindow) {
     mainWindow.minimize();
@@ -325,15 +351,13 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(() => {
   loadConfig();
 
-  // Camera proxy: ha://camera/<entityId>
+  // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
   try {
-    protocol.registerBufferProtocol('ha', async (request, respond) => {
+    const { Readable } = require('stream');
+    protocol.registerStreamProtocol('ha', async (request, respond) => {
       try {
         const url = new URL(request.url);
-        if (url.hostname !== 'camera') {
-          respond({ statusCode: 404 });
-          return;
-        }
+        const host = url.hostname; // 'camera' or 'camera_stream'
         const entityId = decodeURIComponent(url.pathname.replace(/^\//, ''));
         const haUrl = (config && config.homeAssistant && config.homeAssistant.url) || '';
         const token = (config && config.homeAssistant && config.homeAssistant.token) || '';
@@ -341,17 +365,49 @@ app.whenReady().then(() => {
           respond({ statusCode: 403 });
           return;
         }
-        const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy/${entityId}`;
-        const res = await axios.get(upstream, {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'arraybuffer',
-          validateStatus: () => true
-        });
-        if (res.status >= 200 && res.status < 300) {
-          const contentType = res.headers['content-type'] || 'image/jpeg';
-          respond({ data: Buffer.from(res.data), mimeType: contentType, statusCode: 200 });
+        if (host === 'camera_stream') {
+          const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy_stream/${entityId}`;
+          const res = await axios.get(upstream, {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: 'stream',
+            validateStatus: () => true
+          });
+          if (res.status >= 200 && res.status < 300) {
+            const contentType = res.headers['content-type'] || 'multipart/x-mixed-replace;boundary=--myboundary';
+            respond({ data: res.data, statusCode: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
+          } else {
+            respond({ statusCode: res.status || 502 });
+          }
+        } else if (host === 'hls') {
+          const upstream = `${haUrl.replace(/\/$/, '')}${url.pathname}${url.search || ''}`;
+          const res = await axios.get(upstream, {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: 'stream',
+            validateStatus: () => true
+          });
+          if (res.status >= 200 && res.status < 300) {
+            const contentType = res.headers['content-type'] || (upstream.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/MP2T');
+            respond({ data: res.data, statusCode: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
+          } else {
+            respond({ statusCode: res.status || 502 });
+          }
+        } else if (host === 'camera') {
+          const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy/${entityId}`;
+          const res = await axios.get(upstream, {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: 'arraybuffer',
+            validateStatus: () => true
+          });
+          if (res.status >= 200 && res.status < 300) {
+            const buf = Buffer.from(res.data);
+            const stream = Readable.from(buf);
+            const contentType = res.headers['content-type'] || 'image/jpeg';
+            respond({ data: stream, statusCode: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
+          } else {
+            respond({ statusCode: res.status || 502 });
+          }
         } else {
-          respond({ statusCode: res.status || 502 });
+          respond({ statusCode: 404 });
         }
       } catch (err) {
         respond({ statusCode: 500 });
