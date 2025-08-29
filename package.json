@@ -1,0 +1,97 @@
+{
+  "name": "home-assistant-widget",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --win nsis portable",
+    "dist:win": "electron-builder --win nsis",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "home-assistant",
+    "widget",
+    "desktop",
+    "dashboard"
+  ],
+  "author": "Robertg761",
+  "license": "MIT",
+  "description": "A transparent desktop widget for Home Assistant",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Robertg761/HA-Desktop-Widget.git"
+  },
+  "homepage": "https://github.com/Robertg761/HA-Desktop-Widget",
+  "bugs": {
+    "url": "https://github.com/Robertg761/HA-Desktop-Widget/issues"
+  },
+  "build": {
+    "productName": "HA Desktop Widget",
+    "appId": "com.github.robertg761.hadesktopwidget",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "main.js",
+      "renderer-final.js",
+      "renderer-enhanced.js",
+      "renderer-fixed.js",
+      "renderer.js",
+      "styles.css",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "maximum",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Robertg761",
+        "repo": "HA-Desktop-Widget"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "artifactName": "${productName}-${version}-win-${arch}-Setup.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Home Assistant Widget"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-win-${arch}-Portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^37.4.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "chart.js": "^4.5.0",
+    "dotenv": "^17.2.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2"
+  }
+}

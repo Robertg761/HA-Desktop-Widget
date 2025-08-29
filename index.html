@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Assistant Widget</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Draggable header area -->
+    <div class="widget-header">
+        <div class="drag-area">
+            <span class="widget-title">Home Assistant</span>
+            <div class="header-controls">
+                <button id="filter-btn" class="control-btn" title="Filter">🔍</button>
+                <button id="layout-btn" class="control-btn" title="Layout">📐</button>
+                <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
+                <button id="refresh-btn" class="control-btn" title="Refresh">🔄</button>
+                <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
+                <button id="close-btn" class="control-btn" title="Close">❌</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+        <span id="connection-status" class="status-indicator">● Disconnected</span>
+        <span id="last-update" class="last-update">Never</span>
+        <span id="notification-badge" class="notification-badge hidden">0</span>
+    </div>
+
+    <!-- Tab navigation -->
+    <div class="tab-navigation">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="scenes">Scenes</button>
+        <button class="tab-btn" data-tab="automations">Automations</button>
+        <button class="tab-btn" data-tab="media">Media</button>
+        <button class="tab-btn" data-tab="cameras">Cameras</button>
+        <button class="tab-btn" data-tab="weather">Weather</button>
+        <button class="tab-btn" data-tab="history">History</button>
+        <button class="tab-btn" data-tab="services">Services</button>
+    </div>
+
+    <!-- Main dashboard area -->
+    <div class="dashboard-container">
+        <!-- Dashboard Tab -->
+        <div id="dashboard-tab" class="tab-content active">
+        <!-- Quick controls section -->
+        <div class="section">
+            <h3 class="section-title">Quick Controls</h3>
+            <div id="quick-controls" class="controls-grid">
+                <!-- Dynamic controls will be added here -->
+            </div>
+        </div>
+
+        <!-- Lights section -->
+        <div class="section">
+            <h3 class="section-title">Lights</h3>
+            <div id="lights-container" class="entity-list">
+                <!-- Dynamic light entities will be added here -->
+            </div>
+        </div>
+
+        <!-- Sensors section -->
+        <div class="section">
+            <h3 class="section-title">Sensors</h3>
+            <div id="sensors-container" class="entity-list">
+                <!-- Dynamic sensor entities will be added here -->
+            </div>
+        </div>
+
+        <!-- Climate section -->
+        <div class="section">
+            <h3 class="section-title">Climate</h3>
+            <div id="climate-container" class="entity-list">
+                <!-- Dynamic climate entities will be added here -->
+            </div>
+        </div>
+
+        <!-- Media Players section -->
+        <div class="section">
+            <h3 class="section-title">Media Players</h3>
+            <div id="media-container" class="entity-list">
+                <!-- Dynamic media player entities will be added here -->
+            </div>
+        </div>
+        </div>
+
+        <!-- Scenes Tab -->
+        <div id="scenes-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Scenes</h3>
+                <div id="scenes-container" class="entity-list"></div>
+            </div>
+        </div>
+
+        <!-- Automations Tab -->
+        <div id="automations-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Automations</h3>
+                <div id="automations-container" class="entity-list"></div>
+            </div>
+        </div>
+
+        <!-- Media Tab -->
+        <div id="media-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Media Players</h3>
+                <div id="media-players-container" class="entity-list"></div>
+            </div>
+        </div>
+
+        <!-- Cameras Tab -->
+        <div id="cameras-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Cameras</h3>
+                <div id="cameras-container" class="cameras-grid"></div>
+            </div>
+        </div>
+
+        <!-- Weather Tab -->
+        <div id="weather-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Weather</h3>
+                <div id="weather-container" class="weather"></div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">History</h3>
+                <canvas id="history-chart" height="140"></canvas>
+                <div id="history-legend" class="legend"></div>
+            </div>
+        </div>
+
+        <!-- Services Tab -->
+        <div id="services-tab" class="tab-content">
+            <div class="section">
+                <h3 class="section-title">Service Explorer</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="service-domain">Domain</label>
+                        <select id="service-domain"></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="service-name">Service</label>
+                        <select id="service-name"></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="service-entity">Entity (optional)</label>
+                    <input id="service-entity" type="text" placeholder="entity_id (e.g., light.living_room)">
+                </div>
+                <div class="form-group">
+                    <label for="service-data">Data (JSON)</label>
+                    <textarea id="service-data" rows="6" placeholder="{\n  \"brightness\": 180\n}"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button id="run-service" class="btn btn-primary">Run Service</button>
+                    <span id="service-result" class="muted"></span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3 class="section-title">Entity Inspector</h3>
+                <div class="form-group">
+                    <input id="entity-search" type="text" placeholder="Search entities...">
+                </div>
+                <div id="entity-list" class="entity-list compact"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Settings</h2>
+            <div class="settings-form">
+                <div class="form-group">
+                    <label for="ha-url">Home Assistant URL:</label>
+                    <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
+                </div>
+                <div class="form-group">
+                    <label for="ha-token">Access Token:</label>
+                    <input type="password" id="ha-token" placeholder="Your long-lived access token">
+                    <small>Create a token in Home Assistant: Profile → Long-Lived Access Tokens</small>
+                </div>
+                <div class="form-group">
+                    <label for="update-interval">Update Interval (seconds):</label>
+                    <input type="number" id="update-interval" min="1" max="60" value="5">
+                </div>
+                <div class="form-group">
+                    <label for="opacity-slider">Window Opacity:</label>
+                    <input type="range" id="opacity-slider" min="0.3" max="1" step="0.05" value="0.95">
+                    <span id="opacity-value">95%</span>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="always-on-top">
+                        Always on top
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Show Domains</label>
+                    <div id="domain-filters" class="checkbox-grid"></div>
+                </div>
+                <div class="form-group">
+                    <label for="area-select">Areas</label>
+                    <select id="area-select" multiple></select>
+                    <small>Hold Ctrl to select multiple</small>
+                </div>
+                <div class="form-group">
+                    <label for="favorite-entities">Favorite Entities (comma-separated)</label>
+                    <input id="favorite-entities" type="text" placeholder="sensor.outdoor_temp, sensor.humidity">
+                </div>
+                <div class="form-group">
+                    <label for="camera-entities">Camera Entities (comma-separated)</label>
+                    <input id="camera-entities" type="text" placeholder="camera.front_door, camera.driveway">
+                </div>
+                <div class="form-group">
+                    <label for="theme-select">Theme</label>
+                    <select id="theme-select">
+                        <option value="auto">Auto (OS preference)</option>
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="show-details">
+                        Show extra details under entity names
+                    </label>
+                </div>
+                <div class="modal-buttons">
+                    <button id="save-settings" class="btn btn-primary">Save</button>
+                    <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Connecting to Home Assistant...</p>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="renderer-final.js"></script>
+</body>
+</html>
