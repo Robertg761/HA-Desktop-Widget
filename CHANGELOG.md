@@ -36,7 +36,7 @@ Highlights
 
 Notes
 - Recommended: add custom icon at build/icon.ico (256×256) and optional tray icon.
-- To trigger CI build: create and push tag v1.2.0; a draft release will be created/updated with artifacts.
+- To trigger CI build: create and push tag v1.1.0; a draft release will be created/updated with artifacts.
 
 ## [1.0.0] - 2025-01-01
 - Initial public release.
