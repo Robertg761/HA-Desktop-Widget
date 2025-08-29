@@ -1,4 +1,4 @@
-# HA Desktop Widget v1.2.0 (Draft)
+# HA Desktop Widget v1.1.0 (Draft)
 
 Accessibility & UX
 - ARIA roles for tabs/tabpanels; labeled tabs
