@@ -30,21 +30,25 @@
     </div>
 
     <!-- Tab navigation -->
-    <div class="tab-navigation">
-        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-        <button class="tab-btn" data-tab="scenes">Scenes</button>
-        <button class="tab-btn" data-tab="automations">Automations</button>
-        <button class="tab-btn" data-tab="media">Media</button>
-        <button class="tab-btn" data-tab="cameras">Cameras</button>
-        <button class="tab-btn" data-tab="weather">Weather</button>
-        <button class="tab-btn" data-tab="history">History</button>
-        <button class="tab-btn" data-tab="services">Services</button>
+    <div class="tab-nav-wrapper">
+        <button id="tab-scroll-left" class="tab-scroll" aria-label="Scroll left" title="Scroll left">◀</button>
+        <div class="tab-navigation" role="tablist" aria-label="Main tabs">
+            <button id="tab-dashboard" class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="dashboard-tab">Dashboard</button>
+            <button id="tab-scenes" class="tab-btn" data-tab="scenes" role="tab" aria-selected="false" aria-controls="scenes-tab">Scenes</button>
+            <button id="tab-automations" class="tab-btn" data-tab="automations" role="tab" aria-selected="false" aria-controls="automations-tab">Automations</button>
+            <button id="tab-media" class="tab-btn" data-tab="media" role="tab" aria-selected="false" aria-controls="media-tab">Media</button>
+            <button id="tab-cameras" class="tab-btn" data-tab="cameras" role="tab" aria-selected="false" aria-controls="cameras-tab">Cameras</button>
+            <button id="tab-weather" class="tab-btn" data-tab="weather" role="tab" aria-selected="false" aria-controls="weather-tab">Weather</button>
+            <button id="tab-history" class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="history-tab">History</button>
+            <button id="tab-services" class="tab-btn" data-tab="services" role="tab" aria-selected="false" aria-controls="services-tab">Services</button>
+        </div>
+        <button id="tab-scroll-right" class="tab-scroll" aria-label="Scroll right" title="Scroll right">▶</button>
     </div>
 
     <!-- Main dashboard area -->
     <div class="dashboard-container">
         <!-- Dashboard Tab -->
-        <div id="dashboard-tab" class="tab-content active">
+        <div id="dashboard-tab" class="tab-content active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
         <!-- Quick controls section -->
         <div class="section">
             <h3 class="section-title">Quick Controls</h3>
@@ -87,7 +91,7 @@
         </div>
 
         <!-- Scenes Tab -->
-        <div id="scenes-tab" class="tab-content">
+        <div id="scenes-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-scenes" tabindex="0">
             <div class="section">
                 <h3 class="section-title">Scenes</h3>
                 <div id="scenes-container" class="entity-list"></div>
@@ -95,7 +99,7 @@
         </div>
 
         <!-- Automations Tab -->
-        <div id="automations-tab" class="tab-content">
+        <div id="automations-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-automations" tabindex="0">
             <div class="section">
                 <h3 class="section-title">Automations</h3>
                 <div id="automations-container" class="entity-list"></div>
@@ -103,7 +107,7 @@
         </div>
 
         <!-- Media Tab -->
-        <div id="media-tab" class="tab-content">
+        <div id="media-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-media" tabindex="0">
             <div class="section">
                 <h3 class="section-title">Media Players</h3>
                 <div id="media-players-container" class="entity-list"></div>
@@ -111,7 +115,7 @@
         </div>
 
         <!-- Cameras Tab -->
-        <div id="cameras-tab" class="tab-content">
+        <div id="cameras-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-cameras" tabindex="0">
             <div class="section">
                 <h3 class="section-title">Cameras</h3>
                 <div id="cameras-container" class="cameras-grid"></div>
@@ -119,7 +123,7 @@
         </div>
 
         <!-- Weather Tab -->
-        <div id="weather-tab" class="tab-content">
+        <div id="weather-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-weather" tabindex="0">
             <div class="section">
                 <h3 class="section-title">Weather</h3>
                 <div id="weather-container" class="weather"></div>
@@ -127,7 +131,7 @@
         </div>
 
         <!-- History Tab -->
-        <div id="history-tab" class="tab-content">
+        <div id="history-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-history" tabindex="0">
             <div class="section">
                 <h3 class="section-title">History</h3>
                 <canvas id="history-chart" height="140"></canvas>
@@ -136,7 +140,7 @@
         </div>
 
         <!-- Services Tab -->
-        <div id="services-tab" class="tab-content">
+        <div id="services-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-services" tabindex="0">
             <div class="section">
                 <h3 class="section-title">Service Explorer</h3>
                 <div class="form-grid">
@@ -174,9 +178,9 @@
     </div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="modal hidden">
+    <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content">
-            <h2>Settings</h2>
+            <h2 id="settings-title">Settings</h2>
             <div class="settings-form">
                 <div class="form-group">
                     <label for="ha-url">Home Assistant URL:</label>
@@ -220,12 +224,31 @@
                     <input id="camera-entities" type="text" placeholder="camera.front_door, camera.driveway">
                 </div>
                 <div class="form-group">
+                    <label for="density-select">Density</label>
+                    <select id="density-select">
+                        <option value="comfortable">Comfortable</option>
+                        <option value="compact">Compact</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="theme-select">Theme</label>
                     <select id="theme-select">
                         <option value="auto">Auto (OS preference)</option>
                         <option value="dark">Dark</option>
                         <option value="light">Light</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="high-contrast">
+                        High contrast (stronger backgrounds & text)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="opaque-panels">
+                        Opaque panels (disable blur/transparency)
+                    </label>
                 </div>
                 <div class="form-group">
                     <label>

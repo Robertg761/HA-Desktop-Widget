@@ -260,7 +260,7 @@ function createEntityCard(entity, options = {}) {
   // Minimal state line: only for sensors and climate
   if (domain === 'sensor') {
     const state = document.createElement('div');
-    state.className = 'entity-state';
+    state.className = 'entity-state big';
     const val = parseFloat(entity.state);
     const stateVal = isNaN(val) ? entity.state : (Math.abs(val) >= 10 ? val.toFixed(0) : val.toFixed(1));
     const unit = entity.attributes?.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '';
@@ -268,7 +268,7 @@ function createEntityCard(entity, options = {}) {
     left.appendChild(state);
   } else if (domain === 'climate') {
     const state = document.createElement('div');
-    state.className = 'entity-state';
+    state.className = 'entity-state big';
     const temp = entity.attributes?.current_temperature ?? entity.attributes?.temperature;
     if (temp !== undefined && temp !== null) {
       state.textContent = `${Math.round(temp)}°`;
@@ -279,7 +279,7 @@ function createEntityCard(entity, options = {}) {
   const right = document.createElement('div');
   right.className = 'controls';
   right.style.display = 'flex';
-  right.style.gap = '6px';
+  right.style.gap = '8px';
   right.style.alignItems = 'center';
 
   // Add controls based on entity type
@@ -648,9 +648,11 @@ function showFilterModal() {
     const newModal = document.createElement('div');
     newModal.id = 'filter-modal';
     newModal.className = 'modal';
+    newModal.setAttribute('role', 'dialog');
+    newModal.setAttribute('aria-modal', 'true');
     newModal.innerHTML = `
-      <div class="modal-content modal-scrollable">
-        <h2>Filter Entities</h2>
+      <div class="modal-content modal-scrollable" role="document">
+        <h2 id="filter-title">Filter Entities</h2>
         <div class="filter-section">
           <h3>Entity Types</h3>
           <div id="filter-domains" class="checkbox-grid"></div>
@@ -683,6 +685,7 @@ function showFilterModal() {
   }
   
   modal.style.display = 'grid';
+  trapFocus(modal);
 }
 
 window.applyFilters = function() {
@@ -715,6 +718,7 @@ window.closeFilterModal = function() {
   const modal = document.getElementById('filter-modal');
   if (modal) {
     modal.style.display = 'none';
+    releaseFocusTrap(modal);
   }
 };
 
@@ -1033,14 +1037,77 @@ function setupTabs() {
       });
       
       // Activate clicked tab and its content
+      tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
       tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
       const content = document.getElementById(`${tab.dataset.tab}-tab`);
       if (content) {
         content.classList.remove('hidden');
         content.classList.add('active');
         renderActiveTab();
+        // Move focus to the active panel for accessibility
+        content.focus();
       }
+      // Ensure the active tab is visible in the scrollable nav
+      try { tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (_) {}
     };
+  });
+
+  // Keyboard navigation for tabs
+  const tabNav = document.querySelector('.tab-navigation');
+  if (tabNav) {
+    tabNav.addEventListener('keydown', (e) => {
+      const currentIndex = Array.from(tabs).findIndex(t => t === document.activeElement);
+      let targetIndex = currentIndex;
+      if (e.key === 'ArrowRight') { e.preventDefault(); targetIndex = (currentIndex + 1) % tabs.length; }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); targetIndex = (currentIndex - 1 + tabs.length) % tabs.length; }
+      else if (e.key === 'Home') { e.preventDefault(); targetIndex = 0; }
+      else if (e.key === 'End') { e.preventDefault(); targetIndex = tabs.length - 1; }
+      else return;
+      tabs[targetIndex].focus();
+      tabs[targetIndex].click();
+    });
+
+    // Translate vertical mouse wheel to horizontal scroll for easier navigation
+    tabNav.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        tabNav.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    }, { passive: false });
+  }
+
+  // Scroll buttons
+  const leftBtn = document.getElementById('tab-scroll-left');
+  const rightBtn = document.getElementById('tab-scroll-right');
+  function updateScrollButtons() {
+    if (!tabNav) return;
+    const maxScroll = tabNav.scrollWidth - tabNav.clientWidth;
+    const atStart = tabNav.scrollLeft <= 2;
+    const atEnd = tabNav.scrollLeft >= maxScroll - 2;
+    if (leftBtn) leftBtn.disabled = atStart;
+    if (rightBtn) rightBtn.disabled = atEnd;
+  }
+  if (leftBtn && rightBtn && tabNav) {
+    leftBtn.onclick = () => { tabNav.scrollBy({ left: -160, behavior: 'smooth' }); };
+    rightBtn.onclick = () => { tabNav.scrollBy({ left: 160, behavior: 'smooth' }); };
+    tabNav.addEventListener('scroll', updateScrollButtons);
+    window.addEventListener('resize', updateScrollButtons);
+    updateScrollButtons();
+  }
+
+  // Ctrl+Tab and Ctrl+Shift+Tab to cycle tabs
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Tab') {
+      e.preventDefault();
+      const arr = Array.from(tabs);
+      const current = arr.findIndex(t => t.classList.contains('active'));
+      let next = current + (e.shiftKey ? -1 : 1);
+      if (next < 0) next = arr.length - 1;
+      if (next >= arr.length) next = 0;
+      arr[next].focus();
+      arr[next].click();
+    }
   });
 }
 
@@ -1349,6 +1416,8 @@ async function openSettings() {
   const camerasInput = document.getElementById('camera-entities');
   const showDetails = document.getElementById('show-details');
   const themeSelect = document.getElementById('theme-select');
+  const highContrast = document.getElementById('high-contrast');
+  const opaquePanels = document.getElementById('opaque-panels');
   const opacitySlider = document.getElementById('opacity-slider');
   const opacityValue = document.getElementById('opacity-value');
 
@@ -1369,12 +1438,23 @@ async function openSettings() {
   if (themeSelect) {
     themeSelect.value = (CONFIG.ui && CONFIG.ui.theme) || 'auto';
   }
+  if (highContrast) {
+    highContrast.checked = !!(CONFIG.ui && CONFIG.ui.highContrast);
+  }
+  if (opaquePanels) {
+    opaquePanels.checked = !!(CONFIG.ui && CONFIG.ui.opaquePanels);
+  }
+  const densitySelect = document.getElementById('density-select');
+  if (densitySelect) {
+    densitySelect.value = (CONFIG.ui && CONFIG.ui.density) || 'comfortable';
+  }
 
   populateDomainFilters();
   populateAreaFilter();
 
   modal.classList.remove('hidden');
   modal.style.display = 'grid';
+  trapFocus(modal);
 }
 
 function closeSettings() {
@@ -1382,6 +1462,7 @@ function closeSettings() {
   if (modal) {
     modal.classList.add('hidden');
     modal.style.display = 'none';
+    releaseFocusTrap(modal);
   }
 }
 
@@ -1394,6 +1475,9 @@ async function saveSettings() {
   const camerasInput = document.getElementById('camera-entities');
   const showDetails = document.getElementById('show-details');
   const themeSelect = document.getElementById('theme-select');
+  const highContrast = document.getElementById('high-contrast');
+  const opaquePanels = document.getElementById('opaque-panels');
+  const densitySelect = document.getElementById('density-select');
   
   if (urlInput) CONFIG.homeAssistant.url = urlInput.value.trim();
   if (tokenInput) CONFIG.homeAssistant.token = tokenInput.value.trim();
@@ -1406,6 +1490,9 @@ async function saveSettings() {
   CONFIG.ui = CONFIG.ui || {};
   if (showDetails) CONFIG.ui.showDetails = !!showDetails.checked;
   if (themeSelect) CONFIG.ui.theme = themeSelect.value || 'auto';
+  if (highContrast) CONFIG.ui.highContrast = !!highContrast.checked;
+  if (opaquePanels) CONFIG.ui.opaquePanels = !!opaquePanels.checked;
+  if (densitySelect) CONFIG.ui.density = densitySelect.value || 'comfortable';
   
   // Update domain filters
   const checkboxes = document.querySelectorAll('#domain-filters input[type="checkbox"]');
@@ -1427,6 +1514,7 @@ async function saveSettings() {
     
     // Apply UI changes
     applyTheme(CONFIG.ui?.theme || 'auto');
+    applyUiPreferences(CONFIG.ui || {});
     
     // Reconnect WebSocket with new config
     connectWebSocket();
@@ -1505,6 +1593,44 @@ function applyTheme(mode = 'auto') {
   }
 }
 
+function applyUiPreferences(ui = {}) {
+  const body = document.body;
+  body.classList.toggle('high-contrast', !!ui.highContrast);
+  body.classList.toggle('opaque-panels', !!ui.opaquePanels);
+  body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
+}
+
+// Focus trap for modals
+let lastFocusedElement = null;
+const focusTrapHandlers = new WeakMap();
+
+function trapFocus(modal) {
+  lastFocusedElement = document.activeElement;
+  const focusable = modal.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])');
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const handler = (e) => {
+    if (e.key !== 'Tab') return;
+    if (focusable.length === 0) return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  };
+  modal.addEventListener('keydown', handler);
+  focusTrapHandlers.set(modal, handler);
+  setTimeout(() => first?.focus(), 0);
+}
+function releaseFocusTrap(modal) {
+  const handler = focusTrapHandlers.get(modal);
+  if (handler) modal.removeEventListener('keydown', handler);
+  focusTrapHandlers.delete(modal);
+  if (lastFocusedElement && lastFocusedElement.focus) {
+    setTimeout(() => lastFocusedElement.focus(), 0);
+  }
+}
+
 // Initialize
 async function init() {
   try {
@@ -1527,6 +1653,7 @@ async function init() {
     
     // Apply theme
     applyTheme((CONFIG.ui && CONFIG.ui.theme) || 'auto');
+    applyUiPreferences(CONFIG.ui || {});
     if (window.matchMedia) {
       THEME_MEDIA_QUERY = window.matchMedia('(prefers-color-scheme: dark)');
       THEME_MEDIA_QUERY.addEventListener('change', () => {
