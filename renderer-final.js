@@ -28,10 +28,10 @@ let CAMERA_REFRESH_INTERVAL = null;
 let LIVE_CAMERAS = new Set();
 const LIVE_SNAPSHOT_INTERVALS = new Map();
 const ACTIVE_HLS = new Map();
-let DASHBOARD_LAYOUT = [];
+let TAB_LAYOUTS = {};
 let DRAG_PLACEHOLDER = null;
-let EDIT_SNAPSHOT_LAYOUT = null;
-// Dashboard camera state and timers
+let EDIT_SNAPSHOT_LAYOUTS = {};
+// Motion popup state
 const DASHBOARD_CAMERA_EXPANDED = new Set();
 const TIMER_MAP = new Map();
 let TIMER_TICK = null;
@@ -40,7 +40,7 @@ let MOTION_POPUP = null;
 let MOTION_POPUP_TIMER = null;
 let MOTION_POPUP_CAMERA = null;
 const MOTION_LAST_TRIGGER = new Map();
-let EDIT_MODE = false;
+let EDIT_MODE_TAB_ID = null;
 let FILTERS = {
   domains: ['light', 'switch', 'sensor', 'climate', 'media_player', 'scene', 'automation', 'camera'],
   areas: [],
@@ -56,15 +56,15 @@ function connectWebSocket() {
     setStatus(false);
     return;
   }
-  
+
   // Close existing connection if any
   if (WS) {
     WS.close();
     WS = null;
   }
-  
+
   const wsUrl = CONFIG.homeAssistant.url.replace(/^http/, 'ws') + '/api/websocket';
-  
+
   try {
     WS = new WebSocket(wsUrl);
   } catch (error) {
@@ -72,17 +72,17 @@ function connectWebSocket() {
     setStatus(false);
     return;
   }
-  
+
   let authId = 1;
-  
+
   WS.onopen = () => {
     console.log('WebSocket connected');
   };
-  
+
   WS.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
-      
+
       // Resolve any pending request promises first
       if (msg.type === 'result' && PENDING_WS.has(msg.id)) {
         const pending = PENDING_WS.get(msg.id);
@@ -90,7 +90,7 @@ function connectWebSocket() {
         pending.resolve(msg);
         return;
       }
-      
+
       if (msg.type === 'auth_required') {
         WS.send(JSON.stringify({
           type: 'auth',
@@ -99,26 +99,26 @@ function connectWebSocket() {
       } else if (msg.type === 'auth_ok') {
         console.log('WebSocket authenticated');
         setStatus(true);
-        
+
         // Subscribe to state changes
         WS.send(JSON.stringify({
           id: authId++,
           type: 'subscribe_events',
           event_type: 'state_changed'
         }));
-        
+
         // Get initial states
         WS.send(JSON.stringify({
           id: authId++,
           type: 'get_states'
         }));
-        
+
         // Get services
         WS.send(JSON.stringify({
           id: authId++,
           type: 'get_services'
         }));
-        
+
         // Get areas
         WS.send(JSON.stringify({
           id: authId++,
@@ -161,12 +161,12 @@ function connectWebSocket() {
       console.error('Error processing WebSocket message:', error);
     }
   };
-  
+
   WS.onerror = (error) => {
     console.error('WebSocket error:', error);
     setStatus(false);
   };
-  
+
   WS.onclose = () => {
     console.log('WebSocket disconnected');
     setStatus(false);
@@ -201,15 +201,16 @@ function showLoading(show) {
 // Enhanced entity card with more controls (minimal display)
 function createEntityCard(entity, options = {}) {
   if (!entity) return null;
-  
+
   const card = document.createElement('div');
   card.className = 'entity-card';
   card.dataset.entityId = entity.entity_id;
   if (options?.context) card.dataset.context = options.context;
-  
-  
+
+  const isEditMode = EDIT_MODE_TAB_ID === options.tabId;
+
   // Make draggable in edit mode
-  if (EDIT_MODE) {
+  if (isEditMode) {
     card.draggable = true;
     card.classList.add('draggable');
     card.ondragstart = (e) => {
@@ -225,7 +226,7 @@ function createEntityCard(entity, options = {}) {
 
   const left = document.createElement('div');
   left.style.flex = '1';
-  
+
   const name = document.createElement('div');
   name.className = 'entity-name';
   const titleText = document.createElement('span');
@@ -395,7 +396,7 @@ function createEntityCard(entity, options = {}) {
   } else if (domain === 'media_player') {
     right.appendChild(createMediaControls(entity));
   }
-  
+
   // Camera entity specialized layout for dashboard
   if (domain === 'camera' && options?.context === 'dashboard') {
     card.classList.add('camera-card');
@@ -419,13 +420,13 @@ function createEntityCard(entity, options = {}) {
     // Only show Live button when expanded
     if (expanded) right.appendChild(liveBtn);
     right.appendChild(expandBtn);
-    if (EDIT_MODE) {
+    if (isEditMode) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'btn btn-danger';
       removeBtn.textContent = '×';
       removeBtn.setAttribute('aria-label', 'Remove card');
       removeBtn.title = 'Remove from dashboard';
-      removeBtn.onclick = () => removeFromDashboard(entity.entity_id);
+      removeBtn.onclick = () => removeFromDashboard(entity.entity_id, options.tabId);
       right.appendChild(removeBtn);
     }
     headerRow.appendChild(right);
@@ -515,14 +516,14 @@ function createEntityCard(entity, options = {}) {
     return card;
   }
 
-  if (EDIT_MODE) {
+  if (isEditMode) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'btn btn-danger';
     removeBtn.textContent = '×';
     removeBtn.setAttribute('aria-label', 'Remove card');
     removeBtn.title = 'Remove from dashboard';
     removeBtn.style.marginLeft = '10px';
-    removeBtn.onclick = () => removeFromDashboard(entity.entity_id);
+    removeBtn.onclick = () => removeFromDashboard(entity.entity_id, options.tabId);
     right.appendChild(removeBtn);
   }
 
@@ -535,7 +536,7 @@ function createEntityCard(entity, options = {}) {
 function createMediaControls(entity) {
   const controls = document.createElement('div');
   controls.className = 'media-controls';
-  
+
   if (entity.state !== 'unavailable' && entity.state !== 'unknown') {
     // Play/Pause
     const playPause = document.createElement('button');
@@ -543,12 +544,12 @@ function createMediaControls(entity) {
     playPause.textContent = entity.state === 'playing' ? '⏸' : '▶';
     playPause.onclick = () => callService('media_player', entity.state === 'playing' ? 'media_pause' : 'media_play', { entity_id: entity.entity_id });
     controls.appendChild(playPause);
-    
+
     // Volume
     if (entity.attributes && entity.attributes.volume_level !== undefined) {
       const volumeRow = document.createElement('div');
       volumeRow.className = 'volume-row';
-      
+
       const volumeSlider = document.createElement('input');
       volumeSlider.type = 'range';
       volumeSlider.min = 0;
@@ -556,33 +557,33 @@ function createMediaControls(entity) {
       volumeSlider.step = 0.05;
       volumeSlider.value = entity.attributes.volume_level || 0;
       volumeSlider.style.width = '80px';
-      volumeSlider.onchange = () => callService('media_player', 'volume_set', { 
-        entity_id: entity.entity_id, 
-        volume_level: parseFloat(volumeSlider.value) 
+      volumeSlider.onchange = () => callService('media_player', 'volume_set', {
+        entity_id: entity.entity_id,
+        volume_level: parseFloat(volumeSlider.value)
       });
-      
+
       volumeRow.appendChild(volumeSlider);
       controls.appendChild(volumeRow);
     }
   }
-  
+
   return controls;
 }
 
 function createCameraCard(entityId) {
   const entity = STATES[entityId];
   if (!entity && !entityId.startsWith('camera.')) return null;
-  
+
   const card = document.createElement('div');
   card.className = 'camera';
   card.dataset.entityId = entityId;
-  
+
   const header = document.createElement('div');
   header.className = 'camera-header';
-  
+
   const name = document.createElement('span');
   name.textContent = entity ? (entity.attributes.friendly_name || entityId) : entityId;
-  
+
   const refreshBtn = document.createElement('button');
   refreshBtn.className = 'btn btn-secondary';
   refreshBtn.title = 'Refresh snapshot';
@@ -594,11 +595,11 @@ function createCameraCard(entityId) {
   liveBtn.title = 'Play live view';
   liveBtn.textContent = LIVE_CAMERAS.has(entityId) ? '⏹ Stop' : '▶ Live';
   liveBtn.onclick = () => toggleCameraLive(entityId, liveBtn);
-  
+
   header.appendChild(name);
   header.appendChild(refreshBtn);
   header.appendChild(liveBtn);
-  
+
   const img = document.createElement('img');
   img.className = 'camera-img';
   img.src = LIVE_CAMERAS.has(entityId) ? `ha://camera_stream/${entityId}?t=${Date.now()}` : `ha://camera/${entityId}?t=${Date.now()}`;
@@ -621,10 +622,10 @@ function createCameraCard(entityId) {
       card.appendChild(errorMsg);
     }
   };
-  
+
   card.appendChild(header);
   card.appendChild(img);
-  
+
   return card;
 }
 
@@ -806,7 +807,7 @@ async function callService(domain, service, data = {}) {
     console.error('WebSocket not connected');
     return;
   }
-  
+
   try {
     WS.send(JSON.stringify({
       id: Date.now(),
@@ -824,15 +825,15 @@ function toggleEntity(entityId) {
   const domain = entityId.split('.')[0];
   const entity = STATES[entityId];
   if (!entity) return;
-  
+
   const service = entity.state === 'on' ? 'turn_off' : 'turn_on';
   callService(domain, service, { entity_id: entityId });
 }
 
 function setBrightness(entityId, brightness) {
-  callService('light', 'turn_on', { 
-    entity_id: entityId, 
-    brightness: parseInt(brightness) 
+  callService('light', 'turn_on', {
+    entity_id: entityId,
+    brightness: parseInt(brightness)
   });
 }
 
@@ -847,10 +848,10 @@ function triggerAutomation(entityId) {
 function adjustClimateTemp(entityId, delta) {
   const entity = STATES[entityId];
   if (!entity || !entity.attributes) return;
-  
+
   const currentTemp = entity.attributes.temperature || 20;
   const newTemp = currentTemp + delta;
-  
+
   callService('climate', 'set_temperature', {
     entity_id: entityId,
     temperature: newTemp
@@ -858,45 +859,38 @@ function adjustClimateTemp(entityId, delta) {
 }
 
 // Dashboard customization
-function enableEditMode() {
-  // Snapshot current layout so we can discard if needed
-  EDIT_SNAPSHOT_LAYOUT = Array.isArray(DASHBOARD_LAYOUT) ? [...DASHBOARD_LAYOUT] : [];
-  EDIT_MODE = true;
+function enableEditMode(tabId) {
+  if (EDIT_MODE_TAB_ID && EDIT_MODE_TAB_ID !== tabId) {
+    disableEditMode(true); // Save changes on the other tab
+  }
+  const layout = TAB_LAYOUTS[tabId] || [];
+  EDIT_SNAPSHOT_LAYOUTS[tabId] = [...layout];
+  EDIT_MODE_TAB_ID = tabId;
   document.body.classList.add('edit-mode');
-  renderDashboard();
-  // Do NOT auto-open the entity selector; user will click +Add
+  renderActiveTab();
 }
 
 function disableEditMode(save = true) {
-  // If discarding, revert to snapshot
-  if (!save && Array.isArray(EDIT_SNAPSHOT_LAYOUT)) {
-    DASHBOARD_LAYOUT = [...EDIT_SNAPSHOT_LAYOUT];
+  const tabId = EDIT_MODE_TAB_ID;
+  if (!tabId) return;
+
+  if (!save && EDIT_SNAPSHOT_LAYOUTS[tabId]) {
+    TAB_LAYOUTS[tabId] = [...EDIT_SNAPSHOT_LAYOUTS[tabId]];
   }
-  EDIT_SNAPSHOT_LAYOUT = null;
-  EDIT_MODE = false;
+  delete EDIT_SNAPSHOT_LAYOUTS[tabId];
+  EDIT_MODE_TAB_ID = null;
+
   document.body.classList.remove('edit-mode');
-  // Close entity drawer and cleanup
-  try {
-    const selector = document.getElementById('entity-selector');
-    if (selector) {
-      selector.classList.add('closed');
-      selector.style.display = 'none';
-    }
-    const dash = document.querySelector('.dashboard-container');
-    if (dash) dash.classList.remove('with-entity-drawer');
-    const toggle = document.getElementById('entity-drawer-toggle');
-    if (toggle) toggle.remove();
-  } catch (_) {}
   hideEntitySelector();
+
   if (save) {
-    saveDashboardLayout();
+    saveTabLayouts();
   }
-  renderDashboard();
+  renderActiveTab();
 }
 
-function openEntityDrawer() {
-  // Ensure selector exists, then open it
-  showEntitySelector();
+function openEntityDrawer(tabId) {
+  showEntitySelector(tabId);
   const selector = document.getElementById('entity-selector');
   if (selector) {
     selector.classList.remove('closed');
@@ -915,7 +909,7 @@ function closeEntityDrawer() {
 }
 window.openAddDrawer = openEntityDrawer;
 
-function showEntitySelector() {
+function showEntitySelector(tabId) {
   let selector = document.getElementById('entity-selector');
   if (!selector) {
     selector = document.createElement('div');
@@ -930,46 +924,21 @@ function showEntitySelector() {
       <div id="available-entities"></div>
     `;
     document.body.appendChild(selector);
-
-    // Close button for drawer
-    const closeBtn = selector.querySelector('#entity-drawer-close');
-    if (closeBtn) closeBtn.onclick = closeEntityDrawer;
-
-    // Make selector draggable via header
-    const handle = selector.querySelector('.drag-handle');
-    let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
-    const onMove = (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const nextLeft = Math.max(0, Math.min(window.innerWidth - selector.offsetWidth, startLeft + dx));
-      const nextTop = Math.max(0, Math.min(window.innerHeight - selector.offsetHeight, startTop + dy));
-      selector.style.left = `${nextLeft}px`;
-      selector.style.top = `${nextTop}px`;
-      selector.style.right = 'auto';
-    };
-    const onUp = () => { dragging = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-    handle.addEventListener('mousedown', (e) => {
-      dragging = true;
-      startX = e.clientX; startY = e.clientY;
-      const rect = selector.getBoundingClientRect();
-      startLeft = rect.left; startTop = rect.top;
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
+    selector.querySelector('#entity-drawer-close').onclick = closeEntityDrawer;
   }
-  
-  // Keep it in the DOM but don't auto-open; caller will open it
+
+  selector.dataset.tabId = tabId;
   selector.style.display = 'block';
-  
+
   const searchInput = document.getElementById('entity-search-add');
   const container = document.getElementById('available-entities');
-  
+  const layout = TAB_LAYOUTS[tabId] || [];
+
   const renderAvailable = (filter = '') => {
     container.innerHTML = '';
     const f = (filter || '').toLowerCase();
     const available = Object.keys(STATES)
-      .filter(id => !DASHBOARD_LAYOUT.includes(id))
+      .filter(id => !layout.includes(id))
       .filter(id => {
         const e = STATES[id];
         const idMatch = id.toLowerCase().includes(f);
@@ -977,19 +946,19 @@ function showEntitySelector() {
         return idMatch || nameMatch;
       })
       .slice(0, 50);
-    
+
     available.forEach(entityId => {
       const entity = STATES[entityId];
       const item = document.createElement('div');
       item.className = 'entity-item';
       item.innerHTML = `
         <span>${entity.attributes.friendly_name || entityId}</span>
-        <button class="btn btn-primary" onclick="addToDashboard('${entityId}')">+</button>
+        <button class="btn btn-primary" onclick="addToDashboard('${entityId}', '${tabId}')">+</button>
       `;
       container.appendChild(item);
     });
   };
-  
+
   searchInput.oninput = () => renderAvailable(searchInput.value);
   renderAvailable();
 }
@@ -1001,34 +970,33 @@ function hideEntitySelector() {
   }
 }
 
-window.addToDashboard = function(entityId) {
-  if (!DASHBOARD_LAYOUT.includes(entityId)) {
-    DASHBOARD_LAYOUT.push(entityId);
-    renderDashboard();
-    showEntitySelector(); // Refresh available list
+window.addToDashboard = function(entityId, tabId) {
+  if (!TAB_LAYOUTS[tabId]) TAB_LAYOUTS[tabId] = [];
+  if (!TAB_LAYOUTS[tabId].includes(entityId)) {
+    TAB_LAYOUTS[tabId].push(entityId);
+    renderActiveTab();
+    showEntitySelector(tabId); // Refresh available list
   }
 };
 
-window.removeFromDashboard = function(entityId) {
-  const index = DASHBOARD_LAYOUT.indexOf(entityId);
+window.removeFromDashboard = function(entityId, tabId) {
+  const layout = TAB_LAYOUTS[tabId] || [];
+  const index = layout.indexOf(entityId);
   if (index > -1) {
-    DASHBOARD_LAYOUT.splice(index, 1);
-    renderDashboard();
-    showEntitySelector(); // Refresh available list
+    layout.splice(index, 1);
+    renderActiveTab();
+    showEntitySelector(tabId); // Refresh available list
   }
 };
 
 window.disableEditMode = disableEditMode;
-window.saveEdit = function() { disableEditMode(true); };
-window.discardEdit = function() { disableEditMode(false); };
 
-function saveDashboardLayout() {
-  CONFIG.dashboardLayout = DASHBOARD_LAYOUT;
+function saveTabLayouts() {
+  CONFIG.tabLayouts = TAB_LAYOUTS;
   ipcRenderer.invoke('update-config', CONFIG);
 }
 
-function setupDragAndDrop() {
-  const container = document.getElementById('dashboard-custom');
+function setupDragAndDrop(tabId, container) {
   if (!container) return;
 
   if (!DRAG_PLACEHOLDER) {
@@ -1060,16 +1028,14 @@ function setupDragAndDrop() {
     if (DRAG_PLACEHOLDER && DRAG_PLACEHOLDER.parentNode) {
       DRAG_PLACEHOLDER.remove();
     }
-    // Update layout order (do not persist until user clicks Save)
     const cards = container.querySelectorAll('.entity-card');
-    DASHBOARD_LAYOUT = Array.from(cards).map(card => card.dataset.entityId);
+    TAB_LAYOUTS[tabId] = Array.from(cards).map(card => card.dataset.entityId);
   };
 }
 
 
 function getDragAfterElement(container, x, y) {
   const draggableElements = [...container.querySelectorAll('.entity-card:not(.dragging)')];
-  // Find the closest element below the pointer (by center) in a wrapped grid
   const result = draggableElements.reduce((closest, child) => {
     const box = child.getBoundingClientRect();
     const centerY = box.top + box.height / 2;
@@ -1144,42 +1110,38 @@ function showFilterModal() {
     `;
     document.body.appendChild(modal);
   }
-  
-  // Populate filters
+
   populateFilterDomains();
   populateFilterAreas();
-  
+
   const hiddenInput = document.getElementById('hidden-entities');
   if (hiddenInput) {
     hiddenInput.value = (FILTERS.hidden || []).join(', ');
   }
-  
+
   modal.style.display = 'grid';
   trapFocus(modal);
 }
 
 window.applyFilters = function() {
-  // Update domain filters
   const checkboxes = document.querySelectorAll('#filter-domains input[type="checkbox"]');
   FILTERS.domains = Array.from(checkboxes)
     .filter(cb => cb.checked)
     .map(cb => cb.value);
-  
-  // Update area filters
+
   const areaSelect = document.getElementById('filter-areas');
   if (areaSelect) {
     FILTERS.areas = Array.from(areaSelect.selectedOptions).map(opt => opt.value);
   }
-  
-  // Update hidden entities
+
   const hiddenInput = document.getElementById('hidden-entities');
   if (hiddenInput) {
     FILTERS.hidden = hiddenInput.value.split(',').map(s => s.trim()).filter(Boolean);
   }
-  
+
   CONFIG.filters = FILTERS;
   ipcRenderer.invoke('update-config', CONFIG);
-  
+
   closeFilterModal();
   renderActiveTab();
 };
@@ -1195,21 +1157,21 @@ window.closeFilterModal = function() {
 function populateFilterDomains() {
   const container = document.getElementById('filter-domains');
   if (!container) return;
-  
+
   container.innerHTML = '';
   const allDomains = [...new Set(Object.keys(STATES).map(id => id.split('.')[0]))].sort();
-  
+
   allDomains.forEach(domain => {
     const label = document.createElement('label');
     label.style.display = 'flex';
     label.style.alignItems = 'center';
     label.style.gap = '4px';
-    
+
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.value = domain;
     checkbox.checked = FILTERS.domains.includes(domain);
-    
+
     label.appendChild(checkbox);
     label.appendChild(document.createTextNode(domain));
     container.appendChild(label);
@@ -1219,7 +1181,7 @@ function populateFilterDomains() {
 function populateFilterAreas() {
   const select = document.getElementById('filter-areas');
   if (!select) return;
-  
+
   select.innerHTML = '';
   Object.values(AREAS).forEach(area => {
     const option = document.createElement('option');
@@ -1232,43 +1194,34 @@ function populateFilterAreas() {
 
 // Weather widget
 function renderWeather() {
-  console.log('Rendering weather tab, STATES count:', Object.keys(STATES).length);
   const container = document.getElementById('weather-container');
-  if (!container) {
-    console.error('Weather container not found');
-    return;
-  }
-  
+  if (!container) return;
+
   container.innerHTML = '';
-  
-  // Check if STATES is populated
+
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '';
     renderSkeletonCards(container, 4);
     return;
   }
-  
-  // Find weather entities
+
   const weatherEntities = Object.values(STATES).filter(e => e.entity_id.startsWith('weather.'));
-  
-  console.log('Found weather entities:', weatherEntities.length);
-  
+
   if (weatherEntities.length === 0) {
     container.innerHTML = '<p style="padding: 10px; text-align: center;">No weather entities found</p>';
     return;
   }
-  
+
   weatherEntities.forEach(entity => {
     if (!entity.attributes) return;
-    
+
     const widget = document.createElement('div');
     widget.className = 'weather-widget';
-    
+
     const temp = entity.attributes.temperature !== undefined ? `${entity.attributes.temperature}°` : '--°';
     const humidity = entity.attributes.humidity !== undefined ? `${entity.attributes.humidity}%` : '--';
     const pressure = entity.attributes.pressure !== undefined ? `${entity.attributes.pressure} hPa` : '--';
     const windSpeed = entity.attributes.wind_speed !== undefined ? `${entity.attributes.wind_speed} km/h` : '--';
-    
+
     widget.innerHTML = `
       <h4>${entity.attributes.friendly_name || entity.entity_id}</h4>
       <div class="weather-current">
@@ -1303,12 +1256,11 @@ function renderWeather() {
 async function renderHistory() {
   const canvas = document.getElementById('history-chart');
   if (!canvas || !CONFIG) return;
-  
-  // Get sensor entities for graphing
+
   const sensors = Object.values(STATES)
     .filter(e => e.entity_id.startsWith('sensor.') && e.attributes && e.attributes.unit_of_measurement)
-    .slice(0, 5); // Limit to 5 sensors for clarity
-  
+    .slice(0, 5);
+
   if (sensors.length === 0) {
     const container = canvas.parentElement;
     if (container) {
@@ -1324,12 +1276,11 @@ async function renderHistory() {
     }
     return;
   }
-  
+
   canvas.style.display = 'block';
-  
+
   try {
-    // Fetch history for each sensor
-    const responses = await Promise.all(sensors.map(sensor => 
+    const responses = await Promise.all(sensors.map(sensor =>
       axios.get(`${CONFIG.homeAssistant.url}/api/history/period?filter_entity_id=${sensor.entity_id}`, {
         headers: { Authorization: `Bearer ${CONFIG.homeAssistant.token}` }
       }).catch(err => {
@@ -1337,11 +1288,11 @@ async function renderHistory() {
         return { data: [[]] };
       })
     ));
-    
+
     const datasets = responses.map((res, i) => {
       const sensor = sensors[i];
       const history = res.data && res.data[0] ? res.data[0] : [];
-      
+
       return {
         label: sensor.attributes.friendly_name || sensor.entity_id,
         data: history.map(point => ({
@@ -1353,12 +1304,12 @@ async function renderHistory() {
         tension: 0.1
       };
     }).filter(dataset => dataset.data.length > 0);
-    
+
     if (datasets.length === 0) {
       canvas.style.display = 'none';
       return;
     }
-    
+
   if (HISTORY_CHART) {
     try {
       HISTORY_CHART.destroy();
@@ -1368,7 +1319,7 @@ async function renderHistory() {
       HISTORY_CHART = null;
     }
   }
-    
+
     HISTORY_CHART = new Chart(canvas, {
       type: 'line',
       data: { datasets },
@@ -1403,9 +1354,9 @@ async function renderHistory() {
 function populateServiceExplorer() {
   const domainSelect = document.getElementById('service-domain');
   const serviceSelect = document.getElementById('service-name');
-  
+
   if (!domainSelect || !serviceSelect) return;
-  
+
   domainSelect.innerHTML = '<option value="">Select domain...</option>';
   Object.keys(SERVICES).sort().forEach(domain => {
     const option = document.createElement('option');
@@ -1413,11 +1364,11 @@ function populateServiceExplorer() {
     option.textContent = domain;
     domainSelect.appendChild(option);
   });
-  
+
   domainSelect.onchange = () => {
     const domain = domainSelect.value;
     serviceSelect.innerHTML = '<option value="">Select service...</option>';
-    
+
     if (domain && SERVICES[domain]) {
       Object.keys(SERVICES[domain]).sort().forEach(service => {
         const option = document.createElement('option');
@@ -1427,7 +1378,7 @@ function populateServiceExplorer() {
       });
     }
   };
-  
+
   const runBtn = document.getElementById('run-service');
   if (runBtn) {
     runBtn.onclick = () => {
@@ -1436,12 +1387,12 @@ function populateServiceExplorer() {
       const entityInput = document.getElementById('service-entity');
       const dataInput = document.getElementById('service-data');
       const resultSpan = document.getElementById('service-result');
-      
+
       if (!domain || !service) {
         if (resultSpan) resultSpan.textContent = 'Select domain and service';
         return;
       }
-      
+
       let serviceData = {};
       try {
         if (dataInput && dataInput.value.trim()) {
@@ -1451,11 +1402,11 @@ function populateServiceExplorer() {
         if (resultSpan) resultSpan.textContent = 'Invalid JSON';
         return;
       }
-      
+
       if (entityInput && entityInput.value.trim()) {
         serviceData.entity_id = entityInput.value.trim();
       }
-      
+
       callService(domain, service, serviceData);
       if (resultSpan) {
         resultSpan.textContent = '✓ Service called';
@@ -1469,9 +1420,9 @@ function populateServiceExplorer() {
 function populateEntityInspector() {
   const searchInput = document.getElementById('entity-search');
   const listContainer = document.getElementById('entity-list');
-  
+
   if (!searchInput || !listContainer) return;
-  
+
   const renderList = (filter = '') => {
     listContainer.innerHTML = '';
     const f = (filter || '').toLowerCase();
@@ -1483,61 +1434,37 @@ function populateEntityInspector() {
         return idMatch || nameMatch;
       })
       .slice(0, 50);
-    
+
     filtered.forEach(entity => {
       const card = createEntityCard(entity);
       if (card) listContainer.appendChild(card);
     });
   };
-  
+
   searchInput.oninput = () => renderList(searchInput.value);
   renderList();
 }
 
 // Tab navigation
-function setupTabs() {
-  const tabs = document.querySelectorAll('.tab-btn');
-  const contents = document.querySelectorAll('.tab-content');
-  
-  tabs.forEach(tab => {
-    tab.onclick = () => {
-      // Stop camera refresh if running
-      if (CAMERA_REFRESH_INTERVAL) {
-        clearInterval(CAMERA_REFRESH_INTERVAL);
-        CAMERA_REFRESH_INTERVAL = null;
-      }
-      const prevActive = document.querySelector('.tab-btn.active');
-      if (prevActive && prevActive.dataset.tab === 'cameras') {
-        stopAllCameraStreams();
-      }
-      // Deactivate all tabs and contents
-      tabs.forEach(t => t.classList.remove('active'));
-      contents.forEach(c => {
-        c.classList.remove('active');
-        c.classList.remove('hidden'); // ensure no hidden leftover
-      });
-      
-      // Activate clicked tab and its content
-      tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
-      tab.classList.add('active');
-      tab.setAttribute('aria-selected', 'true');
-      const content = document.getElementById(`${tab.dataset.tab}-tab`);
-      if (content) {
-        content.classList.remove('hidden');
-        content.classList.add('active');
-        renderActiveTab();
-        // Move focus to the active panel for accessibility
-        content.focus();
-      }
-      // Ensure the active tab is visible in the scrollable nav
-      try { tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (_) {}
-    };
-  });
+const ALL_TABS = [
+  'dashboard', 'scenes', 'automations', 'media',
+  'cameras', 'weather', 'history', 'services'
+];
 
-  // Keyboard navigation for tabs
+function setupTabs() {
+  const tabContainer = document.querySelector('.tab-navigation');
+  if (!tabContainer) return;
+
+  if (!CONFIG.visibleTabs || !Array.isArray(CONFIG.visibleTabs)) {
+    CONFIG.visibleTabs = [...ALL_TABS];
+  }
+
+  renderTabs();
+
   const tabNav = document.querySelector('.tab-navigation');
   if (tabNav) {
     tabNav.addEventListener('keydown', (e) => {
+      const tabs = document.querySelectorAll('.tab-btn');
       const currentIndex = Array.from(tabs).findIndex(t => t === document.activeElement);
       let targetIndex = currentIndex;
       if (e.key === 'ArrowRight') { e.preventDefault(); targetIndex = (currentIndex + 1) % tabs.length; }
@@ -1545,20 +1472,59 @@ function setupTabs() {
       else if (e.key === 'Home') { e.preventDefault(); targetIndex = 0; }
       else if (e.key === 'End') { e.preventDefault(); targetIndex = tabs.length - 1; }
       else return;
-      tabs[targetIndex].focus();
-      tabs[targetIndex].click();
+      if (tabs[targetIndex]) {
+        tabs[targetIndex].focus();
+        tabs[targetIndex].click();
+      }
     });
 
-    // Translate vertical mouse wheel to horizontal scroll for easier navigation
     tabNav.addEventListener('wheel', (e) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         tabNav.scrollLeft += e.deltaY;
         e.preventDefault();
       }
     }, { passive: false });
+  
+  
+  let draggedTab = null;
+
+  tabNav.addEventListener('dragstart', (e) => {
+    const target = e.target.closest('.tab-btn');
+    if (target) {
+      draggedTab = target;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', target.dataset.tab);
+      setTimeout(() => {
+        target.classList.add('dragging');
+      }, 0);
+    }
+  });
+
+  tabNav.addEventListener('dragend', () => {
+    if (draggedTab) {
+      draggedTab.classList.remove('dragging');
+      draggedTab = null;
+      const newOrder = Array.from(tabNav.querySelectorAll('.tab-btn')).map(tab => tab.dataset.tab);
+      CONFIG.visibleTabs = newOrder;
+      ipcRenderer.invoke('update-config', CONFIG);
+    }
+  });
+
+  tabNav.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const target = e.target.closest('.tab-btn');
+    if (target && draggedTab && target !== draggedTab) {
+      const rect = target.getBoundingClientRect();
+      const isAfter = (e.clientX - rect.left) > (rect.width / 2);
+      if (isAfter) {
+        target.parentNode.insertBefore(draggedTab, target.nextSibling);
+      } else {
+        target.parentNode.insertBefore(draggedTab, target);
+      }
+    }
+  });
   }
 
-  // Scroll buttons
   const leftBtn = document.getElementById('tab-scroll-left');
   const rightBtn = document.getElementById('tab-scroll-right');
   function updateScrollButtons() {
@@ -1574,182 +1540,365 @@ function setupTabs() {
     rightBtn.onclick = () => { tabNav.scrollBy({ left: 160, behavior: 'smooth' }); };
     tabNav.addEventListener('scroll', updateScrollButtons);
     window.addEventListener('resize', updateScrollButtons);
-    updateScrollButtons();
+    setTimeout(updateScrollButtons, 100);
   }
 
-  // Ctrl+Tab and Ctrl+Shift+Tab to cycle tabs
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'Tab') {
       e.preventDefault();
-      const arr = Array.from(tabs);
-      const current = arr.findIndex(t => t.classList.contains('active'));
+      const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+      const current = tabs.findIndex(t => t.classList.contains('active'));
       let next = current + (e.shiftKey ? -1 : 1);
-      if (next < 0) next = arr.length - 1;
-      if (next >= arr.length) next = 0;
-      arr[next].focus();
-      arr[next].click();
+      if (next < 0) next = tabs.length - 1;
+      if (next >= tabs.length) next = 0;
+      if (tabs[next]) {
+        tabs[next].focus();
+        tabs[next].click();
+      }
     }
   });
 }
 
+function renderTabs() {
+  const tabContainer = document.querySelector('.tab-navigation');
+  if (!tabContainer) return;
+
+  const activeTabId = document.querySelector('.tab-btn.active')?.dataset.tab || CONFIG.visibleTabs[0] || 'dashboard';
+  tabContainer.innerHTML = '';
+
+  CONFIG.visibleTabs.forEach(tabId => {
+    const isCustom = tabId.startsWith('custom-');
+    const tabName = isCustom
+      ? (CONFIG.customTabs[tabId]?.name || 'Custom Tab')
+      : (tabId.charAt(0).toUpperCase() + tabId.slice(1));
+
+    const tab = document.createElement('button');
+    tab.id = `tab-${tabId}`;
+    tab.className = 'tab-btn';
+    tab.dataset.tab = tabId;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', `${tabId}-tab`);
+    tab.textContent = tabName;
+    tab.draggable = true;
+
+    tab.onclick = () => {
+      if (CAMERA_REFRESH_INTERVAL) {
+        clearInterval(CAMERA_REFRESH_INTERVAL);
+        CAMERA_REFRESH_INTERVAL = null;
+      }
+      const prevActive = document.querySelector('.tab-btn.active');
+      if (prevActive && prevActive.dataset.tab === 'cameras') {
+        stopAllCameraStreams();
+      }
+
+      document.querySelectorAll('.tab-btn').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      document.querySelectorAll('.tab-content').forEach(c => {
+        c.classList.remove('active');
+      });
+
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      const content = document.getElementById(`${tab.dataset.tab}-tab`);
+      if (content) {
+        content.classList.add('active');
+        renderActiveTab();
+        content.focus();
+      }
+      try { tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (_) {}
+    };
+
+    tabContainer.appendChild(tab);
+  });
+
+  let tabToActivate = tabContainer.querySelector(`.tab-btn[data-tab="${activeTabId}"]`);
+  if (!tabToActivate && tabContainer.firstChild) {
+    tabToActivate = tabContainer.firstChild;
+  }
+  if (tabToActivate) {
+    tabToActivate.classList.add('active');
+    tabToActivate.setAttribute('aria-selected', 'true');
+    const content = document.getElementById(`${tabToActivate.dataset.tab}-tab`);
+    if (content) {
+      content.classList.add('active');
+    }
+  }
+  renderActiveTab();
+}
+
+function openManageTabsModal() {
+  const modal = document.getElementById('manage-tabs-modal');
+  if (!modal) return;
+
+  const list = document.getElementById('manage-tabs-list');
+  list.innerHTML = '';
+
+  CONFIG.visibleTabs.forEach(tabId => {
+    const isCustom = tabId.startsWith('custom-');
+    const tabName = isCustom
+      ? (CONFIG.customTabs[tabId]?.name || 'Custom Tab')
+      : (tabId.charAt(0).toUpperCase() + tabId.slice(1));
+
+    const item = document.createElement('div');
+    item.className = 'manage-tab-item';
+    item.dataset.tabId = tabId;
+    item.draggable = true;
+    item.innerHTML = `<span>${tabName}</span>`;
+
+    const buttons = document.createElement('div');
+    buttons.style.display = 'flex';
+    buttons.style.gap = '8px';
+
+    if (isCustom) {
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'btn btn-secondary';
+      renameBtn.textContent = 'Rename';
+      renameBtn.onclick = () => renameTab(tabId);
+      buttons.appendChild(renameBtn);
+    }
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn btn-danger';
+    removeBtn.textContent = 'Delete';
+    removeBtn.onclick = () => {
+      removeTab(tabId);
+      openManageTabsModal(); // Refresh the modal
+    };
+    buttons.appendChild(removeBtn);
+
+    item.appendChild(buttons);
+    list.appendChild(item);
+  });
+
+  let draggedTab = null;
+
+  list.addEventListener('dragstart', (e) => {
+    const target = e.target.closest('.manage-tab-item');
+    if (target) {
+      draggedTab = target;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', target.dataset.tabId);
+      setTimeout(() => {
+        target.classList.add('dragging');
+      }, 0);
+    }
+  });
+
+  list.addEventListener('dragend', () => {
+    if (draggedTab) {
+      draggedTab.classList.remove('dragging');
+      draggedTab = null;
+      const newOrder = Array.from(list.querySelectorAll('.manage-tab-item')).map(item => item.dataset.tabId);
+      CONFIG.visibleTabs = newOrder;
+      ipcRenderer.invoke('update-config', CONFIG);
+      renderTabs();
+    }
+  });
+
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const target = e.target.closest('.manage-tab-item');
+    if (target && draggedTab && target !== draggedTab) {
+      const rect = target.getBoundingClientRect();
+      const isAfter = (e.clientY - rect.top) > (rect.height / 2);
+      if (isAfter) {
+        target.parentNode.insertBefore(draggedTab, target.nextSibling);
+      } else {
+        target.parentNode.insertBefore(draggedTab, target);
+      }
+    }
+  });
+
+  modal.classList.remove('hidden');
+}
+
+function renameTab(tabId) {
+  const newName = prompt('Enter new tab name:', CONFIG.customTabs[tabId]?.name || '');
+  if (newName && newName.trim()) {
+    CONFIG.customTabs[tabId].name = newName.trim();
+    ipcRenderer.invoke('update-config', CONFIG);
+    renderTabs();
+    openManageTabsModal(); // Refresh the modal
+  }
+}
+
+function addTab(tabId) {
+  if (!CONFIG.visibleTabs.includes(tabId)) {
+    CONFIG.visibleTabs.push(tabId);
+    ipcRenderer.invoke('update-config', CONFIG);
+    renderTabs();
+  }
+}
+
+function addCustomTab(tabName) {
+  const safeId = tabName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const tabId = `custom-${safeId}`;
+
+  if (CONFIG.visibleTabs.includes(tabId)) {
+    showToast(`Tab "${tabName}" already exists.`, 'error');
+    return;
+  }
+
+  if (!CONFIG.customTabs) CONFIG.customTabs = {};
+  if (!TAB_LAYOUTS) TAB_LAYOUTS = {};
+  CONFIG.customTabs[tabId] = { name: tabName };
+  TAB_LAYOUTS[tabId] = [];
+  CONFIG.tabLayouts = TAB_LAYOUTS;
+
+  CONFIG.visibleTabs.push(tabId);
+
+  const newTabContent = document.createElement('div');
+  newTabContent.id = `${tabId}-tab`;
+  newTabContent.className = 'tab-content';
+  newTabContent.setAttribute('role', 'tabpanel');
+  newTabContent.innerHTML = '';
+  document.querySelector('.dashboard-container').appendChild(newTabContent);
+
+  ipcRenderer.invoke('update-config', CONFIG);
+  renderTabs();
+
+  const newTabButton = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+  if (newTabButton) {
+    newTabButton.click();
+  }
+}
+
+function removeTab(tabId) {
+  if (CONFIG.visibleTabs.length <= 1) {
+    console.warn("Cannot remove the last tab.");
+    return;
+  }
+  CONFIG.visibleTabs = CONFIG.visibleTabs.filter(t => t !== tabId);
+
+  const isCustom = tabId.startsWith('custom-');
+  if (isCustom) {
+    delete CONFIG.customTabs[tabId];
+    delete TAB_LAYOUTS[tabId];
+    CONFIG.tabLayouts = TAB_LAYOUTS;
+    const content = document.getElementById(`${tabId}-tab`);
+    if (content) content.remove();
+  }
+
+  ipcRenderer.invoke('update-config', CONFIG);
+  renderTabs();
+}
+
+
 function renderActiveTab() {
   const activeTab = document.querySelector('.tab-btn.active');
   if (!activeTab) return;
-  
-  switch (activeTab.dataset.tab) {
-    case 'dashboard':
-      renderDashboard();
-      break;
-    case 'scenes':
-      renderScenes();
-      break;
-    case 'automations':
-      renderAutomations();
-      break;
-    case 'media':
-      renderMediaPlayers();
-      break;
-    case 'cameras':
-      renderCameras();
-      break;
-    case 'weather':
-      renderWeather();
-      break;
-    case 'history':
-      renderHistory();
-      break;
-    case 'services':
-      populateServiceExplorer();
-      populateEntityInspector();
-      break;
+
+  const tabId = activeTab.dataset.tab;
+  const container = document.getElementById(`${tabId}-tab`);
+  if (!container) return;
+
+  const isCustom = tabId.startsWith('custom-');
+
+  if (tabId === 'dashboard' || isCustom) {
+    renderDashboardLayout(tabId, container);
+  } else {
+    switch (tabId) {
+      case 'scenes':
+        renderScenes();
+        break;
+      case 'automations':
+        renderAutomations();
+        break;
+      case 'media':
+        renderMediaPlayers();
+        break;
+      case 'cameras':
+        renderCameras();
+        break;
+      case 'weather':
+        renderWeather();
+        break;
+      case 'history':
+        renderHistory();
+        break;
+      case 'services':
+        populateServiceExplorer();
+        populateEntityInspector();
+        break;
+    }
   }
   setLastUpdate();
 }
 
 // Render functions for each tab
-function renderDashboard() {
-  const dashboardTab = document.getElementById('dashboard-tab');
-  const toolbarHTML = EDIT_MODE
+function renderDashboardLayout(tabId, container) {
+  const layout = TAB_LAYOUTS[tabId] || [];
+  const isEditMode = EDIT_MODE_TAB_ID === tabId;
+  const tabName = (tabId === 'dashboard')
+    ? 'Dashboard'
+    : (CONFIG.customTabs[tabId]?.name || 'Custom Tab');
+
+  const toolbarHTML = isEditMode
     ? `
-      <button class="btn btn-primary" onclick="saveEdit()">Save changes</button>
-      <button class="btn btn-secondary" onclick="discardEdit()">Discard</button>
-      <button class="btn btn-secondary" onclick="openAddDrawer()">+ Add</button>
+      <button class="btn btn-primary" onclick="disableEditMode(true)">Save changes</button>
+      <button class="btn btn-secondary" onclick="disableEditMode(false)">Discard</button>
+      <button class="btn btn-secondary" onclick="openEntityDrawer('${tabId}')">+ Add</button>
     `
-    : `<button class="btn btn-secondary" onclick="enableEditMode()">Edit</button>`;
+    : `<button class="btn btn-secondary" onclick="enableEditMode('${tabId}')">Customize</button>`;
 
-  // If we have a custom layout OR we are in edit mode (even with empty layout), render the custom dashboard shell
-  if ((DASHBOARD_LAYOUT && DASHBOARD_LAYOUT.length > 0) || EDIT_MODE) {
-    const container = document.getElementById('dashboard-custom');
-    if (!container) {
-      dashboardTab.innerHTML = `
-        <div class="section">
-          <div class="section-header">
-            <h3 class="section-title">My Dashboard</h3>
-          </div>
-          <div class="section-toolbar">${toolbarHTML}</div>
-          <div id="dashboard-custom" class="entity-grid"></div>
-        </div>
-      `;
-    } else {
-      // If container exists, update toolbar in place when toggling modes
-      const toolbar = container.parentElement.querySelector('.section-toolbar');
-      if (toolbar) toolbar.innerHTML = toolbarHTML;
-    }
-
-    const customContainer = document.getElementById('dashboard-custom');
-    customContainer.classList.add('entity-grid');
-    customContainer.innerHTML = '';
-
-    DASHBOARD_LAYOUT.forEach(entityId => {
-      const entity = STATES[entityId];
-      if (entity && !FILTERS.hidden.includes(entityId)) {
-        const card = createEntityCard(entity, { context: 'dashboard' });
-        if (card) {
-          card.classList.add('enter');
-          customContainer.appendChild(card);
-          requestAnimationFrame(() => {
-            card.classList.add('enter-active');
-            const onEnd = () => { card.classList.remove('enter', 'enter-active'); card.removeEventListener('transitionend', onEnd); };
-            card.addEventListener('transitionend', onEnd);
-          });
-        }
-      }
-    });
-
-    setupDragAndDrop();
-  } else {
-    // Default dashboard (not in edit mode and no custom layout)
-    let favoritesHTML = '';
-    const favs = (CONFIG.favoriteEntities || []).filter(id => STATES[id]);
-    if (favs.length > 0) {
-      favoritesHTML = `
-      <div class="section">
-        <h3 class="section-title">Favorites</h3>
-        <div id="favorites-list" class="entity-list"></div>
-      </div>`;
-    }
-    dashboardTab.innerHTML = `
+  if (layout.length > 0 || isEditMode) {
+    container.innerHTML = `
       <div class="section">
         <div class="section-header">
-          <h3 class="section-title">Dashboard</h3>
+          <h3 class="section-title">${tabName}</h3>
         </div>
-        <div class="section-toolbar">
-          <button class="btn btn-secondary" onclick="enableEditMode()">Customize</button>
+        <div class="section-toolbar">${toolbarHTML}</div>
+        <div id="${tabId}-grid" class="entity-grid"></div>
+      </div>
+    `;
+    const grid = document.getElementById(`${tabId}-grid`);
+    layout.forEach(entityId => {
+      const entity = STATES[entityId];
+      if (entity && !FILTERS.hidden.includes(entityId)) {
+        const card = createEntityCard(entity, { context: 'dashboard', tabId });
+        if (card) grid.appendChild(card);
+      }
+    });
+    if (isEditMode) {
+      setupDragAndDrop(tabId, grid);
+    }
+  } else {
+    container.innerHTML = `
+      <div class="section">
+        <div class="section-header">
+          <h3 class="section-title">${tabName}</h3>
         </div>
+        <div class="section-toolbar">${toolbarHTML}</div>
         <p style="text-align: center; padding: 20px;">
           Click "Customize" to create your personalized dashboard
         </p>
       </div>
-      ${favoritesHTML}
     `;
-
-    if (favs.length > 0) {
-      const favList = document.getElementById('favorites-list');
-      favs.forEach(id => {
-        const e = STATES[id];
-        const card = createEntityCard(e, { context: 'dashboard' });
-        if (card) {
-          card.classList.add('enter');
-          favList.appendChild(card);
-          requestAnimationFrame(() => {
-            card.classList.add('enter-active');
-            const onEnd = () => { card.classList.remove('enter', 'enter-active'); card.removeEventListener('transitionend', onEnd); };
-            card.addEventListener('transitionend', onEnd);
-          });
-        }
-      });
-    }
   }
 }
 
 function renderScenes() {
-  console.log('Rendering scenes tab, STATES count:', Object.keys(STATES).length);
   const container = document.getElementById('scenes-container');
-  if (!container) {
-    console.error('Scenes container not found');
-    return;
-  }
-  
+  if (!container) return;
+
   container.innerHTML = '';
-  
-  // Check if STATES is populated
+
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '';
     renderSkeletonCards(container, 4);
     return;
   }
-  
+
   const scenes = Object.values(STATES)
     .filter(e => e.entity_id.startsWith('scene.'))
     .filter(e => !FILTERS.hidden.includes(e.entity_id));
-  
-  console.log('Found scenes:', scenes.length);
-  
+
   if (scenes.length === 0) {
     container.innerHTML = '<p style="text-align: center; padding: 20px;">No scenes found</p>';
     return;
   }
-  
+
   scenes.forEach(scene => {
     const card = createEntityCard(scene);
     if (card) container.appendChild(card);
@@ -1757,33 +1906,25 @@ function renderScenes() {
 }
 
 function renderAutomations() {
-  console.log('Rendering automations tab, STATES count:', Object.keys(STATES).length);
   const container = document.getElementById('automations-container');
-  if (!container) {
-    console.error('Automations container not found');
-    return;
-  }
-  
+  if (!container) return;
+
   container.innerHTML = '';
-  
-  // Check if STATES is populated
+
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '';
     renderSkeletonCards(container, 4);
     return;
   }
-  
+
   const automations = Object.values(STATES)
     .filter(e => e.entity_id.startsWith('automation.'))
     .filter(e => !FILTERS.hidden.includes(e.entity_id));
-  
-  console.log('Found automations:', automations.length);
-  
+
   if (automations.length === 0) {
     container.innerHTML = '<p style="text-align: center; padding: 20px;">No automations found</p>';
     return;
   }
-  
+
   automations.forEach(automation => {
     const card = createEntityCard(automation);
     if (card) container.appendChild(card);
@@ -1791,33 +1932,25 @@ function renderAutomations() {
 }
 
 function renderMediaPlayers() {
-  console.log('Rendering media tab, STATES count:', Object.keys(STATES).length);
   const container = document.getElementById('media-players-container');
-  if (!container) {
-    console.error('Media players container not found');
-    return;
-  }
-  
+  if (!container) return;
+
   container.innerHTML = '';
-  
-  // Check if STATES is populated
+
   if (Object.keys(STATES).length === 0) {
-    container.innerHTML = '';
     renderSkeletonCards(container, 4);
     return;
   }
-  
+
   const players = Object.values(STATES)
     .filter(e => e.entity_id.startsWith('media_player.'))
     .filter(e => !FILTERS.hidden.includes(e.entity_id));
-  
-  console.log('Found media players:', players.length);
-  
+
   if (players.length === 0) {
     container.innerHTML = '<p style="text-align: center; padding: 20px;">No media players found</p>';
     return;
   }
-  
+
   players.forEach(player => {
     const card = createEntityCard(player);
     if (card) container.appendChild(card);
@@ -1827,39 +1960,35 @@ function renderMediaPlayers() {
 function renderCameras() {
   const container = document.getElementById('cameras-container');
   if (!container) return;
-  // Hide motion popup when entering cameras, but leave user control if they want to keep it
   hideMotionPopup(true);
-  
+
   container.innerHTML = '';
-  
-  // Clear existing interval
+
   if (CAMERA_REFRESH_INTERVAL) {
     clearInterval(CAMERA_REFRESH_INTERVAL);
     CAMERA_REFRESH_INTERVAL = null;
   }
-  
-  // Get camera entities from config or auto-detect
+
   let cameraIds = [];
-  
+
   if (CONFIG.cameraEntities && CONFIG.cameraEntities.length > 0) {
     cameraIds = CONFIG.cameraEntities;
   } else {
     cameraIds = Object.keys(STATES).filter(id => id.startsWith('camera.'));
   }
-  
+
   cameraIds = cameraIds.filter(id => !FILTERS.hidden.includes(id));
-  
+
   if (cameraIds.length === 0) {
     container.innerHTML = '<p style="text-align: center; padding: 20px;">No cameras found</p>';
     return;
   }
-  
+
   cameraIds.forEach(entityId => {
     const card = createCameraCard(entityId);
     if (card) container.appendChild(card);
   });
-  
-  // Auto-refresh cameras every 10 seconds (snapshots only)
+
   CAMERA_REFRESH_INTERVAL = setInterval(() => {
     cameraIds.forEach(id => { if (!LIVE_CAMERAS.has(id)) refreshCamera(id); });
   }, 10000);
@@ -1867,20 +1996,17 @@ function renderCameras() {
 
 function updateEntityInUI(entity) {
   if (!entity) return;
-  
-  // Update entity card if it exists
+
   const cards = document.querySelectorAll(`.entity-card[data-entity-id="${entity.entity_id}"]`);
   cards.forEach(card => {
-    // Preserve dashboard camera cards while live to avoid tearing down streams/UI
-    const isDashboard = card.dataset.context === 'dashboard' || !!card.closest('#dashboard-custom');
+    const isDashboard = card.dataset.context === 'dashboard';
     const isCamera = entity.entity_id.startsWith('camera.');
-    if (isDashboard && isCamera) {
-      if (LIVE_CAMERAS.has(entity.entity_id)) {
-        return; // don't touch while streaming
-      }
+    if (isDashboard && isCamera && LIVE_CAMERAS.has(entity.entity_id)) {
+      return;
     }
-    const ctx = card.dataset.context || (card.closest('#dashboard-custom') ? 'dashboard' : null);
-    const newCard = ctx ? createEntityCard(entity, { context: ctx }) : createEntityCard(entity);
+    const grid = card.closest('.entity-grid');
+    const tabId = grid ? grid.id.replace('-grid', '') : EDIT_MODE_TAB_ID;
+    const newCard = createEntityCard(entity, { context: card.dataset.context, tabId });
     if (newCard) card.replaceWith(newCard);
   });
   setLastUpdate();
@@ -1890,9 +2016,9 @@ function updateEntityInUI(entity) {
 function populateAreaFilter() {
   const select = document.getElementById('area-select');
   if (!select) return;
-  
+
   const currentValues = Array.from(select.selectedOptions).map(opt => opt.value);
-  
+
   select.innerHTML = '';
   Object.values(AREAS).forEach(area => {
     const option = document.createElement('option');
@@ -1906,21 +2032,21 @@ function populateAreaFilter() {
 function populateDomainFilters() {
   const container = document.getElementById('domain-filters');
   if (!container) return;
-  
+
   container.innerHTML = '';
   const allDomains = [...new Set(Object.keys(STATES).map(id => id.split('.')[0]))].sort();
-  
+
   allDomains.forEach(domain => {
     const label = document.createElement('label');
     label.style.display = 'flex';
     label.style.alignItems = 'center';
     label.style.gap = '4px';
-    
+
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.value = domain;
     checkbox.checked = FILTERS.domains.includes(domain);
-    
+
     label.appendChild(checkbox);
     label.appendChild(document.createTextNode(domain));
     container.appendChild(label);
@@ -1931,7 +2057,7 @@ function populateDomainFilters() {
 async function openSettings() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
-  
+
   const urlInput = document.getElementById('ha-url');
   const tokenInput = document.getElementById('ha-token');
   const intervalInput = document.getElementById('update-interval');
@@ -1985,7 +2111,6 @@ async function openSettings() {
   populateDomainFilters();
   populateAreaFilter();
 
-  // Searchable entity inputs
   setupEntitySearchInput('favorite-entities');
   setupEntitySearchInput('camera-entities', ['camera']);
   setupEntitySearchInput('motion-popup-cameras', ['camera']);
@@ -2021,7 +2146,7 @@ async function saveSettings() {
   const highContrast = document.getElementById('high-contrast');
   const opaquePanels = document.getElementById('opaque-panels');
   const densitySelect = document.getElementById('density-select');
-  
+
   if (urlInput) CONFIG.homeAssistant.url = urlInput.value.trim();
   if (tokenInput) CONFIG.homeAssistant.token = tokenInput.value.trim();
   if (intervalInput) CONFIG.updateInterval = Math.max(1000, parseInt(intervalInput.value, 10) * 1000);
@@ -2029,39 +2154,34 @@ async function saveSettings() {
   if (favoritesInput) CONFIG.favoriteEntities = favoritesInput.value.split(',').map(s => s.trim()).filter(Boolean);
   if (camerasInput) CONFIG.cameraEntities = camerasInput.value.split(',').map(s => s.trim()).filter(Boolean);
 
-  // Motion popup config
   CONFIG.motionPopup = CONFIG.motionPopup || {};
   if (motionEnabled) CONFIG.motionPopup.enabled = !!motionEnabled.checked;
   if (motionCams) CONFIG.motionPopup.cameras = motionCams.value.split(',').map(s => s.trim()).filter(Boolean);
   if (motionAutoHide) CONFIG.motionPopup.autoHideSeconds = Math.max(3, Math.min(120, parseInt(motionAutoHide.value || 12, 10)));
   if (motionCooldown) CONFIG.motionPopup.cooldownSeconds = Math.max(0, Math.min(600, parseInt(motionCooldown.value || 30, 10)));
 
-  // UI preferences
   CONFIG.ui = CONFIG.ui || {};
   if (showDetails) CONFIG.ui.showDetails = !!showDetails.checked;
   if (themeSelect) CONFIG.ui.theme = themeSelect.value || 'auto';
   if (highContrast) CONFIG.ui.highContrast = !!highContrast.checked;
   if (opaquePanels) CONFIG.ui.opaquePanels = !!opaquePanels.checked;
   if (densitySelect) CONFIG.ui.density = densitySelect.value || 'comfortable';
-  
-  // Update domain filters
+
   const checkboxes = document.querySelectorAll('#domain-filters input[type="checkbox"]');
   FILTERS.domains = Array.from(checkboxes)
     .filter(cb => cb.checked)
     .map(cb => cb.value);
-  
-  // Update area filters
+
   const areaSelect = document.getElementById('area-select');
   if (areaSelect) {
     FILTERS.areas = Array.from(areaSelect.selectedOptions).map(opt => opt.value);
   }
-  
+
   CONFIG.filters = FILTERS;
-  
+
   try {
     await ipcRenderer.invoke('update-config', CONFIG);
 
-    // Apply Always on Top immediately if changed
     if (prevAlwaysOnTop !== CONFIG.alwaysOnTop) {
       try {
         const res = await ipcRenderer.invoke('set-always-on-top', CONFIG.alwaysOnTop);
@@ -2076,35 +2196,38 @@ async function saveSettings() {
     }
 
     closeSettings();
-    
-    // Apply UI changes
+
     applyTheme(CONFIG.ui?.theme || 'auto');
     applyUiPreferences(CONFIG.ui || {});
-    
-    // Reconnect WebSocket with new config
+
     connectWebSocket();
   } catch (error) {
     console.error('Failed to save config:', error);
   }
 }
 
-// Wire up UI controls
 function wireUI() {
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) settingsBtn.onclick = openSettings;
-  
+
   const filterBtn = document.getElementById('filter-btn');
   if (filterBtn) filterBtn.onclick = showFilterModal;
-  
+
   const layoutBtn = document.getElementById('layout-btn');
-  if (layoutBtn) layoutBtn.onclick = enableEditMode;
-  
+  if (layoutBtn) layoutBtn.onclick = () => {
+    const activeTab = document.querySelector('.tab-btn.active');
+    if (activeTab) enableEditMode(activeTab.dataset.tab);
+  };
+
+  const manageTabsBtn = document.getElementById('manage-tabs-btn');
+  if (manageTabsBtn) manageTabsBtn.onclick = openManageTabsModal;
+
   const refreshBtn = document.getElementById('refresh-btn');
   if (refreshBtn) refreshBtn.onclick = renderActiveTab;
-  
+
   const closeBtn = document.getElementById('close-btn');
   if (closeBtn) closeBtn.onclick = () => window.close();
-  
+
   const minimizeBtn = document.getElementById('minimize-btn');
   if (minimizeBtn) {
     minimizeBtn.onclick = () => {
@@ -2121,13 +2244,32 @@ function wireUI() {
       ipcRenderer.invoke('set-opacity', v);
     };
   }
-  
+
   const saveSettingsBtn = document.getElementById('save-settings');
   if (saveSettingsBtn) saveSettingsBtn.onclick = saveSettings;
-  
+
   const cancelSettingsBtn = document.getElementById('cancel-settings');
   if (cancelSettingsBtn) cancelSettingsBtn.onclick = closeSettings;
-  
+
+  const addTabBtn = document.getElementById('add-tab-btn');
+  if (addTabBtn) {
+    addTabBtn.onclick = () => {
+      const input = document.getElementById('new-tab-name');
+      if (input && input.value.trim()) {
+        addCustomTab(input.value.trim());
+        input.value = '';
+        openManageTabsModal(); // Refresh the modal
+      }
+    };
+  }
+
+  const closeManageTabsModalBtn = document.getElementById('close-manage-tabs-modal');
+  if (closeManageTabsModalBtn) {
+    closeManageTabsModalBtn.onclick = () => {
+      document.getElementById('manage-tabs-modal').classList.add('hidden');
+    };
+  }
+
   setupTabs();
 }
 
@@ -2165,7 +2307,6 @@ function applyUiPreferences(ui = {}) {
   body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
 }
 
-// Focus trap for modals
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
 
@@ -2196,27 +2337,35 @@ function releaseFocusTrap(modal) {
   }
 }
 
-// Initialize
 async function init() {
   try {
     showLoading(true);
     CONFIG = await ipcRenderer.invoke('get-config');
-    
+    console.log('CONFIG loaded:', CONFIG);
+
     if (!CONFIG) {
       console.error('Failed to load configuration');
       showLoading(false);
       return;
     }
-    
+
     if (CONFIG.filters) {
       FILTERS = { ...FILTERS, ...CONFIG.filters };
     }
-    
-    if (CONFIG.dashboardLayout) {
-      DASHBOARD_LAYOUT = CONFIG.dashboardLayout;
+
+    if (CONFIG.tabLayouts) {
+        TAB_LAYOUTS = CONFIG.tabLayouts;
+    } else if (CONFIG.dashboardLayout) { // Backwards compatibility
+        TAB_LAYOUTS = { dashboard: CONFIG.dashboardLayout };
+        CONFIG.tabLayouts = TAB_LAYOUTS;
+        delete CONFIG.dashboardLayout;
+    } else {
+        TAB_LAYOUTS = { dashboard: [] };
     }
-    
-    // Apply theme
+    if (!CONFIG.customTabs) {
+        CONFIG.customTabs = {};
+    }
+
     applyTheme((CONFIG.ui && CONFIG.ui.theme) || 'auto');
     applyUiPreferences(CONFIG.ui || {});
     if (window.matchMedia) {
@@ -2231,7 +2380,6 @@ async function init() {
     wireUI();
     connectWebSocket();
 
-    // Global modal close handlers
     document.addEventListener('click', (e) => {
       if (e.target.classList && e.target.classList.contains('modal')) {
         if (e.target.id === 'settings-modal') closeSettings();
@@ -2244,8 +2392,7 @@ async function init() {
       window.closeFilterModal?.();
     }
   });
-  
-  // Global Ctrl+Tab guard & handler
+
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey && e.key === 'Tab')) return;
     const target = e.target;
@@ -2259,8 +2406,7 @@ async function init() {
     tabs[next].focus();
     tabs[next].click();
   });
-    
-    // Initial render after a short delay to ensure DOM is ready
+
     setTimeout(() => {
       renderActiveTab();
       showLoading(false);
@@ -2271,14 +2417,12 @@ async function init() {
   }
 }
 
-// Auto-update notifications from main
 ipcRenderer.on('auto-update', (_e, payload) => {
   const st = payload?.status;
   if (st === 'checking') showToast('Checking for updates...', 'success', 1200);
   else if (st === 'available') showToast('Update available. Downloading...', 'success', 2500);
   else if (st === 'none') showToast('You are up to date.', 'success', 2000);
   else if (st === 'downloading') {
-    // Optionally show progress every few seconds (skip to avoid spam)
   } else if (st === 'downloaded') {
     showToast('Update ready. It will install on quit.', 'success', 4000);
   } else if (st === 'error') {
@@ -2286,15 +2430,12 @@ ipcRenderer.on('auto-update', (_e, payload) => {
   }
 });
 
-// Open settings from tray
 ipcRenderer.on('open-settings', () => {
   openSettings();
 });
 
 window.addEventListener('DOMContentLoaded', init);
 
-
-// Entity suggestion helpers for settings
 function setupEntitySearchInput(inputId, allowedDomains = null) {
   const input = document.getElementById(inputId);
   if (!input) return;
@@ -2354,7 +2495,6 @@ function setupEntitySearchInput(inputId, allowedDomains = null) {
   input.addEventListener('blur', () => setTimeout(closeBox, 150));
 }
 
-// Timer countdown support
 function formatDuration(ms) {
   if (ms < 0) ms = 0;
   const s = Math.floor(ms / 1000);
@@ -2373,7 +2513,6 @@ function getTimerEnd(entity) {
   }
   const rem = entity.attributes?.remaining;
   if (rem) {
-    // HH:MM:SS
     const parts = rem.split(':').map(n => parseInt(n, 10));
     if (parts.length === 3 && parts.every(x => !isNaN(x))) {
       const ms = ((parts[0]*3600)+(parts[1]*60)+parts[2]) * 1000;
@@ -2412,7 +2551,6 @@ function updateTimerCountdown(entity, el) {
   }
 }
 
-// Motion detection handling and popup UI
 function handleMotionEvent(newState, oldState) {
   try {
     const mp = CONFIG?.motionPopup || {};
@@ -2424,7 +2562,6 @@ function handleMotionEvent(newState, oldState) {
     const selectedCams = (mp.cameras || []).filter(id => id.startsWith('camera.'));
     if (selectedCams.length === 0) return;
 
-    // Heuristic match: link motion sensor to camera by slug or friendly name overlap
     const motionId = newState.entity_id;
     const motionName = (newState.attributes?.friendly_name || '').toLowerCase();
 
@@ -2438,7 +2575,6 @@ function handleMotionEvent(newState, oldState) {
       }
     }
     if (!matchCam) {
-      // If no heuristic match, bail out quietly
       return;
     }
 
@@ -2481,7 +2617,6 @@ async function showMotionPopup(cameraId) {
     const title = MOTION_POPUP.querySelector('.motion-popup-title');
     const body = MOTION_POPUP.querySelector('.motion-popup-body');
 
-    // If switching camera, stop existing stream and clear body
     if (MOTION_POPUP_CAMERA && MOTION_POPUP_CAMERA !== cameraId) {
       stopHlsStream(MOTION_POPUP_CAMERA, body);
       try { body.innerHTML = ''; } catch (_) {}
@@ -2490,7 +2625,6 @@ async function showMotionPopup(cameraId) {
     MOTION_POPUP_CAMERA = cameraId;
     title.textContent = (STATES?.[cameraId]?.attributes?.friendly_name || cameraId) + ' — Motion detected';
 
-    // Ensure we have an image element for MJPEG fallback
     let img = body.querySelector('img.camera-img');
     if (!img) {
       img = document.createElement('img');
@@ -2498,7 +2632,6 @@ async function showMotionPopup(cameraId) {
       body.appendChild(img);
     }
 
-    // Start HLS within popup body (works like a "card")
     const hlsStarted = await startHlsStream(cameraId, body, img);
     if (!hlsStarted) {
       img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
@@ -2522,7 +2655,6 @@ function hideMotionPopup(silent = false) {
     const body = MOTION_POPUP.querySelector('.motion-popup-body');
     if (MOTION_POPUP_CAMERA) {
       stopHlsStream(MOTION_POPUP_CAMERA, body);
-      // Clear MJPEG
       const img = body.querySelector('img.camera-img');
       if (img) { img.src = ''; }
     }

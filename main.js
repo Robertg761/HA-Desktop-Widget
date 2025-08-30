@@ -243,7 +243,8 @@ ipcMain.handle('get-config', () => {
 });
 
 ipcMain.handle('update-config', (event, newConfig) => {
-  config = { ...config, ...newConfig };
+  const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
+  config = { ...config, ...newConfig, customTabs };
   saveConfig();
   return config;
 });

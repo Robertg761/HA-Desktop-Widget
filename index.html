@@ -14,6 +14,7 @@
             <div class="header-controls">
                 <button id="filter-btn" class="control-btn" title="Filter">🔍</button>
                 <button id="layout-btn" class="control-btn" title="Layout">📐</button>
+                <button id="manage-tabs-btn" class="control-btn" title="Manage Tabs">📑</button>
                 <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
                 <button id="refresh-btn" class="control-btn" title="Refresh">🔄</button>
                 <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
@@ -290,6 +291,24 @@
     </div>
 
     <div id="toast-container" class="toast-container"></div>
+
+    <!-- Manage Tabs Modal -->
+    <div id="manage-tabs-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="manage-tabs-title">
+        <div class="modal-content">
+            <h2 id="manage-tabs-title">Manage Tabs</h2>
+            <div id="manage-tabs-list"></div>
+            <div class="form-group">
+                <label for="new-tab-name">Add New Tab</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="new-tab-name" placeholder="New tab name...">
+                    <button id="add-tab-btn" class="btn btn-primary">Add</button>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button id="close-manage-tabs-modal" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script src="renderer-final.js"></script>
 </body>
