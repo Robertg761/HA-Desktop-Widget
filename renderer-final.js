@@ -51,21 +51,70 @@ let THEME_MEDIA_QUERY = null;
 
 // Window function definitions (moved here to avoid hoisting issues)
 window.addToDashboard = function(entityId, tabId) {
-  if (!TAB_LAYOUTS[tabId]) TAB_LAYOUTS[tabId] = [];
-  if (!TAB_LAYOUTS[tabId].includes(entityId)) {
-    TAB_LAYOUTS[tabId].push(entityId);
+  if (!CONFIG.favoriteEntities) CONFIG.favoriteEntities = [];
+  if (!CONFIG.favoriteEntities.includes(entityId)) {
+    CONFIG.favoriteEntities.push(entityId);
+    ipcRenderer.invoke('update-config', CONFIG);
     renderActiveTab();
-    showEntitySelector(tabId); // Refresh available list
+    showToast(`Added ${entityId} to dashboard`, 'success');
+    // Refresh the entity selector if it's open
+    if (!document.getElementById('entity-selector').classList.contains('hidden')) {
+      loadEntitySelector();
+    }
   }
 };
 
 window.removeFromDashboard = function(entityId, tabId) {
-  const layout = TAB_LAYOUTS[tabId] || [];
-  const index = layout.indexOf(entityId);
-  if (index > -1) {
-    layout.splice(index, 1);
+  if (CONFIG.favoriteEntities) {
+    const index = CONFIG.favoriteEntities.indexOf(entityId);
+    if (index > -1) {
+      CONFIG.favoriteEntities.splice(index, 1);
+      ipcRenderer.invoke('update-config', CONFIG);
+      renderActiveTab();
+      showToast(`Removed ${entityId} from dashboard`, 'info');
+      // Refresh the entity selector if it's open
+      if (!document.getElementById('entity-selector').classList.contains('hidden')) {
+        loadEntitySelector();
+      }
+    }
+  }
+};
+
+window.addToQuickControls = function(entityId) {
+  if (!CONFIG.favoriteEntities) CONFIG.favoriteEntities = [];
+  if (!CONFIG.favoriteEntities.includes(entityId)) {
+    CONFIG.favoriteEntities.push(entityId);
+    ipcRenderer.invoke('update-config', CONFIG);
+    
+    // Immediately refresh the UI
     renderActiveTab();
-    showEntitySelector(tabId); // Refresh available list
+    
+    // Refresh the quick controls selector if it's open
+    if (!document.getElementById('quick-controls-modal').classList.contains('hidden')) {
+      loadQuickControlsSelector();
+    }
+    
+    showToast(`Added ${entityId} to quick access`, 'success');
+  }
+};
+
+window.removeFromQuickControls = function(entityId) {
+  if (CONFIG.favoriteEntities) {
+    const index = CONFIG.favoriteEntities.indexOf(entityId);
+    if (index > -1) {
+      CONFIG.favoriteEntities.splice(index, 1);
+      ipcRenderer.invoke('update-config', CONFIG);
+      
+      // Immediately refresh the UI
+      renderActiveTab();
+      
+      // Refresh the quick controls selector if it's open
+      if (!document.getElementById('quick-controls-modal').classList.contains('hidden')) {
+        loadQuickControlsSelector();
+      }
+      
+      showToast(`Removed ${entityId} from quick access`, 'info');
+    }
   }
 };
 
@@ -150,7 +199,7 @@ function connectWebSocket() {
           access_token: CONFIG.homeAssistant.token
         }));
       } else if (msg.type === 'auth_ok') {
-        console.log('WebSocket authenticated');
+        console.log('WebSocket authenticated successfully');
         setStatus(true);
 
         // Subscribe to state changes
@@ -184,9 +233,15 @@ function connectWebSocket() {
         const entity = msg.event.data.new_state;
         const oldEntity = msg.event.data.old_state;
         if (entity) {
+          console.log(`State changed: ${entity.entity_id} from ${oldEntity?.state} to ${entity.state}`);
           STATES[entity.entity_id] = entity;
           updateEntityInUI(entity);
           handleMotionEvent(entity, oldEntity);
+          
+          // Update weather if this is a weather entity change
+          if (entity.entity_id.startsWith('weather.')) {
+            updateWeatherFromHA();
+          }
         }
       } else if (msg.type === 'result' && msg.result) {
         if (Array.isArray(msg.result) && msg.result.length > 0) {
@@ -197,6 +252,8 @@ function connectWebSocket() {
               STATES[entity.entity_id] = entity;
             });
             renderActiveTab();
+            // Update weather after states are loaded
+            updateWeatherFromHA();
           } else if (msg.result[0].area_id) {
             // Areas
             msg.result.forEach(area => {
@@ -232,8 +289,9 @@ function connectWebSocket() {
 function setStatus(connected) {
   const status = document.getElementById('connection-status');
   if (status) {
-    status.textContent = connected ? '● Connected' : '● Disconnected';
-    status.style.color = connected ? '#81c995' : '#f28b82';
+    status.className = connected ? 'connection-indicator connected' : 'connection-indicator';
+    // Clear any text content - we only want the dot
+    status.innerHTML = '';
   }
 }
 
@@ -869,33 +927,9 @@ function stopAllCameraStreams() {
 }
 
 // Service calls
-async function callService(domain, service, data = {}) {
-  if (!WS || WS.readyState !== WebSocket.OPEN) {
-    console.error('WebSocket not connected');
-    return;
-  }
+// Removed duplicate callService function - using the enhanced version below
 
-  try {
-    WS.send(JSON.stringify({
-      id: Date.now(),
-      type: 'call_service',
-      domain,
-      service,
-      service_data: data
-    }));
-  } catch (error) {
-    console.error('Failed to call service:', error);
-  }
-}
-
-function toggleEntity(entityId) {
-  const domain = entityId.split('.')[0];
-  const entity = STATES[entityId];
-  if (!entity) return;
-
-  const service = entity.state === 'on' ? 'turn_off' : 'turn_on';
-  callService(domain, service, { entity_id: entityId });
-}
+// Removed old toggleEntity function - using enhanced version below
 
 function setBrightness(entityId, brightness) {
   callService('light', 'turn_on', {
@@ -1112,7 +1146,7 @@ function renderSkeletonCards(container, count = 4) {
     }
   } catch (_error) {
     // Ignore errors when rendering skeleton cards
-  }
+}
 }
 function _renderSkeletonWeather(container, count = 2) {
   try {
@@ -1735,6 +1769,236 @@ function openManageTabsModal() {
   modal.classList.remove('hidden');
 }
 
+function openEntitySelector() {
+  const modal = document.getElementById('entity-selector');
+  if (modal) {
+    modal.classList.remove('hidden');
+    loadEntitySelector();
+  }
+}
+
+function openQuickControlsModal() {
+  const modal = document.getElementById('quick-controls-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    loadQuickControlsSelector();
+  }
+}
+
+// Fuzzy matching function for better search
+function fuzzyMatch(text, searchTerm) {
+  if (!text || !searchTerm) return false;
+  
+  // Simple fuzzy matching - check if all characters in search term appear in order in text
+  let textIndex = 0;
+  for (let i = 0; i < searchTerm.length; i++) {
+    const char = searchTerm[i];
+    const foundIndex = text.indexOf(char, textIndex);
+    if (foundIndex === -1) return false;
+    textIndex = foundIndex + 1;
+  }
+  return true;
+}
+
+function loadEntitySelector() {
+  const container = document.getElementById('available-entities-list');
+  if (!container || !STATES || Object.keys(STATES).length === 0) {
+    container.innerHTML = '<div class="no-entities">No entities loaded from Home Assistant. Make sure you\'re connected.</div>';
+    return;
+  }
+
+  // Get current dashboard entities
+  const dashboardEntities = new Set();
+  if (CONFIG.favoriteEntities) {
+    CONFIG.favoriteEntities.forEach(id => dashboardEntities.add(id));
+  }
+
+  // Filter and sort entities
+  const availableEntities = Object.values(STATES)
+    .filter(entity => {
+      // Skip hidden entities
+      if (CONFIG.hiddenEntities && CONFIG.hiddenEntities.includes(entity.entity_id)) {
+        return false;
+      }
+      // Skip system entities
+      if (entity.entity_id.startsWith('sun.') || 
+          entity.entity_id.startsWith('zone.') ||
+          entity.entity_id.startsWith('person.') ||
+          entity.entity_id.startsWith('device_tracker.')) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by domain, then by name
+      const domainA = a.entity_id.split('.')[0];
+      const domainB = b.entity_id.split('.')[0];
+      if (domainA !== domainB) {
+        return domainA.localeCompare(domainB);
+      }
+      return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+    });
+
+  // Render entity list
+  container.innerHTML = availableEntities.map(entity => {
+    const isOnDashboard = dashboardEntities.has(entity.entity_id);
+    const icon = getEntityIcon(entity);
+    const name = getEntityDisplayName(entity);
+    const state = getEntityDisplayState(entity);
+    
+    return `
+      <div class="entity-selector-item" data-entity-id="${entity.entity_id}">
+        <div class="entity-selector-info">
+          <span class="entity-selector-icon">${icon}</span>
+          <div class="entity-selector-details">
+            <div class="entity-selector-name">${name}</div>
+            <div class="entity-selector-state">${state}</div>
+          </div>
+        </div>
+        <div class="entity-selector-actions">
+          ${isOnDashboard 
+            ? `<button class="entity-selector-btn remove" onclick="removeFromDashboard('${entity.entity_id}')">Remove</button>`
+            : `<button class="entity-selector-btn add" onclick="addToDashboard('${entity.entity_id}')">Add</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add search functionality with improved matching
+  const searchInput = document.getElementById('entity-search');
+  if (searchInput) {
+    searchInput.oninput = (e) => {
+      const searchTerm = e.target.value.toLowerCase().trim();
+      const items = container.querySelectorAll('.entity-selector-item');
+      
+      if (!searchTerm) {
+        // Show all items if search is empty
+        items.forEach(item => item.style.display = 'flex');
+        return;
+      }
+      
+      items.forEach(item => {
+        const name = item.querySelector('.entity-selector-name').textContent.toLowerCase();
+        const state = item.querySelector('.entity-selector-state').textContent.toLowerCase();
+        const entityId = item.dataset.entityId || '';
+        
+        // Multiple search strategies for better matching
+        const matches = 
+          name.includes(searchTerm) || 
+          state.includes(searchTerm) ||
+          entityId.includes(searchTerm) ||
+          // Partial word matching (e.g., "liv" matches "Living Room")
+          name.split(' ').some(word => word.startsWith(searchTerm)) ||
+          // Fuzzy matching for common typos
+          fuzzyMatch(name, searchTerm) ||
+          fuzzyMatch(state, searchTerm);
+          
+        item.style.display = matches ? 'flex' : 'none';
+      });
+    };
+  }
+}
+
+function loadQuickControlsSelector() {
+  const container = document.getElementById('quick-controls-list');
+  if (!container || !STATES || Object.keys(STATES).length === 0) {
+    container.innerHTML = '<div class="no-entities">No entities loaded from Home Assistant. Make sure you\'re connected.</div>';
+    return;
+  }
+
+  // Get current quick control entities
+  const quickControlEntities = new Set();
+  if (CONFIG.favoriteEntities) {
+    CONFIG.favoriteEntities.forEach(id => quickControlEntities.add(id));
+  }
+
+  // Show all entities for quick access (no restrictions)
+  const availableEntities = Object.values(STATES)
+    .filter(entity => {
+      // Skip hidden entities
+      if (CONFIG.hiddenEntities && CONFIG.hiddenEntities.includes(entity.entity_id)) {
+        return false;
+      }
+      // Skip system entities
+      if (entity.entity_id.startsWith('sun.') || 
+          entity.entity_id.startsWith('zone.') ||
+          entity.entity_id.startsWith('person.') ||
+          entity.entity_id.startsWith('device_tracker.')) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const domainA = a.entity_id.split('.')[0];
+      const domainB = b.entity_id.split('.')[0];
+      if (domainA !== domainB) {
+        return domainA.localeCompare(domainB);
+      }
+      return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+    });
+
+  // Render entity list
+  container.innerHTML = availableEntities.map(entity => {
+    const isQuickControl = quickControlEntities.has(entity.entity_id);
+    const icon = getEntityIcon(entity);
+    const name = getEntityDisplayName(entity);
+    const state = getEntityDisplayState(entity);
+    
+    return `
+      <div class="entity-selector-item" data-entity-id="${entity.entity_id}">
+        <div class="entity-selector-info">
+          <span class="entity-selector-icon">${icon}</span>
+          <div class="entity-selector-details">
+            <div class="entity-selector-name">${name}</div>
+            <div class="entity-selector-state">${state}</div>
+          </div>
+        </div>
+        <div class="entity-selector-actions">
+          ${isQuickControl 
+            ? `<button class="entity-selector-btn remove" onclick="removeFromQuickControls('${entity.entity_id}')">Remove</button>`
+            : `<button class="entity-selector-btn add" onclick="addToQuickControls('${entity.entity_id}')">Add</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add search functionality with improved matching
+  const searchInput = document.getElementById('quick-controls-search');
+  if (searchInput) {
+    searchInput.oninput = (e) => {
+      const searchTerm = e.target.value.toLowerCase().trim();
+      const items = container.querySelectorAll('.entity-selector-item');
+      
+      if (!searchTerm) {
+        // Show all items if search is empty
+        items.forEach(item => item.style.display = 'flex');
+        return;
+      }
+      
+      items.forEach(item => {
+        const name = item.querySelector('.entity-selector-name').textContent.toLowerCase();
+        const state = item.querySelector('.entity-selector-state').textContent.toLowerCase();
+        const entityId = item.dataset.entityId || '';
+        
+        // Multiple search strategies for better matching
+        const matches = 
+          name.includes(searchTerm) || 
+          state.includes(searchTerm) ||
+          entityId.includes(searchTerm) ||
+          // Partial word matching (e.g., "liv" matches "Living Room")
+          name.split(' ').some(word => word.startsWith(searchTerm)) ||
+          // Fuzzy matching for common typos
+          fuzzyMatch(name, searchTerm) ||
+          fuzzyMatch(state, searchTerm);
+          
+        item.style.display = matches ? 'flex' : 'none';
+      });
+    };
+  }
+}
+
 function renameTab(tabId) {
   const newName = prompt('Enter new tab name:', CONFIG.customTabs[tabId]?.name || '');
   if (newName && newName.trim()) {
@@ -1808,44 +2072,905 @@ function removeTab(tabId) {
 
 
 function renderActiveTab() {
-  const activeTab = document.querySelector('.tab-btn.active');
-  if (!activeTab) return;
+  // For new single-view design, render everything in one view
+  renderSingleView();
+}
 
-  const tabId = activeTab.dataset.tab;
-  const container = document.getElementById(`${tabId}-tab`);
+function renderSingleView() {
+  // Render quick access (main focus)
+  renderQuickControls();
+  
+  // Hide entities section by default - users can search for entities when needed
+  const entitiesSection = document.querySelector('.entities-section');
+  if (entitiesSection) {
+    entitiesSection.classList.add('hidden');
+  }
+  
+  // Render cameras if any
+  renderCameras();
+  
+  // Update weather if available
+  updateWeatherFromHA();
+  
+  // If no entities are loaded, show a message
+  if (Object.keys(STATES).length === 0) {
+    showNoConnectionMessage();
+  }
+}
+
+function showNoConnectionMessage() {
+  const container = document.getElementById('entities-container');
   if (!container) return;
 
-  const isCustom = tabId.startsWith('custom-');
+  container.innerHTML = `
+    <div class="entity-card" style="text-align: center; padding: 20px;">
+      <div class="entity-info">
+        <div class="entity-name">Not Connected to Home Assistant</div>
+        <div class="entity-state">Click ⚙️ to configure connection</div>
+      </div>
+    </div>
+  `;
+}
 
-  if (tabId === 'dashboard' || isCustom) {
-    renderDashboardLayout(tabId, container);
+function renderQuickControls() {
+  const container = document.getElementById('quick-controls');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  // Get favorite entities for quick access
+  const favorites = CONFIG.favoriteEntities || [];
+  const entities = Object.values(STATES).filter(e => favorites.includes(e.entity_id));
+  
+  // Show more entities (increased from 8 to 12) and sort them
+  entities
+    .sort((a, b) => {
+      // Sort cameras first, then by domain, then by name
+      const aIsCamera = a.entity_id.startsWith('camera.');
+      const bIsCamera = b.entity_id.startsWith('camera.');
+      if (aIsCamera && !bIsCamera) return -1;
+      if (!aIsCamera && bIsCamera) return 1;
+      
+      const domainA = a.entity_id.split('.')[0];
+      const domainB = b.entity_id.split('.')[0];
+      if (domainA !== domainB) {
+        return domainA.localeCompare(domainB);
+      }
+      return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+    })
+    .slice(0, 12)
+    .forEach(entity => {
+      const control = createControlElement(entity);
+      container.appendChild(control);
+    });
+}
+
+function createControlElement(entity) {
+  const div = document.createElement('div');
+  div.className = 'control-item';
+  div.dataset.entityId = entity.entity_id;
+  
+  // Handle different entity types appropriately
+  if (entity.entity_id.startsWith('camera.')) {
+    div.onclick = () => openCamera(entity.entity_id);
+    div.title = `Click to view ${getEntityDisplayName(entity)}`;
+  } else if (entity.entity_id.startsWith('sensor.')) {
+    // Sensors are read-only, show current value
+    div.onclick = () => showSensorDetails(entity);
+    div.title = `${getEntityDisplayName(entity)}: ${getEntityDisplayState(entity)}`;
+  } else if (entity.entity_id.startsWith('light.')) {
+    // Lights: click to toggle, long-press for brightness slider
+    div.title = `Click to toggle, hold for brightness control`;
+
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = () => {
+      longPressTriggered = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        showBrightnessSlider(entity);
+      }, 500); // 500ms for long press
+    };
+
+    const cancelPress = () => {
+      clearTimeout(pressTimer);
+    };
+
+    // Mouse events
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+
+    // Touch events (basic support)
+    div.addEventListener('touchstart', startPress, { passive: true });
+    div.addEventListener('touchend', cancelPress);
+    div.addEventListener('touchcancel', cancelPress);
+
+    // Click handler with long-press guard
+    div.addEventListener('click', (e) => {
+      if (longPressTriggered) {
+        // Suppress toggle if long-press already opened the slider
+        longPressTriggered = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+
+    // Prevent context menu on long press
+    div.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
   } else {
-    switch (tabId) {
-      case 'scenes':
-        renderScenes();
-        break;
-      case 'automations':
-        renderAutomations();
-        break;
-      case 'media':
-        renderMediaPlayers();
-        break;
-      case 'cameras':
-        renderCameras();
-        break;
-      case 'weather':
-        renderWeather();
-        break;
-      case 'history':
-        renderHistory();
-        break;
-      case 'services':
-        populateServiceExplorer();
-        populateEntityInspector();
-        break;
+    div.onclick = () => toggleEntity(entity);
+    div.title = `Click to toggle ${getEntityDisplayName(entity)}`;
+  }
+  
+  const icon = getEntityIcon(entity);
+  const name = getEntityDisplayName(entity);
+  const state = getEntityDisplayState(entity);
+  
+  // Create more informative display
+  let stateDisplay = '';
+  if (entity.entity_id.startsWith('sensor.')) {
+    stateDisplay = `<div class="control-state">${state}</div>`;
+  } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
+    const brightness = Math.round((entity.attributes.brightness / 255) * 100);
+    stateDisplay = `<div class="control-state">${brightness}%</div>`;
+  } else if (entity.entity_id.startsWith('light.') && entity.state !== 'on') {
+    // Show explicit Off when the light is off
+    stateDisplay = `<div class="control-state">Off</div>`;
+  } else if (entity.entity_id.startsWith('climate.')) {
+    const temp = entity.attributes.current_temperature || entity.attributes.temperature;
+    if (temp) {
+      stateDisplay = `<div class="control-state">${temp}°</div>`;
     }
   }
-  setLastUpdate();
+  
+  div.innerHTML = `
+    <div class="control-icon">${icon}</div>
+    <div class="control-info">
+      <div class="control-name">${name}</div>
+      ${stateDisplay}
+    </div>
+  `;
+  
+  // All entities look the same - no special active styling
+  
+  return div;
+}
+
+// Fetch a camera snapshot using Authorization header and set it into an <img>
+async function fetchCameraSnapshot(entityId, imgEl) {
+  if (!CONFIG || !CONFIG.homeAssistant?.url || !CONFIG.homeAssistant?.token) {
+    throw new Error('HA config missing');
+  }
+  const url = `${CONFIG.homeAssistant.url}/api/camera_proxy/${entityId}?t=${Date.now()}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${CONFIG.homeAssistant.token}` } });
+  if (!res.ok) throw new Error(`Snapshot fetch failed (${res.status})`);
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  imgEl.onload = () => {
+    try { URL.revokeObjectURL(objUrl); } catch (_e) {}
+  };
+  imgEl.src = objUrl;
+}
+
+function renderEntities() {
+  const container = document.getElementById('entities-container');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  // Get filtered entities
+  const filteredEntities = getFilteredEntities();
+  
+  filteredEntities.slice(0, 20).forEach(entity => {
+    const card = createEntityCard(entity);
+    container.appendChild(card);
+  });
+}
+
+function createEntityCard(entity) {
+  const div = document.createElement('div');
+  div.className = 'entity-card';
+  
+  const name = getEntityDisplayName(entity);
+  const state = getEntityDisplayState(entity);
+  const icon = getEntityIcon(entity);
+  
+  div.innerHTML = `
+    <div class="entity-info">
+      <div class="entity-name">${name}</div>
+      <div class="entity-state">${state}</div>
+    </div>
+    <div class="entity-control">
+      ${createEntityControl(entity)}
+    </div>
+  `;
+  
+  return div;
+}
+
+function createEntityControl(entity) {
+  if (entity.attributes.unit_of_measurement) {
+    return `<span class="entity-value">${entity.state}${entity.attributes.unit_of_measurement}</span>`;
+  } else if (['light', 'switch', 'fan', 'lock', 'cover'].includes(entity.entity_id.split('.')[0])) {
+    const isActive = ['on', 'open', 'unlocked'].includes(entity.state);
+    return `<div class="entity-toggle ${isActive ? 'active' : ''}" onclick="event.stopPropagation(); toggleEntity('${entity.entity_id}')"></div>`;
+  } else {
+    return `<span class="entity-value">${entity.state}</span>`;
+  }
+}
+
+function renderCameras() {
+  const container = document.getElementById('cameras-container');
+  const section = document.getElementById('cameras-section');
+  if (!container || !section) return;
+  
+  const cameras = Object.values(STATES).filter(e => e.entity_id.startsWith('camera.'));
+  
+  if (cameras.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  
+  section.style.display = 'block';
+  container.innerHTML = '';
+  
+  cameras.slice(0, 4).forEach(camera => {
+    const card = createCameraCard(camera);
+    container.appendChild(card);
+  });
+}
+
+function createCameraCard(camera) {
+  const div = document.createElement('div');
+  div.className = 'camera-card';
+  
+  const name = getEntityDisplayName(camera);
+  
+  div.innerHTML = `
+    <div class="camera-header">
+      <div class="camera-name">${name}</div>
+      <div class="camera-controls">
+        <button class="camera-btn" onclick="openCamera('${camera.entity_id}')" title="Open camera">🔗</button>
+        <button class="camera-btn" onclick="refreshCamera('${camera.entity_id}')" title="Refresh snapshot">🔄</button>
+      </div>
+    </div>
+    <div class="camera-embed">
+      <img class="camera-img" alt="${name}">
+      <div style="display: none;">Camera unavailable</div>
+    </div>
+  `;
+  // Load snapshot using ha:// protocol (handled by main process)
+  const imgEl = div.querySelector('.camera-img');
+  if (imgEl) {
+    imgEl.src = `ha://camera/${camera.entity_id}?t=${Date.now()}`;
+    imgEl.onerror = () => {
+      imgEl.style.display = 'none';
+      const fallback = imgEl.nextElementSibling;
+      if (fallback) fallback.style.display = 'flex';
+    };
+  }
+  
+  return div;
+}
+
+function updateWeatherFromHA() {
+  const tempEl = document.getElementById('weather-temp');
+  const conditionEl = document.getElementById('weather-condition');
+  const humidityEl = document.getElementById('weather-humidity');
+  const windEl = document.getElementById('weather-wind');
+  const iconEl = document.getElementById('weather-icon');
+  
+  // Use selected weather entity if available, otherwise use first available
+  let weather = null;
+  if (CONFIG.selectedWeatherEntity && STATES[CONFIG.selectedWeatherEntity]) {
+    weather = STATES[CONFIG.selectedWeatherEntity];
+    console.log('Using selected weather entity:', CONFIG.selectedWeatherEntity);
+  } else {
+    const weatherEntities = Object.values(STATES).filter(e => e.entity_id.startsWith('weather.'));
+    if (weatherEntities.length > 0) {
+      weather = weatherEntities[0];
+      console.log('Using first available weather entity:', weather.entity_id);
+      
+      // Auto-select the first weather entity if none is selected
+      if (!CONFIG.selectedWeatherEntity) {
+        CONFIG.selectedWeatherEntity = weather.entity_id;
+        ipcRenderer.invoke('update-config', CONFIG);
+        console.log('Auto-selected weather entity:', weather.entity_id);
+      }
+    }
+    if (CONFIG.selectedWeatherEntity && !STATES[CONFIG.selectedWeatherEntity]) {
+      console.log('Selected weather entity not found in states:', CONFIG.selectedWeatherEntity);
+    }
+  }
+  
+  if (!weather) {
+    console.log('No weather entity found');
+    if (tempEl) tempEl.textContent = '--°C';
+    if (conditionEl) conditionEl.textContent = '--';
+    if (humidityEl) humidityEl.textContent = '--%';
+    if (windEl) windEl.textContent = '-- km/h';
+    if (iconEl) iconEl.textContent = '🌤️';
+    return;
+  }
+  
+  console.log('Weather data:', {
+    entity_id: weather.entity_id,
+    state: weather.state,
+    attributes: weather.attributes
+  });
+  
+  // Update temperature
+  if (tempEl && weather.attributes.temperature) {
+    tempEl.textContent = `${Math.round(weather.attributes.temperature)}°C`;
+  }
+  
+  // Update condition
+  if (conditionEl) {
+    if (weather.attributes.condition) {
+      conditionEl.textContent = weather.attributes.condition;
+    } else {
+      // Fallback to state if condition is not available
+      conditionEl.textContent = weather.state || '--';
+    }
+  }
+  
+  // Update humidity
+  if (humidityEl && weather.attributes.humidity) {
+    humidityEl.textContent = `${Math.round(weather.attributes.humidity)}%`;
+  }
+  
+  // Update wind
+  if (windEl) {
+    let windText = '--';
+    if (weather.attributes.wind_speed) {
+      const speed = Math.round(weather.attributes.wind_speed);
+      const direction = weather.attributes.wind_bearing;
+      if (direction !== undefined) {
+        const directionText = getWindDirection(direction);
+        windText = `${speed} km/h ${directionText}`;
+      } else {
+        windText = `${speed} km/h`;
+      }
+    }
+    windEl.textContent = windText;
+  }
+  
+  // Update weather icon
+  if (iconEl) {
+    const icon = getWeatherIcon(weather.attributes.condition, weather.attributes.temperature);
+    iconEl.textContent = icon.emoji;
+    
+    // Remove all animation classes first
+    iconEl.classList.remove('animated', 'rain', 'snow', 'wind');
+    
+    // Add specific animation for certain conditions
+    if (icon.animation) {
+      iconEl.classList.add(icon.animation);
+    }
+  }
+}
+
+function getWindDirection(bearing) {
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const index = Math.round(bearing / 22.5) % 16;
+  return directions[index];
+}
+
+function getWeatherIcon(condition, temperature) {
+  if (!condition) return { emoji: '🌤️', animation: null };
+  
+  const conditionLower = condition.toLowerCase();
+  const temp = temperature || 20;
+  
+  // Animated conditions
+  if (conditionLower.includes('rain') || conditionLower.includes('drizzle')) {
+    return { emoji: '🌧️', animation: 'rain' };
+  }
+  if (conditionLower.includes('storm') || conditionLower.includes('thunder')) {
+    return { emoji: '⛈️', animation: 'rain' };
+  }
+  if (conditionLower.includes('snow') || conditionLower.includes('blizzard')) {
+    return { emoji: '❄️', animation: 'snow' };
+  }
+  if (conditionLower.includes('wind') || conditionLower.includes('breezy')) {
+    return { emoji: '💨', animation: 'wind' };
+  }
+  
+  // Static conditions
+  if (conditionLower.includes('clear') || conditionLower.includes('sunny')) {
+    return { emoji: temp > 25 ? '☀️' : '🌤️', animation: null };
+  }
+  if (conditionLower.includes('cloud') || conditionLower.includes('overcast')) {
+    return { emoji: '☁️', animation: null };
+  }
+  if (conditionLower.includes('partly')) {
+    return { emoji: '⛅', animation: null };
+  }
+  if (conditionLower.includes('fog') || conditionLower.includes('mist') || conditionLower.includes('haze') || conditionLower.includes('dust')) {
+    return { emoji: '🌫️', animation: null };
+  }
+  
+  // Default based on temperature
+  if (temp < 0) return { emoji: '❄️', animation: 'snow' };
+  if (temp < 10) return { emoji: '🌨️', animation: null };
+  if (temp > 30) return { emoji: '🌡️', animation: null };
+  
+  return { emoji: '🌤️', animation: null };
+}
+
+// Helper functions for entity display
+function getEntityIcon(entity) {
+  const domain = entity.entity_id.split('.')[0];
+  const iconMap = {
+    'light': '💡',
+    'switch': '🔌',
+    'fan': '🌀',
+    'lock': '🔒',
+    'cover': '🪟',
+    'camera': '📹',
+    'sensor': '📊',
+    'binary_sensor': '📡',
+    'climate': '🌡️',
+    'media_player': '🎵',
+    'scene': '🎭',
+    'automation': '⚙️',
+    'script': '📜',
+    'weather': '🌤️',
+    'person': '👤',
+    'device_tracker': '📱'
+  };
+  return iconMap[domain] || '📋';
+}
+
+function getEntityDisplayName(entity) {
+  return entity.attributes.friendly_name || entity.entity_id.split('.')[1].replace(/_/g, ' ');
+}
+
+function getEntityDisplayState(entity) {
+  const domain = entity.entity_id.split('.')[0];
+  const state = entity.state;
+  
+  if (domain === 'sensor' && entity.attributes.unit_of_measurement) {
+    return `${state} ${entity.attributes.unit_of_measurement}`;
+  } else if (['light', 'switch', 'fan'].includes(domain)) {
+    return state === 'on' ? 'On' : 'Off';
+  } else if (domain === 'lock') {
+    return state === 'locked' ? 'Locked' : 'Unlocked';
+  } else if (domain === 'cover') {
+    return state === 'open' ? 'Open' : 'Closed';
+  } else if (domain === 'binary_sensor') {
+    return state === 'on' ? 'Detected' : 'Clear';
+  } else {
+    return state;
+  }
+}
+
+function getFilteredEntities() {
+  let entities = Object.values(STATES);
+  
+  // Apply domain filters
+  if (FILTERS.domains && FILTERS.domains.length > 0) {
+    entities = entities.filter(e => FILTERS.domains.includes(e.entity_id.split('.')[0]));
+  }
+  
+  // Apply area filters
+  if (FILTERS.areas && FILTERS.areas.length > 0) {
+    entities = entities.filter(e => {
+      const areaId = e.attributes.area_id;
+      return !areaId || FILTERS.areas.includes(areaId);
+    });
+  }
+  
+  // Apply hidden entities filter
+  if (FILTERS.hidden && FILTERS.hidden.length > 0) {
+    entities = entities.filter(e => !FILTERS.hidden.includes(e.entity_id));
+  }
+  
+  // Sort by domain, then by name
+  entities.sort((a, b) => {
+    const domainA = a.entity_id.split('.')[0];
+    const domainB = b.entity_id.split('.')[0];
+    if (domainA !== domainB) {
+      return domainA.localeCompare(domainB);
+    }
+    return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+  });
+  
+  return entities;
+}
+
+function toggleEntity(entity) {
+  if (typeof entity === 'string') {
+    entity = STATES[entity];
+  }
+  if (!entity) {
+    console.error('Entity not found:', entity);
+    return;
+  }
+  
+  const domain = entity.entity_id.split('.')[0];
+  console.log(`Toggling ${entity.entity_id} (${domain}), current state: ${entity.state}`);
+  
+  if (domain === 'light') {
+    // Simple on/off regardless of brightness; restore last state when turning on
+    // Optimistic UI update for snappy feedback
+    const newState = entity.state === 'on' ? 'off' : 'on';
+    STATES[entity.entity_id] = { ...entity, state: newState };
+    updateEntityInUI(STATES[entity.entity_id]);
+    console.log(`Calling homeassistant.toggle for ${entity.entity_id}`);
+    callService('homeassistant', 'toggle', { entity_id: entity.entity_id });
+  } else if (['switch', 'fan'].includes(domain)) {
+    const service = entity.state === 'on' ? 'turn_off' : 'turn_on';
+    console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
+    callService(domain, service, { entity_id: entity.entity_id });
+  } else if (domain === 'lock') {
+    const service = entity.state === 'locked' ? 'unlock' : 'lock';
+    console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
+    callService(domain, service, { entity_id: entity.entity_id });
+  } else if (domain === 'cover') {
+    const service = entity.state === 'open' ? 'close_cover' : 'open_cover';
+    console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
+    callService(domain, service, { entity_id: entity.entity_id });
+  } else if (domain === 'scene') {
+    // Activate scene
+    console.log(`Activating scene ${entity.entity_id}`);
+    callService(domain, 'turn_on', { entity_id: entity.entity_id });
+  } else if (domain === 'script') {
+    // Trigger script
+    console.log(`Triggering script ${entity.entity_id}`);
+    callService(domain, 'turn_on', { entity_id: entity.entity_id });
+  } else if (domain === 'climate') {
+    // Toggle climate on/off
+    const service = entity.state === 'on' ? 'turn_off' : 'turn_on';
+    console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
+    callService(domain, service, { entity_id: entity.entity_id });
+  } else if (domain === 'media_player') {
+    // Toggle media player play/pause
+    const service = entity.state === 'playing' ? 'media_pause' : 'media_play';
+    console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
+    callService(domain, service, { entity_id: entity.entity_id });
+  } else {
+    console.log(`No toggle action defined for domain: ${domain}`);
+  }
+}
+
+// Use WebSocket for service calls (better for real-time updates)
+function callService(domain, service, data = {}) {
+  if (!WS || WS.readyState !== WebSocket.OPEN) {
+    console.error('WebSocket not connected, falling back to HTTP');
+    // Fallback to HTTP if WebSocket is not available
+    if (!CONFIG || !CONFIG.homeAssistant.url || !CONFIG.homeAssistant.token) {
+      console.error('Home Assistant not configured');
+      return;
+    }
+    
+    const url = `${CONFIG.homeAssistant.url}/api/services/${domain}/${service}`;
+    const headers = {
+      'Authorization': `Bearer ${CONFIG.homeAssistant.token}`,
+      'Content-Type': 'application/json'
+    };
+    
+    fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data)
+    }).catch(error => {
+      console.error('Service call failed:', error);
+    });
+    return;
+  }
+
+  try {
+    const id = Date.now();
+    WS.send(JSON.stringify({
+      id: id,
+      type: 'call_service',
+      domain: domain,
+      service: service,
+      service_data: data
+    }));
+    console.log(`Service call: ${domain}.${service}`, data);
+  } catch (error) {
+    console.error('Failed to call service via WebSocket:', error);
+  }
+}
+
+function openCamera(cameraId) {
+  if (!CONFIG || !CONFIG.homeAssistant.url) {
+    console.error('Home Assistant not configured');
+    return;
+  }
+  
+  const camera = STATES[cameraId];
+  if (!camera) {
+    console.error('Camera not found:', cameraId);
+    return;
+  }
+  
+  console.log(`Opening camera: ${cameraId}, state: ${camera.state}`);
+  
+  // Create a camera popup modal
+  const modal = document.createElement('div');
+  modal.className = 'modal camera-modal';
+  modal.innerHTML = `
+    <div class="modal-content camera-content">
+      <div class="modal-header">
+        <h2>${getEntityDisplayName(camera)}</h2>
+        <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="position: relative;">
+          <img alt="${getEntityDisplayName(camera)}" class="camera-stream camera-img">
+          <div class="camera-loading" id="camera-loading">
+            <div class="spinner"></div>
+            Loading live stream...
+          </div>
+        </div>
+        <div style="margin-top: 12px; display:flex; gap:8px;">
+          <button class="btn btn-secondary" id="snapshot-btn">Snapshot</button>
+          <button class="btn btn-primary" id="live-btn">Live</button>
+        </div>
+        <div class="camera-info">
+          <p><strong>Status:</strong> ${camera.state}</p>
+          <p><strong>Last Updated:</strong> ${new Date(camera.last_updated).toLocaleString()}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const img = modal.querySelector('.camera-stream');
+  const snapshotBtn = modal.querySelector('#snapshot-btn');
+  const liveBtn = modal.querySelector('#live-btn');
+  const modalBody = modal.querySelector('.modal-body');
+  const loadingEl = modal.querySelector('#camera-loading');
+  let isLive = false;
+
+  const showLoading = (show) => {
+    if (loadingEl) {
+      loadingEl.classList.toggle('show', show);
+    }
+  };
+
+  const stopLive = () => {
+    showLoading(false);
+    // Stop HLS if running
+    stopHlsStream(cameraId, modalBody);
+    // Stop MJPEG by clearing src
+    if (img) {
+      const isMjpeg = img.src && img.src.includes('camera_stream/');
+      if (isMjpeg) {
+        try { img.src = ''; } catch (_e) {}
+      }
+      img.style.display = 'block';
+    }
+    isLive = false;
+    if (liveBtn) { liveBtn.textContent = 'Live'; }
+  };
+
+  const loadSnapshot = async () => {
+    stopLive();
+    // Use ha:// protocol for snapshot (handled by main process)
+    img.src = `ha://camera/${cameraId}?t=${Date.now()}`;
+  };
+
+  const startLive = async () => {
+    stopLive();
+    showLoading(true);
+    
+    // Try HLS first
+    const hlsStarted = await startHlsStream(cameraId, modalBody, img);
+    if (!hlsStarted) {
+      // Fallback to MJPEG stream using ha:// protocol
+      img.style.display = 'block';
+      img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
+      
+      // Hide loading when MJPEG starts
+      img.onload = () => showLoading(false);
+      img.onerror = () => showLoading(false);
+    } else {
+      // Hide loading when HLS starts
+      showLoading(false);
+    }
+    
+    isLive = true;
+    if (liveBtn) { liveBtn.textContent = 'Stop'; }
+  };
+
+  snapshotBtn.addEventListener('click', loadSnapshot);
+  liveBtn.addEventListener('click', () => {
+    if (isLive) {
+      stopLive();
+      loadSnapshot();
+    } else {
+      startLive();
+    }
+  });
+
+  // default to snapshot
+  loadSnapshot();
+  
+  // Clean up when modal is closed
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      clearInterval(refreshInterval);
+      modal.remove();
+    }
+  });
+  
+  const closeBtn = modal.querySelector('.close-btn');
+  closeBtn.addEventListener('click', () => {
+    stopLive();
+    modal.remove();
+  });
+}
+
+function showSensorDetails(sensor) {
+  const modal = document.createElement('div');
+  modal.className = 'modal sensor-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>${getEntityDisplayName(sensor)}</h2>
+        <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="sensor-details">
+          <div class="sensor-value">
+            <span class="value">${getEntityDisplayState(sensor)}</span>
+            <span class="unit">${sensor.attributes.unit_of_measurement || ''}</span>
+          </div>
+          <div class="sensor-info">
+            <p><strong>State:</strong> ${sensor.state}</p>
+            <p><strong>Last Updated:</strong> ${new Date(sensor.last_updated).toLocaleString()}</p>
+            ${sensor.attributes.device_class ? `<p><strong>Type:</strong> ${sensor.attributes.device_class}</p>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Auto-refresh sensor data every 10 seconds
+  const refreshInterval = setInterval(() => {
+    const updatedSensor = STATES[sensor.entity_id];
+    if (updatedSensor) {
+      const valueEl = modal.querySelector('.value');
+      const stateEl = modal.querySelector('.sensor-info p:first-child');
+      const timeEl = modal.querySelector('.sensor-info p:nth-child(2)');
+      
+      if (valueEl) valueEl.textContent = getEntityDisplayState(updatedSensor);
+      if (stateEl) stateEl.innerHTML = `<strong>State:</strong> ${updatedSensor.state}`;
+      if (timeEl) timeEl.innerHTML = `<strong>Last Updated:</strong> ${new Date(updatedSensor.last_updated).toLocaleString()}`;
+    }
+  }, 10000);
+  
+  // Clean up when modal is closed
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      clearInterval(refreshInterval);
+      modal.remove();
+    }
+  });
+  
+  const closeBtn = modal.querySelector('.close-btn');
+  closeBtn.addEventListener('click', () => {
+    clearInterval(refreshInterval);
+    modal.remove();
+  });
+}
+
+function showBrightnessSlider(light) {
+  if (!light || !light.entity_id.startsWith('light.')) return;
+  
+  const currentBrightness = light.state === 'on' && light.attributes.brightness 
+    ? Math.round((light.attributes.brightness / 255) * 100) 
+    : 0;
+  
+  // Create modal for brightness control
+  const modal = document.createElement('div');
+  modal.className = 'modal brightness-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>${getEntityDisplayName(light)}</h2>
+        <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="brightness-content">
+          <div class="brightness-label">Brightness</div>
+          <div class="brightness-slider-container">
+            <input type="range" 
+                   class="brightness-slider" 
+                   min="0" 
+                   max="100" 
+                   value="${currentBrightness}"
+                   id="brightness-slider">
+            <div class="brightness-value" id="brightness-value">${currentBrightness}%</div>
+          </div>
+          <div class="brightness-controls">
+            <button class="brightness-btn" id="turn-off-btn">Turn Off</button>
+            <button class="brightness-btn" id="turn-on-btn">Turn On</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const slider = modal.querySelector('#brightness-slider');
+  const valueDisplay = modal.querySelector('#brightness-value');
+  const turnOffBtn = modal.querySelector('#turn-off-btn');
+  const turnOnBtn = modal.querySelector('#turn-on-btn');
+  
+  // Update brightness value display
+  const updateBrightnessDisplay = (value) => {
+    valueDisplay.textContent = `${value}%`;
+  };
+  
+  // Handle slider changes
+  slider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    updateBrightnessDisplay(value);
+    
+    if (value === 0) {
+      // Turn off the light
+      callService('light', 'turn_off', { entity_id: light.entity_id });
+    } else {
+      // Set brightness
+      const brightness = Math.round((value / 100) * 255);
+      callService('light', 'turn_on', { 
+        entity_id: light.entity_id,
+        brightness: brightness
+      });
+    }
+  });
+  
+  // Handle turn off button
+  turnOffBtn.addEventListener('click', () => {
+    slider.value = 0;
+    updateBrightnessDisplay(0);
+    callService('light', 'turn_off', { entity_id: light.entity_id });
+  });
+  
+  // Handle turn on button
+  turnOnBtn.addEventListener('click', () => {
+    const value = slider.value || 50; // Default to 50% if slider is at 0
+    slider.value = value;
+    updateBrightnessDisplay(value);
+    const brightness = Math.round((value / 100) * 255);
+    callService('light', 'turn_on', { 
+      entity_id: light.entity_id,
+      brightness: brightness
+    });
+  });
+  
+  // Clean up when modal is closed
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
+  
+  const closeBtn = modal.querySelector('.close-btn');
+  closeBtn.addEventListener('click', () => {
+    modal.remove();
+  });
+}
+
+function renderActiveTab() {
+  // For new single-view design, render everything in one view
+  renderSingleView();
 }
 
 // Render functions for each tab
@@ -2018,6 +3143,7 @@ function renderCameras() {
 function updateEntityInUI(entity) {
   if (!entity) return;
 
+  // Update entity cards
   const cards = document.querySelectorAll(`.entity-card[data-entity-id="${entity.entity_id}"]`);
   cards.forEach(card => {
     const isDashboard = card.dataset.context === 'dashboard';
@@ -2030,6 +3156,71 @@ function updateEntityInUI(entity) {
     const newCard = createEntityCard(entity, { context: card.dataset.context, tabId });
     if (newCard) card.replaceWith(newCard);
   });
+
+  // Update control items
+  const controlItems = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
+  controlItems.forEach(item => {
+    let stateEl = item.querySelector('.control-state');
+    const infoEl = item.querySelector('.control-info');
+
+    if (entity.entity_id.startsWith('sensor.')) {
+      // Ensure element exists
+      if (!stateEl && infoEl) {
+        stateEl = document.createElement('div');
+        stateEl.className = 'control-state';
+        infoEl.appendChild(stateEl);
+      }
+      if (stateEl) stateEl.textContent = getEntityDisplayState(entity);
+    } else if (entity.entity_id.startsWith('light.')) {
+      if (entity.state === 'on' && entity.attributes && typeof entity.attributes.brightness === 'number') {
+        const brightness = Math.round((entity.attributes.brightness / 255) * 100);
+        if (!stateEl && infoEl) {
+          stateEl = document.createElement('div');
+          stateEl.className = 'control-state';
+          infoEl.appendChild(stateEl);
+        }
+        if (stateEl) stateEl.textContent = `${brightness}%`;
+      } else {
+        // Show explicit Off when the light is off
+        if (!stateEl && infoEl) {
+          stateEl = document.createElement('div');
+          stateEl.className = 'control-state';
+          infoEl.appendChild(stateEl);
+        }
+        if (stateEl) stateEl.textContent = 'Off';
+      }
+    } else if (entity.entity_id.startsWith('climate.')) {
+      const temp = entity.attributes.current_temperature || entity.attributes.temperature;
+      if (temp != null) {
+        if (!stateEl && infoEl) {
+          stateEl = document.createElement('div');
+          stateEl.className = 'control-state';
+          infoEl.appendChild(stateEl);
+        }
+        if (stateEl) stateEl.textContent = `${temp}°`;
+      } else if (stateEl) {
+        stateEl.remove();
+      }
+    }
+
+    // Update active state
+    const isActive = entity.state === 'on' || 
+                     entity.state === 'open' || 
+                     entity.state === 'unlocked' ||
+                     entity.state === 'playing' ||
+                     entity.state === 'active';
+    // All entities use the same styling - no special treatment for any entity type
+    
+    // Update tooltip
+    if (entity.entity_id.startsWith('sensor.')) {
+      item.title = `${getEntityDisplayName(entity)}: ${getEntityDisplayState(entity)}`;
+    } else if (entity.entity_id.startsWith('light.')) {
+      item.title = 'Click to toggle, hold for brightness control';
+    } else {
+      item.title = `Click to toggle ${getEntityDisplayName(entity)}`;
+    }
+  });
+
   setLastUpdate();
 }
 
@@ -2136,6 +3327,9 @@ async function openSettings() {
   setupEntitySearchInput('camera-entities', ['camera']);
   setupEntitySearchInput('motion-popup-cameras', ['camera']);
 
+  // Initialize update UI
+  initUpdateUI();
+
   modal.classList.remove('hidden');
   modal.style.display = 'grid';
   trapFocus(modal);
@@ -2233,6 +3427,30 @@ function wireUI() {
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) settingsBtn.onclick = openSettings;
 
+  // Add entities button removed from header - functionality moved to Quick Access section
+
+  const closeEntitySelectorBtn = document.getElementById('close-entity-selector');
+  if (closeEntitySelectorBtn) closeEntitySelectorBtn.onclick = () => {
+    document.getElementById('entity-selector').classList.add('hidden');
+  };
+
+  const manageQuickControlsBtn = document.getElementById('manage-quick-controls-btn');
+  if (manageQuickControlsBtn) manageQuickControlsBtn.onclick = openQuickControlsModal;
+
+  const closeQuickControlsBtn = document.getElementById('close-quick-controls');
+  if (closeQuickControlsBtn) closeQuickControlsBtn.onclick = () => {
+    document.getElementById('quick-controls-modal').classList.add('hidden');
+  };
+  
+  // Weather configuration
+  const closeWeatherConfig = document.getElementById('close-weather-config');
+  if (closeWeatherConfig) closeWeatherConfig.onclick = () => {
+    document.getElementById('weather-config-modal').classList.add('hidden');
+  };
+  
+  const clearWeather = document.getElementById('clear-weather');
+  if (clearWeather) clearWeather.onclick = clearWeatherEntity;
+
   const filterBtn = document.getElementById('filter-btn');
   if (filterBtn) filterBtn.onclick = showFilterModal;
 
@@ -2273,6 +3491,17 @@ function wireUI() {
 
   const cancelSettingsBtn = document.getElementById('cancel-settings');
   if (cancelSettingsBtn) cancelSettingsBtn.onclick = closeSettings;
+
+  // Update UI event handlers
+  const checkUpdatesBtn = document.getElementById('check-updates-btn');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.onclick = checkForUpdates;
+  }
+
+  const installUpdateBtn = document.getElementById('install-update-btn');
+  if (installUpdateBtn) {
+    installUpdateBtn.onclick = installUpdate;
+  }
 
   const addTabBtn = document.getElementById('add-tab-btn');
   if (addTabBtn) {
@@ -2363,8 +3592,31 @@ function releaseFocusTrap(modal) {
 async function init() {
   try {
     showLoading(true);
+    
+    // Initialize new UI structure
+    initializeNewUI();
+    
+    // Test if UI elements exist
+    console.log('UI elements check:', {
+      statusCard: !!document.getElementById('connection-status'),
+      timeCard: !!document.getElementById('current-time'),
+      weatherCard: !!document.getElementById('weather-temp'),
+      quickControls: !!document.getElementById('quick-controls'),
+      entitiesContainer: !!document.getElementById('entities-container')
+    });
+    
     CONFIG = await ipcRenderer.invoke('get-config');
     console.log('CONFIG loaded:', CONFIG);
+    console.log('Selected weather entity:', CONFIG.selectedWeatherEntity);
+    
+    // Update weather immediately after config is loaded
+    updateWeatherFromHA();
+    
+    // Retry weather update after a short delay in case states aren't loaded yet
+    setTimeout(() => {
+      console.log('Retrying weather update after delay...');
+      updateWeatherFromHA();
+    }, 2000);
 
     if (!CONFIG) {
       console.error('Failed to load configuration');
@@ -2401,7 +3653,25 @@ async function init() {
     }
 
     wireUI();
+    
+    // Try to connect to Home Assistant
+    try {
     connectWebSocket();
+    } catch (error) {
+      console.error('Failed to connect to Home Assistant:', error);
+      setStatus(false);
+    }
+    
+    // Always hide loading screen after initialization
+    showLoading(false);
+    
+    // Render the UI even if HA connection fails
+    renderActiveTab();
+    
+    // Set a timeout to hide loading screen after 5 seconds as backup
+    setTimeout(() => {
+      showLoading(false);
+    }, 5000);
 
     document.addEventListener('click', (e) => {
       if (e.target.classList && e.target.classList.contains('modal')) {
@@ -2440,18 +3710,332 @@ async function init() {
   }
 }
 
+// Update UI state management
+let updateState = {
+  status: 'idle',
+  progress: 0,
+  version: null,
+  availableVersion: null
+};
+
+// Compatibility layer for new UI structure
+function initializeNewUI() {
+  // Initialize connection indicator as clean dot
+  const connectionIndicator = document.getElementById('connection-status');
+  if (connectionIndicator) {
+    connectionIndicator.innerHTML = ''; // Keep it clean - just the dot
+    connectionIndicator.className = 'connection-indicator'; // Start as disconnected
+  }
+  
+  // Initialize time display
+  updateTimeDisplay();
+  setInterval(updateTimeDisplay, 1000);
+  
+  // Initialize weather display
+  updateWeatherDisplay();
+  
+  // Add long-press functionality to weather card
+  setupWeatherCardLongPress();
+  
+  // Try to update weather immediately if config is available
+  if (CONFIG && CONFIG.selectedWeatherEntity) {
+    console.log('Attempting early weather update with selected entity:', CONFIG.selectedWeatherEntity);
+    updateWeatherFromHA();
+  }
+}
+
+function updateTimeDisplay() {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  
+  const timeEl = document.getElementById('current-time');
+  const dateEl = document.getElementById('current-date');
+  
+  if (timeEl) timeEl.textContent = timeStr;
+  if (dateEl) dateEl.textContent = dateStr;
+}
+
+function updateWeatherDisplay() {
+  // This will be populated when we get weather data from Home Assistant
+  const tempEl = document.getElementById('weather-temp');
+  const conditionEl = document.getElementById('weather-condition');
+  const humidityEl = document.getElementById('weather-humidity');
+  const windEl = document.getElementById('weather-wind');
+  const iconEl = document.getElementById('weather-icon');
+  
+  if (tempEl) tempEl.textContent = '--°C';
+  if (conditionEl) conditionEl.textContent = '--';
+  if (humidityEl) humidityEl.textContent = '--%';
+  if (windEl) windEl.textContent = '-- km/h';
+  if (iconEl) iconEl.textContent = '🌤️';
+}
+
+function setupWeatherCardLongPress() {
+  const weatherCard = document.getElementById('weather-card');
+  if (!weatherCard) return;
+  
+  let longPressTimer = null;
+  let longPressTriggered = false;
+  
+  weatherCard.addEventListener('mousedown', (e) => {
+    longPressTimer = setTimeout(() => {
+      longPressTriggered = true;
+      openWeatherConfig();
+    }, 500); // 500ms long press
+  });
+  
+  weatherCard.addEventListener('mouseup', () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  });
+  
+  weatherCard.addEventListener('mouseleave', () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  });
+}
+
+function openWeatherConfig() {
+  const modal = document.getElementById('weather-config-modal');
+  if (!modal) return;
+  
+  modal.classList.remove('hidden');
+  loadWeatherEntities();
+  updateCurrentWeatherInfo();
+}
+
+function loadWeatherEntities() {
+  const container = document.getElementById('weather-entities-list');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  const weatherEntities = Object.values(STATES).filter(e => e.entity_id.startsWith('weather.'));
+  
+  if (weatherEntities.length === 0) {
+    container.innerHTML = '<div class="no-entities">No weather entities found in Home Assistant</div>';
+    return;
+  }
+  
+  weatherEntities.forEach(entity => {
+    const item = document.createElement('div');
+    item.className = 'entity-selector-item';
+    item.innerHTML = `
+      <div class="entity-selector-info">
+        <span class="entity-selector-icon">🌤️</span>
+        <div class="entity-selector-details">
+          <div class="entity-selector-name">${entity.attributes?.friendly_name || entity.entity_id}</div>
+          <div class="entity-selector-state">${entity.state}</div>
+        </div>
+      </div>
+      <div class="entity-selector-actions">
+        <button class="entity-selector-btn add" onclick="selectWeatherEntity('${entity.entity_id}')">
+          Select
+        </button>
+      </div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function updateCurrentWeatherInfo() {
+  const nameEl = document.getElementById('current-weather-name');
+  if (!nameEl) return;
+  
+  const currentWeather = CONFIG.selectedWeatherEntity;
+  if (currentWeather && STATES[currentWeather]) {
+    const entity = STATES[currentWeather];
+    nameEl.textContent = entity.attributes?.friendly_name || entity.entity_id;
+  } else {
+    nameEl.textContent = 'None selected';
+  }
+}
+
+function selectWeatherEntity(entityId) {
+  CONFIG.selectedWeatherEntity = entityId;
+  ipcRenderer.invoke('update-config', CONFIG);
+  updateCurrentWeatherInfo();
+  updateWeatherFromHA();
+  showToast('Weather entity selected successfully!');
+}
+
+function clearWeatherEntity() {
+  CONFIG.selectedWeatherEntity = null;
+  ipcRenderer.invoke('update-config', CONFIG);
+  updateCurrentWeatherInfo();
+  updateWeatherFromHA();
+  showToast('Weather entity cleared');
+}
+
+// Update UI elements
+function updateUpdateUI() {
+  const statusEl = document.getElementById('update-status');
+  const statusTextEl = document.getElementById('update-status-text');
+  const checkBtn = document.getElementById('check-updates-btn');
+  const installBtn = document.getElementById('install-update-btn');
+  const progressEl = document.getElementById('update-progress');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.getElementById('progress-text');
+  const checkText = document.getElementById('check-updates-text');
+  const installText = document.getElementById('install-update-text');
+
+  if (!statusEl || !statusTextEl || !checkBtn || !installBtn) return;
+
+  // Update status display
+  statusEl.className = `update-status ${updateState.status}`;
+  
+  switch (updateState.status) {
+    case 'checking':
+      statusTextEl.textContent = 'Checking for updates...';
+      checkBtn.disabled = true;
+      checkText.textContent = 'Checking...';
+      installBtn.classList.add('hidden');
+      progressEl.classList.add('hidden');
+      break;
+      
+    case 'available':
+      statusTextEl.textContent = `Update available: v${updateState.availableVersion}`;
+      checkBtn.disabled = false;
+      checkText.textContent = 'Check for Updates';
+      installBtn.classList.remove('hidden');
+      installText.textContent = 'Download & Install';
+      progressEl.classList.add('hidden');
+      break;
+      
+    case 'downloading':
+      statusTextEl.textContent = 'Downloading update...';
+      checkBtn.disabled = true;
+      checkText.textContent = 'Downloading...';
+      installBtn.classList.add('hidden');
+      progressEl.classList.remove('hidden');
+      progressFill.style.width = `${updateState.progress}%`;
+      progressText.textContent = `${Math.round(updateState.progress)}%`;
+      break;
+      
+    case 'downloaded':
+      statusTextEl.textContent = 'Update ready to install';
+      checkBtn.disabled = false;
+      checkText.textContent = 'Check for Updates';
+      installBtn.classList.remove('hidden');
+      installText.textContent = 'Install & Restart';
+      progressEl.classList.add('hidden');
+      break;
+      
+    case 'up-to-date':
+      statusTextEl.textContent = 'You are up to date';
+      checkBtn.disabled = false;
+      checkText.textContent = 'Check for Updates';
+      installBtn.classList.add('hidden');
+      progressEl.classList.add('hidden');
+      break;
+      
+    case 'error':
+      statusTextEl.textContent = `Update error: ${updateState.error || 'Unknown error'}`;
+      checkBtn.disabled = false;
+      checkText.textContent = 'Check for Updates';
+      installBtn.classList.add('hidden');
+      progressEl.classList.add('hidden');
+      break;
+      
+    default:
+      statusTextEl.textContent = 'Ready to check for updates';
+      checkBtn.disabled = false;
+      checkText.textContent = 'Check for Updates';
+      installBtn.classList.add('hidden');
+      progressEl.classList.add('hidden');
+  }
+}
+
+// Initialize update UI
+async function initUpdateUI() {
+  try {
+    const version = await ipcRenderer.invoke('get-app-version');
+    updateState.version = version;
+    
+    const versionEl = document.getElementById('current-version');
+    if (versionEl) {
+      versionEl.textContent = `v${version}`;
+    }
+    
+    updateUpdateUI();
+  } catch (error) {
+    console.error('Failed to get app version:', error);
+  }
+}
+
+// Manual update check
+async function checkForUpdates() {
+  try {
+    updateState.status = 'checking';
+    updateUpdateUI();
+    
+    const result = await ipcRenderer.invoke('check-for-updates');
+    
+    if (result.status === 'dev') {
+      updateState.status = 'up-to-date';
+      updateState.error = 'Development mode - updates not available';
+    } else if (result.status === 'error') {
+      updateState.status = 'error';
+      updateState.error = result.error;
+    }
+    
+    updateUpdateUI();
+  } catch (error) {
+    updateState.status = 'error';
+    updateState.error = error.message;
+    updateUpdateUI();
+  }
+}
+
+// Install update
+async function installUpdate() {
+  try {
+    await ipcRenderer.invoke('quit-and-install');
+  } catch (error) {
+    updateState.status = 'error';
+    updateState.error = error.message;
+    updateUpdateUI();
+  }
+}
+
 ipcRenderer.on('auto-update', (_e, payload) => {
   const st = payload?.status;
+  
+  // Update internal state
+  switch (st) {
+    case 'checking':
+      updateState.status = 'checking';
+      break;
+    case 'available':
+      updateState.status = 'available';
+      updateState.availableVersion = payload.info?.version;
+      break;
+    case 'none':
+      updateState.status = 'up-to-date';
+      break;
+    case 'downloading':
+      updateState.status = 'downloading';
+      updateState.progress = payload.progress?.percent || 0;
+      break;
+    case 'downloaded':
+      updateState.status = 'downloaded';
+      break;
+    case 'error':
+      updateState.status = 'error';
+      updateState.error = payload.error;
+      break;
+  }
+  
+  // Update UI
+  updateUpdateUI();
+  
+  // Show toast notifications
   if (st === 'checking') showToast('Checking for updates...', 'success', 1200);
   else if (st === 'available') showToast('Update available. Downloading...', 'success', 2500);
   else if (st === 'none') showToast('You are up to date.', 'success', 2000);
-  else if (st === 'downloading') {
-    // Download progress is handled elsewhere
-  } else if (st === 'downloaded') {
-    showToast('Update ready. It will install on quit.', 'success', 4000);
-  } else if (st === 'error') {
-    showToast('Update error. See logs for details.', 'error', 3000);
-  }
+  else if (st === 'downloaded') showToast('Update ready. Click "Install & Restart" to update.', 'success', 4000);
+  else if (st === 'error') showToast('Update error. See logs for details.', 'error', 3000);
 });
 
 ipcRenderer.on('open-settings', () => {

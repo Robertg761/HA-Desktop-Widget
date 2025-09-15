@@ -305,6 +305,10 @@ ipcMain.handle('quit-and-install', () => {
   }
 });
 
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
 // App event handlers
 function setupAutoUpdates() {
   if (!app.isPackaged) return;

@@ -7,193 +7,119 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Draggable header area -->
+    <!-- Minimal header with just drag area and essential controls -->
     <div class="widget-header">
         <div class="drag-area">
             <span class="widget-title">Home Assistant</span>
-            <div class="header-controls">
-                <button id="filter-btn" class="control-btn" title="Filter">🔍</button>
-                <button id="layout-btn" class="control-btn" title="Layout">📐</button>
-                <button id="manage-tabs-btn" class="control-btn" title="Manage Tabs">📑</button>
-                <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
-                <button id="refresh-btn" class="control-btn" title="Refresh">🔄</button>
-                <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
-                <button id="close-btn" class="control-btn" title="Close">❌</button>
+            <div class="connection-indicator" id="connection-status"></div>
+        </div>
+                <div class="header-controls">
+                    <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
+                    <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
+                    <button id="close-btn" class="control-btn" title="Close">❌</button>
+                </div>
+    </div>
+
+    <!-- Main widget content - single view, no tabs -->
+    <div class="widget-content">
+        <!-- Quick Status Cards -->
+        <div class="status-grid">
+            <div class="status-card weather-card" id="weather-card" title="Long-press to configure weather">
+                <div class="weather-icon" id="weather-icon">🌤️</div>
+                <div class="weather-content">
+                    <div class="weather-main">
+                        <div class="weather-temp" id="weather-temp">--°</div>
+                        <div class="weather-condition" id="weather-condition">--</div>
+                    </div>
+                    <div class="weather-details">
+                        <div class="weather-detail">
+                            <span class="detail-icon">💧</span>
+                            <span class="detail-value" id="weather-humidity">--%</span>
+                        </div>
+                        <div class="weather-detail">
+                            <span class="detail-icon">💨</span>
+                            <span class="detail-value" id="weather-wind">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-card time-card" id="time-card">
+                <div class="time-content">
+                    <div class="time-main">
+                        <div class="time-display" id="current-time">--:--</div>
+                    </div>
+                    <div class="date-display" id="current-date">--</div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Status bar -->
-    <div class="status-bar">
-        <span id="connection-status" class="status-indicator">● Disconnected</span>
-        <span id="last-update" class="last-update">Never</span>
-        <span id="notification-badge" class="notification-badge hidden">0</span>
-    </div>
-
-    <!-- Tab navigation -->
-    <div class="tab-nav-wrapper">
-        <button id="tab-scroll-left" class="tab-scroll" aria-label="Scroll left" title="Scroll left">◀</button>
-        <div class="tab-navigation" role="tablist" aria-label="Main tabs">
-            <button id="tab-dashboard" class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="dashboard-tab">Dashboard</button>
-            <button id="tab-scenes" class="tab-btn" data-tab="scenes" role="tab" aria-selected="false" aria-controls="scenes-tab">Scenes</button>
-            <button id="tab-automations" class="tab-btn" data-tab="automations" role="tab" aria-selected="false" aria-controls="automations-tab">Automations</button>
-            <button id="tab-media" class="tab-btn" data-tab="media" role="tab" aria-selected="false" aria-controls="media-tab">Media</button>
-            <button id="tab-cameras" class="tab-btn" data-tab="cameras" role="tab" aria-selected="false" aria-controls="cameras-tab">Cameras</button>
-            <button id="tab-weather" class="tab-btn" data-tab="weather" role="tab" aria-selected="false" aria-controls="weather-tab">Weather</button>
-            <button id="tab-history" class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="history-tab">History</button>
-            <button id="tab-services" class="tab-btn" data-tab="services" role="tab" aria-selected="false" aria-controls="services-tab">Services</button>
-        </div>
-        <button id="tab-scroll-right" class="tab-scroll" aria-label="Scroll right" title="Scroll right">▶</button>
-    </div>
-
-    <!-- Main dashboard area -->
-    <div class="dashboard-container">
-        <!-- Dashboard Tab -->
-        <div id="dashboard-tab" class="tab-content active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
-        <!-- Quick controls section -->
-        <div class="section">
-            <h3 class="section-title">Quick Controls</h3>
+        <!-- Quick Access -->
+        <div class="controls-section">
+                    <div class="section-header">
+                        <span class="section-title">Quick Access</span>
+                        <button id="manage-quick-controls-btn" class="section-btn" title="Manage Quick Access">➕</button>
+                    </div>
             <div id="quick-controls" class="controls-grid">
                 <!-- Dynamic controls will be added here -->
             </div>
         </div>
 
-        <!-- Lights section -->
-        <div class="section">
-            <h3 class="section-title">Lights</h3>
-            <div id="lights-container" class="entity-list">
-                <!-- Dynamic light entities will be added here -->
-            </div>
-        </div>
-
-        <!-- Sensors section -->
-        <div class="section">
-            <h3 class="section-title">Sensors</h3>
-            <div id="sensors-container" class="entity-list">
-                <!-- Dynamic sensor entities will be added here -->
-            </div>
-        </div>
-
-        <!-- Climate section -->
-        <div class="section">
-            <h3 class="section-title">Climate</h3>
-            <div id="climate-container" class="entity-list">
-                <!-- Dynamic climate entities will be added here -->
-            </div>
-        </div>
-
-        <!-- Media Players section -->
-        <div class="section">
-            <h3 class="section-title">Media Players</h3>
-            <div id="media-container" class="entity-list">
-                <!-- Dynamic media player entities will be added here -->
-            </div>
-        </div>
-        </div>
-
-        <!-- Scenes Tab -->
-        <div id="scenes-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-scenes" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">Scenes</h3>
-                <div id="scenes-container" class="entity-list"></div>
-            </div>
-        </div>
-
-        <!-- Automations Tab -->
-        <div id="automations-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-automations" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">Automations</h3>
-                <div id="automations-container" class="entity-list"></div>
-            </div>
-        </div>
-
-        <!-- Media Tab -->
-        <div id="media-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-media" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">Media Players</h3>
-                <div id="media-players-container" class="entity-list"></div>
-            </div>
-        </div>
-
-        <!-- Cameras Tab -->
-        <div id="cameras-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-cameras" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">Cameras</h3>
-                <div id="cameras-container" class="cameras-grid"></div>
-            </div>
-        </div>
-
-        <!-- Weather Tab -->
-        <div id="weather-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-weather" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">Weather</h3>
-                <div id="weather-container" class="weather"></div>
-            </div>
-        </div>
-
-        <!-- History Tab -->
-        <div id="history-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-history" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">History</h3>
-                <canvas id="history-chart" height="140"></canvas>
-                <div id="history-legend" class="legend"></div>
-            </div>
-        </div>
-
-        <!-- Services Tab -->
-        <div id="services-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-services" tabindex="0">
-            <div class="section">
-                <h3 class="section-title">Service Explorer</h3>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="service-domain">Domain</label>
-                        <select id="service-domain"></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="service-name">Service</label>
-                        <select id="service-name"></select>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="service-entity">Entity (optional)</label>
-                    <input id="service-entity" type="text" placeholder="entity_id (e.g., light.living_room)">
-                </div>
-                <div class="form-group">
-                    <label for="service-data">Data (JSON)</label>
-                    <textarea id="service-data" rows="6" placeholder="{\n  \"brightness\": 180\n}"></textarea>
-                </div>
-                <div class="form-actions">
-                    <button id="run-service" class="btn btn-primary">Run Service</button>
-                    <span id="service-result" class="muted"></span>
+        <!-- Entity Cards - Hidden by default, shown only when needed -->
+        <div class="entities-section hidden">
+            <div class="section-header">
+                <span class="section-title">Entities</span>
+                <div class="section-controls">
+                    <button id="filter-btn" class="mini-btn" title="Filter">🔍</button>
+                    <button id="layout-btn" class="mini-btn" title="Layout">📐</button>
                 </div>
             </div>
+            <div id="entities-container" class="entities-grid">
+                <!-- Dynamic entity cards will be added here -->
+            </div>
+        </div>
 
-            <div class="section">
-                <h3 class="section-title">Entity Inspector</h3>
-                <div class="form-group">
-                    <input id="entity-search" type="text" placeholder="Search entities...">
-                </div>
-                <div id="entity-list" class="entity-list compact"></div>
+        <!-- Cameras (if any) -->
+        <div class="cameras-section" id="cameras-section" style="display: none;">
+            <div class="section-header">
+                <span class="section-title">Cameras</span>
+            </div>
+            <div id="cameras-container" class="cameras-grid">
+                <!-- Dynamic camera cards will be added here -->
             </div>
         </div>
     </div>
 
-    <!-- Settings Modal -->
+    <!-- Floating context menu (appears on right-click) -->
+    <div id="context-menu" class="context-menu hidden">
+        <div class="menu-item" data-action="refresh">🔄 Refresh</div>
+        <div class="menu-item" data-action="settings">⚙️ Settings</div>
+        <div class="menu-item" data-action="filter">🔍 Filter</div>
+        <div class="menu-item" data-action="layout">📐 Layout</div>
+        <div class="menu-divider"></div>
+        <div class="menu-item" data-action="minimize">➖ Minimize</div>
+        <div class="menu-item" data-action="close">❌ Close</div>
+    </div>
+
+    <!-- Settings Modal (same as before but cleaner) -->
     <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content">
-            <h2 id="settings-title">Settings</h2>
-            <div class="settings-form">
+            <div class="modal-header">
+                <h2 id="settings-title">Settings</h2>
+                <button id="close-settings" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Same settings content as before -->
                 <div class="form-group">
-                    <label for="ha-url">Home Assistant URL <span class="info-icon" title="Your Home Assistant base URL, e.g. http://homeassistant.local:8123 or https://ha.example.com">ℹ</span>:</label>
+                    <label for="ha-url">Home Assistant URL:</label>
                     <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
                 </div>
                 <div class="form-group">
-                    <label for="ha-token">Access Token <span class="info-icon" title="Create a long-lived access token in your HA profile. Keep it secret.">ℹ</span>:</label>
+                    <label for="ha-token">Access Token:</label>
                     <input type="password" id="ha-token" placeholder="Your long-lived access token">
-                    <small>Create a token in Home Assistant: Profile → Long-Lived Access Tokens</small>
                 </div>
                 <div class="form-group">
-                    <label for="update-interval">Update Interval (seconds) <span class="info-icon" title="How often the dashboard refreshes snapshot data. Live streams are unaffected.">ℹ</span>:</label>
+                    <label for="update-interval">Update Interval (seconds):</label>
                     <input type="number" id="update-interval" min="1" max="60" value="5">
                 </div>
                 <div class="form-group">
@@ -207,78 +133,125 @@
                         Always on top
                     </label>
                 </div>
+                
+                <!-- Update Section -->
+                <div class="form-group update-section">
+                    <label>Application Updates</label>
+                    <div class="update-info">
+                        <div class="version-info">
+                            <span>Current Version: <strong id="current-version">Loading...</strong></span>
+                        </div>
+                        <div class="update-status" id="update-status">
+                            <span id="update-status-text">Checking for updates...</span>
+                        </div>
+                        <div class="update-actions">
+                            <button id="check-updates-btn" class="btn btn-secondary" disabled>
+                                <span id="check-updates-text">Check for Updates</span>
+                            </button>
+                            <button id="install-update-btn" class="btn btn-primary hidden">
+                                <span id="install-update-text">Install Update</span>
+                            </button>
+                        </div>
+                        <div class="update-progress hidden" id="update-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progress-fill"></div>
+                            </div>
+                            <span class="progress-text" id="progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-settings" class="btn btn-primary">Save</button>
+                <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Modal (simplified) -->
+    <div id="filter-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="filter-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="filter-title">Filter Entities</h2>
+                <button id="close-filter" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
                 <div class="form-group">
-                    <label>Show Domains</label>
-                    <div id="domain-filters" class="checkbox-grid"></div>
+                    <label>Domains:</label>
+                    <div id="filter-domains" class="checkbox-grid">
+                        <!-- Dynamic checkboxes will be added here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="apply-filters" class="btn btn-primary">Apply</button>
+                <button id="cancel-filters" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Selector Modal -->
+    <div id="entity-selector" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="entity-selector-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="entity-selector-title">Add Entities to Dashboard</h2>
+                <button id="close-entity-selector" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="entity-search" placeholder="Search entities..." class="form-control">
                 </div>
                 <div class="form-group">
-                    <label for="area-select">Areas</label>
-                    <select id="area-select" multiple></select>
-                    <small>Hold Ctrl to select multiple</small>
+                    <label>Available Entities:</label>
+                    <div id="available-entities-list" class="entity-selector-list">
+                        <!-- Available entities will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Access Management Modal -->
+    <div id="quick-controls-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="quick-controls-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="quick-controls-title">Manage Quick Access</h2>
+                <button id="close-quick-controls" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="quick-controls-search" placeholder="Search entities..." class="form-control">
                 </div>
                 <div class="form-group">
-                    <label for="favorite-entities">Favorite Entities <span class="info-icon" title="Quick access list on the default Dashboard. Start typing to search and click to add.">ℹ</span></label>
-                    <input id="favorite-entities" type="text" placeholder="sensor.outdoor_temp, sensor.humidity">
+                    <label>Available Entities for Quick Access:</label>
+                    <div id="quick-controls-list" class="entity-selector-list">
+                        <!-- Available entities will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weather Configuration Modal -->
+    <div id="weather-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="weather-config-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="weather-config-title">Configure Weather</h2>
+                <button id="close-weather-config" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Weather Entity:</label>
+                    <div id="weather-entities-list" class="entity-selector-list">
+                        <!-- Available weather entities will be loaded here -->
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label for="camera-entities">Camera Entities <span class="info-icon" title="Cameras shown on the Cameras tab and for quick access. Start typing to search and click to add.">ℹ</span></label>
-                    <input id="camera-entities" type="text" placeholder="camera.front_door, camera.driveway">
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="motion-popup-enabled">
-                        Enable motion pop-up (show camera when motion detected)
-                        <span class="info-icon" title="When a motion sensor triggers, the matching camera pops up with live video.">ℹ</span>
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label for="motion-popup-cameras">Motion Pop-up Cameras <span class="info-icon" title="Which cameras are eligible for motion pop-ups. Start typing to search and click to add.">ℹ</span></label>
-                    <input id="motion-popup-cameras" type="text" placeholder="camera.front_door, camera.driveway">
-                </div>
-                <div class="form-group">
-                    <label for="motion-popup-autohide">Auto-hide after (seconds) <span class="info-icon" title="How long the motion pop-up stays visible without interaction.">ℹ</span></label>
-                    <input id="motion-popup-autohide" type="number" min="3" max="120" value="12">
-                </div>
-                <div class="form-group">
-                    <label for="motion-popup-cooldown">Cooldown per camera (seconds) <span class="info-icon" title="Minimum delay before the same camera can pop up again.">ℹ</span></label>
-                    <input id="motion-popup-cooldown" type="number" min="0" max="600" value="30">
-                </div>
-                <div class="form-group">
-                    <label for="density-select">Density</label>
-                    <select id="density-select">
-                        <option value="comfortable">Comfortable</option>
-                        <option value="compact">Compact</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="theme-select">Theme</label>
-                    <select id="theme-select">
-                        <option value="auto">Auto (OS preference)</option>
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="high-contrast">
-                        High contrast (stronger backgrounds & text)
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="opaque-panels">
-                        Opaque panels (disable blur/transparency)
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="show-details">
-                        Show extra details under entity names
-                    </label>
-                </div>
-                <div class="modal-buttons">
-                    <button id="save-settings" class="btn btn-primary">Save</button>
-                    <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
+                    <label>Current Weather Entity:</label>
+                    <div id="current-weather-info" class="weather-info">
+                        <span id="current-weather-name">None selected</span>
+                        <button id="clear-weather" class="btn btn-secondary btn-sm">Clear</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -290,25 +263,8 @@
         <p>Connecting to Home Assistant...</p>
     </div>
 
+    <!-- Toast notifications -->
     <div id="toast-container" class="toast-container"></div>
-
-    <!-- Manage Tabs Modal -->
-    <div id="manage-tabs-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="manage-tabs-title">
-        <div class="modal-content">
-            <h2 id="manage-tabs-title">Manage Tabs</h2>
-            <div id="manage-tabs-list"></div>
-            <div class="form-group">
-                <label for="new-tab-name">Add New Tab</label>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="new-tab-name" placeholder="New tab name...">
-                    <button id="add-tab-btn" class="btn btn-primary">Add</button>
-                </div>
-            </div>
-            <div class="modal-buttons">
-                <button id="close-manage-tabs-modal" class="btn btn-secondary">Close</button>
-            </div>
-        </div>
-    </div>
 
     <script src="renderer-final.js"></script>
 </body>

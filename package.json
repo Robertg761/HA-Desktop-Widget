@@ -1,6 +1,6 @@
 {
   "name": "home-assistant-widget",
-  "version": "1.4.1",
+  "version": "2.0.0",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -96,7 +96,8 @@
     "@eslint/js": "^9.13.0",
     "globals": "^15.9.0"
   },
-"dependencies": {"hls.js": "^1.4.12",
+  "dependencies": {
+    "hls.js": "^1.4.12",
     "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "chartjs-adapter-date-fns": "^3.0.0",
