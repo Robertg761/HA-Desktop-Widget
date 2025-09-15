@@ -49,6 +49,59 @@ let FILTERS = {
 };
 let THEME_MEDIA_QUERY = null;
 
+// Window function definitions (moved here to avoid hoisting issues)
+window.addToDashboard = function(entityId, tabId) {
+  if (!TAB_LAYOUTS[tabId]) TAB_LAYOUTS[tabId] = [];
+  if (!TAB_LAYOUTS[tabId].includes(entityId)) {
+    TAB_LAYOUTS[tabId].push(entityId);
+    renderActiveTab();
+    showEntitySelector(tabId); // Refresh available list
+  }
+};
+
+window.removeFromDashboard = function(entityId, tabId) {
+  const layout = TAB_LAYOUTS[tabId] || [];
+  const index = layout.indexOf(entityId);
+  if (index > -1) {
+    layout.splice(index, 1);
+    renderActiveTab();
+    showEntitySelector(tabId); // Refresh available list
+  }
+};
+
+window.disableEditMode = disableEditMode;
+
+window.closeFilterModal = function() {
+  const modal = document.getElementById('filter-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    releaseFocusTrap(modal);
+  }
+};
+
+window.applyFilters = function() {
+  const checkboxes = document.querySelectorAll('#filter-domains input[type="checkbox"]');
+  FILTERS.domains = Array.from(checkboxes)
+    .filter(cb => cb.checked)
+    .map(cb => cb.value);
+
+  const areaSelect = document.getElementById('filter-areas');
+  if (areaSelect) {
+    FILTERS.areas = Array.from(areaSelect.selectedOptions).map(opt => opt.value);
+  }
+
+  const hiddenInput = document.getElementById('hidden-entities');
+  if (hiddenInput) {
+    FILTERS.hidden = hiddenInput.value.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  CONFIG.filters = FILTERS;
+  ipcRenderer.invoke('update-config', CONFIG);
+
+  window.closeFilterModal();
+  renderActiveTab();
+};
+
 // WebSocket connection for real-time updates
 function connectWebSocket() {
   if (!CONFIG || !CONFIG.homeAssistant.url || !CONFIG.homeAssistant.token) {
@@ -220,7 +273,9 @@ function createEntityCard(entity, options = {}) {
     };
     card.ondragend = () => {
       card.classList.remove('dragging');
-      try { if (DRAG_PLACEHOLDER && DRAG_PLACEHOLDER.parentNode) DRAG_PLACEHOLDER.remove(); } catch (_) {}
+      try { if (DRAG_PLACEHOLDER && DRAG_PLACEHOLDER.parentNode) DRAG_PLACEHOLDER.remove(); } catch (_error) {
+        // Ignore errors when removing drag placeholder
+      }
     };
   }
 
@@ -426,7 +481,7 @@ function createEntityCard(entity, options = {}) {
       removeBtn.textContent = '×';
       removeBtn.setAttribute('aria-label', 'Remove card');
       removeBtn.title = 'Remove from dashboard';
-      removeBtn.onclick = () => removeFromDashboard(entity.entity_id, options.tabId);
+      removeBtn.onclick = () => window.removeFromDashboard(entity.entity_id, options.tabId);
       right.appendChild(removeBtn);
     }
     headerRow.appendChild(right);
@@ -523,7 +578,7 @@ function createEntityCard(entity, options = {}) {
     removeBtn.setAttribute('aria-label', 'Remove card');
     removeBtn.title = 'Remove from dashboard';
     removeBtn.style.marginLeft = '10px';
-    removeBtn.onclick = () => removeFromDashboard(entity.entity_id, options.tabId);
+    removeBtn.onclick = () => window.removeFromDashboard(entity.entity_id, options.tabId);
     right.appendChild(removeBtn);
   }
 
@@ -697,8 +752,12 @@ async function startHlsStream(entityId, card, img) {
   // Clean up any existing HLS instance
   const existing = ACTIVE_HLS.get(entityId);
   if (existing) {
-    try { existing.hls?.destroy(); } catch (_) {}
-    try { existing.video.pause(); existing.video.removeAttribute('src'); existing.video.load(); } catch (_) {}
+    try { existing.hls?.destroy(); } catch (_error) {
+      // Ignore errors when destroying HLS instance
+    }
+    try { existing.video.pause(); existing.video.removeAttribute('src'); existing.video.load(); } catch (_error) {
+      // Ignore errors when resetting video element
+    }
     ACTIVE_HLS.delete(entityId);
   }
 
@@ -709,7 +768,9 @@ async function startHlsStream(entityId, card, img) {
     hls.on(Hls.Events.ERROR, (_evt, data) => {
       console.warn('HLS error', data?.details || data);
       if (data?.fatal) {
-        try { hls.destroy(); } catch (_) {}
+        try { hls.destroy(); } catch (_error) {
+          // Ignore errors when destroying HLS instance
+        }
         ACTIVE_HLS.delete(entityId);
         // Fallback to MJPEG if fatal error
         video.style.display = 'none';
@@ -731,9 +792,15 @@ async function startHlsStream(entityId, card, img) {
 function stopHlsStream(entityId, card) {
   const active = ACTIVE_HLS.get(entityId);
   if (active) {
-    try { active.hls?.destroy(); } catch (_) {}
-    try { active.video.pause(); active.video.removeAttribute('src'); active.video.load(); } catch (_) {}
-    try { active.video.remove(); } catch (_) {}
+    try { active.hls?.destroy(); } catch (_error) {
+      // Ignore errors when destroying HLS instance
+    }
+    try { active.video.pause(); active.video.removeAttribute('src'); active.video.load(); } catch (_error) {
+      // Ignore errors when resetting video element
+    }
+    try { active.video.remove(); } catch (_error) {
+      // Ignore errors when removing video element
+    }
     ACTIVE_HLS.delete(entityId);
     const img = card?.querySelector('.camera-img');
     if (img) { img.style.display = 'block'; }
@@ -970,27 +1037,6 @@ function hideEntitySelector() {
   }
 }
 
-window.addToDashboard = function(entityId, tabId) {
-  if (!TAB_LAYOUTS[tabId]) TAB_LAYOUTS[tabId] = [];
-  if (!TAB_LAYOUTS[tabId].includes(entityId)) {
-    TAB_LAYOUTS[tabId].push(entityId);
-    renderActiveTab();
-    showEntitySelector(tabId); // Refresh available list
-  }
-};
-
-window.removeFromDashboard = function(entityId, tabId) {
-  const layout = TAB_LAYOUTS[tabId] || [];
-  const index = layout.indexOf(entityId);
-  if (index > -1) {
-    layout.splice(index, 1);
-    renderActiveTab();
-    showEntitySelector(tabId); // Refresh available list
-  }
-};
-
-window.disableEditMode = disableEditMode;
-
 function saveTabLayouts() {
   CONFIG.tabLayouts = TAB_LAYOUTS;
   ipcRenderer.invoke('update-config', CONFIG);
@@ -1064,9 +1110,11 @@ function renderSkeletonCards(container, count = 4) {
       sk.appendChild(left); sk.appendChild(right);
       container.appendChild(sk);
     }
-  } catch (_) {}
+  } catch (_error) {
+    // Ignore errors when rendering skeleton cards
+  }
 }
-function renderSkeletonWeather(container, count = 2) {
+function _renderSkeletonWeather(container, count = 2) {
   try {
     for (let i = 0; i < count; i++) {
       const w = document.createElement('div');
@@ -1074,7 +1122,9 @@ function renderSkeletonWeather(container, count = 2) {
       w.style.height = '120px';
       container.appendChild(w);
     }
-  } catch (_) {}
+  } catch (_error) {
+    // Ignore errors when rendering skeleton weather
+  }
 }
 
 // Filter modal
@@ -1122,37 +1172,6 @@ function showFilterModal() {
   modal.style.display = 'grid';
   trapFocus(modal);
 }
-
-window.applyFilters = function() {
-  const checkboxes = document.querySelectorAll('#filter-domains input[type="checkbox"]');
-  FILTERS.domains = Array.from(checkboxes)
-    .filter(cb => cb.checked)
-    .map(cb => cb.value);
-
-  const areaSelect = document.getElementById('filter-areas');
-  if (areaSelect) {
-    FILTERS.areas = Array.from(areaSelect.selectedOptions).map(opt => opt.value);
-  }
-
-  const hiddenInput = document.getElementById('hidden-entities');
-  if (hiddenInput) {
-    FILTERS.hidden = hiddenInput.value.split(',').map(s => s.trim()).filter(Boolean);
-  }
-
-  CONFIG.filters = FILTERS;
-  ipcRenderer.invoke('update-config', CONFIG);
-
-  closeFilterModal();
-  renderActiveTab();
-};
-
-window.closeFilterModal = function() {
-  const modal = document.getElementById('filter-modal');
-  if (modal) {
-    modal.style.display = 'none';
-    releaseFocusTrap(modal);
-  }
-};
 
 function populateFilterDomains() {
   const container = document.getElementById('filter-domains');
@@ -1398,7 +1417,7 @@ function populateServiceExplorer() {
         if (dataInput && dataInput.value.trim()) {
           serviceData = JSON.parse(dataInput.value);
         }
-      } catch (e) {
+      } catch (_error) {
         if (resultSpan) resultSpan.textContent = 'Invalid JSON';
         return;
       }
@@ -1607,7 +1626,9 @@ function renderTabs() {
         renderActiveTab();
         content.focus();
       }
-      try { tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (_) {}
+      try { tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (_error) {
+        // Ignore errors when scrolling tab into view
+      }
     };
 
     tabContainer.appendChild(tab);
@@ -1724,7 +1745,7 @@ function renameTab(tabId) {
   }
 }
 
-function addTab(tabId) {
+function _addTab(tabId) {
   if (!CONFIG.visibleTabs.includes(tabId)) {
     CONFIG.visibleTabs.push(tabId);
     ipcRenderer.invoke('update-config', CONFIG);
@@ -2192,7 +2213,9 @@ async function saveSettings() {
             return;
           }
         }
-      } catch (_) {}
+      } catch (_error) {
+        // Ignore errors when setting always on top
+      }
     }
 
     closeSettings();
@@ -2423,6 +2446,7 @@ ipcRenderer.on('auto-update', (_e, payload) => {
   else if (st === 'available') showToast('Update available. Downloading...', 'success', 2500);
   else if (st === 'none') showToast('You are up to date.', 'success', 2000);
   else if (st === 'downloading') {
+    // Download progress is handled elsewhere
   } else if (st === 'downloaded') {
     showToast('Update ready. It will install on quit.', 'success', 4000);
   } else if (st === 'error') {
@@ -2551,7 +2575,7 @@ function updateTimerCountdown(entity, el) {
   }
 }
 
-function handleMotionEvent(newState, oldState) {
+function handleMotionEvent(newState, _oldState) {
   try {
     const mp = CONFIG?.motionPopup || {};
     if (!mp.enabled) return;
@@ -2619,7 +2643,9 @@ async function showMotionPopup(cameraId) {
 
     if (MOTION_POPUP_CAMERA && MOTION_POPUP_CAMERA !== cameraId) {
       stopHlsStream(MOTION_POPUP_CAMERA, body);
-      try { body.innerHTML = ''; } catch (_) {}
+      try { body.innerHTML = ''; } catch (_error) {
+        // Ignore errors when clearing motion popup body
+      }
     }
 
     MOTION_POPUP_CAMERA = cameraId;

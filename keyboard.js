@@ -8,7 +8,9 @@ function shouldIgnoreShortcut(target) {
       const ce = target.closest('[contenteditable="true"]');
       if (ce) return true;
     }
-  } catch (_) {}
+  } catch (_error) {
+    // Ignore errors when checking for contenteditable elements
+  }
   // ARIA textbox roles (e.g., div[role=textbox])
   const role = (target.getAttribute && target.getAttribute('role')) || '';
   if (role.toLowerCase() === 'textbox') return true;

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen, shell, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -41,8 +41,8 @@ function loadConfig() {
           const legacyConfig = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
           config = { ...defaultConfig, ...legacyConfig };
           migrated = true;
-        } catch (e) {
-          console.warn('Legacy config exists but could not be parsed, using defaults.');
+        } catch (error) {
+          console.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
           config = defaultConfig;
         }
       } else {
@@ -68,15 +68,15 @@ function saveConfig() {
   try {
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  } catch (e) {
-    console.error('Failed to save config:', e);
+  } catch (error) {
+    console.error('Failed to save config:', error);
   }
 }
 
 function createWindow() {
   // Get the primary display's work area
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
+  const primaryDisplay = electronScreen.getPrimaryDisplay();
+  const { width: _width, height: _height } = primaryDisplay.workAreaSize;
 
   // Create the browser window with transparency
   mainWindow = new BrowserWindow({
@@ -260,8 +260,8 @@ ipcMain.handle('set-always-on-top', (event, value) => {
   config.alwaysOnTop = flag;
   try {
     mainWindow.setAlwaysOnTop(flag);
-  } catch (e) {
-    // ignore
+  } catch (error) {
+    console.warn('Failed to set always on top:', error.message);
   }
   saveConfig();
   return { applied: mainWindow?.isAlwaysOnTop?.() === flag };
@@ -276,8 +276,8 @@ ipcMain.handle('restart-app', () => {
     isQuitting = true;
     app.relaunch();
     app.exit(0);
-  } catch (e) {
-    // ignore
+  } catch (error) {
+    console.warn('Failed to restart app:', error.message);
   }
 });
 
@@ -335,8 +335,8 @@ function setupAutoUpdates() {
 
     // Initial check
     setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3000);
-  } catch (e) {
-    console.error('Auto-update setup failed:', e);
+  } catch (error) {
+    console.error('Auto-update setup failed:', error);
   }
 }
 
@@ -410,12 +410,12 @@ app.whenReady().then(() => {
         } else {
           respond({ statusCode: 404 });
         }
-      } catch (err) {
+      } catch (_err) {
         respond({ statusCode: 500 });
       }
     });
-  } catch (e) {
-    console.error('Failed to register ha:// protocol', e);
+  } catch (error) {
+    console.error('Failed to register ha:// protocol', error);
   }
 
   createWindow();

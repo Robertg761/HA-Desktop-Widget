@@ -6,7 +6,7 @@ module.exports = [
   js.configs.recommended,
   prettier,
   {
-    ignores: ['node_modules', 'dist', 'coverage', 'renderer-enhanced.js', 'renderer-fixed.js', 'renderer.js'],
+    ignores: ['node_modules', 'dist', 'coverage'],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'script',
