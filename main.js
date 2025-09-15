@@ -305,6 +305,12 @@ ipcMain.handle('quit-and-install', () => {
   }
 });
 
+// Handle quit request from renderer
+ipcMain.handle('quit-app', () => {
+  isQuitting = true;
+  app.quit();
+});
+
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });

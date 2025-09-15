@@ -184,6 +184,11 @@ body {
   padding: 0 4px;
 }
 
+.section-buttons {
+  display: flex;
+  gap: 4px;
+}
+
 .section-title {
   font-size: 12px;
   color: var(--muted-text);
@@ -714,14 +719,13 @@ body {
 .brightness-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 20px;
-  height: 200px;
-  background: linear-gradient(to top, #ffd700, #ffed4e, #fff);
+  width: 200px;
+  height: 20px;
+  background: linear-gradient(to right, #333, #ffd700);
   border-radius: 10px;
   outline: none;
   cursor: pointer;
-  transform: rotate(-90deg);
-  margin: 50px 0;
+  margin: 20px 0;
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -735,7 +739,6 @@ body {
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  transform: rotate(90deg);
 }
 
 .brightness-slider::-moz-range-thumb {
@@ -746,7 +749,6 @@ body {
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  transform: rotate(90deg);
 }
 
 .brightness-value {
@@ -1386,6 +1388,79 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
+}
+
+/* Reorganize mode styles */
+.reorganize-mode .control-item {
+  cursor: grab;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reorganize-mode .control-item:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.reorganize-mode .control-item.dragging {
+  cursor: grabbing;
+  transform: scale(1.05) rotate(2deg);
+  z-index: 1000;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  opacity: 0.9;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.1s ease;
+}
+
+.reorganize-mode .control-item.drag-over {
+  transform: scale(1.02);
+  border: 2px dashed var(--accent);
+}
+
+/* Phone-like wiggle animation for reorganize mode */
+@keyframes phoneWiggle {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  10% { transform: translateX(-3px) rotate(-1deg); }
+  20% { transform: translateX(3px) rotate(1deg); }
+  30% { transform: translateX(-2px) rotate(-0.5deg); }
+  40% { transform: translateX(2px) rotate(0.5deg); }
+  50% { transform: translateX(-1px) rotate(-0.3deg); }
+  60% { transform: translateX(1px) rotate(0.3deg); }
+  70% { transform: translateX(-0.5px) rotate(-0.1deg); }
+  80% { transform: translateX(0.5px) rotate(0.1deg); }
+  90% { transform: translateX(0) rotate(0deg); }
+}
+
+.reorganize-mode .control-item {
+  animation: phoneWiggle 1.2s ease-in-out infinite;
+}
+
+.reorganize-mode .control-item.dragging {
+  animation: none;
+}
+
+/* Drop zone indicator */
+.drop-zone {
+  border: 2px dashed var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: 8px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 12px;
+  margin: 4px 0;
+  transition: all 0.2s ease;
+}
+
+.drop-zone.active {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: var(--success);
+}
+
+/* Reorganize button active state */
+.section-btn.active {
+  background: var(--accent);
+  color: var(--bg-primary);
 }
 
 /* Responsive adjustments */

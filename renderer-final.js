@@ -80,43 +80,244 @@ window.removeFromDashboard = function(entityId, tabId) {
   }
 };
 
-window.addToQuickControls = function(entityId) {
+window.addToQuickControls = async function(entityId) {
   if (!CONFIG.favoriteEntities) CONFIG.favoriteEntities = [];
   if (!CONFIG.favoriteEntities.includes(entityId)) {
     CONFIG.favoriteEntities.push(entityId);
-    ipcRenderer.invoke('update-config', CONFIG);
+    
+    // Immediately update the button state
+    updateQuickControlButton(entityId, true);
+    
+    await ipcRenderer.invoke('update-config', CONFIG);
     
     // Immediately refresh the UI
     renderActiveTab();
     
+    // Re-add drag and drop listeners if in reorganize mode
+    if (isReorganizeMode) {
+      addDragAndDropListeners();
+    }
+    
     // Refresh the quick controls selector if it's open
     if (!document.getElementById('quick-controls-modal').classList.contains('hidden')) {
+      // Preserve current search term
+      const searchInput = document.getElementById('quick-controls-search');
+      const currentSearch = searchInput ? searchInput.value : '';
+      
+      // Force reload the entire modal to update button states
       loadQuickControlsSelector();
+      
+      // Restore search term if there was one
+      if (searchInput && currentSearch) {
+        searchInput.value = currentSearch;
+        searchInput.dispatchEvent(new Event('input'));
+      }
     }
     
     showToast(`Added ${entityId} to quick access`, 'success');
   }
 };
 
-window.removeFromQuickControls = function(entityId) {
+window.removeFromQuickControls = async function(entityId) {
   if (CONFIG.favoriteEntities) {
     const index = CONFIG.favoriteEntities.indexOf(entityId);
     if (index > -1) {
       CONFIG.favoriteEntities.splice(index, 1);
-      ipcRenderer.invoke('update-config', CONFIG);
+      
+      // Immediately update the button state
+      updateQuickControlButton(entityId, false);
+      
+      await ipcRenderer.invoke('update-config', CONFIG);
       
       // Immediately refresh the UI
       renderActiveTab();
       
+      // Re-add drag and drop listeners if in reorganize mode
+      if (isReorganizeMode) {
+        addDragAndDropListeners();
+      }
+      
       // Refresh the quick controls selector if it's open
       if (!document.getElementById('quick-controls-modal').classList.contains('hidden')) {
+        // Preserve current search term
+        const searchInput = document.getElementById('quick-controls-search');
+        const currentSearch = searchInput ? searchInput.value : '';
+        
+        // Force reload the entire modal to update button states
         loadQuickControlsSelector();
+        
+        // Restore search term if there was one
+        if (searchInput && currentSearch) {
+          searchInput.value = currentSearch;
+          searchInput.dispatchEvent(new Event('input'));
+        }
       }
       
       showToast(`Removed ${entityId} from quick access`, 'info');
     }
   }
 };
+
+// Function to immediately update a quick control button state
+function updateQuickControlButton(entityId, isAdded) {
+  // Find the button for this entity in the quick controls modal
+  const container = document.getElementById('quick-controls-list');
+  if (!container) return;
+  
+  const item = container.querySelector(`[data-entity-id="${entityId}"]`);
+  if (!item) return;
+  
+  const actionsDiv = item.querySelector('.entity-selector-actions');
+  if (!actionsDiv) return;
+  
+  // Update the button
+  if (isAdded) {
+    // Change to Remove button
+    actionsDiv.innerHTML = `<button class="entity-selector-btn remove" onclick="removeFromQuickControls('${entityId}')">Remove</button>`;
+  } else {
+    // Change to Add button
+    actionsDiv.innerHTML = `<button class="entity-selector-btn add" onclick="addToQuickControls('${entityId}')">Add</button>`;
+  }
+}
+
+// Reorganize mode functionality
+let isReorganizeMode = false;
+let draggedElement = null;
+let dragOverElement = null;
+
+function toggleReorganizeMode() {
+  isReorganizeMode = !isReorganizeMode;
+  const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
+  const controlsGrid = document.getElementById('quick-controls');
+  
+  if (isReorganizeMode) {
+    // Enter reorganize mode
+    reorganizeBtn.classList.add('active');
+    controlsGrid.classList.add('reorganize-mode');
+    showToast('Reorganize mode: Drag and drop to reorder', 'info');
+    
+    // Add drag and drop event listeners to all control items
+    addDragAndDropListeners();
+  } else {
+    // Exit reorganize mode
+    reorganizeBtn.classList.remove('active');
+    controlsGrid.classList.remove('reorganize-mode');
+    showToast('Reorganize mode disabled', 'info');
+    
+    // Remove drag and drop event listeners
+    removeDragAndDropListeners();
+  }
+}
+
+function addDragAndDropListeners() {
+  const controlItems = document.querySelectorAll('#quick-controls .control-item');
+  controlItems.forEach(item => {
+    item.draggable = true;
+    item.addEventListener('dragstart', handleDragStart);
+    item.addEventListener('dragend', handleDragEnd);
+    item.addEventListener('dragover', handleDragOver);
+    item.addEventListener('drop', handleDrop);
+    item.addEventListener('dragenter', handleDragEnter);
+    item.addEventListener('dragleave', handleDragLeave);
+  });
+}
+
+function removeDragAndDropListeners() {
+  const controlItems = document.querySelectorAll('#quick-controls .control-item');
+  controlItems.forEach(item => {
+    item.draggable = false;
+    item.removeEventListener('dragstart', handleDragStart);
+    item.removeEventListener('dragend', handleDragEnd);
+    item.removeEventListener('dragover', handleDragOver);
+    item.removeEventListener('drop', handleDrop);
+    item.removeEventListener('dragenter', handleDragEnter);
+    item.removeEventListener('dragleave', handleDragLeave);
+    item.classList.remove('dragging', 'drag-over');
+  });
+}
+
+function handleDragStart(e) {
+  draggedElement = e.target;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/html', e.target.outerHTML);
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  draggedElement = null;
+  
+  // Clean up drag-over classes
+  const controlItems = document.querySelectorAll('#quick-controls .control-item');
+  controlItems.forEach(item => {
+    item.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e) {
+  e.preventDefault();
+  if (e.target !== draggedElement && e.target.classList.contains('control-item')) {
+    e.target.classList.add('drag-over');
+    dragOverElement = e.target;
+  }
+}
+
+function handleDragLeave(e) {
+  if (e.target.classList.contains('control-item')) {
+    e.target.classList.remove('drag-over');
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  
+  if (draggedElement && dragOverElement && draggedElement !== dragOverElement) {
+    const controlsGrid = document.getElementById('quick-controls');
+    const draggedIndex = Array.from(controlsGrid.children).indexOf(draggedElement);
+    const targetIndex = Array.from(controlsGrid.children).indexOf(dragOverElement);
+    
+    // Reorder the elements
+    if (draggedIndex < targetIndex) {
+      controlsGrid.insertBefore(draggedElement, dragOverElement.nextSibling);
+    } else {
+      controlsGrid.insertBefore(draggedElement, dragOverElement);
+    }
+    
+    // Save the new order
+    saveQuickAccessOrder();
+    
+    // Show success feedback
+    showToast('Quick Access reordered', 'success');
+  }
+  
+  e.target.classList.remove('drag-over');
+  dragOverElement = null;
+}
+
+function saveQuickAccessOrder() {
+  if (!CONFIG.favoriteEntities) return;
+  
+  const controlsGrid = document.getElementById('quick-controls');
+  const newOrder = [];
+  
+  // Get the new order from the DOM
+  const controlItems = controlsGrid.querySelectorAll('.control-item');
+  controlItems.forEach(item => {
+    const entityId = item.dataset.entityId;
+    if (entityId && CONFIG.favoriteEntities.includes(entityId)) {
+      newOrder.push(entityId);
+    }
+  });
+  
+  // Update the configuration with the new order
+  CONFIG.favoriteEntities = newOrder;
+  ipcRenderer.invoke('update-config', CONFIG);
+}
 
 window.disableEditMode = disableEditMode;
 
@@ -1785,19 +1986,50 @@ function openQuickControlsModal() {
   }
 }
 
-// Fuzzy matching function for better search
-function fuzzyMatch(text, searchTerm) {
-  if (!text || !searchTerm) return false;
+// Advanced search scoring function
+function getSearchScore(text, searchTerm) {
+  if (!text || !searchTerm) return 0;
   
-  // Simple fuzzy matching - check if all characters in search term appear in order in text
+  const textLower = text.toLowerCase();
+  const searchLower = searchTerm.toLowerCase();
+  
+  // Exact match gets highest score
+  if (textLower === searchLower) return 1000;
+  
+  // Starts with search term gets high score
+  if (textLower.startsWith(searchLower)) return 900;
+  
+  // Check for whole word matches first (most important)
+  const words = textLower.split(/\s+/);
+  for (const word of words) {
+    // Exact word match gets highest score
+    if (word === searchLower) return 950;
+    // Word starts with search term gets high score
+    if (word.startsWith(searchLower)) return 850;
+  }
+  
+  // Check for word contains (but not at start) - lower score
+  for (const word of words) {
+    if (word.includes(searchLower) && !word.startsWith(searchLower)) {
+      return 750;
+    }
+  }
+  
+  // General substring match gets medium score
+  if (textLower.includes(searchLower)) return 600;
+  
+  // Fuzzy match gets lower score
   let textIndex = 0;
-  for (let i = 0; i < searchTerm.length; i++) {
-    const char = searchTerm[i];
-    const foundIndex = text.indexOf(char, textIndex);
-    if (foundIndex === -1) return false;
+  let fuzzyScore = 0;
+  for (let i = 0; i < searchLower.length; i++) {
+    const char = searchLower[i];
+    const foundIndex = textLower.indexOf(char, textIndex);
+    if (foundIndex === -1) return 0; // No fuzzy match possible
+    fuzzyScore += (foundIndex - textIndex) * 10; // Penalty for gaps
     textIndex = foundIndex + 1;
   }
-  return true;
+  
+  return Math.max(0, 400 - fuzzyScore);
 }
 
 function loadEntitySelector() {
@@ -1865,36 +2097,46 @@ function loadEntitySelector() {
     `;
   }).join('');
 
-  // Add search functionality with improved matching
+  // Add search functionality with improved matching and sorting
   const searchInput = document.getElementById('entity-search');
   if (searchInput) {
     searchInput.oninput = (e) => {
       const searchTerm = e.target.value.toLowerCase().trim();
-      const items = container.querySelectorAll('.entity-selector-item');
       
       if (!searchTerm) {
         // Show all items if search is empty
+        const items = container.querySelectorAll('.entity-selector-item');
         items.forEach(item => item.style.display = 'flex');
         return;
       }
       
-      items.forEach(item => {
-        const name = item.querySelector('.entity-selector-name').textContent.toLowerCase();
-        const state = item.querySelector('.entity-selector-state').textContent.toLowerCase();
+      // Get all items and score them
+      const items = Array.from(container.querySelectorAll('.entity-selector-item'));
+      const scoredItems = items.map(item => {
+        const name = item.querySelector('.entity-selector-name').textContent;
+        const state = item.querySelector('.entity-selector-state').textContent;
         const entityId = item.dataset.entityId || '';
         
-        // Multiple search strategies for better matching
-        const matches = 
-          name.includes(searchTerm) || 
-          state.includes(searchTerm) ||
-          entityId.includes(searchTerm) ||
-          // Partial word matching (e.g., "liv" matches "Living Room")
-          name.split(' ').some(word => word.startsWith(searchTerm)) ||
-          // Fuzzy matching for common typos
-          fuzzyMatch(name, searchTerm) ||
-          fuzzyMatch(state, searchTerm);
-          
-        item.style.display = matches ? 'flex' : 'none';
+        const nameScore = getSearchScore(name, searchTerm);
+        const stateScore = getSearchScore(state, searchTerm);
+        const entityIdScore = getSearchScore(entityId, searchTerm);
+        const maxScore = Math.max(nameScore, stateScore, entityIdScore);
+        
+        
+        return { item, score: maxScore };
+      }).filter(({ score }) => score > 0); // Only include items with matches
+      
+      // Sort by score (highest first)
+      scoredItems.sort((a, b) => b.score - a.score);
+      
+      
+      // Hide all items first
+      items.forEach(item => item.style.display = 'none');
+      
+      // Show and reorder matched items
+      scoredItems.forEach(({ item }) => {
+        item.style.display = 'flex';
+        container.appendChild(item); // Move to end (top of visible list)
       });
     };
   }
@@ -1964,36 +2206,45 @@ function loadQuickControlsSelector() {
     `;
   }).join('');
 
-  // Add search functionality with improved matching
+  // Add search functionality with improved matching and sorting
   const searchInput = document.getElementById('quick-controls-search');
   if (searchInput) {
     searchInput.oninput = (e) => {
       const searchTerm = e.target.value.toLowerCase().trim();
-      const items = container.querySelectorAll('.entity-selector-item');
       
       if (!searchTerm) {
         // Show all items if search is empty
+        const items = container.querySelectorAll('.entity-selector-item');
         items.forEach(item => item.style.display = 'flex');
         return;
       }
       
-      items.forEach(item => {
-        const name = item.querySelector('.entity-selector-name').textContent.toLowerCase();
-        const state = item.querySelector('.entity-selector-state').textContent.toLowerCase();
+      // Get all items and score them
+      const items = Array.from(container.querySelectorAll('.entity-selector-item'));
+      const scoredItems = items.map(item => {
+        const name = item.querySelector('.entity-selector-name').textContent;
+        const state = item.querySelector('.entity-selector-state').textContent;
         const entityId = item.dataset.entityId || '';
         
-        // Multiple search strategies for better matching
-        const matches = 
-          name.includes(searchTerm) || 
-          state.includes(searchTerm) ||
-          entityId.includes(searchTerm) ||
-          // Partial word matching (e.g., "liv" matches "Living Room")
-          name.split(' ').some(word => word.startsWith(searchTerm)) ||
-          // Fuzzy matching for common typos
-          fuzzyMatch(name, searchTerm) ||
-          fuzzyMatch(state, searchTerm);
-          
-        item.style.display = matches ? 'flex' : 'none';
+        const nameScore = getSearchScore(name, searchTerm);
+        const stateScore = getSearchScore(state, searchTerm);
+        const entityIdScore = getSearchScore(entityId, searchTerm);
+        const maxScore = Math.max(nameScore, stateScore, entityIdScore);
+        
+        return { item, score: maxScore };
+      }).filter(({ score }) => score > 0); // Only include items with matches
+      
+      // Sort by score (highest first)
+      scoredItems.sort((a, b) => b.score - a.score);
+      
+      
+      // Hide all items first
+      items.forEach(item => item.style.display = 'none');
+      
+      // Show and reorder matched items
+      scoredItems.forEach(({ item }) => {
+        item.style.display = 'flex';
+        container.appendChild(item); // Move to end (top of visible list)
       });
     };
   }
@@ -2122,21 +2373,12 @@ function renderQuickControls() {
   const favorites = CONFIG.favoriteEntities || [];
   const entities = Object.values(STATES).filter(e => favorites.includes(e.entity_id));
   
-  // Show more entities (increased from 8 to 12) and sort them
+  // Sort entities by the order they appear in CONFIG.favoriteEntities (user's custom order)
   entities
     .sort((a, b) => {
-      // Sort cameras first, then by domain, then by name
-      const aIsCamera = a.entity_id.startsWith('camera.');
-      const bIsCamera = b.entity_id.startsWith('camera.');
-      if (aIsCamera && !bIsCamera) return -1;
-      if (!aIsCamera && bIsCamera) return 1;
-      
-      const domainA = a.entity_id.split('.')[0];
-      const domainB = b.entity_id.split('.')[0];
-      if (domainA !== domainB) {
-        return domainA.localeCompare(domainB);
-      }
-      return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+      const indexA = favorites.indexOf(a.entity_id);
+      const indexB = favorites.indexOf(b.entity_id);
+      return indexA - indexB;
     })
     .slice(0, 12)
     .forEach(entity => {
@@ -2152,11 +2394,19 @@ function createControlElement(entity) {
   
   // Handle different entity types appropriately
   if (entity.entity_id.startsWith('camera.')) {
-    div.onclick = () => openCamera(entity.entity_id);
+    div.onclick = () => {
+      if (!isReorganizeMode) {
+        openCamera(entity.entity_id);
+      }
+    };
     div.title = `Click to view ${getEntityDisplayName(entity)}`;
   } else if (entity.entity_id.startsWith('sensor.')) {
     // Sensors are read-only, show current value
-    div.onclick = () => showSensorDetails(entity);
+    div.onclick = () => {
+      if (!isReorganizeMode) {
+        showSensorDetails(entity);
+      }
+    };
     div.title = `${getEntityDisplayName(entity)}: ${getEntityDisplayState(entity)}`;
   } else if (entity.entity_id.startsWith('light.')) {
     // Lights: click to toggle, long-press for brightness slider
@@ -2166,6 +2416,11 @@ function createControlElement(entity) {
     let longPressTriggered = false;
 
     const startPress = () => {
+      // Don't start long-press if in reorganize mode
+      if (isReorganizeMode) {
+        return;
+      }
+      
       longPressTriggered = false;
       clearTimeout(pressTimer);
       pressTimer = setTimeout(() => {
@@ -2190,6 +2445,13 @@ function createControlElement(entity) {
 
     // Click handler with long-press guard
     div.addEventListener('click', (e) => {
+      // Don't toggle if in reorganize mode
+      if (isReorganizeMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      
       if (longPressTriggered) {
         // Suppress toggle if long-press already opened the slider
         longPressTriggered = false;
@@ -2205,7 +2467,11 @@ function createControlElement(entity) {
       e.preventDefault();
     });
   } else {
-    div.onclick = () => toggleEntity(entity);
+    div.onclick = () => {
+      if (!isReorganizeMode) {
+        toggleEntity(entity);
+      }
+    };
     div.title = `Click to toggle ${getEntityDisplayName(entity)}`;
   }
   
@@ -2918,22 +3184,31 @@ function showBrightnessSlider(light) {
     valueDisplay.textContent = `${value}%`;
   };
   
-  // Handle slider changes
+  // Handle slider changes with debouncing for better performance
+  let sliderTimeout = null;
   slider.addEventListener('input', (e) => {
     const value = parseInt(e.target.value);
     updateBrightnessDisplay(value);
     
-    if (value === 0) {
-      // Turn off the light
-      callService('light', 'turn_off', { entity_id: light.entity_id });
-    } else {
-      // Set brightness
-      const brightness = Math.round((value / 100) * 255);
-      callService('light', 'turn_on', { 
-        entity_id: light.entity_id,
-        brightness: brightness
-      });
+    // Clear previous timeout
+    if (sliderTimeout) {
+      clearTimeout(sliderTimeout);
     }
+    
+    // Debounce the service call to avoid too many requests
+    sliderTimeout = setTimeout(() => {
+      if (value === 0) {
+        // Turn off the light
+        callService('light', 'turn_off', { entity_id: light.entity_id });
+      } else {
+        // Set brightness
+        const brightness = Math.round((value / 100) * 255);
+        callService('light', 'turn_on', { 
+          entity_id: light.entity_id,
+          brightness: brightness
+        });
+      }
+    }, 100); // 100ms debounce
   });
   
   // Handle turn off button
@@ -2945,7 +3220,9 @@ function showBrightnessSlider(light) {
   
   // Handle turn on button
   turnOnBtn.addEventListener('click', () => {
-    const value = slider.value || 50; // Default to 50% if slider is at 0
+    // Turn on to 50% brightness (or use last known brightness if available)
+    const lastBrightness = light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 50;
+    const value = lastBrightness > 0 ? lastBrightness : 50;
     slider.value = value;
     updateBrightnessDisplay(value);
     const brightness = Math.round((value / 100) * 255);
@@ -2958,12 +3235,14 @@ function showBrightnessSlider(light) {
   // Clean up when modal is closed
   modal.addEventListener('click', (e) => {
     if (e.target === modal) {
+      if (sliderTimeout) clearTimeout(sliderTimeout);
       modal.remove();
     }
   });
   
   const closeBtn = modal.querySelector('.close-btn');
   closeBtn.addEventListener('click', () => {
+    if (sliderTimeout) clearTimeout(sliderTimeout);
     modal.remove();
   });
 }
@@ -3426,6 +3705,12 @@ async function saveSettings() {
 function wireUI() {
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) settingsBtn.onclick = openSettings;
+  
+  const closeSettingsBtn = document.getElementById('close-settings');
+  if (closeSettingsBtn) closeSettingsBtn.onclick = closeSettings;
+  
+  const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
+  if (reorganizeBtn) reorganizeBtn.onclick = toggleReorganizeMode;
 
   // Add entities button removed from header - functionality moved to Quick Access section
 
@@ -3467,7 +3752,10 @@ function wireUI() {
   if (refreshBtn) refreshBtn.onclick = renderActiveTab;
 
   const closeBtn = document.getElementById('close-btn');
-  if (closeBtn) closeBtn.onclick = () => window.close();
+  if (closeBtn) closeBtn.onclick = () => {
+    // Properly quit the application instead of just closing the window
+    ipcRenderer.invoke('quit-app');
+  };
 
   const minimizeBtn = document.getElementById('minimize-btn');
   if (minimizeBtn) {
