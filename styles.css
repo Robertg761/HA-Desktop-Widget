@@ -187,6 +187,7 @@ body {
 .section-buttons {
   display: flex;
   gap: 4px;
+  align-items: center;
 }
 
 .section-title {
@@ -206,6 +207,15 @@ body {
   border-radius: 4px;
   transition: all 0.2s ease;
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  line-height: 1;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: normal;
+  transform: translateY(0);
 }
 
 .section-btn:hover {
@@ -243,18 +253,25 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
+  align-items: stretch;
 }
 
 .control-item {
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 8px;
+  padding: 6px 8px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(var(--bg-blur));
   -webkit-backdrop-filter: blur(var(--bg-blur));
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .control-item:hover {
@@ -270,8 +287,13 @@ body {
 }
 
 .control-icon {
-  font-size: 16px;
-  margin-bottom: 4px;
+  font-size: 18px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  line-height: 1;
 }
 
 .control-name {
@@ -279,6 +301,10 @@ body {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Entities grid */
@@ -828,6 +854,11 @@ body {
 .control-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
 .control-name {
@@ -842,6 +873,9 @@ body {
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
+  text-align: center;
+  line-height: 1.2;
+  min-height: 14px; /* reserve space but allow growth */
 }
 
 .entity-info {
@@ -1070,7 +1104,7 @@ body {
 .close-btn {
   width: 24px;
   height: 24px;
-    border: none;
+  border: none;
   background: transparent;
   color: var(--muted-text);
   border-radius: 4px;
@@ -1335,7 +1369,7 @@ body {
 
 .toast {
   background: var(--surface-3);
-  color: var(--text-color);
+    color: var(--text-color);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 12px 16px;
@@ -1441,11 +1475,11 @@ body {
 .drop-zone {
   border: 2px dashed var(--accent);
   background: rgba(var(--accent-rgb), 0.1);
-  border-radius: 8px;
+    border-radius: 8px;
   min-height: 60px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+    align-items: center;
+    justify-content: center;
   color: var(--accent);
   font-size: 12px;
   margin: 4px 0;
@@ -1463,6 +1497,178 @@ body {
   color: var(--bg-primary);
 }
 
+/* Remove button in reorganize mode */
+.reorganize-mode .control-item .remove-btn {
+    position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  background: #d32f2f;
+  color: white;
+    border: none;
+    border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+    cursor: pointer;
+  display: flex;
+    align-items: center;
+    justify-content: center;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.reorganize-mode .control-item .remove-btn:hover {
+  background: #b71c1c;
+  transform: scale(1.1);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Rename button in reorganize mode */
+.reorganize-mode .control-item .rename-btn {
+  position: absolute;
+  top: -6px;
+  right: 24px;
+  width: 20px;
+  height: 20px;
+  background: #1976d2;
+  color: white;
+    border: none;
+  border-radius: 50%;
+  font-size: 10px;
+    cursor: pointer;
+  display: flex;
+    align-items: center;
+    justify-content: center;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.reorganize-mode .control-item .rename-btn:hover {
+  background: #1565c0;
+  transform: scale(1.1);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+.reorganize-mode .control-item {
+  position: relative;
+}
+
+/* Rename modal styles */
+.rename-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.rename-modal .modal-content {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+}
+
+.rename-modal h3 {
+  margin: 0 0 16px 0;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.rename-modal p {
+  margin: 0 0 16px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.rename-modal code {
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.rename-modal .form-group {
+  margin-bottom: 20px;
+}
+
+.rename-modal label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.rename-modal input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.rename-modal input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+}
+
+.rename-modal .modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.rename-modal .btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rename-modal .btn-primary {
+  background: var(--accent);
+    color: white;
+}
+
+.rename-modal .btn-primary:hover {
+  background: #1565c0;
+  transform: translateY(-1px);
+}
+
+.rename-modal .btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.rename-modal .btn-secondary:hover {
+  background: var(--bg-tertiary);
+  transform: translateY(-1px);
+}
+
 /* Responsive adjustments */
 @media (max-width: 500px) {
   .controls-grid {
@@ -1478,4 +1684,73 @@ body {
   .controls-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* Timer entity styles */
+.timer-entity {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(33, 150, 243, 0.05));
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.timer-entity .timer-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.timer-entity .control-name {
+  margin-bottom: 2px;
+}
+
+.timer-entity .timer-countdown {
+  font-size: 14px;
+}
+
+/* Timer states */
+.timer-entity[data-state="active"] {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.08));
+  border-color: rgba(76, 175, 80, 0.4);
+  animation: timerPulse 2s ease-in-out infinite;
+}
+
+.timer-entity[data-state="paused"] {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.08));
+  border-color: rgba(255, 152, 0, 0.4);
+}
+
+.timer-entity[data-state="idle"] {
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
+  border-color: rgba(158, 158, 158, 0.3);
+}
+
+@keyframes timerPulse {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+  }
+  50% { 
+    box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
+  }
+}
+
+/* Timer sensor specific states */
+.timer-entity[data-state="unknown"] {
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
+  border-color: rgba(158, 158, 158, 0.3);
+}
+
+.timer-entity[data-state="unavailable"] {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.1), rgba(244, 67, 54, 0.05));
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
+/* Enhanced timer countdown styling for sensors */
+.timer-entity .timer-countdown {
+  font-variant-numeric: tabular-nums; /* Better number alignment */
+  text-align: center;
+  min-height: 1.2em; /* Prevent layout shift */
 }

@@ -35,6 +35,11 @@ let EDIT_SNAPSHOT_LAYOUTS = {};
 const DASHBOARD_CAMERA_EXPANDED = new Set();
 const TIMER_MAP = new Map();
 let TIMER_TICK = null;
+
+// Timer sensor tracking for real-time countdown
+const TIMER_SENSOR_MAP = new Map();
+let TIMER_SENSOR_TICK = null;
+let TIMER_SENSOR_SYNC_TICK = null;
 // Motion popup state
 let MOTION_POPUP = null;
 let MOTION_POPUP_TIMER = null;
@@ -56,6 +61,11 @@ window.addToDashboard = function(entityId, tabId) {
     CONFIG.favoriteEntities.push(entityId);
     ipcRenderer.invoke('update-config', CONFIG);
     renderActiveTab();
+    if (isReorganizeMode) {
+      const controlsGrid = document.getElementById('quick-controls');
+      if (controlsGrid) controlsGrid.classList.add('reorganize-mode');
+      addDragAndDropListeners();
+    }
     showToast(`Added ${entityId} to dashboard`, 'success');
     // Refresh the entity selector if it's open
     if (!document.getElementById('entity-selector').classList.contains('hidden')) {
@@ -131,6 +141,12 @@ window.removeFromQuickControls = async function(entityId) {
       
       // Immediately refresh the UI
       renderActiveTab();
+      // If still in reorganize mode, keep it active after re-render
+      if (isReorganizeMode) {
+        const controlsGrid = document.getElementById('quick-controls');
+        if (controlsGrid) controlsGrid.classList.add('reorganize-mode');
+        addDragAndDropListeners();
+      }
       
       // Re-add drag and drop listeners if in reorganize mode
       if (isReorganizeMode) {
@@ -219,6 +235,38 @@ function addDragAndDropListeners() {
     item.addEventListener('drop', handleDrop);
     item.addEventListener('dragenter', handleDragEnter);
     item.addEventListener('dragleave', handleDragLeave);
+    
+    // Add remove button if not already present
+    if (!item.querySelector('.remove-btn')) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-btn';
+      removeBtn.innerHTML = '×';
+      removeBtn.title = 'Remove from Quick Access';
+      removeBtn.onclick = (e) => {
+        e.stopPropagation();
+        const entityId = item.dataset.entityId;
+        if (entityId) {
+          removeFromQuickControls(entityId);
+        }
+      };
+      item.appendChild(removeBtn);
+    }
+    
+    // Add rename button if not already present
+    if (!item.querySelector('.rename-btn')) {
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'rename-btn';
+      renameBtn.innerHTML = '✏️';
+      renameBtn.title = 'Rename entity';
+      renameBtn.onclick = (e) => {
+        e.stopPropagation();
+        const entityId = item.dataset.entityId;
+        if (entityId) {
+          openRenameModal(entityId);
+        }
+      };
+      item.appendChild(renameBtn);
+    }
   });
 }
 
@@ -233,7 +281,129 @@ function removeDragAndDropListeners() {
     item.removeEventListener('dragenter', handleDragEnter);
     item.removeEventListener('dragleave', handleDragLeave);
     item.classList.remove('dragging', 'drag-over');
+    
+    // Remove remove and rename buttons
+    const removeBtn = item.querySelector('.remove-btn');
+    if (removeBtn) {
+      removeBtn.remove();
+    }
+    const renameBtn = item.querySelector('.rename-btn');
+    if (renameBtn) {
+      renameBtn.remove();
+    }
   });
+}
+
+function openRenameModal(entityId) {
+  const entity = STATES[entityId];
+  if (!entity) return;
+  
+  const currentName = getEntityDisplayName(entity);
+  
+  // Create modal
+  const modal = document.createElement('div');
+  modal.className = 'modal rename-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3>Rename Entity</h3>
+      <p>Entity: <code>${entityId}</code></p>
+      <div class="form-group">
+        <label for="rename-input">Display Name:</label>
+        <input type="text" id="rename-input" value="${currentName}" maxlength="50" placeholder="Enter custom name">
+      </div>
+      <div class="modal-actions">
+        <button id="rename-save" class="btn btn-primary">Save</button>
+        <button id="rename-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="rename-reset" class="btn btn-secondary">Reset to Default</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Focus input and select text
+  const input = modal.querySelector('#rename-input');
+  input.focus();
+  input.select();
+  
+  // Event handlers
+  modal.querySelector('#rename-save').onclick = () => {
+    const newName = input.value.trim();
+    if (newName && newName !== currentName) {
+      saveCustomEntityName(entityId, newName);
+    }
+    modal.remove();
+  };
+  
+  modal.querySelector('#rename-cancel').onclick = () => {
+    modal.remove();
+  };
+  
+  modal.querySelector('#rename-reset').onclick = () => {
+    resetCustomEntityName(entityId);
+    modal.remove();
+  };
+  
+  // Close on escape
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') {
+      modal.remove();
+      document.removeEventListener('keydown', handleKeydown);
+    } else if (e.key === 'Enter') {
+      const newName = input.value.trim();
+      if (newName && newName !== currentName) {
+        saveCustomEntityName(entityId, newName);
+      }
+      modal.remove();
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  };
+  document.addEventListener('keydown', handleKeydown);
+  
+  // Close on backdrop click
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.remove();
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  };
+}
+
+async function saveCustomEntityName(entityId, customName) {
+  if (!CONFIG.customEntityNames) {
+    CONFIG.customEntityNames = {};
+  }
+  CONFIG.customEntityNames[entityId] = customName;
+  
+  await ipcRenderer.invoke('update-config', CONFIG);
+  
+  // Refresh the UI to show the new name
+  renderActiveTab();
+  
+  // Re-add drag and drop listeners if in reorganize mode
+  if (isReorganizeMode) {
+    addDragAndDropListeners();
+  }
+  
+  showToast(`Renamed ${entityId} to "${customName}"`, 'success');
+}
+
+async function resetCustomEntityName(entityId) {
+  if (CONFIG.customEntityNames && CONFIG.customEntityNames[entityId]) {
+    delete CONFIG.customEntityNames[entityId];
+    
+    await ipcRenderer.invoke('update-config', CONFIG);
+    
+    // Refresh the UI to show the default name
+    renderActiveTab();
+    
+    // Re-add drag and drop listeners if in reorganize mode
+    if (isReorganizeMode) {
+      addDragAndDropListeners();
+    }
+    
+    showToast(`Reset ${entityId} to default name`, 'info');
+  }
 }
 
 function handleDragStart(e) {
@@ -455,6 +625,8 @@ function connectWebSocket() {
             renderActiveTab();
             // Update weather after states are loaded
             updateWeatherFromHA();
+            // Restart timer updates after states are loaded
+            setTimeout(restartTimerUpdates, 100);
           } else if (msg.result[0].area_id) {
             // Areas
             msg.result.forEach(area => {
@@ -482,6 +654,21 @@ function connectWebSocket() {
     console.log('WebSocket disconnected');
     setStatus(false);
     WS = null;
+    // Clean up all timer updates
+    if (TIMER_TICK) {
+      clearInterval(TIMER_TICK);
+      TIMER_TICK = null;
+    }
+    if (TIMER_SENSOR_TICK) {
+      clearInterval(TIMER_SENSOR_TICK);
+      TIMER_SENSOR_TICK = null;
+    }
+    if (TIMER_SENSOR_SYNC_TICK) {
+      clearInterval(TIMER_SENSOR_SYNC_TICK);
+      TIMER_SENSOR_SYNC_TICK = null;
+    }
+    TIMER_MAP.clear();
+    TIMER_SENSOR_MAP.clear();
     // Reconnect after 5 seconds
     setTimeout(connectWebSocket, 5000);
   };
@@ -494,6 +681,29 @@ function setStatus(connected) {
     // Clear any text content - we only want the dot
     status.innerHTML = '';
   }
+}
+
+function restartTimerUpdates() {
+  // Restart timer entity updates
+  const timerElements = document.querySelectorAll('.control-item[data-entity-id^="timer."] .control-state');
+  timerElements.forEach(el => {
+    const entityId = el.closest('.control-item').dataset.entityId;
+    const entity = STATES[entityId];
+    if (entity && entity.state === 'active') {
+      updateTimerCountdown(entity, el);
+    }
+  });
+  
+  // Restart timer sensor updates
+  const sensorElements = document.querySelectorAll('.control-item[data-entity-id^="sensor."] .control-state');
+  sensorElements.forEach(el => {
+    const entityId = el.closest('.control-item').dataset.entityId;
+    const entity = STATES[entityId];
+    if (entity && isTimerSensor(entity)) {
+      // Re-trigger the timer sensor update
+      formatTimerSensorValue(entity, el);
+    }
+  });
 }
 
 function setLastUpdate() {
@@ -2385,6 +2595,14 @@ function renderQuickControls() {
       const control = createControlElement(entity);
       container.appendChild(control);
     });
+
+  // If reorganize mode is active, ensure the grid remains in that state
+  if (isReorganizeMode) {
+    const controlsGrid = document.getElementById('quick-controls');
+    if (controlsGrid) controlsGrid.classList.add('reorganize-mode');
+    // Re-attach drag/drop and ensure remove buttons are present after re-render
+    addDragAndDropListeners();
+  }
 }
 
 function createControlElement(entity) {
@@ -2408,6 +2626,14 @@ function createControlElement(entity) {
       }
     };
     div.title = `${getEntityDisplayName(entity)}: ${getEntityDisplayState(entity)}`;
+  } else if (entity.entity_id.startsWith('timer.')) {
+    // Timers: click to toggle (start/pause/cancel)
+    div.onclick = () => {
+      if (!isReorganizeMode) {
+        toggleEntity(entity);
+      }
+    };
+    div.title = `Click to toggle ${getEntityDisplayName(entity)}`;
   } else if (entity.entity_id.startsWith('light.')) {
     // Lights: click to toggle, long-press for brightness slider
     div.title = `Click to toggle, hold for brightness control`;
@@ -2483,6 +2709,10 @@ function createControlElement(entity) {
   let stateDisplay = '';
   if (entity.entity_id.startsWith('sensor.')) {
     stateDisplay = `<div class="control-state">${state}</div>`;
+  } else if (entity.entity_id.startsWith('timer.')) {
+    // Timer entities get special treatment - no icon, just countdown
+    const timerDisplay = getTimerDisplay(entity);
+    stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
   } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
     const brightness = Math.round((entity.attributes.brightness / 255) * 100);
     stateDisplay = `<div class="control-state">${brightness}%</div>`;
@@ -2496,13 +2726,44 @@ function createControlElement(entity) {
     }
   }
   
-  div.innerHTML = `
-    <div class="control-icon">${icon}</div>
-    <div class="control-info">
-      <div class="control-name">${name}</div>
-      ${stateDisplay}
-    </div>
-  `;
+  // Special layout for timer entities - no icon, larger timer display
+  if (entity.entity_id.startsWith('timer.')) {
+    div.innerHTML = `
+      <div class="control-info timer-layout">
+        <div class="control-name">${name}</div>
+        ${stateDisplay}
+      </div>
+    `;
+    div.classList.add('timer-entity');
+    div.setAttribute('data-state', entity.state);
+  } else {
+    div.innerHTML = `
+      <div class="control-icon">${icon}</div>
+      <div class="control-info">
+        <div class="control-name">${name}</div>
+        ${stateDisplay}
+      </div>
+    `;
+  }
+  
+  // Start live countdowns on initial render so values don't get stuck
+  if (entity.entity_id.startsWith('timer.')) {
+    const stateEl = div.querySelector('.control-state');
+    if (stateEl) {
+      updateTimerCountdown(entity, stateEl);
+    }
+  } else if (entity.entity_id.startsWith('sensor.') && isTimerSensor(entity)) {
+    let stateEl = div.querySelector('.control-state');
+    const infoEl = div.querySelector('.control-info');
+    if (!stateEl && infoEl) {
+      stateEl = document.createElement('div');
+      stateEl.className = 'control-state';
+      infoEl.appendChild(stateEl);
+    }
+    if (stateEl) {
+      stateEl.textContent = formatTimerSensorValue(entity, stateEl);
+    }
+  }
   
   // All entities look the same - no special active styling
   
@@ -2796,14 +3057,100 @@ function getEntityIcon(entity) {
 }
 
 function getEntityDisplayName(entity) {
+  // Check for custom display name first
+  if (CONFIG.customEntityNames && CONFIG.customEntityNames[entity.entity_id]) {
+    return CONFIG.customEntityNames[entity.entity_id];
+  }
   return entity.attributes.friendly_name || entity.entity_id.split('.')[1].replace(/_/g, ' ');
+}
+
+function isTimerSensor(entity) {
+  try {
+    // Check if this sensor represents timer information
+    const name = entity.entity_id.toLowerCase();
+    const friendlyName = (entity.attributes?.friendly_name || '').toLowerCase();
+    const deviceClass = entity.attributes?.device_class;
+    
+    return (
+      name.includes('timer') ||
+      friendlyName.includes('timer') ||
+      deviceClass === 'duration' ||
+      (entity.attributes?.unit_of_measurement === 'min' || 
+       entity.attributes?.unit_of_measurement === 's' ||
+       entity.attributes?.unit_of_measurement === 'h')
+    );
+  } catch (error) {
+    console.error('Error in isTimerSensor:', error, entity);
+    return false;
+  }
+}
+
+function formatTimerSensorValue(entity, element = null) {
+  try {
+    const state = entity.state;
+    
+    // Handle unknown/unavailable states
+    if (state === 'unknown' || state === 'unavailable') {
+      return 'N/A';
+    }
+    
+    // Parse the timestamp to get remaining time
+    let remainingSeconds = 0;
+    
+    if (typeof state === 'string') {
+      try {
+        // Parse the timestamp (e.g., "2025-09-15T16:45:42-02:30")
+        const endTime = new Date(state);
+        const now = new Date();
+        remainingSeconds = Math.max(0, Math.floor((endTime - now) / 1000));
+      } catch (e) {
+        // If parsing fails, return raw state
+        return state;
+      }
+    }
+    
+    // If we have a valid remaining time and an element, start local countdown
+    if (remainingSeconds > 0 && element) {
+      const startTime = Date.now();
+      const endTime = startTime + (remainingSeconds * 1000);
+      
+      TIMER_SENSOR_MAP.set(entity.entity_id, {
+        element,
+        endTime,
+        startTime,
+        originalValue: state,
+        lastSync: startTime
+      });
+      
+      startTimerSensorUpdates();
+      startTimerSensorSync();
+      
+      // Return the formatted initial time
+      return formatDuration(remainingSeconds * 1000);
+    }
+    
+    // Return the formatted time (no real-time updates if no element)
+    if (remainingSeconds > 0) {
+      return formatDuration(remainingSeconds * 1000);
+    }
+    
+    // If no valid time found, return the raw state
+    return state;
+  } catch (error) {
+    console.error('Error in formatTimerSensorValue:', error, entity);
+    return entity.state || 'Error';
+  }
 }
 
 function getEntityDisplayState(entity) {
   const domain = entity.entity_id.split('.')[0];
   const state = entity.state;
   
-  if (domain === 'sensor' && entity.attributes.unit_of_measurement) {
+  if (domain === 'sensor' && isTimerSensor(entity)) {
+    // For timer sensors, just return the raw state initially
+    // Real-time countdown will be handled in updateEntityInUI when the element is available
+    return state;
+  } else if (domain === 'sensor' && entity.attributes.unit_of_measurement) {
     return `${state} ${entity.attributes.unit_of_measurement}`;
   } else if (['light', 'switch', 'fan'].includes(domain)) {
     return state === 'on' ? 'On' : 'Off';
@@ -2900,6 +3247,20 @@ function toggleEntity(entity) {
   } else if (domain === 'media_player') {
     // Toggle media player play/pause
     const service = entity.state === 'playing' ? 'media_pause' : 'media_play';
+    console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
+    callService(domain, service, { entity_id: entity.entity_id });
+  } else if (domain === 'timer') {
+    // Timer controls: start/pause/cancel based on current state
+    let service;
+    if (entity.state === 'idle') {
+      service = 'start';
+    } else if (entity.state === 'active') {
+      service = 'pause';
+    } else if (entity.state === 'paused') {
+      service = 'start';
+    } else {
+      service = 'cancel';
+    }
     console.log(`Calling ${domain}.${service} for ${entity.entity_id}`);
     callService(domain, service, { entity_id: entity.entity_id });
   } else {
@@ -3449,7 +3810,14 @@ function updateEntityInUI(entity) {
         stateEl.className = 'control-state';
         infoEl.appendChild(stateEl);
       }
-      if (stateEl) stateEl.textContent = getEntityDisplayState(entity);
+      if (stateEl) {
+        if (isTimerSensor(entity)) {
+          // For timer sensors, pass the element for real-time updates
+          stateEl.textContent = formatTimerSensorValue(entity, stateEl);
+        } else {
+          stateEl.textContent = getEntityDisplayState(entity);
+        }
+      }
     } else if (entity.entity_id.startsWith('light.')) {
       if (entity.state === 'on' && entity.attributes && typeof entity.attributes.brightness === 'number') {
         const brightness = Math.round((entity.attributes.brightness / 255) * 100);
@@ -3479,6 +3847,25 @@ function updateEntityInUI(entity) {
         if (stateEl) stateEl.textContent = `${temp}°`;
       } else if (stateEl) {
         stateEl.remove();
+      }
+    } else if (entity.entity_id.startsWith('timer.')) {
+      // Timer entities need special handling for countdown updates
+      if (!stateEl && infoEl) {
+        stateEl = document.createElement('div');
+        stateEl.className = 'control-state timer-countdown';
+        infoEl.appendChild(stateEl);
+      }
+      if (stateEl) {
+        const timerDisplay = getTimerDisplay(entity);
+        stateEl.textContent = timerDisplay;
+        
+        // Update data-state attribute for CSS styling
+        item.setAttribute('data-state', entity.state);
+        
+        // Start countdown updates for active timers
+        if (entity.state === 'active') {
+          updateTimerCountdown(entity, stateEl);
+        }
       }
     }
 
@@ -3724,6 +4111,13 @@ function wireUI() {
 
   const closeQuickControlsBtn = document.getElementById('close-quick-controls');
   if (closeQuickControlsBtn) closeQuickControlsBtn.onclick = () => {
+    // Clear search term when closing
+    const searchInput = document.getElementById('quick-controls-search');
+    if (searchInput) {
+      searchInput.value = '';
+      // Trigger search to show all items again
+      searchInput.dispatchEvent(new Event('input'));
+    }
     document.getElementById('quick-controls-modal').classList.add('hidden');
   };
   
@@ -4399,6 +4793,76 @@ function formatDuration(ms) {
   const ss = s % 60;
   if (hh > 0) return `${hh}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
   return `${mm}:${String(ss).padStart(2,'0')}`;
+}
+
+function getTimerDisplay(entity) {
+  if (entity.state === 'active') {
+    const end = getTimerEnd(entity);
+    if (end) {
+      const remaining = end - Date.now();
+      if (remaining > 0) {
+        return formatDuration(remaining);
+      } else {
+        return '0:00';
+      }
+    } else {
+      return 'running';
+    }
+  } else if (entity.state === 'paused') {
+    const remaining = entity.attributes?.remaining;
+    if (remaining) {
+      return remaining;
+    } else {
+      return 'paused';
+    }
+  } else if (entity.state === 'idle') {
+    const duration = entity.attributes?.duration;
+    if (duration) {
+      return duration;
+    } else {
+      return 'idle';
+    }
+  } else {
+    return entity.state || 'unknown';
+  }
+}
+
+function startTimerSensorUpdates() {
+  if (!TIMER_SENSOR_TICK) {
+    TIMER_SENSOR_TICK = setInterval(() => {
+      const now = Date.now();
+      for (const [entityId, timerData] of Array.from(TIMER_SENSOR_MAP.entries())) {
+        const { element, endTime } = timerData;
+        const remaining = endTime - now;
+        if (remaining <= 0) {
+          element.textContent = '0:00';
+          TIMER_SENSOR_MAP.delete(entityId);
+        } else {
+          element.textContent = formatDuration(remaining);
+        }
+      }
+      if (TIMER_SENSOR_MAP.size === 0) {
+        clearInterval(TIMER_SENSOR_TICK);
+        TIMER_SENSOR_TICK = null;
+      }
+    }, 1000);
+  }
+}
+
+function startTimerSensorSync() {
+  if (!TIMER_SENSOR_SYNC_TICK) {
+    TIMER_SENSOR_SYNC_TICK = setInterval(() => {
+      // Sync with Home Assistant every 15 seconds
+      for (const [entityId, timerData] of Array.from(TIMER_SENSOR_MAP.entries())) {
+        const entity = STATES[entityId];
+        if (entity) {
+          // Update the timer with fresh data from Home Assistant
+          const newValue = formatTimerSensorValue(entity, timerData.element);
+          timerData.lastSync = Date.now();
+        }
+      }
+    }, 15000); // 15 seconds
+  }
 }
 
 function getTimerEnd(entity) {
