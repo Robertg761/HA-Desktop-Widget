@@ -17,11 +17,17 @@
     "home-assistant",
     "widget",
     "desktop",
-    "dashboard"
+    "dashboard",
+    "smart-home",
+    "automation",
+    "electron",
+    "rainmeter",
+    "iot",
+    "home-automation"
   ],
   "author": "Robertg761",
   "license": "MIT",
-  "description": "A transparent desktop widget for Home Assistant",
+  "description": "A modern, transparent desktop widget for Home Assistant with real-time updates, drag-and-drop customization, and Rainmeter-style aesthetics",
   "repository": {
     "type": "git",
     "url": "https://github.com/Robertg761/HA-Desktop-Widget.git"
