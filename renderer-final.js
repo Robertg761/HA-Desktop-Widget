@@ -2971,15 +2971,31 @@ function updateWeatherFromHA() {
   
   // Update weather icon
   if (iconEl) {
-    const icon = getWeatherIcon(weather.attributes.condition, weather.attributes.temperature);
+    // Try to get condition from attributes first, then fall back to state
+    const condition = weather.attributes.condition || weather.state;
+    const temperature = weather.attributes.temperature;
+    
+    const icon = getWeatherIcon(condition, temperature);
     iconEl.textContent = icon.emoji;
     
     // Remove all animation classes first
-    iconEl.classList.remove('animated', 'rain', 'snow', 'wind');
+    iconEl.classList.remove('animated', 'rain', 'snow', 'wind', 'sun', 'storm', 'cloud', 'fog');
+    
+    // Remove any existing rain droplets
+    const existingDroplets = iconEl.querySelectorAll('.rain-droplet');
+    existingDroplets.forEach(droplet => droplet.remove());
     
     // Add specific animation for certain conditions
     if (icon.animation) {
       iconEl.classList.add(icon.animation);
+      
+      // Add third rain droplet for rain animation
+      if (icon.animation === 'rain') {
+        const droplet = document.createElement('span');
+        droplet.className = 'rain-droplet';
+        droplet.textContent = '💧';
+        iconEl.appendChild(droplet);
+      }
     }
   }
 }
@@ -2991,43 +3007,71 @@ function getWindDirection(bearing) {
 }
 
 function getWeatherIcon(condition, temperature) {
-  if (!condition) return { emoji: '🌤️', animation: null };
+  if (!condition) {
+    return { emoji: '🌤️', animation: null };
+  }
   
   const conditionLower = condition.toLowerCase();
   const temp = temperature || 20;
   
-  // Animated conditions
-  if (conditionLower.includes('rain') || conditionLower.includes('drizzle')) {
+  // Animated conditions - expanded matching
+  if (conditionLower.includes('rain') || conditionLower.includes('drizzle') || 
+      conditionLower.includes('shower') || conditionLower.includes('precipitation') ||
+      conditionLower.includes('wet') || conditionLower.includes('damp')) {
     return { emoji: '🌧️', animation: 'rain' };
   }
-  if (conditionLower.includes('storm') || conditionLower.includes('thunder')) {
-    return { emoji: '⛈️', animation: 'rain' };
+  if (conditionLower.includes('storm') || conditionLower.includes('thunder') || 
+      conditionLower.includes('lightning') || conditionLower.includes('thunderstorm') ||
+      conditionLower.includes('severe') || conditionLower.includes('tornado')) {
+    return { emoji: '⛈️', animation: 'storm' };
   }
-  if (conditionLower.includes('snow') || conditionLower.includes('blizzard')) {
+  if (conditionLower.includes('snow') || conditionLower.includes('blizzard') || 
+      conditionLower.includes('sleet') || conditionLower.includes('flurries') ||
+      conditionLower.includes('winter') || conditionLower.includes('freezing')) {
     return { emoji: '❄️', animation: 'snow' };
   }
-  if (conditionLower.includes('wind') || conditionLower.includes('breezy')) {
+  if (conditionLower.includes('wind') || conditionLower.includes('breezy') || 
+      conditionLower.includes('gusty') || conditionLower.includes('windy') ||
+      conditionLower.includes('gale') || conditionLower.includes('hurricane')) {
     return { emoji: '💨', animation: 'wind' };
   }
   
-  // Static conditions
-  if (conditionLower.includes('clear') || conditionLower.includes('sunny')) {
-    return { emoji: temp > 25 ? '☀️' : '🌤️', animation: null };
+  // Static conditions - expanded matching
+  if (conditionLower.includes('clear') || conditionLower.includes('sunny') || 
+      conditionLower.includes('fair') || conditionLower.includes('sunshine') ||
+      conditionLower.includes('bright') || conditionLower.includes('hot')) {
+    const icon = temp > 25 ? '☀️' : '🌤️';
+    const animation = temp > 25 ? 'sun' : null;
+    return { emoji: icon, animation: animation };
   }
-  if (conditionLower.includes('cloud') || conditionLower.includes('overcast')) {
-    return { emoji: '☁️', animation: null };
+  if (conditionLower.includes('cloud') || conditionLower.includes('overcast') || 
+      conditionLower.includes('cloudy') || conditionLower.includes('clouds') ||
+      conditionLower.includes('grey') || conditionLower.includes('gray') ||
+      conditionLower.includes('dull') || conditionLower.includes('gloomy')) {
+    return { emoji: '☁️', animation: 'cloud' };
   }
-  if (conditionLower.includes('partly')) {
-    return { emoji: '⛅', animation: null };
+  if (conditionLower.includes('partly') || conditionLower.includes('scattered') || 
+      conditionLower.includes('broken') || conditionLower.includes('variable') ||
+      conditionLower.includes('mixed')) {
+    return { emoji: '⛅', animation: 'cloud' };
   }
-  if (conditionLower.includes('fog') || conditionLower.includes('mist') || conditionLower.includes('haze') || conditionLower.includes('dust')) {
-    return { emoji: '🌫️', animation: null };
+  if (conditionLower.includes('fog') || conditionLower.includes('mist') || 
+      conditionLower.includes('haze') || conditionLower.includes('dust') || 
+      conditionLower.includes('smoke') || conditionLower.includes('smog') ||
+      conditionLower.includes('humid') || conditionLower.includes('damp')) {
+    return { emoji: '🌫️', animation: 'fog' };
   }
   
   // Default based on temperature
-  if (temp < 0) return { emoji: '❄️', animation: 'snow' };
-  if (temp < 10) return { emoji: '🌨️', animation: null };
-  if (temp > 30) return { emoji: '🌡️', animation: null };
+  if (temp < 0) {
+    return { emoji: '❄️', animation: 'snow' };
+  }
+  if (temp < 10) {
+    return { emoji: '🌨️', animation: null };
+  }
+  if (temp > 30) {
+    return { emoji: '🌡️', animation: null };
+  }
   
   return { emoji: '🌤️', animation: null };
 }
@@ -3965,8 +4009,11 @@ async function openSettings() {
   if (motionAutoHide) motionAutoHide.value = Math.max(3, Math.min(120, parseInt(mp.autoHideSeconds || 12, 10)));
   if (motionCooldown) motionCooldown.value = Math.max(0, Math.min(600, parseInt(mp.cooldownSeconds || 30, 10)));
   if (opacitySlider) {
-    opacitySlider.value = CONFIG.opacity || 0.95;
-    if (opacityValue) opacityValue.textContent = `${Math.round((CONFIG.opacity || 0.95) * 100)}%`;
+    // Ensure opacity is within safe range (20% to 100%)
+    const safeOpacity = Math.max(0.2, Math.min(1, CONFIG.opacity || 0.95));
+    CONFIG.opacity = safeOpacity; // Update config to safe value
+    opacitySlider.value = safeOpacity;
+    if (opacityValue) opacityValue.textContent = `${Math.round(safeOpacity * 100)}%`;
   }
 
   if (showDetails) {
@@ -3997,7 +4044,7 @@ async function openSettings() {
   initUpdateUI();
 
   modal.classList.remove('hidden');
-  modal.style.display = 'grid';
+  modal.style.display = 'flex';
   trapFocus(modal);
 }
 
@@ -4027,11 +4074,13 @@ async function saveSettings() {
   const highContrast = document.getElementById('high-contrast');
   const opaquePanels = document.getElementById('opaque-panels');
   const densitySelect = document.getElementById('density-select');
+  const opacitySlider = document.getElementById('opacity-slider');
 
   if (urlInput) CONFIG.homeAssistant.url = urlInput.value.trim();
   if (tokenInput) CONFIG.homeAssistant.token = tokenInput.value.trim();
   if (intervalInput) CONFIG.updateInterval = Math.max(1000, parseInt(intervalInput.value, 10) * 1000);
   if (alwaysOnTop) CONFIG.alwaysOnTop = alwaysOnTop.checked;
+  if (opacitySlider) CONFIG.opacity = Math.max(0.2, Math.min(1, parseFloat(opacitySlider.value)));
   if (favoritesInput) CONFIG.favoriteEntities = favoritesInput.value.split(',').map(s => s.trim()).filter(Boolean);
   if (camerasInput) CONFIG.cameraEntities = camerasInput.value.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -4418,12 +4467,14 @@ function initializeNewUI() {
   
   // Add long-press functionality to weather card
   setupWeatherCardLongPress();
-  
+
   // Try to update weather immediately if config is available
   if (CONFIG && CONFIG.selectedWeatherEntity) {
-    console.log('Attempting early weather update with selected entity:', CONFIG.selectedWeatherEntity);
     updateWeatherFromHA();
   }
+  
+  // Set up periodic weather updates every 5 minutes to ensure icon changes
+  setInterval(updateWeatherFromHA, 5 * 60 * 1000);
 }
 
 function updateTimeDisplay() {

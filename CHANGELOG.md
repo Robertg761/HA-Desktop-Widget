@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.2.1] - 2024-12-19
+
+### Changed
+- **Settings Window**: Improved settings window sizing and layout
+- **Project Cleanup**: Removed unnecessary release notes files (RELEASE_NOTES_v2.1.0.md, RELEASE_NOTES_v2.2.0.md)
+- **File Organization**: Streamlined project structure by removing redundant documentation files
+
+### Fixed
+- **Opacity Settings**: Fixed opacity slider and window transparency controls
+- **Weather Icon**: Fixed current weather icon display and rendering
+- **Settings UI**: Improved settings window responsiveness and usability
+- **Project Maintenance**: Cleaned up project directory to remove unused files
+
 ## [2.2.0] - 2024-09-15
 
 ### Added

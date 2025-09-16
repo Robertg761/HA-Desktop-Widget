@@ -18,7 +18,7 @@ function loadConfig() {
   // Default configuration
   const defaultConfig = {
     windowPosition: { x: 100, y: 100 },
-    windowSize: { width: 400, height: 600 },
+    windowSize: { width: 500, height: 600 },
     alwaysOnTop: true,
     opacity: 0.95,
     homeAssistant: {
@@ -97,8 +97,10 @@ function createWindow() {
     }
   });
 
-  // Set window opacity
-  mainWindow.setOpacity(config.opacity);
+  // Set window opacity with failsafe
+  const safeOpacity = Math.max(0.2, Math.min(1, config.opacity || 1));
+  mainWindow.setOpacity(safeOpacity);
+  config.opacity = safeOpacity; // Update config to safe value
 
   // Load the index.html file
   mainWindow.loadFile('index.html');
@@ -250,8 +252,10 @@ ipcMain.handle('update-config', (event, newConfig) => {
 });
 
 ipcMain.handle('set-opacity', (event, opacity) => {
-  mainWindow.setOpacity(opacity);
-  config.opacity = opacity;
+  // Ensure opacity is within safe range (20% to 100%)
+  const safeOpacity = Math.max(0.2, Math.min(1, opacity));
+  mainWindow.setOpacity(safeOpacity);
+  config.opacity = safeOpacity;
   saveConfig();
 });
 
