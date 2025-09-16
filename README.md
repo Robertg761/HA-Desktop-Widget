@@ -1,6 +1,6 @@
 # HA Desktop Widget
 
-A transparent, always-on-top desktop widget for Home Assistant that provides quick access to your smart home devices from your desktop.
+A semi-transparent, desktop widget for Home Assistant that provides quick access to your smart home devices from your desktop.
 
 [![CI (Windows)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml)
 [![Release (Windows)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
@@ -9,6 +9,8 @@ A transparent, always-on-top desktop widget for Home Assistant that provides qui
 Current version: 2.2.0
 
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
+
+![Main View](Main_View.png) ![Edit View](Edit_View.png) ![Light_Adjust](Light_Adjust.png)
 
 ## Features
 
