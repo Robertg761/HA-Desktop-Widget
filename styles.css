@@ -382,8 +382,23 @@ body {
   margin-bottom: 2px;
 }
 
-.entity-selector-state {
+.entity-selector-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
+}
+
+.entity-selector-type {
+  color: var(--accent);
+  font-weight: 500;
+  background: var(--accent-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.entity-selector-state {
   color: var(--text-secondary);
 }
 
@@ -1966,4 +1981,573 @@ body {
   font-variant-numeric: tabular-nums; /* Better number alignment */
   text-align: center;
   min-height: 1.2em; /* Prevent layout shift */
+}
+
+/* Global Hotkeys and Alerts Styles */
+.hotkeys-section, .alerts-section {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.hotkeys-info, .alerts-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hotkeys-info p, .alerts-info p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.hotkeys-list, .alerts-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.hotkey-item, .alert-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.hotkey-item:last-child, .alert-item:last-child {
+  border-bottom: none;
+}
+
+.hotkey-item:hover, .alert-item:hover {
+  background: var(--surface-hover);
+}
+
+.hotkey-info, .alert-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hotkey-icon, .alert-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+
+.hotkey-details, .alert-details {
+  flex: 1;
+}
+
+.hotkey-name, .alert-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.hotkey-meta, .alert-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.hotkey-type, .alert-type {
+  color: var(--accent);
+  font-weight: 500;
+  background: var(--accent-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.hotkey-combination, .alert-config {
+  color: var(--text-secondary);
+  font-family: monospace;
+  background: var(--surface-3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.hotkey-actions, .alert-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.hotkey-btn, .alert-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hotkey-btn.primary, .alert-btn.primary {
+  background: var(--primary);
+  color: white;
+}
+
+.hotkey-btn.primary:hover, .alert-btn.primary:hover {
+  background: var(--primary-hover);
+}
+
+.hotkey-btn.secondary, .alert-btn.secondary {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.hotkey-btn.secondary:hover, .alert-btn.secondary:hover {
+  background: var(--surface-hover);
+}
+
+.hotkey-btn.danger, .alert-btn.danger {
+  background: var(--danger);
+  color: white;
+}
+
+.hotkey-btn.danger:hover, .alert-btn.danger:hover {
+  background: var(--danger-hover);
+}
+
+.hotkey-input, .alert-input {
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 12px;
+  width: 120px;
+}
+
+.hotkey-input:focus, .alert-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.hotkey-input.invalid, .alert-input.invalid {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.hotkey-help, .alert-help {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--surface-3);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.hotkey-help h4, .alert-help h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.hotkey-help p, .alert-help p {
+  margin: 4px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.hotkey-help code, .alert-help code {
+  background: var(--surface-2);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.alert-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.alert-config-options {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.alert-config-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.alert-config-options input[type="checkbox"] {
+  margin: 0;
+}
+
+.alert-config-options input[type="text"] {
+  padding: 4px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12px;
+  width: 80px;
+}
+
+.no-hotkeys, .no-alerts {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Custom Modal Components */
+.form-help {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.form-help code {
+  background: var(--surface-2);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* Hotkey input capture styling */
+#hotkey-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+#hotkey-input {
+  cursor: pointer;
+  background: var(--surface-2);
+}
+
+#hotkey-input:hover {
+  background: var(--surface-hover);
+}
+
+.modifier-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modifier-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modifier-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+.modifier-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.alert-type-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.radio-option:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+.radio-option input[type="radio"] {
+  margin: 0;
+  margin-top: 2px;
+}
+
+.radio-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.radio-label strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.radio-label small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.radio-option:has(input:checked) {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.radio-option:has(input:checked) .radio-label strong {
+  color: var(--accent);
+}
+
+/* Existing Alerts List */
+.existing-alerts-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.existing-alert-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-2);
+  transition: all 0.2s ease;
+}
+
+.existing-alert-item:last-child {
+  border-bottom: none;
+}
+
+.existing-alert-item:hover {
+  background: var(--surface-hover);
+}
+
+.existing-alert-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.existing-alert-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.existing-alert-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.existing-alert-type {
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.existing-alert-config {
+  color: var(--text-secondary);
+}
+
+.existing-alert-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.existing-alert-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.existing-alert-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+.existing-alert-btn.edit {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.existing-alert-btn.edit:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.existing-alert-btn.remove {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.existing-alert-btn.remove:hover {
+  background: var(--error);
+  color: white;
+}
+
+.no-existing-alerts {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* Existing Hotkeys List */
+.existing-hotkeys-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.existing-hotkey-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-2);
+  transition: all 0.2s ease;
+}
+
+.existing-hotkey-item:last-child {
+  border-bottom: none;
+}
+
+.existing-hotkey-item:hover {
+  background: var(--surface-hover);
+}
+
+.existing-hotkey-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.existing-hotkey-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.existing-hotkey-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.existing-hotkey-type {
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.existing-hotkey-combination {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+}
+
+.existing-hotkey-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.existing-hotkey-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.existing-hotkey-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+.existing-hotkey-btn.edit {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.existing-hotkey-btn.edit:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.existing-hotkey-btn.remove {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.existing-hotkey-btn.remove:hover {
+  background: var(--error);
+  color: white;
+}
+
+.no-existing-hotkeys {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 14px;
 }

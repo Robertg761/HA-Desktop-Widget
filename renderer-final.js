@@ -609,6 +609,9 @@ function connectWebSocket() {
           updateEntityInUI(entity);
           handleMotionEvent(entity, oldEntity);
           
+          // Check for entity alerts
+          checkEntityAlerts(entity.entity_id, entity.state);
+          
           // Update weather if this is a weather entity change
           if (entity.entity_id.startsWith('weather.')) {
             updateWeatherFromHA();
@@ -625,6 +628,8 @@ function connectWebSocket() {
             renderActiveTab();
             // Update weather after states are loaded
             updateWeatherFromHA();
+            // Initialize entity alerts after states are loaded
+            initializeEntityAlerts();
             // Restart timer updates after states are loaded
             setTimeout(restartTimerUpdates, 100);
           } else if (msg.result[0].area_id) {
@@ -1889,17 +1894,37 @@ function populateEntityInspector() {
 
   const renderList = (filter = '') => {
     listContainer.innerHTML = '';
-    const f = (filter || '').toLowerCase();
-    const filtered = Object.values(STATES)
-      .filter(e => {
-        const idMatch = e.entity_id.toLowerCase().includes(f);
-        const name = (e.attributes?.friendly_name || '').toLowerCase();
-        const nameMatch = name.includes(f);
-        return idMatch || nameMatch;
+    const f = (filter || '').toLowerCase().trim();
+    
+    if (!f) {
+      // Show all entities if no filter
+      const allEntities = Object.values(STATES).slice(0, 50);
+      allEntities.forEach(entity => {
+        const card = createEntityCard(entity);
+        if (card) listContainer.appendChild(card);
+      });
+      return;
+    }
+    
+    // Score and filter entities
+    const scoredEntities = Object.values(STATES)
+      .map(entity => {
+        const name = getEntityDisplayName(entity);
+        const type = getEntityTypeDescription(entity);
+        const entityId = entity.entity_id;
+        
+        const nameScore = getSearchScore(name, f);
+        const typeScore = getSearchScore(type, f);
+        const entityIdScore = getSearchScore(entityId, f);
+        const maxScore = Math.max(nameScore, typeScore, entityIdScore);
+        
+        return { entity, score: maxScore };
       })
-      .slice(0, 50);
+      .filter(({ score }) => score > 0) // Only include items with matches
+      .sort((a, b) => b.score - a.score) // Sort by score (highest first)
+      .slice(0, 50); // Limit to 50 results
 
-    filtered.forEach(entity => {
+    scoredEntities.forEach(({ entity }) => {
       const card = createEntityCard(entity);
       if (card) listContainer.appendChild(card);
     });
@@ -2287,6 +2312,7 @@ function loadEntitySelector() {
     const icon = getEntityIcon(entity);
     const name = getEntityDisplayName(entity);
     const state = getEntityDisplayState(entity);
+    const type = getEntityTypeDescription(entity);
     
     return `
       <div class="entity-selector-item" data-entity-id="${entity.entity_id}">
@@ -2294,7 +2320,10 @@ function loadEntitySelector() {
           <span class="entity-selector-icon">${icon}</span>
           <div class="entity-selector-details">
             <div class="entity-selector-name">${name}</div>
-            <div class="entity-selector-state">${state}</div>
+            <div class="entity-selector-meta">
+              <span class="entity-selector-type">${type}</span>
+              <span class="entity-selector-state">${state}</span>
+            </div>
           </div>
         </div>
         <div class="entity-selector-actions">
@@ -2325,13 +2354,14 @@ function loadEntitySelector() {
       const scoredItems = items.map(item => {
         const name = item.querySelector('.entity-selector-name').textContent;
         const state = item.querySelector('.entity-selector-state').textContent;
+        const type = item.querySelector('.entity-selector-type').textContent;
         const entityId = item.dataset.entityId || '';
         
         const nameScore = getSearchScore(name, searchTerm);
         const stateScore = getSearchScore(state, searchTerm);
+        const typeScore = getSearchScore(type, searchTerm);
         const entityIdScore = getSearchScore(entityId, searchTerm);
-        const maxScore = Math.max(nameScore, stateScore, entityIdScore);
-        
+        const maxScore = Math.max(nameScore, stateScore, typeScore, entityIdScore);
         
         return { item, score: maxScore };
       }).filter(({ score }) => score > 0); // Only include items with matches
@@ -2396,6 +2426,7 @@ function loadQuickControlsSelector() {
     const icon = getEntityIcon(entity);
     const name = getEntityDisplayName(entity);
     const state = getEntityDisplayState(entity);
+    const type = getEntityTypeDescription(entity);
     
     return `
       <div class="entity-selector-item" data-entity-id="${entity.entity_id}">
@@ -2403,7 +2434,10 @@ function loadQuickControlsSelector() {
           <span class="entity-selector-icon">${icon}</span>
           <div class="entity-selector-details">
             <div class="entity-selector-name">${name}</div>
-            <div class="entity-selector-state">${state}</div>
+            <div class="entity-selector-meta">
+              <span class="entity-selector-type">${type}</span>
+              <span class="entity-selector-state">${state}</span>
+            </div>
           </div>
         </div>
         <div class="entity-selector-actions">
@@ -2434,12 +2468,14 @@ function loadQuickControlsSelector() {
       const scoredItems = items.map(item => {
         const name = item.querySelector('.entity-selector-name').textContent;
         const state = item.querySelector('.entity-selector-state').textContent;
+        const type = item.querySelector('.entity-selector-type').textContent;
         const entityId = item.dataset.entityId || '';
         
         const nameScore = getSearchScore(name, searchTerm);
         const stateScore = getSearchScore(state, searchTerm);
+        const typeScore = getSearchScore(type, searchTerm);
         const entityIdScore = getSearchScore(entityId, searchTerm);
-        const maxScore = Math.max(nameScore, stateScore, entityIdScore);
+        const maxScore = Math.max(nameScore, stateScore, typeScore, entityIdScore);
         
         return { item, score: maxScore };
       }).filter(({ score }) => score > 0); // Only include items with matches
@@ -3090,7 +3126,7 @@ function getEntityIcon(entity) {
     'binary_sensor': '📡',
     'climate': '🌡️',
     'media_player': '🎵',
-    'scene': '🎭',
+    'scene': '🎨',
     'automation': '⚙️',
     'script': '📜',
     'weather': '🌤️',
@@ -3098,6 +3134,193 @@ function getEntityIcon(entity) {
     'device_tracker': '📱'
   };
   return iconMap[domain] || '📋';
+}
+
+function getEntityTypeDescription(entity) {
+  const domain = entity.entity_id.split('.')[0];
+  const typeMap = {
+    'light': 'Light',
+    'switch': 'Switch',
+    'fan': 'Fan',
+    'lock': 'Lock',
+    'cover': 'Cover',
+    'camera': 'Camera',
+    'sensor': 'Sensor',
+    'binary_sensor': 'Binary Sensor',
+    'climate': 'Climate',
+    'media_player': 'Media Player',
+    'scene': 'Scene',
+    'automation': 'Automation',
+    'script': 'Script',
+    'weather': 'Weather',
+    'person': 'Person',
+    'device_tracker': 'Device Tracker',
+    'input_boolean': 'Input Boolean',
+    'input_number': 'Input Number',
+    'input_select': 'Input Select',
+    'input_text': 'Input Text',
+    'input_datetime': 'Input Datetime',
+    'timer': 'Timer',
+    'alarm_control_panel': 'Alarm Control Panel',
+    'vacuum': 'Vacuum',
+    'water_heater': 'Water Heater',
+    'humidifier': 'Humidifier',
+    'button': 'Button',
+    'number': 'Number',
+    'select': 'Select',
+    'text': 'Text',
+    'datetime': 'Datetime',
+    'date': 'Date',
+    'time': 'Time',
+    'tag': 'Tag',
+    'counter': 'Counter',
+    'calendar': 'Calendar',
+    'todo': 'Todo',
+    'update': 'Update',
+    'group': 'Group',
+    'sun': 'Sun',
+    'zone': 'Zone',
+    'proximity': 'Proximity',
+    'conversation': 'Conversation',
+    'tts': 'Text-to-Speech',
+    'notify': 'Notification',
+    'persistent_notification': 'Persistent Notification',
+    'system_log': 'System Log',
+    'logbook': 'Logbook',
+    'history': 'History',
+    'recorder': 'Recorder',
+    'config': 'Configuration',
+    'auth': 'Authentication',
+    'onboarding': 'Onboarding',
+    'supervisor': 'Supervisor',
+    'hassio': 'Home Assistant OS',
+    'homeassistant': 'Home Assistant Core',
+    'frontend': 'Frontend',
+    'api': 'API',
+    'websocket_api': 'WebSocket API',
+    'http': 'HTTP',
+    'stream': 'Stream',
+    'image': 'Image',
+    'image_processing': 'Image Processing',
+    'face_recognition': 'Face Recognition',
+    'object_detection': 'Object Detection',
+    'person': 'Person',
+    'device_automation': 'Device Automation',
+    'device_trigger': 'Device Trigger',
+    'device_condition': 'Device Condition',
+    'device_action': 'Device Action',
+    'blueprint': 'Blueprint',
+    'template': 'Template',
+    'python_script': 'Python Script',
+    'shell_command': 'Shell Command',
+    'rest_command': 'REST Command',
+    'command_line': 'Command Line',
+    'local_file': 'Local File',
+    'file': 'File',
+    'folder': 'Folder',
+    'folder_watcher': 'Folder Watcher',
+    'ftp': 'FTP',
+    'sftp': 'SFTP',
+    'smb': 'SMB',
+    'nfs': 'NFS',
+    'webdav': 'WebDAV',
+    'dropbox': 'Dropbox',
+    'onedrive': 'OneDrive',
+    'google_drive': 'Google Drive',
+    'icloud': 'iCloud',
+    'microsoft_graph': 'Microsoft Graph',
+    'google': 'Google',
+    'google_assistant': 'Google Assistant',
+    'alexa': 'Alexa',
+    'siri': 'Siri',
+    'cortana': 'Cortana',
+    'spotify': 'Spotify',
+    'youtube': 'YouTube',
+    'netflix': 'Netflix',
+    'plex': 'Plex',
+    'emby': 'Emby',
+    'jellyfin': 'Jellyfin',
+    'kodi': 'Kodi',
+    'vlc': 'VLC',
+    'mpd': 'Music Player Daemon',
+    'squeezebox': 'Squeezebox',
+    'sonos': 'Sonos',
+    'bose': 'Bose',
+    'harman_kardon': 'Harman Kardon',
+    'denon': 'Denon',
+    'marantz': 'Marantz',
+    'onkyo': 'Onkyo',
+    'pioneer': 'Pioneer',
+    'yamaha': 'Yamaha',
+    'samsungtv': 'Samsung TV',
+    'lg_netcast': 'LG NetCast',
+    'lg_smart': 'LG Smart TV',
+    'roku': 'Roku',
+    'firetv': 'Fire TV',
+    'androidtv': 'Android TV',
+    'appletv': 'Apple TV',
+    'chromecast': 'Chromecast',
+    'dlna_dmr': 'DLNA DMR',
+    'upnp': 'UPnP',
+    'airplay': 'AirPlay',
+    'bluetooth': 'Bluetooth',
+    'zigbee': 'Zigbee',
+    'zwave': 'Z-Wave',
+    'thread': 'Thread',
+    'matter': 'Matter',
+    'homekit': 'HomeKit',
+    'homekit_controller': 'HomeKit Controller',
+    'homekit_bridge': 'HomeKit Bridge',
+    'homekit_accessory': 'HomeKit Accessory',
+    'mqtt': 'MQTT',
+    'modbus': 'Modbus',
+    'knx': 'KNX',
+    'opcua': 'OPC UA',
+    'bacnet': 'BACnet',
+    'lora': 'LoRa',
+    'sigfox': 'Sigfox',
+    'nb_iot': 'NB-IoT',
+    'lte_m': 'LTE-M',
+    'wifi': 'WiFi',
+    'ethernet': 'Ethernet',
+    'usb': 'USB',
+    'serial': 'Serial',
+    'gpio': 'GPIO',
+    'i2c': 'I2C',
+    'spi': 'SPI',
+    'uart': 'UART',
+    'can': 'CAN',
+    'rs485': 'RS485',
+    'rs232': 'RS232',
+    'dmx': 'DMX',
+    'artnet': 'ArtNet',
+    'sACN': 'sACN',
+    'dali': 'DALI',
+    'lutron': 'Lutron',
+    'lutron_caseta': 'Lutron Caseta',
+    'lutron_ra2': 'Lutron RA2',
+    'lutron_ra2_select': 'Lutron RA2 Select',
+    'lutron_grafik_eye': 'Lutron Grafik Eye',
+    'lutron_homeworks': 'Lutron HomeWorks',
+    'lutron_radiora2': 'Lutron RadioRA2',
+    'lutron_seeTouch': 'Lutron seeTouch',
+    'lutron_seeTouch_keypad': 'Lutron seeTouch Keypad',
+    'lutron_seeTouch_tabletop': 'Lutron seeTouch Tabletop',
+    'lutron_seeTouch_wall': 'Lutron seeTouch Wall',
+    'lutron_seeTouch_hybrid': 'Lutron seeTouch Hybrid',
+    'lutron_seeTouch_hybrid_keypad': 'Lutron seeTouch Hybrid Keypad',
+    'lutron_seeTouch_hybrid_tabletop': 'Lutron seeTouch Hybrid Tabletop',
+    'lutron_seeTouch_hybrid_wall': 'Lutron seeTouch Hybrid Wall',
+    'lutron_seeTouch_hybrid_hybrid': 'Lutron seeTouch Hybrid Hybrid',
+    'lutron_seeTouch_hybrid_hybrid_keypad': 'Lutron seeTouch Hybrid Hybrid Keypad',
+    'lutron_seeTouch_hybrid_hybrid_tabletop': 'Lutron seeTouch Hybrid Hybrid Tabletop',
+    'lutron_seeTouch_hybrid_hybrid_wall': 'Lutron seeTouch Hybrid Hybrid Wall',
+    'lutron_seeTouch_hybrid_hybrid_hybrid': 'Lutron seeTouch Hybrid Hybrid Hybrid',
+    'lutron_seeTouch_hybrid_hybrid_hybrid_keypad': 'Lutron seeTouch Hybrid Hybrid Hybrid Keypad',
+    'lutron_seeTouch_hybrid_hybrid_hybrid_tabletop': 'Lutron seeTouch Hybrid Hybrid Hybrid Tabletop',
+    'lutron_seeTouch_hybrid_hybrid_hybrid_wall': 'Lutron seeTouch Hybrid Hybrid Hybrid Wall'
+  };
+  return typeMap[domain] || domain.charAt(0).toUpperCase() + domain.slice(1).replace(/_/g, ' ');
 }
 
 function getEntityDisplayName(entity) {
@@ -3543,9 +3766,13 @@ function showSensorDetails(sensor) {
 function showBrightnessSlider(light) {
   if (!light || !light.entity_id.startsWith('light.')) return;
   
-  const currentBrightness = light.state === 'on' && light.attributes.brightness 
-    ? Math.round((light.attributes.brightness / 255) * 100) 
-    : 0;
+  // Get the current light state from STATES to ensure we have the latest data
+  const currentLight = STATES[light.entity_id];
+  if (!currentLight) return;
+  
+  const currentBrightness = currentLight.state === 'on' && currentLight.attributes.brightness 
+    ? Math.round((currentLight.attributes.brightness / 255) * 100) 
+    : (currentLight.state === 'on' ? 100 : 0); // If light is on but no brightness attribute, assume 100%
   
   // Create modal for brightness control
   const modal = document.createElement('div');
@@ -3553,7 +3780,7 @@ function showBrightnessSlider(light) {
   modal.innerHTML = `
     <div class="modal-content">
       <div class="modal-header">
-        <h2>${getEntityDisplayName(light)}</h2>
+        <h2>${getEntityDisplayName(currentLight)}</h2>
         <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
       </div>
       <div class="modal-body">
@@ -4033,6 +4260,21 @@ async function openSettings() {
     densitySelect.value = (CONFIG.ui && CONFIG.ui.density) || 'comfortable';
   }
 
+  // Load hotkeys and alerts settings
+  const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
+  const hotkeysSection = document.getElementById('hotkeys-section');
+  if (globalHotkeysEnabled && hotkeysSection) {
+    globalHotkeysEnabled.checked = !!(CONFIG.globalHotkeys && CONFIG.globalHotkeys.enabled);
+    hotkeysSection.style.display = globalHotkeysEnabled.checked ? 'block' : 'none';
+  }
+
+  const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
+  const alertsSection = document.getElementById('alerts-section');
+  if (entityAlertsEnabled && alertsSection) {
+    entityAlertsEnabled.checked = !!(CONFIG.entityAlerts && CONFIG.entityAlerts.enabled);
+    alertsSection.style.display = entityAlertsEnabled.checked ? 'block' : 'none';
+  }
+
   populateDomainFilters();
   populateAreaFilter();
 
@@ -4096,6 +4338,19 @@ async function saveSettings() {
   if (highContrast) CONFIG.ui.highContrast = !!highContrast.checked;
   if (opaquePanels) CONFIG.ui.opaquePanels = !!opaquePanels.checked;
   if (densitySelect) CONFIG.ui.density = densitySelect.value || 'comfortable';
+
+  // Save hotkeys and alerts settings
+  const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
+  if (globalHotkeysEnabled) {
+    CONFIG.globalHotkeys = CONFIG.globalHotkeys || { enabled: false, hotkeys: {} };
+    CONFIG.globalHotkeys.enabled = globalHotkeysEnabled.checked;
+  }
+
+  const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
+  if (entityAlertsEnabled) {
+    CONFIG.entityAlerts = CONFIG.entityAlerts || { enabled: false, alerts: {} };
+    CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
+  }
 
   const checkboxes = document.querySelectorAll('#domain-filters input[type="checkbox"]');
   FILTERS.domains = Array.from(checkboxes)
@@ -4253,6 +4508,72 @@ function wireUI() {
     };
   }
 
+  // Global Hotkeys UI handlers
+  const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
+  const hotkeysSection = document.getElementById('hotkeys-section');
+  if (globalHotkeysEnabled && hotkeysSection) {
+    globalHotkeysEnabled.onchange = (e) => {
+      const enabled = e.target.checked;
+      hotkeysSection.style.display = enabled ? 'block' : 'none';
+      toggleHotkeys(enabled);
+    };
+  }
+
+  const manageHotkeysBtn = document.getElementById('manage-hotkeys-btn');
+  if (manageHotkeysBtn) manageHotkeysBtn.onclick = openHotkeysModal;
+
+  const closeHotkeysBtn = document.getElementById('close-hotkeys');
+  if (closeHotkeysBtn) closeHotkeysBtn.onclick = closeHotkeysModal;
+
+  // Entity Alerts UI handlers
+  const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
+  const alertsSection = document.getElementById('alerts-section');
+  if (entityAlertsEnabled && alertsSection) {
+    entityAlertsEnabled.onchange = (e) => {
+      const enabled = e.target.checked;
+      alertsSection.style.display = enabled ? 'block' : 'none';
+      toggleAlerts(enabled);
+    };
+  }
+
+  const manageAlertsBtn = document.getElementById('manage-alerts-btn');
+  if (manageAlertsBtn) manageAlertsBtn.onclick = openAlertsModal;
+
+  const closeAlertsBtn = document.getElementById('close-alerts');
+  if (closeAlertsBtn) closeAlertsBtn.onclick = closeAlertsModal;
+
+  // Hotkey config modal handlers
+  const closeHotkeyConfigBtn = document.getElementById('close-hotkey-config');
+  if (closeHotkeyConfigBtn) closeHotkeyConfigBtn.onclick = closeHotkeyConfigModal;
+
+  const cancelHotkeyBtn = document.getElementById('cancel-hotkey');
+  if (cancelHotkeyBtn) cancelHotkeyBtn.onclick = closeHotkeyConfigModal;
+
+  const saveHotkeyBtn = document.getElementById('save-hotkey');
+  if (saveHotkeyBtn) saveHotkeyBtn.onclick = saveHotkey;
+
+  // Alert config modal handlers
+  const closeAlertConfigBtn = document.getElementById('close-alert-config');
+  if (closeAlertConfigBtn) closeAlertConfigBtn.onclick = closeAlertConfigModal;
+
+  const cancelAlertBtn = document.getElementById('cancel-alert');
+  if (cancelAlertBtn) cancelAlertBtn.onclick = closeAlertConfigModal;
+
+  const saveAlertBtn = document.getElementById('save-alert');
+  if (saveAlertBtn) saveAlertBtn.onclick = saveAlert;
+
+  // Alert type radio button handlers
+  const alertTypeRadios = document.querySelectorAll('input[name="alert-type"]');
+  alertTypeRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const specificStateGroup = document.getElementById('specific-state-group');
+      if (specificStateGroup) {
+        specificStateGroup.style.display = e.target.value === 'specific-state' ? 'block' : 'none';
+      }
+    });
+  });
+
+
   setupTabs();
 }
 
@@ -4339,6 +4660,10 @@ async function init() {
     CONFIG = await ipcRenderer.invoke('get-config');
     console.log('CONFIG loaded:', CONFIG);
     console.log('Selected weather entity:', CONFIG.selectedWeatherEntity);
+    
+    // Initialize hotkeys and alerts
+    initializeHotkeysAndAlerts();
+    requestNotificationPermission();
     
     // Update weather immediately after config is loaded
     updateWeatherFromHA();
@@ -5079,3 +5404,860 @@ function hideMotionPopup(silent = false) {
     console.warn('hideMotionPopup error:', e?.message || e);
   }
 }
+
+// Global Hotkey Management
+let globalHotkeys = {};
+let entityAlerts = {};
+
+// Initialize hotkeys and alerts from config
+function initializeHotkeysAndAlerts() {
+  if (CONFIG.globalHotkeys) {
+    globalHotkeys = CONFIG.globalHotkeys;
+  }
+  if (CONFIG.entityAlerts) {
+    entityAlerts = CONFIG.entityAlerts;
+  }
+}
+
+// Handle hotkey triggers from main process
+ipcRenderer.on('hotkey-triggered', (event, { entityId, hotkey }) => {
+  console.log(`Hotkey triggered: ${hotkey} for entity: ${entityId}`);
+  
+  const entity = STATES[entityId];
+  if (entity) {
+    // Show visual feedback
+    showToast(`Hotkey: ${hotkey}`, 'info', 1000);
+    
+    // Toggle the entity
+    toggleEntity(entity);
+  } else {
+    showToast(`Entity not found: ${entityId}`, 'error', 2000);
+  }
+});
+
+// Hotkey management functions
+async function registerHotkey(entityId, hotkey) {
+  try {
+    const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey);
+    if (result.success) {
+      showToast(`Hotkey registered: ${hotkey}`, 'success', 2000);
+      return true;
+    } else {
+      showToast(`Failed to register hotkey: ${result.error}`, 'error', 3000);
+      return false;
+    }
+  } catch (error) {
+    console.error('Error registering hotkey:', error);
+    showToast('Error registering hotkey', 'error', 2000);
+    return false;
+  }
+}
+
+async function unregisterHotkey(entityId) {
+  try {
+    const result = await ipcRenderer.invoke('unregister-hotkey', entityId);
+    if (result.success) {
+      showToast('Hotkey removed', 'success', 1500);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error unregistering hotkey:', error);
+    showToast('Error removing hotkey', 'error', 2000);
+  }
+  return false;
+}
+
+async function toggleHotkeys(enabled) {
+  try {
+    const result = await ipcRenderer.invoke('toggle-hotkeys', enabled);
+    if (result.success) {
+      globalHotkeys.enabled = enabled;
+      showToast(`Global hotkeys ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error toggling hotkeys:', error);
+    showToast('Error toggling hotkeys', 'error', 2000);
+  }
+  return false;
+}
+
+async function validateHotkey(hotkey) {
+  try {
+    const result = await ipcRenderer.invoke('validate-hotkey', hotkey);
+    return result.valid;
+  } catch (error) {
+    console.error('Error validating hotkey:', error);
+    return false;
+  }
+}
+
+// Entity Alert Management
+let alertStates = {}; // Track previous states for comparison
+
+function initializeEntityAlerts() {
+  if (!entityAlerts.enabled) return;
+  
+  // Initialize alert states
+  Object.keys(entityAlerts.alerts).forEach(entityId => {
+    if (STATES[entityId]) {
+      alertStates[entityId] = STATES[entityId].state;
+    }
+  });
+}
+
+function checkEntityAlerts(entityId, newState) {
+  if (!entityAlerts.enabled || !entityAlerts.alerts[entityId]) return;
+  
+  const alertConfig = entityAlerts.alerts[entityId];
+  const previousState = alertStates[entityId];
+  
+  // Update stored state
+  alertStates[entityId] = newState;
+  
+  // Check if we should trigger an alert
+  let shouldAlert = false;
+  let alertMessage = '';
+  
+  if (alertConfig.onStateChange && previousState !== newState) {
+    shouldAlert = true;
+    alertMessage = `${getEntityDisplayName(STATES[entityId])} changed from ${previousState} to ${newState}`;
+  } else if (alertConfig.onSpecificState && alertConfig.targetState === newState) {
+    shouldAlert = true;
+    alertMessage = `${getEntityDisplayName(STATES[entityId])} is now ${newState}`;
+  }
+  
+  if (shouldAlert) {
+    showEntityAlert(alertMessage, entityId, newState);
+  }
+}
+
+function showEntityAlert(message, entityId, state) {
+  // Show desktop notification
+  if (Notification.permission === 'granted') {
+    new Notification('Home Assistant Alert', {
+      body: message,
+      icon: getEntityIcon(STATES[entityId]),
+      tag: `ha-alert-${entityId}`,
+      requireInteraction: false
+    });
+  }
+  
+  // Show toast notification
+  showToast(message, 'info', 4000);
+}
+
+// Alert management functions
+async function setEntityAlert(entityId, alertConfig) {
+  try {
+    const result = await ipcRenderer.invoke('set-entity-alert', entityId, alertConfig);
+    if (result.success) {
+      entityAlerts.alerts[entityId] = alertConfig;
+      showToast('Alert configured', 'success', 2000);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error setting entity alert:', error);
+    showToast('Error configuring alert', 'error', 2000);
+  }
+  return false;
+}
+
+async function removeEntityAlert(entityId) {
+  try {
+    const result = await ipcRenderer.invoke('remove-entity-alert', entityId);
+    if (result.success) {
+      delete entityAlerts.alerts[entityId];
+      delete alertStates[entityId];
+      showToast('Alert removed', 'success', 1500);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error removing entity alert:', error);
+    showToast('Error removing alert', 'error', 2000);
+  }
+  return false;
+}
+
+async function toggleAlerts(enabled) {
+  try {
+    const result = await ipcRenderer.invoke('toggle-alerts', enabled);
+    if (result.success) {
+      entityAlerts.enabled = enabled;
+      showToast(`Entity alerts ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error toggling alerts:', error);
+    showToast('Error toggling alerts', 'error', 2000);
+  }
+  return false;
+}
+
+// Request notification permission
+function requestNotificationPermission() {
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        showToast('Notifications enabled', 'success', 2000);
+      } else {
+        showToast('Notifications disabled', 'warning', 2000);
+      }
+    });
+  }
+}
+
+// UI Management Functions
+function openHotkeysModal() {
+  const modal = document.getElementById('hotkeys-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    loadHotkeysList();
+    setupFocusTrap(modal);
+  }
+}
+
+function closeHotkeysModal() {
+  const modal = document.getElementById('hotkeys-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    releaseFocusTrap(modal);
+  }
+}
+
+function openAlertsModal() {
+  const modal = document.getElementById('alerts-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    loadAlertsList();
+    setupFocusTrap(modal);
+  }
+}
+
+function closeAlertsModal() {
+  const modal = document.getElementById('alerts-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    releaseFocusTrap(modal);
+  }
+}
+
+function loadHotkeysList() {
+  const container = document.getElementById('hotkeys-list');
+  if (!container || !STATES || Object.keys(STATES).length === 0) {
+    container.innerHTML = '<div class="no-hotkeys">No entities loaded from Home Assistant. Make sure you\'re connected.</div>';
+    return;
+  }
+
+  // Get entities that can be controlled
+  const controllableEntities = Object.values(STATES)
+    .filter(entity => {
+      const domain = entity.entity_id.split('.')[0];
+      return ['light', 'switch', 'fan', 'lock', 'cover', 'scene', 'automation', 'script', 'input_boolean'].includes(domain);
+    })
+    .sort((a, b) => {
+      const domainA = a.entity_id.split('.')[0];
+      const domainB = b.entity_id.split('.')[0];
+      if (domainA !== domainB) {
+        return domainA.localeCompare(domainB);
+      }
+      return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+    });
+
+  container.innerHTML = controllableEntities.map(entity => {
+    const icon = getEntityIcon(entity);
+    const name = getEntityDisplayName(entity);
+    const type = getEntityTypeDescription(entity);
+    const currentHotkey = globalHotkeys.hotkeys?.[entity.entity_id] || '';
+    
+    return `
+      <div class="hotkey-item" data-entity-id="${entity.entity_id}">
+        <div class="hotkey-info">
+          <span class="hotkey-icon">${icon}</span>
+          <div class="hotkey-details">
+            <div class="hotkey-name">${name}</div>
+            <div class="hotkey-meta">
+              <span class="hotkey-type">${type}</span>
+              <span class="hotkey-combination">${currentHotkey || 'No hotkey'}</span>
+            </div>
+          </div>
+        </div>
+        <div class="hotkey-actions">
+          ${currentHotkey 
+            ? `<button class="hotkey-btn danger" onclick="removeHotkey('${entity.entity_id}')">Remove</button>`
+            : `<button class="hotkey-btn primary" onclick="addHotkey('${entity.entity_id}')">Add</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add search functionality (only if not already added)
+  const searchInput = document.getElementById('hotkey-search');
+  if (searchInput && !searchInput.hasAttribute('data-search-initialized')) {
+    searchInput.setAttribute('data-search-initialized', 'true');
+    searchInput.oninput = (e) => {
+      const searchTerm = e.target.value.toLowerCase().trim();
+      
+      if (!searchTerm) {
+        // Show all items if search is empty
+        const items = container.querySelectorAll('.hotkey-item');
+        const existingItems = document.querySelectorAll('.existing-hotkey-item');
+        items.forEach(item => item.style.display = 'flex');
+        existingItems.forEach(item => item.style.display = 'flex');
+        return;
+      }
+      
+      // Search in both lists
+      const items = Array.from(container.querySelectorAll('.hotkey-item'));
+      const existingItems = Array.from(document.querySelectorAll('.existing-hotkey-item'));
+      
+      // Search in main hotkeys list
+      const scoredItems = items.map(item => {
+        const name = item.querySelector('.hotkey-name').textContent;
+        const type = item.querySelector('.hotkey-type').textContent;
+        const combination = item.querySelector('.hotkey-combination').textContent;
+        const entityId = item.dataset.entityId || '';
+        
+        const nameScore = getSearchScore(name, searchTerm);
+        const typeScore = getSearchScore(type, searchTerm);
+        const combinationScore = getSearchScore(combination, searchTerm);
+        const entityIdScore = getSearchScore(entityId, searchTerm);
+        const maxScore = Math.max(nameScore, typeScore, combinationScore, entityIdScore);
+        
+        return { item, score: maxScore };
+      }).filter(({ score }) => score > 0);
+      
+      // Search in existing hotkeys list
+      const scoredExistingItems = existingItems.map(item => {
+        const name = item.querySelector('.existing-hotkey-name').textContent;
+        const type = item.querySelector('.existing-hotkey-type').textContent;
+        const combination = item.querySelector('.existing-hotkey-combination').textContent;
+        const entityId = item.dataset.entityId || '';
+        
+        const nameScore = getSearchScore(name, searchTerm);
+        const typeScore = getSearchScore(type, searchTerm);
+        const combinationScore = getSearchScore(combination, searchTerm);
+        const entityIdScore = getSearchScore(entityId, searchTerm);
+        const maxScore = Math.max(nameScore, typeScore, combinationScore, entityIdScore);
+        
+        return { item, score: maxScore };
+      }).filter(({ score }) => score > 0);
+      
+      // Sort by score (highest first)
+      scoredItems.sort((a, b) => b.score - a.score);
+      scoredExistingItems.sort((a, b) => b.score - a.score);
+      
+      // Hide all items first
+      items.forEach(item => item.style.display = 'none');
+      existingItems.forEach(item => item.style.display = 'none');
+      
+      // Show and reorder matched items
+      scoredItems.forEach(({ item }) => {
+        item.style.display = 'flex';
+        container.appendChild(item);
+      });
+      
+      scoredExistingItems.forEach(({ item }) => {
+        item.style.display = 'flex';
+        document.getElementById('existing-hotkeys-list').appendChild(item);
+      });
+    };
+  }
+
+  // Load existing hotkeys
+  loadExistingHotkeysList();
+}
+
+function loadExistingHotkeysList() {
+  const container = document.getElementById('existing-hotkeys-list');
+  if (!container || !CONFIG.globalHotkeys.hotkeys || Object.keys(CONFIG.globalHotkeys.hotkeys).length === 0) {
+    container.innerHTML = '<div class="no-existing-hotkeys">No hotkeys configured</div>';
+    return;
+  }
+
+  const existingHotkeys = Object.entries(CONFIG.globalHotkeys.hotkeys).map(([entityId, hotkey]) => {
+    const entity = STATES[entityId];
+    if (!entity || !hotkey) return null; // Skip if entity no longer exists or no hotkey
+
+    const name = getEntityDisplayName(entity);
+    const type = getEntityTypeDescription(entity);
+
+    return `
+      <div class="existing-hotkey-item" data-entity-id="${entityId}">
+        <div class="existing-hotkey-info">
+          <div class="existing-hotkey-name">${name}</div>
+          <div class="existing-hotkey-details">
+            <span class="existing-hotkey-type">${type}</span>
+            <span class="existing-hotkey-combination">${hotkey}</span>
+          </div>
+        </div>
+        <div class="existing-hotkey-actions">
+          <button class="existing-hotkey-btn edit" onclick="editHotkey('${entityId}')">Edit</button>
+          <button class="existing-hotkey-btn remove" onclick="removeHotkey('${entityId}')">Remove</button>
+        </div>
+      </div>
+    `;
+  }).filter(Boolean).join('');
+
+  if (existingHotkeys) {
+    container.innerHTML = existingHotkeys;
+  } else {
+    container.innerHTML = '<div class="no-existing-hotkeys">No hotkeys configured</div>';
+  }
+}
+
+function loadAlertsList() {
+  const container = document.getElementById('alerts-list');
+  if (!container || !STATES || Object.keys(STATES).length === 0) {
+    container.innerHTML = '<div class="no-alerts">No entities loaded from Home Assistant. Make sure you\'re connected.</div>';
+    return;
+  }
+
+  // Get all entities
+  const allEntities = Object.values(STATES)
+    .sort((a, b) => {
+      const domainA = a.entity_id.split('.')[0];
+      const domainB = b.entity_id.split('.')[0];
+      if (domainA !== domainB) {
+        return domainA.localeCompare(domainB);
+      }
+      return getEntityDisplayName(a).localeCompare(getEntityDisplayName(b));
+    });
+
+  container.innerHTML = allEntities.map(entity => {
+    const icon = getEntityIcon(entity);
+    const name = getEntityDisplayName(entity);
+    const type = getEntityTypeDescription(entity);
+    const currentAlert = entityAlerts.alerts?.[entity.entity_id];
+    const hasAlert = currentAlert && (currentAlert.onStateChange || currentAlert.onSpecificState);
+    
+    return `
+      <div class="alert-item" data-entity-id="${entity.entity_id}">
+        <div class="alert-info">
+          <span class="alert-icon">${icon}</span>
+          <div class="alert-details">
+            <div class="alert-name">${name}</div>
+            <div class="alert-meta">
+              <span class="alert-type">${type}</span>
+              <span class="alert-config">${hasAlert ? 'Alert configured' : 'No alert'}</span>
+            </div>
+          </div>
+        </div>
+        <div class="alert-actions">
+          ${hasAlert 
+            ? `<button class="alert-btn danger" onclick="removeAlert('${entity.entity_id}')">Remove</button>`
+            : `<button class="alert-btn primary" onclick="addAlert('${entity.entity_id}')">Add</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add search functionality (only if not already added)
+  const searchInput = document.getElementById('alert-search');
+  if (searchInput && !searchInput.hasAttribute('data-search-initialized')) {
+    searchInput.setAttribute('data-search-initialized', 'true');
+    searchInput.oninput = (e) => {
+      const searchTerm = e.target.value.toLowerCase().trim();
+      
+      if (!searchTerm) {
+        // Show all items if search is empty
+        const items = container.querySelectorAll('.alert-item');
+        const existingItems = document.querySelectorAll('.existing-alert-item');
+        items.forEach(item => item.style.display = 'flex');
+        existingItems.forEach(item => item.style.display = 'flex');
+        return;
+      }
+      
+      // Search in both lists
+      const items = Array.from(container.querySelectorAll('.alert-item'));
+      const existingItems = Array.from(document.querySelectorAll('.existing-alert-item'));
+      
+      // Search in main alerts list
+      const scoredItems = items.map(item => {
+        const name = item.querySelector('.alert-name').textContent;
+        const type = item.querySelector('.alert-type').textContent;
+        const config = item.querySelector('.alert-config').textContent;
+        const entityId = item.dataset.entityId || '';
+        
+        const nameScore = getSearchScore(name, searchTerm);
+        const typeScore = getSearchScore(type, searchTerm);
+        const configScore = getSearchScore(config, searchTerm);
+        const entityIdScore = getSearchScore(entityId, searchTerm);
+        const maxScore = Math.max(nameScore, typeScore, configScore, entityIdScore);
+        
+        return { item, score: maxScore };
+      }).filter(({ score }) => score > 0);
+      
+      // Search in existing alerts list
+      const scoredExistingItems = existingItems.map(item => {
+        const name = item.querySelector('.existing-alert-name').textContent;
+        const type = item.querySelector('.existing-alert-type').textContent;
+        const config = item.querySelector('.existing-alert-config').textContent;
+        const entityId = item.dataset.entityId || '';
+        
+        const nameScore = getSearchScore(name, searchTerm);
+        const typeScore = getSearchScore(type, searchTerm);
+        const configScore = getSearchScore(config, searchTerm);
+        const entityIdScore = getSearchScore(entityId, searchTerm);
+        const maxScore = Math.max(nameScore, typeScore, configScore, entityIdScore);
+        
+        return { item, score: maxScore };
+      }).filter(({ score }) => score > 0);
+      
+      // Sort by score (highest first)
+      scoredItems.sort((a, b) => b.score - a.score);
+      scoredExistingItems.sort((a, b) => b.score - a.score);
+      
+      // Hide all items first
+      items.forEach(item => item.style.display = 'none');
+      existingItems.forEach(item => item.style.display = 'none');
+      
+      // Show and reorder matched items
+      scoredItems.forEach(({ item }) => {
+        item.style.display = 'flex';
+        container.appendChild(item);
+      });
+      
+      scoredExistingItems.forEach(({ item }) => {
+        item.style.display = 'flex';
+        document.getElementById('existing-alerts-list').appendChild(item);
+      });
+    };
+  }
+
+  // Load existing alerts
+  loadExistingAlertsList();
+}
+
+function loadExistingAlertsList() {
+  const container = document.getElementById('existing-alerts-list');
+  if (!container || !CONFIG.entityAlerts.alerts || Object.keys(CONFIG.entityAlerts.alerts).length === 0) {
+    container.innerHTML = '<div class="no-existing-alerts">No alerts configured</div>';
+    return;
+  }
+
+  const existingAlerts = Object.entries(CONFIG.entityAlerts.alerts).map(([entityId, alertConfig]) => {
+    const entity = STATES[entityId];
+    if (!entity) return null; // Skip if entity no longer exists
+
+    const name = getEntityDisplayName(entity);
+    const type = getEntityTypeDescription(entity);
+    const icon = getEntityIcon(entity);
+
+    // Determine alert type and configuration text
+    let alertTypeText, alertConfigText;
+    if (alertConfig.onStateChange) {
+      alertTypeText = 'State Change';
+      alertConfigText = 'Any state change';
+    } else if (alertConfig.onSpecificState) {
+      alertTypeText = 'Specific State';
+      alertConfigText = `When state = "${alertConfig.targetState}"`;
+    } else {
+      alertTypeText = 'Unknown';
+      alertConfigText = 'Unknown configuration';
+    }
+
+    return `
+      <div class="existing-alert-item" data-entity-id="${entityId}">
+        <div class="existing-alert-info">
+          <div class="existing-alert-name">${name}</div>
+          <div class="existing-alert-details">
+            <span class="existing-alert-type">${alertTypeText}</span>
+            <span class="existing-alert-config">${alertConfigText}</span>
+          </div>
+        </div>
+        <div class="existing-alert-actions">
+          <button class="existing-alert-btn edit" onclick="editAlert('${entityId}')">Edit</button>
+          <button class="existing-alert-btn remove" onclick="removeAlert('${entityId}')">Remove</button>
+        </div>
+      </div>
+    `;
+  }).filter(Boolean).join('');
+
+  if (existingAlerts) {
+    container.innerHTML = existingAlerts;
+  } else {
+    container.innerHTML = '<div class="no-existing-alerts">No alerts configured</div>';
+  }
+}
+
+// Hotkey management UI functions
+let currentHotkeyEntityId = null;
+
+async function addHotkey(entityId) {
+  currentHotkeyEntityId = entityId;
+  openHotkeyConfigModal();
+}
+
+async function removeHotkey(entityId) {
+  const success = await unregisterHotkey(entityId);
+  if (success) {
+    loadHotkeysList(); // Refresh the list
+  }
+}
+
+async function editHotkey(entityId) {
+  currentHotkeyEntityId = entityId;
+  const currentHotkey = CONFIG.globalHotkeys.hotkeys[entityId];
+  
+  if (!currentHotkey) {
+    showToast('Hotkey configuration not found', 'error', 2000);
+    return;
+  }
+  
+  openHotkeyConfigModal();
+  
+  // Pre-populate the form with existing hotkey and set up key capture
+  const button = document.getElementById('hotkey-input');
+  if (button) {
+    button.textContent = currentHotkey;
+    setupHotkeyCapture(button);
+  }
+}
+
+function openHotkeyConfigModal() {
+  const modal = document.getElementById('hotkey-config-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    setupFocusTrap(modal);
+    
+    // Clear the button and set up key capture
+    const button = document.getElementById('hotkey-input');
+    if (button) {
+      button.textContent = 'Click to set hotkey';
+      setupHotkeyCapture(button);
+      button.focus();
+    }
+  }
+}
+
+function setupHotkeyCapture(button) {
+  let isCapturing = false;
+  let currentCombination = '';
+
+  // Teardown any prior handlers
+  if (button._hotkeyHandlers) {
+    const h = button._hotkeyHandlers;
+    document.removeEventListener('keydown', h.docKeyDown, true);
+    button.removeEventListener('click', h.click);
+    button._hotkeyHandlers = undefined;
+  }
+
+  function startCapture() {
+    isCapturing = true;
+    currentCombination = '';
+    button.textContent = 'Press any key combination...';
+    button.classList.add('is-capturing');
+  }
+
+  function stopCapture() {
+    isCapturing = false;
+    button.classList.remove('is-capturing');
+    if (!currentCombination) {
+      button.textContent = 'Click to set hotkey';
+    }
+  }
+
+  function docKeyDown(e) {
+    if (!isCapturing) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Handle special keys
+    if (e.key === 'Escape') {
+      button.textContent = 'Click to set hotkey';
+      stopCapture();
+      return;
+    }
+
+    // Build the combination from the current event
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Win');
+
+    // Add the main key (normalize it)
+    let mainKey = e.key;
+    if (mainKey === ' ') mainKey = 'Space';
+    else if (mainKey === 'Escape') mainKey = 'Esc';
+    else if (mainKey.startsWith('Arrow')) mainKey = mainKey.replace('Arrow', '');
+    else if (mainKey.length === 1) mainKey = mainKey.toUpperCase();
+    else if (mainKey === 'Meta') return; // Skip meta key itself
+    else if (mainKey === 'Control') return; // Skip control key itself
+    else if (mainKey === 'Alt') return; // Skip alt key itself
+    else if (mainKey === 'Shift') return; // Skip shift key itself
+
+    if (mainKey && !parts.includes(mainKey)) {
+      parts.push(mainKey);
+    }
+
+    currentCombination = parts.join('+');
+    button.textContent = currentCombination;
+
+    // Stop capture after a short delay to allow for key combinations
+    setTimeout(() => {
+      if (isCapturing && currentCombination) {
+        stopCapture();
+      }
+    }, 100);
+  }
+
+  function onClick() {
+    if (isCapturing) {
+      stopCapture();
+    } else {
+      startCapture();
+    }
+  }
+
+  document.addEventListener('keydown', docKeyDown, true);
+  button.addEventListener('click', onClick);
+
+  button._hotkeyHandlers = { docKeyDown, click: onClick };
+}
+
+function closeHotkeyConfigModal() {
+  const modal = document.getElementById('hotkey-config-modal');
+  if (modal) {
+    // Teardown capture listeners if present
+    const button = document.getElementById('hotkey-input');
+    if (button && button._hotkeyHandlers) {
+      const h = button._hotkeyHandlers;
+      document.removeEventListener('keydown', h.docKeyDown, true);
+      button.removeEventListener('click', h.click);
+      button._hotkeyHandlers = undefined;
+      
+      // Also reset button state
+      button.classList.remove('is-capturing');
+      button.textContent = 'Click to set hotkey';
+    }
+
+    modal.classList.add('hidden');
+    releaseFocusTrap(modal);
+    currentHotkeyEntityId = null;
+  }
+}
+
+async function saveHotkey() {
+  const button = document.getElementById('hotkey-input');
+  if (!button || !currentHotkeyEntityId) return;
+  
+  const hotkey = button.textContent.trim();
+  if (!hotkey || hotkey === 'Click to set hotkey' || hotkey === 'Recording...') {
+    showToast('Please record a hotkey combination', 'error', 2000);
+    return;
+  }
+  
+  // A valid hotkey must have at least one non-modifier key.
+  const keys = hotkey.split('+');
+  const modifiers = ['Control', 'Alt', 'Shift', 'Meta', 'Win', 'AltGraph'];
+  const hasNonModifier = keys.some(key => !modifiers.includes(key));
+  if (!hasNonModifier && keys.length > 0) {
+      showToast('Hotkey must include a non-modifier key (e.g., A-Z, 0-9)', 'error', 3000);
+      return;
+  }
+  
+  const success = await registerHotkey(currentHotkeyEntityId, hotkey);
+  if (success) {
+    closeHotkeyConfigModal();
+    loadHotkeysList(); // Refresh the list
+  }
+}
+
+// Alert management UI functions
+let currentAlertEntityId = null;
+
+async function addAlert(entityId) {
+  currentAlertEntityId = entityId;
+  openAlertConfigModal();
+}
+
+async function removeAlert(entityId) {
+  const success = await removeEntityAlert(entityId);
+  if (success) {
+    loadAlertsList(); // Refresh the list
+  }
+}
+
+async function editAlert(entityId) {
+  currentAlertEntityId = entityId;
+  const alertConfig = CONFIG.entityAlerts.alerts[entityId];
+  
+  if (!alertConfig) {
+    showToast('Alert configuration not found', 'error', 2000);
+    return;
+  }
+  
+  openAlertConfigModal();
+  
+  // Pre-populate the form with existing configuration
+  const stateChangeRadio = document.querySelector('input[name="alert-type"][value="state-change"]');
+  const specificStateRadio = document.querySelector('input[name="alert-type"][value="specific-state"]');
+  const specificStateGroup = document.getElementById('specific-state-group');
+  const targetStateInput = document.getElementById('target-state-input');
+  
+  if (alertConfig.onStateChange) {
+    if (stateChangeRadio) stateChangeRadio.checked = true;
+    if (specificStateGroup) specificStateGroup.style.display = 'none';
+  } else if (alertConfig.onSpecificState) {
+    if (specificStateRadio) specificStateRadio.checked = true;
+    if (specificStateGroup) specificStateGroup.style.display = 'block';
+    if (targetStateInput) targetStateInput.value = alertConfig.targetState || '';
+  }
+}
+
+function openAlertConfigModal() {
+  const modal = document.getElementById('alert-config-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    setupFocusTrap(modal);
+    
+    // Reset form
+    const stateChangeRadio = document.querySelector('input[name="alert-type"][value="state-change"]');
+    const specificStateGroup = document.getElementById('specific-state-group');
+    const targetStateInput = document.getElementById('target-state-input');
+    
+    if (stateChangeRadio) stateChangeRadio.checked = true;
+    if (specificStateGroup) specificStateGroup.style.display = 'none';
+    if (targetStateInput) targetStateInput.value = '';
+  }
+}
+
+function closeAlertConfigModal() {
+  const modal = document.getElementById('alert-config-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    releaseFocusTrap(modal);
+    currentAlertEntityId = null;
+  }
+}
+
+async function saveAlert() {
+  if (!currentAlertEntityId) return;
+  
+  const alertType = document.querySelector('input[name="alert-type"]:checked')?.value;
+  const targetStateInput = document.getElementById('target-state-input');
+  
+  let alertConfig;
+  if (alertType === 'state-change') {
+    alertConfig = { onStateChange: true };
+  } else if (alertType === 'specific-state') {
+    const targetState = targetStateInput?.value.trim();
+    if (!targetState) {
+      showToast('Please enter a target state', 'error', 2000);
+      return;
+    }
+    alertConfig = { onSpecificState: true, targetState: targetState };
+  }
+  
+  const success = await setEntityAlert(currentAlertEntityId, alertConfig);
+  if (success) {
+    closeAlertConfigModal();
+    loadAlertsList(); // Refresh the list
+  }
+}
+

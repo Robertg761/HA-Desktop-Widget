@@ -137,6 +137,34 @@
                     </label>
                 </div>
                 
+                <!-- Global Hotkeys Section -->
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="global-hotkeys-enabled">
+                        Enable Global Hotkeys
+                    </label>
+                    <div class="hotkeys-section" id="hotkeys-section" style="display: none;">
+                        <div class="hotkeys-info">
+                            <p>Configure keyboard shortcuts to control entities from anywhere on your system.</p>
+                            <button id="manage-hotkeys-btn" class="btn btn-secondary">Manage Hotkeys</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Entity Alerts Section -->
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="entity-alerts-enabled">
+                        Enable Entity Alerts
+                    </label>
+                    <div class="alerts-section" id="alerts-section" style="display: none;">
+                        <div class="alerts-info">
+                            <p>Get desktop notifications when entities change state.</p>
+                            <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Update Section -->
                 <div class="form-group update-section">
                     <label>Application Updates</label>
@@ -256,6 +284,131 @@
                         <button id="clear-weather" class="btn btn-secondary btn-sm">Clear</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Hotkeys Management Modal -->
+    <div id="hotkeys-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hotkeys-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="hotkeys-title">Manage Global Hotkeys</h2>
+                <button id="close-hotkeys" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="hotkey-search" placeholder="Search entities..." class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Configure Hotkeys:</label>
+                    <div id="hotkeys-list" class="hotkeys-list">
+                        <!-- Hotkey configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Existing Hotkeys:</label>
+                    <div id="existing-hotkeys-list" class="existing-hotkeys-list">
+                        <!-- Existing hotkey configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="hotkey-help">
+                    <h4>Hotkey Format:</h4>
+                    <p>Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code></p>
+                    <p>Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Alerts Management Modal -->
+    <div id="alerts-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alerts-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="alerts-title">Manage Entity Alerts</h2>
+                <button id="close-alerts" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="alert-search" placeholder="Search entities..." class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Configure Alerts:</label>
+                    <div id="alerts-list" class="alerts-list">
+                        <!-- Alert configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Existing Alerts:</label>
+                    <div id="existing-alerts-list" class="existing-alerts-list">
+                        <!-- Existing alert configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="alert-help">
+                    <h4>Alert Types:</h4>
+                    <p><strong>State Change:</strong> Notify when entity state changes</p>
+                    <p><strong>Specific State:</strong> Notify when entity reaches a specific state</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hotkey Configuration Modal -->
+    <div id="hotkey-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hotkey-config-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="hotkey-config-title">Configure Hotkey</h2>
+                <button id="close-hotkey-config" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="hotkey-input">Hotkey Combination:</label>
+                    <button id="hotkey-input" class="form-control hotkey-capture-btn">Click to set hotkey</button>
+                    <div class="form-help">Click the button and press your desired key combination. Press <code>ESC</code> to clear.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-hotkey" class="btn btn-primary">Save</button>
+                <button id="cancel-hotkey" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Configuration Modal -->
+    <div id="alert-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alert-config-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="alert-config-title">Configure Alert</h2>
+                <button id="close-alert-config" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Alert Type:</label>
+                    <div class="alert-type-options">
+                        <label class="radio-option">
+                            <input type="radio" name="alert-type" value="state-change" checked>
+                            <span class="radio-label">
+                                <strong>State Change</strong>
+                                <small>Notify when entity state changes</small>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="alert-type" value="specific-state">
+                            <span class="radio-label">
+                                <strong>Specific State</strong>
+                                <small>Notify when entity reaches a specific state</small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group" id="specific-state-group" style="display: none;">
+                    <label for="target-state-input">Target State:</label>
+                    <input type="text" id="target-state-input" placeholder="e.g., on, off, open, closed" class="form-control">
+                    <div class="form-help">Enter the state you want to be notified about</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-alert" class="btn btn-primary">Save</button>
+                <button id="cancel-alert" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
