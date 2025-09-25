@@ -5420,20 +5420,207 @@ function initializeHotkeysAndAlerts() {
 }
 
 // Handle hotkey triggers from main process
-ipcRenderer.on('hotkey-triggered', (event, { entityId, hotkey }) => {
-  console.log(`Hotkey triggered: ${hotkey} for entity: ${entityId}`);
-  
+// IPC listener for hotkeys
+ipcRenderer.on('hotkey-triggered', (event, { entityId }) => {
   const entity = STATES[entityId];
-  if (entity) {
-    // Show visual feedback
-    showToast(`Hotkey: ${hotkey}`, 'info', 1000);
-    
-    // Toggle the entity
-    toggleEntity(entity);
+  if (!entity) return;
+
+  const domain = entityId.split('.')[0];
+  
+  // Perform action based on domain
+  if (domain === 'light' || domain === 'switch' || domain === 'input_boolean' || domain === 'fan') {
+    toggleEntity(entityId);
+    showToast(`Hotkey toggled ${getEntityDisplayName(entity)}`, 'info');
+  } else if (domain === 'scene') {
+    activateScene(entityId);
+    showToast(`Hotkey activated ${getEntityDisplayName(entity)}`, 'info');
+  } else if (domain === 'automation') {
+    triggerAutomation(entityId);
+    showToast(`Hotkey triggered ${getEntityDisplayName(entity)}`, 'info');
   } else {
-    showToast(`Entity not found: ${entityId}`, 'error', 2000);
+    console.warn(`Hotkey for unhandled domain: ${domain}`);
   }
 });
+
+// IPC listener for opening settings
+ipcRenderer.on('open-settings', () => {
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal && settingsModal.classList.contains('hidden')) {
+    toggleSettings();
+  }
+});
+
+// Hotkey management in settings
+function renderHotkeysTab() {
+    const container = document.getElementById('hotkeys-list');
+    if (!container) return;
+
+    const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
+    const hotkeyEntities = Object.values(STATES)
+        .filter(e => ['light', 'switch', 'scene', 'automation', 'input_boolean', 'fan'].includes(e.entity_id.split('.')[0]))
+        .map(entity => {
+            const score = filter ? getSearchScore(getEntityDisplayName(entity), filter) + getSearchScore(entity.entity_id, filter) : 1;
+            return { entity, score };
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+    container.innerHTML = '';
+    hotkeyEntities.forEach(({ entity }) => {
+        const hotkey = CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || '';
+        const item = document.createElement('div');
+        item.className = 'hotkey-item';
+        item.innerHTML = `
+            <span class="entity-name">${getEntityDisplayName(entity)}</span>
+            <div class="hotkey-input-container">
+                <input type="text" readonly class="hotkey-input" value="${hotkey}" placeholder="No hotkey set" data-entity-id="${entity.entity_id}">
+                <button class="btn-clear-hotkey" title="Clear hotkey">&times;</button>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // ... existing event listeners ...
+
+    // Settings tabs
+    document.querySelectorAll('.modal-tabs .tab-link').forEach(button => {
+        button.addEventListener('click', () => {
+            const tab = button.dataset.tab;
+            document.querySelectorAll('.modal-tabs .tab-link').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tab}-tab`).classList.add('active');
+            if (tab === 'hotkeys') {
+                renderHotkeysTab();
+            }
+        });
+    });
+
+    const hotkeySearch = document.getElementById('hotkey-entity-search');
+    if (hotkeySearch) {
+        hotkeySearch.addEventListener('input', renderHotkeysTab);
+    }
+
+    const hotkeysList = document.getElementById('hotkeys-list');
+    if (hotkeysList) {
+        hotkeysList.addEventListener('click', async (e) => {
+            const target = e.target;
+            if (target.classList.contains('hotkey-input')) {
+                const entityId = target.dataset.entityId;
+                target.value = 'Recording...';
+                const hotkey = await captureHotkey();
+                if (hotkey) {
+                    const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey);
+                    if (result.success) {
+                        target.value = hotkey;
+                        CONFIG.globalHotkeys.hotkeys[entityId] = hotkey;
+                    } else {
+                        showToast(result.error, 'error');
+                        target.value = CONFIG.globalHotkeys?.hotkeys?.[entityId] || '';
+                    }
+                } else {
+                    target.value = CONFIG.globalHotkeys?.hotkeys?.[entityId] || '';
+                }
+            } else if (target.classList.contains('btn-clear-hotkey')) {
+                const input = target.previousElementSibling;
+                const entityId = input.dataset.entityId;
+                await ipcRenderer.invoke('unregister-hotkey', entityId);
+                input.value = '';
+                delete CONFIG.globalHotkeys.hotkeys[entityId];
+            }
+        });
+    }
+});
+
+function getAcceleratorString(e) {
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Super');
+
+    const keyMap = {
+        'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right',
+        'Space': 'Space', 'Enter': 'Enter', 'Escape': 'Esc', 'Tab': 'Tab',
+        'Home': 'Home', 'End': 'End', 'PageUp': 'PageUp', 'PageDown': 'PageDown',
+        'Delete': 'Delete', 'Insert': 'Insert', 'NumpadDecimal': 'numdec',
+        'NumpadAdd': 'numadd', 'NumpadSubtract': 'numsub', 'NumpadMultiply': 'nummult',
+        'NumpadDivide': 'numdiv',
+    };
+
+    const code = e.code;
+    let key = '';
+
+    if (keyMap[code]) {
+        key = keyMap[code];
+    } else if (code.startsWith('Key')) {
+        key = code.substring(3);
+    } else if (code.startsWith('Digit')) {
+        key = code.substring(5);
+    } else if (code.startsWith('Numpad')) {
+        key = 'num' + code.substring(6);
+    } else if (code.startsWith('F') && !isNaN(parseInt(code.substring(1)))) {
+        key = code;
+    } else {
+        const keyIdentifier = e.key.toUpperCase();
+        if (keyIdentifier.length === 1 && !['CONTROL', 'ALT', 'SHIFT', 'META'].includes(keyIdentifier)) {
+            key = keyIdentifier;
+        }
+    }
+    
+    const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
+    if (!isModifier && key) {
+        parts.push(key);
+    }
+
+    return parts.join('+');
+}
+
+function captureHotkey() {
+    return new Promise(resolve => {
+        const modal = document.createElement('div');
+        modal.className = 'hotkey-capture-modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <p>Press the desired key combination...</p>
+                <div id="hotkey-preview" class="hotkey-preview-box"></div>
+                <p><small>Press Esc to cancel.</small></p>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        const previewBox = document.getElementById('hotkey-preview');
+
+        const onKeyDown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (e.key === 'Escape') {
+                cleanup();
+                resolve(null);
+                return;
+            }
+
+            const accelerator = getAcceleratorString(e);
+            previewBox.textContent = accelerator;
+
+            const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
+            if (!isModifier && accelerator.includes('+')) {
+                cleanup();
+                resolve(accelerator);
+            }
+        };
+
+        const cleanup = () => {
+            document.removeEventListener('keydown', onKeyDown, true);
+            document.body.removeChild(modal);
+        };
+
+        document.addEventListener('keydown', onKeyDown, true);
+    });
+}
+
 
 // Hotkey management functions
 async function registerHotkey(entityId, hotkey) {
@@ -5471,6 +5658,9 @@ async function toggleHotkeys(enabled) {
   try {
     const result = await ipcRenderer.invoke('toggle-hotkeys', enabled);
     if (result.success) {
+      if (CONFIG.globalHotkeys) {
+        CONFIG.globalHotkeys.enabled = enabled;
+      }
       globalHotkeys.enabled = enabled;
       showToast(`Global hotkeys ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
       return true;

@@ -39,7 +39,10 @@ function loadConfig() {
   try {
     if (fs.existsSync(configPath)) {
       const userConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      config = { ...defaultConfig, ...userConfig };
+      config = { ...defaultConfig, ...userConfig,
+        globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
+        entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) }
+      };
     } else {
       // Migrate legacy config if present in app directory
       const legacyPath = path.join(__dirname, 'config.json');

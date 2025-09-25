@@ -111,83 +111,92 @@
                 <h2 id="settings-title">Settings</h2>
                 <button id="close-settings" class="close-btn">×</button>
             </div>
+            <div class="modal-tabs">
+                <button class="tab-link active" data-tab="general">General</button>
+                <button class="tab-link" data-tab="hotkeys">Hotkeys</button>
+                <button class="tab-link" data-tab="alerts">Alerts</button>
+                <button class="tab-link" data-tab="updates">Updates</button>
+            </div>
             <div class="modal-body">
-                <!-- Same settings content as before -->
-                <div class="form-group">
-                    <label for="ha-url">Home Assistant URL:</label>
-                    <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
-                </div>
-                <div class="form-group">
-                    <label for="ha-token">Access Token:</label>
-                    <input type="password" id="ha-token" placeholder="Your long-lived access token">
-                </div>
-                <div class="form-group">
-                    <label for="update-interval">Update Interval (seconds):</label>
-                    <input type="number" id="update-interval" min="1" max="60" value="5">
-                </div>
-                <div class="form-group">
-                    <label for="opacity-slider">Window Opacity:</label>
-                    <input type="range" id="opacity-slider" min="0.2" max="1" step="0.05" value="0.95">
-                    <span id="opacity-value">95%</span>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="always-on-top">
-                        Always on top
-                    </label>
-                </div>
-                
-                <!-- Global Hotkeys Section -->
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="global-hotkeys-enabled">
-                        Enable Global Hotkeys
-                    </label>
-                    <div class="hotkeys-section" id="hotkeys-section" style="display: none;">
-                        <div class="hotkeys-info">
-                            <p>Configure keyboard shortcuts to control entities from anywhere on your system.</p>
-                            <button id="manage-hotkeys-btn" class="btn btn-secondary">Manage Hotkeys</button>
-                        </div>
+                <div id="general-tab" class="tab-content active">
+                    <div class="form-group">
+                        <label for="ha-url">Home Assistant URL:</label>
+                        <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
+                    </div>
+                    <div class="form-group">
+                        <label for="ha-token">Access Token:</label>
+                        <input type="password" id="ha-token" placeholder="Your long-lived access token">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-interval">Update Interval (seconds):</label>
+                        <input type="number" id="update-interval" min="1" max="60" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="opacity-slider">Window Opacity:</label>
+                        <input type="range" id="opacity-slider" min="0.2" max="1" step="0.05" value="0.95">
+                        <span id="opacity-value">95%</span>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="always-on-top">
+                            Always on top
+                        </label>
                     </div>
                 </div>
-                
-                <!-- Entity Alerts Section -->
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="entity-alerts-enabled">
-                        Enable Entity Alerts
-                    </label>
-                    <div class="alerts-section" id="alerts-section" style="display: none;">
-                        <div class="alerts-info">
-                            <p>Get desktop notifications when entities change state.</p>
-                            <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
+                <div id="hotkeys-tab" class="tab-content">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="global-hotkeys-enabled">
+                            Enable Global Hotkeys
+                        </label>
+                    </div>
+                    <div id="hotkeys-list-container">
+                        <div class="form-group">
+                            <input type="text" id="hotkey-entity-search" placeholder="Search entities to assign hotkeys...">
                         </div>
+                        <div id="hotkeys-list"></div>
+                    </div>
+                    <div class="hotkey-help">
+                        <p>Supported modifiers: Ctrl, Alt, Shift, Command, Super.</p>
+                        <p>Example: <code>Ctrl+Shift+A</code></p>
                     </div>
                 </div>
-                
-                <!-- Update Section -->
-                <div class="form-group update-section">
-                    <label>Application Updates</label>
-                    <div class="update-info">
-                        <div class="version-info">
-                            <span>Current Version: <strong id="current-version">Loading...</strong></span>
-                        </div>
-                        <div class="update-status" id="update-status">
-                            <span id="update-status-text">Checking for updates...</span>
-                        </div>
-                        <div class="update-actions">
-                            <button id="check-updates-btn" class="btn btn-secondary" disabled>
-                                <span id="check-updates-text">Check for Updates</span>
-                            </button>
-                            <button id="install-update-btn" class="btn btn-primary hidden">
-                                <span id="install-update-text">Install Update</span>
-                            </button>
-                        </div>
-                        <div class="update-progress hidden" id="update-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progress-fill"></div>
+                <div id="alerts-tab" class="tab-content">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="entity-alerts-enabled">
+                            Enable Entity Alerts
+                        </label>
+                    </div>
+                    <div id="alerts-section" style="display: none;">
+                        <p>Configure which entities should trigger desktop notifications.</p>
+                        <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
+                    </div>
+                </div>
+                <div id="updates-tab" class="tab-content">
+                    <div class="form-group update-section">
+                        <label>Application Updates</label>
+                        <div class="update-info">
+                            <div class="version-info">
+                                <span>Current Version: <strong id="current-version">Loading...</strong></span>
                             </div>
-                            <span class="progress-text" id="progress-text">0%</span>
+                            <div class="update-status" id="update-status">
+                                <span id="update-status-text">Checking for updates...</span>
+                            </div>
+                            <div class="update-actions">
+                                <button id="check-updates-btn" class="btn btn-secondary" disabled>
+                                    <span id="check-updates-text">Check for Updates</span>
+                                </button>
+                                <button id="install-update-btn" class="btn btn-primary hidden">
+                                    <span id="install-update-text">Install Update</span>
+                                </button>
+                            </div>
+                            <div class="update-progress hidden" id="update-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill"></div>
+                                </div>
+                                <span class="progress-text" id="progress-text">0%</span>
+                            </div>
                         </div>
                     </div>
                 </div>
