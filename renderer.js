@@ -15,19 +15,19 @@ try {
   const websocket = require('./src/websocket.js');
   console.log('websocket loaded');
 
-  const hotkeys = require('./src/hotkeys.js');
+  const { initializeHotkeys, renderHotkeysTab, captureHotkey, toggleHotkeys } = require('./src/hotkeys.js');
   console.log('hotkeys loaded');
 
-  const alerts = require('./src/alerts.js');
+  const { initializeEntityAlerts, checkEntityAlerts, toggleAlerts } = require('./src/alerts.js');
   console.log('alerts loaded');
 
-  const ui = require('./src/ui.js');
+  const { renderActiveTab, updateEntityInUI, populateDomainFilters, populateAreaFilter, setupEntitySearchInput, initUpdateUI } = require('./src/ui.js');
   console.log('ui loaded');
 
-  const settings = require('./src/settings.js');
+  const { openSettings, closeSettings, saveSettings } = require('./src/settings.js');
   console.log('settings loaded');
 
-  const uiUtils = require('./src/ui-utils.js');
+  const { showLoading, setStatus, showToast } = require('./src/ui-utils.js');
   console.log('uiUtils loaded');
 } catch (error) {
   console.error('Error loading modules:', error);
@@ -40,8 +40,8 @@ console.log('All modules loaded successfully');
 console.log('Testing module functions:');
 console.log('state.setConfig exists:', typeof state.setConfig === 'function');
 console.log('websocket.connect exists:', typeof websocket.connect === 'function');
-console.log('ui.renderActiveTab exists:', typeof ui.renderActiveTab === 'function');
-console.log('uiUtils.showLoading exists:', typeof uiUtils.showLoading === 'function');
+console.log('renderActiveTab exists:', typeof renderActiveTab === 'function');
+console.log('showLoading exists:', typeof showLoading === 'function');
 
 // --- WebSocket Event Handlers ---
 websocket.on('open', () => {
@@ -65,21 +65,21 @@ websocket.on('message', (msg) => {
     console.log('WebSocket message received:', msg.type, msg);
     if (msg.type === 'auth_ok') {
       console.log('WebSocket authenticated successfully');
-      uiUtils.setStatus(true);
+      setStatus(true);
       websocket.request({ type: 'get_states' });
       websocket.request({ type: 'get_services' });
       websocket.request({ type: 'config/area_registry/list' });
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
       console.error('Invalid authentication token');
-      uiUtils.setStatus(false);
-      uiUtils.showLoading(false);
+      setStatus(false);
+      showLoading(false);
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
         state.setStates({ ...state.STATES, [entity.entity_id]: entity });
-        ui.updateEntityInUI(entity);
-        alerts.checkEntityAlerts(entity.entity_id, entity.state);
+        updateEntityInUI(entity);
+        checkEntityAlerts(entity.entity_id, entity.state);
       }
     } else if (msg.type === 'result' && msg.result) {
       if (msg.id === 1) { // Corresponds to get_states
@@ -89,10 +89,10 @@ websocket.on('message', (msg) => {
           state.setStates(newStates);
           
           // This is the correct place to render and hide loading
-          ui.renderActiveTab();
-          uiUtils.showLoading(false);
+          renderActiveTab();
+          showLoading(false);
           
-          alerts.initializeEntityAlerts();
+          initializeEntityAlerts();
         }
       } else if (msg.id === 2) { // get_services
         state.setServices(msg.result);
@@ -112,8 +112,8 @@ websocket.on('message', (msg) => {
 websocket.on('close', () => {
   try {
     console.log('WebSocket disconnected');
-    uiUtils.setStatus(false);
-    uiUtils.showLoading(false); // Hide loading on failure
+    setStatus(false);
+    showLoading(false); // Hide loading on failure
     setTimeout(() => websocket.connect(), 5000);
   } catch (error) {
     console.error('Error handling WebSocket close:', error);
@@ -123,11 +123,11 @@ websocket.on('close', () => {
 websocket.on('error', (error) => {
   try {
     console.error('WebSocket error:', error);
-    uiUtils.setStatus(false);
-    uiUtils.showLoading(false); // Hide loading on failure
+    setStatus(false);
+    showLoading(false); // Hide loading on failure
     
     // Show the UI with setup message
-    ui.renderActiveTab();
+    renderActiveTab();
   } catch (err) {
     console.error('Error handling WebSocket error:', err);
   }
@@ -203,9 +203,9 @@ async function init() {
     
     // Step 4: Initialize other modules that depend on config
     visualLog('Initializing hotkeys...');
-    hotkeys.initializeHotkeys();
+    initializeHotkeys();
     visualLog('Initializing alerts...');
-    alerts.initializeEntityAlerts();
+    initializeEntityAlerts();
     
     // Step 5: Wire the UI events
     visualLog('Wiring UI elements...');
@@ -220,6 +220,7 @@ async function init() {
   } catch (error) {
     visualLog(`CRITICAL ERROR in init(): ${error.message}`, true);
     console.error('Initialization error:', error);
+    visualLog(error.stack, true);
   }
 }
 
@@ -228,20 +229,20 @@ function wireUI() {
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
       settingsBtn.onclick = () => {
-        settings.openSettings({
-          populateDomainFilters: ui.populateDomainFilters,
-          populateAreaFilter: ui.populateAreaFilter,
-          setupEntitySearchInput: ui.setupEntitySearchInput,
-          initUpdateUI: ui.initUpdateUI,
+        openSettings({
+          populateDomainFilters: populateDomainFilters,
+          populateAreaFilter: populateAreaFilter,
+          setupEntitySearchInput: setupEntitySearchInput,
+          initUpdateUI: initUpdateUI,
         });
       };
     }
     
     const closeSettingsBtn = document.getElementById('close-settings');
-    if (closeSettingsBtn) closeSettingsBtn.onclick = settings.closeSettings;
+    if (closeSettingsBtn) closeSettingsBtn.onclick = closeSettings;
     
     const saveSettingsBtn = document.getElementById('save-settings');
-    if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
+    if (saveSettingsBtn) saveSettingsBtn.onclick = saveSettings;
 
     // Wire up essential UI buttons
     const closeBtn = document.getElementById('close-btn');
@@ -283,7 +284,7 @@ function wireUI() {
       if (hotkeysSection) {
         hotkeysSection.style.display = e.target.checked ? 'block' : 'none';
       }
-      hotkeys.toggleHotkeys(e.target.checked);
+      toggleHotkeys(e.target.checked);
     };
   }
 
@@ -294,7 +295,7 @@ function wireUI() {
       if (alertsSection) {
         alertsSection.style.display = e.target.checked ? 'block' : 'none';
       }
-      alerts.toggleAlerts(e.target.checked);
+      toggleAlerts(e.target.checked);
     };
   }
 
@@ -306,14 +307,14 @@ function wireUI() {
       document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
       document.getElementById(`${tab}-tab`).classList.add('active');
       if (tab === 'hotkeys') {
-        hotkeys.renderHotkeysTab();
+        renderHotkeysTab();
       }
     });
   });
 
   const hotkeySearch = document.getElementById('hotkey-entity-search');
   if (hotkeySearch) {
-    hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
+    hotkeySearch.addEventListener('input', renderHotkeysTab);
   }
 
   const hotkeysList = document.getElementById('hotkeys-list');
@@ -323,14 +324,14 @@ function wireUI() {
     if (target.classList.contains('hotkey-input')) {
       const entityId = target.dataset.entityId;
       target.value = 'Recording...';
-      const hotkey = await hotkeys.captureHotkey();
+      const hotkey = await captureHotkey();
       if (hotkey) {
         const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey);
         if (result.success) {
           target.value = hotkey;
           state.CONFIG.globalHotkeys.hotkeys[entityId] = hotkey;
         } else {
-          uiUtils.showToast(result.error, 'error');
+          showToast(result.error, 'error');
           target.value = state.CONFIG.globalHotkeys?.hotkeys?.[entityId] || '';
         }
       } else {

@@ -1,9 +1,8 @@
 const { ipcRenderer } = require('electron');
 const state = require('./state.js');
-const utils = require('./utils.js');
+const { getEntityIcon, getEntityDisplayName } = require('./utils.js');
 const websocket = require('./websocket.js');
-const camera = require('./camera.js');
-const uiUtils = require('./ui-utils.js');
+const { showBrightnessSlider } = require('./ui-utils.js');
 
 let isReorganizeMode = false;
 let draggedElement = null;
@@ -77,8 +76,8 @@ function createControlElement(entity) {
       };
     }
     
-    const icon = utils.getEntityIcon(entity);
-    const name = utils.getEntityDisplayName(entity);
+    const icon = getEntityIcon(entity);
+    const name = getEntityDisplayName(entity);
     let stateDisplay = '';
 
     if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
@@ -200,7 +199,7 @@ function createCameraCard(cameraEntity) {
   try {
     const div = document.createElement('div');
     div.className = 'camera-card';
-    const name = utils.getEntityDisplayName(cameraEntity);
+    const name = getEntityDisplayName(cameraEntity);
     
     div.innerHTML = `
       <div class="camera-header">
@@ -294,7 +293,7 @@ function showBrightnessSlider(light) {
     modal.className = 'modal brightness-modal';
     modal.innerHTML = `
       <div class="modal-content">
-        <h2>${utils.getEntityDisplayName(light)}</h2>
+        <h2>${getEntityDisplayName(light)}</h2>
         <input type="range" min="0" max="100" value="${currentBrightness}" id="brightness-slider">
         <button id="turn-off-btn">Turn Off</button>
       </div>
