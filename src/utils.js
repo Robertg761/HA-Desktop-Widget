@@ -1,8 +1,14 @@
-const { STATES } = require('./state.js');
+const state = require('./state.js');
 
 function getEntityDisplayName(entity) {
   try {
     if (!entity) return 'Unknown';
+    
+    // Check for custom name first
+    const customName = state.CONFIG?.customEntityNames?.[entity.entity_id];
+    if (customName) return customName;
+    
+    // Fall back to friendly_name or entity_id
     return entity.attributes.friendly_name || entity.entity_id;
   } catch (error) {
     console.error('Error getting entity display name:', error);
@@ -29,7 +35,7 @@ function getEntityIcon(entity) {
         const attributes = entity.attributes || {};
 
         switch (domain) {
-            case 'light': return state === 'on' ? '💡' : '⚫';
+            case 'light': return '💡';
             case 'switch': return state === 'on' ? '🔌' : '➖';
             case 'fan': return state === 'on' ? '💨' : '➖';
             case 'sensor':
@@ -37,6 +43,13 @@ function getEntityIcon(entity) {
                 if (attributes.device_class === 'humidity') return '💧';
                 if (attributes.device_class === 'pressure') return '📊';
                 if (attributes.device_class === 'illuminance') return '☀️';
+                if (attributes.device_class === 'battery') return '🔋';
+                if (attributes.device_class === 'power') return '⚡';
+                if (attributes.device_class === 'energy') return '⚡';
+                // Check entity_id for common patterns
+                if (entity.entity_id.includes('timer')) return '⏲️';
+                if (entity.entity_id.includes('battery')) return '🔋';
+                if (entity.entity_id.includes('temperature') || entity.entity_id.includes('temp')) return '🌡️';
                 return '📈';
             case 'binary_sensor':
                 if (attributes.device_class === 'motion') return state === 'on' ? '🏃' : '🧍';
@@ -45,7 +58,7 @@ function getEntityIcon(entity) {
                 return state === 'on' ? '✔️' : '❌';
             case 'climate': return '🌡️';
             case 'media_player': return '🎵';
-            case 'scene': return '🎬';
+            case 'scene': return '✨';
             case 'automation': return '🤖';
             case 'camera': return '📷';
             case 'lock': return state === 'locked' ? '🔒' : '🔓';
@@ -118,6 +131,85 @@ function getSearchScore(text, query) {
     }
 }
 
+function getEntityDisplayState(entity) {
+    try {
+        if (!entity) return 'Unknown';
+        
+        // For sensors, return the actual value with unit
+        if (entity.entity_id.startsWith('sensor.')) {
+            const unit = entity.attributes?.unit_of_measurement || '';
+            return unit ? `${entity.state} ${unit}` : entity.state;
+        }
+        
+        // For binary sensors
+        if (entity.entity_id.startsWith('binary_sensor.')) {
+            return entity.state === 'on' ? 'Detected' : 'Clear';
+        }
+        
+        // For timers
+        if (entity.entity_id.startsWith('timer.')) {
+            return getTimerDisplay(entity);
+        }
+        
+        // For scenes - just show "Ready" or hide the state
+        if (entity.entity_id.startsWith('scene.')) {
+            return 'Ready';
+        }
+        
+        // For lights with brightness
+        if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes?.brightness) {
+            const brightness = Math.round((entity.attributes.brightness / 255) * 100);
+            return `${brightness}%`;
+        }
+        
+        // For climate
+        if (entity.entity_id.startsWith('climate.')) {
+            const temp = entity.attributes?.current_temperature || entity.attributes?.temperature;
+            if (temp) return `${temp}°`;
+        }
+        
+        // Default: capitalize first letter
+        return entity.state.charAt(0).toUpperCase() + entity.state.slice(1);
+    } catch (error) {
+        console.error('Error getting entity display state:', error);
+        return 'Unknown';
+    }
+}
+
+function getTimerDisplay(entity) {
+    try {
+        if (!entity) return '--:--';
+        
+        if (entity.state === 'idle') {
+            return 'Idle';
+        }
+        
+        if (entity.state === 'paused') {
+            const remaining = entity.attributes?.remaining || '00:00:00';
+            return `⏸ ${remaining.substring(0, 5)}`; // Show HH:MM
+        }
+        
+        if (entity.state === 'active') {
+            const remaining = entity.attributes?.remaining || '00:00:00';
+            // Parse and format as mm:ss or hh:mm:ss
+            const parts = remaining.split(':').map(p => parseInt(p, 10));
+            if (parts.length === 3) {
+                const [h, m, s] = parts;
+                if (h > 0) {
+                    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                }
+                return `${m}:${String(s).padStart(2, '0')}`;
+            }
+            return remaining.substring(0, 5); // Fallback to HH:MM
+        }
+        
+        return entity.state.charAt(0).toUpperCase() + entity.state.slice(1);
+    } catch (error) {
+        console.error('Error getting timer display:', error);
+        return '--:--';
+    }
+}
+
 module.exports = {
     getEntityDisplayName,
     getEntityTypeDescription,
@@ -125,4 +217,6 @@ module.exports = {
     formatDuration,
     getTimerEnd,
     getSearchScore,
+    getEntityDisplayState,
+    getTimerDisplay,
 };

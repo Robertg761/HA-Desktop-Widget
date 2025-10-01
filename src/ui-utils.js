@@ -99,7 +99,6 @@ function setStatus(connected) {
     if (status) {
       status.className = connected ? 'connection-indicator connected' : 'connection-indicator';
       status.innerHTML = '';
-      status.textContent = connected ? '🟢' : '🔴';
       status.title = connected ? 'Connected to Home Assistant' : 'Disconnected from Home Assistant';
     }
   } catch (error) {

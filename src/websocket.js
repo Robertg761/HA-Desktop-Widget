@@ -10,23 +10,15 @@ class WebSocketManager extends EventEmitter {
   }
 
   connect() {
-    console.log('WebSocket connect called');
-    console.log('Current CONFIG:', JSON.stringify(state.CONFIG?.homeAssistant, null, 2));
-    
     if (!state.CONFIG || !state.CONFIG.homeAssistant || !state.CONFIG.homeAssistant.url || !state.CONFIG.homeAssistant.token) {
       console.error('Invalid configuration for WebSocket');
-      console.error('URL:', state.CONFIG?.homeAssistant?.url);
-      console.error('Token:', state.CONFIG?.homeAssistant?.token ? 'Present' : 'Missing');
       this.emit('status', false);
       this.emit('error', new Error('Invalid configuration. Please check settings.'));
       return;
     }
 
-    // Check for default/placeholder values
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      console.error('Configuration contains default token. Please update your Home Assistant token in settings.');
-      console.error('Current URL:', state.CONFIG.homeAssistant.url);
-      console.error('Token is still the default placeholder');
+      console.error('Configuration contains default token');
       this.emit('status', false);
       this.emit('error', new Error('Configuration contains default token. Please update settings.'));
       return;
@@ -38,16 +30,13 @@ class WebSocketManager extends EventEmitter {
 
     try {
       const wsUrl = state.CONFIG.homeAssistant.url.replace(/^http/, 'ws') + '/api/websocket';
-      console.log('Connecting to WebSocket:', wsUrl);
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('WebSocket opened successfully');
         this.emit('open');
       };
       
       this.ws.onmessage = (event) => {
-        console.log('WebSocket message received:', event.data);
         this.handleMessage(event);
       };
       
@@ -57,7 +46,6 @@ class WebSocketManager extends EventEmitter {
       };
       
       this.ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
         this.emit('close');
       };
     } catch (error) {
@@ -82,12 +70,12 @@ class WebSocketManager extends EventEmitter {
   }
 
   request(payload) {
-    return new Promise((resolve, reject) => {
+    const id = this.wsId++;
+    const promise = new Promise((resolve, reject) => {
       try {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
           return reject(new Error('WebSocket not connected'));
         }
-        const id = this.wsId++;
         const msg = { id, ...payload };
         this.pendingWs.set(id, { resolve, reject });
         try {
@@ -107,6 +95,9 @@ class WebSocketManager extends EventEmitter {
         reject(error);
       }
     });
+    // Attach the ID to the promise for tracking
+    promise.id = id;
+    return promise;
   }
 
   close() {

@@ -1656,6 +1656,18 @@ body {
 .reorganize-mode .control-item {
   cursor: grab;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.reorganize-mode .control-item * {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.reorganize-mode .control-item .remove-btn {
+  pointer-events: auto;
 }
 
 .reorganize-mode .control-item:hover {
@@ -1983,6 +1995,86 @@ body {
   min-height: 1.2em; /* Prevent layout shift */
 }
 
+/* Brightness Slider */
+.brightness-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 20px 0;
+}
+
+.brightness-slider-container input[type="range"] {
+    flex: 1;
+}
+
+.brightness-value {
+    min-width: 50px;
+    text-align: right;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+/* Camera Modal */
+.modal-large {
+    max-width: 900px;
+}
+
+.camera-content {
+    max-width: 800px;
+}
+
+.camera-stream {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    background: #000;
+}
+
+.camera-img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.camera-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    z-index: 10;
+    border-radius: 8px;
+}
+
+.camera-loading .spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+
+.camera-info {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.camera-info p {
+    margin: 4px 0;
+}
+
 /* Settings Tabs */
 .modal-tabs {
     display: flex;
@@ -2204,6 +2296,39 @@ body {
 .hotkey-actions, .alert-actions {
   display: flex;
   gap: 8px;
+}
+
+.alert-item-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.add-alert-btn {
+  margin-top: 12px;
+}
+
+.btn-block {
+  width: 100%;
+  display: block;
+}
+
+.no-alerts-message {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.entity-select-group {
+  background: var(--surface-2);
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
 .hotkey-btn, .alert-btn {

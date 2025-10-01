@@ -1,58 +1,21 @@
-// IMMEDIATE LOG - FIRST THING IN FILE
-console.log('RENDERER.JS FILE IS BEING EXECUTED!');
-
-console.log('=== RENDERER.JS LOADING ===');
-
 // Load all required modules
-console.log('Loading modules...');
-try {
-  const { ipcRenderer } = require('electron');
-  console.log('ipcRenderer loaded');
-
-  const state = require('./src/state.js');
-  console.log('state loaded');
-
-  const websocket = require('./src/websocket.js');
-  console.log('websocket loaded');
-
-  const hotkeys = require('./src/hotkeys.js');
-  console.log('hotkeys loaded');
-
-  const alerts = require('./src/alerts.js');
-  console.log('alerts loaded');
-
-  const ui = require('./src/ui.js');
-  console.log('ui loaded');
-
-  const settings = require('./src/settings.js');
-  console.log('settings loaded');
-
-  const uiUtils = require('./src/ui-utils.js');
-  console.log('uiUtils loaded');
-} catch (error) {
-  console.error('Error loading modules:', error);
-  console.error('Error stack:', error.stack);
-}
-
-console.log('All modules loaded successfully');
-
-// Test if modules loaded correctly
-console.log('Testing module functions:');
-console.log('state.setConfig exists:', typeof state.setConfig === 'function');
-console.log('websocket.connect exists:', typeof websocket.connect === 'function');
-console.log('ui.renderActiveTab exists:', typeof ui.renderActiveTab === 'function');
-console.log('uiUtils.showLoading exists:', typeof uiUtils.showLoading === 'function');
+const { ipcRenderer } = require('electron');
+const state = require('./src/state.js');
+const websocket = require('./src/websocket.js');
+const hotkeys = require('./src/hotkeys.js');
+const alerts = require('./src/alerts.js');
+const ui = require('./src/ui.js');
+const settings = require('./src/settings.js');
+const uiUtils = require('./src/ui-utils.js');
 
 // --- WebSocket Event Handlers ---
 websocket.on('open', () => {
   try {
-    console.log('WebSocket connected - sending authentication');
     if (websocket.ws && websocket.ws.readyState === WebSocket.OPEN) {
       const authMessage = {
         type: 'auth',
         access_token: state.CONFIG.homeAssistant.token
       };
-      console.log('Sending auth message:', authMessage);
       websocket.ws.send(JSON.stringify(authMessage));
     }
   } catch (error) {
@@ -60,18 +23,19 @@ websocket.on('open', () => {
   }
 });
 
+// Track request IDs for proper result handling
+let getStatesId, getServicesId, getAreasId;
+
 websocket.on('message', (msg) => {
   try {
-    console.log('WebSocket message received:', msg.type, msg);
     if (msg.type === 'auth_ok') {
-      console.log('WebSocket authenticated successfully');
       uiUtils.setStatus(true);
-      websocket.request({ type: 'get_states' });
-      websocket.request({ type: 'get_services' });
-      websocket.request({ type: 'config/area_registry/list' });
+      getStatesId = websocket.request({ type: 'get_states' }).id;
+      getServicesId = websocket.request({ type: 'get_services' }).id;
+      getAreasId = websocket.request({ type: 'config/area_registry/list' }).id;
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
-      console.error('Invalid authentication token');
+      console.error('[WS] Invalid authentication token');
       uiUtils.setStatus(false);
       uiUtils.showLoading(false);
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
@@ -82,7 +46,7 @@ websocket.on('message', (msg) => {
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
       }
     } else if (msg.type === 'result' && msg.result) {
-      if (msg.id === 1) { // Corresponds to get_states
+      if (msg.id === getStatesId) { // get_states response
         const newStates = {};
         if (Array.isArray(msg.result)) {
           msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
@@ -94,9 +58,9 @@ websocket.on('message', (msg) => {
           
           alerts.initializeEntityAlerts();
         }
-      } else if (msg.id === 2) { // get_services
+      } else if (msg.id === getServicesId) { // get_services response
         state.setServices(msg.result);
-      } else if (msg.id === 3) { // get_areas
+      } else if (msg.id === getAreasId) { // get_areas response
           const newAreas = {};
           if (Array.isArray(msg.result)) {
             msg.result.forEach(area => { newAreas[area.area_id] = area; });
@@ -105,15 +69,14 @@ websocket.on('message', (msg) => {
       }
     }
   } catch (error) {
-    console.error('Error handling WebSocket message:', error);
+    console.error('[WS] Error handling message:', error);
   }
 });
 
 websocket.on('close', () => {
   try {
-    console.log('WebSocket disconnected');
     uiUtils.setStatus(false);
-    uiUtils.showLoading(false); // Hide loading on failure
+    uiUtils.showLoading(false);
     setTimeout(() => websocket.connect(), 5000);
   } catch (error) {
     console.error('Error handling WebSocket close:', error);
@@ -133,93 +96,58 @@ websocket.on('error', (error) => {
   }
 });
 
-// A simple function to add a debug message to the screen
-function visualLog(message, isError = false) {
-  try {
-    let debugPanel = document.getElementById('visual-debug-panel');
-    if (!debugPanel) {
-      debugPanel = document.createElement('div');
-      debugPanel.id = 'visual-debug-panel';
-      debugPanel.style.cssText = `
-        position: fixed;
-        bottom: 10px;
-        left: 10px;
-        right: 10px;
-        background: rgba(0, 0, 0, 0.85);
-        color: #fff;
-        padding: 15px;
-        border-radius: 8px;
-        font-family: monospace;
-        font-size: 14px;
-        z-index: 10000;
-        max-height: 50vh;
-        overflow-y: auto;
-        border: 1px solid #555;
-      `;
-      document.body.appendChild(debugPanel);
-      
-      const title = document.createElement('h4');
-      title.textContent = 'Application Startup Log';
-      title.style.cssText = 'margin: 0 0 10px; padding-bottom: 5px; border-bottom: 1px solid #444;';
-      debugPanel.appendChild(title);
-    }
-    
-    const logEntry = document.createElement('div');
-    const timestamp = new Date().toLocaleTimeString();
-    logEntry.textContent = `[${timestamp}] ${message}`;
-    if (isError) {
-      logEntry.style.color = '#ff8a8a';
-      logEntry.style.fontWeight = 'bold';
-    }
-    
-    debugPanel.appendChild(logEntry);
-    debugPanel.scrollTop = debugPanel.scrollHeight;
-  } catch (e) {
-    // If this fails, we have no way to show visual logs.
-  }
-}
 
 // --- Main Application Logic ---
 async function init() {
   try {
-    // Step 1: Hide spinner and show the log panel
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    visualLog('Init function started.');
+    uiUtils.showLoading(true);
 
-    // Step 2: Request configuration from main process
-    visualLog('Requesting configuration...');
     const config = await ipcRenderer.invoke('get-config');
     if (!config || !config.homeAssistant) {
-      visualLog('FATAL: Configuration is missing or invalid.', true);
+      console.error('Configuration is missing or invalid');
+      uiUtils.showLoading(false);
       return;
     }
-    visualLog('Configuration received successfully.');
     
-    // Step 3: Set the configuration in the state module
-    visualLog('Setting config in state module...');
     state.setConfig(config);
-    visualLog(`HA URL: ${state.CONFIG.homeAssistant.url}`);
     
-    // Step 4: Initialize other modules that depend on config
-    visualLog('Initializing hotkeys...');
+    if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+      console.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
+      uiUtils.showLoading(false);
+      ui.renderActiveTab();
+      return;
+    }
+    
+    // Apply theme and UI preferences from saved config
+    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+    
+    // Initialize time display
+    ui.updateTimeDisplay();
+    setInterval(() => ui.updateTimeDisplay(), 1000);
+    
+    // Initialize timer updates (every second)
+    setInterval(() => ui.updateTimerDisplays(), 1000);
+    
     hotkeys.initializeHotkeys();
-    visualLog('Initializing alerts...');
     alerts.initializeEntityAlerts();
-    
-    // Step 5: Wire the UI events
-    visualLog('Wiring UI elements...');
     wireUI();
     
-    // Step 6: Attempt to connect
-    visualLog('Connecting to WebSocket...');
+    // Always hide loading and show UI
+    uiUtils.showLoading(false);
+    ui.renderActiveTab();
+    
+    // Connect to WebSocket in background
     websocket.connect();
     
-    visualLog('Initialization sequence complete. Waiting for connection...');
+    // Backup timeout to ensure loading is hidden
+    setTimeout(() => {
+      uiUtils.showLoading(false);
+    }, 5000);
     
   } catch (error) {
-    visualLog(`CRITICAL ERROR in init(): ${error.message}`, true);
     console.error('Initialization error:', error);
+    uiUtils.showLoading(false);
   }
 }
 
@@ -240,8 +168,20 @@ function wireUI() {
     const closeSettingsBtn = document.getElementById('close-settings');
     if (closeSettingsBtn) closeSettingsBtn.onclick = settings.closeSettings;
     
+    const cancelSettingsBtn = document.getElementById('cancel-settings');
+    if (cancelSettingsBtn) cancelSettingsBtn.onclick = settings.closeSettings;
+    
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
+    
+    // Opacity slider handler
+    const opacitySlider = document.getElementById('opacity-slider');
+    const opacityValue = document.getElementById('opacity-value');
+    if (opacitySlider && opacityValue) {
+      opacitySlider.addEventListener('input', (e) => {
+        opacityValue.textContent = `${Math.round(e.target.value * 100)}%`;
+      });
+    }
 
     // Wire up essential UI buttons
     const closeBtn = document.getElementById('close-btn');
@@ -258,14 +198,45 @@ function wireUI() {
       };
     }
 
+    // Wire up Quick Access buttons
+    const manageQuickControlsBtn = document.getElementById('manage-quick-controls-btn');
+    if (manageQuickControlsBtn) {
+      manageQuickControlsBtn.onclick = () => {
+        const modal = document.getElementById('quick-controls-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.style.display = 'flex';
+        }
+      };
+    }
+    
+    const closeQuickControlsBtn = document.getElementById('close-quick-controls');
+    if (closeQuickControlsBtn) {
+      closeQuickControlsBtn.onclick = () => {
+        const modal = document.getElementById('quick-controls-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.style.display = 'none';
+        }
+      };
+    }
+    
+    const reorganizeQuickControlsBtn = document.getElementById('reorganize-quick-controls-btn');
+    if (reorganizeQuickControlsBtn) {
+      reorganizeQuickControlsBtn.onclick = ui.toggleReorganizeMode;
+    }
+    
     // Wire up weather card long press
     const weatherCard = document.getElementById('weather-card');
     if (weatherCard) {
       let pressTimer = null;
       weatherCard.addEventListener('mousedown', () => {
         pressTimer = setTimeout(() => {
-          // Open weather configuration
-          console.log('Weather card long press detected');
+          const modal = document.getElementById('weather-config-modal');
+          if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+          }
         }, 500);
       });
       weatherCard.addEventListener('mouseup', () => {
@@ -274,6 +245,43 @@ function wireUI() {
       weatherCard.addEventListener('mouseleave', () => {
         clearTimeout(pressTimer);
       });
+    }
+    
+    // Wire up alerts management
+    const manageAlertsBtn = document.getElementById('manage-alerts-btn');
+    if (manageAlertsBtn) {
+      manageAlertsBtn.onclick = settings.openAlertsModal;
+    }
+    
+    const closeAlertsBtn = document.getElementById('close-alerts');
+    if (closeAlertsBtn) {
+      closeAlertsBtn.onclick = settings.closeAlertsModal;
+    }
+    
+    const closeAlertConfigBtn = document.getElementById('close-alert-config');
+    if (closeAlertConfigBtn) {
+      closeAlertConfigBtn.onclick = settings.closeAlertConfigModal;
+    }
+    
+    const saveAlertBtn = document.getElementById('save-alert');
+    if (saveAlertBtn) {
+      saveAlertBtn.onclick = settings.saveAlert;
+    }
+    
+    const cancelAlertBtn = document.getElementById('cancel-alert');
+    if (cancelAlertBtn) {
+      cancelAlertBtn.onclick = settings.closeAlertConfigModal;
+    }
+    
+    const closeWeatherConfigBtn = document.getElementById('close-weather-config');
+    if (closeWeatherConfigBtn) {
+      closeWeatherConfigBtn.onclick = () => {
+        const modal = document.getElementById('weather-config-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.style.display = 'none';
+        }
+      };
     }
 
   const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
@@ -352,7 +360,6 @@ function wireUI() {
 
 window.addEventListener('DOMContentLoaded', () => {
   try {
-    console.log('DOMContentLoaded fired, calling init()...');
     init();
   } catch (error) {
     console.error('Error in DOMContentLoaded handler:', error);
