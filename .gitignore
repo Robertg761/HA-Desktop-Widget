@@ -35,3 +35,6 @@ config.json
 # Coverage
 coverage/
 
+
+.gemini/
+gha-creds-*.json

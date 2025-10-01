@@ -82,15 +82,6 @@
             </div>
         </div>
 
-        <!-- Cameras (if any) -->
-        <div class="cameras-section" id="cameras-section" style="display: none;">
-            <div class="section-header">
-                <span class="section-title">Cameras</span>
-            </div>
-            <div id="cameras-container" class="cameras-grid">
-                <!-- Dynamic camera cards will be added here -->
-            </div>
-        </div>
     </div>
 
     <!-- Floating context menu (appears on right-click) -->
@@ -111,55 +102,92 @@
                 <h2 id="settings-title">Settings</h2>
                 <button id="close-settings" class="close-btn">×</button>
             </div>
+            <div class="modal-tabs">
+                <button class="tab-link active" data-tab="general">General</button>
+                <button class="tab-link" data-tab="hotkeys">Hotkeys</button>
+                <button class="tab-link" data-tab="alerts">Alerts</button>
+                <button class="tab-link" data-tab="updates">Updates</button>
+            </div>
             <div class="modal-body">
-                <!-- Same settings content as before -->
-                <div class="form-group">
-                    <label for="ha-url">Home Assistant URL:</label>
-                    <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
+                <div id="general-tab" class="tab-content active">
+                    <div class="form-group">
+                        <label for="ha-url">Home Assistant URL:</label>
+                        <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
+                    </div>
+                    <div class="form-group">
+                        <label for="ha-token">Access Token:</label>
+                        <input type="password" id="ha-token" placeholder="Your long-lived access token">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-interval">Update Interval (seconds):</label>
+                        <input type="number" id="update-interval" min="1" max="60" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="opacity-slider">Window Opacity:</label>
+                        <input type="range" id="opacity-slider" min="0.2" max="1" step="0.05" value="0.95">
+                        <span id="opacity-value">95%</span>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="always-on-top">
+                            Always on top
+                        </label>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="ha-token">Access Token:</label>
-                    <input type="password" id="ha-token" placeholder="Your long-lived access token">
-                </div>
-                <div class="form-group">
-                    <label for="update-interval">Update Interval (seconds):</label>
-                    <input type="number" id="update-interval" min="1" max="60" value="5">
-                </div>
-                <div class="form-group">
-                    <label for="opacity-slider">Window Opacity:</label>
-                    <input type="range" id="opacity-slider" min="0.2" max="1" step="0.05" value="0.95">
-                    <span id="opacity-value">95%</span>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="always-on-top">
-                        Always on top
-                    </label>
-                </div>
-                
-                <!-- Update Section -->
-                <div class="form-group update-section">
-                    <label>Application Updates</label>
-                    <div class="update-info">
-                        <div class="version-info">
-                            <span>Current Version: <strong id="current-version">Loading...</strong></span>
+                <div id="hotkeys-tab" class="tab-content">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="global-hotkeys-enabled">
+                            Enable Global Hotkeys
+                        </label>
+                    </div>
+                    <div id="hotkeys-list-container">
+                        <div class="form-group">
+                            <input type="text" id="hotkey-entity-search" placeholder="Search entities to assign hotkeys...">
                         </div>
-                        <div class="update-status" id="update-status">
-                            <span id="update-status-text">Checking for updates...</span>
-                        </div>
-                        <div class="update-actions">
-                            <button id="check-updates-btn" class="btn btn-secondary" disabled>
-                                <span id="check-updates-text">Check for Updates</span>
-                            </button>
-                            <button id="install-update-btn" class="btn btn-primary hidden">
-                                <span id="install-update-text">Install Update</span>
-                            </button>
-                        </div>
-                        <div class="update-progress hidden" id="update-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progress-fill"></div>
+                        <div id="hotkeys-list"></div>
+                    </div>
+                    <div class="hotkey-help">
+                        <p>Supported modifiers: Ctrl, Alt, Shift, Command, Super.</p>
+                        <p>Example: <code>Ctrl+Shift+A</code></p>
+                    </div>
+                </div>
+                <div id="alerts-tab" class="tab-content">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="entity-alerts-enabled">
+                            Enable Entity Alerts
+                        </label>
+                    </div>
+                    <div id="alerts-section" style="display: none;">
+                        <p>Configure which entities should trigger desktop notifications.</p>
+                        <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
+                    </div>
+                </div>
+                <div id="updates-tab" class="tab-content">
+                    <div class="form-group update-section">
+                        <label>Application Updates</label>
+                        <div class="update-info">
+                            <div class="version-info">
+                                <span>Current Version: <strong id="current-version">Loading...</strong></span>
                             </div>
-                            <span class="progress-text" id="progress-text">0%</span>
+                            <div class="update-status" id="update-status">
+                                <span id="update-status-text">Checking for updates...</span>
+                            </div>
+                            <div class="update-actions">
+                                <button id="check-updates-btn" class="btn btn-secondary" disabled>
+                                    <span id="check-updates-text">Check for Updates</span>
+                                </button>
+                                <button id="install-update-btn" class="btn btn-primary hidden">
+                                    <span id="install-update-text">Install Update</span>
+                                </button>
+                            </div>
+                            <div class="update-progress hidden" id="update-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill"></div>
+                                </div>
+                                <span class="progress-text" id="progress-text">0%</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -260,6 +288,133 @@
         </div>
     </div>
 
+    <!-- Global Hotkeys Management Modal -->
+    <div id="hotkeys-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hotkeys-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="hotkeys-title">Manage Global Hotkeys</h2>
+                <button id="close-hotkeys" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="hotkey-search" placeholder="Search entities..." class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Configure Hotkeys:</label>
+                    <div id="hotkeys-list" class="hotkeys-list">
+                        <!-- Hotkey configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Existing Hotkeys:</label>
+                    <div id="existing-hotkeys-list" class="existing-hotkeys-list">
+                        <!-- Existing hotkey configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="hotkey-help">
+                    <h4>Hotkey Format:</h4>
+                    <p>Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code></p>
+                    <p>Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Alerts Management Modal -->
+    <div id="alerts-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alerts-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="alerts-title">Manage Entity Alerts</h2>
+                <button id="close-alerts" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="alert-search" placeholder="Search entities..." class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Configure Alerts:</label>
+                    <div id="alerts-list" class="alerts-list">
+                        <!-- Alert configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Existing Alerts:</label>
+                    <div id="existing-alerts-list" class="existing-alerts-list">
+                        <!-- Existing alert configurations will be loaded here -->
+                    </div>
+                </div>
+                <div class="alert-help">
+                    <h4>Alert Types:</h4>
+                    <p><strong>State Change:</strong> Notify when entity state changes</p>
+                    <p><strong>Specific State:</strong> Notify when entity reaches a specific state</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hotkey Configuration Modal -->
+    <div id="hotkey-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hotkey-config-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="hotkey-config-title">Configure Hotkey</h2>
+                <button id="close-hotkey-config" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="hotkey-input">Hotkey Combination:</label>
+                    <button id="hotkey-input" class="form-control hotkey-capture-btn">Click to set hotkey</button>
+                    <div class="form-help">Click the button and press your desired key combination. Press <code>ESC</code> to clear.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-hotkey" class="btn btn-primary">Save</button>
+                <button id="cancel-hotkey" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Viewer Modal (created dynamically by openCamera) -->
+
+    <!-- Alert Configuration Modal -->
+    <div id="alert-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alert-config-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="alert-config-title">Configure Alert</h2>
+                <button id="close-alert-config" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Alert Type:</label>
+                    <div class="alert-type-options">
+                        <label class="radio-option">
+                            <input type="radio" name="alert-type" value="state-change" checked>
+                            <span class="radio-label">
+                                <strong>State Change</strong>
+                                <small>Notify when entity state changes</small>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="alert-type" value="specific-state">
+                            <span class="radio-label">
+                                <strong>Specific State</strong>
+                                <small>Notify when entity reaches a specific state</small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group" id="specific-state-group" style="display: none;">
+                    <label for="target-state-input">Target State:</label>
+                    <input type="text" id="target-state-input" placeholder="e.g., on, off, open, closed" class="form-control">
+                    <div class="form-help">Enter the state you want to be notified about</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-alert" class="btn btn-primary">Save</button>
+                <button id="cancel-alert" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Loading overlay -->
     <div id="loading-overlay" class="loading-overlay">
         <div class="spinner"></div>
@@ -269,6 +424,6 @@
     <!-- Toast notifications -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="renderer-final.js"></script>
+    <script src="renderer.js"></script>
 </body>
 </html>

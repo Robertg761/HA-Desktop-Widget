@@ -16,6 +16,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.3.1] - 2025-10-01
+
+### Added
+- **Global Hotkeys**: OS-level keyboard shortcuts for controlling entities
+  - Assign custom hotkey combinations (Ctrl, Alt, Shift + key) to any light, switch, scene, or automation
+  - Visual hotkey capture modal for easy configuration
+  - Support for all standard keys, function keys, and numpad
+  - Enable/disable global hotkeys from settings
+  - Search and filter entities when assigning hotkeys
+- **Entity Alerts**: Desktop notifications for entity state changes
+  - Configure alerts for any entity
+  - Alert on any state change or specific target state
+  - Desktop notification support with permission management
+  - Full CRUD operations (create, edit, delete alerts)
+  - Search and filter entities in alerts modal
+- **Camera Live Streaming**: Real-time camera video feeds
+  - HLS streaming support (primary method)
+  - MJPEG fallback streaming for compatibility
+  - Snapshot mode for static images
+  - Live/Stop toggle for stream control
+  - Custom `ha://` protocol for secure camera proxy
+  - Loading indicators and error handling
+- **Enhanced UI Features**:
+  - Drag-and-drop tile reordering in Quick Access
+  - Wiggle animation in reorganize mode
+  - Entity-specific icons (lights, sensors, timers, scenes, etc.)
+  - Dynamic weather icon based on current conditions
+  - Live timer countdowns with visual feedback
+  - Light brightness display and slider control
+  - Custom entity renaming functionality
+
+### Changed
+- **Modular Architecture**: Refactored codebase into organized `src/` directory
+  - Separated concerns: state management, WebSocket handling, UI rendering, utilities
+  - Improved code maintainability and readability
+  - Better error handling throughout the application
+- **Settings Interface**: Redesigned with tabbed layout
+  - General, Hotkeys, Alerts, and Updates tabs
+  - Improved organization and usability
+  - Real-time preview of changes
+- **Entity Display Logic**: Enhanced state formatting
+  - Sensors show values with units (temperature, battery, power, etc.)
+  - Lights show brightness percentage or "Off"
+  - Timers show live countdown or status (Idle/Paused)
+  - Climate entities show temperature settings
+- **Camera Handling**: Complete rewrite for better performance
+  - Attempts HLS first, falls back to MJPEG automatically
+  - Proper resource cleanup on modal close
+  - Improved loading states and error messages
+- **WebSocket Management**: Improved connection handling
+  - Better error recovery and reconnection logic
+  - Proper message ID tracking for request/response pairs
+  - Cleaner event handling with EventEmitter pattern
+
+### Fixed
+- **Critical Module Scoping Bug**: Fixed `require()` statements being inside try-catch block, which made modules undefined
+- **WebSocket ID Mismatch**: Fixed request ID tracking for proper message handling
+- **Loading Spinner Stuck**: Fixed initialization flow to show UI immediately instead of waiting for WebSocket connection
+- **Generic States Display**: Implemented entity-specific state formatting instead of showing raw state values
+- **No Tiles in Quick Access**: Fixed entity filtering and rendering logic to properly display favorite entities
+- **Duplicate Connection Indicator**: Removed extra green dot near status indicator
+- **Drag-and-Drop Not Working**: Implemented proper event handlers with capture phase
+- **Wiggle Animation Desync**: Fixed animation restart after dropping tiles using `requestAnimationFrame`
+- **Camera Entities Not Draggable**: Fixed JavaScript error that prevented camera tiles from being draggable
+- **Incorrect Icons**: Fixed icons for all entity types (lights always show bulb, scenes show sparkles, etc.)
+- **Static Weather Icon**: Made weather icon dynamic based on current conditions
+- **Alerts Section Incomplete**: Fully implemented alerts CRUD UI with entity selector
+- **Camera Live View**: Fixed stream initialization and browser compatibility
+- **UI Rendering**: Fixed Quick Access not rendering when WebSocket hasn't connected yet
+- **Timer Updates**: Added live countdown updates every second
+- **Memory Leaks**: Proper cleanup of intervals, event listeners, and HLS instances
+
+### Technical Improvements
+- Zero linter errors across all files
+- Consistent error handling with try-catch blocks
+- Proper resource management (intervals, event listeners, HLS instances)
+- Removed debug console.log statements for production
+- Improved code documentation and comments
+- Better TypeScript-compatible JSDoc comments
+
 ## [2.2.1] - 2024-12-19
 
 ### Changed

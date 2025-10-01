@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -25,13 +25,24 @@ function loadConfig() {
       url: 'http://homeassistant.local:8123',
       token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
     },
-    updateInterval: 5000 // Update every 5 seconds
+    updateInterval: 5000, // Update every 5 seconds
+    globalHotkeys: {
+      enabled: false,
+      hotkeys: {} // entityId -> hotkey combination
+    },
+    entityAlerts: {
+      enabled: false,
+      alerts: {} // entityId -> alert configuration
+    }
   };
 
   try {
     if (fs.existsSync(configPath)) {
       const userConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      config = { ...defaultConfig, ...userConfig };
+      config = { ...defaultConfig, ...userConfig,
+        globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
+        entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) }
+      };
     } else {
       // Migrate legacy config if present in app directory
       const legacyPath = path.join(__dirname, 'config.json');
@@ -319,6 +330,148 @@ ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
 
+// Global Hotkey IPC Handlers
+ipcMain.handle('register-hotkey', (event, entityId, hotkey) => {
+  // Check for conflicts with existing hotkeys first
+  const existingEntity = Object.entries(config.globalHotkeys.hotkeys).find(([id, key]) => 
+    id !== entityId && key.toLowerCase() === hotkey.toLowerCase()
+  );
+  
+  if (existingEntity) {
+    const entityName = existingEntity[0] || 'another action';
+    return { success: false, error: `Hotkey already assigned to ${entityName}` };
+  }
+
+  // Then, validate the hotkey format and check against system shortcuts
+  if (!validateHotkey(hotkey)) {
+    return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
+  }
+  
+  config.globalHotkeys.hotkeys[entityId] = hotkey;
+  saveConfig();
+  registerGlobalHotkeys(); // This will re-register all hotkeys
+  
+  // Final check to see if Electron successfully registered it
+  if (!globalShortcut.isRegistered(hotkey)) {
+    console.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
+    // Unset it from config so the user can try again
+    delete config.globalHotkeys.hotkeys[entityId];
+    saveConfig();
+    registerGlobalHotkeys();
+    return { success: false, error: 'Hotkey is likely in use by another application' };
+  }
+  
+  return { success: true };
+});
+
+ipcMain.handle('unregister-hotkey', (event, entityId) => {
+  delete config.globalHotkeys.hotkeys[entityId];
+  saveConfig();
+  registerGlobalHotkeys();
+  return { success: true };
+});
+
+ipcMain.handle('toggle-hotkeys', (event, enabled) => {
+  config.globalHotkeys.enabled = enabled;
+  saveConfig();
+  
+  if (enabled) {
+    registerGlobalHotkeys();
+  } else {
+    unregisterGlobalHotkeys();
+  }
+  
+  return { success: true };
+});
+
+ipcMain.handle('validate-hotkey', (event, hotkey) => {
+  return { valid: validateHotkey(hotkey) };
+});
+
+// Entity Alert IPC Handlers
+ipcMain.handle('set-entity-alert', (event, entityId, alertConfig) => {
+  config.entityAlerts.alerts[entityId] = alertConfig;
+  saveConfig();
+  return { success: true };
+});
+
+ipcMain.handle('remove-entity-alert', (event, entityId) => {
+  delete config.entityAlerts.alerts[entityId];
+  saveConfig();
+  return { success: true };
+});
+
+ipcMain.handle('toggle-alerts', (event, enabled) => {
+  config.entityAlerts.enabled = enabled;
+  saveConfig();
+  return { success: true };
+});
+
+// Global Hotkey Management
+function registerGlobalHotkeys() {
+  if (!config.globalHotkeys.enabled) return;
+  
+  // Unregister all existing hotkeys first
+  globalShortcut.unregisterAll();
+  
+  // Register each configured hotkey
+  Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkey]) => {
+    if (hotkey && hotkey.trim()) {
+      try {
+        const success = globalShortcut.register(hotkey, () => {
+          // Send hotkey event to renderer process
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey });
+          }
+        });
+        
+        if (!success) {
+          console.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
+        } else {
+          console.log(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
+        }
+      } catch (error) {
+        console.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
+      }
+    }
+  });
+}
+
+function unregisterGlobalHotkeys() {
+  globalShortcut.unregisterAll();
+}
+
+function validateHotkey(hotkey) {
+  if (!hotkey || typeof hotkey !== 'string') return false;
+  
+  // A valid hotkey must have at least one non-modifier key.
+  const modifiers = ['ctrl', 'alt', 'shift', 'meta', 'cmd'];
+  const keys = hotkey.split('+');
+  const nonModifiers = keys.filter(key => !modifiers.includes(key.toLowerCase()));
+  if (nonModifiers.length === 0) {
+    return false;
+  }
+  
+  // Check for conflicts with system shortcuts
+  const systemShortcuts = [
+    'ctrl+alt+del', 'alt+f4', 'ctrl+c', 'ctrl+v', 'ctrl+x', 'ctrl+z',
+    'ctrl+a', 'ctrl+s', 'ctrl+o', 'ctrl+n', 'ctrl+w', 'ctrl+r',
+    'alt+tab', 'ctrl+tab', 'ctrl+shift+tab', 'alt+shift+tab',
+    'win+l', 'win+r', 'win+e', 'win+d', 'win+m', 'win+tab'
+  ];
+  
+  return !systemShortcuts.includes(hotkey.toLowerCase());
+}
+
+// Entity Alert Management
+function setupEntityAlerts() {
+  if (!config.entityAlerts.enabled) return;
+  
+  // This will be called when entity states change
+  // The actual alert logic will be in the renderer process
+  console.log('Entity alerts enabled');
+}
+
 // App event handlers
 function setupAutoUpdates() {
   if (!app.isPackaged) return;
@@ -356,6 +509,7 @@ function setupAutoUpdates() {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  unregisterGlobalHotkeys();
 });
 
 // Register custom protocol before creating window
@@ -435,6 +589,8 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   setupAutoUpdates();
+  registerGlobalHotkeys();
+  setupEntityAlerts();
 });
 
 app.on('window-all-closed', () => {

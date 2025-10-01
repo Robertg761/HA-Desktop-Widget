@@ -1,6 +1,6 @@
 {
   "name": "home-assistant-widget",
-  "version": "2.2.1",
+  "version": "2.3.1",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -46,9 +46,10 @@
     "files": [
       "index.html",
       "main.js",
-      "renderer-final.js",
+      "renderer.js",
       "keyboard.js",
       "styles.css",
+      "src/**/*",
       "node_modules/**/*",
       "package.json"
     ],
