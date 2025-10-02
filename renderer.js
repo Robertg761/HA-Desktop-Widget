@@ -202,6 +202,7 @@ function wireUI() {
     const manageQuickControlsBtn = document.getElementById('manage-quick-controls-btn');
     if (manageQuickControlsBtn) {
       manageQuickControlsBtn.onclick = () => {
+        ui.populateQuickControlsList();
         const modal = document.getElementById('quick-controls-modal');
         if (modal) {
           modal.classList.remove('hidden');

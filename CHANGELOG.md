@@ -16,6 +16,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.3.2] - 2025-10-02
+
+### Fixed
+- **Timer Sensors**: Fixed Google Kitchen Timer and other sensor-based timers to display live countdowns
+  - Added support for timers that use state as timestamp instead of attributes
+  - Added support for multiple timer attribute formats (finishes_at, end_time, finish_time)
+  - Fixed timer detection logic to recognize sensors with timer-like timestamps
+  - Timer sensors now show "Finished" when expired
+- **Update Checker**: Fixed Settings → Updates tab to properly display current version and check for updates
+  - Fixed "Check for Updates" button in packaged builds
+  - Added clear messaging for development vs packaged modes
+  - Fixed update status display and event handling
+- **Quick Access Management**: Fixed "Manage Quick Access" modal to properly load and display entities
+  - Fixed entity list population and rendering
+  - Fixed Add/Remove buttons functionality
+  - Fixed real-time updates when managing entities
+- **Search Functionality**: Significantly improved search to be more forgiving and intelligent
+  - Search now normalizes text to ignore apostrophes, underscores, and special characters
+  - Example: "roberts" now matches "Robert's Room"
+  - Smart relevance scoring prioritizes matches at the start of names
+  - Searches both entity display names and entity IDs simultaneously
+
+### Technical
+- Enhanced `getSearchScore()` with text normalization for better search results
+- Added `populateQuickControlsList()` and `toggleQuickAccess()` functions
+- Improved timer detection across createControlElement, getEntityDisplayState, and getTimerDisplay
+- Updated `initUpdateUI()` to properly handle version display and update checking
+
 ## [2.3.1] - 2025-10-01
 
 ### Added

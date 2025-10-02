@@ -299,18 +299,40 @@ function createControlElement(entity) {
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
 
+    // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
+    // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
+    const hasTimerAttributes = entity.attributes && (
+      entity.attributes.finishes_at || 
+      entity.attributes.end_time || 
+      entity.attributes.finish_time ||
+      entity.attributes.duration
+    );
+    
+    // Check if entity ID contains "timer" or if state is a valid future timestamp
+    const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
+    let stateIsTimestamp = false;
+    if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
+      const stateTime = new Date(entity.state).getTime();
+      if (!isNaN(stateTime) && stateTime > Date.now()) {
+        stateIsTimestamp = true;
+      }
+    }
+    
+    const isTimerSensor = entity.entity_id.startsWith('sensor.') && (hasTimerAttributes || hasTimerInName || stateIsTimestamp);
+    const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
+
     // Handle different entity types (matching main branch)
     if (entity.entity_id.startsWith('camera.')) {
       div.onclick = () => {
         if (!isReorganizeMode) camera.openCamera(entity.entity_id);
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
-    } else if (entity.entity_id.startsWith('sensor.')) {
+    } else if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
       div.onclick = () => {
         if (!isReorganizeMode) showSensorDetails(entity);
       };
       div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
-    } else if (entity.entity_id.startsWith('timer.')) {
+    } else if (isTimer) {
       div.onclick = () => {
         if (!isReorganizeMode) toggleEntity(entity);
       };
@@ -330,9 +352,9 @@ function createControlElement(entity) {
     const state = utils.getEntityDisplayState(entity);
     
     let stateDisplay = '';
-    if (entity.entity_id.startsWith('sensor.')) {
+    if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
       stateDisplay = `<div class="control-state">${state}</div>`;
-    } else if (entity.entity_id.startsWith('timer.')) {
+    } else if (isTimer) {
       const timerDisplay = utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state;
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
     } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
@@ -346,7 +368,7 @@ function createControlElement(entity) {
     }
 
     // Special layout for timer entities (no icon, larger timer display)
-    if (entity.entity_id.startsWith('timer.')) {
+    if (isTimer) {
       div.innerHTML = `
         <div class="control-info timer-layout">
           <div class="control-name">${name}</div>
@@ -605,39 +627,95 @@ function updateTimeDisplay() {
 
 function updateTimerDisplays() {
   try {
-    // Find all timer entities in Quick Access
-    const timerElements = document.querySelectorAll('.control-item[data-entity-id^="timer."]');
+    // Find all timer entities AND sensor entities with timer attributes in Quick Access
+    const timerElements = document.querySelectorAll('.control-item.timer-entity');
     
     timerElements.forEach(timerEl => {
       const entityId = timerEl.dataset.entityId;
       const entity = state.STATES[entityId];
       
-      if (!entity || entity.state !== 'active') return;
+      if (!entity) return;
       
-      // Calculate remaining time
-      const finishesAt = entity.attributes?.finishes_at;
-      if (!finishesAt) return;
-      
-      const endTime = new Date(finishesAt).getTime();
-      const now = Date.now();
-      const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-      
-      // Format as mm:ss or hh:mm:ss
-      const hours = Math.floor(remaining / 3600);
-      const minutes = Math.floor((remaining % 3600) / 60);
-      const seconds = remaining % 60;
-      
-      let display;
-      if (hours > 0) {
-        display = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-      } else {
-        display = `${minutes}:${String(seconds).padStart(2, '0')}`;
+      // Handle timer.* entities
+      if (entityId.startsWith('timer.')) {
+        if (entity.state !== 'active') return;
+        
+        // Calculate remaining time
+        const finishesAt = entity.attributes?.finishes_at;
+        if (!finishesAt) return;
+        
+        const endTime = new Date(finishesAt).getTime();
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        
+        // Format as mm:ss or hh:mm:ss
+        const hours = Math.floor(remaining / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        const seconds = remaining % 60;
+        
+        let display;
+        if (hours > 0) {
+          display = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        } else {
+          display = `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+        
+        // Update the countdown display
+        const countdownEl = timerEl.querySelector('.timer-countdown');
+        if (countdownEl && countdownEl.textContent !== display) {
+          countdownEl.textContent = display;
+        }
       }
-      
-      // Update the countdown display
-      const countdownEl = timerEl.querySelector('.timer-countdown');
-      if (countdownEl && countdownEl.textContent !== display) {
-        countdownEl.textContent = display;
+      // Handle sensor.* entities that are timers (like Google Kitchen Timer)
+      else if (entityId.startsWith('sensor.')) {
+        // Check for various timer end time attributes
+        let finishesAt = entity.attributes?.finishes_at || 
+                         entity.attributes?.end_time || 
+                         entity.attributes?.finish_time;
+        
+        // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
+        if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
+          // Try to parse state as a timestamp
+          const stateTime = new Date(entity.state).getTime();
+          if (!isNaN(stateTime)) {
+            finishesAt = entity.state;
+          }
+        }
+        
+        if (!finishesAt) return;
+        
+        // Check if timer is active (finishes_at is in the future)
+        const endTime = new Date(finishesAt).getTime();
+        const now = Date.now();
+        
+        if (endTime <= now) {
+          // Timer finished
+          const countdownEl = timerEl.querySelector('.timer-countdown');
+          if (countdownEl) {
+            countdownEl.textContent = 'Finished';
+          }
+          return;
+        }
+        
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        
+        // Format as mm:ss or hh:mm:ss
+        const hours = Math.floor(remaining / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        const seconds = remaining % 60;
+        
+        let display;
+        if (hours > 0) {
+          display = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        } else {
+          display = `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+        
+        // Update the countdown display
+        const countdownEl = timerEl.querySelector('.timer-countdown');
+        if (countdownEl && countdownEl.textContent !== display) {
+          countdownEl.textContent = display;
+        }
       }
     });
   } catch (error) {
@@ -749,16 +827,216 @@ function setupEntitySearchInput(inputId, allowedDomains = null) {
     }
 }
 
+function populateQuickControlsList() {
+    try {
+        const list = document.getElementById('quick-controls-list');
+        const searchInput = document.getElementById('quick-controls-search');
+        if (!list) return;
+        
+        const renderList = () => {
+            const filter = searchInput ? searchInput.value.toLowerCase() : '';
+            const favorites = state.CONFIG.favoriteEntities || [];
+            
+            // Score and filter entities
+            const scoredEntities = Object.values(state.STATES)
+                .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
+                .map(entity => {
+                    if (!filter) {
+                        return { entity, score: 1 };
+                    }
+                    // Search both display name and entity ID
+                    const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), filter);
+                    const idScore = utils.getSearchScore(entity.entity_id, filter);
+                    return { entity, score: nameScore + idScore };
+                })
+                .filter(item => item.score > 0)
+                .sort((a, b) => {
+                    // Sort by score first, then alphabetically
+                    if (b.score !== a.score) {
+                        return b.score - a.score;
+                    }
+                    return utils.getEntityDisplayName(a.entity).localeCompare(utils.getEntityDisplayName(b.entity));
+                });
+            
+            list.innerHTML = '';
+            
+            scoredEntities.forEach(({ entity }) => {
+                const item = document.createElement('div');
+                item.className = 'entity-item';
+                
+                const isFavorite = favorites.includes(entity.entity_id);
+                
+                item.innerHTML = `
+                    <span class="entity-icon">${utils.getEntityIcon(entity)}</span>
+                    <span class="entity-name">${utils.getEntityDisplayName(entity)}</span>
+                    <span class="entity-id">${entity.entity_id}</span>
+                    <button class="btn btn-small ${isFavorite ? 'btn-danger' : 'btn-primary'}" data-entity-id="${entity.entity_id}">
+                        ${isFavorite ? 'Remove' : 'Add'}
+                    </button>
+                `;
+                
+                const button = item.querySelector('button');
+                button.onclick = () => toggleQuickAccess(entity.entity_id);
+                
+                list.appendChild(item);
+            });
+        };
+        
+        // Initial render
+        renderList();
+        
+        // Set up search with proper scoring
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.oninput = () => renderList();
+        }
+    } catch (error) {
+        console.error('Error populating quick controls list:', error);
+    }
+}
+
+function toggleQuickAccess(entityId) {
+    try {
+        const { ipcRenderer } = require('electron');
+        const favorites = state.CONFIG.favoriteEntities || [];
+        
+        if (favorites.includes(entityId)) {
+            // Remove from favorites
+            state.CONFIG.favoriteEntities = favorites.filter(id => id !== entityId);
+        } else {
+            // Add to favorites
+            state.CONFIG.favoriteEntities = [...favorites, entityId];
+        }
+        
+        // Save and update UI
+        ipcRenderer.invoke('update-config', state.CONFIG);
+        renderQuickControls();
+        populateQuickControlsList();
+    } catch (error) {
+        console.error('Error toggling quick access:', error);
+    }
+}
+
 function initUpdateUI() {
     try {
-        // Initialize UI update mechanisms
-        updateTimeDisplay();
-        setInterval(updateTimeDisplay, 1000);
+        const { ipcRenderer } = require('electron');
+        const { version } = require('../package.json');
         
-        // Setup drag and drop for reorganize mode
-        setupDragAndDrop();
+        // Set current version
+        const currentVersionEl = document.getElementById('current-version');
+        if (currentVersionEl) {
+            currentVersionEl.textContent = `v${version}`;
+        }
+        
+        // Wire up check for updates button
+        const checkUpdatesBtn = document.getElementById('check-updates-btn');
+        const updateStatusText = document.getElementById('update-status-text');
+        const installUpdateBtn = document.getElementById('install-update-btn');
+        const updateProgress = document.getElementById('update-progress');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        
+        // Enable the check button
+        if (checkUpdatesBtn) {
+            checkUpdatesBtn.disabled = false;
+            checkUpdatesBtn.onclick = async () => {
+                // Disable button and show checking status
+                if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+                if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
+                
+                try {
+                    const result = await ipcRenderer.invoke('check-for-updates');
+                    if (result.status === 'dev') {
+                        // In development mode, auto-updater doesn't work
+                        if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+                    }
+                    // In packaged mode, the auto-update events will update the UI
+                    // The button will be re-enabled by the event handlers
+                } catch (error) {
+                    console.error('Error checking for updates:', error);
+                    if (updateStatusText) updateStatusText.textContent = 'Error checking for updates';
+                    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+                }
+            };
+        }
+        
+        // Wire up install button
+        if (installUpdateBtn) {
+            installUpdateBtn.onclick = () => {
+                ipcRenderer.invoke('quit-and-install');
+            };
+        }
+        
+        // Listen for auto-update events from main process
+        ipcRenderer.on('auto-update', (event, data) => {
+            try {
+                if (!data) return;
+                
+                switch (data.status) {
+                    case 'checking':
+                        if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+                        if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+                        if (updateProgress) updateProgress.classList.add('hidden');
+                        break;
+                        
+                    case 'available':
+                        if (updateStatusText) {
+                            const version = data.info?.version || 'unknown';
+                            updateStatusText.textContent = `Update available: v${version}`;
+                        }
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+                        if (updateProgress) updateProgress.classList.remove('hidden');
+                        break;
+                        
+                    case 'none':
+                        if (updateStatusText) updateStatusText.textContent = 'You are up to date!';
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+                        if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+                        if (updateProgress) updateProgress.classList.add('hidden');
+                        break;
+                        
+                    case 'downloading':
+                        if (updateStatusText) updateStatusText.textContent = 'Downloading update...';
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+                        if (updateProgress) updateProgress.classList.remove('hidden');
+                        if (data.progress) {
+                            const percent = Math.round(data.progress.percent);
+                            if (progressFill) progressFill.style.width = `${percent}%`;
+                            if (progressText) progressText.textContent = `${percent}%`;
+                        }
+                        break;
+                        
+                    case 'downloaded':
+                        if (updateStatusText) {
+                            const version = data.info?.version || 'unknown';
+                            updateStatusText.textContent = `Update v${version} ready to install`;
+                        }
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+                        if (installUpdateBtn) installUpdateBtn.classList.remove('hidden');
+                        if (updateProgress) updateProgress.classList.add('hidden');
+                        break;
+                        
+                    case 'error':
+                        if (updateStatusText) {
+                            updateStatusText.textContent = `Error: ${data.error || 'Unknown error'}`;
+                        }
+                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+                        if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+                        if (updateProgress) updateProgress.classList.add('hidden');
+                        break;
+                }
+            } catch (error) {
+                console.error('Error handling auto-update event:', error);
+            }
+        });
+        
+        // Initialize with ready status
+        if (updateStatusText) updateStatusText.textContent = 'Ready to check for updates';
+        
     } catch (error) {
-        console.error('Error initializing UI updates:', error);
+        console.error('Error initializing update UI:', error);
     }
 }
 
@@ -899,4 +1177,5 @@ module.exports = {
   updateTimerDisplays,
   setupDragAndDrop,
   toggleReorganizeMode,
+  populateQuickControlsList,
 };

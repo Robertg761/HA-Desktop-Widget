@@ -359,6 +359,42 @@ body {
   background: var(--surface-hover);
 }
 
+.entity-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.entity-item:last-child {
+  border-bottom: none;
+}
+
+.entity-item:hover {
+  background: var(--surface-hover);
+}
+
+.entity-item .entity-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+
+.entity-item .entity-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.entity-item .entity-id {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  margin-right: 8px;
+}
+
 .entity-selector-info {
   flex: 1;
   display: flex;

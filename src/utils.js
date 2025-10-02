@@ -46,8 +46,9 @@ function getEntityIcon(entity) {
                 if (attributes.device_class === 'battery') return '🔋';
                 if (attributes.device_class === 'power') return '⚡';
                 if (attributes.device_class === 'energy') return '⚡';
-                // Check entity_id for common patterns
-                if (entity.entity_id.includes('timer')) return '⏲️';
+                // Check for timer sensors (has timer-related attributes or timer in name)
+                if (attributes.finishes_at || attributes.end_time || attributes.finish_time || 
+                    attributes.duration || entity.entity_id.toLowerCase().includes('timer')) return '⏲️';
                 if (entity.entity_id.includes('battery')) return '🔋';
                 if (entity.entity_id.includes('temperature') || entity.entity_id.includes('temp')) return '🌡️';
                 return '📈';
@@ -115,11 +116,22 @@ function getTimerEnd(entity) {
 
 function getSearchScore(text, query) {
     try {
-        const lowerText = text.toLowerCase();
-        const lowerQuery = query.toLowerCase();
+        // Normalize text by removing special characters, apostrophes, underscores, and extra spaces
+        const normalizeText = (str) => {
+            return str
+                .toLowerCase()
+                .replace(/[''`]/g, '')  // Remove apostrophes and backticks
+                .replace(/[_-]/g, ' ')  // Replace underscores and hyphens with spaces
+                .replace(/[^\w\s]/g, '') // Remove other special characters
+                .replace(/\s+/g, ' ')   // Normalize multiple spaces to single space
+                .trim();
+        };
+        
+        const normalizedText = normalizeText(text);
+        const normalizedQuery = normalizeText(query);
 
-        if (lowerText.includes(lowerQuery)) {
-            if (lowerText.startsWith(lowerQuery)) {
+        if (normalizedText.includes(normalizedQuery)) {
+            if (normalizedText.startsWith(normalizedQuery)) {
                 return 2;
             }
             return 1;
@@ -135,6 +147,31 @@ function getEntityDisplayState(entity) {
     try {
         if (!entity) return 'Unknown';
         
+        // Check if sensor is a timer (has timer-related attributes, timer in name, or timestamp as state)
+        const hasTimerAttributes = entity.attributes && (
+            entity.attributes.finishes_at || 
+            entity.attributes.end_time || 
+            entity.attributes.finish_time ||
+            entity.attributes.duration
+        );
+        const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
+        
+        // Check if state is a valid future timestamp
+        let stateIsTimestamp = false;
+        if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
+            const stateTime = new Date(entity.state).getTime();
+            if (!isNaN(stateTime) && stateTime > Date.now()) {
+                stateIsTimestamp = true;
+            }
+        }
+        
+        const isTimerSensor = entity.entity_id.startsWith('sensor.') && (hasTimerAttributes || hasTimerInName || stateIsTimestamp);
+        
+        // For timers (both timer.* and sensor.* with timer attributes)
+        if (entity.entity_id.startsWith('timer.') || isTimerSensor) {
+            return getTimerDisplay(entity);
+        }
+        
         // For sensors, return the actual value with unit
         if (entity.entity_id.startsWith('sensor.')) {
             const unit = entity.attributes?.unit_of_measurement || '';
@@ -144,11 +181,6 @@ function getEntityDisplayState(entity) {
         // For binary sensors
         if (entity.entity_id.startsWith('binary_sensor.')) {
             return entity.state === 'on' ? 'Detected' : 'Clear';
-        }
-        
-        // For timers
-        if (entity.entity_id.startsWith('timer.')) {
-            return getTimerDisplay(entity);
         }
         
         // For scenes - just show "Ready" or hide the state
@@ -180,6 +212,46 @@ function getTimerDisplay(entity) {
     try {
         if (!entity) return '--:--';
         
+        // Handle sensor-based timers (like Google Kitchen Timer)
+        if (entity.entity_id.startsWith('sensor.')) {
+            // Check for various timer end time attributes
+            let finishesAt = entity.attributes?.finishes_at || 
+                             entity.attributes?.end_time || 
+                             entity.attributes?.finish_time;
+            
+            // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
+            if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
+                // Try to parse state as a timestamp
+                const stateTime = new Date(entity.state).getTime();
+                if (!isNaN(stateTime)) {
+                    finishesAt = entity.state;
+                }
+            }
+            
+            if (finishesAt) {
+                const endTime = new Date(finishesAt).getTime();
+                const now = Date.now();
+                
+                if (endTime <= now) {
+                    return 'Finished';
+                }
+                
+                const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+                const hours = Math.floor(remaining / 3600);
+                const minutes = Math.floor((remaining % 3600) / 60);
+                const seconds = remaining % 60;
+                
+                if (hours > 0) {
+                    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                }
+                return `${minutes}:${String(seconds).padStart(2, '0')}`;
+            }
+            
+            // If no end time found, just return the state
+            return entity.state;
+        }
+        
+        // Handle timer.* entities
         if (entity.state === 'idle') {
             return 'Idle';
         }
