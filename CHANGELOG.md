@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.3.3] - 2025-10-02
+
+### Fixed
+- **Edit Mode Pencil Icon**: Fixed critical bug where the pencil (✏️) icon in reorganize/edit mode was not clickable due to drag-and-drop interference
+  - Clicking the pencil icon would trigger a drag operation instead of opening the rename modal
+  - Implemented multi-layer fix with event handling, CSS, and drag prevention
+  - Buttons now properly prevent drag events and respond to clicks
+  - Added `addRemoveButtons()` calls after UI re-renders to ensure buttons remain functional
+
 ## [2.3.2] - 2025-10-02
 
 ### Fixed

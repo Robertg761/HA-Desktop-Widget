@@ -1793,6 +1793,9 @@ body {
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
+  pointer-events: auto;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .reorganize-mode .control-item .remove-btn:hover {
@@ -1820,6 +1823,9 @@ body {
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
+  pointer-events: auto;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .reorganize-mode .control-item .rename-btn:hover {

@@ -46,10 +46,20 @@ function addRemoveButtons() {
         renameBtn.className = 'rename-btn';
         renameBtn.innerHTML = '✏️';
         renameBtn.title = 'Rename Entity';
-        renameBtn.onclick = (e) => {
+        renameBtn.setAttribute('draggable', 'false');
+        renameBtn.addEventListener('mousedown', (e) => {
           e.stopPropagation();
+        }, true);
+        renameBtn.addEventListener('dragstart', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }, true);
+        renameBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
           showRenameModal(item.dataset.entityId);
-        };
+        }, true);
         item.appendChild(renameBtn);
       }
       
@@ -59,10 +69,20 @@ function addRemoveButtons() {
         removeBtn.className = 'remove-btn';
         removeBtn.innerHTML = '×';
         removeBtn.title = 'Remove from Quick Access';
-        removeBtn.onclick = (e) => {
+        removeBtn.setAttribute('draggable', 'false');
+        removeBtn.addEventListener('mousedown', (e) => {
           e.stopPropagation();
+        }, true);
+        removeBtn.addEventListener('dragstart', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }, true);
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
           removeFromQuickAccess(item.dataset.entityId);
-        };
+        }, true);
         item.appendChild(removeBtn);
       }
     });
@@ -135,6 +155,7 @@ function showRenameModal(entityId) {
             const container = document.getElementById('quick-controls');
             if (container) container.classList.add('reorganize-mode');
             addDragAndDropListeners();
+            addRemoveButtons();
           }
           
           uiUtils.showToast(`Renamed to "${newName}"`, 'success', 2000);
@@ -156,6 +177,7 @@ function showRenameModal(entityId) {
             const container = document.getElementById('quick-controls');
             if (container) container.classList.add('reorganize-mode');
             addDragAndDropListeners();
+            addRemoveButtons();
           }
           
           uiUtils.showToast('Reset to default name', 'info', 2000);
@@ -287,6 +309,7 @@ function renderQuickControls() {
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
       addDragAndDropListeners();
+      addRemoveButtons();
     }
   } catch (error) {
     console.error('[UI] Error rendering quick controls:', error, error.stack);
@@ -1056,6 +1079,15 @@ function getDragAfterElement(container, y) {
 }
 
 function handleDragStart(e) {
+    // Don't allow drag to start if clicking on rename or remove buttons
+    if (e.target.classList.contains('rename-btn') || 
+        e.target.classList.contains('remove-btn') ||
+        e.target.closest('.rename-btn') || 
+        e.target.closest('.remove-btn')) {
+        e.preventDefault();
+        return false;
+    }
+    
     draggedElement = e.currentTarget;
     e.currentTarget.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
