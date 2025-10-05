@@ -40,51 +40,7 @@ function addRemoveButtons() {
   try {
     const controls = document.querySelectorAll('#quick-controls .control-item');
     controls.forEach(item => {
-      // Add rename button
-      if (!item.querySelector('.rename-btn')) {
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'rename-btn';
-        renameBtn.innerHTML = '✏️';
-        renameBtn.title = 'Rename Entity';
-        renameBtn.setAttribute('draggable', 'false');
-        renameBtn.addEventListener('mousedown', (e) => {
-          e.stopPropagation();
-        }, true);
-        renameBtn.addEventListener('dragstart', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }, true);
-        renameBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          showRenameModal(item.dataset.entityId);
-        }, true);
-        item.appendChild(renameBtn);
-      }
-      
-      // Add remove button
-      if (!item.querySelector('.remove-btn')) {
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'remove-btn';
-        removeBtn.innerHTML = '×';
-        removeBtn.title = 'Remove from Quick Access';
-        removeBtn.setAttribute('draggable', 'false');
-        removeBtn.addEventListener('mousedown', (e) => {
-          e.stopPropagation();
-        }, true);
-        removeBtn.addEventListener('dragstart', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }, true);
-        removeBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          removeFromQuickAccess(item.dataset.entityId);
-        }, true);
-        item.appendChild(removeBtn);
-      }
+      addButtonsToElement(item);
     });
   } catch (error) {
     console.error('Error adding remove buttons:', error);
@@ -97,6 +53,72 @@ function removeRemoveButtons() {
     document.querySelectorAll('#quick-controls .rename-btn').forEach(btn => btn.remove());
   } catch (error) {
     console.error('Error removing remove buttons:', error);
+  }
+}
+
+function addButtonsToElement(item) {
+  try {
+    // Add rename button
+    if (!item.querySelector('.rename-btn')) {
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'rename-btn';
+      renameBtn.innerHTML = '✏️';
+      renameBtn.title = 'Rename Entity';
+      renameBtn.setAttribute('draggable', 'false');
+      renameBtn.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+      }, true);
+      renameBtn.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }, true);
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        showRenameModal(item.dataset.entityId);
+      }, true);
+      item.appendChild(renameBtn);
+    }
+    
+    // Add remove button
+    if (!item.querySelector('.remove-btn')) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-btn';
+      removeBtn.innerHTML = '×';
+      removeBtn.title = 'Remove from Quick Access';
+      removeBtn.setAttribute('draggable', 'false');
+      removeBtn.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+      }, true);
+      removeBtn.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }, true);
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        removeFromQuickAccess(item.dataset.entityId);
+      }, true);
+      item.appendChild(removeBtn);
+    }
+  } catch (error) {
+    console.error('Error adding buttons to element:', error);
+  }
+}
+
+function addDragListenersToElement(item) {
+  try {
+    item.draggable = true;
+    item.addEventListener('dragstart', handleDragStart);
+    item.addEventListener('dragend', handleDragEnd);
+    item.addEventListener('dragover', handleDragOver);
+    item.addEventListener('drop', handleDrop);
+    item.addEventListener('dragenter', handleDragEnter);
+    item.addEventListener('dragleave', handleDragLeave);
+  } catch (error) {
+    console.error('Error adding drag listeners to element:', error);
   }
 }
 
@@ -272,6 +294,12 @@ function updateEntityInUI(entity) {
         newControl.classList.add('reorganize-mode');
       }
       item.replaceWith(newControl);
+      
+      // If in reorganize mode, add buttons and drag listeners to the newly created element
+      if (isReorganizeMode) {
+        addButtonsToElement(newControl);
+        addDragListenersToElement(newControl);
+      }
     });
   } catch (error) {
     console.error('Error updating entity in UI:', error);
@@ -335,9 +363,14 @@ function createControlElement(entity) {
     const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
     let stateIsTimestamp = false;
     if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      const stateTime = new Date(entity.state).getTime();
-      if (!isNaN(stateTime) && stateTime > Date.now()) {
-        stateIsTimestamp = true;
+      // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
+      // This prevents numeric values like "150" (watts) from being parsed as dates
+      const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+      if (looksLikeTimestamp) {
+        const stateTime = new Date(entity.state).getTime();
+        if (!isNaN(stateTime) && stateTime > Date.now()) {
+          stateIsTimestamp = true;
+        }
       }
     }
     
@@ -698,10 +731,14 @@ function updateTimerDisplays() {
         
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
         if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-          // Try to parse state as a timestamp
-          const stateTime = new Date(entity.state).getTime();
-          if (!isNaN(stateTime)) {
-            finishesAt = entity.state;
+          // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
+          // This prevents numeric values like "150" (watts) from being parsed as dates
+          const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+          if (looksLikeTimestamp) {
+            const stateTime = new Date(entity.state).getTime();
+            if (!isNaN(stateTime)) {
+              finishesAt = entity.state;
+            }
           }
         }
         
@@ -1166,13 +1203,7 @@ function addDragAndDropListeners() {
         const items = document.querySelectorAll('#quick-controls .control-item');
         
         items.forEach(item => {
-            item.draggable = true;
-            item.addEventListener('dragstart', handleDragStart);
-            item.addEventListener('dragend', handleDragEnd);
-            item.addEventListener('dragover', handleDragOver);
-            item.addEventListener('drop', handleDrop);
-            item.addEventListener('dragenter', handleDragEnter);
-            item.addEventListener('dragleave', handleDragLeave);
+            addDragListenersToElement(item);
         });
     } catch (error) {
         console.error('Error adding drag and drop listeners:', error);

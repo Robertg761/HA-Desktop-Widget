@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.3.4] - 2025-10-05
+
+### Fixed
+- **Reorganize Mode Button Persistence**: Fixed critical bug where pencil (✏️) and X (×) icons disappeared from entities that received state updates while in reorganize mode
+  - Created targeted helper functions `addButtonsToElement()` and `addDragListenersToElement()` to restore edit functionality to updated elements
+  - Ensures all entities maintain their edit buttons regardless of real-time state changes from Home Assistant
+  - Prevents duplicate event listeners by only processing newly created elements
+- **Numeric Sensor Display**: Fixed incorrect display of numeric sensor values (power, temperature, humidity, etc.)
+  - Power sensors now correctly show "150 W" instead of weird timer-like values
+  - Added regex validation `/[T\-:]/` to timestamp detection to prevent numeric values from being parsed as dates
+  - Ensures tile display matches tooltip display for all numeric sensors
+  - Timer sensors with actual ISO timestamps continue to work properly
+
 ## [2.3.3] - 2025-10-02
 
 ### Fixed

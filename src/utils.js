@@ -159,9 +159,14 @@ function getEntityDisplayState(entity) {
         // Check if state is a valid future timestamp
         let stateIsTimestamp = false;
         if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-            const stateTime = new Date(entity.state).getTime();
-            if (!isNaN(stateTime) && stateTime > Date.now()) {
-                stateIsTimestamp = true;
+            // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
+            // This prevents numeric values like "150" (watts) from being parsed as dates
+            const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+            if (looksLikeTimestamp) {
+                const stateTime = new Date(entity.state).getTime();
+                if (!isNaN(stateTime) && stateTime > Date.now()) {
+                    stateIsTimestamp = true;
+                }
             }
         }
         
@@ -221,10 +226,14 @@ function getTimerDisplay(entity) {
             
             // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
             if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-                // Try to parse state as a timestamp
-                const stateTime = new Date(entity.state).getTime();
-                if (!isNaN(stateTime)) {
-                    finishesAt = entity.state;
+                // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
+                // This prevents numeric values like "150" (watts) from being parsed as dates
+                const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+                if (looksLikeTimestamp) {
+                    const stateTime = new Date(entity.state).getTime();
+                    if (!isNaN(stateTime)) {
+                        finishesAt = entity.state;
+                    }
                 }
             }
             
