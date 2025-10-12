@@ -59,7 +59,8 @@
       {
         "provider": "github",
         "owner": "Robertg761",
-        "repo": "HA-Desktop-Widget"
+        "repo": "HA-Desktop-Widget",
+        "releaseType": "release"
       }
     ],
     "win": {
