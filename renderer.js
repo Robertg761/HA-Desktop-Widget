@@ -97,7 +97,15 @@ websocket.on('error', (error) => {
 });
 
 
-// --- Main Application Logic ---
+// --- IPC Event Handlers ---
+ipcRenderer.on('hotkey-triggered', (event, { entityId, hotkey, action }) => {
+  const entity = state.STATES[entityId];
+  if (entity) {
+    // Use the action sent from main.js, fallback to toggle if not provided
+    const finalAction = action || 'toggle';
+    ui.executeHotkeyAction(entity, finalAction);
+  }
+});
 async function init() {
   try {
     uiUtils.showLoading(true);
@@ -130,6 +138,7 @@ async function init() {
     setInterval(() => ui.updateTimerDisplays(), 1000);
     
     hotkeys.initializeHotkeys();
+    hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
     wireUI();
     
@@ -334,23 +343,28 @@ function wireUI() {
       target.value = 'Recording...';
       const hotkey = await hotkeys.captureHotkey();
       if (hotkey) {
-        const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey);
+        const action = target.parentElement.querySelector('.hotkey-action-select').value;
+        const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey, action);
         if (result.success) {
           target.value = hotkey;
-          state.CONFIG.globalHotkeys.hotkeys[entityId] = hotkey;
+          state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
         } else {
           uiUtils.showToast(result.error, 'error');
-          target.value = state.CONFIG.globalHotkeys?.hotkeys?.[entityId] || '';
+          const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+          target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
         }
       } else {
-        target.value = state.CONFIG.globalHotkeys?.hotkeys?.[entityId] || '';
+        const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+        target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
       }
     } else if (target.classList.contains('btn-clear-hotkey')) {
-      const input = target.previousElementSibling;
+      const container = target.parentElement;
+      const input = container.querySelector('.hotkey-input');
       const entityId = input.dataset.entityId;
       await ipcRenderer.invoke('unregister-hotkey', entityId);
       input.value = '';
       delete state.CONFIG.globalHotkeys.hotkeys[entityId];
+      hotkeys.renderHotkeysTab();
     }
   });
   }

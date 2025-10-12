@@ -526,7 +526,77 @@ function toggleEntity(entity) {
     }
 }
 
-// --- Cameras ---
+function executeHotkeyAction(entity, action) {
+  try {
+    const domain = entity.entity_id.split('.')[0];
+    const currentBrightness = entity.attributes?.brightness || 0;
+    
+    switch (action) {
+      case 'toggle':
+        toggleEntity(entity);
+        break;
+      case 'turn_on':
+        websocket.callService(domain, 'turn_on', { entity_id: entity.entity_id });
+        break;
+      case 'turn_off':
+        websocket.callService(domain, 'turn_off', { entity_id: entity.entity_id });
+        break;
+      case 'brightness_up':
+        // Increase brightness by 20% (51 units out of 255)
+        if (domain === 'light') {
+          const newBrightness = Math.min(255, currentBrightness + 51);
+          websocket.callService('light', 'turn_on', { 
+            entity_id: entity.entity_id,
+            brightness: newBrightness
+          });
+        }
+        break;
+      case 'brightness_down':
+        // Decrease brightness by 20% (51 units out of 255)
+        if (domain === 'light') {
+          const newBrightness = Math.max(0, currentBrightness - 51);
+          websocket.callService('light', 'turn_on', { 
+            entity_id: entity.entity_id,
+            brightness: newBrightness
+          });
+        }
+        break;
+      case 'trigger':
+        // For automations
+        if (domain === 'automation') {
+          websocket.callService('automation', 'trigger', { entity_id: entity.entity_id });
+        }
+        break;
+      case 'increase_speed':
+        // For fans - increase percentage by 33%
+        if (domain === 'fan') {
+          const currentPercentage = entity.attributes?.percentage || 0;
+          const newPercentage = Math.min(100, currentPercentage + 33);
+          websocket.callService('fan', 'set_percentage', { 
+            entity_id: entity.entity_id,
+            percentage: newPercentage
+          });
+        }
+        break;
+      case 'decrease_speed':
+        // For fans - decrease percentage by 33%
+        if (domain === 'fan') {
+          const currentPercentage = entity.attributes?.percentage || 0;
+          const newPercentage = Math.max(0, currentPercentage - 33);
+          websocket.callService('fan', 'set_percentage', { 
+            entity_id: entity.entity_id,
+            percentage: newPercentage
+          });
+        }
+        break;
+      default:
+        // Default to toggle for backward compatibility
+        toggleEntity(entity);
+    }
+  } catch (error) {
+    console.error(`Error executing hotkey action '${action}' for entity ${entity.entity_id}:`, error);
+  }
+}
 function renderCameras() {
   try {
     const container = document.getElementById('cameras-container');
@@ -1241,4 +1311,5 @@ module.exports = {
   setupDragAndDrop,
   toggleReorganizeMode,
   populateQuickControlsList,
+  executeHotkeyAction,
 };

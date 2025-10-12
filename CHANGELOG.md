@@ -16,6 +16,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.3.5] - 2025-10-12
+
+### Added
+- **Advanced Hotkey Actions**: Entity-specific action options in hotkey configuration
+  - Lights: Toggle, Turn On, Turn Off, Brightness Up, Brightness Down
+  - Switches: Toggle, Turn On, Turn Off
+  - Scenes: Activate
+  - Automations: Trigger, Toggle, Enable, Disable
+  - Fans: Toggle, Turn On, Turn Off, Increase Speed, Decrease Speed
+  - Input Booleans: Toggle, Turn On, Turn Off
+- **Action Dropdown UI**: New dropdown menu in hotkeys settings to select specific actions per entity
+
+### Changed
+- **Hotkey System Enhancements**:
+  - Hotkeys now support action-specific commands beyond simple toggling
+  - Brightness controls adjust lights by 20% increments
+  - Fan speed controls adjust by 33% increments
+  - Improved hotkey configuration UI with better styling and spacing
+
+### Fixed
+- **Hotkey Execution**: Fixed critical bug where hotkeys were not executing any actions
+  - Added missing `executeHotkeyAction` export from `ui.js`
+  - Fixed event listener setup timing to occur after hotkeys list is rendered
+  - Added missing `save-config` IPC handler in main process
+  - Added missing `register-hotkeys` IPC handler to re-register hotkeys after config changes
+- **Action Persistence**: Fixed bug where selected actions were not being saved when changing dropdown
+  - Event listeners now properly set up during hotkeys tab rendering
+  - Config changes now properly saved and hotkeys re-registered
+- **Clear Button**: Fixed hotkey clear button functionality to work with new dropdown layout
+- **Repository Cleanup**: Removed unnecessary build artifacts and redundant release notes files
+  - Deleted `builder-debug.yml`, `latest.yml`, and `win-unpacked/` directory
+  - Removed duplicate release notes files (kept only CHANGELOG.md)
+  - Updated `.gitignore` to prevent future build artifact commits
+
+### Technical
+- Implemented `getActionOptionsForDomain()` to dynamically generate appropriate actions per entity type
+- Enhanced `executeHotkeyAction()` to handle all entity-specific actions
+- Improved hotkey action dropdown styling with custom SVG arrow and theme-consistent colors
+- Added event delegation for hotkey configuration changes
+- Proper IPC communication between renderer and main process for config updates
+
 ## [2.3.4] - 2025-10-05
 
 ### Fixed
@@ -303,7 +344,4 @@ This project uses [Semantic Versioning](https://semver.org/):
 
 ## Release Notes
 
-For detailed release notes, see:
-- [v2.2.0 Release Notes](RELEASE_NOTES_v2.2.0.md)
-- [v2.1.0 Release Notes](RELEASE_NOTES_v2.1.0.md)
-- [v2.0.0 Release Notes](RELEASE_NOTES_v2.0.0.md)
+Detailed release notes for each version are available on the [GitHub Releases page](https://github.com/Robertg761/HA-Desktop-Widget/releases).

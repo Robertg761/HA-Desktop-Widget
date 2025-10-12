@@ -5,6 +5,11 @@ const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
 
+// Set cache paths before app is ready to avoid access issues
+const userDataPath = app.getPath('userData');
+app.setPath('userData', userDataPath);
+app.setPath('sessionData', path.join(userDataPath, 'session'));
+
 let mainWindow;
 let tray;
 let config;
@@ -331,10 +336,10 @@ ipcMain.handle('get-app-version', () => {
 });
 
 // Global Hotkey IPC Handlers
-ipcMain.handle('register-hotkey', (event, entityId, hotkey) => {
+ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
   // Check for conflicts with existing hotkeys first
   const existingEntity = Object.entries(config.globalHotkeys.hotkeys).find(([id, key]) => 
-    id !== entityId && key.toLowerCase() === hotkey.toLowerCase()
+    id !== entityId && key.hotkey.toLowerCase() === hotkey.toLowerCase()
   );
   
   if (existingEntity) {
@@ -347,7 +352,7 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey) => {
     return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
   }
   
-  config.globalHotkeys.hotkeys[entityId] = hotkey;
+  config.globalHotkeys.hotkeys[entityId] = { hotkey, action };
   saveConfig();
   registerGlobalHotkeys(); // This will re-register all hotkeys
   
@@ -368,6 +373,19 @@ ipcMain.handle('unregister-hotkey', (event, entityId) => {
   delete config.globalHotkeys.hotkeys[entityId];
   saveConfig();
   registerGlobalHotkeys();
+  return { success: true };
+});
+
+ipcMain.handle('register-hotkeys', () => {
+  // Re-register all hotkeys (useful after config changes)
+  registerGlobalHotkeys();
+  return { success: true };
+});
+
+ipcMain.handle('save-config', (event, newConfig) => {
+  // Update the config with the new values
+  config = newConfig;
+  saveConfig();
   return { success: true };
 });
 
@@ -415,18 +433,22 @@ function registerGlobalHotkeys() {
   globalShortcut.unregisterAll();
   
   // Register each configured hotkey
-  Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkey]) => {
+  Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
+    const { hotkey, action } = (typeof hotkeyConfig === 'object') ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
     if (hotkey && hotkey.trim()) {
       try {
         const success = globalShortcut.register(hotkey, () => {
           // Send hotkey event to renderer process
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey });
+            mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
           }
         });
         
         if (!success) {
           console.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
+          }
         } else {
           console.log(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
         }

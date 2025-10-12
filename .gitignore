@@ -31,6 +31,17 @@ config.json
 /*.tar.gz
 /*.dmg
 /*.blockmap
+/win-unpacked/
+/win-ia32-unpacked/
+/linux-unpacked/
+/linux-ia32-unpacked/
+/linux-arm64-unpacked/
+/mac/
+/mac-arm64/
+/mac-universal/
+builder-debug.yml
+latest.yml
+*.blockmap
 
 # Coverage
 coverage/
