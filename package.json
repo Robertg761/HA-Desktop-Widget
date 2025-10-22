@@ -82,6 +82,9 @@
     },
     "nsis": {
       "artifactName": "${productName}-${version}-win-${arch}-Setup.${ext}",
+      "icon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerIcon": "build/icon.ico",
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
