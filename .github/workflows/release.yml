@@ -25,11 +25,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows artifacts (NSIS + Portable)
+      - name: Build Windows artifacts (NSIS)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm run dist -- --win nsis portable --publish always
+          npm run dist -- --win nsis --publish always
 
       - name: Upload artifacts (fallback)
         if: ${{ always() }}
