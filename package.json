@@ -49,6 +49,7 @@
       "renderer.js",
       "keyboard.js",
       "styles.css",
+      "build/**/*",
       "src/**/*",
       "node_modules/**/*",
       "package.json"
