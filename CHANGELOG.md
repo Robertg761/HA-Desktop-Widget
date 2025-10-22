@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [2.3.6] - 2025-10-21
+
+### Changed
+- **Tray Icon Handling**: The app now uses the packaged executable icon (or bundled `build/icon.*`) for both the tray and desktop shortcuts, with automatic fallbacks for development builds.
+- **Icon Assets**: Added `build/icon.png`/`icon.ico` so electron-builder packages the correct branding by default.
+
+### Fixed
+- **Setup Screen Controls**: Settings, minimize, and close buttons now work on first launch even when Home Assistant credentials are missing.
+- **Minimize Behavior**: Minimizing the widget now consistently hides it to the system tray instead of leaving it in the taskbar.
+- **Tray Visibility**: Tray icon toggles the window on click, ensuring easy restore after hiding.
+
 ## [2.3.5] - 2025-10-12
 
 ### Added

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -14,6 +14,70 @@ let mainWindow;
 let tray;
 let config;
 let isQuitting = false;
+
+function resolveTrayIcon() {
+  const preferIco = process.platform === 'win32';
+  const traySize = preferIco ? 16 : 24;
+  const names = preferIco ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico'];
+  const searchRoots = [
+    path.join(__dirname, 'build'),
+    __dirname,
+  ];
+
+  if (app && app.isPackaged) {
+    const resourcesPath = process.resourcesPath;
+    if (resourcesPath) {
+      searchRoots.push(resourcesPath);
+      searchRoots.push(path.join(resourcesPath, 'build'));
+      searchRoots.push(path.join(resourcesPath, '..', 'app.asar.unpacked', 'build'));
+    }
+  }
+
+  const ensureTraySize = (image) => {
+    if (!image || image.isEmpty()) return image;
+    const { width, height } = image.getSize();
+    if (width === traySize && height === traySize) return image;
+    return image.resize({ width: traySize, height: traySize });
+  };
+
+  try {
+    const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
+    if (exePath && fs.existsSync(exePath)) {
+      const exeImage = nativeImage.createFromPath(exePath);
+      if (exeImage && !exeImage.isEmpty()) {
+        return ensureTraySize(exeImage);
+      }
+    }
+  } catch (error) {
+    console.warn('Unable to load tray icon from executable:', error.message);
+  }
+
+  const candidates = [];
+  names.forEach((name) => {
+    searchRoots.forEach((root) => {
+      if (!root) return;
+      candidates.push(path.join(root, name));
+      candidates.push(path.join(root, 'icons', name));
+    });
+  });
+
+  for (const candidate of candidates) {
+    try {
+      if (!candidate || !fs.existsSync(candidate)) continue;
+      const image = nativeImage.createFromPath(candidate);
+      if (image && !image.isEmpty()) {
+        return ensureTraySize(image);
+      }
+    } catch (error) {
+      console.warn('Failed to load tray icon', candidate, error.message);
+    }
+  }
+
+  console.log('Tray icon not found. Using generated fallback icon.');
+  return nativeImage
+    .createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAPCAYAAADJViUEAAAAGElEQVQ4T2NkwAT/Gf4zjIGBoRAjGAgjGAgADt4C24gldLoAAAAASUVORK5CYII=')
+    .resize({ width: traySize, height: traySize });
+}
 
 // Load configuration
 function loadConfig() {
@@ -135,6 +199,12 @@ function createWindow() {
     saveConfig();
   });
 
+  // Hide to tray when minimizing
+  mainWindow.on('minimize', (event) => {
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
   // Open DevTools in development mode
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -157,20 +227,8 @@ function createWindow() {
 function createTray() {
   // Resolve a tray icon that works in dev and production
   const pkg = require('./package.json');
-  const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-  const candidates = [
-    path.join(__dirname, iconName),
-    path.join(__dirname, 'icon.png'), // fallback
-    (process.resourcesPath ? path.join(process.resourcesPath, iconName) : null)
-  ].filter(Boolean);
 
-  const iconPath = candidates.find(p => fs.existsSync(p));
-  if (!iconPath) {
-    console.log('Tray icon not found. Add icon.png (or icon.ico on Windows) to the app resources.');
-    return;
-  }
-
-  tray = new Tray(iconPath);
+  tray = new Tray(resolveTrayIcon());
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -253,6 +311,16 @@ function createTray() {
 
   tray.setToolTip('Home Assistant Widget');
   tray.setContextMenu(contextMenu);
+
+  tray.on('click', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 }
 
 // IPC handlers for configuration

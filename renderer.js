@@ -113,11 +113,28 @@ async function init() {
     const config = await ipcRenderer.invoke('get-config');
     if (!config || !config.homeAssistant) {
       console.error('Configuration is missing or invalid');
+      state.setConfig({
+        homeAssistant: {
+          url: '',
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        },
+        globalHotkeys: {
+          enabled: false,
+          hotkeys: {},
+        },
+        entityAlerts: {
+          enabled: false,
+          alerts: {},
+        },
+      });
+      wireUI();
       uiUtils.showLoading(false);
+      ui.renderActiveTab();
       return;
     }
     
     state.setConfig(config);
+    wireUI();
     
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       console.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
@@ -140,7 +157,6 @@ async function init() {
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
-    wireUI();
     
     // Always hide loading and show UI
     uiUtils.showLoading(false);
