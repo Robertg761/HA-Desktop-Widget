@@ -237,6 +237,8 @@ function createTray() {
         if (mainWindow.isVisible()) {
           mainWindow.hide();
         } else {
+          // Restore window size before showing to prevent resizing issues
+          mainWindow.setSize(config.windowSize.width, config.windowSize.height);
           mainWindow.show();
         }
       }
@@ -277,6 +279,8 @@ function createTray() {
       label: 'Open Settings',
       click: () => {
         if (mainWindow) {
+          // Restore window size before showing to prevent resizing issues
+          mainWindow.setSize(config.windowSize.width, config.windowSize.height);
           mainWindow.show();
           mainWindow.webContents.send('open-settings');
         }
@@ -317,6 +321,8 @@ function createTray() {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
+      // Restore window size before showing to prevent resizing issues
+      mainWindow.setSize(config.windowSize.width, config.windowSize.height);
       mainWindow.show();
       mainWindow.focus();
     }
