@@ -1906,6 +1906,9 @@ body {
   font-size: 14px;
   transition: border-color 0.2s ease;
   box-sizing: border-box;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .rename-modal input:focus {
