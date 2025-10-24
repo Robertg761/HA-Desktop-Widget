@@ -22,7 +22,7 @@ async function getHlsStreamUrl(entityId) {
   return null;
 }
 
-async function startHlsStream(video, entityId, streamUrl) {
+async function startHlsStream(video, entityId, streamUrl, imgElement) {
   if (!Hls || !Hls.isSupported() || !video || !entityId) return;
 
   if (state.ACTIVE_HLS.has(entityId)) {
@@ -36,11 +36,18 @@ async function startHlsStream(video, entityId, streamUrl) {
   hls.on(Hls.Events.ERROR, (_evt, data) => {
     console.warn('HLS error', data?.details || data);
     if (data?.fatal) {
-      try { hls.destroy(); } catch (_error) {}
+      try { 
+        hls.destroy(); 
+      } catch (_error) {
+        console.warn('Failed to destroy HLS instance:', _error);
+      }
       state.ACTIVE_HLS.delete(entityId);
       video.style.display = 'none';
-      img.style.display = 'block';
-      img.src = `ha://camera_stream/${entityId}?t=${Date.now()}`;
+      // Fallback to img if provided
+      if (imgElement) {
+        imgElement.style.display = 'block';
+        imgElement.src = `ha://camera_stream/${entityId}?t=${Date.now()}`;
+      }
     }
   });
   return true;
@@ -211,7 +218,11 @@ function openCamera(cameraId) {
           hls.on(Hls.Events.ERROR, (_evt, data) => {
             console.warn('HLS error', data?.details || data);
             if (data?.fatal) {
-              try { hls.destroy(); } catch (_error) {}
+              try { 
+                hls.destroy(); 
+              } catch (_error) {
+                console.warn('Failed to destroy HLS instance:', _error);
+              }
               state.ACTIVE_HLS.delete(cameraId);
               // Fallback to MJPEG if fatal error
               video.style.display = 'none';

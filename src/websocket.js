@@ -45,7 +45,7 @@ class WebSocketManager extends EventEmitter {
         this.emit('error', error);
       };
       
-      this.ws.onclose = (event) => {
+      this.ws.onclose = (_event) => {
         this.emit('close');
       };
     } catch (error) {

@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const utils = require('./utils.js');
 const websocket = require('./websocket.js');
@@ -363,9 +362,11 @@ function createControlElement(entity) {
     const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
     let stateIsTimestamp = false;
     if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
-      // This prevents numeric values like "150" (watts) from being parsed as dates
-      const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+      // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
+      // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
+      // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
+      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+      const looksLikeTimestamp = iso8601Pattern.test(entity.state);
       if (looksLikeTimestamp) {
         const stateTime = new Date(entity.state).getTime();
         if (!isNaN(stateTime) && stateTime > Date.now()) {
@@ -463,7 +464,7 @@ function setupLightControls(div, entity) {
     let pressTimer = null;
     let longPressTriggered = false;
 
-    const startPress = (e) => {
+    const startPress = (_e) => {
       if (isReorganizeMode) {
         // In reorganize mode, don't handle mousedown - let drag work
         return;
@@ -801,9 +802,11 @@ function updateTimerDisplays() {
         
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
         if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-          // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
-          // This prevents numeric values like "150" (watts) from being parsed as dates
-          const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+          // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
+          // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
+          // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
+          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+          const looksLikeTimestamp = iso8601Pattern.test(entity.state);
           if (looksLikeTimestamp) {
             const stateTime = new Date(entity.state).getTime();
             if (!isNaN(stateTime)) {
@@ -848,7 +851,7 @@ function updateTimerDisplays() {
         }
       }
     });
-  } catch (error) {
+  } catch {
     // Silent fail - timers will just show static state from entity updates
   }
 }
@@ -934,7 +937,7 @@ function populateAreaFilter() {
     }
 }
 
-function setupEntitySearchInput(inputId, allowedDomains = null) {
+function setupEntitySearchInput(inputId, _allowedDomains = null) {
     try {
         const input = document.getElementById(inputId);
         if (!input) return;
@@ -1170,7 +1173,7 @@ function initUpdateUI() {
     }
 }
 
-function getDragAfterElement(container, y) {
+function _getDragAfterElement(container, y) {
     const draggableElements = [...container.querySelectorAll('.control-item:not(.dragging)')];
     
     return draggableElements.reduce((closest, child) => {
@@ -1207,7 +1210,6 @@ function handleDragEnd(e) {
     
     // Force animation restart by temporarily removing and re-adding it
     // This prevents the jarring jump when animation restarts from 0%
-    const animationName = window.getComputedStyle(item).animationName;
     item.style.animation = 'none';
     
     // Use requestAnimationFrame to ensure the style change takes effect

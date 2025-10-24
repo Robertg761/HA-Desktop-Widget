@@ -15,6 +15,7 @@
   --surface-1: rgba(25, 25, 30, 1);
   --surface-2: rgba(35, 35, 40, 1);
   --surface-3: rgba(45, 45, 50, 1);
+  --surface-hover: rgba(50, 50, 55, 1);
   
   /* Subtle shadows */
   --shadow-1: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -35,6 +36,7 @@
   --surface-1: rgba(250, 250, 255, 1);
   --surface-2: rgba(255, 255, 255, 1);
   --surface-3: rgba(255, 255, 255, 1);
+  --surface-hover: rgba(240, 240, 245, 1);
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
 }
@@ -260,7 +262,7 @@ body {
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 8px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -272,6 +274,7 @@ body {
   justify-content: center;
   align-items: center;
   box-sizing: border-box;
+  height: auto;
 }
 
 .control-item:hover {
@@ -301,10 +304,12 @@ body {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  line-height: 1.3;
+  padding: 2px 0;
 }
 
 /* Entities grid */
