@@ -6,7 +6,7 @@ A semi-transparent, desktop widget for Home Assistant that provides quick access
 [![Release (Windows)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Current version: 2.3.6
+Current version: 2.3.7
 
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 
@@ -50,8 +50,8 @@ Current version: 2.3.6
 ### Download & Install
 1. **Download**: Go to [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) and download the latest version
 2. **Choose your preferred installer**:
-   - `HA Desktop Widget-2.2.0-win-x64-Setup.exe` (recommended - includes installer)
-   - `HA Desktop Widget-2.2.0-win-x64-Portable.exe` (portable - no installation required)
+   - `HA Desktop Widget-2.3.7-win-x64-Setup.exe` (recommended - includes installer)
+   - `HA Desktop Widget-2.3.7-win-x64-Portable.exe` (portable - no installation required)
 3. **Run the app** and click the Settings (⚙️) button to configure your Home Assistant connection
 
 ### First-Time Setup
