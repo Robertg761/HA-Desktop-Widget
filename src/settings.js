@@ -30,9 +30,12 @@ async function openSettings(uiHooks) {
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     
-    const safeOpacity = Math.max(0.2, Math.min(1, state.CONFIG.opacity || 0.95));
-    if (opacitySlider) opacitySlider.value = safeOpacity;
-    if (opacityValue) opacityValue.textContent = `${Math.round(safeOpacity * 100)}%`;
+    // Convert stored opacity (0.5-1.0) to slider scale (1-100)
+    const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
+    // Formula: scale = 1 + (opacity - 0.5) * 198
+    const sliderScale = Math.round(1 + ((storedOpacity - 0.5) * 198));
+    if (opacitySlider) opacitySlider.value = sliderScale;
+    if (opacityValue) opacityValue.textContent = `${sliderScale}`;
 
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
@@ -99,7 +102,12 @@ async function saveSettings() {
     if (haToken) state.CONFIG.homeAssistant.token = haToken.value.trim();
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
-    if (opacitySlider) state.CONFIG.opacity = Math.max(0.2, Math.min(1, parseFloat(opacitySlider.value)));
+    
+    // Convert slider scale (1-100) to opacity (0.5-1.0)
+    if (opacitySlider) {
+      const sliderValue = parseInt(opacitySlider.value) || 90;
+      state.CONFIG.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+    }
 
     state.CONFIG.globalHotkeys = state.CONFIG.globalHotkeys || { enabled: false, hotkeys: {} };
     if (globalHotkeysEnabled) state.CONFIG.globalHotkeys.enabled = globalHotkeysEnabled.checked;
