@@ -382,6 +382,17 @@ function wireUI() {
     hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
   }
 
+  // Add click handler to widget content to bring window to focus
+  const widgetContent = document.querySelector('.widget-content');
+  if (widgetContent) {
+    widgetContent.addEventListener('mousedown', () => {
+      // Request window focus when clicking on content
+      ipcRenderer.invoke('focus-window').catch(err => {
+        console.error('Failed to focus window:', err);
+      });
+    });
+  }
+
   const hotkeysList = document.getElementById('hotkeys-list');
   if (hotkeysList) {
     hotkeysList.addEventListener('click', async (e) => {
