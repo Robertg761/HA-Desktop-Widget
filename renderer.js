@@ -217,13 +217,17 @@ function wireUI() {
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
     
-    // Opacity slider handler
+    // Opacity slider handler with real-time application
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
     if (opacitySlider && opacityValue) {
       opacitySlider.addEventListener('input', (e) => {
         const value = Math.max(0.2, Math.min(1, parseFloat(e.target.value) || 0.95));
         opacityValue.textContent = `${Math.round(value * 100)}%`;
+        // Apply opacity in real-time
+        ipcRenderer.invoke('set-opacity', value).catch(err => {
+          console.error('Failed to set opacity:', err);
+        });
       });
     }
 

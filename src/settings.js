@@ -119,6 +119,11 @@ async function saveSettings() {
 
     await ipcRenderer.invoke('update-config', state.CONFIG);
 
+    // Apply opacity immediately
+    if (opacitySlider) {
+      await ipcRenderer.invoke('set-opacity', state.CONFIG.opacity);
+    }
+
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
       const res = await ipcRenderer.invoke('set-always-on-top', state.CONFIG.alwaysOnTop);
       const windowState = await ipcRenderer.invoke('get-window-state');
