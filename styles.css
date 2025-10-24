@@ -915,6 +915,15 @@ body {
   letter-spacing: 1px;
   text-align: center;
   width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 4px;
 }
 
 
@@ -927,6 +936,10 @@ body {
   letter-spacing: 0.5px;
   padding-top: 4px;
   border-top: 1px solid var(--border-color);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  width: 100%;
 }
 
 .camera-info {
