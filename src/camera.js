@@ -36,7 +36,11 @@ async function startHlsStream(video, entityId, streamUrl, imgElement) {
   hls.on(Hls.Events.ERROR, (_evt, data) => {
     console.warn('HLS error', data?.details || data);
     if (data?.fatal) {
-      try { hls.destroy(); } catch (_error) {}
+      try { 
+        hls.destroy(); 
+      } catch (_error) {
+        console.warn('Failed to destroy HLS instance:', _error);
+      }
       state.ACTIVE_HLS.delete(entityId);
       video.style.display = 'none';
       // Fallback to img if provided
@@ -214,7 +218,11 @@ function openCamera(cameraId) {
           hls.on(Hls.Events.ERROR, (_evt, data) => {
             console.warn('HLS error', data?.details || data);
             if (data?.fatal) {
-              try { hls.destroy(); } catch (_error) {}
+              try { 
+                hls.destroy(); 
+              } catch (_error) {
+                console.warn('Failed to destroy HLS instance:', _error);
+              }
               state.ACTIVE_HLS.delete(cameraId);
               // Fallback to MJPEG if fatal error
               video.style.display = 'none';

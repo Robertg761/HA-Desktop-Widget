@@ -668,7 +668,8 @@ app.whenReady().then(() => {
         } else {
           respond({ statusCode: 404 });
         }
-      } catch (_err) {
+      } catch (error) {
+        console.error('Protocol handler error:', error);
         respond({ statusCode: 500 });
       }
     });

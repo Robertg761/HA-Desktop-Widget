@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const utils = require('./utils.js');
 const websocket = require('./websocket.js');
@@ -465,7 +464,7 @@ function setupLightControls(div, entity) {
     let pressTimer = null;
     let longPressTriggered = false;
 
-    const startPress = (e) => {
+    const startPress = (_e) => {
       if (isReorganizeMode) {
         // In reorganize mode, don't handle mousedown - let drag work
         return;
@@ -852,7 +851,7 @@ function updateTimerDisplays() {
         }
       }
     });
-  } catch (error) {
+  } catch {
     // Silent fail - timers will just show static state from entity updates
   }
 }
@@ -938,7 +937,7 @@ function populateAreaFilter() {
     }
 }
 
-function setupEntitySearchInput(inputId, allowedDomains = null) {
+function setupEntitySearchInput(inputId, _allowedDomains = null) {
     try {
         const input = document.getElementById(inputId);
         if (!input) return;
@@ -1174,7 +1173,7 @@ function initUpdateUI() {
     }
 }
 
-function getDragAfterElement(container, y) {
+function _getDragAfterElement(container, y) {
     const draggableElements = [...container.querySelectorAll('.control-item:not(.dragging)')];
     
     return draggableElements.reduce((closest, child) => {
@@ -1211,7 +1210,6 @@ function handleDragEnd(e) {
     
     // Force animation restart by temporarily removing and re-adding it
     // This prevents the jarring jump when animation restarts from 0%
-    const animationName = window.getComputedStyle(item).animationName;
     item.style.animation = 'none';
     
     // Use requestAnimationFrame to ensure the style change takes effect

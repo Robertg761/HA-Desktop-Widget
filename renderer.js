@@ -26,6 +26,11 @@ websocket.on('open', () => {
 // Track request IDs for proper result handling
 let getStatesId, getServicesId, getAreasId;
 
+// WebSocket reconnection constants and state
+const BASE_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+let reconnectAttempts = 0;
+
 websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
@@ -109,7 +114,7 @@ websocket.on('error', (error) => {
 
 
 // --- IPC Event Handlers ---
-ipcRenderer.on('hotkey-triggered', (event, { entityId, hotkey, action }) => {
+ipcRenderer.on('hotkey-triggered', (event, { entityId, action }) => {
   const entity = state.STATES[entityId];
   if (entity) {
     // Use the action sent from main.js, fallback to toggle if not provided

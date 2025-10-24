@@ -4,8 +4,6 @@ const websocket = require('./websocket.js');
 const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap } = require('./ui-utils.js');
 // Note: ui.js is not imported to prevent circular dependencies
 // Functions like populateDomainFilters will be passed in from renderer.js if needed
-const { toggleHotkeys } = require('./hotkeys.js');
-const { toggleAlerts } = require('./alerts.js');
 
 async function openSettings(uiHooks) {
   try {
