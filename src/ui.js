@@ -363,9 +363,11 @@ function createControlElement(entity) {
     const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
     let stateIsTimestamp = false;
     if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
-      // This prevents numeric values like "150" (watts) from being parsed as dates
-      const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+      // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
+      // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
+      // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
+      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+      const looksLikeTimestamp = iso8601Pattern.test(entity.state);
       if (looksLikeTimestamp) {
         const stateTime = new Date(entity.state).getTime();
         if (!isNaN(stateTime) && stateTime > Date.now()) {
@@ -801,9 +803,11 @@ function updateTimerDisplays() {
         
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
         if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-          // Only treat as timestamp if it looks like an ISO date/time string (contains 'T', '-', or ':')
-          // This prevents numeric values like "150" (watts) from being parsed as dates
-          const looksLikeTimestamp = /[T\-:]/.test(entity.state);
+          // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
+          // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
+          // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
+          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+          const looksLikeTimestamp = iso8601Pattern.test(entity.state);
           if (looksLikeTimestamp) {
             const stateTime = new Date(entity.state).getTime();
             if (!isNaN(stateTime)) {

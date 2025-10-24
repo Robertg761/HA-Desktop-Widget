@@ -29,6 +29,7 @@ let getStatesId, getServicesId, getAreasId;
 websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
+      reconnectAttempts = 0; // Reset on successful connection
       uiUtils.setStatus(true);
       getStatesId = websocket.request({ type: 'get_states' }).id;
       getServicesId = websocket.request({ type: 'get_services' }).id;
@@ -77,7 +78,17 @@ websocket.on('close', () => {
   try {
     uiUtils.setStatus(false);
     uiUtils.showLoading(false);
-    setTimeout(() => websocket.connect(), 5000);
+    
+    // Implement exponential backoff with jitter
+    const delay = Math.min(
+      BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+      MAX_RECONNECT_DELAY
+    );
+    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+    reconnectAttempts++;
+    
+    console.log(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
+    setTimeout(() => websocket.connect(), delay + jitter);
   } catch (error) {
     console.error('Error handling WebSocket close:', error);
   }
@@ -186,6 +197,13 @@ function wireUI() {
           populateAreaFilter: ui.populateAreaFilter,
           setupEntitySearchInput: ui.setupEntitySearchInput,
           initUpdateUI: ui.initUpdateUI,
+          exitReorganizeMode: () => {
+            // Exit reorganize mode if active
+            const container = document.getElementById('quick-controls');
+            if (container && container.classList.contains('reorganize-mode')) {
+              ui.toggleReorganizeMode();
+            }
+          },
         });
       };
     }
@@ -204,7 +222,8 @@ function wireUI() {
     const opacityValue = document.getElementById('opacity-value');
     if (opacitySlider && opacityValue) {
       opacitySlider.addEventListener('input', (e) => {
-        opacityValue.textContent = `${Math.round(e.target.value * 100)}%`;
+        const value = Math.max(0.2, Math.min(1, parseFloat(e.target.value) || 0.95));
+        opacityValue.textContent = `${Math.round(value * 100)}%`;
       });
     }
 

@@ -9,6 +9,11 @@ const { toggleAlerts } = require('./alerts.js');
 
 async function openSettings(uiHooks) {
   try {
+    // Exit reorganize mode if active to prevent state conflicts
+    if (uiHooks && uiHooks.exitReorganizeMode) {
+      uiHooks.exitReorganizeMode();
+    }
+    
     const modal = document.getElementById('settings-modal');
     if (!modal) return;
 
