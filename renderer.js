@@ -222,13 +222,21 @@ function wireUI() {
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
     
-    // Opacity slider handler
+    // Opacity slider handler with real-time application
+    // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
     if (opacitySlider && opacityValue) {
       opacitySlider.addEventListener('input', (e) => {
-        const value = Math.max(0.2, Math.min(1, parseFloat(e.target.value) || 0.95));
-        opacityValue.textContent = `${Math.round(value * 100)}%`;
+        const sliderValue = parseInt(e.target.value) || 90;
+        // Convert slider value (1-100) to opacity (0.5-1.0)
+        // Formula: opacity = 0.5 + (sliderValue - 1) * 0.5 / 99
+        const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+        opacityValue.textContent = `${sliderValue}`;
+        // Apply opacity in real-time
+        ipcRenderer.invoke('set-opacity', opacity).catch(err => {
+          console.error('Failed to set opacity:', err);
+        });
       });
     }
 
