@@ -858,29 +858,64 @@ function updateTimerDisplays() {
 
 function showBrightnessSlider(light) {
   try {
+    const name = utils.getEntityDisplayName(light);
     const currentBrightness = light.state === 'on' && light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 0;
+
     const modal = document.createElement('div');
     modal.className = 'modal brightness-modal';
     modal.innerHTML = `
       <div class="modal-content">
-        <h2>${utils.getEntityDisplayName(light)}</h2>
-        <div class="brightness-slider-container">
-          <input type="range" min="0" max="100" value="${currentBrightness}" id="brightness-slider">
-          <div class="brightness-value" id="brightness-value">${currentBrightness}%</div>
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="brightness-close" title="Close">×</button>
         </div>
-        <button id="turn-off-btn">Turn Off</button>
+        <div class="modal-body">
+          <div class="brightness-content">
+            <div class="brightness-label">Brightness</div>
+            <div class="brightness-slider-container">
+              <input type="range" min="0" max="100" value="${currentBrightness}" id="brightness-slider" class="brightness-slider" aria-label="Brightness" />
+              <div class="brightness-value" id="brightness-value">${currentBrightness}%</div>
+            </div>
+            <div class="brightness-controls">
+              <button class="brightness-btn" data-preset="0">Off</button>
+              <button class="brightness-btn" data-preset="25">25%</button>
+              <button class="brightness-btn" data-preset="50">50%</button>
+              <button class="brightness-btn" data-preset="75">75%</button>
+              <button class="brightness-btn" data-preset="100">100%</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="brightness-cancel">Close</button>
+          <button class="btn btn-primary" id="turn-off-btn">Turn Off</button>
+        </div>
       </div>
     `;
     document.body.appendChild(modal);
 
     const slider = modal.querySelector('#brightness-slider');
     const valueDisplay = modal.querySelector('#brightness-value');
+    const closeBtn = modal.querySelector('#brightness-close');
+    const cancelBtn = modal.querySelector('#brightness-cancel');
+    const presetButtons = modal.querySelectorAll('.brightness-btn');
+
+    // Close handlers
+    const closeModal = () => modal.remove();
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Keep focus within modal (basic)
+    setTimeout(() => {
+      const focusable = modal.querySelector('.brightness-slider') || closeBtn || cancelBtn;
+      if (focusable && focusable.focus) focusable.focus();
+    }, 0);
+
+    // Slider behavior with debounce
     if (slider) {
       let debounceTimer;
-      slider.addEventListener('input', (e) => {
-        const value = parseInt(e.target.value);
+      const applyValue = (value) => {
         if (valueDisplay) valueDisplay.textContent = `${value}%`;
-        
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           const brightness = Math.round((value / 100) * 255);
@@ -889,19 +924,37 @@ function showBrightnessSlider(light) {
           } else {
             websocket.callService('light', 'turn_off', { entity_id: light.entity_id });
           }
-        }, 100);
+        }, 120);
+      };
+      slider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value, 10) || 0;
+        applyValue(value);
       });
     }
 
+    // Presets
+    presetButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = parseInt(btn.getAttribute('data-preset'), 10) || 0;
+        const sliderEl = modal.querySelector('#brightness-slider');
+        if (sliderEl) {
+          sliderEl.value = String(preset);
+          sliderEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    });
+
+    // Turn off button
     const turnOffBtn = modal.querySelector('#turn-off-btn');
     if (turnOffBtn) {
       turnOffBtn.onclick = () => {
         websocket.callService('light', 'turn_off', { entity_id: light.entity_id });
-        modal.remove();
+        closeModal();
       };
     }
 
-    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    // Close on backdrop click only when clicking the overlay
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
   } catch (error) {
     console.error('Error showing brightness slider:', error);
   }
