@@ -51,3 +51,6 @@ coverage/
 
 .gemini/
 gha-creds-*.json
+
+# Genkit (local AI tooling cache)
+.genkit/
