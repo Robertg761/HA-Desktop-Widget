@@ -381,6 +381,15 @@ ipcMain.handle('minimize-window', () => {
   }
 });
 
+ipcMain.handle('focus-window', () => {
+  if (mainWindow) {
+    if (!mainWindow.isFocused()) {
+      mainWindow.focus();
+      mainWindow.moveTop();
+    }
+  }
+});
+
 // Updates IPC
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) return { status: 'dev' };
