@@ -1000,10 +1000,14 @@ function populateQuickControlsList() {
                 const isFavorite = favorites.includes(entity.entity_id);
                 
                 item.innerHTML = `
-                    <span class="entity-icon">${utils.getEntityIcon(entity)}</span>
-                    <span class="entity-name">${utils.getEntityDisplayName(entity)}</span>
-                    <span class="entity-id">${entity.entity_id}</span>
-                    <button class="btn btn-small ${isFavorite ? 'btn-danger' : 'btn-primary'}" data-entity-id="${entity.entity_id}">
+                    <div class="entity-item-main">
+                        <span class="entity-icon">${utils.getEntityIcon(entity)}</span>
+                        <div class="entity-item-info">
+                            <span class="entity-name">${utils.getEntityDisplayName(entity)}</span>
+                            <span class="entity-id" title="${entity.entity_id}">${entity.entity_id}</span>
+                        </div>
+                    </div>
+                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${entity.entity_id}">
                         ${isFavorite ? 'Remove' : 'Add'}
                     </button>
                 `;
