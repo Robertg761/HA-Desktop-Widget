@@ -889,11 +889,11 @@ function showBrightnessSlider(light) {
               />
             </div>
             <div class="brightness-presets">
-              <button class="brightness-preset-btn" data-preset="0" title="Off">💤</button>
-              <button class="brightness-preset-btn" data-preset="25" title="25%">🌑</button>
-              <button class="brightness-preset-btn" data-preset="50" title="50%">🌓</button>
-              <button class="brightness-preset-btn" data-preset="75" title="75%">🌕</button>
-              <button class="brightness-preset-btn" data-preset="100" title="100%">☀️</button>
+              <button class="brightness-preset-btn" data-preset="0">0%</button>
+              <button class="brightness-preset-btn" data-preset="25">25%</button>
+              <button class="brightness-preset-btn" data-preset="50">50%</button>
+              <button class="brightness-preset-btn" data-preset="75">75%</button>
+              <button class="brightness-preset-btn" data-preset="100">100%</button>
             </div>
           </div>
         </div>
