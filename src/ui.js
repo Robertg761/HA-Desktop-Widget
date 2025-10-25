@@ -889,7 +889,6 @@ function showBrightnessSlider(light) {
               />
             </div>
             <div class="brightness-presets">
-              <button class="brightness-preset-btn" data-preset="0">0%</button>
               <button class="brightness-preset-btn" data-preset="25">25%</button>
               <button class="brightness-preset-btn" data-preset="50">50%</button>
               <button class="brightness-preset-btn" data-preset="75">75%</button>
@@ -910,7 +909,19 @@ function showBrightnessSlider(light) {
     const icon = modal.querySelector('#brightness-icon');
     const closeBtn = modal.querySelector('#brightness-close');
     const cancelBtn = modal.querySelector('#brightness-cancel');
+    const turnOffBtn = modal.querySelector('#turn-off-btn');
     const presetButtons = modal.querySelectorAll('.brightness-preset-btn');
+
+    // Track current light state
+    let lightIsOn = light.state === 'on';
+
+    // Update turn off/on button text
+    const updateTurnButton = () => {
+      if (turnOffBtn) {
+        turnOffBtn.textContent = lightIsOn ? 'Turn Off' : 'Turn On';
+      }
+    };
+    updateTurnButton();
 
     // Close handlers
     const closeModal = () => {
@@ -987,12 +998,26 @@ function showBrightnessSlider(light) {
       });
     });
 
-    // Turn off button
-    const turnOffBtn = modal.querySelector('#turn-off-btn');
+    // Turn off/on button
     if (turnOffBtn) {
       turnOffBtn.onclick = () => {
-        websocket.callService('light', 'turn_off', { entity_id: light.entity_id });
-        closeModal();
+        if (lightIsOn) {
+          websocket.callService('light', 'turn_off', { entity_id: light.entity_id });
+          lightIsOn = false;
+          if (slider) slider.value = '0';
+          if (valueLarge) valueLarge.textContent = '0%';
+          updateIconAndAccent(0);
+        } else {
+          // Turn on to last brightness or 100%
+          const brightness = currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
+          websocket.callService('light', 'turn_on', { entity_id: light.entity_id, brightness });
+          lightIsOn = true;
+          const targetValue = currentBrightness > 0 ? currentBrightness : 100;
+          if (slider) slider.value = String(targetValue);
+          if (valueLarge) valueLarge.textContent = `${targetValue}%`;
+          updateIconAndAccent(targetValue);
+        }
+        updateTurnButton();
       };
     }
 
