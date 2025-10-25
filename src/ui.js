@@ -864,24 +864,36 @@ function showBrightnessSlider(light) {
     const modal = document.createElement('div');
     modal.className = 'modal brightness-modal';
     modal.innerHTML = `
-      <div class="modal-content">
+      <div class="modal-content brightness-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
           <button class="close-btn" id="brightness-close" title="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="brightness-content">
-            <div class="brightness-label">Brightness</div>
-            <div class="brightness-slider-container">
-              <input type="range" min="0" max="100" value="${currentBrightness}" id="brightness-slider" class="brightness-slider" aria-label="Brightness" />
-              <div class="brightness-value" id="brightness-value">${currentBrightness}%</div>
+            <div class="brightness-icon-wrapper">
+              <div class="brightness-icon" id="brightness-icon">💡</div>
             </div>
-            <div class="brightness-controls">
-              <button class="brightness-btn" data-preset="0">Off</button>
-              <button class="brightness-btn" data-preset="25">25%</button>
-              <button class="brightness-btn" data-preset="50">50%</button>
-              <button class="brightness-btn" data-preset="75">75%</button>
-              <button class="brightness-btn" data-preset="100">100%</button>
+            <div class="brightness-value-large" id="brightness-value-large">${currentBrightness}%</div>
+            <div class="brightness-label">Brightness</div>
+            <div class="brightness-slider-wrapper">
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value="${currentBrightness}" 
+                id="brightness-slider" 
+                class="brightness-slider" 
+                aria-label="Brightness" 
+                orient="vertical" 
+              />
+            </div>
+            <div class="brightness-presets">
+              <button class="brightness-preset-btn" data-preset="0" title="Off">💤</button>
+              <button class="brightness-preset-btn" data-preset="25" title="25%">🌑</button>
+              <button class="brightness-preset-btn" data-preset="50" title="50%">🌓</button>
+              <button class="brightness-preset-btn" data-preset="75" title="75%">🌕</button>
+              <button class="brightness-preset-btn" data-preset="100" title="100%">☀️</button>
             </div>
           </div>
         </div>
@@ -894,16 +906,23 @@ function showBrightnessSlider(light) {
     document.body.appendChild(modal);
 
     const slider = modal.querySelector('#brightness-slider');
-    const valueDisplay = modal.querySelector('#brightness-value');
+    const valueLarge = modal.querySelector('#brightness-value-large');
+    const icon = modal.querySelector('#brightness-icon');
     const closeBtn = modal.querySelector('#brightness-close');
     const cancelBtn = modal.querySelector('#brightness-cancel');
-    const presetButtons = modal.querySelectorAll('.brightness-btn');
+    const presetButtons = modal.querySelectorAll('.brightness-preset-btn');
 
     // Close handlers
-    const closeModal = () => modal.remove();
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
     modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
 
     // Keep focus within modal (basic)
     setTimeout(() => {
@@ -911,11 +930,33 @@ function showBrightnessSlider(light) {
       if (focusable && focusable.focus) focusable.focus();
     }, 0);
 
+    // Update icon and accent based on brightness
+    const updateIconAndAccent = (value) => {
+      if (!icon) return;
+      if (value === 0) {
+        icon.textContent = '💤';
+        icon.className = 'brightness-icon brightness-off';
+      } else if (value <= 25) {
+        icon.textContent = '🌑';
+        icon.className = 'brightness-icon brightness-low';
+      } else if (value <= 50) {
+        icon.textContent = '🌓';
+        icon.className = 'brightness-icon brightness-mid';
+      } else if (value <= 75) {
+        icon.textContent = '🌕';
+        icon.className = 'brightness-icon brightness-high';
+      } else {
+        icon.textContent = '☀️';
+        icon.className = 'brightness-icon brightness-max';
+      }
+    };
+
     // Slider behavior with debounce
     if (slider) {
       let debounceTimer;
       const applyValue = (value) => {
-        if (valueDisplay) valueDisplay.textContent = `${value}%`;
+        if (valueLarge) valueLarge.textContent = `${value}%`;
+        updateIconAndAccent(value);
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           const brightness = Math.round((value / 100) * 255);
@@ -930,6 +971,8 @@ function showBrightnessSlider(light) {
         const value = parseInt(e.target.value, 10) || 0;
         applyValue(value);
       });
+      // Initialize icon/accent
+      updateIconAndAccent(currentBrightness);
     }
 
     // Presets
