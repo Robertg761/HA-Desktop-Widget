@@ -6,8 +6,6 @@ A semi-transparent, desktop widget for Home Assistant that provides quick access
 [![Release (Windows)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Current version: 2.3.7
-
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 
 ![Main View](Main_View.png) ![Edit View](Edit_View.png) ![Light_Adjust](Light_Adjust.png)
@@ -48,11 +46,9 @@ Current version: 2.3.7
 ## 🚀 Quick Start
 
 ### Download & Install
-1. **Download**: Go to [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) and download the latest version
-2. **Choose your preferred installer**:
-   - `HA Desktop Widget-2.3.7-win-x64-Setup.exe` (recommended - includes installer)
-   - `HA Desktop Widget-2.3.7-win-x64-Portable.exe` (portable - no installation required)
-3. **Run the app** and click the Settings (⚙️) button to configure your Home Assistant connection
+1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest Installer (.exe) or Portable build.
+2. If using the Installer: run the .exe and follow the prompts. If using the Portable build: unzip and run the executable (no installation required).
+3. Run the app and click the Settings (⚙️) button to configure your Home Assistant connection.
 
 ### First-Time Setup
 1. **Get your Home Assistant URL**: Usually `http://your-ha-ip:8123` or `https://your-ha-domain.com`
