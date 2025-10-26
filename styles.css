@@ -2432,8 +2432,9 @@ body {
 
 .hotkey-item {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 12px;
     padding: 12px;
     border-bottom: 1px solid var(--border-color);
     transition: background-color 0.2s ease;
@@ -2451,18 +2452,21 @@ body {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-color);
-    flex: 1;
-    min-width: 0;
-    margin-right: 12px;
-    white-space: nowrap;
+    flex: 1 1 150px;
+    min-width: 150px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .hotkey-input-container {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
+    min-width: min(100%, 400px);
 }
 
 .hotkey-input {
