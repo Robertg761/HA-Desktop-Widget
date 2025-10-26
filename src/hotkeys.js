@@ -5,6 +5,13 @@ const { getEntityDisplayName, getSearchScore } = require('./utils.js');
 
 let globalHotkeys = {};
 
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function initializeHotkeys() {
   try {
     if (state.CONFIG && state.CONFIG.globalHotkeys) {
@@ -85,11 +92,14 @@ function renderHotkeysTab() {
 
             const item = document.createElement('div');
             item.className = 'hotkey-item';
+            const displayName = escapeHtml(getEntityDisplayName(entity));
+            const escapedHotkey = escapeHtml(hotkey || '');
+            const escapedEntityId = escapeHtml(entity.entity_id);
             item.innerHTML = `
-                <span class="entity-name">${getEntityDisplayName(entity)}</span>
+                <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly class="hotkey-input" value="${hotkey || ''}" placeholder="No hotkey set" data-entity-id="${entity.entity_id}">
-                    <select class="hotkey-action-select" data-entity-id="${entity.entity_id}">
+                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="No hotkey set" data-entity-id="${escapedEntityId}">
+                    <select class="hotkey-action-select" data-entity-id="${escapedEntityId}">
                         ${actionOptions}
                     </select>
                     <button class="btn-clear-hotkey" title="Clear hotkey">&times;</button>
@@ -227,10 +237,13 @@ function renderExistingHotkeys() {
             
             const item = document.createElement('div');
             item.className = 'existing-hotkey-item';
+            const displayName = escapeHtml(getEntityDisplayName(entity));
+            const hotkeyDisplay = typeof hotkey === 'string' ? escapeHtml(hotkey) : escapeHtml(hotkey.hotkey || '');
+            const escapedEntityId = escapeHtml(entityId);
             item.innerHTML = `
-                <span class="entity-name">${getEntityDisplayName(entity)}</span>
-                <span class="hotkey-display">${hotkey}</span>
-                <button class="btn-remove-hotkey" data-entity-id="${entityId}">Remove</button>
+                <span class="entity-name">${displayName}</span>
+                <span class="hotkey-display">${hotkeyDisplay}</span>
+                <button class="btn-remove-hotkey" data-entity-id="${escapedEntityId}">Remove</button>
             `;
             container.appendChild(item);
         });
