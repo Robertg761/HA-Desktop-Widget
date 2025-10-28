@@ -543,11 +543,11 @@ function setupMediaPlayerControls(div, entity) {
     // Create control buttons
     const controls = `
       <div class="media-controls">
-        <button class="media-btn prev-btn" title="Previous track" data-action="previous_track">⏮️</button>
+        <button class="media-btn prev-btn" title="Previous track" data-action="previous_track">‹‹</button>
         <button class="media-btn play-pause-btn" title="${isPlaying ? 'Pause' : 'Play'}" data-action="${isPlaying ? 'pause' : 'play'}">
-          ${isPlaying ? '⏸️' : '▶️'}
+          ${isPlaying ? '⏸' : '▶'}
         </button>
-        <button class="media-btn next-btn" title="Next track" data-action="next_track">⏭️</button>
+        <button class="media-btn next-btn" title="Next track" data-action="next_track">››</button>
       </div>
     `;
     
