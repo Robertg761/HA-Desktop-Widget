@@ -524,6 +524,9 @@ function setupMediaPlayerControls(div, entity) {
     const mediaAlbum = entity.attributes?.media_album_name || '';
     const isPlaying = entity.state === 'playing';
     const isOff = entity.state === 'off' || entity.state === 'idle';
+    const playPauseAction = isPlaying ? 'pause' : 'play';
+    const playPauseLabel = isPlaying ? 'Pause playback' : 'Start playback';
+    const playPauseIcon = isPlaying ? '⏸' : '▶';
     
     // Create media info display
     let mediaInfo = '';
@@ -542,12 +545,16 @@ function setupMediaPlayerControls(div, entity) {
     
     // Create control buttons
     const controls = `
-      <div class="media-controls">
-        <button class="media-btn prev-btn" title="Previous track" data-action="previous_track">‹‹</button>
-        <button class="media-btn play-pause-btn" title="${isPlaying ? 'Pause' : 'Play'}" data-action="${isPlaying ? 'pause' : 'play'}">
-          ${isPlaying ? '⏸' : '▶'}
+      <div class="media-controls" role="group" aria-label="Media playback controls">
+        <button class="media-btn prev-btn" type="button" title="Previous track" aria-label="Previous track" data-action="previous_track">
+          <span class="media-btn-icon" aria-hidden="true">⏮</span>
         </button>
-        <button class="media-btn next-btn" title="Next track" data-action="next_track">››</button>
+        <button class="media-btn play-pause-btn ${isPlaying ? 'is-active' : ''}" type="button" title="${playPauseLabel}" aria-label="${playPauseLabel}" data-action="${playPauseAction}">
+          <span class="media-btn-icon" aria-hidden="true">${playPauseIcon}</span>
+        </button>
+        <button class="media-btn next-btn" type="button" title="Next track" aria-label="Next track" data-action="next_track">
+          <span class="media-btn-icon" aria-hidden="true">⏭</span>
+        </button>
       </div>
     `;
     

@@ -1336,6 +1336,9 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   min-height: 60px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .control-item:hover {
@@ -1958,6 +1961,8 @@ body {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   user-select: none;
   -webkit-user-select: none;
+  position: relative;
+  overflow: visible; /* allow overlay buttons to hover outside edges */
 }
 
 .reorganize-mode .control-item * {
@@ -2039,21 +2044,21 @@ body {
 
 /* Remove button in reorganize mode */
 .reorganize-mode .control-item .remove-btn {
-    position: absolute;
+  position: absolute;
   top: -6px;
   right: -6px;
   width: 20px;
   height: 20px;
   background: #d32f2f;
   color: white;
-    border: none;
-    border-radius: 50%;
+  border: none;
+  border-radius: 50%;
   font-size: 12px;
   font-weight: bold;
-    cursor: pointer;
+  cursor: pointer;
   display: flex;
-    align-items: center;
-    justify-content: center;
+  align-items: center;
+  justify-content: center;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
@@ -2100,6 +2105,7 @@ body {
 
 .reorganize-mode .control-item {
   position: relative;
+  overflow: visible; /* allow overlay buttons to hover outside edges */
 }
 
 /* Rename modal styles */
@@ -2298,16 +2304,19 @@ body {
 .media-player-entity {
   min-height: 80px; /* Taller to accommodate media info and controls */
   overflow: hidden; /* Prevent content from overflowing */
+  min-width: 0;
 }
 
 .media-player-entity .control-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   min-width: 0; /* Allow text truncation */
   height: 100%;
   overflow: hidden; /* Prevent content overflow */
+  align-items: stretch;
+  text-align: left;
 }
 
 .media-player-entity .control-name {
@@ -2325,11 +2334,14 @@ body {
 .media-info {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  margin-bottom: 4px;
+  gap: 2px;
+  margin-bottom: 0;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 100%;
 }
 
 .media-title {
@@ -2341,6 +2353,8 @@ body {
   text-overflow: ellipsis;
   line-height: 1.1;
   flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .media-artist {
@@ -2351,6 +2365,8 @@ body {
   text-overflow: ellipsis;
   line-height: 1.1;
   flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .media-album {
@@ -2361,35 +2377,37 @@ body {
   text-overflow: ellipsis;
   line-height: 1.1;
   flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Media Controls */
 .media-controls {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   margin-top: auto;
   flex-shrink: 0;
-  height: 28px;
+  width: 100%;
+  padding-top: 4px;
 }
 
 .media-btn {
-  background: var(--surface-1);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 4px 6px;
-  font-size: 0.7em;
+  appearance: none;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 0;
+  width: 34px;
+  height: 34px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 24px;
-  color: var(--text-color);
-  font-weight: 600;
-  font-family: monospace;
+  color: var(--muted-text);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
 }
 
 .media-btn:hover {
@@ -2397,39 +2415,47 @@ body {
   border-color: var(--border-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow-1);
+  color: var(--text-color);
 }
 
 .media-btn:active {
   transform: translateY(0);
+  box-shadow: none;
   background: var(--surface-3);
 }
 
+.media-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.media-btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
 .play-pause-btn {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-  font-weight: 700;
-  min-width: 28px;
-  height: 26px;
-  font-size: 0.75em;
+  width: 42px;
+  height: 36px;
+  border-radius: 16px;
+  font-weight: 600;
 }
 
 .play-pause-btn:hover {
+  transform: translateY(-1px);
+}
+
+.play-pause-btn.is-active,
+.media-player-entity[data-media-playing="true"] .play-pause-btn {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 6px 16px rgba(100, 181, 246, 0.35);
+}
+
+.media-player-entity[data-media-playing="true"] .play-pause-btn:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: 0 4px 8px rgba(100, 181, 246, 0.3);
-}
-
-.prev-btn, .next-btn {
-  background: var(--surface-1);
-  color: var(--muted-text);
-  font-size: 0.65em;
-  font-weight: 700;
-}
-
-.prev-btn:hover, .next-btn:hover {
-  background: var(--surface-2);
-  color: var(--text-color);
+  box-shadow: 0 8px 20px rgba(144, 202, 249, 0.4);
 }
 
 /* Media Player State Indicators */
@@ -2456,21 +2482,22 @@ body {
   }
   
   .media-controls {
-    gap: 2px;
-    height: 24px;
+    gap: 4px;
+    padding-top: 2px;
   }
   
   .media-btn {
-    min-width: 20px;
-    height: 20px;
-    font-size: 0.6em;
-    padding: 2px 4px;
+    width: 28px;
+    height: 28px;
+  }
+  
+  .media-btn-icon {
+    font-size: 14px;
   }
   
   .play-pause-btn {
-    min-width: 24px;
-    height: 22px;
-    font-size: 0.65em;
+    width: 34px;
+    height: 30px;
   }
   
   .media-title {
@@ -2483,6 +2510,17 @@ body {
   
   .media-player-entity .control-name {
     font-size: 0.8em;
+  }
+}
+
+.controls-grid .media-player-entity {
+  grid-column: span 2;
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .controls-grid .media-player-entity {
+    grid-column: span 1;
   }
 }
 
@@ -3361,3 +3399,4 @@ body {
   font-style: italic;
   font-size: 14px;
 }
+
