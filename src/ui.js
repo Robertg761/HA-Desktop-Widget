@@ -518,6 +518,8 @@ function setupMediaPlayerControls(div, entity) {
   try {
     if (!div || !entity) return;
     
+    console.log('Setting up media player controls for:', entity.entity_id);
+    
     // Get media info
     const mediaTitle = entity.attributes?.media_title || '';
     const mediaArtist = entity.attributes?.media_artist || '';
@@ -552,12 +554,16 @@ function setupMediaPlayerControls(div, entity) {
     
     // Update the control info section
     const controlInfo = div.querySelector('.control-info');
+    console.log('Control info found:', !!controlInfo, 'for entity:', entity.entity_id);
     if (controlInfo) {
       controlInfo.innerHTML = `
         <div class="control-name">${utils.getEntityDisplayName(entity)}</div>
         ${mediaInfo}
         ${controls}
       `;
+      console.log('Updated control info with media controls');
+    } else {
+      console.error('Control info section not found for media player:', entity.entity_id);
     }
     
     // Add click handlers for media controls
