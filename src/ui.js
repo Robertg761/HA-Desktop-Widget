@@ -345,6 +345,7 @@ function renderQuickControls() {
 
 function createControlElement(entity) {
   try {
+    console.log('Creating control element for:', entity.entity_id, 'domain:', entity.entity_id.split('.')[0]);
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
@@ -461,6 +462,7 @@ function createControlElement(entity) {
     
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
+      console.log('Found media player entity:', entity.entity_id, 'calling setupMediaPlayerControls');
       setupMediaPlayerControls(div, entity);
     }
     
