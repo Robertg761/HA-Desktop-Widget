@@ -451,7 +451,9 @@ ipcMain.handle('open-logs', () => {
       if (log?.transports?.file?.resolvePath && typeof log.transports.file.resolvePath === 'function') {
         logFilePath = log.transports.file.resolvePath();
       }
-    } catch (_) {}
+    } catch (error) {
+      log.debug('Could not resolve log file path via resolvePath:', error.message);
+    }
 
     if (!logFilePath) {
       try {
@@ -459,7 +461,9 @@ ipcMain.handle('open-logs', () => {
         if (fileInfo && fileInfo.path) {
           logFilePath = fileInfo.path;
         }
-      } catch (_) {}
+      } catch (error) {
+        log.debug('Could not get log file info via getFile:', error.message);
+      }
     }
 
     if (!logFilePath) {
