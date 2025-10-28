@@ -2296,55 +2296,64 @@ body {
 
 /* Media Player Entity Styles */
 .media-player-entity {
-  min-height: 80px; /* Taller to accommodate media info and controls */
+  min-height: 70px; /* Slightly taller to accommodate media info and controls */
+  padding: 8px;
 }
 
 .media-player-entity .control-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
+  height: 100%;
 }
 
 .media-player-entity .control-name {
-  font-size: 0.9em;
+  font-size: 0.8em;
   font-weight: 600;
   color: var(--text-color);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Media Info Display */
 .media-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-bottom: 8px;
+  gap: 1px;
+  margin-bottom: 6px;
+  flex: 1;
+  min-height: 0;
 }
 
 .media-title {
-  font-size: 0.85em;
+  font-size: 0.75em;
   font-weight: 500;
   color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  line-height: 1.2;
 }
 
 .media-artist {
-  font-size: 0.75em;
-  color: var(--muted-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.media-album {
   font-size: 0.7em;
   color: var(--muted-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.1;
+}
+
+.media-album {
+  font-size: 0.65em;
+  color: var(--muted-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
 }
 
 /* Media Controls */
@@ -2352,34 +2361,39 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 4px;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .media-btn {
   background: var(--surface-2);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 0.8em;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 0.7em;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 28px;
+  min-width: 24px;
+  height: 22px;
+  color: var(--text-color);
+  font-weight: 500;
 }
 
 .media-btn:hover {
   background: var(--surface-hover);
   border-color: var(--border-hover);
   transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .media-btn:active {
   transform: translateY(0);
   background: var(--surface-3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .play-pause-btn {
@@ -2387,20 +2401,26 @@ body {
   border-color: var(--accent);
   color: white;
   font-weight: 600;
+  min-width: 28px;
+  height: 24px;
+  font-size: 0.75em;
 }
 
 .play-pause-btn:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+  box-shadow: 0 2px 6px rgba(100, 181, 246, 0.3);
 }
 
 .prev-btn, .next-btn {
   background: var(--surface-1);
-  color: var(--text-color);
+  color: var(--muted-text);
+  font-size: 0.65em;
 }
 
 .prev-btn:hover, .next-btn:hover {
   background: var(--surface-2);
+  color: var(--text-color);
 }
 
 /* Media Player State Indicators */
@@ -2423,26 +2443,37 @@ body {
 /* Responsive adjustments for media player */
 @media (max-width: 200px) {
   .media-player-entity {
-    min-height: 70px;
+    min-height: 60px;
+    padding: 6px;
   }
   
   .media-controls {
-    gap: 4px;
+    gap: 2px;
   }
   
   .media-btn {
-    min-width: 28px;
-    height: 24px;
-    font-size: 0.75em;
-    padding: 4px 6px;
+    min-width: 20px;
+    height: 18px;
+    font-size: 0.6em;
+    padding: 2px 4px;
+  }
+  
+  .play-pause-btn {
+    min-width: 24px;
+    height: 20px;
+    font-size: 0.65em;
   }
   
   .media-title {
-    font-size: 0.8em;
+    font-size: 0.7em;
   }
   
   .media-artist, .media-album {
-    font-size: 0.7em;
+    font-size: 0.6em;
+  }
+  
+  .media-player-entity .control-name {
+    font-size: 0.75em;
   }
 }
 

@@ -345,7 +345,6 @@ function renderQuickControls() {
 
 function createControlElement(entity) {
   try {
-    console.log('Creating control element for:', entity.entity_id, 'domain:', entity.entity_id.split('.')[0]);
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
@@ -462,7 +461,6 @@ function createControlElement(entity) {
     
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
-      console.log('Found media player entity:', entity.entity_id, 'calling setupMediaPlayerControls');
       setupMediaPlayerControls(div, entity);
     }
     
@@ -520,8 +518,6 @@ function setupMediaPlayerControls(div, entity) {
   try {
     if (!div || !entity) return;
     
-    console.log('Setting up media player controls for:', entity.entity_id);
-    
     // Get media info
     const mediaTitle = entity.attributes?.media_title || '';
     const mediaArtist = entity.attributes?.media_artist || '';
@@ -532,10 +528,11 @@ function setupMediaPlayerControls(div, entity) {
     // Create media info display
     let mediaInfo = '';
     if (mediaTitle) {
+      // Show title and artist on separate lines, album only if there's space
       mediaInfo = `<div class="media-info">
         <div class="media-title">${mediaTitle}</div>
         ${mediaArtist ? `<div class="media-artist">${mediaArtist}</div>` : ''}
-        ${mediaAlbum ? `<div class="media-album">${mediaAlbum}</div>` : ''}
+        ${mediaAlbum && !mediaArtist ? `<div class="media-album">${mediaAlbum}</div>` : ''}
       </div>`;
     } else if (isOff) {
       mediaInfo = '<div class="media-info"><div class="media-title">No media</div></div>';
@@ -556,16 +553,12 @@ function setupMediaPlayerControls(div, entity) {
     
     // Update the control info section
     const controlInfo = div.querySelector('.control-info');
-    console.log('Control info found:', !!controlInfo, 'for entity:', entity.entity_id);
     if (controlInfo) {
       controlInfo.innerHTML = `
         <div class="control-name">${utils.getEntityDisplayName(entity)}</div>
         ${mediaInfo}
         ${controls}
       `;
-      console.log('Updated control info with media controls');
-    } else {
-      console.error('Control info section not found for media player:', entity.entity_id);
     }
     
     // Add click handlers for media controls
