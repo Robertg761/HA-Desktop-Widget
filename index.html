@@ -106,7 +106,7 @@
                 <button class="tab-link active" data-tab="general">General</button>
                 <button class="tab-link" data-tab="hotkeys">Hotkeys</button>
                 <button class="tab-link" data-tab="alerts">Alerts</button>
-                <button class="tab-link" data-tab="updates">Updates</button>
+                <button class="tab-link" data-tab="advanced">Advanced</button>
             </div>
             <div class="modal-body">
                 <div id="general-tab" class="tab-content active">
@@ -118,10 +118,7 @@
                         <label for="ha-token">Access Token:</label>
                         <input type="password" id="ha-token" placeholder="Your long-lived access token">
                     </div>
-                    <div class="form-group">
-                        <label for="update-interval">Update Interval (seconds):</label>
-                        <input type="number" id="update-interval" min="1" max="60" value="5">
-                    </div>
+                    
                     <div class="form-group">
                         <label for="opacity-slider">Window Opacity:</label>
                         <input type="range" id="opacity-slider" min="1" max="100" step="1" value="90">
@@ -132,6 +129,40 @@
                             <input type="checkbox" id="always-on-top">
                             Always on top
                         </label>
+                    </div>
+                    <div class="form-group update-section">
+                        <label>Application Updates</label>
+                        <div class="update-info">
+                            <div class="version-info">
+                                <span>Current Version: <strong id="current-version">Loading...</strong></span>
+                            </div>
+                            <div class="update-status" id="update-status">
+                                <span id="update-status-text">Checking for updates...</span>
+                            </div>
+                            <div class="update-actions">
+                                <button id="check-updates-btn" class="btn btn-secondary" disabled>
+                                    <span id="check-updates-text">Check for Updates</span>
+                                </button>
+                                <button id="install-update-btn" class="btn btn-primary hidden">
+                                    <span id="install-update-text">Install Update</span>
+                                </button>
+                            </div>
+                            <div class="update-progress hidden" id="update-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill"></div>
+                                </div>
+                                <span class="progress-text" id="progress-text">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="advanced-tab" class="tab-content">
+                    <div class="form-group">
+                        <label for="update-interval">Update Interval (seconds):</label>
+                        <input type="number" id="update-interval" min="1" max="60" value="5">
+                    </div>
+                    <div class="form-group">
+                        <button id="view-logs-btn" class="btn btn-secondary" title="Opens the log file location in your file explorer">📋 View Logs</button>
                     </div>
                 </div>
                 <div id="hotkeys-tab" class="tab-content">
@@ -162,33 +193,6 @@
                     <div id="alerts-section" style="display: none;">
                         <p>Configure which entities should trigger desktop notifications.</p>
                         <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
-                    </div>
-                </div>
-                <div id="updates-tab" class="tab-content">
-                    <div class="form-group update-section">
-                        <label>Application Updates</label>
-                        <div class="update-info">
-                            <div class="version-info">
-                                <span>Current Version: <strong id="current-version">Loading...</strong></span>
-                            </div>
-                            <div class="update-status" id="update-status">
-                                <span id="update-status-text">Checking for updates...</span>
-                            </div>
-                            <div class="update-actions">
-                                <button id="check-updates-btn" class="btn btn-secondary" disabled>
-                                    <span id="check-updates-text">Check for Updates</span>
-                                </button>
-                                <button id="install-update-btn" class="btn btn-primary hidden">
-                                    <span id="install-update-text">Install Update</span>
-                                </button>
-                            </div>
-                            <div class="update-progress hidden" id="update-progress">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="progress-fill"></div>
-                                </div>
-                                <span class="progress-text" id="progress-text">0%</span>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
