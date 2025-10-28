@@ -262,6 +262,7 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 6px;
   align-items: stretch;
+  grid-auto-flow: dense; /* tighter packing */
 }
 
 .control-item {
@@ -2319,13 +2320,13 @@ body {
   text-align: left;
 }
 
+/* Media control title (entity name within tile) */
 .media-player-entity .control-name {
   font-size: 0.85em;
   font-weight: 600;
   color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   margin-bottom: 2px;
   flex-shrink: 0;
 }
@@ -2344,13 +2345,13 @@ body {
   max-width: 100%;
 }
 
+/* Media text lines — no ellipsis, we auto-fit via JS */
 .media-title {
   font-size: 0.75em;
   font-weight: 500;
   color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.1;
   flex-shrink: 0;
   width: 100%;
@@ -2362,7 +2363,6 @@ body {
   color: var(--muted-text);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.1;
   flex-shrink: 0;
   width: 100%;
@@ -2374,7 +2374,6 @@ body {
   color: var(--muted-text);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.1;
   flex-shrink: 0;
   width: 100%;
@@ -3398,5 +3397,15 @@ body {
   color: var(--text-secondary);
   font-style: italic;
   font-size: 14px;
+}
+
+
+/* Drag placeholder for reordering */
+.control-placeholder {
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  min-height: 56px;
+  background: transparent;
+  pointer-events: none;
 }
 

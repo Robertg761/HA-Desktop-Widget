@@ -4,9 +4,15 @@ const websocket = require('./websocket.js');
 const camera = require('./camera.js');
 const uiUtils = require('./ui-utils.js');
 
-let isReorganizeMode = false;
+// Drag placeholder and resize observers
+let placeholderEl = null;
 let draggedElement = null;
 let dragOverElement = null;
+let currentDragSpan = 1;
+const resizeObservers = new WeakMap();
+
+let isReorganizeMode = false;
+// draggedElement/dragOverElement declared above
 
 function toggleReorganizeMode() {
   try {
@@ -349,6 +355,11 @@ function createControlElement(entity) {
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
 
+    // Per-entity column span (default 2 for media, 1 otherwise)
+    const span = getTileSpan(entity);
+    div.dataset.span = String(span);
+    try { div.style.gridColumn = `span ${span}`; } catch (_e) { /* no-op */ }
+
     // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
     const hasTimerAttributes = entity.attributes && (
@@ -462,6 +473,7 @@ function createControlElement(entity) {
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
       setupMediaPlayerControls(div, entity);
+      setupMediaTextAutoFit(div);
     }
     
     return div;
@@ -585,10 +597,71 @@ function setupMediaPlayerControls(div, entity) {
     // Update data attributes for styling
     div.setAttribute('data-state', entity.state);
     div.setAttribute('data-media-playing', isPlaying ? 'true' : 'false');
-    
+
   } catch (error) {
     console.error('Error setting up media player controls:', error);
   }
+}
+
+// Return desired grid span for an entity (configurable per entity)
+function getTileSpan(entity) {
+  try {
+    const id = entity.entity_id;
+    const spanCfg = state.CONFIG.tileSpans && state.CONFIG.tileSpans[id];
+    if (Number.isInteger(spanCfg) && spanCfg > 0) return spanCfg;
+    return id.startsWith('media_player.') ? 2 : 1;
+  } catch (_e) {
+    return entity.entity_id.startsWith('media_player.') ? 2 : 1;
+  }
+}
+
+// Simple single-line fit: shrink font-size until text fits width
+function fitSingleLine(el, opts = {}) {
+  if (!el) return;
+  const style = getComputedStyle(el);
+  const max = opts.max || parseFloat(style.fontSize) || 12;
+  const min = opts.min || 9;
+  if (!el.clientWidth) return;
+  let low = min, high = max, best = min;
+  // Expand once to max so we always shrink from a known state
+  el.style.fontSize = max + 'px';
+  for (let i = 0; i < 8; i++) {
+    const mid = (low + high) / 2;
+    el.style.fontSize = mid + 'px';
+    if (el.scrollWidth <= el.clientWidth) {
+      best = mid; low = mid;
+    } else {
+      high = mid;
+    }
+    if (Math.abs(high - low) < 0.25) break;
+  }
+  el.style.fontSize = Math.max(min, Math.min(max, best)).toFixed(2) + 'px';
+}
+
+function fitMediaText(root) {
+  try {
+    if (!root) return;
+    const title = root.querySelector('.media-title');
+    const artist = root.querySelector('.media-artist');
+    const album = root.querySelector('.media-album');
+    fitSingleLine(title);
+    fitSingleLine(artist);
+    fitSingleLine(album);
+  } catch (_e) { void _e; }
+}
+
+function setupMediaTextAutoFit(div) {
+  try {
+    if (!div) return;
+    // Initial
+    fitMediaText(div);
+    // Observe tile resize to refit
+    if (!resizeObservers.has(div) && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => fitMediaText(div));
+      ro.observe(div);
+      resizeObservers.set(div, ro);
+    }
+  } catch (_e) { void _e; }
 }
 
 function callMediaPlayerService(entityId, action) {
@@ -1446,6 +1519,16 @@ function handleDragStart(e) {
     }
     
     draggedElement = e.currentTarget;
+    // Preserve intended span for placeholder
+    const span = parseInt(draggedElement.dataset.span || '1', 10);
+    currentDragSpan = Number.isFinite(span) && span > 0 ? span : 1;
+    ensurePlaceholder();
+    const container = document.getElementById('quick-controls');
+    if (container && placeholderEl) {
+        // Insert placeholder at current index
+        container.insertBefore(placeholderEl, draggedElement.nextSibling);
+        placeholderEl.style.gridColumn = `span ${currentDragSpan}`;
+    }
     e.currentTarget.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
@@ -1467,6 +1550,10 @@ function handleDragEnd(e) {
     });
     
     draggedElement = null;
+    // Cleanup placeholder
+    if (placeholderEl && placeholderEl.parentNode) {
+        placeholderEl.parentNode.removeChild(placeholderEl);
+    }
     
     // Clean up drag-over classes
     const controlItems = document.querySelectorAll('#quick-controls .control-item');
@@ -1478,6 +1565,10 @@ function handleDragEnd(e) {
 function handleDragOver(e) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    const container = document.getElementById('quick-controls');
+    if (!container || !draggedElement) return;
+    ensurePlaceholder();
+    updatePlaceholderPosition(container, e.clientX, e.clientY);
 }
 
 function handleDragEnter(e) {
@@ -1496,19 +1587,12 @@ function handleDragLeave(e) {
 
 function handleDrop(e) {
     e.preventDefault();
-    
-    if (draggedElement && dragOverElement && draggedElement !== dragOverElement) {
-        const controlsGrid = document.getElementById('quick-controls');
-        const draggedIndex = Array.from(controlsGrid.children).indexOf(draggedElement);
-        const targetIndex = Array.from(controlsGrid.children).indexOf(dragOverElement);
-        
-        // Reorder the elements
-        if (draggedIndex < targetIndex) {
-            controlsGrid.insertBefore(draggedElement, dragOverElement.nextSibling);
-        } else {
-            controlsGrid.insertBefore(draggedElement, dragOverElement);
-        }
+    const container = document.getElementById('quick-controls');
+    if (container && draggedElement && placeholderEl && placeholderEl.parentNode === container) {
+        container.insertBefore(draggedElement, placeholderEl);
     }
+    // Cleanup
+    if (placeholderEl && placeholderEl.parentNode) placeholderEl.parentNode.removeChild(placeholderEl);
     
     dragOverElement = null;
 }
@@ -1518,32 +1602,82 @@ function setupDragAndDrop() {
 }
 
 function addDragAndDropListeners() {
-    try {
-        const items = document.querySelectorAll('#quick-controls .control-item');
-        
-        items.forEach(item => {
-            addDragListenersToElement(item);
-        });
-    } catch (error) {
-        console.error('Error adding drag and drop listeners:', error);
+  try {
+    const container = document.getElementById('quick-controls');
+    const items = document.querySelectorAll('#quick-controls .control-item');
+    items.forEach(item => addDragListenersToElement(item));
+    if (container) {
+      container.addEventListener('dragover', handleDragOver);
+      container.addEventListener('drop', handleDrop);
     }
+  } catch (error) {
+    console.error('Error adding drag and drop listeners:', error);
+  }
 }
 
 function removeDragAndDropListeners() {
-    try {
-        const items = document.querySelectorAll('#quick-controls .control-item');
-        items.forEach(item => {
-            item.draggable = false;
-            item.removeEventListener('dragstart', handleDragStart);
-            item.removeEventListener('dragend', handleDragEnd);
-            item.removeEventListener('dragover', handleDragOver);
-            item.removeEventListener('drop', handleDrop);
-            item.removeEventListener('dragenter', handleDragEnter);
-            item.removeEventListener('dragleave', handleDragLeave);
-        });
-    } catch (error) {
-        console.error('Error removing drag and drop listeners:', error);
+  try {
+    const container = document.getElementById('quick-controls');
+    const items = document.querySelectorAll('#quick-controls .control-item');
+    items.forEach(item => {
+      item.draggable = false;
+      item.removeEventListener('dragstart', handleDragStart);
+      item.removeEventListener('dragend', handleDragEnd);
+      item.removeEventListener('dragover', handleDragOver);
+      item.removeEventListener('drop', handleDrop);
+      item.removeEventListener('dragenter', handleDragEnter);
+      item.removeEventListener('dragleave', handleDragLeave);
+    });
+    if (container) {
+      container.removeEventListener('dragover', handleDragOver);
+      container.removeEventListener('drop', handleDrop);
     }
+  } catch (error) {
+    console.error('Error removing drag and drop listeners:', error);
+  }
+}
+
+function ensurePlaceholder() {
+  if (!placeholderEl) {
+    placeholderEl = document.createElement('div');
+    placeholderEl.className = 'control-placeholder';
+  }
+}
+
+function updatePlaceholderPosition(container, clientX, clientY) {
+  if (!placeholderEl) return;
+  const children = Array.from(container.children).filter(ch => ch !== placeholderEl && ch !== draggedElement);
+  if (children.length === 0) {
+    container.appendChild(placeholderEl);
+    placeholderEl.style.gridColumn = `span ${currentDragSpan}`;
+    return;
+  }
+  let closest = null;
+  let bestDist = Infinity;
+  for (const ch of children) {
+    const r = ch.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const d2 = dx*dx + dy*dy;
+    if (d2 < bestDist) { bestDist = d2; closest = ch; }
+  }
+  if (closest) {
+    // Decide before/after based on horizontal position
+    const rect = closest.getBoundingClientRect();
+    const insertAfter = clientX > rect.left + rect.width / 2;
+    if (insertAfter) {
+      if (closest.nextSibling !== placeholderEl) {
+        container.insertBefore(placeholderEl, closest.nextSibling);
+      }
+    } else {
+      if (closest !== placeholderEl) {
+        container.insertBefore(placeholderEl, closest);
+      }
+    }
+    placeholderEl.style.gridColumn = `span ${currentDragSpan}`;
+  }
 }
 
 
