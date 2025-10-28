@@ -48,6 +48,16 @@ latest.yml
 # Coverage
 coverage/
 
+# Jest cache/artifacts
+.jest/
+jest-cache/
+jest-results.xml
+junit.xml
+
+# General logs
+logs/
+*.log
+
 
 .gemini/
 gha-creds-*.json

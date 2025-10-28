@@ -1,5 +1,6 @@
 // Load all required modules
 const { ipcRenderer } = require('electron');
+const log = require('electron-log');
 const state = require('./src/state.js');
 const websocket = require('./src/websocket.js');
 const hotkeys = require('./src/hotkeys.js');
@@ -8,9 +9,22 @@ const ui = require('./src/ui.js');
 const settings = require('./src/settings.js');
 const uiUtils = require('./src/ui-utils.js');
 
+// --- Renderer Log Configuration ---
+// This will catch any uncaught errors in your renderer process (the UI)
+log.errorHandler.startCatching();
+
+// Reduce console verbosity in DevTools; keep file logs detailed
+if (log?.transports?.console) {
+  log.transports.console.level = 'warn';
+}
+
+// Log renderer process startup
+log.info('Renderer process started.');
+
 // --- WebSocket Event Handlers ---
 websocket.on('open', () => {
   try {
+    log.debug('WebSocket connection opened');
     if (websocket.ws && websocket.ws.readyState === WebSocket.OPEN) {
       const authMessage = {
         type: 'auth',
@@ -19,7 +33,7 @@ websocket.on('open', () => {
       websocket.ws.send(JSON.stringify(authMessage));
     }
   } catch (error) {
-    console.error('Error handling WebSocket open:', error);
+    log.error('Error handling WebSocket open:', error);
   }
 });
 
@@ -34,14 +48,25 @@ let reconnectAttempts = 0;
 websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
+      log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
       uiUtils.setStatus(true);
-      getStatesId = websocket.request({ type: 'get_states' }).id;
-      getServicesId = websocket.request({ type: 'get_services' }).id;
-      getAreasId = websocket.request({ type: 'config/area_registry/list' }).id;
+      const statesReq = websocket.request({ type: 'get_states' });
+      const servicesReq = websocket.request({ type: 'get_services' });
+      const areasReq = websocket.request({ type: 'config/area_registry/list' });
+
+      // Store IDs for matching results
+      getStatesId = statesReq.id;
+      getServicesId = servicesReq.id;
+      getAreasId = areasReq.id;
+
+      // Prevent unhandled rejections from surfacing as global errors
+      statesReq.catch(() => {});
+      servicesReq.catch(() => {});
+      areasReq.catch(() => {});
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
-      console.error('[WS] Invalid authentication token');
+      log.error('[WS] Invalid authentication token');
       uiUtils.setStatus(false);
       uiUtils.showLoading(false);
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
@@ -55,6 +80,7 @@ websocket.on('message', (msg) => {
       if (msg.id === getStatesId) { // get_states response
         const newStates = {};
         if (Array.isArray(msg.result)) {
+          log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
           msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
           state.setStates(newStates);
           
@@ -75,7 +101,7 @@ websocket.on('message', (msg) => {
       }
     }
   } catch (error) {
-    console.error('[WS] Error handling message:', error);
+    log.error('[WS] Error handling message:', error);
   }
 });
 
@@ -92,23 +118,23 @@ websocket.on('close', () => {
     const jitter = Math.random() * 1000; // Add up to 1 second of jitter
     reconnectAttempts++;
     
-    console.log(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
+    log.debug(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
     setTimeout(() => websocket.connect(), delay + jitter);
   } catch (error) {
-    console.error('Error handling WebSocket close:', error);
+    log.error('Error handling WebSocket close:', error);
   }
 });
 
 websocket.on('error', (error) => {
   try {
-    console.error('WebSocket error:', error);
+    log.error('WebSocket error:', error);
     uiUtils.setStatus(false);
     uiUtils.showLoading(false); // Hide loading on failure
     
     // Show the UI with setup message
     ui.renderActiveTab();
   } catch (err) {
-    console.error('Error handling WebSocket error:', err);
+    log.error('Error handling WebSocket error:', err);
   }
 });
 
@@ -124,11 +150,12 @@ ipcRenderer.on('hotkey-triggered', (event, { entityId, action }) => {
 });
 async function init() {
   try {
+    log.info('Initializing application');
     uiUtils.showLoading(true);
 
     const config = await ipcRenderer.invoke('get-config');
     if (!config || !config.homeAssistant) {
-      console.error('Configuration is missing or invalid');
+      log.error('Configuration is missing or invalid');
       state.setConfig({
         homeAssistant: {
           url: '',
@@ -153,7 +180,7 @@ async function init() {
     wireUI();
     
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      console.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
+      log.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
       uiUtils.showLoading(false);
       ui.renderActiveTab();
       return;
@@ -179,6 +206,7 @@ async function init() {
     ui.renderActiveTab();
     
     // Connect to WebSocket in background
+    log.info('Connecting to Home Assistant WebSocket');
     websocket.connect();
     
     // Backup timeout to ensure loading is hidden
@@ -187,7 +215,7 @@ async function init() {
     }, 5000);
     
   } catch (error) {
-    console.error('Initialization error:', error);
+    log.error('Initialization error:', error);
     uiUtils.showLoading(false);
   }
 }
@@ -222,6 +250,24 @@ function wireUI() {
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
     
+    const viewLogsBtn = document.getElementById('view-logs-btn');
+    if (viewLogsBtn) {
+      viewLogsBtn.onclick = async () => {
+        try {
+          const result = await ipcRenderer.invoke('open-logs');
+          if (result.success) {
+            log.info('Log file opened successfully');
+          } else {
+            log.error('Failed to open log file:', result.error);
+            uiUtils.showToast('Failed to open log file: ' + result.error, 'error');
+          }
+        } catch (error) {
+          log.error('Error opening log file:', error);
+          uiUtils.showToast('Error opening log file: ' + error.message, 'error');
+        }
+      };
+    }
+    
     // Opacity slider handler with real-time application
     // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
@@ -235,7 +281,7 @@ function wireUI() {
         opacityValue.textContent = `${sliderValue}`;
         // Apply opacity in real-time
         ipcRenderer.invoke('set-opacity', opacity).catch(err => {
-          console.error('Failed to set opacity:', err);
+          log.error('Failed to set opacity:', err);
         });
       });
     }
@@ -388,7 +434,7 @@ function wireUI() {
     widgetContent.addEventListener('mousedown', () => {
       // Request window focus when clicking on content
       ipcRenderer.invoke('focus-window').catch(err => {
-        console.error('Failed to focus window:', err);
+        log.error('Failed to focus window:', err);
       });
     });
   }
@@ -428,7 +474,7 @@ function wireUI() {
   });
   }
   } catch (error) {
-    console.error('Error wiring UI:', error);
+    log.error('Error wiring UI:', error);
   }
 }
 
@@ -436,6 +482,6 @@ window.addEventListener('DOMContentLoaded', () => {
   try {
     init();
   } catch (error) {
-    console.error('Error in DOMContentLoaded handler:', error);
+    log.error('Error in DOMContentLoaded handler:', error);
   }
 });

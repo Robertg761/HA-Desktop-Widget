@@ -1,4 +1,5 @@
 const { EventEmitter } = require('events');
+const log = require('electron-log');
 const state = require('./state.js');
 
 class WebSocketManager extends EventEmitter {
@@ -10,15 +11,16 @@ class WebSocketManager extends EventEmitter {
   }
 
   connect() {
+    log.debug('Attempting to connect to Home Assistant WebSocket');
     if (!state.CONFIG || !state.CONFIG.homeAssistant || !state.CONFIG.homeAssistant.url || !state.CONFIG.homeAssistant.token) {
-      console.error('Invalid configuration for WebSocket');
+      log.error('Invalid configuration for WebSocket');
       this.emit('status', false);
       this.emit('error', new Error('Invalid configuration. Please check settings.'));
       return;
     }
 
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      console.error('Configuration contains default token');
+      log.error('Configuration contains default token');
       this.emit('status', false);
       this.emit('error', new Error('Configuration contains default token. Please update settings.'));
       return;
@@ -30,9 +32,11 @@ class WebSocketManager extends EventEmitter {
 
     try {
       const wsUrl = state.CONFIG.homeAssistant.url.replace(/^http/, 'ws') + '/api/websocket';
+      log.debug(`Connecting to WebSocket URL: ${wsUrl}`);
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
+        log.debug('WebSocket connection established');
         this.emit('open');
       };
       
@@ -40,16 +44,18 @@ class WebSocketManager extends EventEmitter {
         this.handleMessage(event);
       };
       
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.emit('error', error);
+      this.ws.onerror = (event) => {
+        const message = (event && event.message) || (event && event.error && event.error.message) || 'Unknown WebSocket error';
+        log.error('WebSocket error:', message);
+        this.emit('error', new Error(message));
       };
       
       this.ws.onclose = (_event) => {
+        log.debug('WebSocket connection closed');
         this.emit('close');
       };
     } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
+      log.error('Failed to create WebSocket connection:', error);
       this.emit('error', error);
     }
   }
@@ -57,6 +63,15 @@ class WebSocketManager extends EventEmitter {
   handleMessage(event) {
     try {
       const msg = JSON.parse(event.data);
+      // Respond to HA application-level heartbeat to keep the connection alive
+      if (msg && msg.type === 'ping' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(JSON.stringify({ type: 'pong' }));
+        } catch (e) {
+          log.warn('Failed to send pong to Home Assistant:', e);
+        }
+        return; // don't emit ping to consumers
+      }
       this.emit('message', msg);
 
       if (msg.type === 'result' && this.pendingWs.has(msg.id)) {
@@ -65,7 +80,7 @@ class WebSocketManager extends EventEmitter {
         pending.resolve(msg);
       }
     } catch (error) {
-      console.error('Error processing WebSocket message:', error);
+      log.error('Error processing WebSocket message:', error);
     }
   }
 
@@ -87,11 +102,12 @@ class WebSocketManager extends EventEmitter {
         setTimeout(() => {
           if (this.pendingWs.has(id)) {
             this.pendingWs.delete(id);
+            // Reject without emitting a global error to avoid log spam for optional calls
             reject(new Error('WebSocket request timeout'));
           }
         }, 15000);
       } catch (error) {
-        console.error('Error making WebSocket request:', error);
+        log.error('Error making WebSocket request:', error);
         reject(error);
       }
     });
@@ -107,7 +123,7 @@ class WebSocketManager extends EventEmitter {
         this.ws = null;
       }
     } catch (error) {
-      console.error('Error closing WebSocket:', error);
+      log.error('Error closing WebSocket:', error);
     }
   }
 
@@ -120,7 +136,7 @@ class WebSocketManager extends EventEmitter {
         service_data: serviceData,
       });
     } catch (error) {
-      console.error('Error calling service:', error);
+      log.error('Error calling service:', error);
       return Promise.reject(error);
     }
   }

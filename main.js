@@ -5,6 +5,24 @@ const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
 
+// --- Main Log Configuration ---
+// This will catch any uncaught errors in your main process
+log.errorHandler.startCatching();
+
+// You can customize the log format if you want
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+
+// Set the log level
+// 'info' is a good default. Others: 'error', 'warn', 'verbose', 'debug', 'silly'
+log.transports.file.level = 'info';
+// Keep console quieter (DevTools): only warnings and errors
+if (log?.transports?.console) {
+  log.transports.console.level = 'warn';
+}
+
+// Log the app starting up
+log.info('App starting...');
+
 // Set cache paths before app is ready to avoid access issues
 const userDataPath = app.getPath('userData');
 app.setPath('userData', userDataPath);
@@ -16,6 +34,7 @@ let config;
 let isQuitting = false;
 
 function resolveTrayIcon() {
+  log.debug('Resolving tray icon');
   const preferIco = process.platform === 'win32';
   const traySize = preferIco ? 16 : 24;
   const names = preferIco ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico'];
@@ -49,7 +68,7 @@ function resolveTrayIcon() {
       }
     }
   } catch (error) {
-    console.warn('Unable to load tray icon from executable:', error.message);
+    log.warn('Unable to load tray icon from executable:', error.message);
   }
 
   const candidates = [];
@@ -69,11 +88,11 @@ function resolveTrayIcon() {
         return ensureTraySize(image);
       }
     } catch (error) {
-      console.warn('Failed to load tray icon', candidate, error.message);
+      log.warn('Failed to load tray icon', candidate, error.message);
     }
   }
 
-  console.log('Tray icon not found. Using generated fallback icon.');
+  log.info('Tray icon not found. Using generated fallback icon.');
   return nativeImage
     .createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAPCAYAAADJViUEAAAAGElEQVQ4T2NkwAT/Gf4zjIGBoRAjGAgjGAgADt4C24gldLoAAAAASUVORK5CYII=')
     .resize({ width: traySize, height: traySize });
@@ -81,6 +100,7 @@ function resolveTrayIcon() {
 
 // Load configuration
 function loadConfig() {
+  log.debug('Loading configuration');
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
 
@@ -122,7 +142,7 @@ function loadConfig() {
           config = { ...defaultConfig, ...legacyConfig };
           migrated = true;
         } catch (error) {
-          console.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
+          log.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
           config = defaultConfig;
         }
       } else {
@@ -132,28 +152,30 @@ function loadConfig() {
       fs.mkdirSync(userDataDir, { recursive: true });
       saveConfig();
       if (migrated) {
-        console.log('Migrated legacy config.json to userData.');
+        log.info('Migrated legacy config.json to userData.');
       }
     }
   } catch (error) {
-    console.error('Error loading config:', error);
+    log.error('Error loading config:', error);
     config = defaultConfig;
   }
 }
 
 // Save configuration
 function saveConfig() {
+  log.debug('Saving configuration');
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
   try {
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   } catch (error) {
-    console.error('Failed to save config:', error);
+    log.error('Failed to save config:', error);
   }
 }
 
 function createWindow() {
+  log.info('Creating main window');
   // Get the primary display's work area
   const primaryDisplay = electronScreen.getPrimaryDisplay();
   const { width: _width, height: _height } = primaryDisplay.workAreaSize;
@@ -225,6 +247,7 @@ function createWindow() {
 }
 
 function createTray() {
+  log.info('Creating system tray icon');
   // Resolve a tray icon that works in dev and production
   const pkg = require('./package.json');
 
@@ -335,6 +358,7 @@ ipcMain.handle('get-config', () => {
 });
 
 ipcMain.handle('update-config', (event, newConfig) => {
+  log.debug('Updating configuration');
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   config = { ...config, ...newConfig, customTabs };
   saveConfig();
@@ -355,7 +379,7 @@ ipcMain.handle('set-always-on-top', (event, value) => {
   try {
     mainWindow.setAlwaysOnTop(flag);
   } catch (error) {
-    console.warn('Failed to set always on top:', error.message);
+    log.warn('Failed to set always on top:', error.message);
   }
   saveConfig();
   return { applied: mainWindow?.isAlwaysOnTop?.() === flag };
@@ -366,12 +390,13 @@ ipcMain.handle('get-window-state', () => {
 });
 
 ipcMain.handle('restart-app', () => {
+  log.info('Restarting application');
   try {
     isQuitting = true;
     app.relaunch();
     app.exit(0);
   } catch (error) {
-    console.warn('Failed to restart app:', error.message);
+    log.warn('Failed to restart app:', error.message);
   }
 });
 
@@ -416,6 +441,38 @@ ipcMain.handle('quit-app', () => {
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
+});
+
+// Log file viewer functionality
+ipcMain.handle('open-logs', () => {
+  try {
+    let logFilePath = null;
+    try {
+      if (log?.transports?.file?.resolvePath && typeof log.transports.file.resolvePath === 'function') {
+        logFilePath = log.transports.file.resolvePath();
+      }
+    } catch (_) {}
+
+    if (!logFilePath) {
+      try {
+        const fileInfo = log?.transports?.file?.getFile && log.transports.file.getFile();
+        if (fileInfo && fileInfo.path) {
+          logFilePath = fileInfo.path;
+        }
+      } catch (_) {}
+    }
+
+    if (!logFilePath) {
+      throw new Error('Could not resolve log file path from electron-log');
+    }
+
+    log.info(`Opening log file at: ${logFilePath}`);
+    shell.showItemInFolder(logFilePath);
+    return { success: true, path: logFilePath };
+  } catch (error) {
+    log.error('Failed to open log file:', error);
+    return { success: false, error: error?.message || String(error) };
+  }
 });
 
 // Global Hotkey IPC Handlers
@@ -528,15 +585,15 @@ function registerGlobalHotkeys() {
         });
         
         if (!success) {
-          console.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
+          log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
           }
         } else {
-          console.log(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
+          log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
         }
       } catch (error) {
-        console.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
+        log.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
       }
     }
   });
@@ -574,7 +631,7 @@ function setupEntityAlerts() {
   
   // This will be called when entity states change
   // The actual alert logic will be in the renderer process
-  console.log('Entity alerts enabled');
+  log.info('Entity alerts enabled');
 }
 
 // App event handlers
@@ -608,7 +665,7 @@ function setupAutoUpdates() {
     // Initial check
     setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3000);
   } catch (error) {
-    console.error('Auto-update setup failed:', error);
+    log.error('Auto-update setup failed:', error);
   }
 }
 
@@ -684,12 +741,12 @@ app.whenReady().then(() => {
           respond({ statusCode: 404 });
         }
       } catch (error) {
-        console.error('Protocol handler error:', error);
+        log.error('Protocol handler error:', error);
         respond({ statusCode: 500 });
       }
     });
   } catch (error) {
-    console.error('Failed to register ha:// protocol', error);
+    log.error('Failed to register ha:// protocol', error);
   }
 
   createWindow();
