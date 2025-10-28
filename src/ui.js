@@ -397,6 +397,9 @@ function createControlElement(entity) {
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
       div.title = `Click to toggle, hold for brightness control`;
+    } else if (entity.entity_id.startsWith('media_player.')) {
+      setupMediaPlayerControls(div, entity);
+      div.title = `Media player controls`;
     } else {
       div.onclick = () => {
         if (!isReorganizeMode) toggleEntity(entity);
@@ -422,6 +425,9 @@ function createControlElement(entity) {
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
       if (temp) stateDisplay = `<div class="control-state">${temp}°</div>`;
+    } else if (entity.entity_id.startsWith('media_player.')) {
+      // Media player state will be handled in setupMediaPlayerControls
+      stateDisplay = '';
     }
 
     // Special layout for timer entities (no icon, larger timer display)
@@ -434,6 +440,16 @@ function createControlElement(entity) {
       `;
       div.classList.add('timer-entity');
       div.setAttribute('data-state', entity.state);
+    } else if (entity.entity_id.startsWith('media_player.')) {
+      // Media player layout will be handled in setupMediaPlayerControls
+      div.innerHTML = `
+        <div class="control-icon">${icon}</div>
+        <div class="control-info">
+          <div class="control-name">${name}</div>
+          ${stateDisplay}
+        </div>
+      `;
+      div.classList.add('media-player-entity');
     } else {
       div.innerHTML = `
         <div class="control-icon">${icon}</div>
@@ -491,6 +507,100 @@ function setupLightControls(div, entity) {
     });
   } catch (error) {
     console.error('Error setting up light controls:', error);
+  }
+}
+
+function setupMediaPlayerControls(div, entity) {
+  try {
+    if (!div || !entity) return;
+    
+    // Get media info
+    const mediaTitle = entity.attributes?.media_title || '';
+    const mediaArtist = entity.attributes?.media_artist || '';
+    const mediaAlbum = entity.attributes?.media_album_name || '';
+    const isPlaying = entity.state === 'playing';
+    const isOff = entity.state === 'off' || entity.state === 'idle';
+    
+    // Create media info display
+    let mediaInfo = '';
+    if (mediaTitle) {
+      mediaInfo = `<div class="media-info">
+        <div class="media-title">${mediaTitle}</div>
+        ${mediaArtist ? `<div class="media-artist">${mediaArtist}</div>` : ''}
+        ${mediaAlbum ? `<div class="media-album">${mediaAlbum}</div>` : ''}
+      </div>`;
+    } else if (isOff) {
+      mediaInfo = '<div class="media-info"><div class="media-title">No media</div></div>';
+    } else {
+      mediaInfo = '<div class="media-info"><div class="media-title">Ready</div></div>';
+    }
+    
+    // Create control buttons
+    const controls = `
+      <div class="media-controls">
+        <button class="media-btn prev-btn" title="Previous track" data-action="previous_track">⏮️</button>
+        <button class="media-btn play-pause-btn" title="${isPlaying ? 'Pause' : 'Play'}" data-action="${isPlaying ? 'pause' : 'play'}">
+          ${isPlaying ? '⏸️' : '▶️'}
+        </button>
+        <button class="media-btn next-btn" title="Next track" data-action="next_track">⏭️</button>
+      </div>
+    `;
+    
+    // Update the control info section
+    const controlInfo = div.querySelector('.control-info');
+    if (controlInfo) {
+      controlInfo.innerHTML = `
+        <div class="control-name">${utils.getEntityDisplayName(entity)}</div>
+        ${mediaInfo}
+        ${controls}
+      `;
+    }
+    
+    // Add click handlers for media controls
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode) return;
+      
+      const button = e.target.closest('.media-btn');
+      if (button) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const action = button.dataset.action;
+        callMediaPlayerService(entity.entity_id, action);
+      }
+    });
+    
+    // Update data attributes for styling
+    div.setAttribute('data-state', entity.state);
+    div.setAttribute('data-media-playing', isPlaying ? 'true' : 'false');
+    
+  } catch (error) {
+    console.error('Error setting up media player controls:', error);
+  }
+}
+
+function callMediaPlayerService(entityId, action) {
+  try {
+    const websocket = require('./websocket.js');
+    
+    switch (action) {
+      case 'play':
+        websocket.callService('media_player', 'media_play', { entity_id: entityId });
+        break;
+      case 'pause':
+        websocket.callService('media_player', 'media_pause', { entity_id: entityId });
+        break;
+      case 'next_track':
+        websocket.callService('media_player', 'media_next_track', { entity_id: entityId });
+        break;
+      case 'previous_track':
+        websocket.callService('media_player', 'media_previous_track', { entity_id: entityId });
+        break;
+      default:
+        console.warn('Unknown media player action:', action);
+    }
+  } catch (error) {
+    console.error('Error calling media player service:', error);
   }
 }
 
