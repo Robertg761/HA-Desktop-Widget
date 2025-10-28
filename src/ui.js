@@ -398,7 +398,6 @@ function createControlElement(entity) {
       setupLightControls(div, entity);
       div.title = `Click to toggle, hold for brightness control`;
     } else if (entity.entity_id.startsWith('media_player.')) {
-      setupMediaPlayerControls(div, entity);
       div.title = `Media player controls`;
     } else {
       div.onclick = () => {
@@ -458,6 +457,11 @@ function createControlElement(entity) {
           ${stateDisplay}
         </div>
       `;
+    }
+    
+    // Setup special controls after HTML is set
+    if (entity.entity_id.startsWith('media_player.')) {
+      setupMediaPlayerControls(div, entity);
     }
     
     return div;
