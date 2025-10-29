@@ -195,9 +195,10 @@ body {
 }
 
 .media-tile-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 110px) auto;
+  align-items: center;
+  gap: 4px 8px;
   min-width: 0;
   flex: 1;
 }
@@ -207,6 +208,7 @@ body {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  grid-column: 1;
 }
 
 .media-tile-title {
@@ -229,25 +231,29 @@ body {
 .media-tile-seek {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
+  max-width: 110px;
+  grid-column: 2;
+  justify-self: stretch;
 }
 
 .media-tile-time {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted-text);
   font-variant-numeric: tabular-nums;
-  min-width: 28px;
+  min-width: 26px;
   text-align: center;
 }
 
 .media-tile-seek-bar {
   flex: 1;
-  height: 3px;
+  height: 4px;
   background: var(--surface-3);
   border-radius: 2px;
   overflow: hidden;
   position: relative;
+  min-width: 36px;
 }
 
 .media-tile-seek-fill {
@@ -262,6 +268,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  grid-column: 3;
+  align-self: center;
 }
 
 .media-tile-btn {
