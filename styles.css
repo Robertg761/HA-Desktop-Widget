@@ -1990,9 +1990,25 @@ body {
   transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.1s ease;
 }
 
-.reorganize-mode .control-item.drag-over {
-  transform: scale(1.02);
-  border: 2px dashed var(--accent);
+.reorganize-mode .control-item.drag-target-before::after,
+.reorganize-mode .control-item.drag-target-after::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(100, 181, 246, 0.4);
+}
+
+.reorganize-mode .control-item.drag-target-before::after {
+  left: -4px;
+}
+
+.reorganize-mode .control-item.drag-target-after::after {
+  right: -4px;
 }
 
 /* Phone-like wiggle animation for reorganize mode */
@@ -3397,15 +3413,5 @@ body {
   color: var(--text-secondary);
   font-style: italic;
   font-size: 14px;
-}
-
-
-/* Drag placeholder for reordering */
-.control-placeholder {
-  border: 2px dashed var(--accent);
-  border-radius: 8px;
-  min-height: 56px;
-  background: transparent;
-  pointer-events: none;
 }
 

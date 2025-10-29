@@ -4,15 +4,14 @@ const websocket = require('./websocket.js');
 const camera = require('./camera.js');
 const uiUtils = require('./ui-utils.js');
 
-// Drag placeholder and resize observers
-let placeholderEl = null;
+let isReorganizeMode = false;
 let draggedElement = null;
 let dragOverElement = null;
-let currentDragSpan = 1;
-const resizeObservers = new WeakMap();
+let dragInsertAfter = false;
 
-let isReorganizeMode = false;
-// draggedElement/dragOverElement declared above
+const mediaFitElements = new Set();
+let mediaFitScheduled = false;
+let mediaFitResizeBound = false;
 
 function toggleReorganizeMode() {
   try {
@@ -118,10 +117,6 @@ function addDragListenersToElement(item) {
     item.draggable = true;
     item.addEventListener('dragstart', handleDragStart);
     item.addEventListener('dragend', handleDragEnd);
-    item.addEventListener('dragover', handleDragOver);
-    item.addEventListener('drop', handleDrop);
-    item.addEventListener('dragenter', handleDragEnter);
-    item.addEventListener('dragleave', handleDragLeave);
   } catch (error) {
     console.error('Error adding drag listeners to element:', error);
   }
@@ -358,7 +353,7 @@ function createControlElement(entity) {
     // Per-entity column span (default 2 for media, 1 otherwise)
     const span = getTileSpan(entity);
     div.dataset.span = String(span);
-    try { div.style.gridColumn = `span ${span}`; } catch (_e) { /* no-op */ }
+    try { div.style.gridColumn = `span ${span}`; } catch { /* no-op */ }
 
     // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
@@ -610,58 +605,83 @@ function getTileSpan(entity) {
     const spanCfg = state.CONFIG.tileSpans && state.CONFIG.tileSpans[id];
     if (Number.isInteger(spanCfg) && spanCfg > 0) return spanCfg;
     return id.startsWith('media_player.') ? 2 : 1;
-  } catch (_e) {
+  } catch {
     return entity.entity_id.startsWith('media_player.') ? 2 : 1;
   }
 }
 
 // Simple single-line fit: shrink font-size until text fits width
 function fitSingleLine(el, opts = {}) {
-  if (!el) return;
-  const style = getComputedStyle(el);
-  const max = opts.max || parseFloat(style.fontSize) || 12;
-  const min = opts.min || 9;
-  if (!el.clientWidth) return;
-  let low = min, high = max, best = min;
-  // Expand once to max so we always shrink from a known state
-  el.style.fontSize = max + 'px';
-  for (let i = 0; i < 8; i++) {
-    const mid = (low + high) / 2;
-    el.style.fontSize = mid + 'px';
-    if (el.scrollWidth <= el.clientWidth) {
-      best = mid; low = mid;
-    } else {
-      high = mid;
-    }
-    if (Math.abs(high - low) < 0.25) break;
+  if (!el || !el.isConnected) return;
+  if (!el.dataset.baseFontSize) {
+    const computed = parseFloat(getComputedStyle(el).fontSize) || 12;
+    el.dataset.baseFontSize = String(computed);
   }
-  el.style.fontSize = Math.max(min, Math.min(max, best)).toFixed(2) + 'px';
+  const base = parseFloat(el.dataset.baseFontSize) || 12;
+  const max = opts.max || base;
+  const min = opts.min || Math.max(base * 0.6, 8);
+  if (!el.clientWidth) {
+    el.style.fontSize = `${max}px`;
+    return;
+  }
+  el.style.fontSize = `${max}px`;
+  if (el.scrollWidth <= el.clientWidth + 1) {
+    return;
+  }
+  let low = min;
+  let high = max;
+  let best = min;
+  for (let i = 0; i < 6; i++) {
+    const mid = (low + high) / 2;
+    el.style.fontSize = `${mid}px`;
+    if (el.scrollWidth <= el.clientWidth + 1) {
+      best = mid;
+      high = mid - 0.1;
+    } else {
+      low = mid + 0.1;
+    }
+  }
+  el.style.fontSize = `${Math.max(min, best)}px`;
 }
 
 function fitMediaText(root) {
   try {
-    if (!root) return;
+    if (!root || !root.isConnected) return;
     const title = root.querySelector('.media-title');
     const artist = root.querySelector('.media-artist');
     const album = root.querySelector('.media-album');
     fitSingleLine(title);
     fitSingleLine(artist);
     fitSingleLine(album);
-  } catch (_e) { void _e; }
+  } catch { /* noop */ }
 }
 
 function setupMediaTextAutoFit(div) {
   try {
     if (!div) return;
-    // Initial
+    mediaFitElements.add(div);
     fitMediaText(div);
-    // Observe tile resize to refit
-    if (!resizeObservers.has(div) && typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => fitMediaText(div));
-      ro.observe(div);
-      resizeObservers.set(div, ro);
+    scheduleMediaFit();
+    if (!mediaFitResizeBound && typeof window !== 'undefined') {
+      window.addEventListener('resize', scheduleMediaFit);
+      mediaFitResizeBound = true;
     }
-  } catch (_e) { void _e; }
+  } catch { /* noop */ }
+}
+
+function scheduleMediaFit() {
+  if (mediaFitScheduled || typeof window === 'undefined') return;
+  mediaFitScheduled = true;
+  window.requestAnimationFrame(() => {
+    mediaFitScheduled = false;
+    mediaFitElements.forEach((el) => {
+      if (!el || !el.isConnected) {
+        mediaFitElements.delete(el);
+        return;
+      }
+      fitMediaText(el);
+    });
+  });
 }
 
 function callMediaPlayerService(entityId, action) {
@@ -1493,21 +1513,6 @@ function initUpdateUI() {
     }
 }
 
-function _getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.control-item:not(.dragging)')];
-    
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
-
 function handleDragStart(e) {
     // Don't allow drag to start if clicking on rename or remove buttons
     if (e.target.classList.contains('rename-btn') || 
@@ -1519,16 +1524,6 @@ function handleDragStart(e) {
     }
     
     draggedElement = e.currentTarget;
-    // Preserve intended span for placeholder
-    const span = parseInt(draggedElement.dataset.span || '1', 10);
-    currentDragSpan = Number.isFinite(span) && span > 0 ? span : 1;
-    ensurePlaceholder();
-    const container = document.getElementById('quick-controls');
-    if (container && placeholderEl) {
-        // Insert placeholder at current index
-        container.insertBefore(placeholderEl, draggedElement.nextSibling);
-        placeholderEl.style.gridColumn = `span ${currentDragSpan}`;
-    }
     e.currentTarget.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
@@ -1550,50 +1545,30 @@ function handleDragEnd(e) {
     });
     
     draggedElement = null;
-    // Cleanup placeholder
-    if (placeholderEl && placeholderEl.parentNode) {
-        placeholderEl.parentNode.removeChild(placeholderEl);
-    }
-    
-    // Clean up drag-over classes
-    const controlItems = document.querySelectorAll('#quick-controls .control-item');
-    controlItems.forEach(i => {
-        i.classList.remove('drag-over');
-    });
+    clearDragTarget();
 }
 
 function handleDragOver(e) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     const container = document.getElementById('quick-controls');
     if (!container || !draggedElement) return;
-    ensurePlaceholder();
-    updatePlaceholderPosition(container, e.clientX, e.clientY);
-}
-
-function handleDragEnter(e) {
-    e.preventDefault();
-    if (e.currentTarget !== draggedElement && e.currentTarget.classList.contains('control-item')) {
-        e.currentTarget.classList.add('drag-over');
-        dragOverElement = e.currentTarget;
+    const target = findDropTarget(container, e.clientX, e.clientY);
+    if (!target) {
+        clearDragTarget();
+        return;
     }
-}
-
-function handleDragLeave(e) {
-    if (e.currentTarget.classList.contains('control-item')) {
-        e.currentTarget.classList.remove('drag-over');
-    }
+    setDragTarget(target.element, target.insertAfter);
 }
 
 function handleDrop(e) {
     e.preventDefault();
     const container = document.getElementById('quick-controls');
-    if (container && draggedElement && placeholderEl && placeholderEl.parentNode === container) {
-        container.insertBefore(draggedElement, placeholderEl);
+    if (container && draggedElement && dragOverElement && draggedElement !== dragOverElement) {
+        const reference = dragInsertAfter ? dragOverElement.nextSibling : dragOverElement;
+        container.insertBefore(draggedElement, reference);
     }
-    // Cleanup
-    if (placeholderEl && placeholderEl.parentNode) placeholderEl.parentNode.removeChild(placeholderEl);
-    
+    clearDragTarget();
     dragOverElement = null;
 }
 
@@ -1609,6 +1584,7 @@ function addDragAndDropListeners() {
     if (container) {
       container.addEventListener('dragover', handleDragOver);
       container.addEventListener('drop', handleDrop);
+      container.addEventListener('dragleave', handleDragLeave);
     }
   } catch (error) {
     console.error('Error adding drag and drop listeners:', error);
@@ -1623,61 +1599,71 @@ function removeDragAndDropListeners() {
       item.draggable = false;
       item.removeEventListener('dragstart', handleDragStart);
       item.removeEventListener('dragend', handleDragEnd);
-      item.removeEventListener('dragover', handleDragOver);
-      item.removeEventListener('drop', handleDrop);
-      item.removeEventListener('dragenter', handleDragEnter);
-      item.removeEventListener('dragleave', handleDragLeave);
     });
     if (container) {
       container.removeEventListener('dragover', handleDragOver);
       container.removeEventListener('drop', handleDrop);
+      container.removeEventListener('dragleave', handleDragLeave);
     }
+    clearDragTarget();
+    draggedElement = null;
+    dragOverElement = null;
   } catch (error) {
     console.error('Error removing drag and drop listeners:', error);
   }
 }
 
-function ensurePlaceholder() {
-  if (!placeholderEl) {
-    placeholderEl = document.createElement('div');
-    placeholderEl.className = 'control-placeholder';
+function handleDragLeave(e) {
+  if (!draggedElement) return;
+  const container = document.getElementById('quick-controls');
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const hasCoords = typeof e.clientX === 'number' && typeof e.clientY === 'number';
+  const outside = hasCoords
+    ? (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
+    : true;
+  if (!container.contains(e.relatedTarget) && outside) {
+    clearDragTarget();
   }
 }
 
-function updatePlaceholderPosition(container, clientX, clientY) {
-  if (!placeholderEl) return;
-  const children = Array.from(container.children).filter(ch => ch !== placeholderEl && ch !== draggedElement);
-  if (children.length === 0) {
-    container.appendChild(placeholderEl);
-    placeholderEl.style.gridColumn = `span ${currentDragSpan}`;
-    return;
+function setDragTarget(target, insertAfter) {
+  if (dragOverElement === target && dragInsertAfter === insertAfter) return;
+  clearDragTarget();
+  dragOverElement = target;
+  dragInsertAfter = insertAfter;
+  if (dragOverElement) {
+    dragOverElement.classList.add(insertAfter ? 'drag-target-after' : 'drag-target-before');
   }
-  let closest = null;
+}
+
+function clearDragTarget() {
+  if (dragOverElement) {
+    dragOverElement.classList.remove('drag-target-before', 'drag-target-after');
+  }
+  dragOverElement = null;
+  dragInsertAfter = false;
+}
+
+function findDropTarget(container, clientX, clientY) {
+  const candidates = Array.from(container.querySelectorAll('.control-item')).filter(item => item !== draggedElement);
+  if (candidates.length === 0) return null;
+  let best = null;
   let bestDist = Infinity;
-  for (const ch of children) {
-    const r = ch.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
+  for (const item of candidates) {
+    const rect = item.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
     const dx = clientX - cx;
     const dy = clientY - cy;
-    const d2 = dx*dx + dy*dy;
-    if (d2 < bestDist) { bestDist = d2; closest = ch; }
-  }
-  if (closest) {
-    // Decide before/after based on horizontal position
-    const rect = closest.getBoundingClientRect();
-    const insertAfter = clientX > rect.left + rect.width / 2;
-    if (insertAfter) {
-      if (closest.nextSibling !== placeholderEl) {
-        container.insertBefore(placeholderEl, closest.nextSibling);
-      }
-    } else {
-      if (closest !== placeholderEl) {
-        container.insertBefore(placeholderEl, closest);
-      }
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      const insertAfter = clientX > cx;
+      best = { element: item, insertAfter };
     }
-    placeholderEl.style.gridColumn = `span ${currentDragSpan}`;
   }
+  return best;
 }
 
 
