@@ -54,6 +54,31 @@
             </div>
         </div>
 
+        <!-- Media Player Tile -->
+        <div class="media-tile" id="media-tile" style="display: none;">
+            <div class="media-tile-artwork" id="media-tile-artwork">
+                <div class="media-tile-artwork-placeholder">🎵</div>
+            </div>
+            <div class="media-tile-content">
+                <div class="media-tile-info">
+                    <div class="media-tile-title" id="media-tile-title">No media playing</div>
+                    <div class="media-tile-artist" id="media-tile-artist"></div>
+                </div>
+                <div class="media-tile-seek">
+                    <div class="media-tile-time" id="media-tile-time-current">0:00</div>
+                    <div class="media-tile-seek-bar">
+                        <div class="media-tile-seek-fill" id="media-tile-seek-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="media-tile-time" id="media-tile-time-total">0:00</div>
+                </div>
+                <div class="media-tile-controls">
+                    <button class="media-tile-btn" id="media-tile-prev" title="Previous">⏮</button>
+                    <button class="media-tile-btn media-tile-btn-play" id="media-tile-play" title="Play/Pause">▶</button>
+                    <button class="media-tile-btn" id="media-tile-next" title="Next">⏭</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Quick Access -->
         <div class="controls-section">
                     <div class="section-header">
@@ -129,6 +154,13 @@
                             <input type="checkbox" id="always-on-top">
                             Always on top
                         </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="primary-media-player">Primary Media Player:</label>
+                        <select id="primary-media-player">
+                            <option value="">None (Hide Media Tile)</option>
+                        </select>
+                        <div class="form-help">Select which media player to display in the main media tile</div>
                     </div>
                     <div class="form-group update-section">
                         <label>Application Updates</label>

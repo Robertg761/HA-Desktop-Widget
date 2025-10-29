@@ -62,6 +62,9 @@ async function openSettings(uiHooks) {
       uiHooks.setupEntitySearchInput('motion-popup-cameras', ['camera']);
       uiHooks.initUpdateUI();
     }
+    
+    // Populate media player dropdown after UI hooks (when states are loaded)
+    populateMediaPlayerDropdown();
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
@@ -113,6 +116,12 @@ async function saveSettings() {
     state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
     if (entityAlertsEnabled) state.CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
 
+    // Save primary media player selection
+    const primaryMediaPlayer = document.getElementById('primary-media-player');
+    if (primaryMediaPlayer) {
+      state.CONFIG.primaryMediaPlayer = primaryMediaPlayer.value || null;
+    }
+
     const domainFilters = document.getElementById('domain-filters');
     if (domainFilters) {
       const checkboxes = domainFilters.querySelectorAll('input[type="checkbox"]');
@@ -144,6 +153,13 @@ async function saveSettings() {
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyUiPreferences(state.CONFIG.ui || {});
+    
+    // Update media tile to reflect new selection
+    const ui = require('./ui.js');
+    if (ui.updateMediaTile) {
+      ui.updateMediaTile();
+    }
+    
     websocket.connect();
   } catch (error) {
     console.error('Failed to save config:', error);
@@ -433,6 +449,45 @@ async function removeAlert(entityId) {
     console.error('Error removing alert:', error);
     const { showToast } = require('./ui-utils.js');
     showToast('Error removing alert', 'error', 2000);
+  }
+}
+
+function populateMediaPlayerDropdown() {
+  try {
+    const dropdown = document.getElementById('primary-media-player');
+    if (!dropdown) {
+      console.warn('Media player dropdown not found');
+      return;
+    }
+    
+    // Clear existing options except the first "None" option
+    dropdown.innerHTML = '<option value="">None (Hide Media Tile)</option>';
+    
+    // Get all media player entities
+    const mediaPlayers = Object.values(state.STATES || {})
+      .filter(entity => entity.entity_id.startsWith('media_player.'))
+      .sort((a, b) => {
+        const utils = require('./utils.js');
+        const nameA = utils.getEntityDisplayName(a).toLowerCase();
+        const nameB = utils.getEntityDisplayName(b).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    
+    // Populate dropdown
+    mediaPlayers.forEach(entity => {
+      const option = document.createElement('option');
+      option.value = entity.entity_id;
+      const utils = require('./utils.js');
+      option.textContent = utils.getEntityDisplayName(entity);
+      dropdown.appendChild(option);
+    });
+    
+    // Set current selection
+    if (state.CONFIG.primaryMediaPlayer) {
+      dropdown.value = state.CONFIG.primaryMediaPlayer;
+    }
+  } catch (error) {
+    console.error('Error populating media player dropdown:', error);
   }
 }
 

@@ -197,6 +197,17 @@ async function init() {
     // Initialize timer updates (every second)
     setInterval(() => ui.updateTimerDisplays(), 1000);
     
+    // Initialize media tile seek bar updates (every second)
+    setInterval(() => {
+      const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+      if (primaryPlayer && state.STATES[primaryPlayer]) {
+        const entity = state.STATES[primaryPlayer];
+        if (entity.state === 'playing') {
+          ui.updateMediaSeekBar(entity);
+        }
+      }
+    }, 1000);
+    
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
@@ -375,6 +386,29 @@ function wireUI() {
     const cancelAlertBtn = document.getElementById('cancel-alert');
     if (cancelAlertBtn) {
       cancelAlertBtn.onclick = settings.closeAlertConfigModal;
+    }
+    
+    // Wire up media tile controls
+    const mediaTilePlay = document.getElementById('media-tile-play');
+    if (mediaTilePlay) {
+      mediaTilePlay.onclick = () => {
+        const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+        if (!primaryPlayer) return;
+        const entity = state.STATES[primaryPlayer];
+        if (!entity) return;
+        const isPlaying = entity.state === 'playing';
+        ui.callMediaTileService(isPlaying ? 'pause' : 'play');
+      };
+    }
+    
+    const mediaTilePrev = document.getElementById('media-tile-prev');
+    if (mediaTilePrev) {
+      mediaTilePrev.onclick = () => ui.callMediaTileService('previous');
+    }
+    
+    const mediaTileNext = document.getElementById('media-tile-next');
+    if (mediaTileNext) {
+      mediaTileNext.onclick = () => ui.callMediaTileService('next');
     }
     
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');

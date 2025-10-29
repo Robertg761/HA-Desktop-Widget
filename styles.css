@@ -146,6 +146,184 @@ body {
   margin-bottom: 16px;
 }
 
+/* Media Player Tile */
+.media-tile {
+  grid-column: 1 / -1; /* Span full width */
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  align-items: center;
+  backdrop-filter: blur(var(--bg-blur));
+  -webkit-backdrop-filter: blur(var(--bg-blur));
+  transition: all 0.2s ease;
+  min-height: 64px; /* roughly half of 120px */
+  overflow: hidden; /* keep contents clipped inside */
+}
+
+.media-tile:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+
+.media-tile-artwork {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.media-tile-artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-tile-artwork-placeholder {
+  font-size: 24px;
+  opacity: 0.3;
+}
+
+.media-tile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.media-tile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.media-tile-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.media-tile-artist {
+  font-size: 10px;
+  color: var(--muted-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.media-tile-seek {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.media-tile-time {
+  font-size: 9px;
+  color: var(--muted-text);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: center;
+}
+
+.media-tile-seek-bar {
+  flex: 1;
+  height: 3px;
+  background: var(--surface-3);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.media-tile-seek-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.5s linear;
+  border-radius: 2px;
+}
+
+.media-tile-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.media-tile-btn {
+  appearance: none;
+  background: var(--surface-3);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-color);
+  font-size: 12px;
+  padding: 0;
+  outline: none;
+}
+
+.media-tile-btn:focus {
+  outline: none;
+}
+
+.media-tile-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+
+.media-tile-btn:active {
+  transform: translateY(0);
+}
+
+.media-tile-btn-play {
+  width: 32px;
+  height: 28px;
+  font-size: 14px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.media-tile-btn-play:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* Keep accent color while playing */
+.media-tile-btn-play.playing {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+/* Hide media tile when no media player is configured */
+.media-tile[style*="display: none"] {
+  display: none !important;
+}
+
 .status-card {
   background: var(--surface-2);
   border: 1px solid var(--border-color);

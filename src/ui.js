@@ -269,6 +269,7 @@ function renderActiveTab() {
     renderQuickControls();
     renderCameras();
     updateWeatherFromHA();
+    updateMediaTile();
     if (Object.keys(state.STATES).length === 0) {
       showNoConnectionMessage();
     }
@@ -284,6 +285,11 @@ function updateEntityInUI(entity) {
     // Update weather card if this is a weather entity
     if (entity.entity_id.startsWith('weather.')) {
       updateWeatherFromHA();
+    }
+    
+    // Update media tile if this is the primary media player
+    if (entity.entity_id === state.CONFIG.primaryMediaPlayer) {
+      updateMediaTile();
     }
     
     const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
@@ -1038,6 +1044,153 @@ function updateWeatherFromHA() {
     }
   } catch (error) {
     console.error('Error updating weather:', error);
+  }
+}
+
+// --- Media Player Tile ---
+function updateMediaTile() {
+  try {
+    const tile = document.getElementById('media-tile');
+    if (!tile) return;
+    
+    // Check if a primary media player is configured
+    const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+    if (!primaryPlayer) {
+      tile.style.display = 'none';
+      return;
+    }
+    
+    // Get the media player entity
+    const entity = state.STATES[primaryPlayer];
+    if (!entity) {
+      tile.style.display = 'none';
+      return;
+    }
+    
+    // Show the tile
+    tile.style.display = 'grid';
+    
+    // Update artwork
+    const artworkContainer = document.getElementById('media-tile-artwork');
+    // Try multiple artwork sources (smart speakers might use different attributes)
+    let artworkUrl = entity.attributes?.entity_picture || 
+                     entity.attributes?.media_image_url ||
+                     entity.attributes?.media_content_id;
+    
+    // Some media players provide thumbnail or image_url
+    if (!artworkUrl && entity.attributes?.media_album_name) {
+      // If we have album info but no artwork, entity_picture might update later
+      artworkUrl = entity.attributes?.entity_picture;
+    }
+    
+    if (artworkUrl && artworkContainer) {
+      // Home Assistant always serves entity_picture through its own URL
+      // regardless of whether it's an external URL or local
+      const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
+      
+      // If it's already a full URL, use it directly
+      // Otherwise, construct the URL with the HA base
+      let fullUrl;
+      if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
+        // Already a full URL (shouldn't happen with entity_picture, but handle it)
+        fullUrl = artworkUrl;
+      } else {
+        // Relative path - Home Assistant serves this
+        const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
+        fullUrl = baseUrl + imgUrl;
+      }
+      
+      // Add cache buster for better updates (rounded to 30 seconds to allow caching)
+      const cacheBuster = Math.floor(Date.now() / 30000);
+      fullUrl += (fullUrl.includes('?') ? '&' : '?') + `t=${cacheBuster}`;
+      
+      artworkContainer.innerHTML = `<img src="${fullUrl}" alt="Album art" onerror="this.parentElement.innerHTML='<div class=\'media-tile-artwork-placeholder\'>🎵</div>';">`;
+    } else if (artworkContainer) {
+      artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+    }
+    
+    // Update media info
+    const titleEl = document.getElementById('media-tile-title');
+    const artistEl = document.getElementById('media-tile-artist');
+    const mediaTitle = entity.attributes?.media_title || 'No media playing';
+    const mediaArtist = entity.attributes?.media_artist || '';
+    
+    if (titleEl) titleEl.textContent = mediaTitle;
+    if (artistEl) artistEl.textContent = mediaArtist;
+    
+    // Update seek bar
+    updateMediaSeekBar(entity);
+    
+    // Update play/pause button
+    const playBtn = document.getElementById('media-tile-play');
+    if (playBtn) {
+      const isPlaying = entity.state === 'playing';
+      playBtn.textContent = isPlaying ? '⏸' : '▶';
+      playBtn.classList.toggle('playing', isPlaying);
+    }
+  } catch (error) {
+    console.error('Error updating media tile:', error);
+  }
+}
+
+function updateMediaSeekBar(entity) {
+  try {
+    if (!entity) return;
+    
+    const seekFill = document.getElementById('media-tile-seek-fill');
+    const timeCurrent = document.getElementById('media-tile-time-current');
+    const timeTotal = document.getElementById('media-tile-time-total');
+    
+    const duration = Number(entity.attributes?.media_duration) || 0;
+    const basePosition = Number(entity.attributes?.media_position) || 0;
+    const updatedAt = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+    
+    // Calculate current position (accounting for playback if playing)
+    let currentPosition = basePosition;
+    if (entity.state === 'playing' && updatedAt) {
+      const elapsedSinceUpdate = (Date.now() - updatedAt) / 1000;
+      currentPosition = Math.min(basePosition + elapsedSinceUpdate, duration);
+    }
+    
+    // Format time as mm:ss
+    const formatTime = (seconds) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+    
+    // Update UI
+    if (timeCurrent) timeCurrent.textContent = formatTime(currentPosition);
+    if (timeTotal) timeTotal.textContent = duration > 0 ? formatTime(duration) : '0:00';
+    
+    if (seekFill && duration > 0) {
+      const percentage = Math.max(0, Math.min(100, (currentPosition / duration) * 100));
+      seekFill.style.width = `${percentage}%`;
+    } else if (seekFill) {
+      seekFill.style.width = '0%';
+    }
+  } catch (error) {
+    console.error('Error updating seek bar:', error);
+  }
+}
+
+function callMediaTileService(action) {
+  try {
+    const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+    if (!primaryPlayer) return;
+    
+    const serviceCalls = {
+      'play': () => websocket.callService('media_player', 'media_play', { entity_id: primaryPlayer }),
+      'pause': () => websocket.callService('media_player', 'media_pause', { entity_id: primaryPlayer }),
+      'previous': () => websocket.callService('media_player', 'media_previous_track', { entity_id: primaryPlayer }),
+      'next': () => websocket.callService('media_player', 'media_next_track', { entity_id: primaryPlayer })
+    };
+    
+    if (serviceCalls[action]) {
+      serviceCalls[action]();
+    }
+  } catch (error) {
+    console.error('Error calling media tile service:', error);
   }
 }
 
@@ -1805,4 +1958,7 @@ module.exports = {
   toggleReorganizeMode,
   populateQuickControlsList,
   executeHotkeyAction,
+  updateMediaTile,
+  updateMediaSeekBar,
+  callMediaTileService,
 };
