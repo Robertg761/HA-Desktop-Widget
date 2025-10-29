@@ -1152,11 +1152,15 @@ function updateMediaSeekBar(entity) {
       currentPosition = Math.min(basePosition + elapsedSinceUpdate, duration);
     }
     
-    // Format time as mm:ss
+    // Format time as mm:ss or h:mm:ss when hours are present
     const formatTime = (seconds) => {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${mins}:${secs.toString().padStart(2, '0')}`;
+      const totalSeconds = Math.max(0, Math.floor(seconds));
+      const hours = Math.floor(totalSeconds / 3600);
+      const mins = Math.floor((totalSeconds % 3600) / 60);
+      const secs = totalSeconds % 60;
+      const minPart = hours > 0 ? mins.toString().padStart(2, '0') : mins.toString();
+      const secPart = secs.toString().padStart(2, '0');
+      return hours > 0 ? `${hours}:${minPart}:${secPart}` : `${minPart}:${secPart}`;
     };
     
     // Update UI
