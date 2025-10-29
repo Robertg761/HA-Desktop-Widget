@@ -404,7 +404,7 @@ function createControlElement(entity) {
       setupLightControls(div, entity);
       div.title = `Click to toggle, hold for brightness control`;
     } else if (entity.entity_id.startsWith('media_player.')) {
-      div.title = `Media player controls`;
+      div.title = `Click to play/pause, hold for controls`;
     } else {
       div.onclick = () => {
         if (!isReorganizeMode) toggleEntity(entity);
@@ -468,7 +468,7 @@ function createControlElement(entity) {
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
       setupMediaPlayerControls(div, entity);
-      setupMediaTextAutoFit(div);
+      // Auto-fit removed - using CSS ellipsis and marquee instead
     }
     
     return div;
@@ -531,9 +531,6 @@ function setupMediaPlayerControls(div, entity) {
     const mediaAlbum = entity.attributes?.media_album_name || '';
     const isPlaying = entity.state === 'playing';
     const isOff = entity.state === 'off' || entity.state === 'idle';
-    const playPauseAction = isPlaying ? 'pause' : 'play';
-    const playPauseLabel = isPlaying ? 'Pause playback' : 'Start playback';
-    const playPauseIcon = isPlaying ? '⏸' : '▶';
     
     // Create media info display
     let mediaInfo = '';
@@ -550,45 +547,41 @@ function setupMediaPlayerControls(div, entity) {
       mediaInfo = '<div class="media-info"><div class="media-title">Ready</div></div>';
     }
     
-    // Create control buttons
-    const controls = `
-      <div class="media-controls" role="group" aria-label="Media playback controls">
-        <button class="media-btn prev-btn" type="button" title="Previous track" aria-label="Previous track" data-action="previous_track">
-          <span class="media-btn-icon" aria-hidden="true">⏮</span>
-        </button>
-        <button class="media-btn play-pause-btn ${isPlaying ? 'is-active' : ''}" type="button" title="${playPauseLabel}" aria-label="${playPauseLabel}" data-action="${playPauseAction}">
-          <span class="media-btn-icon" aria-hidden="true">${playPauseIcon}</span>
-        </button>
-        <button class="media-btn next-btn" type="button" title="Next track" aria-label="Next track" data-action="next_track">
-          <span class="media-btn-icon" aria-hidden="true">⏭</span>
-        </button>
-      </div>
-    `;
-    
-    // Update the control info section
+    // Update the control info section (no inline controls; whole tile toggles)
     const controlInfo = div.querySelector('.control-info');
     if (controlInfo) {
       controlInfo.innerHTML = `
         <div class="control-name">${utils.getEntityDisplayName(entity)}</div>
         ${mediaInfo}
-        ${controls}
       `;
     }
-    
-    // Add click handlers for media controls
-    div.addEventListener('click', (e) => {
+
+    // Make entire tile a play/pause toggle with long-press for details
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
       if (isReorganizeMode) return;
-      
-      const button = e.target.closest('.media-btn');
-      if (button) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        const action = button.dataset.action;
-        callMediaPlayerService(entity.entity_id, action);
-      }
+      longPressTriggered = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        showMediaDetail(entity);
+      }, 500);
+    };
+
+    const cancelPress = () => { clearTimeout(pressTimer); };
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+      const nowPlaying = entity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
+      callMediaPlayerService(entity.entity_id, nowPlaying ? 'pause' : 'play');
     });
-    
+
     // Update data attributes for styling
     div.setAttribute('data-state', entity.state);
     div.setAttribute('data-media-playing', isPlaying ? 'true' : 'false');
@@ -604,9 +597,10 @@ function getTileSpan(entity) {
     const id = entity.entity_id;
     const spanCfg = state.CONFIG.tileSpans && state.CONFIG.tileSpans[id];
     if (Number.isInteger(spanCfg) && spanCfg > 0) return spanCfg;
-    return id.startsWith('media_player.') ? 2 : 1;
+    // Media players now use single span by default for more compact layout
+    return id.startsWith('media_player.') ? 1 : 1;
   } catch {
-    return entity.entity_id.startsWith('media_player.') ? 2 : 1;
+    return entity.entity_id.startsWith('media_player.') ? 1 : 1;
   }
 }
 
@@ -669,6 +663,135 @@ function setupMediaTextAutoFit(div) {
   } catch { /* noop */ }
 }
 
+function showMediaDetail(entity) {
+  try {
+    const name = utils.getEntityDisplayName(entity);
+    const mediaTitle = entity.attributes?.media_title || '';
+    const mediaArtist = entity.attributes?.media_artist || '';
+    const duration = Number(entity.attributes?.media_duration) || 0; // seconds
+    const basePos = Number(entity.attributes?.media_position) || 0; // seconds
+    const updatedAt = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+
+    const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
+
+    const modal = document.createElement('div');
+    modal.className = 'modal media-modal';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="media-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="media-detail-info">
+            <div class="media-detail-title">${mediaTitle || '—'}</div>
+            ${mediaArtist ? `<div class="media-detail-artist">${mediaArtist}</div>` : ''}
+          </div>
+          <div class="media-progress">
+            <div class="media-time-row">
+              <span id="media-current">${fmt(basePos)}</span>
+              <span id="media-total">${duration ? fmt(duration) : '--:--'}</span>
+            </div>
+            <div class="media-progress-track">
+              <div class="media-progress-fill" id="media-progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="media-detail-controls">
+            <button class="btn" data-action="previous_track" title="Previous">⏮</button>
+            <button class="btn play-pause-btn" data-action="play_pause" title="Play/Pause">${entity.state === 'playing' ? '⏸' : '▶'}</button>
+            <button class="btn" data-action="next_track" title="Next">⏭</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="media-close-footer">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeBtns = modal.querySelectorAll('#media-close, #media-close-footer');
+    const progressFill = modal.querySelector('#media-progress-fill');
+    const curEl = modal.querySelector('#media-current');
+    const totalEl = modal.querySelector('#media-total');
+
+    const getLivePos = () => {
+      if (entity.state !== 'playing') return basePos;
+      if (!updatedAt) return basePos;
+      const delta = (Date.now() - updatedAt) / 1000;
+      let p = basePos + delta;
+      if (duration) p = Math.min(p, duration);
+      return p;
+    };
+
+    let tick;
+    const startTick = () => {
+      if (tick) clearInterval(tick);
+      tick = setInterval(() => {
+        let p = getLivePos();
+        if (duration) p = Math.min(p, duration);
+        curEl.textContent = fmt(p);
+        if (progressFill && duration > 0) {
+          const pct = Math.max(0, Math.min(100, (p / duration) * 100));
+          progressFill.style.width = pct + '%';
+        }
+      }, 1000);
+    };
+
+    // Wire up controls
+    const updatePlayPauseBtn = () => {
+      const currentEntity = state.STATES[entity.entity_id];
+      const isCurrentlyPlaying = currentEntity?.state === 'playing';
+      const pp = modal.querySelector('.play-pause-btn');
+      if (pp) pp.textContent = isCurrentlyPlaying ? '⏸' : '▶';
+      return isCurrentlyPlaying;
+    };
+
+    modal.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'previous_track' || action === 'next_track') {
+        callMediaPlayerService(entity.entity_id, action);
+      } else if (action === 'play_pause') {
+        const nowPlaying = updatePlayPauseBtn();
+        callMediaPlayerService(entity.entity_id, nowPlaying ? 'pause' : 'play');
+        // Optimistically update UI
+        setTimeout(() => updatePlayPauseBtn(), 100);
+      }
+    });
+
+    // Update button when entity state changes
+    const updateInterval = setInterval(() => {
+      if (!modal.isConnected) {
+        clearInterval(updateInterval);
+        return;
+      }
+      updatePlayPauseBtn();
+    }, 500);
+
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      if (tick) clearInterval(tick);
+      setTimeout(() => modal.remove(), 150);
+    };
+    closeBtns.forEach((b) => b && (b.onclick = closeModal));
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+    // Init
+    if (totalEl && duration) totalEl.textContent = fmt(duration);
+    startTick();
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+  } catch (error) {
+    console.error('Error showing media details:', error);
+  }
+}
+
 function scheduleMediaFit() {
   if (mediaFitScheduled || typeof window === 'undefined') return;
   mediaFitScheduled = true;
@@ -708,6 +831,7 @@ function callMediaPlayerService(entityId, action) {
     console.error('Error calling media player service:', error);
   }
 }
+
 
 function toggleEntity(entity) {
     try {
