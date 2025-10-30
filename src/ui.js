@@ -421,6 +421,15 @@ function createControlElement(entity) {
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
       div.title = `Click to toggle, hold for brightness control`;
+    } else if (entity.entity_id.startsWith('climate.')) {
+      setupClimateControls(div, entity);
+      div.title = `Click to toggle, hold for temperature control`;
+    } else if (entity.entity_id.startsWith('fan.')) {
+      setupFanControls(div, entity);
+      div.title = `Click to toggle, hold for speed control`;
+    } else if (entity.entity_id.startsWith('cover.')) {
+      setupCoverControls(div, entity);
+      div.title = `Click to toggle, hold for position control`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = `Click to play/pause, hold for controls`;
     } else {
@@ -539,17 +548,119 @@ function setupLightControls(div, entity) {
   }
 }
 
+function setupClimateControls(div, entity) {
+  try {
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
+      if (isReorganizeMode) {
+        return;
+      }
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        showClimateControls(entity);
+      }, 500);
+    };
+
+    const cancelPress = () => clearTimeout(pressTimer);
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+  } catch (error) {
+    console.error('Error setting up climate controls:', error);
+  }
+}
+
+function setupFanControls(div, entity) {
+  try {
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
+      if (isReorganizeMode) {
+        return;
+      }
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        showFanControls(entity);
+      }, 500);
+    };
+
+    const cancelPress = () => clearTimeout(pressTimer);
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+  } catch (error) {
+    console.error('Error setting up fan controls:', error);
+  }
+}
+
+function setupCoverControls(div, entity) {
+  try {
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
+      if (isReorganizeMode) {
+        return;
+      }
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        showCoverControls(entity);
+      }, 500);
+    };
+
+    const cancelPress = () => clearTimeout(pressTimer);
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+  } catch (error) {
+    console.error('Error setting up cover controls:', error);
+  }
+}
+
 function setupMediaPlayerControls(div, entity) {
   try {
     if (!div || !entity) return;
-    
+
     // Get media info
     const mediaTitle = entity.attributes?.media_title || '';
     const mediaArtist = entity.attributes?.media_artist || '';
     const mediaAlbum = entity.attributes?.media_album_name || '';
     const isPlaying = entity.state === 'playing';
     const isOff = entity.state === 'off' || entity.state === 'idle';
-    
+
     // Create media info display
     let mediaInfo = '';
     if (mediaTitle) {
@@ -564,7 +675,7 @@ function setupMediaPlayerControls(div, entity) {
     } else {
       mediaInfo = '<div class="media-info"><div class="media-title">Ready</div></div>';
     }
-    
+
     // Update the control info section (no inline controls; whole tile toggles)
     const controlInfo = div.querySelector('.control-info');
     if (controlInfo) {
@@ -574,33 +685,41 @@ function setupMediaPlayerControls(div, entity) {
       `;
     }
 
-    // Make entire tile a play/pause toggle with long-press for details
-    let pressTimer = null;
-    let longPressTriggered = false;
+    // Only set up event listeners once
+    if (!div.dataset.mediaControlsSetup) {
+      div.dataset.mediaControlsSetup = 'true';
 
-    const startPress = (_e) => {
-      if (isReorganizeMode) return;
-      longPressTriggered = false;
-      clearTimeout(pressTimer);
-      pressTimer = setTimeout(() => {
-        longPressTriggered = true;
-        showMediaDetail(entity);
-      }, 500);
-    };
+      // Make entire tile a play/pause toggle with long-press for details
+      let pressTimer = null;
+      let longPressTriggered = false;
 
-    const cancelPress = () => { clearTimeout(pressTimer); };
+      const startPress = (_e) => {
+        if (isReorganizeMode) return;
+        longPressTriggered = false;
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          const currentEntity = state.STATES[entity.entity_id];
+          if (currentEntity) showMediaDetail(currentEntity);
+        }, 500);
+      };
 
-    div.addEventListener('mousedown', startPress);
-    div.addEventListener('mouseup', cancelPress);
-    div.addEventListener('mouseleave', cancelPress);
+      const cancelPress = () => { clearTimeout(pressTimer); };
 
-    div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
-      const nowPlaying = entity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
-      callMediaPlayerService(entity.entity_id, nowPlaying ? 'pause' : 'play');
-    });
+      div.addEventListener('mousedown', startPress);
+      div.addEventListener('mouseup', cancelPress);
+      div.addEventListener('mouseleave', cancelPress);
 
-    // Update data attributes for styling
+      div.addEventListener('click', (e) => {
+        if (isReorganizeMode || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+        const currentEntity = state.STATES[entity.entity_id];
+        if (!currentEntity) return;
+        const nowPlaying = currentEntity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
+        callMediaPlayerService(currentEntity.entity_id, nowPlaying ? 'pause' : 'play');
+      });
+    }
+
+    // Update data attributes for styling (always update these)
     div.setAttribute('data-state', entity.state);
     div.setAttribute('data-media-playing', isPlaying ? 'true' : 'false');
 
@@ -615,10 +734,10 @@ function getTileSpan(entity) {
     const id = entity.entity_id;
     const spanCfg = state.CONFIG.tileSpans && state.CONFIG.tileSpans[id];
     if (Number.isInteger(spanCfg) && spanCfg > 0) return spanCfg;
-    // Media players now use single span by default for more compact layout
-    return id.startsWith('media_player.') ? 1 : 1;
+    // Media players use 2-column span for better information display with centered layout
+    return id.startsWith('media_player.') ? 2 : 1;
   } catch {
-    return entity.entity_id.startsWith('media_player.') ? 1 : 1;
+    return entity.entity_id.startsWith('media_player.') ? 2 : 1;
   }
 }
 
@@ -891,6 +1010,8 @@ function toggleEntity(entity) {
             case 'scene':
             case 'script':
                 service = 'turn_on';
+                // Add activation animation for scenes and scripts
+                triggerActivationFeedback(entity.entity_id);
                 break;
             default:
                 // No toggle action for this domain
@@ -899,6 +1020,20 @@ function toggleEntity(entity) {
         websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data);
     } catch (error) {
         console.error('Error toggling entity:', error);
+    }
+}
+
+function triggerActivationFeedback(entityId) {
+    try {
+        const tile = document.querySelector(`[data-entity-id="${entityId}"]`);
+        if (tile) {
+            tile.classList.add('activating');
+            setTimeout(() => {
+                tile.classList.remove('activating');
+            }, 600);
+        }
+    } catch (error) {
+        console.error('Error triggering activation feedback:', error);
     }
 }
 
@@ -1553,6 +1688,410 @@ function showBrightnessSlider(light) {
     modal.onclick = (e) => { if (e.target === modal) closeModal(); };
   } catch (error) {
     console.error('Error showing brightness slider:', error);
+  }
+}
+
+function showClimateControls(climateEntity) {
+  try {
+    const name = utils.getEntityDisplayName(climateEntity);
+    const currentTemp = climateEntity.attributes.current_temperature || 0;
+    const targetTemp = climateEntity.attributes.temperature || 20;
+    const currentMode = climateEntity.state || 'off';
+    const minTemp = climateEntity.attributes.min_temp || 10;
+    const maxTemp = climateEntity.attributes.max_temp || 30;
+    const tempUnit = climateEntity.attributes.unit_of_measurement || '°C';
+    const availableModes = climateEntity.attributes.hvac_modes || ['off', 'heat', 'cool', 'auto'];
+
+    const modal = document.createElement('div');
+    modal.className = 'modal climate-modal';
+    modal.innerHTML = `
+      <div class="modal-content climate-modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="climate-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="climate-content">
+            <div class="climate-temp-display">
+              <div class="climate-current-temp">
+                <div class="climate-temp-label">Current</div>
+                <div class="climate-temp-value">${currentTemp}${tempUnit}</div>
+              </div>
+              <div class="climate-target-temp">
+                <div class="climate-temp-label">Target</div>
+                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp}${tempUnit}</div>
+              </div>
+            </div>
+
+            <div class="climate-slider-wrapper">
+              <input
+                type="range"
+                min="${minTemp}"
+                max="${maxTemp}"
+                step="0.5"
+                value="${targetTemp}"
+                id="climate-slider"
+                class="climate-slider"
+                aria-label="Target Temperature"
+              />
+              <div class="climate-slider-labels">
+                <span>${minTemp}${tempUnit}</span>
+                <span>${maxTemp}${tempUnit}</span>
+              </div>
+            </div>
+
+            <div class="climate-modes">
+              <div class="climate-modes-label">Mode</div>
+              <div class="climate-mode-buttons" id="climate-mode-buttons">
+                ${availableModes.map(mode => `
+                  <button
+                    class="climate-mode-btn ${mode === currentMode ? 'active' : ''}"
+                    data-mode="${mode}"
+                    title="${mode.charAt(0).toUpperCase() + mode.slice(1)}"
+                  >
+                    <span class="climate-mode-icon">${getModeIcon(mode)}</span>
+                    <span class="climate-mode-label">${mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="climate-cancel">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const slider = modal.querySelector('#climate-slider');
+    const targetValue = modal.querySelector('#climate-target-value');
+    const closeBtn = modal.querySelector('#climate-close');
+    const cancelBtn = modal.querySelector('#climate-cancel');
+    const modeButtons = modal.querySelectorAll('.climate-mode-btn');
+
+    // Helper function to get mode icons
+    function getModeIcon(mode) {
+      const icons = {
+        'off': '⏻',
+        'heat': '🔥',
+        'cool': '❄️',
+        'auto': '🔄',
+        'heat_cool': '🔄',
+        'fan_only': '💨',
+        'dry': '💧'
+      };
+      return icons[mode] || '⚙️';
+    }
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+
+    // Temperature slider behavior with debounce
+    if (slider) {
+      let debounceTimer;
+      slider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        if (targetValue) targetValue.textContent = `${value}${tempUnit}`;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          websocket.callService('climate', 'set_temperature', {
+            entity_id: climateEntity.entity_id,
+            temperature: value
+          });
+        }, 300);
+      });
+    }
+
+    // Mode button handlers
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+
+        // Update UI immediately
+        modeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Call service
+        websocket.callService('climate', 'set_hvac_mode', {
+          entity_id: climateEntity.entity_id,
+          hvac_mode: mode
+        });
+      });
+    });
+
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  } catch (error) {
+    console.error('Error showing climate controls:', error);
+  }
+}
+
+function showFanControls(fanEntity) {
+  try {
+    const name = utils.getEntityDisplayName(fanEntity);
+    const currentSpeed = fanEntity.attributes.percentage || 0;
+    const isOn = fanEntity.state === 'on';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal fan-modal';
+    modal.innerHTML = `
+      <div class="modal-content fan-modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="fan-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="fan-content">
+            <div class="fan-icon-wrapper">
+              <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
+            </div>
+            <div class="fan-speed-value" id="fan-speed-value">${currentSpeed}%</div>
+            <div class="fan-speed-label">Fan Speed</div>
+
+            <div class="fan-slider-wrapper">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="${currentSpeed}"
+                id="fan-slider"
+                class="fan-slider"
+                aria-label="Fan Speed"
+              />
+            </div>
+
+            <div class="fan-presets">
+              <button class="fan-preset-btn" data-speed="0">Off</button>
+              <button class="fan-preset-btn" data-speed="33">Low</button>
+              <button class="fan-preset-btn" data-speed="66">Medium</button>
+              <button class="fan-preset-btn" data-speed="100">High</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="fan-cancel">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const slider = modal.querySelector('#fan-slider');
+    const speedValue = modal.querySelector('#fan-speed-value');
+    const fanIcon = modal.querySelector('#fan-icon');
+    const closeBtn = modal.querySelector('#fan-close');
+    const cancelBtn = modal.querySelector('#fan-cancel');
+    const presetButtons = modal.querySelectorAll('.fan-preset-btn');
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+
+    // Update icon based on speed
+    const updateIcon = (speed) => {
+      if (!fanIcon) return;
+      if (speed > 0) {
+        fanIcon.classList.add('spinning');
+      } else {
+        fanIcon.classList.remove('spinning');
+      }
+    };
+
+    // Slider behavior with debounce
+    if (slider) {
+      let debounceTimer;
+      slider.addEventListener('input', (e) => {
+        const speed = parseInt(e.target.value, 10);
+        if (speedValue) speedValue.textContent = `${speed}%`;
+        updateIcon(speed);
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (speed > 0) {
+            websocket.callService('fan', 'set_percentage', {
+              entity_id: fanEntity.entity_id,
+              percentage: speed
+            });
+          } else {
+            websocket.callService('fan', 'turn_off', {
+              entity_id: fanEntity.entity_id
+            });
+          }
+        }, 200);
+      });
+    }
+
+    // Preset buttons
+    presetButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const speed = parseInt(btn.getAttribute('data-speed'), 10);
+        if (slider) {
+          slider.value = String(speed);
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    });
+
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  } catch (error) {
+    console.error('Error showing fan controls:', error);
+  }
+}
+
+function showCoverControls(coverEntity) {
+  try {
+    const name = utils.getEntityDisplayName(coverEntity);
+    const currentPosition = coverEntity.attributes.current_position || 0;
+    const state = coverEntity.state;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal cover-modal';
+    modal.innerHTML = `
+      <div class="modal-content cover-modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="cover-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="cover-content">
+            <div class="cover-visual">
+              <div class="cover-icon-container">
+                <div class="cover-icon" id="cover-icon">🪟</div>
+                <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
+              </div>
+            </div>
+            <div class="cover-position-value" id="cover-position-value">${currentPosition}%</div>
+            <div class="cover-position-label">Position</div>
+
+            <div class="cover-slider-wrapper">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="${currentPosition}"
+                id="cover-slider"
+                class="cover-slider"
+                aria-label="Cover Position"
+              />
+              <div class="cover-slider-labels">
+                <span>Closed</span>
+                <span>Open</span>
+              </div>
+            </div>
+
+            <div class="cover-actions">
+              <button class="cover-action-btn" data-action="close_cover">
+                <span class="cover-action-icon">⬇</span>
+                <span class="cover-action-label">Close</span>
+              </button>
+              <button class="cover-action-btn" data-action="stop_cover">
+                <span class="cover-action-icon">⏸</span>
+                <span class="cover-action-label">Stop</span>
+              </button>
+              <button class="cover-action-btn" data-action="open_cover">
+                <span class="cover-action-icon">⬆</span>
+                <span class="cover-action-label">Open</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cover-cancel">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const slider = modal.querySelector('#cover-slider');
+    const positionValue = modal.querySelector('#cover-position-value');
+    const coverOverlay = modal.querySelector('#cover-overlay');
+    const closeBtn = modal.querySelector('#cover-close');
+    const cancelBtn = modal.querySelector('#cover-cancel');
+    const actionButtons = modal.querySelectorAll('.cover-action-btn');
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+
+    // Update visual overlay based on position
+    const updateVisual = (position) => {
+      if (coverOverlay) {
+        coverOverlay.style.height = `${100 - position}%`;
+      }
+    };
+
+    // Slider behavior with debounce
+    if (slider) {
+      let debounceTimer;
+      slider.addEventListener('input', (e) => {
+        const position = parseInt(e.target.value, 10);
+        if (positionValue) positionValue.textContent = `${position}%`;
+        updateVisual(position);
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          websocket.callService('cover', 'set_cover_position', {
+            entity_id: coverEntity.entity_id,
+            position: position
+          });
+        }, 300);
+      });
+    }
+
+    // Action buttons
+    actionButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.getAttribute('data-action');
+        websocket.callService('cover', action, {
+          entity_id: coverEntity.entity_id
+        });
+
+        // Visual feedback
+        if (action === 'open_cover' && slider) {
+          slider.value = '100';
+          if (positionValue) positionValue.textContent = '100%';
+          updateVisual(100);
+        } else if (action === 'close_cover' && slider) {
+          slider.value = '0';
+          if (positionValue) positionValue.textContent = '0%';
+          updateVisual(0);
+        }
+      });
+    });
+
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  } catch (error) {
+    console.error('Error showing cover controls:', error);
   }
 }
 
