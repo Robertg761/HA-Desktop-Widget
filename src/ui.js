@@ -3,11 +3,16 @@ const utils = require('./utils.js');
 const websocket = require('./websocket.js');
 const camera = require('./camera.js');
 const uiUtils = require('./ui-utils.js');
+const { setIconContent } = require('./icons.js');
 
 let isReorganizeMode = false;
 let draggedElement = null;
-let dragOverElement = null;
-let dragInsertAfter = false;
+let draggedIndex = -1;
+let targetIndex = -1;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let isDragging = false;
+let gridLayout = null; // Store grid dimensions and tile positions
 
 const mediaFitElements = new Set();
 let mediaFitScheduled = false;
@@ -18,21 +23,29 @@ function toggleReorganizeMode() {
     isReorganizeMode = !isReorganizeMode;
     const container = document.getElementById('quick-controls');
     const btn = document.getElementById('reorganize-quick-controls-btn');
-    
+
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
-      if (btn) btn.textContent = '✓';
-      if (btn) btn.title = 'Save & Exit Reorganize Mode';
+      if (btn) {
+        setIconContent(btn, 'check', { size: 18 });
+        btn.classList.add('reorganize-active');
+        btn.title = 'Save & Exit Reorganize Mode (ESC)';
+      }
       addDragAndDropListeners();
       addRemoveButtons();
-      uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove', 'info', 3000);
+      addEscapeKeyListener();
+      uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit', 'info', 3000);
     } else {
       container.classList.remove('reorganize-mode');
-      if (btn) btn.textContent = '⋮⋮';
-      if (btn) btn.title = 'Reorganize Quick Access';
+      if (btn) {
+        setIconContent(btn, 'dragHandle', { size: 18 });
+        btn.classList.remove('reorganize-active');
+        btn.title = 'Reorganize Quick Access';
+      }
       saveQuickAccessOrder();
       removeRemoveButtons();
       removeDragAndDropListeners();
+      removeEscapeKeyListener();
       uiUtils.showToast('Quick Access order saved', 'success', 2000);
     }
   } catch (error) {
@@ -66,7 +79,7 @@ function addButtonsToElement(item) {
     if (!item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
-      renameBtn.innerHTML = '✏️';
+      setIconContent(renameBtn, 'edit', { size: 14 });
       renameBtn.title = 'Rename Entity';
       renameBtn.setAttribute('draggable', 'false');
       renameBtn.addEventListener('mousedown', (e) => {
@@ -84,12 +97,12 @@ function addButtonsToElement(item) {
       }, true);
       item.appendChild(renameBtn);
     }
-    
+
     // Add remove button
     if (!item.querySelector('.remove-btn')) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'remove-btn';
-      removeBtn.innerHTML = '×';
+      setIconContent(removeBtn, 'close', { size: 16 });
       removeBtn.title = 'Remove from Quick Access';
       removeBtn.setAttribute('draggable', 'false');
       removeBtn.addEventListener('mousedown', (e) => {
@@ -114,9 +127,8 @@ function addButtonsToElement(item) {
 
 function addDragListenersToElement(item) {
   try {
-    item.draggable = true;
-    item.addEventListener('dragstart', handleDragStart);
-    item.addEventListener('dragend', handleDragEnd);
+    item.addEventListener('mousedown', handleMouseDown);
+    item.addEventListener('touchstart', handleTouchStart, { passive: false });
   } catch (error) {
     console.error('Error adding drag listeners to element:', error);
   }
@@ -1104,7 +1116,7 @@ function updateMediaTile() {
       const cacheBuster = Math.floor(Date.now() / 30000);
       fullUrl += (fullUrl.includes('?') ? '&' : '?') + `t=${cacheBuster}`;
       
-      artworkContainer.innerHTML = `<img src="${fullUrl}" alt="Album art" onerror="this.parentElement.innerHTML='<div class=\'media-tile-artwork-placeholder\'>🎵</div>';">`;
+      artworkContainer.innerHTML = `<img src="${fullUrl}" alt="Album art" onerror="this.parentElement.innerHTML='<div class=&quot;media-tile-artwork-placeholder&quot;>🎵</div>';">`;
     } else if (artworkContainer) {
       artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
     }
@@ -1125,7 +1137,9 @@ function updateMediaTile() {
     const playBtn = document.getElementById('media-tile-play');
     if (playBtn) {
       const isPlaying = entity.state === 'playing';
-      playBtn.textContent = isPlaying ? '⏸' : '▶';
+      // Update icon using the icon system
+      const { setIconContent } = require('./icons.js');
+      setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
       playBtn.classList.toggle('playing', isPlaying);
     }
   } catch (error) {
@@ -1794,63 +1808,304 @@ function initUpdateUI() {
     }
 }
 
-function handleDragStart(e) {
-    // Don't allow drag to start if clicking on rename or remove buttons
-    if (e.target.classList.contains('rename-btn') || 
-        e.target.classList.contains('remove-btn') ||
-        e.target.closest('.rename-btn') || 
-        e.target.closest('.remove-btn')) {
-        e.preventDefault();
-        return false;
-    }
-    
-    draggedElement = e.currentTarget;
-    e.currentTarget.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
-}
-
-function handleDragEnd(e) {
-    const item = e.currentTarget;
-    item.classList.remove('dragging');
-    
-    // Force animation restart by temporarily removing and re-adding it
-    // This prevents the jarring jump when animation restarts from 0%
-    item.style.animation = 'none';
-    
-    // Use requestAnimationFrame to ensure the style change takes effect
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            item.style.animation = '';
-        });
-    });
-    
-    draggedElement = null;
-    clearDragTarget();
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+// Calculate grid layout info (columns, rows, tile dimensions)
+function calculateGridLayout() {
     const container = document.getElementById('quick-controls');
-    if (!container || !draggedElement) return;
-    const target = findDropTarget(container, e.clientX, e.clientY);
-    if (!target) {
-        clearDragTarget();
+    if (!container) return null;
+
+    const items = Array.from(container.querySelectorAll('.control-item'));
+    if (items.length === 0) return null;
+
+    // Get actual tile dimensions from first visible tile
+    const firstRect = items[0].getBoundingClientRect();
+    const tileWidth = firstRect.width;
+    const tileHeight = firstRect.height;
+
+    // Calculate actual columns by checking when tiles wrap to next row
+    let columns = 1;
+    const firstTop = firstRect.top;
+    const tolerance = 5; // Allow small vertical variations
+
+    for (let i = 1; i < items.length; i++) {
+        const rect = items[i].getBoundingClientRect();
+        // If this tile is on the same row as the first tile (within tolerance)
+        if (Math.abs(rect.top - firstTop) < tolerance) {
+            columns++;
+        } else {
+            // Found first tile on second row, stop counting
+            break;
+        }
+    }
+
+    // Calculate gap by measuring distance between first two tiles on same row
+    let gap = 6; // Default fallback
+    if (items.length > 1 && columns > 1) {
+        const secondRect = items[1].getBoundingClientRect();
+        if (Math.abs(secondRect.top - firstTop) < tolerance) {
+            gap = secondRect.left - firstRect.right;
+        }
+    }
+
+    return {
+        columns,
+        tileWidth,
+        tileHeight,
+        gap,
+        containerRect: container.getBoundingClientRect()
+    };
+}
+
+// Apply CSS transforms to tiles to visually shift them (no DOM manipulation)
+function applyTileTransforms(originalIndex, targetIndex) {
+    const container = document.getElementById('quick-controls');
+    if (!container || !gridLayout) return;
+
+    const items = Array.from(container.querySelectorAll('.control-item'));
+
+    // Determine which tiles need to shift
+    const movingForward = targetIndex > originalIndex;
+    const start = movingForward ? originalIndex + 1 : targetIndex;
+    const end = movingForward ? targetIndex : originalIndex - 1;
+
+    items.forEach((item, index) => {
+        if (item === draggedElement) {
+            // Dragged element has no transform (follows cursor via position: fixed)
+            return;
+        }
+
+        // Check if this tile needs to shift
+        if (index >= start && index <= end) {
+            // Calculate shift direction and amount
+            const shiftDirection = movingForward ? -1 : 1; // Forward = shift left/up, Backward = shift right/down
+
+            // Calculate grid positions
+            const currentCol = index % gridLayout.columns;
+            const currentRow = Math.floor(index / gridLayout.columns);
+            const newIndex = index + shiftDirection;
+            const newCol = newIndex % gridLayout.columns;
+            const newRow = Math.floor(newIndex / gridLayout.columns);
+
+            // Calculate translation
+            const deltaCol = newCol - currentCol;
+            const deltaRow = newRow - currentRow;
+            const translateX = deltaCol * (gridLayout.tileWidth + gridLayout.gap);
+            const translateY = deltaRow * (gridLayout.tileHeight + gridLayout.gap);
+
+            item.style.transform = `translate(${translateX}px, ${translateY}px)`;
+            // Transition is now handled by CSS (see .reorganize-mode .control-item)
+        } else {
+            // Tile doesn't need to shift - reset transform
+            item.style.transform = '';
+            // Transition is now handled by CSS (see .reorganize-mode .control-item)
+        }
+    });
+}
+
+// Remove all transforms from tiles
+function clearTileTransforms() {
+    const container = document.getElementById('quick-controls');
+    if (!container) return;
+
+    const items = container.querySelectorAll('.control-item');
+    items.forEach(item => {
+        item.style.transform = '';
+        // Transition is handled by CSS, no need to clear
+    });
+}
+
+// Custom drag system for smooth tile reorganization
+function handleMouseDown(e) {
+    // Don't allow drag to start if clicking on rename or remove buttons
+    if (e.target.classList.contains('rename-btn') ||
+        e.target.classList.contains('remove-btn') ||
+        e.target.closest('.rename-btn') ||
+        e.target.closest('.remove-btn')) {
         return;
     }
-    setDragTarget(target.element, target.insertAfter);
+
+    startDrag(e.currentTarget, e.clientX, e.clientY);
 }
 
-function handleDrop(e) {
-    e.preventDefault();
-    const container = document.getElementById('quick-controls');
-    if (container && draggedElement && dragOverElement && draggedElement !== dragOverElement) {
-        const reference = dragInsertAfter ? dragOverElement.nextSibling : dragOverElement;
-        container.insertBefore(draggedElement, reference);
+function handleTouchStart(e) {
+    // Don't allow drag to start if clicking on rename or remove buttons
+    if (e.target.classList.contains('rename-btn') ||
+        e.target.classList.contains('remove-btn') ||
+        e.target.closest('.rename-btn') ||
+        e.target.closest('.remove-btn')) {
+        return;
     }
-    clearDragTarget();
-    dragOverElement = null;
+
+    const touch = e.touches[0];
+    startDrag(e.currentTarget, touch.clientX, touch.clientY);
+    e.preventDefault();
+}
+
+function startDrag(element, clientX, clientY) {
+    draggedElement = element;
+    isDragging = true;
+
+    const container = document.getElementById('quick-controls');
+    if (!container) return;
+
+    // Store original index of dragged element
+    const items = Array.from(container.querySelectorAll('.control-item'));
+    draggedIndex = items.indexOf(element);
+    targetIndex = draggedIndex;
+
+    // Calculate grid layout for transform calculations
+    gridLayout = calculateGridLayout();
+    if (!gridLayout) return;
+
+    const rect = element.getBoundingClientRect();
+    dragOffsetX = clientX - rect.left;
+    dragOffsetY = clientY - rect.top;
+
+    // Lift the dragged element (position: fixed to follow cursor)
+    element.classList.add('dragging');
+    element.style.position = 'fixed';
+    element.style.zIndex = '1000';
+    element.style.pointerEvents = 'none';
+    element.style.width = rect.width + 'px';
+    element.style.height = rect.height + 'px';
+    element.style.left = (clientX - dragOffsetX) + 'px';
+    element.style.top = (clientY - dragOffsetY) + 'px';
+
+    // Add event listeners
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+}
+
+function handleMouseMove(e) {
+    if (!isDragging || !draggedElement) return;
+    moveDraggedElement(e.clientX, e.clientY);
+}
+
+function handleTouchMove(e) {
+    if (!isDragging || !draggedElement) return;
+    const touch = e.touches[0];
+    moveDraggedElement(touch.clientX, touch.clientY);
+    e.preventDefault();
+}
+
+function moveDraggedElement(clientX, clientY) {
+    if (!gridLayout) return;
+
+    // Move the dragged element with cursor
+    draggedElement.style.left = (clientX - dragOffsetX) + 'px';
+    draggedElement.style.top = (clientY - dragOffsetY) + 'px';
+
+    // Find which grid position the cursor is over
+    const container = document.getElementById('quick-controls');
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+
+    // Check if cursor is outside container bounds
+    const relativeX = clientX - containerRect.left;
+    const relativeY = clientY - containerRect.top;
+    if (relativeX < 0 || relativeX > containerRect.width ||
+        relativeY < 0 || relativeY > containerRect.height) {
+        return; // Don't update target when cursor is outside container
+    }
+
+    const items = Array.from(container.querySelectorAll('.control-item'));
+
+    // Find the tile closest to cursor position by checking actual positions
+    let newTargetIndex = draggedIndex; // Default to current position
+    let minDistance = Infinity;
+
+    items.forEach((item, index) => {
+        if (item === draggedElement) return; // Skip the dragged element
+
+        const rect = item.getBoundingClientRect();
+        const itemCenterX = rect.left + rect.width / 2;
+        const itemCenterY = rect.top + rect.height / 2;
+
+        // Calculate distance from cursor to tile center
+        const dx = clientX - itemCenterX;
+        const dy = clientY - itemCenterY;
+        const distance = dx * dx + dy * dy;
+
+        if (distance < minDistance) {
+            minDistance = distance;
+            newTargetIndex = index;
+        }
+    });
+
+    // Only update transforms if target changed
+    if (newTargetIndex !== targetIndex) {
+        targetIndex = newTargetIndex;
+        applyTileTransforms(draggedIndex, targetIndex);
+    }
+}
+
+function handleMouseUp() {
+    endDrag();
+}
+
+function handleTouchEnd() {
+    endDrag();
+}
+
+function endDrag() {
+    if (!draggedElement) return;
+
+    const container = document.getElementById('quick-controls');
+    if (!container) return;
+
+    // Remove all transforms before DOM manipulation
+    clearTileTransforms();
+
+    // Reorder DOM to match visual state (only if position changed)
+    if (draggedIndex !== targetIndex) {
+        const items = Array.from(container.querySelectorAll('.control-item'));
+        const targetElement = items[targetIndex];
+
+        if (targetElement && targetElement !== draggedElement) {
+            // Insert dragged element at target position
+            if (targetIndex > draggedIndex) {
+                // Moving forward - insert after target
+                container.insertBefore(draggedElement, targetElement.nextSibling);
+            } else {
+                // Moving backward - insert before target
+                container.insertBefore(draggedElement, targetElement);
+            }
+        }
+    }
+
+    // Reset dragged element styles
+    draggedElement.classList.remove('dragging');
+    draggedElement.style.position = '';
+    draggedElement.style.zIndex = '';
+    draggedElement.style.pointerEvents = '';
+    draggedElement.style.width = '';
+    draggedElement.style.height = '';
+    draggedElement.style.left = '';
+    draggedElement.style.top = '';
+
+    // Force animation restart - capture element in local variable to avoid closure issue
+    const elementToAnimate = draggedElement;
+    elementToAnimate.style.animation = 'none';
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            elementToAnimate.style.animation = '';
+        });
+    });
+
+    // Remove event listeners
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    document.removeEventListener('touchmove', handleTouchMove);
+    document.removeEventListener('touchend', handleTouchEnd);
+
+    // Reset state
+    draggedElement = null;
+    draggedIndex = -1;
+    targetIndex = -1;
+    gridLayout = null;
+    isDragging = false;
 }
 
 function setupDragAndDrop() {
@@ -1859,14 +2114,8 @@ function setupDragAndDrop() {
 
 function addDragAndDropListeners() {
   try {
-    const container = document.getElementById('quick-controls');
     const items = document.querySelectorAll('#quick-controls .control-item');
     items.forEach(item => addDragListenersToElement(item));
-    if (container) {
-      container.addEventListener('dragover', handleDragOver);
-      container.addEventListener('drop', handleDrop);
-      container.addEventListener('dragleave', handleDragLeave);
-    }
   } catch (error) {
     console.error('Error adding drag and drop listeners:', error);
   }
@@ -1874,77 +2123,49 @@ function addDragAndDropListeners() {
 
 function removeDragAndDropListeners() {
   try {
-    const container = document.getElementById('quick-controls');
     const items = document.querySelectorAll('#quick-controls .control-item');
     items.forEach(item => {
-      item.draggable = false;
-      item.removeEventListener('dragstart', handleDragStart);
-      item.removeEventListener('dragend', handleDragEnd);
+      item.removeEventListener('mousedown', handleMouseDown);
+      item.removeEventListener('touchstart', handleTouchStart);
     });
-    if (container) {
-      container.removeEventListener('dragover', handleDragOver);
-      container.removeEventListener('drop', handleDrop);
-      container.removeEventListener('dragleave', handleDragLeave);
+
+    // Clean up any active drag
+    if (isDragging) {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     }
-    clearDragTarget();
+
+    // Clear all transforms
+    clearTileTransforms();
+
+    // Reset state
     draggedElement = null;
-    dragOverElement = null;
+    draggedIndex = -1;
+    targetIndex = -1;
+    gridLayout = null;
+    isDragging = false;
   } catch (error) {
     console.error('Error removing drag and drop listeners:', error);
   }
 }
 
-function handleDragLeave(e) {
-  if (!draggedElement) return;
-  const container = document.getElementById('quick-controls');
-  if (!container) return;
-  const rect = container.getBoundingClientRect();
-  const hasCoords = typeof e.clientX === 'number' && typeof e.clientY === 'number';
-  const outside = hasCoords
-    ? (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
-    : true;
-  if (!container.contains(e.relatedTarget) && outside) {
-    clearDragTarget();
+// ESC key handler for reorganize mode
+function handleEscapeKey(e) {
+  if (e.key === 'Escape' && isReorganizeMode) {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleReorganizeMode();
   }
 }
 
-function setDragTarget(target, insertAfter) {
-  if (dragOverElement === target && dragInsertAfter === insertAfter) return;
-  clearDragTarget();
-  dragOverElement = target;
-  dragInsertAfter = insertAfter;
-  if (dragOverElement) {
-    dragOverElement.classList.add(insertAfter ? 'drag-target-after' : 'drag-target-before');
-  }
+function addEscapeKeyListener() {
+  document.addEventListener('keydown', handleEscapeKey);
 }
 
-function clearDragTarget() {
-  if (dragOverElement) {
-    dragOverElement.classList.remove('drag-target-before', 'drag-target-after');
-  }
-  dragOverElement = null;
-  dragInsertAfter = false;
-}
-
-function findDropTarget(container, clientX, clientY) {
-  const candidates = Array.from(container.querySelectorAll('.control-item')).filter(item => item !== draggedElement);
-  if (candidates.length === 0) return null;
-  let best = null;
-  let bestDist = Infinity;
-  for (const item of candidates) {
-    const rect = item.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = clientX - cx;
-    const dy = clientY - cy;
-    const dist = dx * dx + dy * dy;
-    if (dist < bestDist) {
-      bestDist = dist;
-      const insertAfter = clientX > cx;
-      best = { element: item, insertAfter };
-    }
-  }
-  return best;
+function removeEscapeKeyListener() {
+  document.removeEventListener('keydown', handleEscapeKey);
 }
 
 
