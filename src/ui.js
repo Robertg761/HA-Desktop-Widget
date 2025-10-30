@@ -715,9 +715,9 @@ function showMediaDetail(entity) {
             </div>
           </div>
           <div class="media-detail-controls">
-            <button class="btn" data-action="previous_track" title="Previous">⏮</button>
-            <button class="btn play-pause-btn" data-action="play_pause" title="Play/Pause">${entity.state === 'playing' ? '⏸' : '▶'}</button>
-            <button class="btn" data-action="next_track" title="Next">⏭</button>
+            <button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous"></button>
+            <button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="Play/Pause"></button>
+            <button class="btn media-detail-next-btn" data-action="next_track" title="Next"></button>
           </div>
         </div>
         <div class="modal-footer">
@@ -727,6 +727,20 @@ function showMediaDetail(entity) {
     `;
 
     document.body.appendChild(modal);
+
+    // Set SVG icons for media controls
+    const { setIconContent } = require('./icons.js');
+    const prevBtn = modal.querySelector('.media-detail-prev-btn');
+    const playBtn = modal.querySelector('.media-detail-play-btn');
+    const nextBtn = modal.querySelector('.media-detail-next-btn');
+
+    if (prevBtn) setIconContent(prevBtn, 'skipPrevious', { size: 20 });
+    if (nextBtn) setIconContent(nextBtn, 'skipNext', { size: 20 });
+    if (playBtn) {
+      const isPlaying = entity.state === 'playing';
+      setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 24 });
+      if (isPlaying) playBtn.classList.add('playing');
+    }
 
     const closeBtns = modal.querySelectorAll('#media-close, #media-close-footer');
     const progressFill = modal.querySelector('#media-progress-fill');
@@ -761,7 +775,11 @@ function showMediaDetail(entity) {
       const currentEntity = state.STATES[entity.entity_id];
       const isCurrentlyPlaying = currentEntity?.state === 'playing';
       const pp = modal.querySelector('.play-pause-btn');
-      if (pp) pp.textContent = isCurrentlyPlaying ? '⏸' : '▶';
+      if (pp) {
+        const { setIconContent } = require('./icons.js');
+        setIconContent(pp, isCurrentlyPlaying ? 'pause' : 'play', { size: 24 });
+        pp.classList.toggle('playing', isCurrentlyPlaying);
+      }
       return isCurrentlyPlaying;
     };
 

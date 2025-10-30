@@ -3119,38 +3119,36 @@ body {
 
 .media-btn {
   appearance: none;
-  background: var(--surface-2);
-  border: 1px solid transparent;
-  border-radius: 10px;
+  background: transparent;
+  border: none;
   padding: 0;
   width: 28px;
   height: 28px;
+  min-width: 28px;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  transition: var(--transition-base);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted-text);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  color: var(--text-secondary);
+  font-size: 22px;
+  outline: none;
 }
 
 .media-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-1);
-  color: var(--text-color);
+  color: var(--accent);
+  transform: scale(1.2);
+  filter: drop-shadow(0 2px 8px rgba(100, 181, 246, 0.4));
 }
 
 .media-btn:active {
-  transform: translateY(0);
-  box-shadow: none;
-  background: var(--surface-3);
+  transform: scale(1.0);
 }
 
 .media-btn:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .media-btn-icon {
@@ -3160,26 +3158,47 @@ body {
 
 .play-pause-btn {
   width: 32px;
-  height: 28px;
-  border-radius: 12px;
-  font-weight: 600;
+  height: 32px;
+  min-width: 32px;
+  color: var(--accent);
+}
+
+.play-pause-btn svg {
+  width: 30px;
+  height: 30px;
 }
 
 .play-pause-btn:hover {
-  transform: translateY(-1px);
+  color: var(--accent-hover);
+  transform: scale(1.25);
+  filter: drop-shadow(0 4px 12px rgba(100, 181, 246, 0.6));
+}
+
+.play-pause-btn:active {
+  transform: scale(1.1);
+}
+
+/* Add subtle glow when playing */
+.play-pause-btn.playing {
+  color: var(--accent);
+  animation: iconGlow 2s ease-in-out infinite;
+}
+
+.play-pause-btn.playing svg {
+  width: 30px;
+  height: 30px;
 }
 
 .play-pause-btn.is-active,
 .media-player-entity[data-media-playing="true"] .play-pause-btn {
-  background: var(--accent);
-  color: #ffffff;
-  border-color: transparent;
-  box-shadow: 0 6px 16px rgba(100, 181, 246, 0.35);
+  color: var(--accent);
+  animation: iconGlow 2s ease-in-out infinite;
 }
 
 .media-player-entity[data-media-playing="true"] .play-pause-btn:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 8px 20px rgba(144, 202, 249, 0.4);
+  color: var(--accent-hover);
+  transform: scale(1.25);
+  filter: drop-shadow(0 4px 12px rgba(100, 181, 246, 0.6));
 }
 
 /* Media Player State Indicators */
@@ -3364,66 +3383,100 @@ body {
 
 .media-detail-controls .btn {
   appearance: none;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
+  background: transparent !important;
+  border: none !important;
   width: 48px;
   height: 48px;
+  min-width: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--text-color);
-  font-size: 18px;
+  transition: var(--transition-base);
+  color: var(--text-secondary);
+  font-size: 22px;
   line-height: 1;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 0;
+  padding: 0 !important;
   text-transform: none;
   letter-spacing: 0;
   outline: none;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 0 !important;
 }
 
 .media-detail-controls .btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  color: var(--accent);
+  transform: scale(1.2);
+  filter: drop-shadow(0 2px 8px rgba(100, 181, 246, 0.4));
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .media-detail-controls .btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transform: scale(1.0);
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
-.media-detail-controls .btn:focus {
-  outline: none;
+.media-detail-controls .btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .media-detail-controls .play-pause-btn {
   width: 56px;
   height: 56px;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #ffffff;
-  font-size: 20px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  min-width: 56px;
+  color: var(--accent);
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.media-detail-controls .play-pause-btn svg {
+  width: 40px;
+  height: 40px;
 }
 
 .media-detail-controls .play-pause-btn:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-  transform: translateY(-2px) scale(1.05);
+  color: var(--accent-hover);
+  transform: scale(1.25);
+  filter: drop-shadow(0 4px 12px rgba(100, 181, 246, 0.6));
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .media-detail-controls .play-pause-btn:active {
-  transform: translateY(0) scale(1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transform: scale(1.1);
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
-.media-detail-controls .play-pause-btn:focus {
-  outline: none;
+/* Add subtle glow when playing */
+.media-detail-controls .play-pause-btn.playing {
+  color: var(--accent);
+  animation: iconGlow 2s ease-in-out infinite;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.media-detail-controls .play-pause-btn.playing svg {
+  width: 40px;
+  height: 40px;
 }
 
 .camera-stream {
