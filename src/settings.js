@@ -223,20 +223,20 @@ function populateAlertsList() {
       const alertConfig = alerts[entityId];
       let alertType = alertConfig.onStateChange ? 'State Change' : 'Specific State';
       if (alertConfig.onSpecificState) {
-        alertType += ` (${alertConfig.targetState})`;
+        alertType += ` (${utils.escapeHtml(alertConfig.targetState)})`;
       }
-      
+
       alertItem.innerHTML = `
         <div class="alert-item-info">
-          <span class="alert-icon">${utils.getEntityIcon(entity)}</span>
+          <span class="alert-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
           <div class="alert-details">
-            <span class="alert-name">${utils.getEntityDisplayName(entity)}</span>
+            <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
             <span class="alert-type">${alertType}</span>
           </div>
         </div>
         <div class="alert-actions">
-          <button class="btn btn-small btn-secondary edit-alert" data-entity="${entityId}">Edit</button>
-          <button class="btn btn-small btn-danger remove-alert" data-entity="${entityId}">Remove</button>
+          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtml(entityId)}">Edit</button>
+          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtml(entityId)}">Remove</button>
         </div>
       `;
       

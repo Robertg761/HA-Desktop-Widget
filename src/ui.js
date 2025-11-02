@@ -1,3 +1,4 @@
+const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const utils = require('./utils.js');
 const websocket = require('./websocket.js');
@@ -140,7 +141,7 @@ function showRenameModal(entityId) {
     if (!entity) return;
     
     const currentName = state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
-    
+
     const modal = document.createElement('div');
     modal.className = 'modal rename-modal';
     modal.innerHTML = `
@@ -152,7 +153,7 @@ function showRenameModal(entityId) {
         <div class="modal-body">
           <div class="form-group">
             <label for="rename-input">Display Name:</label>
-            <input type="text" id="rename-input" class="form-control" value="${currentName}" placeholder="Enter custom name">
+            <input type="text" id="rename-input" class="form-control" value="${utils.escapeHtml(currentName)}" placeholder="Enter custom name">
           </div>
         </div>
         <div class="modal-footer">
@@ -181,7 +182,6 @@ function showRenameModal(entityId) {
           }
           state.CONFIG.customEntityNames[entityId] = newName;
           
-          const { ipcRenderer } = require('electron');
           await ipcRenderer.invoke('update-config', state.CONFIG);
           
           renderActiveTab();
@@ -203,7 +203,6 @@ function showRenameModal(entityId) {
         if (state.CONFIG.customEntityNames && state.CONFIG.customEntityNames[entityId]) {
           delete state.CONFIG.customEntityNames[entityId];
           
-          const { ipcRenderer } = require('electron');
           await ipcRenderer.invoke('update-config', state.CONFIG);
           
           renderActiveTab();
@@ -239,7 +238,6 @@ function removeFromQuickAccess(entityId) {
     state.CONFIG.favoriteEntities = newFavorites;
     
     // Save to config
-    const { ipcRenderer } = require('electron');
     ipcRenderer.invoke('update-config', state.CONFIG);
     
     // Re-render
@@ -268,7 +266,6 @@ function saveQuickAccessOrder() {
     state.CONFIG.favoriteEntities = newOrder;
     
     // Save to config
-    const { ipcRenderer } = require('electron');
     ipcRenderer.invoke('update-config', state.CONFIG);
   } catch (error) {
     console.error('Error saving quick access order:', error);
@@ -439,15 +436,15 @@ function createControlElement(entity) {
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
     
-    const icon = utils.getEntityIcon(entity);
-    const name = utils.getEntityDisplayName(entity);
-    const state = utils.getEntityDisplayState(entity);
-    
+    const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+    const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
+
     let stateDisplay = '';
     if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
       stateDisplay = `<div class="control-state">${state}</div>`;
     } else if (isTimer) {
-      const timerDisplay = utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state;
+      const timerDisplay = utils.escapeHtml(utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state);
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
     } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
       const brightness = Math.round((entity.attributes.brightness / 255) * 100);
@@ -456,7 +453,7 @@ function createControlElement(entity) {
       stateDisplay = `<div class="control-state">Off</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
-      if (temp) stateDisplay = `<div class="control-state">${temp}°</div>`;
+      if (temp) stateDisplay = `<div class="control-state">${utils.escapeHtml(String(temp))}°</div>`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
@@ -655,9 +652,9 @@ function setupMediaPlayerControls(div, entity) {
     if (!div || !entity) return;
 
     // Get media info
-    const mediaTitle = entity.attributes?.media_title || '';
-    const mediaArtist = entity.attributes?.media_artist || '';
-    const mediaAlbum = entity.attributes?.media_album_name || '';
+    const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
+    const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
+    const mediaAlbum = utils.escapeHtml(entity.attributes?.media_album_name || '');
     const isPlaying = entity.state === 'playing';
     const isOff = entity.state === 'off' || entity.state === 'idle';
 
@@ -680,7 +677,7 @@ function setupMediaPlayerControls(div, entity) {
     const controlInfo = div.querySelector('.control-info');
     if (controlInfo) {
       controlInfo.innerHTML = `
-        <div class="control-name">${utils.getEntityDisplayName(entity)}</div>
+        <div class="control-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
         ${mediaInfo}
       `;
     }
@@ -802,9 +799,9 @@ function setupMediaTextAutoFit(div) {
 
 function showMediaDetail(entity) {
   try {
-    const name = utils.getEntityDisplayName(entity);
-    const mediaTitle = entity.attributes?.media_title || '';
-    const mediaArtist = entity.attributes?.media_artist || '';
+    const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
+    const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
     const duration = Number(entity.attributes?.media_duration) || 0; // seconds
     const basePos = Number(entity.attributes?.media_position) || 0; // seconds
     const updatedAt = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
@@ -1137,8 +1134,8 @@ function createCameraCard(cameraEntity) {
   try {
     const div = document.createElement('div');
     div.className = 'camera-card';
-    const name = utils.getEntityDisplayName(cameraEntity);
-    
+    const name = utils.escapeHtml(utils.getEntityDisplayName(cameraEntity));
+
     div.innerHTML = `
       <div class="camera-header">
         <div class="camera-name">${name}</div>
@@ -1268,8 +1265,16 @@ function updateMediaTile() {
       // Add cache buster for better updates (rounded to 30 seconds to allow caching)
       const cacheBuster = Math.floor(Date.now() / 30000);
       fullUrl += (fullUrl.includes('?') ? '&' : '?') + `t=${cacheBuster}`;
-      
-      artworkContainer.innerHTML = `<img src="${fullUrl}" alt="Album art" onerror="this.parentElement.innerHTML='<div class=&quot;media-tile-artwork-placeholder&quot;>🎵</div>';">`;
+
+      // Create img element safely without inline event handler
+      const img = document.createElement('img');
+      img.src = fullUrl;
+      img.alt = 'Album art';
+      img.onerror = function() {
+        this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+      };
+      artworkContainer.innerHTML = '';
+      artworkContainer.appendChild(img);
     } else if (artworkContainer) {
       artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
     }
@@ -1389,7 +1394,7 @@ function showNoConnectionMessage() {
         container.innerHTML = `
           <div class="status-message">
             <h3>🔄 Connecting to Home Assistant</h3>
-            <p>Attempting to connect to: ${state.CONFIG.homeAssistant.url}</p>
+            <p>Attempting to connect to: ${utils.escapeHtml(state.CONFIG.homeAssistant.url)}</p>
             <p><strong>Status:</strong> Connecting...</p>
             <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">
               If this persists, check your Home Assistant URL and token in settings.
@@ -1521,7 +1526,7 @@ function updateTimerDisplays() {
 
 function showBrightnessSlider(light) {
   try {
-    const name = utils.getEntityDisplayName(light);
+    const name = utils.escapeHtml(utils.getEntityDisplayName(light));
     const currentBrightness = light.state === 'on' && light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 0;
 
     const modal = document.createElement('div');
@@ -1693,13 +1698,13 @@ function showBrightnessSlider(light) {
 
 function showClimateControls(climateEntity) {
   try {
-    const name = utils.getEntityDisplayName(climateEntity);
+    const name = utils.escapeHtml(utils.getEntityDisplayName(climateEntity));
     const currentTemp = climateEntity.attributes.current_temperature || 0;
     const targetTemp = climateEntity.attributes.temperature || 20;
     const currentMode = climateEntity.state || 'off';
     const minTemp = climateEntity.attributes.min_temp || 10;
     const maxTemp = climateEntity.attributes.max_temp || 30;
-    const tempUnit = climateEntity.attributes.unit_of_measurement || '°C';
+    const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
     const availableModes = climateEntity.attributes.hvac_modes || ['off', 'heat', 'cool', 'auto'];
 
     const modal = document.createElement('div');
@@ -1839,7 +1844,7 @@ function showClimateControls(climateEntity) {
 
 function showFanControls(fanEntity) {
   try {
-    const name = utils.getEntityDisplayName(fanEntity);
+    const name = utils.escapeHtml(utils.getEntityDisplayName(fanEntity));
     const currentSpeed = fanEntity.attributes.percentage || 0;
     const isOn = fanEntity.state === 'on';
 
@@ -1960,7 +1965,7 @@ function showFanControls(fanEntity) {
 
 function showCoverControls(coverEntity) {
   try {
-    const name = utils.getEntityDisplayName(coverEntity);
+    const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPosition = coverEntity.attributes.current_position || 0;
     const state = coverEntity.state;
 
@@ -2102,8 +2107,8 @@ function populateDomainFilters() {
         const allDomains = [...new Set(Object.values(state.STATES).map(e => e.entity_id.split('.')[0]))].sort();
         container.innerHTML = allDomains.map(domain => `
             <label>
-                <input type="checkbox" value="${domain}" ${state.FILTERS.domains.includes(domain) ? 'checked' : ''}>
-                ${domain}
+                <input type="checkbox" value="${utils.escapeHtml(domain)}" ${state.FILTERS.domains.includes(domain) ? 'checked' : ''}>
+                ${utils.escapeHtml(domain)}
             </label>
         `).join('');
     } catch (error) {
@@ -2116,8 +2121,8 @@ function populateAreaFilter() {
         const select = document.getElementById('filter-areas');
         if (!select) return;
         select.innerHTML = Object.values(state.AREAS).map(area => `
-            <option value="${area.area_id}" ${state.FILTERS.areas.includes(area.area_id) ? 'selected' : ''}>
-                ${area.name}
+            <option value="${utils.escapeHtml(area.area_id)}" ${state.FILTERS.areas.includes(area.area_id) ? 'selected' : ''}>
+                ${utils.escapeHtml(area.name)}
             </option>
         `).join('');
     } catch (error) {
@@ -2186,16 +2191,16 @@ function populateQuickControlsList() {
                 item.className = 'entity-item';
                 
                 const isFavorite = favorites.includes(entity.entity_id);
-                
+
                 item.innerHTML = `
                     <div class="entity-item-main">
-                        <span class="entity-icon">${utils.getEntityIcon(entity)}</span>
+                        <span class="entity-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
                         <div class="entity-item-info">
-                            <span class="entity-name">${utils.getEntityDisplayName(entity)}</span>
-                            <span class="entity-id" title="${entity.entity_id}">${entity.entity_id}</span>
+                            <span class="entity-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
+                            <span class="entity-id" title="${utils.escapeHtml(entity.entity_id)}">${utils.escapeHtml(entity.entity_id)}</span>
                         </div>
                     </div>
-                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${entity.entity_id}">
+                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${utils.escapeHtml(entity.entity_id)}">
                         ${isFavorite ? 'Remove' : 'Add'}
                     </button>
                 `;
@@ -2222,9 +2227,8 @@ function populateQuickControlsList() {
 
 function toggleQuickAccess(entityId) {
     try {
-        const { ipcRenderer } = require('electron');
         const favorites = state.CONFIG.favoriteEntities || [];
-        
+
         if (favorites.includes(entityId)) {
             // Remove from favorites
             state.CONFIG.favoriteEntities = favorites.filter(id => id !== entityId);
@@ -2232,7 +2236,7 @@ function toggleQuickAccess(entityId) {
             // Add to favorites
             state.CONFIG.favoriteEntities = [...favorites, entityId];
         }
-        
+
         // Save and update UI
         ipcRenderer.invoke('update-config', state.CONFIG);
         renderQuickControls();
@@ -2244,7 +2248,6 @@ function toggleQuickAccess(entityId) {
 
 function initUpdateUI() {
     try {
-        const { ipcRenderer } = require('electron');
         const { version } = require('../package.json');
         
         // Set current version

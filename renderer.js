@@ -8,6 +8,7 @@ const alerts = require('./src/alerts.js');
 const ui = require('./src/ui.js');
 const settings = require('./src/settings.js');
 const uiUtils = require('./src/ui-utils.js');
+const { setIconContent } = require('./src/icons.js');
 
 // --- Renderer Log Configuration ---
 // This will catch any uncaught errors in your renderer process (the UI)
@@ -148,6 +149,56 @@ ipcRenderer.on('hotkey-triggered', (event, { entityId, action }) => {
     ui.executeHotkeyAction(entity, finalAction);
   }
 });
+
+/**
+ * Replace all emoji icons with SVG icons
+ * This runs once on initialization to modernize the UI
+ */
+function replaceEmojiIcons() {
+  try {
+    log.info('Replacing emoji icons with SVG icons');
+
+    // Header Controls
+    const settingsBtn = document.getElementById('settings-btn');
+    if (settingsBtn) setIconContent(settingsBtn, 'settings', { size: 18 });
+
+    const minimizeBtn = document.getElementById('minimize-btn');
+    if (minimizeBtn) setIconContent(minimizeBtn, 'minimize', { size: 18 });
+
+    const closeBtn = document.getElementById('close-btn');
+    if (closeBtn) setIconContent(closeBtn, 'close', { size: 18 });
+
+    // Quick Access Controls
+    const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
+    if (reorganizeBtn) setIconContent(reorganizeBtn, 'dragHandle', { size: 18 });
+
+    const manageBtn = document.getElementById('manage-quick-controls-btn');
+    if (manageBtn) setIconContent(manageBtn, 'add', { size: 18 });
+
+    // Media Player Controls
+    const mediaPrevBtn = document.getElementById('media-tile-prev');
+    if (mediaPrevBtn) setIconContent(mediaPrevBtn, 'skipPrevious', { size: 20 });
+
+    const mediaPlayBtn = document.getElementById('media-tile-play');
+    if (mediaPlayBtn) setIconContent(mediaPlayBtn, 'play', { size: 30 });
+
+    const mediaNextBtn = document.getElementById('media-tile-next');
+    if (mediaNextBtn) setIconContent(mediaNextBtn, 'skipNext', { size: 20 });
+
+    // Modal Close Buttons (with × emoji)
+    const closeButtons = document.querySelectorAll('.close-btn');
+    closeButtons.forEach(btn => {
+      if (btn.textContent.includes('×')) {
+        setIconContent(btn, 'close', { size: 20 });
+      }
+    });
+
+    log.info('Successfully replaced emoji icons with SVG icons');
+  } catch (error) {
+    log.error('Error replacing emoji icons:', error);
+  }
+}
+
 async function init() {
   try {
     log.info('Initializing application');
@@ -171,14 +222,33 @@ async function init() {
         },
       });
       wireUI();
+      replaceEmojiIcons();
       uiUtils.showLoading(false);
       ui.renderActiveTab();
       return;
     }
-    
+
     state.setConfig(config);
     wireUI();
-    
+    replaceEmojiIcons();
+
+    // Check if token was reset due to encryption issues
+    if (state.CONFIG.tokenResetReason) {
+      const reason = state.CONFIG.tokenResetReason;
+      delete state.CONFIG.tokenResetReason; // Clear flag
+      await ipcRenderer.invoke('update-config', state.CONFIG); // Save cleared flag
+
+      let message = 'Your Home Assistant token needs to be re-entered in Settings. ';
+      if (reason === 'encryption_unavailable') {
+        message += 'Token encryption is not available on this system.';
+      } else if (reason === 'decryption_failed') {
+        message += 'The stored token could not be decrypted (may be corrupted).';
+      }
+
+      log.warn('[Init] Token reset:', message);
+      uiUtils.showToast(message, 'warning', 10000);
+    }
+
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       log.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
       uiUtils.showLoading(false);

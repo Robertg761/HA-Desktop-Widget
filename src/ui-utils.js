@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
 
