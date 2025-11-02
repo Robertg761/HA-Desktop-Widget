@@ -83,12 +83,17 @@ websocket.on('message', (msg) => {
         if (Array.isArray(msg.result)) {
           log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
           msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
-          state.setStates(newStates);
-          
+
+          // Merge new states with existing ones to prevent favorited entities from disappearing
+          // during Home Assistant restart or temporary unavailability
+          const mergedStates = { ...state.STATES, ...newStates };
+          log.debug(`Merged states: ${Object.keys(state.STATES).length} existing + ${Object.keys(newStates).length} new = ${Object.keys(mergedStates).length} total`);
+          state.setStates(mergedStates);
+
           // This is the correct place to render and hide loading
           ui.renderActiveTab();
           uiUtils.showLoading(false);
-          
+
           alerts.initializeEntityAlerts();
         }
       } else if (msg.id === getServicesId) { // get_services response

@@ -338,24 +338,28 @@ function renderQuickControls() {
       console.error('[UI] Quick controls container not found');
       return;
     }
-    
+
     container.innerHTML = '';
-    
+
     // Get favorite entities for quick access
     const favorites = state.CONFIG.favoriteEntities || [];
-    const entities = Object.values(state.STATES).filter(e => favorites.includes(e.entity_id));
-    
-    // Sort entities by the order they appear in CONFIG.favoriteEntities (user's custom order)
-    entities
-      .sort((a, b) => {
-        const indexA = favorites.indexOf(a.entity_id);
-        const indexB = favorites.indexOf(b.entity_id);
-        return indexA - indexB;
-      })
+
+    // Iterate through ALL favorited entity IDs (not just those in STATES)
+    // This ensures unavailable entities are still shown with an error state
+    favorites
       .slice(0, 12)
-      .forEach(entity => {
-        const control = createControlElement(entity);
-        container.appendChild(control);
+      .forEach(entityId => {
+        const entity = state.STATES[entityId];
+
+        if (entity) {
+          // Entity exists in STATES - render normally
+          const control = createControlElement(entity);
+          container.appendChild(control);
+        } else {
+          // Entity does not exist in STATES - render unavailable state
+          const control = createUnavailableElement(entityId);
+          container.appendChild(control);
+        }
       });
 
     if (isReorganizeMode) {
@@ -507,6 +511,40 @@ function createControlElement(entity) {
     return div;
   } catch (error) {
     console.error('Error creating control element:', error);
+    return document.createElement('div');
+  }
+}
+
+/**
+ * Create an unavailable entity element for favorited entities that no longer exist
+ * @param {string} entityId - The entity ID that is unavailable
+ * @returns {HTMLElement} - The unavailable entity element
+ */
+function createUnavailableElement(entityId) {
+  try {
+    const div = document.createElement('div');
+    div.className = 'control-item unavailable-entity';
+    div.dataset.entityId = entityId;
+    div.dataset.span = '1';
+    div.style.gridColumn = 'span 1';
+
+    // Get custom name if available, otherwise use entity ID
+    const customName = state.CONFIG.customEntityNames?.[entityId];
+    const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
+
+    div.innerHTML = `
+      <div class="control-icon unavailable-icon">⚠️</div>
+      <div class="control-info">
+        <div class="control-name">${utils.escapeHtml(displayName)}</div>
+        <div class="control-state unavailable-state">Unavailable</div>
+      </div>
+    `;
+
+    div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
+
+    return div;
+  } catch (error) {
+    console.error('Error creating unavailable element:', error);
     return document.createElement('div');
   }
 }

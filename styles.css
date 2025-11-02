@@ -829,6 +829,37 @@ body {
   border-color: rgba(255, 152, 0, 0.3);
 }
 
+/* Unavailable entity styling */
+.control-item.unavailable-entity {
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.08), rgba(97, 97, 97, 0.04));
+  border-color: rgba(158, 158, 158, 0.25);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.control-item.unavailable-entity:hover {
+  transform: none;
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.12), rgba(97, 97, 97, 0.06));
+  border-color: rgba(158, 158, 158, 0.35);
+  box-shadow: var(--shadow-sm);
+}
+
+.control-item.unavailable-entity .unavailable-icon {
+  opacity: 0.6;
+  filter: grayscale(0.3);
+}
+
+.control-item.unavailable-entity .control-name {
+  opacity: 0.8;
+  color: var(--text-secondary);
+}
+
+.control-item.unavailable-entity .unavailable-state {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-style: italic;
+}
+
 .control-icon {
   font-size: 18px;
   margin-bottom: 2px;
