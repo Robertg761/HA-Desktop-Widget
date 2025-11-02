@@ -37,6 +37,11 @@ function toggleReorganizeMode() {
       addEscapeKeyListener();
       uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit', 'info', 3000);
     } else {
+      // If user is actively dragging, clean up first
+      if (isDragging) {
+        cleanupDragState();
+      }
+
       container.classList.remove('reorganize-mode');
       if (btn) {
         setIconContent(btn, 'dragHandle', { size: 18 });
@@ -128,6 +133,10 @@ function addButtonsToElement(item) {
 
 function addDragListenersToElement(item) {
   try {
+    // Remove listeners first to prevent duplicates
+    item.removeEventListener('mousedown', handleMouseDown);
+    item.removeEventListener('touchstart', handleTouchStart);
+    // Now add listeners
     item.addEventListener('mousedown', handleMouseDown);
     item.addEventListener('touchstart', handleTouchStart, { passive: false });
   } catch (error) {
@@ -2417,48 +2426,53 @@ function calculateGridLayout() {
 
 // Apply CSS transforms to tiles to visually shift them (no DOM manipulation)
 function applyTileTransforms(originalIndex, targetIndex) {
-    const container = document.getElementById('quick-controls');
-    if (!container || !gridLayout) return;
+    try {
+        const container = document.getElementById('quick-controls');
+        if (!container || !gridLayout) return;
 
-    const items = Array.from(container.querySelectorAll('.control-item'));
+        const items = Array.from(container.querySelectorAll('.control-item'));
 
-    // Determine which tiles need to shift
-    const movingForward = targetIndex > originalIndex;
-    const start = movingForward ? originalIndex + 1 : targetIndex;
-    const end = movingForward ? targetIndex : originalIndex - 1;
+        // Determine which tiles need to shift
+        const movingForward = targetIndex > originalIndex;
+        const start = movingForward ? originalIndex + 1 : targetIndex;
+        const end = movingForward ? targetIndex : originalIndex - 1;
 
-    items.forEach((item, index) => {
-        if (item === draggedElement) {
-            // Dragged element has no transform (follows cursor via position: fixed)
-            return;
-        }
+        items.forEach((item, index) => {
+            if (item === draggedElement) {
+                // Dragged element has no transform (follows cursor via position: fixed)
+                return;
+            }
 
-        // Check if this tile needs to shift
-        if (index >= start && index <= end) {
-            // Calculate shift direction and amount
-            const shiftDirection = movingForward ? -1 : 1; // Forward = shift left/up, Backward = shift right/down
+            // Check if this tile needs to shift
+            if (index >= start && index <= end) {
+                // Calculate shift direction and amount
+                const shiftDirection = movingForward ? -1 : 1; // Forward = shift left/up, Backward = shift right/down
 
-            // Calculate grid positions
-            const currentCol = index % gridLayout.columns;
-            const currentRow = Math.floor(index / gridLayout.columns);
-            const newIndex = index + shiftDirection;
-            const newCol = newIndex % gridLayout.columns;
-            const newRow = Math.floor(newIndex / gridLayout.columns);
+                // Calculate grid positions
+                const currentCol = index % gridLayout.columns;
+                const currentRow = Math.floor(index / gridLayout.columns);
+                const newIndex = index + shiftDirection;
+                const newCol = newIndex % gridLayout.columns;
+                const newRow = Math.floor(newIndex / gridLayout.columns);
 
-            // Calculate translation
-            const deltaCol = newCol - currentCol;
-            const deltaRow = newRow - currentRow;
-            const translateX = deltaCol * (gridLayout.tileWidth + gridLayout.gap);
-            const translateY = deltaRow * (gridLayout.tileHeight + gridLayout.gap);
+                // Calculate translation
+                const deltaCol = newCol - currentCol;
+                const deltaRow = newRow - currentRow;
+                const translateX = deltaCol * (gridLayout.tileWidth + gridLayout.gap);
+                const translateY = deltaRow * (gridLayout.tileHeight + gridLayout.gap);
 
-            item.style.transform = `translate(${translateX}px, ${translateY}px)`;
-            // Transition is now handled by CSS (see .reorganize-mode .control-item)
-        } else {
-            // Tile doesn't need to shift - reset transform
-            item.style.transform = '';
-            // Transition is now handled by CSS (see .reorganize-mode .control-item)
-        }
-    });
+                item.style.transform = `translate(${translateX}px, ${translateY}px)`;
+                // Transition is now handled by CSS (see .reorganize-mode .control-item)
+            } else {
+                // Tile doesn't need to shift - reset transform
+                item.style.transform = '';
+                // Transition is now handled by CSS (see .reorganize-mode .control-item)
+            }
+        });
+    } catch (error) {
+        log.error('Error in applyTileTransforms:', error);
+        // Don't cleanup drag state here - just log the error and continue
+    }
 }
 
 // Remove all transforms from tiles
@@ -2474,30 +2488,79 @@ function clearTileTransforms() {
 }
 
 // Custom drag system for smooth tile reorganization
-function handleMouseDown(e) {
-    // Don't allow drag to start if clicking on rename or remove buttons
-    if (e.target.classList.contains('rename-btn') ||
-        e.target.classList.contains('remove-btn') ||
-        e.target.closest('.rename-btn') ||
-        e.target.closest('.remove-btn')) {
-        return;
-    }
 
-    startDrag(e.currentTarget, e.clientX, e.clientY);
+// Cleanup function for drag state - safe to call even in error conditions
+function cleanupDragState() {
+    try {
+        // Remove event listeners
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+
+        // Reset dragged element styles if it exists
+        if (draggedElement) {
+            draggedElement.classList.remove('dragging');
+            draggedElement.style.position = '';
+            draggedElement.style.zIndex = '';
+            draggedElement.style.pointerEvents = '';
+            draggedElement.style.width = '';
+            draggedElement.style.height = '';
+            draggedElement.style.left = '';
+            draggedElement.style.top = '';
+            draggedElement.style.transform = '';
+        }
+
+        // Clear any transforms on other tiles
+        clearTileTransforms();
+
+        // Reset state variables
+        draggedElement = null;
+        draggedIndex = -1;
+        targetIndex = -1;
+        gridLayout = null;
+        isDragging = false;
+    } catch (cleanupError) {
+        log.error('Error during drag cleanup:', cleanupError);
+    }
+}
+
+function handleMouseDown(e) {
+    try {
+        // Don't allow drag to start if clicking on rename or remove buttons
+        if (e.target.classList.contains('rename-btn') ||
+            e.target.classList.contains('remove-btn') ||
+            e.target.closest('.rename-btn') ||
+            e.target.closest('.remove-btn')) {
+            return;
+        }
+
+        startDrag(e.currentTarget, e.clientX, e.clientY);
+    } catch (error) {
+        log.error('Error in handleMouseDown:', error);
+        cleanupDragState();
+        uiUtils.showToast('Error starting drag operation', 'error');
+    }
 }
 
 function handleTouchStart(e) {
-    // Don't allow drag to start if clicking on rename or remove buttons
-    if (e.target.classList.contains('rename-btn') ||
-        e.target.classList.contains('remove-btn') ||
-        e.target.closest('.rename-btn') ||
-        e.target.closest('.remove-btn')) {
-        return;
-    }
+    try {
+        // Don't allow drag to start if clicking on rename or remove buttons
+        if (e.target.classList.contains('rename-btn') ||
+            e.target.classList.contains('remove-btn') ||
+            e.target.closest('.rename-btn') ||
+            e.target.closest('.remove-btn')) {
+            return;
+        }
 
-    const touch = e.touches[0];
-    startDrag(e.currentTarget, touch.clientX, touch.clientY);
-    e.preventDefault();
+        const touch = e.touches[0];
+        startDrag(e.currentTarget, touch.clientX, touch.clientY);
+        e.preventDefault();
+    } catch (error) {
+        log.error('Error in handleTouchStart:', error);
+        cleanupDragState();
+        uiUtils.showToast('Error starting drag operation', 'error');
+    }
 }
 
 function startDrag(element, clientX, clientY) {
@@ -2539,14 +2602,26 @@ function startDrag(element, clientX, clientY) {
 
 function handleMouseMove(e) {
     if (!isDragging || !draggedElement) return;
-    moveDraggedElement(e.clientX, e.clientY);
+    try {
+        moveDraggedElement(e.clientX, e.clientY);
+    } catch (error) {
+        log.error('Error in handleMouseMove:', error);
+        cleanupDragState();
+        uiUtils.showToast('Error during drag operation', 'error');
+    }
 }
 
 function handleTouchMove(e) {
     if (!isDragging || !draggedElement) return;
-    const touch = e.touches[0];
-    moveDraggedElement(touch.clientX, touch.clientY);
-    e.preventDefault();
+    try {
+        const touch = e.touches[0];
+        moveDraggedElement(touch.clientX, touch.clientY);
+        e.preventDefault();
+    } catch (error) {
+        log.error('Error in handleTouchMove:', error);
+        cleanupDragState();
+        uiUtils.showToast('Error during drag operation', 'error');
+    }
 }
 
 function moveDraggedElement(clientX, clientY) {
@@ -2602,70 +2677,84 @@ function moveDraggedElement(clientX, clientY) {
 }
 
 function handleMouseUp() {
-    endDrag();
+    try {
+        endDrag();
+    } catch (error) {
+        log.error('Error in handleMouseUp:', error);
+        cleanupDragState();
+        uiUtils.showToast('Error ending drag operation', 'error');
+    }
 }
 
 function handleTouchEnd() {
-    endDrag();
+    try {
+        endDrag();
+    } catch (error) {
+        log.error('Error in handleTouchEnd:', error);
+        cleanupDragState();
+        uiUtils.showToast('Error ending drag operation', 'error');
+    }
 }
 
 function endDrag() {
     if (!draggedElement) return;
 
-    const container = document.getElementById('quick-controls');
-    if (!container) return;
+    try {
+        const container = document.getElementById('quick-controls');
+        if (!container) {
+            cleanupDragState();
+            return;
+        }
 
-    // Remove all transforms before DOM manipulation
-    clearTileTransforms();
+        // Remove all transforms before DOM manipulation
+        clearTileTransforms();
 
-    // Reorder DOM to match visual state (only if position changed)
-    if (draggedIndex !== targetIndex) {
-        const items = Array.from(container.querySelectorAll('.control-item'));
-        const targetElement = items[targetIndex];
+        // Reorder DOM to match visual state (only if position changed)
+        if (draggedIndex !== targetIndex) {
+            const items = Array.from(container.querySelectorAll('.control-item'));
+            const targetElement = items[targetIndex];
 
-        if (targetElement && targetElement !== draggedElement) {
-            // Insert dragged element at target position
-            if (targetIndex > draggedIndex) {
-                // Moving forward - insert after target
-                container.insertBefore(draggedElement, targetElement.nextSibling);
-            } else {
-                // Moving backward - insert before target
-                container.insertBefore(draggedElement, targetElement);
+            if (targetElement && targetElement !== draggedElement) {
+                // Insert dragged element at target position
+                if (targetIndex > draggedIndex) {
+                    // Moving forward - insert after target
+                    container.insertBefore(draggedElement, targetElement.nextSibling);
+                } else {
+                    // Moving backward - insert before target
+                    container.insertBefore(draggedElement, targetElement);
+                }
             }
         }
-    }
 
-    // Reset dragged element styles
-    draggedElement.classList.remove('dragging');
-    draggedElement.style.position = '';
-    draggedElement.style.zIndex = '';
-    draggedElement.style.pointerEvents = '';
-    draggedElement.style.width = '';
-    draggedElement.style.height = '';
-    draggedElement.style.left = '';
-    draggedElement.style.top = '';
+        // Reset dragged element styles
+        draggedElement.classList.remove('dragging');
+        draggedElement.style.position = '';
+        draggedElement.style.zIndex = '';
+        draggedElement.style.pointerEvents = '';
+        draggedElement.style.width = '';
+        draggedElement.style.height = '';
+        draggedElement.style.left = '';
+        draggedElement.style.top = '';
 
-    // Force animation restart - capture element in local variable to avoid closure issue
-    const elementToAnimate = draggedElement;
-    elementToAnimate.style.animation = 'none';
-    requestAnimationFrame(() => {
+        // Force animation restart - capture element in local variable to avoid closure issue
+        const elementToAnimate = draggedElement;
+        elementToAnimate.style.animation = 'none';
         requestAnimationFrame(() => {
-            elementToAnimate.style.animation = '';
+            requestAnimationFrame(() => {
+                // Check if element is still in DOM before animating (fix for issue #5)
+                if (elementToAnimate && elementToAnimate.isConnected) {
+                    elementToAnimate.style.animation = '';
+                }
+            });
         });
-    });
 
-    // Remove event listeners
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    document.removeEventListener('touchmove', handleTouchMove);
-    document.removeEventListener('touchend', handleTouchEnd);
-
-    // Reset state
-    draggedElement = null;
-    draggedIndex = -1;
-    targetIndex = -1;
-    gridLayout = null;
-    isDragging = false;
+        // Remove event listeners and reset state
+        cleanupDragState();
+    } catch (error) {
+        log.error('Error in endDrag:', error);
+        cleanupDragState();
+        throw error; // Re-throw to be caught by handleMouseUp/handleTouchEnd
+    }
 }
 
 function setupDragAndDrop() {

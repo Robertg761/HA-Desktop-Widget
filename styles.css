@@ -2584,15 +2584,6 @@ body {
   box-sizing: border-box;
 }
 
-.control-item:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1),
-              var(--glow-accent);
-}
-
 /* All entities have consistent styling - no special active or off states */
 
 .control-icon {
@@ -3364,9 +3355,10 @@ body {
   pointer-events: auto;
 }
 
-.reorganize-mode .control-item:hover {
-  transform: scale(1.03);
+.reorganize-mode .control-item:not(.dragging):hover {
+  /* Only apply visual effects, no transform to avoid conflicts with shift animations */
   box-shadow: var(--shadow-lg), var(--glow-accent);
+  filter: brightness(1.05);
 }
 
 .reorganize-mode .control-item.dragging {
