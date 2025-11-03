@@ -209,10 +209,9 @@ function showRenameModal(entityId) {
           if (isReorganizeMode) {
             const container = document.getElementById('quick-controls');
             if (container) container.classList.add('reorganize-mode');
-            addDragAndDropListeners();
             addRemoveButtons();
           }
-          
+
           uiUtils.showToast(`Renamed to "${newName}"`, 'success', 2000);
         }
         modal.remove();
@@ -230,10 +229,9 @@ function showRenameModal(entityId) {
           if (isReorganizeMode) {
             const container = document.getElementById('quick-controls');
             if (container) container.classList.add('reorganize-mode');
-            addDragAndDropListeners();
             addRemoveButtons();
           }
-          
+
           uiUtils.showToast('Reset to default name', 'info', 2000);
         }
         modal.remove();
@@ -264,17 +262,11 @@ function removeFromQuickAccess(entityId) {
     // Save to config
     ipcRenderer.invoke('update-config', state.CONFIG);
 
-    // Clean up any active drag state before re-rendering to prevent event listener interference
-    if (isDragging) {
-      cleanupDragState();
-    }
-
     // Re-render
     renderQuickControls();
     if (isReorganizeMode) {
       const container = document.getElementById('quick-controls');
       container.classList.add('reorganize-mode');
-      addDragAndDropListeners();
       addRemoveButtons();
     }
     
@@ -384,7 +376,6 @@ function renderQuickControls() {
 
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
-      addDragAndDropListeners();
       addRemoveButtons();
     }
   } catch (error) {
