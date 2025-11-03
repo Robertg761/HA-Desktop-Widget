@@ -2923,6 +2923,25 @@ body {
   max-width: 85vw;
   width: 85%;
   max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+#settings-modal .modal-tabs {
+  flex-shrink: 0;
+}
+
+#settings-modal .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#settings-modal .modal-footer {
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
 }
 
 .modal-header {
@@ -3019,6 +3038,15 @@ body {
     rgba(255, 255, 255, 0.02) 0%,
     transparent 100%
   );
+}
+
+/* Horizontal rule separator */
+#settings-modal hr {
+  height: 1px;
+  border: none;
+  background: var(--border-color);
+  margin: var(--space-6) 0;
+  opacity: 0.5;
 }
 
 /* Form elements */
