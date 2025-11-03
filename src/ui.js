@@ -5,15 +5,10 @@ const websocket = require('./websocket.js');
 const camera = require('./camera.js');
 const uiUtils = require('./ui-utils.js');
 const { setIconContent } = require('./icons.js');
+const Sortable = require('sortablejs');
 
 let isReorganizeMode = false;
-let draggedElement = null;
-let draggedIndex = -1;
-let targetIndex = -1;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-let isDragging = false;
-let gridLayout = null; // Store grid dimensions and tile positions
+let sortableInstance = null; // SortableJS instance for reorganize mode
 
 const mediaFitElements = new Set();
 let mediaFitScheduled = false;
@@ -32,14 +27,31 @@ function toggleReorganizeMode() {
         btn.classList.add('reorganize-active');
         btn.title = 'Save & Exit Reorganize Mode (ESC)';
       }
-      addDragAndDropListeners();
+
+      // Initialize SortableJS for drag-and-drop
+      sortableInstance = Sortable.create(container, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        handle: '.control-item', // Allow dragging by any part of the item
+        filter: '.remove-btn, .rename-btn', // Ignore these elements
+        preventOnFilter: false, // Allow clicks on filtered elements
+        onEnd: () => {
+          // SortableJS has already reordered the DOM
+          // Just save the new order
+          saveQuickAccessOrder();
+        }
+      });
+
       addRemoveButtons();
       addEscapeKeyListener();
       uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit', 'info', 3000);
     } else {
-      // If user is actively dragging, clean up first
-      if (isDragging) {
-        cleanupDragState();
+      // Destroy Sortable instance
+      if (sortableInstance) {
+        sortableInstance.destroy();
+        sortableInstance = null;
       }
 
       container.classList.remove('reorganize-mode');
@@ -50,7 +62,6 @@ function toggleReorganizeMode() {
       }
       saveQuickAccessOrder();
       removeRemoveButtons();
-      removeDragAndDropListeners();
       removeEscapeKeyListener();
       uiUtils.showToast('Quick Access order saved', 'success', 2000);
     }
@@ -141,19 +152,6 @@ function addButtonsToElement(item) {
     }
   } catch (error) {
     console.error('Error adding buttons to element:', error);
-  }
-}
-
-function addDragListenersToElement(item) {
-  try {
-    // Remove listeners first to prevent duplicates
-    item.removeEventListener('mousedown', handleMouseDown);
-    item.removeEventListener('touchstart', handleTouchStart);
-    // Now add listeners
-    item.addEventListener('mousedown', handleMouseDown);
-    item.addEventListener('touchstart', handleTouchStart, { passive: false });
-  } catch (error) {
-    console.error('Error adding drag listeners to element:', error);
   }
 }
 
@@ -2438,428 +2436,6 @@ function initUpdateUI() {
     }
 }
 
-// Calculate grid layout info (columns, rows, tile dimensions)
-function calculateGridLayout() {
-    const container = document.getElementById('quick-controls');
-    if (!container) return null;
-
-    const items = Array.from(container.querySelectorAll('.control-item'));
-    if (items.length === 0) return null;
-
-    // Get actual tile dimensions from first visible tile
-    const firstRect = items[0].getBoundingClientRect();
-    const tileWidth = firstRect.width;
-    const tileHeight = firstRect.height;
-
-    // Calculate actual columns by checking when tiles wrap to next row
-    let columns = 1;
-    const firstTop = firstRect.top;
-    const tolerance = 5; // Allow small vertical variations
-
-    for (let i = 1; i < items.length; i++) {
-        const rect = items[i].getBoundingClientRect();
-        // If this tile is on the same row as the first tile (within tolerance)
-        if (Math.abs(rect.top - firstTop) < tolerance) {
-            columns++;
-        } else {
-            // Found first tile on second row, stop counting
-            break;
-        }
-    }
-
-    // Calculate gap by measuring distance between first two tiles on same row
-    let gap = 6; // Default fallback
-    if (items.length > 1 && columns > 1) {
-        const secondRect = items[1].getBoundingClientRect();
-        if (Math.abs(secondRect.top - firstTop) < tolerance) {
-            gap = secondRect.left - firstRect.right;
-        }
-    }
-
-    return {
-        columns,
-        tileWidth,
-        tileHeight,
-        gap,
-        containerRect: container.getBoundingClientRect()
-    };
-}
-
-// Apply CSS transforms to tiles to visually shift them (no DOM manipulation)
-function applyTileTransforms(originalIndex, targetIndex) {
-    try {
-        const container = document.getElementById('quick-controls');
-        if (!container || !gridLayout) return;
-
-        const items = Array.from(container.querySelectorAll('.control-item'));
-
-        // Determine which tiles need to shift
-        const movingForward = targetIndex > originalIndex;
-        const start = movingForward ? originalIndex + 1 : targetIndex;
-        const end = movingForward ? targetIndex : originalIndex - 1;
-
-        items.forEach((item, index) => {
-            if (item === draggedElement) {
-                // Dragged element has no transform (follows cursor via position: fixed)
-                return;
-            }
-
-            // Check if this tile needs to shift
-            if (index >= start && index <= end) {
-                // Calculate shift direction and amount
-                const shiftDirection = movingForward ? -1 : 1; // Forward = shift left/up, Backward = shift right/down
-
-                // Calculate grid positions
-                const currentCol = index % gridLayout.columns;
-                const currentRow = Math.floor(index / gridLayout.columns);
-                const newIndex = index + shiftDirection;
-                const newCol = newIndex % gridLayout.columns;
-                const newRow = Math.floor(newIndex / gridLayout.columns);
-
-                // Calculate translation
-                const deltaCol = newCol - currentCol;
-                const deltaRow = newRow - currentRow;
-                const translateX = deltaCol * (gridLayout.tileWidth + gridLayout.gap);
-                const translateY = deltaRow * (gridLayout.tileHeight + gridLayout.gap);
-
-                item.style.transform = `translate(${translateX}px, ${translateY}px)`;
-                // Transition is now handled by CSS (see .reorganize-mode .control-item)
-            } else {
-                // Tile doesn't need to shift - reset transform
-                item.style.transform = '';
-                // Transition is now handled by CSS (see .reorganize-mode .control-item)
-            }
-        });
-    } catch (error) {
-        log.error('Error in applyTileTransforms:', error);
-        // Don't cleanup drag state here - just log the error and continue
-    }
-}
-
-// Remove all transforms from tiles
-function clearTileTransforms() {
-    const container = document.getElementById('quick-controls');
-    if (!container) return;
-
-    const items = container.querySelectorAll('.control-item');
-    items.forEach(item => {
-        item.style.transform = '';
-        // Transition is handled by CSS, no need to clear
-    });
-}
-
-// Custom drag system for smooth tile reorganization
-
-// Cleanup function for drag state - safe to call even in error conditions
-function cleanupDragState() {
-    try {
-        // Remove event listeners
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.removeEventListener('touchmove', handleTouchMove);
-        document.removeEventListener('touchend', handleTouchEnd);
-
-        // Reset dragged element styles if it exists
-        if (draggedElement) {
-            draggedElement.classList.remove('dragging');
-            draggedElement.style.position = '';
-            draggedElement.style.zIndex = '';
-            draggedElement.style.pointerEvents = '';
-            draggedElement.style.width = '';
-            draggedElement.style.height = '';
-            draggedElement.style.left = '';
-            draggedElement.style.top = '';
-            draggedElement.style.transform = '';
-        }
-
-        // Clear any transforms on other tiles
-        clearTileTransforms();
-
-        // Reset state variables
-        draggedElement = null;
-        draggedIndex = -1;
-        targetIndex = -1;
-        gridLayout = null;
-        isDragging = false;
-    } catch (cleanupError) {
-        log.error('Error during drag cleanup:', cleanupError);
-    }
-}
-
-function handleMouseDown(e) {
-    try {
-        // Don't allow drag to start if clicking on rename or remove buttons
-        if (e.target.classList.contains('rename-btn') ||
-            e.target.classList.contains('remove-btn') ||
-            e.target.closest('.rename-btn') ||
-            e.target.closest('.remove-btn')) {
-            return;
-        }
-
-        startDrag(e.currentTarget, e.clientX, e.clientY);
-    } catch (error) {
-        log.error('Error in handleMouseDown:', error);
-        cleanupDragState();
-        uiUtils.showToast('Error starting drag operation', 'error');
-    }
-}
-
-function handleTouchStart(e) {
-    try {
-        // Don't allow drag to start if clicking on rename or remove buttons
-        if (e.target.classList.contains('rename-btn') ||
-            e.target.classList.contains('remove-btn') ||
-            e.target.closest('.rename-btn') ||
-            e.target.closest('.remove-btn')) {
-            return;
-        }
-
-        const touch = e.touches[0];
-        startDrag(e.currentTarget, touch.clientX, touch.clientY);
-        e.preventDefault();
-    } catch (error) {
-        log.error('Error in handleTouchStart:', error);
-        cleanupDragState();
-        uiUtils.showToast('Error starting drag operation', 'error');
-    }
-}
-
-function startDrag(element, clientX, clientY) {
-    draggedElement = element;
-    isDragging = true;
-
-    const container = document.getElementById('quick-controls');
-    if (!container) return;
-
-    // Store original index of dragged element
-    const items = Array.from(container.querySelectorAll('.control-item'));
-    draggedIndex = items.indexOf(element);
-    targetIndex = draggedIndex;
-
-    // Calculate grid layout for transform calculations
-    gridLayout = calculateGridLayout();
-    if (!gridLayout) return;
-
-    const rect = element.getBoundingClientRect();
-    dragOffsetX = clientX - rect.left;
-    dragOffsetY = clientY - rect.top;
-
-    // Lift the dragged element (position: fixed to follow cursor)
-    element.classList.add('dragging');
-    element.style.position = 'fixed';
-    element.style.zIndex = '1000';
-    element.style.pointerEvents = 'none';
-    element.style.width = rect.width + 'px';
-    element.style.height = rect.height + 'px';
-    element.style.left = (clientX - dragOffsetX) + 'px';
-    element.style.top = (clientY - dragOffsetY) + 'px';
-
-    // Add event listeners
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
-}
-
-function handleMouseMove(e) {
-    if (!isDragging || !draggedElement) return;
-    try {
-        moveDraggedElement(e.clientX, e.clientY);
-    } catch (error) {
-        log.error('Error in handleMouseMove:', error);
-        cleanupDragState();
-        uiUtils.showToast('Error during drag operation', 'error');
-    }
-}
-
-function handleTouchMove(e) {
-    if (!isDragging || !draggedElement) return;
-    try {
-        const touch = e.touches[0];
-        moveDraggedElement(touch.clientX, touch.clientY);
-        e.preventDefault();
-    } catch (error) {
-        log.error('Error in handleTouchMove:', error);
-        cleanupDragState();
-        uiUtils.showToast('Error during drag operation', 'error');
-    }
-}
-
-function moveDraggedElement(clientX, clientY) {
-    if (!gridLayout) return;
-
-    // Move the dragged element with cursor
-    draggedElement.style.left = (clientX - dragOffsetX) + 'px';
-    draggedElement.style.top = (clientY - dragOffsetY) + 'px';
-
-    // Find which grid position the cursor is over
-    const container = document.getElementById('quick-controls');
-    if (!container) return;
-
-    const containerRect = container.getBoundingClientRect();
-
-    // Check if cursor is outside container bounds
-    const relativeX = clientX - containerRect.left;
-    const relativeY = clientY - containerRect.top;
-    if (relativeX < 0 || relativeX > containerRect.width ||
-        relativeY < 0 || relativeY > containerRect.height) {
-        return; // Don't update target when cursor is outside container
-    }
-
-    const items = Array.from(container.querySelectorAll('.control-item'));
-
-    // Find the tile closest to cursor position by checking actual positions
-    let newTargetIndex = draggedIndex; // Default to current position
-    let minDistance = Infinity;
-
-    items.forEach((item, index) => {
-        if (item === draggedElement) return; // Skip the dragged element
-
-        const rect = item.getBoundingClientRect();
-        const itemCenterX = rect.left + rect.width / 2;
-        const itemCenterY = rect.top + rect.height / 2;
-
-        // Calculate distance from cursor to tile center
-        const dx = clientX - itemCenterX;
-        const dy = clientY - itemCenterY;
-        const distance = dx * dx + dy * dy;
-
-        if (distance < minDistance) {
-            minDistance = distance;
-            newTargetIndex = index;
-        }
-    });
-
-    // Only update transforms if target changed
-    if (newTargetIndex !== targetIndex) {
-        targetIndex = newTargetIndex;
-        applyTileTransforms(draggedIndex, targetIndex);
-    }
-}
-
-function handleMouseUp() {
-    try {
-        endDrag();
-    } catch (error) {
-        log.error('Error in handleMouseUp:', error);
-        cleanupDragState();
-        uiUtils.showToast('Error ending drag operation', 'error');
-    }
-}
-
-function handleTouchEnd() {
-    try {
-        endDrag();
-    } catch (error) {
-        log.error('Error in handleTouchEnd:', error);
-        cleanupDragState();
-        uiUtils.showToast('Error ending drag operation', 'error');
-    }
-}
-
-function endDrag() {
-    if (!draggedElement) return;
-
-    try {
-        const container = document.getElementById('quick-controls');
-        if (!container) {
-            cleanupDragState();
-            return;
-        }
-
-        // Remove all transforms before DOM manipulation
-        clearTileTransforms();
-
-        // Reorder DOM to match visual state (only if position changed)
-        if (draggedIndex !== targetIndex) {
-            const items = Array.from(container.querySelectorAll('.control-item'));
-            const targetElement = items[targetIndex];
-
-            if (targetElement && targetElement !== draggedElement) {
-                // Insert dragged element at target position
-                if (targetIndex > draggedIndex) {
-                    // Moving forward - insert after target
-                    container.insertBefore(draggedElement, targetElement.nextSibling);
-                } else {
-                    // Moving backward - insert before target
-                    container.insertBefore(draggedElement, targetElement);
-                }
-            }
-        }
-
-        // Reset dragged element styles
-        draggedElement.classList.remove('dragging');
-        draggedElement.style.position = '';
-        draggedElement.style.zIndex = '';
-        draggedElement.style.pointerEvents = '';
-        draggedElement.style.width = '';
-        draggedElement.style.height = '';
-        draggedElement.style.left = '';
-        draggedElement.style.top = '';
-
-        // Force animation restart - capture element in local variable to avoid closure issue
-        const elementToAnimate = draggedElement;
-        elementToAnimate.style.animation = 'none';
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                // Check if element is still in DOM before animating (fix for issue #5)
-                if (elementToAnimate && elementToAnimate.isConnected) {
-                    elementToAnimate.style.animation = '';
-                }
-            });
-        });
-
-        // Remove event listeners and reset state
-        cleanupDragState();
-    } catch (error) {
-        log.error('Error in endDrag:', error);
-        cleanupDragState();
-        throw error; // Re-throw to be caught by handleMouseUp/handleTouchEnd
-    }
-}
-
-function setupDragAndDrop() {
-    // This function is called on init - drag-and-drop is actually set up when entering reorganize mode
-}
-
-function addDragAndDropListeners() {
-  try {
-    const items = document.querySelectorAll('#quick-controls .control-item');
-    items.forEach(item => addDragListenersToElement(item));
-  } catch (error) {
-    console.error('Error adding drag and drop listeners:', error);
-  }
-}
-
-function removeDragAndDropListeners() {
-  try {
-    const items = document.querySelectorAll('#quick-controls .control-item');
-    items.forEach(item => {
-      item.removeEventListener('mousedown', handleMouseDown);
-      item.removeEventListener('touchstart', handleTouchStart);
-    });
-
-    // Clean up any active drag
-    if (isDragging) {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
-    }
-
-    // Clear all transforms
-    clearTileTransforms();
-
-    // Reset state
-    draggedElement = null;
-    draggedIndex = -1;
-    targetIndex = -1;
-    gridLayout = null;
-    isDragging = false;
-  } catch (error) {
-    console.error('Error removing drag and drop listeners:', error);
-  }
-}
 
 // ESC key handler for reorganize mode
 function handleEscapeKey(e) {
@@ -2889,7 +2465,6 @@ module.exports = {
   initUpdateUI,
   updateTimeDisplay,
   updateTimerDisplays,
-  setupDragAndDrop,
   toggleReorganizeMode,
   populateQuickControlsList,
   executeHotkeyAction,
