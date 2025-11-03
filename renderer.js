@@ -440,16 +440,11 @@ function wireUI() {
     }
     
     // Wire up alerts management
-    const manageAlertsBtn = document.getElementById('manage-alerts-btn');
-    if (manageAlertsBtn) {
-      manageAlertsBtn.onclick = settings.openAlertsModal;
+    const closeAlertEntityPickerBtn = document.getElementById('close-alert-entity-picker');
+    if (closeAlertEntityPickerBtn) {
+      closeAlertEntityPickerBtn.onclick = settings.closeAlertEntityPicker;
     }
-    
-    const closeAlertsBtn = document.getElementById('close-alerts');
-    if (closeAlertsBtn) {
-      closeAlertsBtn.onclick = settings.closeAlertsModal;
-    }
-    
+
     const closeAlertConfigBtn = document.getElementById('close-alert-config');
     if (closeAlertConfigBtn) {
       closeAlertConfigBtn.onclick = settings.closeAlertConfigModal;
@@ -516,6 +511,10 @@ function wireUI() {
       const alertsSection = document.getElementById('alerts-section');
       if (alertsSection) {
         alertsSection.style.display = e.target.checked ? 'block' : 'none';
+      }
+      // Render inline alerts list when enabled
+      if (e.target.checked) {
+        settings.renderAlertsListInline();
       }
       alerts.toggleAlerts(e.target.checked);
     };

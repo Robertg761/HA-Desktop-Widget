@@ -241,7 +241,9 @@
                     </div>
                     <div id="alerts-section" style="display: none;">
                         <p>Configure which entities should trigger desktop notifications.</p>
-                        <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
+                        <div id="inline-alerts-list" class="inline-alerts-container">
+                            <!-- Inline alerts list will be rendered here -->
+                        </div>
                     </div>
                 </div>
             </div>
@@ -480,6 +482,27 @@
             <div class="modal-footer">
                 <button id="save-alert" class="btn btn-primary">Save</button>
                 <button id="cancel-alert" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Entity Picker Modal -->
+    <div id="alert-entity-picker-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alert-entity-picker-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="alert-entity-picker-title">Add Alert</h2>
+                <button id="close-alert-entity-picker" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="alert-entity-picker-search" placeholder="Search entities..." class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Select Entity to Configure Alert:</label>
+                    <div id="alert-entity-picker-list" class="entity-selector-list">
+                        <!-- Available entities will be loaded here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>

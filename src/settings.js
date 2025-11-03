@@ -51,6 +51,10 @@ async function openSettings(uiHooks) {
       if (alertsSection) {
         alertsSection.style.display = entityAlertsEnabled.checked ? 'block' : 'none';
       }
+      // Render inline alerts list if alerts are enabled
+      if (entityAlertsEnabled.checked) {
+        renderAlertsListInline();
+      }
     }
 
     // Call UI hooks passed from renderer.js
@@ -173,60 +177,36 @@ async function saveSettings() {
   }
 }
 
-function openAlertsModal() {
-  try {
-    const modal = document.getElementById('alerts-modal');
-    if (!modal) return;
-    
-    populateAlertsList();
-    
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
-    trapFocus(modal);
-  } catch (error) {
-    console.error('Error opening alerts modal:', error);
-  }
-}
 
-function closeAlertsModal() {
+function renderAlertsListInline() {
   try {
-    const modal = document.getElementById('alerts-modal');
-    if (modal) {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-      releaseFocusTrap(modal);
-    }
-  } catch (error) {
-    console.error('Error closing alerts modal:', error);
-  }
-}
-
-function populateAlertsList() {
-  try {
-    const alertsList = document.getElementById('alerts-list');
+    const alertsList = document.getElementById('inline-alerts-list');
     if (!alertsList) return;
-    
+
     alertsList.innerHTML = '';
-    
+
     const alerts = state.CONFIG.entityAlerts?.alerts || {};
     const utils = require('./utils.js');
-    
+
     // Show message if no alerts
     if (Object.keys(alerts).length === 0) {
       const noAlertsMsg = document.createElement('div');
       noAlertsMsg.className = 'no-alerts-message';
       noAlertsMsg.textContent = 'No alerts configured yet. Click the button below to add your first alert.';
+      noAlertsMsg.style.padding = '20px';
+      noAlertsMsg.style.textAlign = 'center';
+      noAlertsMsg.style.color = 'var(--text-muted)';
       alertsList.appendChild(noAlertsMsg);
     }
-    
+
     // Add existing alerts
     Object.keys(alerts).forEach(entityId => {
       const entity = state.STATES[entityId];
       if (!entity) return;
-      
+
       const alertItem = document.createElement('div');
       alertItem.className = 'alert-item';
-      
+
       const alertConfig = alerts[entityId];
       let alertType = alertConfig.onStateChange ? 'State Change' : 'Specific State';
       if (alertConfig.onSpecificState) {
@@ -246,139 +226,213 @@ function populateAlertsList() {
           <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtml(entityId)}">Remove</button>
         </div>
       `;
-      
+
       alertsList.appendChild(alertItem);
     });
-    
+
     // Add "Add new alert" button
     const addButton = document.createElement('button');
     addButton.className = 'btn btn-secondary btn-block add-alert-btn';
     addButton.textContent = '+ Add New Alert';
-    addButton.onclick = () => openAlertConfigModal();
+    addButton.onclick = () => openAlertEntityPicker();
+    addButton.style.marginTop = '10px';
     alertsList.appendChild(addButton);
-    
+
     // Wire up event handlers
     alertsList.querySelectorAll('.edit-alert').forEach(btn => {
       btn.onclick = () => openAlertConfigModal(btn.dataset.entity);
     });
-    
+
     alertsList.querySelectorAll('.remove-alert').forEach(btn => {
       btn.onclick = () => removeAlert(btn.dataset.entity);
     });
-    
-    // Search functionality - always set up
-    const searchInput = document.getElementById('alert-search');
+  } catch (error) {
+    console.error('Error rendering alerts list inline:', error);
+  }
+}
+
+function openAlertEntityPicker() {
+  try {
+    populateAlertEntityPicker();
+    const modal = document.getElementById('alert-entity-picker-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      trapFocus(modal);
+    }
+  } catch (error) {
+    console.error('Error opening alert entity picker:', error);
+  }
+}
+
+function closeAlertEntityPicker() {
+  try {
+    const modal = document.getElementById('alert-entity-picker-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+      releaseFocusTrap(modal);
+    }
+  } catch (error) {
+    console.error('Error closing alert entity picker:', error);
+  }
+}
+
+function populateAlertEntityPicker() {
+  try {
+    const list = document.getElementById('alert-entity-picker-list');
+    if (!list) return;
+
+    const utils = require('./utils.js');
+    const alerts = state.CONFIG.entityAlerts?.alerts || {};
+    const entities = Object.values(state.STATES || {})
+      .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
+      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+
+    list.innerHTML = '';
+
+    if (entities.length === 0) {
+      list.innerHTML = '<div class="no-entities-message">No entities available. Make sure you\'re connected to Home Assistant.</div>';
+      return;
+    }
+
+    entities.forEach(entity => {
+      const entityId = entity.entity_id;
+      const hasAlert = !!alerts[entityId];
+
+      const item = document.createElement('div');
+      item.className = 'entity-item';
+
+      const icon = utils.getEntityIcon(entity);
+      const displayName = utils.getEntityDisplayName(entity);
+
+      item.innerHTML = `
+        <div class="entity-item-main">
+          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <div class="entity-item-info">
+            <span class="entity-name">${utils.escapeHtml(displayName)}</span>
+            <span class="entity-id">${utils.escapeHtml(entityId)}</span>
+          </div>
+        </div>
+        <button class="entity-selector-btn ${hasAlert ? 'edit' : 'add'}" data-entity-id="${utils.escapeHtml(entityId)}">
+          ${hasAlert ? '⚙️ Edit Alert' : '+ Add Alert'}
+        </button>
+      `;
+
+      // Add badge if alert exists
+      if (hasAlert) {
+        const badge = document.createElement('span');
+        badge.className = 'alert-badge';
+        badge.textContent = '🔔';
+        badge.title = 'Alert configured';
+        badge.style.marginLeft = '8px';
+        badge.style.fontSize = '14px';
+        item.querySelector('.entity-item-main').appendChild(badge);
+      }
+
+      list.appendChild(item);
+    });
+
+    // Wire up click handlers
+    list.querySelectorAll('.entity-selector-btn').forEach(btn => {
+      btn.onclick = () => {
+        const entityId = btn.dataset.entityId;
+        closeAlertEntityPicker();
+        openAlertConfigModal(entityId);
+      };
+    });
+
+    // Search functionality
+    const searchInput = document.getElementById('alert-entity-picker-search');
     if (searchInput) {
-      // Clear previous handler
       searchInput.oninput = null;
       searchInput.value = '';
-      
+
       searchInput.oninput = (e) => {
-        const query = e.target.value.toLowerCase();
-        alertsList.querySelectorAll('.alert-item').forEach(item => {
-          const name = item.querySelector('.alert-name')?.textContent.toLowerCase() || '';
-          item.style.display = name.includes(query) ? 'flex' : 'none';
+        const query = e.target.value.toLowerCase().trim();
+        if (!query) {
+          // Show all items if search is empty
+          list.querySelectorAll('.entity-item').forEach(item => {
+            item.style.display = 'flex';
+          });
+          return;
+        }
+
+        // Score each item and show/hide based on score
+        list.querySelectorAll('.entity-item').forEach(item => {
+          const name = item.querySelector('.entity-name')?.textContent || '';
+          const id = item.querySelector('.entity-id')?.textContent || '';
+
+          // Calculate separate scores for name and ID, then add them
+          const nameScore = utils.getSearchScore(name, query);
+          const idScore = utils.getSearchScore(id, query);
+          const totalScore = nameScore + idScore;
+
+          item.style.display = totalScore > 0 ? 'flex' : 'none';
         });
-        // Don't hide the add button or no alerts message
-        const addBtn = alertsList.querySelector('.add-alert-btn');
-        const noMsg = alertsList.querySelector('.no-alerts-message');
-        if (addBtn) addBtn.style.display = 'block';
-        if (noMsg) noMsg.style.display = 'block';
       };
     }
   } catch (error) {
-    console.error('Error populating alerts list:', error);
+    console.error('Error populating alert entity picker:', error);
   }
 }
 
 let currentAlertEntity = null;
 
-function openAlertConfigModal(entityId = null) {
+function openAlertConfigModal(entityId) {
   try {
+    if (!entityId) {
+      console.error('openAlertConfigModal requires entityId');
+      return;
+    }
+
     const modal = document.getElementById('alert-config-modal');
     if (!modal) return;
-    
+
     currentAlertEntity = entityId;
-    
+
     const stateChangeRadio = modal.querySelector('input[value="state-change"]');
     const specificStateRadio = modal.querySelector('input[value="specific-state"]');
     const specificStateGroup = document.getElementById('specific-state-group');
     const targetStateInput = document.getElementById('target-state-input');
     const title = document.getElementById('alert-config-title');
-    
-    // If editing existing alert
-    if (entityId) {
-      const alertConfig = state.CONFIG.entityAlerts?.alerts[entityId];
-      const entity = state.STATES[entityId];
-      const utils = require('./utils.js');
-      
-      if (title) title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
-      
-      if (alertConfig) {
-        if (alertConfig.onStateChange) {
-          if (stateChangeRadio) stateChangeRadio.checked = true;
-          if (specificStateGroup) specificStateGroup.style.display = 'none';
-        } else if (alertConfig.onSpecificState) {
-          if (specificStateRadio) specificStateRadio.checked = true;
-          if (specificStateGroup) specificStateGroup.style.display = 'block';
-          if (targetStateInput) targetStateInput.value = alertConfig.targetState || '';
-        }
+
+    const alertConfig = state.CONFIG.entityAlerts?.alerts[entityId];
+    const entity = state.STATES[entityId];
+    const utils = require('./utils.js');
+
+    if (title) title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
+
+    // Load existing alert config or set defaults
+    if (alertConfig) {
+      if (alertConfig.onStateChange) {
+        if (stateChangeRadio) stateChangeRadio.checked = true;
+        if (specificStateGroup) specificStateGroup.style.display = 'none';
+      } else if (alertConfig.onSpecificState) {
+        if (specificStateRadio) specificStateRadio.checked = true;
+        if (specificStateGroup) specificStateGroup.style.display = 'block';
+        if (targetStateInput) targetStateInput.value = alertConfig.targetState || '';
       }
     } else {
-      // New alert - show entity selector in the modal
-      if (title) title.textContent = 'Configure Alert - Select Entity';
-      
-      // Create entity selector
-      const modalBody = modal.querySelector('.modal-body');
-      if (modalBody) {
-        // Add entity selector as the first element
-        let entitySelectGroup = modal.querySelector('.entity-select-group');
-        if (!entitySelectGroup) {
-          entitySelectGroup = document.createElement('div');
-          entitySelectGroup.className = 'form-group entity-select-group';
-          entitySelectGroup.innerHTML = `
-            <label for="alert-entity-select">Select Entity:</label>
-            <select id="alert-entity-select" class="form-control">
-              <option value="">-- Choose an entity --</option>
-            </select>
-          `;
-          modalBody.insertBefore(entitySelectGroup, modalBody.firstChild);
-          
-          // Populate with all entities
-          const entitySelect = entitySelectGroup.querySelector('#alert-entity-select');
-          const utils = require('./utils.js');
-          
-          Object.values(state.STATES)
-            .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
-            .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))
-            .forEach(entity => {
-              const option = document.createElement('option');
-              option.value = entity.entity_id;
-              option.textContent = `${utils.getEntityIcon(entity)} ${utils.getEntityDisplayName(entity)}`;
-              entitySelect.appendChild(option);
-            });
-          
-          // Update currentAlertEntity when selection changes
-          entitySelect.onchange = (e) => {
-            currentAlertEntity = e.target.value;
-          };
-        }
-      }
+      // New alert - set defaults
+      if (stateChangeRadio) stateChangeRadio.checked = true;
+      if (specificStateGroup) specificStateGroup.style.display = 'none';
+      if (targetStateInput) targetStateInput.value = '';
     }
-    
+
     // Radio button handlers
     if (stateChangeRadio) {
       stateChangeRadio.onchange = () => {
         if (specificStateGroup) specificStateGroup.style.display = 'none';
       };
     }
-    
+
     if (specificStateRadio) {
       specificStateRadio.onchange = () => {
         if (specificStateGroup) specificStateGroup.style.display = 'block';
       };
     }
-    
+
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
     trapFocus(modal);
@@ -391,12 +445,6 @@ function closeAlertConfigModal() {
   try {
     const modal = document.getElementById('alert-config-modal');
     if (modal) {
-      // Remove entity selector if it exists
-      const entitySelectGroup = modal.querySelector('.entity-select-group');
-      if (entitySelectGroup) {
-        entitySelectGroup.remove();
-      }
-      
       modal.classList.add('hidden');
       modal.style.display = 'none';
       releaseFocusTrap(modal);
@@ -410,27 +458,27 @@ function closeAlertConfigModal() {
 async function saveAlert() {
   try {
     if (!currentAlertEntity) return;
-    
+
     const modal = document.getElementById('alert-config-modal');
     const stateChangeRadio = modal.querySelector('input[value="state-change"]');
     const specificStateRadio = modal.querySelector('input[value="specific-state"]');
     const targetStateInput = document.getElementById('target-state-input');
-    
+
     state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
-    
+
     const alertConfig = {
       onStateChange: stateChangeRadio?.checked || false,
       onSpecificState: specificStateRadio?.checked || false,
       targetState: targetStateInput?.value.trim() || ''
     };
-    
+
     state.CONFIG.entityAlerts.alerts[currentAlertEntity] = alertConfig;
-    
+
     await ipcRenderer.invoke('update-config', state.CONFIG);
-    
+
     closeAlertConfigModal();
-    populateAlertsList();
-    
+    renderAlertsListInline();
+
     const { showToast } = require('./ui-utils.js');
     showToast('Alert saved successfully', 'success', 2000);
   } catch (error) {
@@ -442,17 +490,24 @@ async function saveAlert() {
 
 async function removeAlert(entityId) {
   try {
-    if (!confirm('Remove this alert?')) return;
+    const entity = state.STATES[entityId];
+    const utils = require('./utils.js');
+    const { showConfirm, showToast } = require('./ui-utils.js');
+    const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
-    // Force window to regain focus after confirm dialog (Windows focus bug workaround)
-    await ipcRenderer.invoke('focus-window').catch(err => console.error('Failed to refocus window:', err));
+    const confirmed = await showConfirm(
+      'Remove Alert',
+      `Remove alert for "${entityName}"?`,
+      { confirmText: 'Remove', confirmClass: 'btn-danger' }
+    );
+
+    if (!confirmed) return;
 
     if (state.CONFIG.entityAlerts?.alerts[entityId]) {
       delete state.CONFIG.entityAlerts.alerts[entityId];
       await ipcRenderer.invoke('update-config', state.CONFIG);
-      populateAlertsList();
-      
-      const { showToast } = require('./ui-utils.js');
+      renderAlertsListInline();
+
       showToast('Alert removed', 'success', 2000);
     }
   } catch (error) {
@@ -687,8 +742,9 @@ module.exports = {
     openSettings,
     closeSettings,
     saveSettings,
-    openAlertsModal,
-    closeAlertsModal,
+    renderAlertsListInline,
+    openAlertEntityPicker,
+    closeAlertEntityPicker,
     openAlertConfigModal,
     closeAlertConfigModal,
     saveAlert,
