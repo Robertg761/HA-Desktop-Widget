@@ -264,6 +264,9 @@ function createWindow() {
   const primaryDisplay = electronScreen.getPrimaryDisplay();
   const { width: _width, height: _height } = primaryDisplay.workAreaSize;
 
+  // Resolve icon path
+  const iconPath = path.join(__dirname, 'build', 'icon.ico');
+
   // Create the browser window with transparency
   mainWindow = new BrowserWindow({
     x: config.windowPosition.x,
@@ -276,6 +279,7 @@ function createWindow() {
     skipTaskbar: true,
     resizable: true,
     movable: true,
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: true,   // Required for renderer to use require()
       contextIsolation: false, // Must be false for renderer to access require() - safe for local content
