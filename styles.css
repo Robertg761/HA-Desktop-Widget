@@ -4391,6 +4391,41 @@ body {
 }
 
 /* Hotkeys Tab */
+/* Popup Hotkey Configuration */
+.popup-hotkey-config {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#popup-hotkey-input {
+    flex: 1 1 200px;
+    min-width: 200px;
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-color);
+}
+
+.help-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 0 8px 0;
+    line-height: 1.4;
+}
+
+.preset-hotkey-btn {
+    margin: 4px 4px 4px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}
+
 #hotkeys-list-container {
     margin-top: 16px;
 }

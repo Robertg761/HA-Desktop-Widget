@@ -62,9 +62,12 @@ async function openSettings(uiHooks) {
       uiHooks.setupEntitySearchInput('motion-popup-cameras', ['camera']);
       uiHooks.initUpdateUI();
     }
-    
+
     // Populate media player dropdown after UI hooks (when states are loaded)
     populateMediaPlayerDropdown();
+
+    // Initialize popup hotkey UI
+    initializePopupHotkey();
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
@@ -498,6 +501,188 @@ function populateMediaPlayerDropdown() {
   }
 }
 
+// Popup Hotkey Management
+let isCapturingPopupHotkey = false;
+
+function initializePopupHotkey() {
+  try {
+    const input = document.getElementById('popup-hotkey-input');
+    const setBtn = document.getElementById('popup-hotkey-set-btn');
+    const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+
+    if (!input || !setBtn || !clearBtn) return;
+
+    // Load current popup hotkey
+    const currentHotkey = state.CONFIG.popupHotkey || '';
+    if (currentHotkey) {
+      input.value = currentHotkey;
+      input.placeholder = currentHotkey;
+      clearBtn.style.display = 'inline-block';
+    }
+
+    // Set hotkey button
+    setBtn.onclick = () => {
+      if (isCapturingPopupHotkey) {
+        stopCapturingPopupHotkey();
+        return;
+      }
+      startCapturingPopupHotkey();
+    };
+
+    // Clear button
+    clearBtn.onclick = async () => {
+      try {
+        const result = await ipcRenderer.invoke('unregister-popup-hotkey');
+        if (result.success) {
+          input.value = '';
+          input.placeholder = 'Not set (click Set Hotkey)';
+          clearBtn.style.display = 'none';
+          state.CONFIG.popupHotkey = '';
+          const { showToast } = require('./ui-utils.js');
+          showToast('Popup hotkey cleared', 'success');
+        }
+      } catch (error) {
+        console.error('Failed to clear popup hotkey:', error);
+        const { showToast } = require('./ui-utils.js');
+        showToast('Failed to clear popup hotkey', 'error');
+      }
+    };
+
+    // Preset hotkey buttons
+    const presetButtons = document.querySelectorAll('.preset-hotkey-btn');
+    presetButtons.forEach(btn => {
+      btn.onclick = async () => {
+        const hotkey = btn.dataset.hotkey;
+        try {
+          const result = await ipcRenderer.invoke('register-popup-hotkey', hotkey);
+          if (result.success) {
+            input.value = hotkey;
+            input.placeholder = hotkey;
+            clearBtn.style.display = 'inline-block';
+            state.CONFIG.popupHotkey = hotkey;
+            const { showToast } = require('./ui-utils.js');
+            showToast(`Popup hotkey set to ${hotkey}`, 'success');
+          } else {
+            const { showToast } = require('./ui-utils.js');
+            showToast(result.error || 'Failed to set popup hotkey', 'error');
+          }
+        } catch (error) {
+          console.error('Failed to set preset hotkey:', error);
+          const { showToast } = require('./ui-utils.js');
+          showToast('Failed to set popup hotkey', 'error');
+        }
+      };
+    });
+  } catch (error) {
+    console.error('Error initializing popup hotkey:', error);
+  }
+}
+
+function startCapturingPopupHotkey() {
+  isCapturingPopupHotkey = true;
+  const input = document.getElementById('popup-hotkey-input');
+  const setBtn = document.getElementById('popup-hotkey-set-btn');
+
+  if (input) {
+    input.value = 'Press keys...';
+    input.focus();
+  }
+  if (setBtn) {
+    setBtn.textContent = 'Cancel';
+    setBtn.classList.add('btn-danger');
+    setBtn.classList.remove('btn-secondary');
+  }
+
+  // Capture keydown event
+  const captureHandler = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ignore pure modifier keys - wait for a main key to be pressed
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+      return; // Don't process until user presses a non-modifier key
+    }
+
+    // Build hotkey string
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Command');
+
+    // Add the main key
+    let mainKeyAdded = false;
+    if (e.key && e.key.length === 1) {
+      parts.push(e.key.toUpperCase());
+      mainKeyAdded = true;
+    } else if (e.key === ' ') {
+      parts.push('Space');
+      mainKeyAdded = true;
+    } else if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+      parts.push(e.key);
+      mainKeyAdded = true;
+    }
+
+    // Only proceed if we have a main key (not just modifiers)
+    if (mainKeyAdded && parts.length > 0) {
+      const hotkey = parts.join('+');
+
+      try {
+        const result = await ipcRenderer.invoke('register-popup-hotkey', hotkey);
+        if (result.success) {
+          if (input) {
+            input.value = hotkey;
+            input.placeholder = hotkey;
+          }
+          const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+          if (clearBtn) clearBtn.style.display = 'inline-block';
+          state.CONFIG.popupHotkey = hotkey;
+          const { showToast } = require('./ui-utils.js');
+          showToast(`Popup hotkey set to ${hotkey}`, 'success');
+        } else {
+          const { showToast } = require('./ui-utils.js');
+          showToast(result.error || 'Failed to set popup hotkey', 'error');
+          if (input) input.value = state.CONFIG.popupHotkey || '';
+        }
+      } catch (error) {
+        console.error('Failed to register popup hotkey:', error);
+        const { showToast } = require('./ui-utils.js');
+        showToast('Failed to register popup hotkey', 'error');
+        if (input) input.value = state.CONFIG.popupHotkey || '';
+      }
+
+      stopCapturingPopupHotkey();
+    }
+  };
+
+  // Store handler for cleanup
+  input._captureHandler = captureHandler;
+  document.addEventListener('keydown', captureHandler, true);
+}
+
+function stopCapturingPopupHotkey() {
+  isCapturingPopupHotkey = false;
+  const input = document.getElementById('popup-hotkey-input');
+  const setBtn = document.getElementById('popup-hotkey-set-btn');
+
+  if (input) {
+    input.value = state.CONFIG.popupHotkey || '';
+    input.placeholder = state.CONFIG.popupHotkey || 'Not set (click Set Hotkey)';
+    input.blur();
+
+    if (input._captureHandler) {
+      document.removeEventListener('keydown', input._captureHandler, true);
+      input._captureHandler = null;
+    }
+  }
+
+  if (setBtn) {
+    setBtn.textContent = 'Set Hotkey';
+    setBtn.classList.remove('btn-danger');
+    setBtn.classList.add('btn-secondary');
+  }
+}
+
 module.exports = {
     openSettings,
     closeSettings,
@@ -507,4 +692,5 @@ module.exports = {
     openAlertConfigModal,
     closeAlertConfigModal,
     saveAlert,
+    initializePopupHotkey,
 };

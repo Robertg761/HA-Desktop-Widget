@@ -200,9 +200,25 @@
                 </div>
                 <div id="hotkeys-tab" class="tab-content">
                     <div class="form-group">
+                        <label>Popup Hotkey (Hold to Bring Window to Front)</label>
+                        <p class="help-text">Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.</p>
+                        <div class="popup-hotkey-config">
+                            <input type="text" id="popup-hotkey-input" placeholder="Not set (click Set Hotkey)" readonly>
+                            <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">Set Hotkey</button>
+                            <button id="popup-hotkey-clear-btn" class="btn btn-danger btn-small" style="display: none;">Clear</button>
+                        </div>
+                        <p class="help-text" style="margin-top: 8px;">
+                            <strong>Recommended presets (click to use):</strong><br>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Alt+H">Ctrl+Alt+H</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
+                        </p>
+                    </div>
+                    <hr>
+                    <div class="form-group">
                         <label>
                             <input type="checkbox" id="global-hotkeys-enabled">
-                            Enable Global Hotkeys
+                            Enable Entity Hotkeys
                         </label>
                     </div>
                     <div id="hotkeys-list-container">

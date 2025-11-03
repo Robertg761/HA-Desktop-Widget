@@ -4,6 +4,7 @@ const fs = require('fs');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
+const { uIOhook, UiohookKey } = require('uiohook-napi');
 
 // --- Main Log Configuration ---
 // This will catch any uncaught errors in your main process
@@ -32,6 +33,14 @@ let mainWindow;
 let tray;
 let config;
 let isQuitting = false;
+
+// Popup hotkey state
+let popupHotkeyPressed = false;
+let popupHotkeyConfig = null; // Stores { keycode, alt, ctrl, shift, meta }
+let wasAlwaysOnTop = false; // Track original alwaysOnTop state
+let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanup
+let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
+let uIOhookRunning = false; // Track whether uIOhook is currently running
 
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
@@ -122,7 +131,8 @@ function loadConfig() {
     entityAlerts: {
       enabled: false,
       alerts: {} // entityId -> alert configuration
-    }
+    },
+    popupHotkey: '' // Global hotkey to temporarily bring window to front while held
   };
 
   try {
@@ -567,10 +577,19 @@ ipcMain.handle('open-logs', () => {
 // Global Hotkey IPC Handlers
 ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
   // Check for conflicts with existing hotkeys first
-  const existingEntity = Object.entries(config.globalHotkeys.hotkeys).find(([id, key]) => 
-    id !== entityId && key.hotkey.toLowerCase() === hotkey.toLowerCase()
-  );
-  
+  // Handle both string (legacy) and object (new) formats
+  const existingEntity = Object.entries(config.globalHotkeys.hotkeys).find(([id, hotkeyConfig]) => {
+    if (id === entityId) return false; // Skip the entity we're currently updating
+
+    // Extract hotkey from either format: string or object
+    const existingHotkey = (typeof hotkeyConfig === 'object' && hotkeyConfig.hotkey)
+      ? hotkeyConfig.hotkey
+      : hotkeyConfig;
+
+    // Only compare if we have a valid hotkey string
+    return existingHotkey && typeof existingHotkey === 'string' && existingHotkey.toLowerCase() === hotkey.toLowerCase();
+  });
+
   if (existingEntity) {
     const entityName = existingEntity[0] || 'another action';
     return { success: false, error: `Hotkey already assigned to ${entityName}` };
@@ -580,11 +599,11 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
   if (!validateHotkey(hotkey)) {
     return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
   }
-  
+
   config.globalHotkeys.hotkeys[entityId] = { hotkey, action };
   saveConfig();
   registerGlobalHotkeys(); // This will re-register all hotkeys
-  
+
   // Final check to see if Electron successfully registered it
   if (!globalShortcut.isRegistered(hotkey)) {
     console.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
@@ -594,7 +613,7 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
     registerGlobalHotkeys();
     return { success: false, error: 'Hotkey is likely in use by another application' };
   }
-  
+
   return { success: true };
 });
 
@@ -654,6 +673,39 @@ ipcMain.handle('toggle-alerts', (event, enabled) => {
   return { success: true };
 });
 
+// Popup Hotkey IPC Handlers
+ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
+  // Validate the hotkey
+  if (!validateHotkey(hotkey)) {
+    return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
+  }
+
+  // Unregister old hotkey if exists
+  if (config.popupHotkey) {
+    unregisterPopupHotkey();
+  }
+
+  // Update config
+  config.popupHotkey = hotkey;
+  saveConfig();
+
+  // Register new hotkey
+  registerPopupHotkey();
+
+  return { success: true };
+});
+
+ipcMain.handle('unregister-popup-hotkey', () => {
+  config.popupHotkey = '';
+  saveConfig();
+  unregisterPopupHotkey();
+  return { success: true };
+});
+
+ipcMain.handle('get-popup-hotkey', () => {
+  return { hotkey: config.popupHotkey || '' };
+});
+
 // Global Hotkey Management
 function registerGlobalHotkeys() {
   if (!config.globalHotkeys.enabled) return;
@@ -694,15 +746,16 @@ function unregisterGlobalHotkeys() {
 
 function validateHotkey(hotkey) {
   if (!hotkey || typeof hotkey !== 'string') return false;
-  
+
   // A valid hotkey must have at least one non-modifier key.
-  const modifiers = ['ctrl', 'alt', 'shift', 'meta', 'cmd'];
+  // Support multiple modifier name variants: Ctrl/Control, Alt/Option, Shift, Meta/Cmd/Command/Super
+  const modifiers = ['ctrl', 'control', 'alt', 'option', 'shift', 'meta', 'cmd', 'command', 'super', 'commandorcontrol', 'cmdorctrl'];
   const keys = hotkey.split('+');
   const nonModifiers = keys.filter(key => !modifiers.includes(key.toLowerCase()));
   if (nonModifiers.length === 0) {
     return false;
   }
-  
+
   // Check for conflicts with system shortcuts
   const systemShortcuts = [
     'ctrl+alt+del', 'alt+f4', 'ctrl+c', 'ctrl+v', 'ctrl+x', 'ctrl+z',
@@ -710,14 +763,244 @@ function validateHotkey(hotkey) {
     'alt+tab', 'ctrl+tab', 'ctrl+shift+tab', 'alt+shift+tab',
     'win+l', 'win+r', 'win+e', 'win+d', 'win+m', 'win+tab'
   ];
-  
+
   return !systemShortcuts.includes(hotkey.toLowerCase());
+}
+
+// Popup Hotkey Management
+function acceleratorToUIOhookKey(accelerator) {
+  if (!accelerator || typeof accelerator !== 'string') return null;
+
+  const parts = accelerator.split('+').map(p => p.trim().toLowerCase());
+
+  // Extract modifiers - support all variants
+  const config = {
+    ctrl: parts.includes('ctrl') || parts.includes('control') || parts.includes('commandorcontrol') || parts.includes('cmdorctrl'),
+    alt: parts.includes('alt') || parts.includes('option'),
+    shift: parts.includes('shift'),
+    meta: parts.includes('meta') || parts.includes('cmd') || parts.includes('command') || parts.includes('super')
+  };
+
+  // Get the main key (non-modifier) - include all possible modifier name variants
+  const modifiers = ['ctrl', 'control', 'commandorcontrol', 'cmdorctrl', 'alt', 'option', 'shift', 'meta', 'cmd', 'command', 'super'];
+  const mainKey = parts.find(p => !modifiers.includes(p));
+
+  if (!mainKey) return null;
+
+  // Map common keys to UiohookKey codes
+  const keyMap = {
+    'space': UiohookKey.Space,
+    'enter': UiohookKey.Enter,
+    'return': UiohookKey.Return,
+    'tab': UiohookKey.Tab,
+    'backspace': UiohookKey.Backspace,
+    'delete': UiohookKey.Delete,
+    'escape': UiohookKey.Escape,
+    'esc': UiohookKey.Escape,
+    'home': UiohookKey.Home,
+    'end': UiohookKey.End,
+    'pageup': UiohookKey.PageUp,
+    'pagedown': UiohookKey.PageDown,
+    'up': UiohookKey.Up,
+    'down': UiohookKey.Down,
+    'left': UiohookKey.Left,
+    'right': UiohookKey.Right,
+    'f1': UiohookKey.F1,
+    'f2': UiohookKey.F2,
+    'f3': UiohookKey.F3,
+    'f4': UiohookKey.F4,
+    'f5': UiohookKey.F5,
+    'f6': UiohookKey.F6,
+    'f7': UiohookKey.F7,
+    'f8': UiohookKey.F8,
+    'f9': UiohookKey.F9,
+    'f10': UiohookKey.F10,
+    'f11': UiohookKey.F11,
+    'f12': UiohookKey.F12,
+    '0': UiohookKey.Digit0,
+    '1': UiohookKey.Digit1,
+    '2': UiohookKey.Digit2,
+    '3': UiohookKey.Digit3,
+    '4': UiohookKey.Digit4,
+    '5': UiohookKey.Digit5,
+    '6': UiohookKey.Digit6,
+    '7': UiohookKey.Digit7,
+    '8': UiohookKey.Digit8,
+    '9': UiohookKey.Digit9,
+    'a': UiohookKey.A,
+    'b': UiohookKey.B,
+    'c': UiohookKey.C,
+    'd': UiohookKey.D,
+    'e': UiohookKey.E,
+    'f': UiohookKey.F,
+    'g': UiohookKey.G,
+    'h': UiohookKey.H,
+    'i': UiohookKey.I,
+    'j': UiohookKey.J,
+    'k': UiohookKey.K,
+    'l': UiohookKey.L,
+    'm': UiohookKey.M,
+    'n': UiohookKey.N,
+    'o': UiohookKey.O,
+    'p': UiohookKey.P,
+    'q': UiohookKey.Q,
+    'r': UiohookKey.R,
+    's': UiohookKey.S,
+    't': UiohookKey.T,
+    'u': UiohookKey.U,
+    'v': UiohookKey.V,
+    'w': UiohookKey.W,
+    'x': UiohookKey.X,
+    'y': UiohookKey.Y,
+    'z': UiohookKey.Z
+  };
+
+  const keycode = keyMap[mainKey];
+  if (!keycode) {
+    log.warn(`Unknown key in accelerator: ${mainKey}`);
+    return null;
+  }
+
+  return { keycode, ...config };
+}
+
+function registerPopupHotkey() {
+  // If no popup hotkey configured, clean up and return
+  if (!config.popupHotkey || config.popupHotkey.trim() === '') {
+    log.debug('No popup hotkey configured, cleaning up');
+    unregisterPopupHotkey();
+    return;
+  }
+
+  const hotkeyConfig = acceleratorToUIOhookKey(config.popupHotkey);
+  if (!hotkeyConfig) {
+    log.warn(`Failed to parse popup hotkey: ${config.popupHotkey}`);
+    return;
+  }
+
+  try {
+    // Remove old event handlers before registering new ones
+    if (popupHotkeyKeydownHandler) {
+      uIOhook.off('keydown', popupHotkeyKeydownHandler);
+      log.debug('Removed old keydown handler');
+    }
+    if (popupHotkeyKeyupHandler) {
+      uIOhook.off('keyup', popupHotkeyKeyupHandler);
+      log.debug('Removed old keyup handler');
+    }
+
+    popupHotkeyConfig = hotkeyConfig;
+
+    // Create new event handlers
+    popupHotkeyKeydownHandler = (event) => {
+      if (!popupHotkeyConfig || popupHotkeyPressed) return;
+
+      const { keycode, ctrl, alt, shift, meta } = popupHotkeyConfig;
+
+      // Debug logging
+      log.debug(`Popup hotkey event: keycode=${event.keycode}, ctrl=${event.ctrlKey}, alt=${event.altKey}, shift=${event.shiftKey}, meta=${event.metaKey}`);
+      log.debug(`Expected config: keycode=${keycode}, ctrl=${ctrl}, alt=${alt}, shift=${shift}, meta=${meta}`);
+
+      // Check if this is our hotkey - use Boolean coercion to handle undefined values
+      if (event.keycode === keycode &&
+          Boolean(event.ctrlKey) === ctrl &&
+          Boolean(event.altKey) === alt &&
+          Boolean(event.shiftKey) === shift &&
+          Boolean(event.metaKey) === meta) {
+
+        popupHotkeyPressed = true;
+        log.info('Popup hotkey matched! Bringing window to front...');
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // Save current alwaysOnTop state
+          wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
+
+          // Bring window to front
+          if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+          }
+          mainWindow.show();
+          mainWindow.setAlwaysOnTop(true);
+          mainWindow.focus();
+          mainWindow.moveTop();
+
+          log.debug('Popup hotkey pressed - window brought to front');
+        }
+      }
+    };
+
+    popupHotkeyKeyupHandler = (event) => {
+      if (!popupHotkeyConfig || !popupHotkeyPressed) return;
+
+      const { keycode } = popupHotkeyConfig;
+
+      // Debug logging
+      log.debug(`Popup hotkey keyup: keycode=${event.keycode}, expected=${keycode}`);
+
+      // Check if this is our hotkey being released
+      if (event.keycode === keycode) {
+        popupHotkeyPressed = false;
+        log.info('Popup hotkey released! Restoring window state...');
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // Restore original alwaysOnTop state
+          mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
+
+          log.debug('Popup hotkey released - window state restored');
+        }
+      }
+    };
+
+    // Start uIOhook if not already started
+    if (!uIOhookRunning) {
+      uIOhook.start();
+      uIOhookRunning = true;
+      log.info('uIOhook started for popup hotkey');
+    }
+
+    // Register the new event handlers
+    uIOhook.on('keydown', popupHotkeyKeydownHandler);
+    uIOhook.on('keyup', popupHotkeyKeyupHandler);
+
+    log.info(`Popup hotkey registered: ${config.popupHotkey}`);
+  } catch (error) {
+    log.error('Failed to register popup hotkey:', error);
+  }
+}
+
+function unregisterPopupHotkey() {
+  try {
+    // Remove event listeners first before stopping uIOhook
+    if (popupHotkeyKeydownHandler) {
+      uIOhook.off('keydown', popupHotkeyKeydownHandler);
+      popupHotkeyKeydownHandler = null;
+      log.debug('Removed keydown handler');
+    }
+    if (popupHotkeyKeyupHandler) {
+      uIOhook.off('keyup', popupHotkeyKeyupHandler);
+      popupHotkeyKeyupHandler = null;
+      log.debug('Removed keyup handler');
+    }
+
+    // Stop uIOhook only if it's running
+    if (uIOhookRunning) {
+      uIOhook.stop();
+      uIOhookRunning = false;
+      log.info('uIOhook stopped, popup hotkey unregistered');
+    }
+
+    // Clear state
+    popupHotkeyConfig = null;
+    popupHotkeyPressed = false;
+  } catch (error) {
+    log.error('Failed to unregister popup hotkey:', error);
+  }
 }
 
 // Entity Alert Management
 function setupEntityAlerts() {
   if (!config.entityAlerts.enabled) return;
-  
+
   // This will be called when entity states change
   // The actual alert logic will be in the renderer process
   log.info('Entity alerts enabled');
@@ -761,6 +1044,7 @@ function setupAutoUpdates() {
 app.on('before-quit', () => {
   isQuitting = true;
   unregisterGlobalHotkeys();
+  unregisterPopupHotkey();
 });
 
 // Register custom protocol before creating window
@@ -843,6 +1127,7 @@ app.whenReady().then(() => {
   setupAutoUpdates();
   registerGlobalHotkeys();
   setupEntityAlerts();
+  registerPopupHotkey();
 });
 
 app.on('window-all-closed', () => {
