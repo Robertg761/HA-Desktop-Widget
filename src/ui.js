@@ -119,10 +119,23 @@ function addButtonsToElement(item) {
         e.stopPropagation();
         return false;
       }, true);
-      removeBtn.addEventListener('click', (e) => {
+      removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        removeFromQuickAccess(item.dataset.entityId);
+
+        const entityId = item.dataset.entityId;
+        const entity = state.STATES[entityId];
+        const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
+
+        const confirmed = await uiUtils.showConfirm(
+          'Remove from Quick Access',
+          `Remove "${entityName}" from Quick Access?`,
+          { confirmText: 'Remove', confirmClass: 'btn-danger' }
+        );
+
+        if (confirmed) {
+          removeFromQuickAccess(entityId);
+        }
       }, true);
       item.appendChild(removeBtn);
     }
@@ -157,7 +170,7 @@ function showRenameModal(entityId) {
       <div class="modal-content">
         <div class="modal-header">
           <h2>Rename Entity</h2>
-          <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+          <button class="close-btn">×</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -173,11 +186,12 @@ function showRenameModal(entityId) {
       </div>
     `;
     document.body.appendChild(modal);
-    
+
     const input = modal.querySelector('#rename-input');
     const saveBtn = modal.querySelector('#save-rename-btn');
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
+    const closeBtn = modal.querySelector('.close-btn');
     
     if (input) input.focus();
     
@@ -231,7 +245,11 @@ function showRenameModal(entityId) {
     if (cancelBtn) {
       cancelBtn.onclick = () => modal.remove();
     }
-    
+
+    if (closeBtn) {
+      closeBtn.onclick = () => modal.remove();
+    }
+
     modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
   } catch (error) {
     console.error('Error showing rename modal:', error);
@@ -240,15 +258,19 @@ function showRenameModal(entityId) {
 
 function removeFromQuickAccess(entityId) {
   try {
-    if (!confirm(`Remove ${entityId} from Quick Access?`)) return;
-    
+    // Note: Confirmation is handled by two-click pattern in the remove button itself
     const favorites = state.CONFIG.favoriteEntities || [];
     const newFavorites = favorites.filter(id => id !== entityId);
     state.CONFIG.favoriteEntities = newFavorites;
     
     // Save to config
     ipcRenderer.invoke('update-config', state.CONFIG);
-    
+
+    // Clean up any active drag state before re-rendering to prevent event listener interference
+    if (isDragging) {
+      cleanupDragState();
+    }
+
     // Re-render
     renderQuickControls();
     if (isReorganizeMode) {
@@ -2266,6 +2288,7 @@ function populateQuickControlsList() {
         if (searchInput) {
             searchInput.value = '';
             searchInput.oninput = () => renderList();
+            // Note: Focus is managed by trapFocus() in renderer.js when modal opens
         }
     } catch (error) {
         console.error('Error populating quick controls list:', error);

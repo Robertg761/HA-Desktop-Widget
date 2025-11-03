@@ -482,10 +482,21 @@ ipcMain.handle('minimize-window', () => {
 
 ipcMain.handle('focus-window', () => {
   if (mainWindow) {
-    if (!mainWindow.isFocused()) {
-      mainWindow.focus();
-      mainWindow.moveTop();
+    // Ensure window is visible and restored from minimized state
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
     }
+    mainWindow.show();
+
+    // Request focus and bring to front
+    mainWindow.focus();
+    mainWindow.moveTop();
+
+    // Windows focus workaround: Toggle always-on-top to force OS to refocus
+    // This fixes the issue where native dialogs (confirm/alert) steal focus
+    const wasOnTop = mainWindow.isAlwaysOnTop();
+    mainWindow.setAlwaysOnTop(true);
+    mainWindow.setAlwaysOnTop(wasOnTop);
   }
 });
 

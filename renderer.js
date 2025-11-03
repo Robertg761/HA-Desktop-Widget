@@ -396,6 +396,7 @@ function wireUI() {
         if (modal) {
           modal.classList.remove('hidden');
           modal.style.display = 'flex';
+          uiUtils.trapFocus(modal); // Trap focus to manage keyboard navigation and focus
         }
       };
     }
@@ -407,6 +408,7 @@ function wireUI() {
         if (modal) {
           modal.classList.add('hidden');
           modal.style.display = 'none';
+          uiUtils.releaseFocusTrap(); // Release focus trap and restore previous focus
         }
       };
     }

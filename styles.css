@@ -3515,6 +3515,67 @@ body {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
+/* Confirmation Modal - Compact Style */
+.confirm-modal-content {
+  max-width: 400px;
+  min-width: 320px;
+}
+
+.confirm-modal-content .modal-body {
+  padding: var(--space-6);
+}
+
+.modal-footer {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: flex-end;
+  padding: var(--space-6);
+  border-top: 1px solid var(--border-color);
+  background: var(--surface-1);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.confirm-modal-content .btn {
+  padding: var(--space-4) var(--space-6);
+  min-width: 100px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-modal-content .btn-secondary {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.confirm-modal-content .btn-secondary:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.confirm-modal-content .btn-danger {
+  background: rgba(211, 47, 47, 0.95);
+  color: white;
+  border-color: rgba(211, 47, 47, 0.5);
+}
+
+.confirm-modal-content .btn-danger:hover {
+  background: rgba(183, 28, 28, 1);
+  border-color: rgba(183, 28, 28, 0.8);
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.5);
+}
+
+.confirm-modal-content .btn:active {
+  transform: scale(0.98);
+}
+
 /* Rename button in reorganize mode - with glassmorphism */
 .reorganize-mode .control-item .rename-btn {
   position: absolute;

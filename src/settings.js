@@ -144,9 +144,13 @@ async function saveSettings() {
       const windowState = await ipcRenderer.invoke('get-window-state');
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
+          // Force window to regain focus after confirm dialog (Windows focus bug workaround)
+          await ipcRenderer.invoke('focus-window').catch(err => console.error('Failed to refocus window:', err));
           await ipcRenderer.invoke('restart-app');
           return;
         }
+        // Force window to regain focus even if user cancelled (Windows focus bug workaround)
+        await ipcRenderer.invoke('focus-window').catch(err => console.error('Failed to refocus window:', err));
       }
     }
 
@@ -436,7 +440,10 @@ async function saveAlert() {
 async function removeAlert(entityId) {
   try {
     if (!confirm('Remove this alert?')) return;
-    
+
+    // Force window to regain focus after confirm dialog (Windows focus bug workaround)
+    await ipcRenderer.invoke('focus-window').catch(err => console.error('Failed to refocus window:', err));
+
     if (state.CONFIG.entityAlerts?.alerts[entityId]) {
       delete state.CONFIG.entityAlerts.alerts[entityId];
       await ipcRenderer.invoke('update-config', state.CONFIG);
