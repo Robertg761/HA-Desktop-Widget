@@ -1110,6 +1110,55 @@ app.whenReady().then(() => {
           } else {
             respond({ statusCode: res.status || 502 });
           }
+        } else if (host === 'media_artwork') {
+          // Decode the base64-encoded URL from the path
+          const encodedUrl = decodeURIComponent(url.pathname.replace(/^\//, ''));
+          let artworkUrl;
+          try {
+            artworkUrl = Buffer.from(encodedUrl, 'base64').toString('utf-8');
+          } catch (decodeError) {
+            log.error('Failed to decode media artwork URL:', decodeError);
+            respond({ statusCode: 400 });
+            return;
+          }
+
+          // Determine if this is an external URL or HA-relative path
+          const isExternalUrl = artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://');
+          let upstream;
+          let headers = {};
+
+          if (isExternalUrl) {
+            // External CDN URL (Spotify, YouTube, etc.) - fetch without auth
+            upstream = artworkUrl;
+          } else {
+            // HA-relative path - add auth and construct full URL
+            const path = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
+            upstream = `${haUrl.replace(/\/$/, '')}${path}`;
+            headers = { Authorization: `Bearer ${token}` };
+          }
+
+          const res = await axios.get(upstream, {
+            headers: headers,
+            responseType: 'arraybuffer',
+            validateStatus: () => true,
+            timeout: 10000
+          });
+
+          if (res.status >= 200 && res.status < 300) {
+            const buf = Buffer.from(res.data);
+            const stream = Readable.from(buf);
+            const contentType = res.headers['content-type'] || 'image/jpeg';
+            respond({
+              data: stream,
+              statusCode: 200,
+              headers: {
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=1800'
+              }
+            });
+          } else {
+            respond({ statusCode: res.status || 502 });
+          }
         } else {
           respond({ statusCode: 404 });
         }

@@ -740,6 +740,68 @@ function setupMediaPlayerControls(div, entity) {
       `;
     }
 
+    // Update album art in the icon - show when media info is present
+    const controlIcon = div.querySelector('.control-icon');
+    if (controlIcon) {
+      // Save the original icon on first setup
+      if (!controlIcon.dataset.defaultIcon) {
+        controlIcon.dataset.defaultIcon = controlIcon.innerHTML;
+      }
+
+      const artworkUrl = entity.attributes?.entity_picture ||
+                        entity.attributes?.media_image_url ||
+                        entity.attributes?.media_content_id;
+
+      // Show artwork when media info is present (playing or paused with media loaded)
+      // Only hide when idle/off or no media info available
+      const hasMediaInfo = mediaTitle && !isOff;
+      if (hasMediaInfo && artworkUrl) {
+        // Use ha:// protocol to proxy artwork (handles external CDNs and HA paths with auth)
+        const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
+
+        // Determine the full URL to encode
+        let urlToEncode;
+        if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
+          // Already a full URL (external CDN like Spotify, YouTube)
+          urlToEncode = artworkUrl;
+        } else {
+          // Relative path - construct full HA URL
+          const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
+          urlToEncode = baseUrl + imgUrl;
+        }
+
+        // Encode URL in base64 for the ha:// protocol
+        const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+
+        // Add cache buster for better updates (rounded to 30 seconds to allow caching)
+        const cacheBuster = Math.floor(Date.now() / 30000);
+        const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+
+        // Replace icon with album art image
+        const img = document.createElement('img');
+        img.src = proxyUrl;
+        img.alt = 'Album art';
+        img.className = 'media-player-artwork';
+        img.onerror = function() {
+          // Restore original icon on error
+          const icon = this.parentElement;
+          if (icon && icon.dataset.defaultIcon) {
+            icon.innerHTML = icon.dataset.defaultIcon;
+            icon.classList.remove('has-artwork');
+          }
+        };
+        controlIcon.innerHTML = '';
+        controlIcon.appendChild(img);
+        controlIcon.classList.add('has-artwork');
+      } else {
+        // No media info or no artwork - show original icon
+        if (controlIcon.dataset.defaultIcon) {
+          controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
+        }
+        controlIcon.classList.remove('has-artwork');
+      }
+    }
+
     // Only set up event listeners once
     if (!div.dataset.mediaControlsSetup) {
       div.dataset.mediaControlsSetup = 'true';
@@ -1304,29 +1366,31 @@ function updateMediaTile() {
     }
     
     if (artworkUrl && artworkContainer) {
-      // Home Assistant always serves entity_picture through its own URL
-      // regardless of whether it's an external URL or local
+      // Use the ha:// protocol to proxy artwork (handles both external CDN URLs and HA-relative paths)
+      // This bypasses CSP restrictions and adds authentication when needed
       const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
-      
-      // If it's already a full URL, use it directly
-      // Otherwise, construct the URL with the HA base
-      let fullUrl;
+
+      // Determine the full URL to encode
+      let urlToEncode;
       if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
-        // Already a full URL (shouldn't happen with entity_picture, but handle it)
-        fullUrl = artworkUrl;
+        // Already a full URL (external CDN like Spotify, YouTube)
+        urlToEncode = artworkUrl;
       } else {
-        // Relative path - Home Assistant serves this
+        // Relative path - construct full HA URL
         const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
-        fullUrl = baseUrl + imgUrl;
+        urlToEncode = baseUrl + imgUrl;
       }
-      
+
+      // Encode URL in base64 for the ha:// protocol
+      const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+
       // Add cache buster for better updates (rounded to 30 seconds to allow caching)
       const cacheBuster = Math.floor(Date.now() / 30000);
-      fullUrl += (fullUrl.includes('?') ? '&' : '?') + `t=${cacheBuster}`;
+      const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
 
       // Create img element safely without inline event handler
       const img = document.createElement('img');
-      img.src = fullUrl;
+      img.src = proxyUrl;
       img.alt = 'Album art';
       img.onerror = function() {
         this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';

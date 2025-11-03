@@ -3836,6 +3836,22 @@ body {
   flex-shrink: 0;
 }
 
+/* Album art in media player tiles */
+.media-player-entity .control-icon.has-artwork {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: inherit;
+}
+
+.media-player-entity .control-icon.has-artwork img.media-player-artwork {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .media-player-entity .control-info {
   display: flex;
   flex-direction: column;
