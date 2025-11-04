@@ -274,6 +274,8 @@ function renderExistingHotkeys() {
 
 // Flag to track if listeners have been set up
 let listenersSetUp = false;
+// Store reference to document-level click handler for cleanup
+let documentClickHandler = null;
 
 function setupHotkeyEventListenersInternal() {
     try {
@@ -355,8 +357,11 @@ function setupHotkeyEventListenersInternal() {
             }
         });
 
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', (e) => {
+        // Close dropdowns when clicking outside - store handler reference for cleanup
+        documentClickHandler = (e) => {
+            const container = document.getElementById('hotkeys-list');
+            if (!container) return; // Container was removed
+
             if (!e.target.closest('.custom-dropdown')) {
                 container.querySelectorAll('.custom-dropdown.open').forEach(dropdown => {
                     dropdown.classList.remove('open');
@@ -366,7 +371,8 @@ function setupHotkeyEventListenersInternal() {
                     }
                 });
             }
-        });
+        };
+        document.addEventListener('click', documentClickHandler);
 
         // Handle keyboard navigation
         container.addEventListener('keydown', (e) => {
@@ -389,6 +395,19 @@ function setupHotkeyEventListenersInternal() {
     }
 }
 
+// Cleanup function to remove event listeners
+function cleanupHotkeyEventListeners() {
+    try {
+        if (documentClickHandler) {
+            document.removeEventListener('click', documentClickHandler);
+            documentClickHandler = null;
+        }
+        listenersSetUp = false;
+    } catch (error) {
+        console.error('Error cleaning up hotkey event listeners:', error);
+    }
+}
+
 // Public function that can be called from outside
 function setupHotkeyEventListeners() {
     // This is now a no-op since listeners are set up during rendering
@@ -402,4 +421,5 @@ module.exports = {
     captureHotkey,
     renderExistingHotkeys,
     setupHotkeyEventListeners,
+    cleanupHotkeyEventListeners,
 };

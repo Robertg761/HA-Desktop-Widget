@@ -2,6 +2,7 @@ const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const websocket = require('./websocket.js');
 const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap } = require('./ui-utils.js');
+const { cleanupHotkeyEventListeners } = require('./hotkeys.js');
 // Note: ui.js is not imported to prevent circular dependencies
 // Functions like populateDomainFilters will be passed in from renderer.js if needed
 
@@ -83,6 +84,9 @@ async function openSettings(uiHooks) {
 
 function closeSettings() {
   try {
+    // Clean up hotkey event listeners to prevent memory leaks
+    cleanupHotkeyEventListeners();
+
     const modal = document.getElementById('settings-modal');
     if (modal) {
       modal.classList.add('hidden');
@@ -124,7 +128,10 @@ async function saveSettings() {
     if (entityAlertsEnabled) state.CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
 
     // Save primary media player selection from custom dropdown
-    state.CONFIG.primaryMediaPlayer = customDropdownValue || null;
+    // Read directly from DOM to avoid using global state variable
+    const selectedOption = document.querySelector('#primary-media-player-menu .custom-dropdown-option.selected');
+    const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
+    state.CONFIG.primaryMediaPlayer = selectedValue || null;
 
     const domainFilters = document.getElementById('domain-filters');
     if (domainFilters) {
@@ -514,9 +521,7 @@ async function removeAlert(entityId) {
   }
 }
 
-// Custom Dropdown State
-let customDropdownValue = '';
-
+// Custom Dropdown Management
 function initCustomDropdown() {
   try {
     const dropdown = document.getElementById('primary-media-player-dropdown');
@@ -578,13 +583,13 @@ function closeCustomDropdown() {
 }
 
 function setCustomDropdownValue(value, displayText) {
-  customDropdownValue = value;
+  // Update displayed value
   const valueSpan = document.querySelector('.custom-dropdown-value');
   if (valueSpan) {
     valueSpan.textContent = displayText;
   }
 
-  // Update selected state on options
+  // Update selected state on options (the DOM itself stores the selection state)
   const options = document.querySelectorAll('.custom-dropdown-option');
   options.forEach(opt => {
     if (opt.getAttribute('data-value') === value) {

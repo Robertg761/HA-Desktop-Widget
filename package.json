@@ -47,7 +47,6 @@
       "index.html",
       "main.js",
       "renderer.js",
-      "keyboard.js",
       "styles.css",
       "build/**/*",
       "src/**/*",

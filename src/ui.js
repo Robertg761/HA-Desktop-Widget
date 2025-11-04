@@ -311,17 +311,17 @@ function renderActiveTab() {
 function updateEntityInUI(entity) {
   try {
     if (!entity) return;
-    
+
     // Update weather card if this is a weather entity
     if (entity.entity_id.startsWith('weather.')) {
       updateWeatherFromHA();
     }
-    
+
     // Update media tile if this is the primary media player
     if (entity.entity_id === state.CONFIG.primaryMediaPlayer) {
       updateMediaTile();
     }
-    
+
     const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
     items.forEach(item => {
       const newControl = createControlElement(entity);
@@ -330,11 +330,11 @@ function updateEntityInUI(entity) {
         newControl.classList.add('reorganize-mode');
       }
       item.replaceWith(newControl);
-      
-      // If in reorganize mode, add buttons and drag listeners to the newly created element
+
+      // If in reorganize mode, add buttons to the newly created element
+      // Note: SortableJS automatically handles drag behavior for all children
       if (isReorganizeMode) {
         addButtonsToElement(newControl);
-        addDragListenersToElement(newControl);
       }
     });
   } catch (error) {
@@ -407,10 +407,10 @@ function createControlElement(entity) {
     const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
     let stateIsTimestamp = false;
     if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
-      // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
-      // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
-      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+      // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+      // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+      // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
       const looksLikeTimestamp = iso8601Pattern.test(entity.state);
       if (looksLikeTimestamp) {
         const stateTime = new Date(entity.state).getTime();
@@ -1047,6 +1047,7 @@ function showMediaDetail(entity) {
     const closeModal = () => {
       modal.classList.add('modal-closing');
       if (tick) clearInterval(tick);
+      if (updateInterval) clearInterval(updateInterval);
       setTimeout(() => modal.remove(), 150);
     };
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
@@ -1592,10 +1593,10 @@ function updateTimerDisplays() {
         
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
         if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-          // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
-          // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
-          // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
-          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+          // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+          // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+          // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
           const looksLikeTimestamp = iso8601Pattern.test(entity.state);
           if (looksLikeTimestamp) {
             const stateTime = new Date(entity.state).getTime();

@@ -85,10 +85,18 @@ websocket.on('message', (msg) => {
           log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
           msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
 
-          // Merge new states with existing ones to prevent favorited entities from disappearing
-          // during Home Assistant restart or temporary unavailability
-          const mergedStates = { ...state.STATES, ...newStates };
-          log.debug(`Merged states: ${Object.keys(state.STATES).length} existing + ${Object.keys(newStates).length} new = ${Object.keys(mergedStates).length} total`);
+          // Preserve only favorited entities from old states (in case they're temporarily unavailable during HA restart)
+          // This prevents deleted entities from persisting indefinitely while still protecting favorites
+          const favoriteEntityIds = state.CONFIG.favoriteEntities || [];
+          const preservedFavorites = {};
+          favoriteEntityIds.forEach(entityId => {
+            if (state.STATES[entityId] && !newStates[entityId]) {
+              preservedFavorites[entityId] = state.STATES[entityId];
+            }
+          });
+
+          const mergedStates = { ...newStates, ...preservedFavorites };
+          log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites = ${Object.keys(mergedStates).length} total`);
           state.setStates(mergedStates);
 
           // This is the correct place to render and hide loading
