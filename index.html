@@ -158,9 +158,17 @@
                     </div>
                     <div class="form-group">
                         <label for="primary-media-player">Primary Media Player:</label>
-                        <select id="primary-media-player">
-                            <option value="">None (Hide Media Tile)</option>
-                        </select>
+                        <div class="custom-dropdown" id="primary-media-player-dropdown">
+                            <button type="button" class="custom-dropdown-trigger" id="primary-media-player-trigger" aria-haspopup="listbox" aria-expanded="false">
+                                <span class="custom-dropdown-value">None (Hide Media Tile)</span>
+                                <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            <div class="custom-dropdown-menu" role="listbox" id="primary-media-player-menu">
+                                <div class="custom-dropdown-option" role="option" data-value="">None (Hide Media Tile)</div>
+                            </div>
+                        </div>
                         <div class="form-help">Select which media player to display in the main media tile</div>
                     </div>
                     <div class="form-group update-section">

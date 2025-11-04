@@ -123,11 +123,8 @@ async function saveSettings() {
     state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
     if (entityAlertsEnabled) state.CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
 
-    // Save primary media player selection
-    const primaryMediaPlayer = document.getElementById('primary-media-player');
-    if (primaryMediaPlayer) {
-      state.CONFIG.primaryMediaPlayer = primaryMediaPlayer.value || null;
-    }
+    // Save primary media player selection from custom dropdown
+    state.CONFIG.primaryMediaPlayer = customDropdownValue || null;
 
     const domainFilters = document.getElementById('domain-filters');
     if (domainFilters) {
@@ -517,17 +514,106 @@ async function removeAlert(entityId) {
   }
 }
 
-function populateMediaPlayerDropdown() {
+// Custom Dropdown State
+let customDropdownValue = '';
+
+function initCustomDropdown() {
   try {
-    const dropdown = document.getElementById('primary-media-player');
-    if (!dropdown) {
-      console.warn('Media player dropdown not found');
+    const dropdown = document.getElementById('primary-media-player-dropdown');
+    const trigger = document.getElementById('primary-media-player-trigger');
+    const menu = document.getElementById('primary-media-player-menu');
+
+    if (!dropdown || !trigger || !menu) {
+      console.warn('Custom dropdown elements not found');
       return;
     }
-    
-    // Clear existing options except the first "None" option
-    dropdown.innerHTML = '<option value="">None (Hide Media Tile)</option>';
-    
+
+    // Toggle dropdown
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.contains('open');
+
+      if (isOpen) {
+        closeCustomDropdown();
+      } else {
+        dropdown.classList.add('open');
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) {
+        closeCustomDropdown();
+      }
+    });
+
+    // Handle keyboard navigation
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        dropdown.classList.toggle('open');
+        trigger.setAttribute('aria-expanded', dropdown.classList.contains('open') ? 'true' : 'false');
+      } else if (e.key === 'Escape') {
+        closeCustomDropdown();
+      }
+    });
+
+    // Option selection handled in populateMediaPlayerDropdown
+  } catch (error) {
+    console.error('Error initializing custom dropdown:', error);
+  }
+}
+
+function closeCustomDropdown() {
+  const dropdown = document.getElementById('primary-media-player-dropdown');
+  const trigger = document.getElementById('primary-media-player-trigger');
+
+  if (dropdown) {
+    dropdown.classList.remove('open');
+  }
+  if (trigger) {
+    trigger.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function setCustomDropdownValue(value, displayText) {
+  customDropdownValue = value;
+  const valueSpan = document.querySelector('.custom-dropdown-value');
+  if (valueSpan) {
+    valueSpan.textContent = displayText;
+  }
+
+  // Update selected state on options
+  const options = document.querySelectorAll('.custom-dropdown-option');
+  options.forEach(opt => {
+    if (opt.getAttribute('data-value') === value) {
+      opt.classList.add('selected');
+    } else {
+      opt.classList.remove('selected');
+    }
+  });
+}
+
+function populateMediaPlayerDropdown() {
+  try {
+    const menu = document.getElementById('primary-media-player-menu');
+    if (!menu) {
+      console.warn('Media player dropdown menu not found');
+      return;
+    }
+
+    // Clear existing options
+    menu.innerHTML = '';
+
+    // Add "None" option
+    const noneOption = document.createElement('div');
+    noneOption.className = 'custom-dropdown-option';
+    noneOption.setAttribute('role', 'option');
+    noneOption.setAttribute('data-value', '');
+    noneOption.textContent = 'None (Hide Media Tile)';
+    menu.appendChild(noneOption);
+
     // Get all media player entities
     const mediaPlayers = Object.values(state.STATES || {})
       .filter(entity => entity.entity_id.startsWith('media_player.'))
@@ -537,19 +623,39 @@ function populateMediaPlayerDropdown() {
         const nameB = utils.getEntityDisplayName(b).toLowerCase();
         return nameA.localeCompare(nameB);
       });
-    
+
     // Populate dropdown
     mediaPlayers.forEach(entity => {
-      const option = document.createElement('option');
-      option.value = entity.entity_id;
+      const option = document.createElement('div');
+      option.className = 'custom-dropdown-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('data-value', entity.entity_id);
       const utils = require('./utils.js');
       option.textContent = utils.getEntityDisplayName(entity);
-      dropdown.appendChild(option);
+      menu.appendChild(option);
     });
-    
+
+    // Add click handlers to all options
+    const options = menu.querySelectorAll('.custom-dropdown-option');
+    options.forEach(option => {
+      option.addEventListener('click', () => {
+        const value = option.getAttribute('data-value');
+        const displayText = option.textContent;
+        setCustomDropdownValue(value, displayText);
+        closeCustomDropdown();
+      });
+    });
+
     // Set current selection
-    if (state.CONFIG.primaryMediaPlayer) {
-      dropdown.value = state.CONFIG.primaryMediaPlayer;
+    const currentValue = state.CONFIG.primaryMediaPlayer || '';
+    const selectedOption = Array.from(options).find(opt => opt.getAttribute('data-value') === currentValue);
+    const displayText = selectedOption ? selectedOption.textContent : 'None (Hide Media Tile)';
+    setCustomDropdownValue(currentValue, displayText);
+
+    // Initialize dropdown behavior (only once)
+    if (!menu.dataset.initialized) {
+      initCustomDropdown();
+      menu.dataset.initialized = 'true';
     }
   } catch (error) {
     console.error('Error populating media player dropdown:', error);
