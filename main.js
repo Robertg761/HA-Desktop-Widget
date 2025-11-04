@@ -403,7 +403,7 @@ function createTray() {
         if (app.isPackaged) {
           autoUpdater.checkForUpdates();
         } else {
-          console.log('Update check is only available in packaged builds.');
+          log.info('Update check is only available in packaged builds.');
         }
       }
     },
@@ -610,7 +610,7 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
 
   // Final check to see if Electron successfully registered it
   if (!globalShortcut.isRegistered(hotkey)) {
-    console.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
+    log.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
     // Unset it from config so the user can try again
     delete config.globalHotkeys.hotkeys[entityId];
     saveConfig();
@@ -634,7 +634,10 @@ ipcMain.handle('register-hotkeys', () => {
   return { success: true };
 });
 
+// DEPRECATED: Use 'update-config' instead for safer config merging
+// This handler replaces the entire config which can lose data if not careful
 ipcMain.handle('save-config', (event, newConfig) => {
+  log.warn('save-config handler is deprecated, use update-config instead');
   // Update the config with the new values
   config = newConfig;
   saveConfig();

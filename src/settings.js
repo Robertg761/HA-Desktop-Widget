@@ -1,10 +1,45 @@
 const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const websocket = require('./websocket.js');
-const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap } = require('./ui-utils.js');
+const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast } = require('./ui-utils.js');
 const { cleanupHotkeyEventListeners } = require('./hotkeys.js');
 // Note: ui.js is not imported to prevent circular dependencies
 // Functions like populateDomainFilters will be passed in from renderer.js if needed
+
+/**
+ * Validate Home Assistant URL format
+ * @param {string} url - The URL to validate
+ * @returns {object} - { valid: boolean, error: string|null, url: string }
+ */
+function validateHomeAssistantUrl(url) {
+  if (!url || url.trim() === '') {
+    return { valid: false, error: 'Home Assistant URL cannot be empty', url: null };
+  }
+
+  const trimmedUrl = url.trim();
+
+  // Check if URL starts with http:// or https://
+  if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+    return { valid: false, error: 'URL must start with http:// or https://', url: null };
+  }
+
+  // Try to parse as URL
+  try {
+    const urlObj = new URL(trimmedUrl);
+
+    // Validate it has a hostname
+    if (!urlObj.hostname) {
+      return { valid: false, error: 'Invalid URL: missing hostname', url: null };
+    }
+
+    // Remove trailing slash for consistency
+    const normalizedUrl = trimmedUrl.replace(/\/$/, '');
+
+    return { valid: true, error: null, url: normalizedUrl };
+  } catch (e) {
+    return { valid: false, error: 'Invalid URL format', url: null };
+  }
+}
 
 async function openSettings(uiHooks) {
   try {
@@ -110,7 +145,19 @@ async function saveSettings() {
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
 
-    if (haUrl) state.CONFIG.homeAssistant.url = haUrl.value.trim();
+    // Validate and save Home Assistant URL
+    if (haUrl && haUrl.value.trim()) {
+      const validation = validateHomeAssistantUrl(haUrl.value);
+      if (!validation.valid) {
+        showToast(validation.error, 'error', 4000);
+        return; // Don't save if URL is invalid
+      }
+      state.CONFIG.homeAssistant.url = validation.url;
+    } else if (haUrl && !haUrl.value.trim()) {
+      showToast('Home Assistant URL cannot be empty', 'error', 3000);
+      return;
+    }
+
     if (haToken) state.CONFIG.homeAssistant.token = haToken.value.trim();
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;

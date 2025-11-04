@@ -347,7 +347,7 @@ function setupHotkeyEventListenersInternal() {
                     }
 
                     // Save the updated config
-                    await ipcRenderer.invoke('save-config', state.CONFIG);
+                    await ipcRenderer.invoke('update-config', state.CONFIG);
 
                     // Re-register hotkeys to apply the new action
                     await ipcRenderer.invoke('register-hotkeys');

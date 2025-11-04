@@ -8,6 +8,33 @@ const { setIconContent } = require('./icons.js');
 const Sortable = require('sortablejs');
 
 let isReorganizeMode = false;
+// Track all active long-press timers to cancel them when mode changes
+const activePressTimers = new Set();
+
+/**
+ * Handle WebSocket service call errors with user feedback
+ * @param {Error} error - The error that occurred
+ * @param {string} entityName - Optional entity name for better error messages
+ */
+function handleServiceError(error, entityName = null) {
+  const errorMessage = error?.message || 'Unknown error';
+  const displayMessage = entityName
+    ? `Failed to control ${entityName}: ${errorMessage}`
+    : `Service call failed: ${errorMessage}`;
+
+  console.error('WebSocket service call failed:', error);
+  uiUtils.showToast(displayMessage, 'error', 4000);
+}
+
+/**
+ * Clear all active long-press timers
+ * Called when reorganize mode changes to prevent inconsistent state
+ */
+function clearAllPressTimers() {
+  activePressTimers.forEach(timer => clearTimeout(timer));
+  activePressTimers.clear();
+}
+
 let sortableInstance = null; // SortableJS instance for reorganize mode
 
 const mediaFitElements = new Set();
@@ -16,6 +43,9 @@ let mediaFitResizeBound = false;
 
 function toggleReorganizeMode() {
   try {
+    // Clear any active long-press timers to prevent state inconsistency
+    clearAllPressTimers();
+
     isReorganizeMode = !isReorganizeMode;
     const container = document.getElementById('quick-controls');
     const btn = document.getElementById('reorganize-quick-controls-btn');
@@ -471,8 +501,11 @@ function createControlElement(entity) {
       const timerDisplay = utils.escapeHtml(utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state);
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
     } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
-      const brightness = Math.round((entity.attributes.brightness / 255) * 100);
-      stateDisplay = `<div class="control-state">${brightness}%</div>`;
+      const brightnessValue = Number(entity.attributes.brightness);
+      if (!isNaN(brightnessValue) && brightnessValue >= 0) {
+        const brightness = Math.round((brightnessValue / 255) * 100);
+        stateDisplay = `<div class="control-state">${brightness}%</div>`;
+      }
     } else if (entity.entity_id.startsWith('light.') && entity.state !== 'on') {
       stateDisplay = `<div class="control-state">Off</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
@@ -581,11 +614,18 @@ function setupLightControls(div, entity) {
       longPressTriggered = false;
       pressTimer = setTimeout(() => {
         longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
         showBrightnessSlider(entity);
       }, 500);
+      activePressTimers.add(pressTimer);
     };
 
-    const cancelPress = () => clearTimeout(pressTimer);
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
 
     div.addEventListener('mousedown', startPress);
     div.addEventListener('mouseup', cancelPress);
@@ -615,11 +655,18 @@ function setupClimateControls(div, entity) {
       longPressTriggered = false;
       pressTimer = setTimeout(() => {
         longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
         showClimateControls(entity);
       }, 500);
+      activePressTimers.add(pressTimer);
     };
 
-    const cancelPress = () => clearTimeout(pressTimer);
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
 
     div.addEventListener('mousedown', startPress);
     div.addEventListener('mouseup', cancelPress);
@@ -649,11 +696,18 @@ function setupFanControls(div, entity) {
       longPressTriggered = false;
       pressTimer = setTimeout(() => {
         longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
         showFanControls(entity);
       }, 500);
+      activePressTimers.add(pressTimer);
     };
 
-    const cancelPress = () => clearTimeout(pressTimer);
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
 
     div.addEventListener('mousedown', startPress);
     div.addEventListener('mouseup', cancelPress);
@@ -683,11 +737,18 @@ function setupCoverControls(div, entity) {
       longPressTriggered = false;
       pressTimer = setTimeout(() => {
         longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
         showCoverControls(entity);
       }, 500);
+      activePressTimers.add(pressTimer);
     };
 
-    const cancelPress = () => clearTimeout(pressTimer);
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
 
     div.addEventListener('mousedown', startPress);
     div.addEventListener('mouseup', cancelPress);
@@ -813,15 +874,25 @@ function setupMediaPlayerControls(div, entity) {
       const startPress = (_e) => {
         if (isReorganizeMode) return;
         longPressTriggered = false;
-        clearTimeout(pressTimer);
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          activePressTimers.delete(pressTimer);
+        }
         pressTimer = setTimeout(() => {
           longPressTriggered = true;
+          activePressTimers.delete(pressTimer);
           const currentEntity = state.STATES[entity.entity_id];
           if (currentEntity) showMediaDetail(currentEntity);
         }, 500);
+        activePressTimers.add(pressTimer);
       };
 
-      const cancelPress = () => { clearTimeout(pressTimer); };
+      const cancelPress = () => {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          activePressTimers.delete(pressTimer);
+        }
+      };
 
       div.addEventListener('mousedown', startPress);
       div.addEventListener('mouseup', cancelPress);
@@ -922,9 +993,16 @@ function showMediaDetail(entity) {
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
-    const duration = Number(entity.attributes?.media_duration) || 0; // seconds
-    const basePos = Number(entity.attributes?.media_position) || 0; // seconds
-    const updatedAt = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+
+    // Validate numeric attributes to prevent NaN
+    const durationValue = Number(entity.attributes?.media_duration);
+    const duration = (!isNaN(durationValue) && durationValue >= 0) ? durationValue : 0;
+
+    const basePosValue = Number(entity.attributes?.media_position);
+    const basePos = (!isNaN(basePosValue) && basePosValue >= 0) ? basePosValue : 0;
+
+    const updatedAtValue = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+    const updatedAt = !isNaN(updatedAtValue) ? updatedAtValue : 0;
 
     const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
 
@@ -1083,25 +1161,34 @@ function scheduleMediaFit() {
 function callMediaPlayerService(entityId, action) {
   try {
     const websocket = require('./websocket.js');
-    
+    const entity = state.STATES[entityId];
+    const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
+
+    let serviceCall;
     switch (action) {
       case 'play':
-        websocket.callService('media_player', 'media_play', { entity_id: entityId });
+        serviceCall = websocket.callService('media_player', 'media_play', { entity_id: entityId });
         break;
       case 'pause':
-        websocket.callService('media_player', 'media_pause', { entity_id: entityId });
+        serviceCall = websocket.callService('media_player', 'media_pause', { entity_id: entityId });
         break;
       case 'next_track':
-        websocket.callService('media_player', 'media_next_track', { entity_id: entityId });
+        serviceCall = websocket.callService('media_player', 'media_next_track', { entity_id: entityId });
         break;
       case 'previous_track':
-        websocket.callService('media_player', 'media_previous_track', { entity_id: entityId });
+        serviceCall = websocket.callService('media_player', 'media_previous_track', { entity_id: entityId });
         break;
       default:
         console.warn('Unknown media player action:', action);
+        return;
+    }
+
+    if (serviceCall) {
+      serviceCall.catch(error => handleServiceError(error, entityName));
     }
   } catch (error) {
     console.error('Error calling media player service:', error);
+    uiUtils.showToast('Failed to control media player', 'error', 3000);
   }
 }
 
@@ -1135,9 +1222,11 @@ function toggleEntity(entity) {
                 // No toggle action for this domain
                 return;
         }
-        websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data);
+        websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data)
+          .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
     } catch (error) {
         console.error('Error toggling entity:', error);
+        uiUtils.showToast('Failed to toggle entity', 'error', 3000);
     }
 }
 
@@ -1158,64 +1247,74 @@ function triggerActivationFeedback(entityId) {
 function executeHotkeyAction(entity, action) {
   try {
     const domain = entity.entity_id.split('.')[0];
-    const currentBrightness = entity.attributes?.brightness || 0;
-    
+
+    // Validate numeric attributes to prevent NaN
+    const brightnessValue = Number(entity.attributes?.brightness);
+    const currentBrightness = (!isNaN(brightnessValue) && brightnessValue >= 0) ? brightnessValue : 0;
+
+    const entityName = utils.getEntityDisplayName(entity);
+
     switch (action) {
       case 'toggle':
         toggleEntity(entity);
         break;
       case 'turn_on':
-        websocket.callService(domain, 'turn_on', { entity_id: entity.entity_id });
+        websocket.callService(domain, 'turn_on', { entity_id: entity.entity_id })
+          .catch(error => handleServiceError(error, entityName));
         break;
       case 'turn_off':
-        websocket.callService(domain, 'turn_off', { entity_id: entity.entity_id });
+        websocket.callService(domain, 'turn_off', { entity_id: entity.entity_id })
+          .catch(error => handleServiceError(error, entityName));
         break;
       case 'brightness_up':
         // Increase brightness by 20% (51 units out of 255)
         if (domain === 'light') {
           const newBrightness = Math.min(255, currentBrightness + 51);
-          websocket.callService('light', 'turn_on', { 
+          websocket.callService('light', 'turn_on', {
             entity_id: entity.entity_id,
             brightness: newBrightness
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'brightness_down':
         // Decrease brightness by 20% (51 units out of 255)
         if (domain === 'light') {
           const newBrightness = Math.max(0, currentBrightness - 51);
-          websocket.callService('light', 'turn_on', { 
+          websocket.callService('light', 'turn_on', {
             entity_id: entity.entity_id,
             brightness: newBrightness
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'trigger':
         // For automations
         if (domain === 'automation') {
-          websocket.callService('automation', 'trigger', { entity_id: entity.entity_id });
+          websocket.callService('automation', 'trigger', { entity_id: entity.entity_id })
+            .catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'increase_speed':
         // For fans - increase percentage by 33%
         if (domain === 'fan') {
-          const currentPercentage = entity.attributes?.percentage || 0;
+          const percentageValue = Number(entity.attributes?.percentage);
+          const currentPercentage = (!isNaN(percentageValue) && percentageValue >= 0) ? percentageValue : 0;
           const newPercentage = Math.min(100, currentPercentage + 33);
-          websocket.callService('fan', 'set_percentage', { 
+          websocket.callService('fan', 'set_percentage', {
             entity_id: entity.entity_id,
             percentage: newPercentage
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'decrease_speed':
         // For fans - decrease percentage by 33%
         if (domain === 'fan') {
-          const currentPercentage = entity.attributes?.percentage || 0;
+          const percentageValue = Number(entity.attributes?.percentage);
+          const currentPercentage = (!isNaN(percentageValue) && percentageValue >= 0) ? percentageValue : 0;
           const newPercentage = Math.max(0, currentPercentage - 33);
-          websocket.callService('fan', 'set_percentage', { 
+          websocket.callService('fan', 'set_percentage', {
             entity_id: entity.entity_id,
             percentage: newPercentage
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       default:
@@ -1224,6 +1323,7 @@ function executeHotkeyAction(entity, action) {
     }
   } catch (error) {
     console.error(`Error executing hotkey action '${action}' for entity ${entity.entity_id}:`, error);
+    uiUtils.showToast(`Failed to execute hotkey action`, 'error', 3000);
   }
 }
 function renderCameras() {
@@ -1431,15 +1531,21 @@ function updateMediaTile() {
 function updateMediaSeekBar(entity) {
   try {
     if (!entity) return;
-    
+
     const seekFill = document.getElementById('media-tile-seek-fill');
     const timeCurrent = document.getElementById('media-tile-time-current');
     const timeTotal = document.getElementById('media-tile-time-total');
-    
-    const duration = Number(entity.attributes?.media_duration) || 0;
-    const basePosition = Number(entity.attributes?.media_position) || 0;
-    const updatedAt = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
-    
+
+    // Validate numeric attributes to prevent NaN
+    const durationValue = Number(entity.attributes?.media_duration);
+    const duration = (!isNaN(durationValue) && durationValue >= 0) ? durationValue : 0;
+
+    const basePosValue = Number(entity.attributes?.media_position);
+    const basePosition = (!isNaN(basePosValue) && basePosValue >= 0) ? basePosValue : 0;
+
+    const updatedAtValue = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+    const updatedAt = !isNaN(updatedAtValue) ? updatedAtValue : 0;
+
     // Calculate current position (accounting for playback if playing)
     let currentPosition = basePosition;
     if (entity.state === 'playing' && updatedAt) {
@@ -1477,19 +1583,27 @@ function callMediaTileService(action) {
   try {
     const primaryPlayer = state.CONFIG.primaryMediaPlayer;
     if (!primaryPlayer) return;
-    
+
+    const entity = state.STATES[primaryPlayer];
+    const entityName = entity ? utils.getEntityDisplayName(entity) : 'Media Player';
+
     const serviceCalls = {
-      'play': () => websocket.callService('media_player', 'media_play', { entity_id: primaryPlayer }),
-      'pause': () => websocket.callService('media_player', 'media_pause', { entity_id: primaryPlayer }),
-      'previous': () => websocket.callService('media_player', 'media_previous_track', { entity_id: primaryPlayer }),
+      'play': () => websocket.callService('media_player', 'media_play', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName)),
+      'pause': () => websocket.callService('media_player', 'media_pause', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName)),
+      'previous': () => websocket.callService('media_player', 'media_previous_track', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName)),
       'next': () => websocket.callService('media_player', 'media_next_track', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName))
     };
-    
+
     if (serviceCalls[action]) {
       serviceCalls[action]();
     }
   } catch (error) {
     console.error('Error calling media tile service:', error);
+    uiUtils.showToast('Failed to control media player', 'error', 3000);
   }
 }
 
