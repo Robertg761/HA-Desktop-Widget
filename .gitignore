@@ -64,3 +64,7 @@ gha-creds-*.json
 
 # Genkit (local AI tooling cache)
 .genkit/
+
+# Local development notes (not for commit)
+todo.md
+improvement_suggestions.md

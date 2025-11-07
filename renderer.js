@@ -457,6 +457,7 @@ function wireUI() {
         pressTimer = setTimeout(() => {
           const modal = document.getElementById('weather-config-modal');
           if (modal) {
+            ui.populateWeatherEntitiesList();
             modal.classList.remove('hidden');
             modal.style.display = 'flex';
           }
@@ -521,6 +522,33 @@ function wireUI() {
         if (modal) {
           modal.classList.add('hidden');
           modal.style.display = 'none';
+        }
+      };
+    }
+
+    const clearWeatherBtn = document.getElementById('clear-weather');
+    if (clearWeatherBtn) {
+      clearWeatherBtn.onclick = async () => {
+        try {
+          // Clear the selected weather entity (revert to default)
+          const updatedConfig = {
+            ...state.CONFIG,
+            selectedWeatherEntity: undefined
+          };
+
+          await window.electronAPI.updateConfig(updatedConfig);
+          state.setConfig(updatedConfig);
+
+          // Refresh weather display
+          ui.updateWeatherFromHA();
+
+          // Refresh the list
+          ui.populateWeatherEntitiesList();
+
+          uiUtils.showToast('Weather entity cleared (using first available)', 'success', 2000);
+        } catch (error) {
+          console.error('Error clearing weather entity:', error);
+          uiUtils.showToast('Failed to clear weather entity', 'error', 3000);
         }
       };
     }

@@ -956,6 +956,20 @@ body {
   background: var(--surface-hover);
 }
 
+.entity-item.selected {
+  background: var(--primary-alpha);
+  border-left: 3px solid var(--primary-color);
+}
+
+.selected-badge {
+  color: var(--primary-color);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 8px;
+  background: var(--primary-alpha);
+  border-radius: 4px;
+}
+
 .entity-item .entity-icon {
   font-size: 20px;
   width: 28px;

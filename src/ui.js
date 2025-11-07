@@ -326,7 +326,6 @@ function saveQuickAccessOrder() {
 function renderActiveTab() {
   try {
     renderQuickControls();
-    renderCameras();
     updateWeatherFromHA();
     updateMediaTile();
     if (Object.keys(state.STATES).length === 0) {
@@ -1325,56 +1324,14 @@ function executeHotkeyAction(entity, action) {
     uiUtils.showToast(`Failed to execute hotkey action`, 'error', 3000);
   }
 }
-function renderCameras() {
-  try {
-    const container = document.getElementById('cameras-container');
-    const section = document.getElementById('cameras-section');
-    if (!container || !section) return;
-    
-    const cameras = Object.values(state.STATES).filter(e => e.entity_id.startsWith('camera.'));
-    
-    if (cameras.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-    
-    section.style.display = 'block';
-    container.innerHTML = '';
-    
-    cameras.slice(0, 4).forEach(cameraEntity => {
-      const card = createCameraCard(cameraEntity);
-      container.appendChild(card);
-    });
-  } catch (error) {
-    console.error('Error rendering cameras:', error);
-  }
-}
-
-function createCameraCard(cameraEntity) {
-  try {
-    const div = document.createElement('div');
-    div.className = 'camera-card';
-    const name = utils.escapeHtml(utils.getEntityDisplayName(cameraEntity));
-
-    div.innerHTML = `
-      <div class="camera-header">
-        <div class="camera-name">${name}</div>
-      </div>
-      <div class="camera-embed">
-        <img class="camera-img" alt="${name}" src="ha://camera/${cameraEntity.entity_id}?t=${Date.now()}">
-      </div>
-    `;
-    return div;
-  } catch (error) {
-    console.error('Error creating camera card:', error);
-    return document.createElement('div');
-  }
-}
 
 // --- Weather ---
 function updateWeatherFromHA() {
   try {
-    const weatherEntity = state.STATES[state.CONFIG.selectedWeatherEntity] || Object.values(state.STATES).find(e => e.entity_id.startsWith('weather.'));
+    const weatherEntity = state.STATES[state.CONFIG.selectedWeatherEntity] ||
+      Object.values(state.STATES)
+        .filter(e => e.entity_id.startsWith('weather.'))
+        .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
     if (!weatherEntity) return;
 
     const tempEl = document.getElementById('weather-temp');
@@ -1455,6 +1412,118 @@ function updateWeatherFromHA() {
     }
   } catch (error) {
     console.error('Error updating weather:', error);
+  }
+}
+
+function populateWeatherEntitiesList() {
+  try {
+    const list = document.getElementById('weather-entities-list');
+    const currentNameEl = document.getElementById('current-weather-name');
+    if (!list) return;
+
+    const weatherEntities = Object.values(state.STATES || {})
+      .filter(e => e.entity_id.startsWith('weather.'))
+      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+
+    list.innerHTML = '';
+
+    if (weatherEntities.length === 0) {
+      list.innerHTML = '<div class="no-entities-message">No weather entities available. Make sure you\'re connected to Home Assistant.</div>';
+      return;
+    }
+
+    const selectedEntityId = state.CONFIG.selectedWeatherEntity;
+
+    // Update current weather name display
+    if (currentNameEl) {
+      if (selectedEntityId && state.STATES[selectedEntityId]) {
+        currentNameEl.textContent = utils.getEntityDisplayName(state.STATES[selectedEntityId]) + ' ✓ (selected)';
+        currentNameEl.style.fontWeight = '600';
+        currentNameEl.style.color = 'var(--primary-color)';
+        currentNameEl.style.fontStyle = 'normal';
+      } else {
+        // Find the actual fallback entity being used (alphabetically first)
+        const fallbackEntity = Object.values(state.STATES)
+          .filter(e => e.entity_id.startsWith('weather.'))
+          .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
+
+        if (fallbackEntity) {
+          currentNameEl.textContent = utils.getEntityDisplayName(fallbackEntity) + ' (auto-detected)';
+          currentNameEl.style.fontWeight = '400';
+          currentNameEl.style.color = 'var(--text-secondary)';
+          currentNameEl.style.fontStyle = 'italic';
+        } else {
+          currentNameEl.textContent = 'None available';
+          currentNameEl.style.fontWeight = '400';
+          currentNameEl.style.color = 'var(--text-secondary)';
+          currentNameEl.style.fontStyle = 'normal';
+        }
+      }
+    }
+
+    weatherEntities.forEach(entity => {
+      const entityId = entity.entity_id;
+      const isSelected = entityId === selectedEntityId;
+
+      const item = document.createElement('div');
+      item.className = 'entity-item' + (isSelected ? ' selected' : '');
+
+      const icon = utils.getEntityIcon(entity);
+      const displayName = utils.getEntityDisplayName(entity);
+
+      item.innerHTML = `
+        <div class="entity-item-main">
+          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <div class="entity-item-info">
+            <span class="entity-name">${utils.escapeHtml(displayName)}</span>
+            <span class="entity-id">${utils.escapeHtml(entityId)}</span>
+          </div>
+        </div>
+        ${isSelected ? '<span class="selected-badge">✓ Selected</span>' : ''}
+      `;
+
+      // Add click handler to select this entity
+      item.onclick = () => {
+        selectWeatherEntity(entityId);
+      };
+
+      item.style.cursor = 'pointer';
+
+      list.appendChild(item);
+    });
+  } catch (error) {
+    console.error('Error populating weather entities list:', error);
+  }
+}
+
+async function selectWeatherEntity(entityId) {
+  try {
+    // Update config
+    const updatedConfig = {
+      ...state.CONFIG,
+      selectedWeatherEntity: entityId
+    };
+
+    // Persist to disk
+    await window.electronAPI.updateConfig(updatedConfig);
+
+    // Update local state
+    state.setConfig(updatedConfig);
+
+    // Refresh weather display
+    updateWeatherFromHA();
+
+    // Refresh the list to update selection highlight
+    populateWeatherEntitiesList();
+
+    // Show success toast
+    const entity = state.STATES[entityId];
+    if (entity) {
+      uiUtils.showToast(`Weather entity set to ${utils.getEntityDisplayName(entity)}`, 'success', 2000);
+    }
+  } catch (error) {
+    console.error('Error selecting weather entity:', error);
+    uiUtils.showToast('Failed to save weather entity selection', 'error', 3000);
   }
 }
 
@@ -2657,6 +2726,8 @@ module.exports = {
   renderActiveTab,
   updateEntityInUI,
   updateWeatherFromHA,
+  populateWeatherEntitiesList,
+  selectWeatherEntity,
   populateAreaFilter,
   populateDomainFilters,
   setupEntitySearchInput,
