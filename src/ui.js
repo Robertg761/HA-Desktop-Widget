@@ -1383,10 +1383,39 @@ function updateWeatherFromHA() {
     const windEl = document.getElementById('weather-wind');
     const iconEl = document.getElementById('weather-icon');
 
-    if (tempEl) tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}°`;
+    // Use Home Assistant's global unit system (from config)
+    const tempUnit = state.UNIT_SYSTEM.temperature || '°C';
+
+    // Handle wind speed: trust entity's unit if provided, otherwise use HA system units
+    let windSpeed = weatherEntity.attributes.wind_speed || 0;
+    let windUnit;
+
+    // Check if weather entity specifies its own wind_speed_unit (OpenWeatherMap and others do)
+    const entityWindUnit = weatherEntity.attributes.wind_speed_unit;
+
+    if (entityWindUnit) {
+      // Entity provides its own unit - use it as-is
+      windSpeed = Math.round(windSpeed);
+      windUnit = entityWindUnit;
+    } else {
+      // Fall back to HA global unit system
+      const haWindUnit = state.UNIT_SYSTEM.wind_speed || 'm/s';
+
+      if (haWindUnit === 'mph') {
+        // Imperial: display as-is in mph
+        windSpeed = Math.round(windSpeed);
+        windUnit = 'mph';
+      } else {
+        // Metric: HA uses m/s but display km/h for better UX
+        windSpeed = Math.round(windSpeed * 3.6); // m/s to km/h
+        windUnit = 'km/h';
+      }
+    }
+
+    if (tempEl) tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
     if (conditionEl) conditionEl.textContent = weatherEntity.state || '--';
     if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
-    if (windEl) windEl.textContent = `${weatherEntity.attributes.wind_speed || 0} km/h`;
+    if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
     
     // Update weather icon based on current condition
     if (iconEl) {

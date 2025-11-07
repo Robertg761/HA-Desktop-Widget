@@ -36,7 +36,7 @@ websocket.on('open', () => {
 });
 
 // Track request IDs for proper result handling
-let getStatesId, getServicesId, getAreasId;
+let getStatesId, getServicesId, getAreasId, getConfigId;
 
 // WebSocket reconnection constants and state
 const BASE_RECONNECT_DELAY = 1000; // 1 second
@@ -52,16 +52,23 @@ websocket.on('message', (msg) => {
       const statesReq = websocket.request({ type: 'get_states' });
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
+      const configReq = websocket.request({ type: 'get_config' });
 
       // Store IDs for matching results
       getStatesId = statesReq.id;
       getServicesId = servicesReq.id;
       getAreasId = areasReq.id;
+      getConfigId = configReq.id;
+
+      log.debug(`Sent get_config request with ID: ${getConfigId}`);
 
       // Prevent unhandled rejections from surfacing as global errors
       statesReq.catch(() => {});
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
+      configReq.catch((err) => {
+        log.error('get_config request failed:', err);
+      });
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
@@ -74,8 +81,10 @@ websocket.on('message', (msg) => {
         ui.updateEntityInUI(entity);
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
       }
-    } else if (msg.type === 'result' && msg.result) {
-      if (msg.id === getStatesId) { // get_states response
+    } else if (msg.type === 'result') {
+      log.debug(`Received result for message ID: ${msg.id}`);
+      if (msg.result) {
+        if (msg.id === getStatesId) { // get_states response
         const newStates = {};
         if (Array.isArray(msg.result)) {
           log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
@@ -109,6 +118,23 @@ websocket.on('message', (msg) => {
             msg.result.forEach(area => { newAreas[area.area_id] = area; });
             state.setAreas(newAreas);
           }
+      } else if (msg.id === getConfigId) { // get_config response
+        log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
+        if (msg.result && msg.result.unit_system) {
+          log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
+          state.setUnitSystem(msg.result.unit_system);
+          // Re-render weather card with correct units
+          if (ui.updateWeatherFromHA) {
+            ui.updateWeatherFromHA();
+          }
+        } else {
+          log.warn('No unit_system found in config response');
+        }
+      } else {
+        log.debug(`Unhandled result message ID: ${msg.id}`);
+      }
+      } else {
+        log.debug(`Result message with no result data: ${msg.id}`);
       }
     }
   } catch (error) {

@@ -31,6 +31,15 @@ let FILTERS = {
   hidden: []
 };
 let THEME_MEDIA_QUERY = null;
+let UNIT_SYSTEM = {
+  temperature: '°C',
+  length: 'km',
+  wind_speed: 'm/s',  // Home Assistant metric uses m/s, not km/h
+  pressure: 'hPa',
+  precipitation: 'mm',
+  volume: 'L',
+  mass: 'kg'
+};
 
 function setConfig(newConfig) { 
   try { CONFIG = newConfig; } 
@@ -96,9 +105,13 @@ function setDragPlaceholder(newPlaceholder) {
   try { DRAG_PLACEHOLDER = newPlaceholder; } 
   catch (error) { console.error('Error setting drag placeholder:', error); }
 }
-function setEditSnapshotLayouts(newLayouts) { 
-  try { EDIT_SNAPSHOT_LAYOUTS = newLayouts; } 
+function setEditSnapshotLayouts(newLayouts) {
+  try { EDIT_SNAPSHOT_LAYOUTS = newLayouts; }
   catch (error) { console.error('Error setting edit snapshot layouts:', error); }
+}
+function setUnitSystem(newUnitSystem) {
+  try { UNIT_SYSTEM = newUnitSystem; }
+  catch (error) { console.error('Error setting unit system:', error); }
 }
 
 module.exports = {
@@ -130,6 +143,7 @@ module.exports = {
   get EDIT_MODE_TAB_ID() { return EDIT_MODE_TAB_ID; },
   get FILTERS() { return FILTERS; },
   get THEME_MEDIA_QUERY() { return THEME_MEDIA_QUERY; },
+  get UNIT_SYSTEM() { return UNIT_SYSTEM; },
   setConfig,
   setWs,
   setStates,
@@ -147,4 +161,5 @@ module.exports = {
   setThemeMediaQuery,
   setDragPlaceholder,
   setEditSnapshotLayouts,
+  setUnitSystem,
 };

@@ -136,6 +136,11 @@ async function saveSettings() {
   try {
     const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
 
+    // Store previous HA connection settings to detect if reconnect is needed
+    const prevHaUrl = state.CONFIG.homeAssistant?.url;
+    const prevHaToken = state.CONFIG.homeAssistant?.token;
+    const prevUpdateInterval = state.CONFIG.updateInterval;
+
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
     const updateInterval = document.getElementById('update-interval');
@@ -220,8 +225,16 @@ async function saveSettings() {
     if (ui.updateMediaTile) {
       ui.updateMediaTile();
     }
-    
-    websocket.connect();
+
+    // Only reconnect WebSocket if HA connection settings actually changed
+    const haSettingsChanged =
+      prevHaUrl !== state.CONFIG.homeAssistant.url ||
+      prevHaToken !== state.CONFIG.homeAssistant.token ||
+      prevUpdateInterval !== state.CONFIG.updateInterval;
+
+    if (haSettingsChanged) {
+      websocket.connect();
+    }
   } catch (error) {
     console.error('Failed to save config:', error);
   }
