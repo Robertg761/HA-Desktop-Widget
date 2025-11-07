@@ -301,7 +301,7 @@ function createWindow() {
   });
 
   // Set window opacity with failsafe
-  const safeOpacity = Math.max(0.2, Math.min(1, config.opacity || 1));
+  const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
   mainWindow.setOpacity(safeOpacity);
   config.opacity = safeOpacity; // Update config to safe value
 
@@ -467,8 +467,8 @@ ipcMain.handle('update-config', (event, newConfig) => {
 });
 
 ipcMain.handle('set-opacity', (event, opacity) => {
-  // Ensure opacity is within safe range (20% to 100%)
-  const safeOpacity = Math.max(0.2, Math.min(1, opacity));
+  // Ensure opacity is within safe range (50% to 100%)
+  const safeOpacity = Math.max(0.5, Math.min(1, opacity));
   mainWindow.setOpacity(safeOpacity);
   config.opacity = safeOpacity;
   saveConfig();
