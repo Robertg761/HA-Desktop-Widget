@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const { showToast } = require('./ui-utils.js');
 const { getEntityDisplayName, getEntityIcon } = require('./utils.js');
@@ -68,7 +67,7 @@ function showEntityAlert(message, entityId) {
 
 async function toggleAlerts(enabled) {
   try {
-    const result = await ipcRenderer.invoke('toggle-alerts', enabled);
+    const result = await window.electronAPI.toggleAlerts(enabled);
     if (result.success) {
       entityAlerts.enabled = enabled;
       showToast(`Entity alerts ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);

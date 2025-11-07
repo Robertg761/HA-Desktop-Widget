@@ -1,8 +1,8 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { ipcRenderer } = require('electron');
 
-// Expose protected methods that allow the renderer process to use
-// ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('electronAPI', {
+// With contextIsolation: false, we're in the same context as the renderer
+// So we can directly set window.electronAPI without using contextBridge
+window.electronAPI = {
   // Config operations
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   registerHotkeys: () => ipcRenderer.invoke('register-hotkeys'),
   toggleHotkeys: (enabled) => ipcRenderer.invoke('toggle-hotkeys', enabled),
   validateHotkey: (hotkey) => ipcRenderer.invoke('validate-hotkey', hotkey),
+  registerPopupHotkey: (hotkey) => ipcRenderer.invoke('register-popup-hotkey', hotkey),
+  unregisterPopupHotkey: () => ipcRenderer.invoke('unregister-popup-hotkey'),
+  getPopupHotkey: () => ipcRenderer.invoke('get-popup-hotkey'),
+  isPopupHotkeyAvailable: () => ipcRenderer.invoke('is-popup-hotkey-available'),
 
   // Alert operations
   setEntityAlert: (entityId, alertConfig) => ipcRenderer.invoke('set-entity-alert', entityId, alertConfig),
@@ -50,4 +54,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOpenSettings: (callback) => {
     ipcRenderer.on('open-settings', (event) => callback());
   }
-});
+};

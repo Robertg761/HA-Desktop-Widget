@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const websocket = require('./websocket.js');
 const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast } = require('./ui-utils.js');
@@ -190,25 +189,25 @@ async function saveSettings() {
       state.CONFIG.filters = state.FILTERS;
     }
 
-    await ipcRenderer.invoke('update-config', state.CONFIG);
+    await window.electronAPI.updateConfig(state.CONFIG);
 
     // Apply opacity immediately
     if (opacitySlider) {
-      await ipcRenderer.invoke('set-opacity', state.CONFIG.opacity);
+      await window.electronAPI.setOpacity(state.CONFIG.opacity);
     }
 
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
-      const res = await ipcRenderer.invoke('set-always-on-top', state.CONFIG.alwaysOnTop);
-      const windowState = await ipcRenderer.invoke('get-window-state');
+      const res = await window.electronAPI.setAlwaysOnTop(state.CONFIG.alwaysOnTop);
+      const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
           // Force window to regain focus after confirm dialog (Windows focus bug workaround)
-          await ipcRenderer.invoke('focus-window').catch(err => console.error('Failed to refocus window:', err));
-          await ipcRenderer.invoke('restart-app');
+          await window.electronAPI.focusWindow().catch(err => console.error('Failed to refocus window:', err));
+          await window.electronAPI.restartApp();
           return;
         }
         // Force window to regain focus even if user cancelled (Windows focus bug workaround)
-        await ipcRenderer.invoke('focus-window').catch(err => console.error('Failed to refocus window:', err));
+        await window.electronAPI.focusWindow().catch(err => console.error('Failed to refocus window:', err));
       }
     }
 
@@ -525,7 +524,7 @@ async function saveAlert() {
 
     state.CONFIG.entityAlerts.alerts[currentAlertEntity] = alertConfig;
 
-    await ipcRenderer.invoke('update-config', state.CONFIG);
+    await window.electronAPI.updateConfig(state.CONFIG);
 
     closeAlertConfigModal();
     renderAlertsListInline();
@@ -556,7 +555,7 @@ async function removeAlert(entityId) {
 
     if (state.CONFIG.entityAlerts?.alerts[entityId]) {
       delete state.CONFIG.entityAlerts.alerts[entityId];
-      await ipcRenderer.invoke('update-config', state.CONFIG);
+      await window.electronAPI.updateConfig(state.CONFIG);
       renderAlertsListInline();
 
       showToast('Alert removed', 'success', 2000);
@@ -717,13 +716,39 @@ function populateMediaPlayerDropdown() {
 // Popup Hotkey Management
 let isCapturingPopupHotkey = false;
 
-function initializePopupHotkey() {
+async function initializePopupHotkey() {
   try {
+    // Check if popup hotkey feature is available
+    const isAvailable = await window.electronAPI.isPopupHotkeyAvailable();
+
     const input = document.getElementById('popup-hotkey-input');
     const setBtn = document.getElementById('popup-hotkey-set-btn');
     const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+    const container = document.getElementById('popup-hotkey-container');
 
     if (!input || !setBtn || !clearBtn) return;
+
+    // If not available, disable the UI and show a message
+    if (!isAvailable) {
+      input.disabled = true;
+      input.value = '';
+      input.placeholder = 'Not available on this platform';
+      setBtn.disabled = true;
+      clearBtn.disabled = true;
+      clearBtn.style.display = 'none';
+
+      // Add a notice message if not already present
+      if (container && !container.querySelector('.unavailable-notice')) {
+        const notice = document.createElement('p');
+        notice.className = 'unavailable-notice';
+        notice.style.color = '#888';
+        notice.style.fontSize = '12px';
+        notice.style.marginTop = '8px';
+        notice.textContent = 'Popup hotkey feature is not available on this platform.';
+        container.appendChild(notice);
+      }
+      return;
+    }
 
     // Load current popup hotkey
     const currentHotkey = state.CONFIG.popupHotkey || '';
@@ -745,7 +770,7 @@ function initializePopupHotkey() {
     // Clear button
     clearBtn.onclick = async () => {
       try {
-        const result = await ipcRenderer.invoke('unregister-popup-hotkey');
+        const result = await window.electronAPI.unregisterPopupHotkey();
         if (result.success) {
           input.value = '';
           input.placeholder = 'Not set (click Set Hotkey)';
@@ -767,7 +792,7 @@ function initializePopupHotkey() {
       btn.onclick = async () => {
         const hotkey = btn.dataset.hotkey;
         try {
-          const result = await ipcRenderer.invoke('register-popup-hotkey', hotkey);
+          const result = await window.electronAPI.registerPopupHotkey(hotkey);
           if (result.success) {
             input.value = hotkey;
             input.placeholder = hotkey;
@@ -841,7 +866,7 @@ function startCapturingPopupHotkey() {
       const hotkey = parts.join('+');
 
       try {
-        const result = await ipcRenderer.invoke('register-popup-hotkey', hotkey);
+        const result = await window.electronAPI.registerPopupHotkey(hotkey);
         if (result.success) {
           if (input) {
             input.value = hotkey;

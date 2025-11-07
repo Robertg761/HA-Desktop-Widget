@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const { showToast } = require('./ui-utils.js');
 const { getEntityDisplayName, getSearchScore } = require('./utils.js');
@@ -137,7 +136,7 @@ function renderHotkeysTab() {
 
 async function toggleHotkeys(enabled) {
   try {
-    const result = await ipcRenderer.invoke('toggle-hotkeys', enabled);
+    const result = await window.electronAPI.toggleHotkeys(enabled);
     if (result.success) {
       if (state.CONFIG.globalHotkeys) {
         state.CONFIG.globalHotkeys.enabled = enabled;
@@ -347,10 +346,10 @@ function setupHotkeyEventListenersInternal() {
                     }
 
                     // Save the updated config
-                    await ipcRenderer.invoke('update-config', state.CONFIG);
+                    await window.electronAPI.updateConfig(state.CONFIG);
 
                     // Re-register hotkeys to apply the new action
-                    await ipcRenderer.invoke('register-hotkeys');
+                    await window.electronAPI.registerHotkeys();
 
                     showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
                 }

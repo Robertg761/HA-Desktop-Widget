@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const utils = require('./utils.js');
 const websocket = require('./websocket.js');
@@ -233,7 +232,7 @@ function showRenameModal(entityId) {
           }
           state.CONFIG.customEntityNames[entityId] = newName;
           
-          await ipcRenderer.invoke('update-config', state.CONFIG);
+          await window.electronAPI.updateConfig(state.CONFIG);
           
           renderActiveTab();
           if (isReorganizeMode) {
@@ -253,7 +252,7 @@ function showRenameModal(entityId) {
         if (state.CONFIG.customEntityNames && state.CONFIG.customEntityNames[entityId]) {
           delete state.CONFIG.customEntityNames[entityId];
           
-          await ipcRenderer.invoke('update-config', state.CONFIG);
+          await window.electronAPI.updateConfig(state.CONFIG);
           
           renderActiveTab();
           if (isReorganizeMode) {
@@ -290,7 +289,7 @@ function removeFromQuickAccess(entityId) {
     state.CONFIG.favoriteEntities = newFavorites;
     
     // Save to config
-    ipcRenderer.invoke('update-config', state.CONFIG);
+    window.electronAPI.updateConfig(state.CONFIG);
 
     // Re-render
     renderQuickControls();
@@ -317,7 +316,7 @@ function saveQuickAccessOrder() {
     state.CONFIG.favoriteEntities = newOrder;
     
     // Save to config
-    ipcRenderer.invoke('update-config', state.CONFIG);
+    window.electronAPI.updateConfig(state.CONFIG);
   } catch (error) {
     console.error('Error saving quick access order:', error);
   }
@@ -2476,7 +2475,7 @@ function toggleQuickAccess(entityId) {
         }
 
         // Save and update UI
-        ipcRenderer.invoke('update-config', state.CONFIG);
+        window.electronAPI.updateConfig(state.CONFIG);
         renderQuickControls();
         populateQuickControlsList();
     } catch (error) {
@@ -2511,7 +2510,7 @@ function initUpdateUI() {
                 if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
                 
                 try {
-                    const result = await ipcRenderer.invoke('check-for-updates');
+                    const result = await window.electronAPI.checkForUpdates();
                     if (result.status === 'dev') {
                         // In development mode, auto-updater doesn't work
                         if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
@@ -2530,12 +2529,12 @@ function initUpdateUI() {
         // Wire up install button
         if (installUpdateBtn) {
             installUpdateBtn.onclick = () => {
-                ipcRenderer.invoke('quit-and-install');
+                window.electronAPI.quitAndInstall();
             };
         }
         
         // Listen for auto-update events from main process
-        ipcRenderer.on('auto-update', (event, data) => {
+        window.electronAPI.onAutoUpdate((data) => {
             try {
                 if (!data) return;
                 

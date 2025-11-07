@@ -4,7 +4,19 @@ const fs = require('fs');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
-const { uIOhook, UiohookKey } = require('uiohook-napi');
+
+// Try to load uiohook-napi (optional dependency for popup hotkey feature)
+let uIOhook, UiohookKey;
+let uiohookAvailable = false;
+try {
+  const module = require('uiohook-napi');
+  uIOhook = module.uIOhook;
+  UiohookKey = module.UiohookKey;
+  uiohookAvailable = true;
+  log.info('uiohook-napi loaded successfully');
+} catch (error) {
+  log.warn('uiohook-napi is not available on this platform. Popup hotkey feature will be disabled.', error.message);
+}
 
 // --- Main Log Configuration ---
 // This will catch any uncaught errors in your main process
@@ -281,9 +293,10 @@ function createWindow() {
     movable: true,
     icon: iconPath,
     webPreferences: {
-      nodeIntegration: true,   // Required for renderer to use require()
-      contextIsolation: false, // Must be false for renderer to access require() - safe for local content
-      webSecurity: true        // Enabled for security (ha:// protocol handles CORS)
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: true,
+      contextIsolation: false, // Set to false for CommonJS compatibility; preload.js still provides IPC security boundary
+      webSecurity: true
     }
   });
 
@@ -682,6 +695,10 @@ ipcMain.handle('toggle-alerts', (event, enabled) => {
 
 // Popup Hotkey IPC Handlers
 ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
+  if (!uiohookAvailable) {
+    return { success: false, error: 'Popup hotkey feature is not available on this platform' };
+  }
+
   // Validate the hotkey
   if (!validateHotkey(hotkey)) {
     return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
@@ -711,6 +728,10 @@ ipcMain.handle('unregister-popup-hotkey', () => {
 
 ipcMain.handle('get-popup-hotkey', () => {
   return { hotkey: config.popupHotkey || '' };
+});
+
+ipcMain.handle('is-popup-hotkey-available', () => {
+  return uiohookAvailable;
 });
 
 // Global Hotkey Management
@@ -776,6 +797,7 @@ function validateHotkey(hotkey) {
 
 // Popup Hotkey Management
 function acceleratorToUIOhookKey(accelerator) {
+  if (!uiohookAvailable) return null;
   if (!accelerator || typeof accelerator !== 'string') return null;
 
   const parts = accelerator.split('+').map(p => p.trim().toLowerCase());
@@ -872,6 +894,11 @@ function acceleratorToUIOhookKey(accelerator) {
 }
 
 function registerPopupHotkey() {
+  if (!uiohookAvailable) {
+    log.warn('Cannot register popup hotkey: uiohook-napi not available on this platform');
+    return;
+  }
+
   // If no popup hotkey configured, clean up and return
   if (!config.popupHotkey || config.popupHotkey.trim() === '') {
     log.debug('No popup hotkey configured, cleaning up');
@@ -976,6 +1003,10 @@ function registerPopupHotkey() {
 }
 
 function unregisterPopupHotkey() {
+  if (!uiohookAvailable) {
+    return;
+  }
+
   try {
     // Remove event listeners first before stopping uIOhook
     if (popupHotkeyKeydownHandler) {

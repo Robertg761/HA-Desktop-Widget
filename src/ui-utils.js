@@ -1,5 +1,3 @@
-const { ipcRenderer } = require('electron');
-
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
 
@@ -108,7 +106,7 @@ function setStatus(connected) {
   }
 }
 
-ipcRenderer.on('hotkey-registration-failed', (event, { hotkey }) => {
+window.electronAPI.onHotkeyRegistrationFailed(({ hotkey }) => {
   showToast(`Hotkey "${hotkey}" is already in use by another application.`, 'error', 5000);
 });
 

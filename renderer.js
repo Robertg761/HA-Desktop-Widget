@@ -1,5 +1,4 @@
 // Load all required modules
-const { ipcRenderer } = require('electron');
 const log = require('electron-log');
 const state = require('./src/state.js');
 const websocket = require('./src/websocket.js');
@@ -12,10 +11,7 @@ const { setIconContent } = require('./src/icons.js');
 const Sortable = require('sortablejs');
 
 // --- Renderer Log Configuration ---
-// This will catch any uncaught errors in your renderer process (the UI)
 log.errorHandler.startCatching();
-
-// Reduce console verbosity in DevTools; keep file logs detailed
 if (log?.transports?.console) {
   log.transports.console.level = 'warn';
 }
@@ -155,7 +151,7 @@ websocket.on('error', (error) => {
 
 
 // --- IPC Event Handlers ---
-ipcRenderer.on('hotkey-triggered', (event, { entityId, action }) => {
+window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
   const entity = state.STATES[entityId];
   if (entity) {
     // Use the action sent from main.js, fallback to toggle if not provided
@@ -218,7 +214,7 @@ async function init() {
     log.info('Initializing application');
     uiUtils.showLoading(true);
 
-    const config = await ipcRenderer.invoke('get-config');
+    const config = await window.electronAPI.getConfig();
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
       state.setConfig({
@@ -250,7 +246,7 @@ async function init() {
     if (state.CONFIG.tokenResetReason) {
       const reason = state.CONFIG.tokenResetReason;
       delete state.CONFIG.tokenResetReason; // Clear flag
-      await ipcRenderer.invoke('update-config', state.CONFIG); // Save cleared flag
+      await window.electronAPI.updateConfig(state.CONFIG); // Save cleared flag
 
       let message = 'Your Home Assistant token needs to be re-entered in Settings. ';
       if (reason === 'encryption_unavailable') {
@@ -349,7 +345,7 @@ function wireUI() {
     if (viewLogsBtn) {
       viewLogsBtn.onclick = async () => {
         try {
-          const result = await ipcRenderer.invoke('open-logs');
+          const result = await window.electronAPI.openLogs();
           if (result.success) {
             log.info('Log file opened successfully');
           } else {
@@ -375,7 +371,7 @@ function wireUI() {
         const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
         opacityValue.textContent = `${sliderValue}`;
         // Apply opacity in real-time
-        ipcRenderer.invoke('set-opacity', opacity).catch(err => {
+        window.electronAPI.setOpacity(opacity).catch(err => {
           log.error('Failed to set opacity:', err);
         });
       });
@@ -385,14 +381,14 @@ function wireUI() {
     const closeBtn = document.getElementById('close-btn');
     if (closeBtn) {
       closeBtn.onclick = () => {
-        ipcRenderer.invoke('quit-app');
+        window.electronAPI.quitApp();
       };
     }
 
     const minimizeBtn = document.getElementById('minimize-btn');
     if (minimizeBtn) {
       minimizeBtn.onclick = () => {
-        ipcRenderer.invoke('minimize-window');
+        window.electronAPI.minimizeWindow();
       };
     }
 
@@ -552,7 +548,7 @@ function wireUI() {
   if (widgetContent) {
     widgetContent.addEventListener('mousedown', () => {
       // Request window focus when clicking on content
-      ipcRenderer.invoke('focus-window').catch(err => {
+      window.electronAPI.focusWindow().catch(err => {
         log.error('Failed to focus window:', err);
       });
     });
@@ -568,7 +564,7 @@ function wireUI() {
       const hotkey = await hotkeys.captureHotkey();
       if (hotkey) {
         const action = target.parentElement.querySelector('.hotkey-action-select').value;
-        const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey, action);
+        const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
         if (result.success) {
           target.value = hotkey;
           state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
@@ -585,7 +581,7 @@ function wireUI() {
       const container = target.parentElement;
       const input = container.querySelector('.hotkey-input');
       const entityId = input.dataset.entityId;
-      await ipcRenderer.invoke('unregister-hotkey', entityId);
+      await window.electronAPI.unregisterHotkey(entityId);
       input.value = '';
       delete state.CONFIG.globalHotkeys.hotkeys[entityId];
       hotkeys.renderHotkeysTab();
