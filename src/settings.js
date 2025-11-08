@@ -94,11 +94,6 @@ async function openSettings(uiHooks) {
 
     // Call UI hooks passed from renderer.js
     if (uiHooks) {
-      uiHooks.populateDomainFilters();
-      uiHooks.populateAreaFilter();
-      uiHooks.setupEntitySearchInput('favorite-entities');
-      uiHooks.setupEntitySearchInput('camera-entities', ['camera']);
-      uiHooks.setupEntitySearchInput('motion-popup-cameras', ['camera']);
       uiHooks.initUpdateUI();
     }
 

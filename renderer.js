@@ -343,9 +343,6 @@ function wireUI() {
     if (settingsBtn) {
       settingsBtn.onclick = () => {
         settings.openSettings({
-          populateDomainFilters: ui.populateDomainFilters,
-          populateAreaFilter: ui.populateAreaFilter,
-          setupEntitySearchInput: ui.setupEntitySearchInput,
           initUpdateUI: ui.initUpdateUI,
           exitReorganizeMode: () => {
             // Exit reorganize mode if active

@@ -2434,59 +2434,6 @@ function showCoverControls(coverEntity) {
   }
 }
 
-function populateDomainFilters() {
-    try {
-        const container = document.getElementById('filter-domains');
-        if (!container) return;
-        const allDomains = [...new Set(Object.values(state.STATES).map(e => e.entity_id.split('.')[0]))].sort();
-        container.innerHTML = allDomains.map(domain => `
-            <label>
-                <input type="checkbox" value="${utils.escapeHtml(domain)}" ${state.FILTERS.domains.includes(domain) ? 'checked' : ''}>
-                ${utils.escapeHtml(domain)}
-            </label>
-        `).join('');
-    } catch (error) {
-        console.error('Error populating domain filters:', error);
-    }
-}
-
-function populateAreaFilter() {
-    try {
-        const select = document.getElementById('filter-areas');
-        if (!select) return;
-        select.innerHTML = Object.values(state.AREAS).map(area => `
-            <option value="${utils.escapeHtml(area.area_id)}" ${state.FILTERS.areas.includes(area.area_id) ? 'selected' : ''}>
-                ${utils.escapeHtml(area.name)}
-            </option>
-        `).join('');
-    } catch (error) {
-        console.error('Error populating area filter:', error);
-    }
-}
-
-function setupEntitySearchInput(inputId, _allowedDomains = null) {
-    try {
-        const input = document.getElementById(inputId);
-        if (!input) return;
-        
-        input.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            const container = document.getElementById(inputId.replace('-search', '-list')) || 
-                            document.getElementById(inputId.replace('-search', '-entities-list'));
-            if (!container) return;
-            
-            const items = container.querySelectorAll('.entity-item, .hotkey-item, .alert-item');
-            items.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                const matches = text.includes(query);
-                item.style.display = matches ? 'block' : 'none';
-            });
-        });
-    } catch (error) {
-        console.error('Error setting up entity search input:', error);
-    }
-}
-
 function populateQuickControlsList() {
     try {
         const list = document.getElementById('quick-controls-list');
@@ -2728,9 +2675,6 @@ module.exports = {
   updateWeatherFromHA,
   populateWeatherEntitiesList,
   selectWeatherEntity,
-  populateAreaFilter,
-  populateDomainFilters,
-  setupEntitySearchInput,
   initUpdateUI,
   updateTimeDisplay,
   updateTimerDisplays,

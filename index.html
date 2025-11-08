@@ -94,31 +94,6 @@
             </div>
         </div>
 
-        <!-- Entity Cards - Hidden by default, shown only when needed -->
-        <div class="entities-section hidden">
-            <div class="section-header">
-                <span class="section-title">Entities</span>
-                <div class="section-controls">
-                    <button id="filter-btn" class="mini-btn" title="Filter">🔍</button>
-                    <button id="layout-btn" class="mini-btn" title="Layout">📐</button>
-                </div>
-            </div>
-            <div id="entities-container" class="entities-grid">
-                <!-- Dynamic entity cards will be added here -->
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Floating context menu (appears on right-click) -->
-    <div id="context-menu" class="context-menu hidden">
-        <div class="menu-item" data-action="refresh">🔄 Refresh</div>
-        <div class="menu-item" data-action="settings">⚙️ Settings</div>
-        <div class="menu-item" data-action="filter">🔍 Filter</div>
-        <div class="menu-item" data-action="layout">📐 Layout</div>
-        <div class="menu-divider"></div>
-        <div class="menu-item" data-action="minimize">➖ Minimize</div>
-        <div class="menu-item" data-action="close">❌ Close</div>
     </div>
 
     <!-- Settings Modal (same as before but cleaner) -->
@@ -258,49 +233,6 @@
             <div class="modal-footer">
                 <button id="save-settings" class="btn btn-primary">Save</button>
                 <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Filter Modal (simplified) -->
-    <div id="filter-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="filter-title">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="filter-title">Filter Entities</h2>
-                <button id="close-filter" class="close-btn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Domains:</label>
-                    <div id="filter-domains" class="checkbox-grid">
-                        <!-- Dynamic checkboxes will be added here -->
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="apply-filters" class="btn btn-primary">Apply</button>
-                <button id="cancel-filters" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Entity Selector Modal -->
-    <div id="entity-selector" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="entity-selector-title">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="entity-selector-title">Add Entities to Dashboard</h2>
-                <button id="close-entity-selector" class="close-btn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <input type="text" id="entity-search" placeholder="Search entities..." class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Available Entities:</label>
-                    <div id="available-entities-list" class="entity-selector-list">
-                        <!-- Available entities will be loaded here -->
-                    </div>
-                </div>
             </div>
         </div>
     </div>
