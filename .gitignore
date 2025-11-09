@@ -68,3 +68,4 @@ gha-creds-*.json
 # Local development notes (not for commit)
 todo.md
 improvement_suggestions.md
+testing-progress.md
