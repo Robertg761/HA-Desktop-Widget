@@ -122,11 +122,16 @@ Any additional information about the changes
 ```
 HA-Desktop-Widget/
 ├── main.js              # Electron main process
-├── renderer-final.js    # Renderer process (main UI logic)
-├── keyboard.js          # Keyboard shortcut handling
+├── renderer.js          # Renderer process (main UI logic)
 ├── index.html           # Main HTML file
 ├── styles.css           # Main stylesheet
 ├── package.json         # Project configuration
+├── src/                 # Modular source files
+│   ├── state.js         # Centralized state management
+│   ├── websocket.js     # Home Assistant WebSocket connection
+│   ├── ui.js            # UI rendering and interactions
+│   ├── settings.js      # Settings modal
+│   └── ...              # Other modules
 ├── tests/               # Test files
 └── dist/                # Build output (generated)
 ```

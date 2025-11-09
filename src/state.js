@@ -5,7 +5,6 @@ let WS_ID = 1000;
 let STATES = {};
 let SERVICES = {};
 let AREAS = {};
-let HISTORY_CHART = null;
 let CAMERA_REFRESH_INTERVAL = null;
 let LIVE_CAMERAS = new Set();
 const LIVE_SNAPSHOT_INTERVALS = new Map();
@@ -57,15 +56,11 @@ function setServices(newServices) {
   try { SERVICES = newServices; } 
   catch (error) { console.error('Error setting services:', error); }
 }
-function setAreas(newAreas) { 
-  try { AREAS = newAreas; } 
+function setAreas(newAreas) {
+  try { AREAS = newAreas; }
   catch (error) { console.error('Error setting areas:', error); }
 }
-function setHistoryChart(newChart) { 
-  try { HISTORY_CHART = newChart; } 
-  catch (error) { console.error('Error setting history chart:', error); }
-}
-function setTimerTick(newTick) { 
+function setTimerTick(newTick) {
   try { TIMER_TICK = newTick; } 
   catch (error) { console.error('Error setting timer tick:', error); }
 }
@@ -122,7 +117,6 @@ module.exports = {
   get STATES() { return STATES; },
   get SERVICES() { return SERVICES; },
   get AREAS() { return AREAS; },
-  get HISTORY_CHART() { return HISTORY_CHART; },
   CAMERA_REFRESH_INTERVAL,
   LIVE_CAMERAS,
   LIVE_SNAPSHOT_INTERVALS,
@@ -149,7 +143,6 @@ module.exports = {
   setStates,
   setServices,
   setAreas,
-  setHistoryChart,
   setTimerTick,
   setTimerSensorTick,
   setTimerSensorSyncTick,
