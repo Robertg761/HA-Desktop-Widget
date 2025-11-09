@@ -88,7 +88,7 @@ function createMockElectronAPI() {
     registerHotkey: jest.fn((entityId, hotkey, action) => Promise.resolve({ success: true })),
     unregisterHotkey: jest.fn((entityId) => Promise.resolve({ success: true })),
     registerHotkeys: jest.fn(() => Promise.resolve({ success: true })),
-    toggleHotkeys: jest.fn((enabled) => Promise.resolve()),
+    toggleHotkeys: jest.fn((enabled) => Promise.resolve({ success: true })),
     validateHotkey: jest.fn((hotkey) => Promise.resolve({ valid: true, error: null })),
     registerPopupHotkey: jest.fn((hotkey) => Promise.resolve({ success: true })),
     unregisterPopupHotkey: jest.fn(() => Promise.resolve({ success: true })),
@@ -98,7 +98,7 @@ function createMockElectronAPI() {
     // Alert Operations
     setEntityAlert: jest.fn((entityId, alertConfig) => Promise.resolve()),
     removeEntityAlert: jest.fn((entityId) => Promise.resolve()),
-    toggleAlerts: jest.fn((enabled) => Promise.resolve()),
+    toggleAlerts: jest.fn((enabled) => Promise.resolve({ success: true })),
 
     // Update Operations
     checkForUpdates: jest.fn(() => Promise.resolve({ updateAvailable: false })),
