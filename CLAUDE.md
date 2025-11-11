@@ -203,10 +203,373 @@ This bypasses CORS and authentication issues in the renderer. The media_artwork 
 
 ## Testing
 
-- Jest configured with jsdom environment
-- No tests currently exist (tests/ directory not created yet)
-- Jest configuration present in package.json
-- Run with `npm test` (will report "no tests found")
+### Overview
+
+The project has comprehensive automated tests using Jest with jsdom environment for testing Electron renderer processes.
+
+**Test Statistics:**
+- **403 tests** across 11 test suites
+- **~5,500 lines** of test code
+- **All tests passing** ✅
+- **Overall coverage:** 34.73% (focused on business logic, not DOM manipulation)
+- **Critical module coverage:** 77-100% on core business logic modules
+
+**Test Implementation:**
+- **Unit Tests:** Individual functions and modules tested in isolation
+- **Integration Tests:** Module interactions (WebSocket + State, Settings + Config)
+- **Mocking Strategy:** Custom mocks for Electron APIs, WebSocket, and external dependencies
+- **Fixture Data:** Realistic Home Assistant sample data for consistent test scenarios
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with coverage report
+npm test -- --coverage
+
+# Run specific test file
+npm test -- tests/unit/state.test.js
+npm test -- tests/integration/websocket-state.test.js
+
+# Run tests in watch mode (auto-rerun on file changes)
+npm test -- --watch
+
+# List all test files
+npm test -- --listTests
+```
+
+**Coverage Report:**
+After running `npm test -- --coverage`, view the detailed HTML report at `coverage/lcov-report/index.html`
+
+### Test Structure
+
+```
+tests/
+├── fixtures/
+│   └── ha-data.js              # Sample Home Assistant data (states, services, areas, etc.)
+├── mocks/
+│   ├── electron.js             # Mock Electron APIs (24 IPC methods)
+│   └── websocket.js            # Mock WebSocket Manager with EventEmitter
+├── integration/
+│   ├── settings-config.test.js # Settings + Config integration (12 tests)
+│   └── websocket-state.test.js # WebSocket + State integration (10 tests)
+└── unit/
+    ├── setup.test.js           # Environment verification (25 tests)
+    ├── state.test.js           # State management (41 tests)
+    ├── utils.test.js           # Utility functions (75 tests)
+    ├── websocket.test.js       # WebSocket manager (29 tests)
+    ├── alerts.test.js          # Entity alerts (31 tests)
+    ├── hotkeys.test.js         # Hotkeys management (20 tests)
+    ├── camera.test.js          # Camera module (59 tests)
+    ├── ui-utils.test.js        # UI utilities (64 tests)
+    └── ui.test.js              # UI rendering (37 tests, selective)
+```
+
+### Test Coverage by Module
+
+| Module | Coverage | Tests | Notes |
+|--------|----------|-------|-------|
+| `alerts.js` | 100% | 31 | Complete coverage of alert monitoring and notifications |
+| `ui-utils.js` | 96% | 64 | Toast, theme, loading, status, focus, confirmation dialog |
+| `websocket.js` | 89% | 29 | Connection, messages, service calls, reconnection |
+| `camera.js` | 87% | 59 | HLS streaming, snapshots, modal UI, error handling |
+| `state.js` | 78% | 41 | All getters/setters, edge cases, collections |
+| `utils.js` | 78% | 75 | Formatting, icons, timers, search, HTML escaping |
+| `settings.js` | 35% | 12* | Tested via integration tests (Settings + Config) |
+| `hotkeys.js` | 15% | 20 | Business logic tested; DOM-heavy UI not fully tested |
+| `ui.js` | 14% | 37 | Selective testing of business logic (service routing, calculations) |
+
+*Integration tests cover settings functionality through end-to-end flows
+
+**Intentionally Untested:**
+- Complex DOM manipulation in ui.js (reorganize mode, modal UIs, drag-and-drop)
+- Main process code (main.js) - requires different testing approach
+- Renderer initialization (renderer.js) - orchestration layer
+- Icon definitions (icons.js) - static SVG data
+
+### Testing Patterns
+
+#### 1. Test File Structure
+
+```javascript
+/**
+ * @jest-environment jsdom
+ */
+
+const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const { sampleStates, sampleConfig } = require('../fixtures/ha-data.js');
+
+// Mock dependencies
+jest.mock('../../src/dependency.js');
+
+let mockElectronAPI;
+
+beforeAll(() => {
+  mockElectronAPI = createMockElectronAPI();
+  window.electronAPI = mockElectronAPI;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  resetMockElectronAPI();
+});
+
+describe('ModuleName', () => {
+  const moduleName = require('../../src/module.js');
+
+  describe('functionName', () => {
+    it('should do expected behavior', () => {
+      // Arrange
+      const input = 'test';
+
+      // Act
+      const result = moduleName.functionName(input);
+
+      // Assert
+      expect(result).toBe('expected');
+    });
+  });
+});
+```
+
+#### 2. Mocking Electron APIs
+
+Always use the provided mock utilities instead of creating manual mocks:
+
+```javascript
+const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
+
+// In beforeAll
+mockElectronAPI = createMockElectronAPI();
+window.electronAPI = mockElectronAPI;
+
+// In beforeEach
+resetMockElectronAPI();
+
+// Use in tests
+await window.electronAPI.updateConfig({ theme: 'dark' });
+expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({ theme: 'dark' });
+```
+
+#### 3. Mocking WebSocket
+
+Use the MockWebSocketManager for testing WebSocket interactions:
+
+```javascript
+const { MockWebSocketManager } = require('../mocks/websocket.js');
+
+const mockWS = new MockWebSocketManager();
+
+// Simulate messages
+mockWS.simulateMessage({ type: 'result', id: 1, result: { state: 'on' } });
+
+// Simulate events
+mockWS.simulateEvent('open');
+mockWS.simulateStateChange('light.living_room', { state: 'off' });
+```
+
+#### 4. Testing Async Operations
+
+Use `async/await` for cleaner async tests:
+
+```javascript
+it('should handle async operation', async () => {
+  const result = await asyncFunction();
+  expect(result).toBeDefined();
+});
+```
+
+#### 5. Testing DOM Interactions
+
+Create and clean up DOM elements in each test:
+
+```javascript
+it('should render element', () => {
+  const container = document.createElement('div');
+  container.id = 'test-container';
+  document.body.appendChild(container);
+
+  // Run test
+  renderFunction(container);
+  expect(container.innerHTML).toContain('expected content');
+
+  // Cleanup
+  document.body.removeChild(container);
+});
+```
+
+#### 6. Testing Error Handling
+
+Verify error handling without failing tests:
+
+```javascript
+it('should handle errors gracefully', () => {
+  const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+  expect(() => functionThatMightError()).not.toThrow();
+  expect(consoleError).toHaveBeenCalled();
+
+  consoleError.mockRestore();
+});
+```
+
+#### 7. Using Fake Timers
+
+Test code that uses setTimeout/setInterval:
+
+```javascript
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+});
+
+it('should call function after delay', () => {
+  const callback = jest.fn();
+  setTimeout(callback, 1000);
+
+  jest.advanceTimersByTime(1000);
+  expect(callback).toHaveBeenCalled();
+});
+```
+
+### Mock Utilities
+
+#### Electron Mock (`tests/mocks/electron.js`)
+
+Provides complete mocking of all 24 IPC methods from `preload.js`:
+
+**Available Mock Functions:**
+- Config: `getConfig`, `updateConfig`, `saveConfig`
+- Window: `setOpacity`, `setAlwaysOnTop`, `minimizeWindow`, `focusWindow`, `getWindowState`
+- Lifecycle: `restartApp`, `quitApp`
+- Hotkeys: `registerHotkey`, `unregisterHotkey`, `registerHotkeys`, `toggleHotkeys`, `validateHotkey`
+- Popup Hotkey: `registerPopupHotkey`, `unregisterPopupHotkey`, `getPopupHotkey`, `isPopupHotkeyAvailable`
+- Alerts: `setEntityAlert`, `removeEntityAlert`, `toggleAlerts`
+- Updates: `checkForUpdates`, `quitAndInstall`
+- Utility: `getAppVersion`, `openLogs`
+- Event Listeners: `onHotkeyTriggered`, `onHotkeyRegistrationFailed`, `onAutoUpdate`, `onOpenSettings`
+
+**Helper Functions:**
+- `createMockElectronAPI()` - Create mock instance
+- `resetMockElectronAPI()` - Reset all mock state
+- `getMockConfig()` - Get mock config object
+- `triggerMockEvent(event, ...args)` - Trigger mock IPC event
+
+#### WebSocket Mock (`tests/mocks/websocket.js`)
+
+MockWebSocketManager class with EventEmitter pattern:
+
+**Available Methods:**
+- `connect()`, `close()`, `send()`, `request()`, `callService()`
+
+**Helper Methods:**
+- `simulateMessage(message)` - Simulate incoming WebSocket message
+- `simulateEvent(event, data)` - Emit WebSocket events (open, close, error)
+- `simulateStateChange(entityId, newState)` - Simulate state_changed event
+
+#### Fixtures (`tests/fixtures/ha-data.js`)
+
+Realistic Home Assistant data for consistent testing:
+
+**Available Exports:**
+- `sampleConfig` - Complete CONFIG object with all properties
+- `sampleStates` - Entity states (light, switch, sensor, weather, media_player, camera, etc.)
+- `sampleServices` - Available HA services by domain
+- `sampleAreas` - Area registry data
+- `sampleUnitSystem` - Metric and imperial unit configurations
+- `wsMessages` - Sample WebSocket messages for all message types
+
+### Writing New Tests
+
+When adding new tests, follow these guidelines:
+
+1. **One test file per source module** - Mirror the `src/` directory structure
+2. **Use descriptive test names** - Start with "should" (e.g., "should return friendly name when available")
+3. **Follow Arrange-Act-Assert pattern** - Separate setup, execution, and verification
+4. **Test edge cases** - null values, undefined, empty strings, missing data
+5. **Test error handling** - Ensure functions don't throw unexpected errors
+6. **Clean up after tests** - Remove DOM elements, restore mocked functions
+7. **Keep tests focused** - One behavior per test
+8. **Use mock utilities** - Don't create duplicate mocks
+9. **Document complex tests** - Add comments explaining non-obvious test logic
+
+**Example Test:**
+
+```javascript
+describe('formatDuration', () => {
+  it('should format seconds as MM:SS', () => {
+    // Arrange
+    const milliseconds = 125000; // 2 minutes 5 seconds
+
+    // Act
+    const result = formatDuration(milliseconds);
+
+    // Assert
+    expect(result).toBe('2:05');
+  });
+
+  it('should handle zero duration', () => {
+    expect(formatDuration(0)).toBe('0:00');
+  });
+
+  it('should handle negative duration', () => {
+    expect(formatDuration(-1000)).toBe('0:00');
+  });
+});
+```
+
+### CI Integration
+
+Tests run automatically in GitHub Actions on every pull request to the main branch.
+
+**CI Workflow** (`.github/workflows/ci.yml`):
+1. Runs on Windows (windows-latest)
+2. Uses Node.js 20
+3. Installs dependencies (`npm ci`)
+4. Runs linter (`npm run lint`)
+5. **Runs tests (`npm test`)**
+6. Build verification
+
+Tests must pass before PRs can be merged. If tests fail in CI:
+- Check the Actions tab for detailed error logs
+- Run tests locally to reproduce: `npm test`
+- Fix failing tests and push changes
+
+### Troubleshooting
+
+**Tests fail with "Cannot find module":**
+- Ensure you're in the project root directory
+- Run `npm install` to install dev dependencies
+
+**Mock not working as expected:**
+- Check if `jest.clearAllMocks()` is called in `beforeEach`
+- Use `resetMockElectronAPI()` to reset electron mock state
+
+**jsdom errors about missing DOM APIs:**
+- Add polyfills in test setup if needed
+- Mock the missing API (see `tests/unit/alerts.test.js` for Notification example)
+
+**Tests pass locally but fail in CI:**
+- Ensure all paths are platform-independent
+- Check for timing-dependent tests (use `jest.useFakeTimers()`)
+
+**Coverage report not generated:**
+- Run `npm test -- --coverage` (note the `--` separator)
+- Check `coverage/` directory was created
+
+### Additional Resources
+
+- [Jest Documentation](https://jestjs.io/docs/getting-started)
+- [Testing Electron Apps](https://www.electronjs.org/docs/latest/tutorial/automated-testing)
+- [jsdom API](https://github.com/jsdom/jsdom)
+- [Home Assistant WebSocket API](https://developers.home-assistant.io/docs/api/websocket)
+- **Project Testing History:** See `testing-progress.md` for detailed implementation notes
 
 ## Security
 
