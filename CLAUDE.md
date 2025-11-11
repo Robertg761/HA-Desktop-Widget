@@ -243,6 +243,27 @@ npm test -- --listTests
 **Coverage Report:**
 After running `npm test -- --coverage`, view the detailed HTML report at `coverage/lcov-report/index.html`
 
+### When to Run Tests
+
+**Required:**
+- **Before committing code** - Ensure changes don't break existing functionality
+- **Before creating pull requests** - Tests must pass for PR approval
+- **After modifying any `.js` file in `src/`** - Verify changes work correctly
+
+**Recommended:**
+- **After pulling updates from main** - Confirm compatibility with latest changes
+- **During development** - Use `npm test -- --watch` for instant feedback
+- **After updating dependencies** - Ensure new packages don't break functionality
+- **When fixing bugs** - Verify the fix and prevent regressions
+
+**Quick Workflow:**
+1. Make your changes to source files
+2. Run `npm test` to verify all tests pass
+3. If tests fail, fix the issue and rerun
+4. Once all tests pass, commit your changes
+
+See `TESTING.md` for a complete guide with examples and troubleshooting tips.
+
 ### Test Structure
 
 ```
@@ -534,7 +555,6 @@ Tests run automatically in GitHub Actions on every pull request to the main bran
 3. Installs dependencies (`npm ci`)
 4. Runs linter (`npm run lint`)
 5. **Runs tests (`npm test`)**
-6. Build verification
 
 Tests must pass before PRs can be merged. If tests fail in CI:
 - Check the Actions tab for detailed error logs
