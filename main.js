@@ -158,47 +158,108 @@ function loadConfig() {
       // Handle token encryption/decryption
       if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
         // Token is marked as encrypted, decrypt it
+        log.debug('Attempting to decrypt stored token...');
         try {
-          if (safeStorage.isEncryptionAvailable()) {
+          log.debug('Checking if encryption is available...');
+          const encryptionAvailable = safeStorage.isEncryptionAvailable();
+          log.debug(`Encryption available: ${encryptionAvailable}`);
+
+          if (encryptionAvailable) {
+            log.debug('Decrypting token...');
             const encryptedBuffer = Buffer.from(config.homeAssistant.token, 'base64');
             config.homeAssistant.token = safeStorage.decryptString(encryptedBuffer);
             log.info('Token decrypted successfully');
           } else {
-            log.warn('Encryption not available on this system. Resetting token - user must re-enter.');
-            config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-            config.homeAssistant.tokenEncrypted = false;
+            // Encryption not available - preserve encrypted token on disk but set in-memory token to default
+            log.warn('Encryption not available on this system. Encrypted token cannot be decrypted.');
+            log.warn('Token preserved on disk. User must re-enter token or use on a system with encryption support.');
+            const encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
+            config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN'; // In-memory default for UI
             config.tokenResetReason = 'encryption_unavailable';
-            saveConfig();
+            // Don't save config here - this preserves the encrypted token on disk as a backup
+            log.info('Encrypted token preserved in config file. If encryption becomes available, it can be decrypted.');
           }
         } catch (error) {
-          log.warn('Failed to decrypt token (may be corrupted). Resetting - user must re-enter.', error);
-          config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-          config.homeAssistant.tokenEncrypted = false;
+          // Decryption failed - token may be corrupted or encryption API failed
+          log.error('Exception during token decryption:', error);
+          log.warn('Encrypted token preserved on disk. User must re-enter token.');
+          const encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
+          config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN'; // In-memory default for UI
           config.tokenResetReason = 'decryption_failed';
-          saveConfig();
+          // Don't save config here - this preserves the encrypted token on disk
+          log.info('Encrypted token preserved in config file for recovery attempts.');
         }
       } else if (config.homeAssistant?.token &&
                  config.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
                  !config.homeAssistant?.tokenEncrypted) {
         // Migration: existing plaintext token from pre-encryption version
-        if (safeStorage.isEncryptionAvailable()) {
-          log.info('Migrating plaintext token to encrypted storage...');
-          const plainToken = config.homeAssistant.token;
-          try {
-            const encryptedBuffer = safeStorage.encryptString(plainToken);
-            config.homeAssistant.token = encryptedBuffer.toString('base64');
-            config.homeAssistant.tokenEncrypted = true;
-            saveConfig();
-            // Restore decrypted token for runtime use
-            config.homeAssistant.token = plainToken;
-            log.info('Token migration complete - token is now encrypted at rest');
-          } catch (error) {
-            log.warn('Token encryption failed, keeping plaintext for now:', error);
-            // Keep plaintext token, don't set encrypted flag
+        log.info('Detected plaintext token from pre-encryption version - attempting migration...');
+
+        // Create backup before migration
+        backupConfig();
+
+        try {
+          log.debug('Checking if encryption is available for migration...');
+          const encryptionAvailable = safeStorage.isEncryptionAvailable();
+          log.debug(`Encryption available for migration: ${encryptionAvailable}`);
+
+          if (encryptionAvailable) {
+            log.info('Migrating plaintext token to encrypted storage...');
+            const plainToken = config.homeAssistant.token;
+            try {
+              log.debug('Encrypting token...');
+              const encryptedBuffer = safeStorage.encryptString(plainToken);
+              config.homeAssistant.token = encryptedBuffer.toString('base64');
+              config.homeAssistant.tokenEncrypted = true;
+              config.migrationInfo = {
+                version: app.getVersion(),
+                date: new Date().toISOString(),
+                tokenEncrypted: true
+              };
+              log.debug('Saving encrypted config...');
+              saveConfig();
+              // Restore decrypted token for runtime use
+              config.homeAssistant.token = plainToken;
+              log.info('Token migration complete - token is now encrypted at rest');
+            } catch (error) {
+              log.error('Exception during token encryption:', error);
+              log.warn('Token encryption failed, keeping plaintext');
+              // Keep plaintext token and set flag to prevent retry
+              config.homeAssistant.tokenEncrypted = false;
+              config.migrationInfo = {
+                version: app.getVersion(),
+                date: new Date().toISOString(),
+                tokenEncrypted: false,
+                reason: 'encryption_failed'
+              };
+              saveConfig(); // Persist the flag to prevent migration retry on every load
+              log.info('Token will remain in plaintext storage');
+            }
+          } else {
+            log.info('Encryption not available, keeping token in plaintext');
+            // Token stays plaintext - set flag to prevent migration retry
+            config.homeAssistant.tokenEncrypted = false;
+            config.migrationInfo = {
+              version: app.getVersion(),
+              date: new Date().toISOString(),
+              tokenEncrypted: false,
+              reason: 'encryption_unavailable'
+            };
+            saveConfig(); // Persist the flag to prevent migration retry on every load
+            log.info('Token will remain in plaintext storage');
           }
-        } else {
-          log.info('Encryption not available, keeping token in plaintext');
-          // Token stays plaintext, which is fine
+        } catch (error) {
+          // Catch any unexpected errors during migration check
+          log.error('Unexpected error during migration check:', error);
+          log.warn('Migration aborted, keeping token in plaintext');
+          config.homeAssistant.tokenEncrypted = false;
+          config.migrationInfo = {
+            version: app.getVersion(),
+            date: new Date().toISOString(),
+            tokenEncrypted: false,
+            reason: 'migration_error'
+          };
+          saveConfig();
         }
       }
     } else {
@@ -228,6 +289,24 @@ function loadConfig() {
     log.error('Error loading config:', error);
     config = defaultConfig;
   }
+}
+
+// Backup configuration before migration
+function backupConfig() {
+  const userDataDir = app.getPath('userData');
+  const configPath = path.join(userDataDir, 'config.json');
+  const backupPath = path.join(userDataDir, 'config.backup.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      fs.writeFileSync(backupPath, configContent);
+      log.info('Config backup created at', backupPath);
+      return true;
+    }
+  } catch (error) {
+    log.warn('Failed to create config backup:', error);
+  }
+  return false;
 }
 
 // Save configuration

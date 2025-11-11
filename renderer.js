@@ -74,6 +74,10 @@ websocket.on('message', (msg) => {
       log.error('[WS] Invalid authentication token');
       uiUtils.setStatus(false);
       uiUtils.showLoading(false);
+      // Show clear error message to user
+      uiUtils.showToast('Authentication failed. Please check your Home Assistant token in Settings.', 'error', 15000);
+      // Render the UI so user can access settings
+      ui.renderActiveTab();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
@@ -274,15 +278,21 @@ async function init() {
       delete state.CONFIG.tokenResetReason; // Clear flag
       await window.electronAPI.updateConfig(state.CONFIG); // Save cleared flag
 
-      let message = 'Your Home Assistant token needs to be re-entered in Settings. ';
+      let message = 'Your Home Assistant token needs to be re-entered. ';
+      let detailMessage = '';
       if (reason === 'encryption_unavailable') {
         message += 'Token encryption is not available on this system.';
+        detailMessage = 'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.';
       } else if (reason === 'decryption_failed') {
-        message += 'The stored token could not be decrypted (may be corrupted).';
+        message += 'The stored token could not be decrypted.';
+        detailMessage = 'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.';
       }
 
       log.warn('[Init] Token reset:', message);
-      uiUtils.showToast(message, 'warning', 10000);
+      log.info('[Init]', detailMessage);
+
+      // Show prominent warning message with extended duration
+      uiUtils.showToast(message + ' Click the gear icon to open Settings.', 'warning', 20000);
     }
 
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
