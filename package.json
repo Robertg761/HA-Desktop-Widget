@@ -27,7 +27,7 @@
   ],
   "author": "Robertg761",
   "license": "MIT",
-  "description": "A modern, transparent desktop widget for Home Assistant with real-time updates, drag-and-drop customization, and Rainmeter-style aesthetics",
+  "description": "Modern desktop widget for Home Assistant with real-time updates and drag-and-drop customization",
   "repository": {
     "type": "git",
     "url": "https://github.com/Robertg761/HA-Desktop-Widget.git"

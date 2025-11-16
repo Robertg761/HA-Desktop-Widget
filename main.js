@@ -1170,6 +1170,11 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  // Set app ID for Windows (helps with icon caching and taskbar behavior)
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
+  }
+
   loadConfig();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
