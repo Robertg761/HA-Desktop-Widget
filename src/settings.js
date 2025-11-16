@@ -59,7 +59,22 @@ async function openSettings(uiHooks) {
     const opacityValue = document.getElementById('opacity-value');
 
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
-    if (haToken) haToken.value = state.CONFIG.homeAssistant.token || '';
+    if (haToken) {
+      const tokenValue = state.CONFIG.homeAssistant.token || '';
+      // Don't display default token - show empty field instead to prompt user to enter real token
+      haToken.value = tokenValue === 'YOUR_LONG_LIVED_ACCESS_TOKEN' ? '' : tokenValue;
+
+      // Show warning if token was reset due to decryption failure
+      if (state.CONFIG.tokenResetReason) {
+        let warningMessage = 'Your access token needs to be re-entered. ';
+        if (state.CONFIG.tokenResetReason === 'encryption_unavailable') {
+          warningMessage += 'Encryption is not available on this system.';
+        } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
+          warningMessage += 'Token decryption failed.';
+        }
+        uiHooks.showToast(warningMessage, 'warning', 10000);
+      }
+    }
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     
@@ -157,7 +172,13 @@ async function saveSettings() {
       return;
     }
 
-    if (haToken) state.CONFIG.homeAssistant.token = haToken.value.trim();
+    if (haToken) {
+      state.CONFIG.homeAssistant.token = haToken.value.trim();
+      // Clear tokenResetReason when user enters a new token
+      if (state.CONFIG.tokenResetReason) {
+        delete state.CONFIG.tokenResetReason;
+      }
+    }
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
     

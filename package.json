@@ -1,6 +1,6 @@
 {
   "name": "home-assistant-widget",
-  "version": "3.0.0-rc.2",
+  "version": "3.0.0-rc.3",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -46,6 +46,7 @@
     "files": [
       "index.html",
       "main.js",
+      "preload.js",
       "renderer.js",
       "styles.css",
       "build/**/*",
@@ -88,7 +89,7 @@
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Home Assistant Widget"
     },

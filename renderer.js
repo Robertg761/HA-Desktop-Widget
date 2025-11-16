@@ -171,11 +171,29 @@ websocket.on('error', (error) => {
     log.error('WebSocket error:', error);
     uiUtils.setStatus(false);
     uiUtils.showLoading(false); // Hide loading on failure
-    
+
     // Show the UI with setup message
     ui.renderActiveTab();
+
+    // Show user-friendly error message
+    if (error.message.includes('default token')) {
+      uiUtils.showToast('Please configure your Home Assistant token in Settings (gear icon).', 'error', 20000);
+    } else if (error.message.includes('Invalid configuration')) {
+      uiUtils.showToast('Please configure connection settings (gear icon).', 'error', 20000);
+    } else if (!error.message.includes('auth_invalid')) {
+      // Don't show toast for auth_invalid as it's already handled elsewhere
+      uiUtils.showToast(`Connection error: ${error.message}`, 'error', 15000);
+    }
   } catch (err) {
     log.error('Error handling WebSocket error:', err);
+  }
+});
+
+websocket.on('showLoading', (show) => {
+  try {
+    uiUtils.showLoading(show);
+  } catch (err) {
+    log.error('Error handling showLoading event:', err);
   }
 });
 
