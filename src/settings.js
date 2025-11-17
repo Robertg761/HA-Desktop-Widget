@@ -35,7 +35,7 @@ function validateHomeAssistantUrl(url) {
     const normalizedUrl = trimmedUrl.replace(/\/$/, '');
 
     return { valid: true, error: null, url: normalizedUrl };
-  } catch (e) {
+  } catch {
     return { valid: false, error: 'Invalid URL format', url: null };
   }
 }

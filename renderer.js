@@ -8,7 +8,7 @@ const ui = require('./src/ui.js');
 const settings = require('./src/settings.js');
 const uiUtils = require('./src/ui-utils.js');
 const { setIconContent } = require('./src/icons.js');
-const Sortable = require('sortablejs');
+const _Sortable = require('sortablejs');
 
 // --- Renderer Log Configuration ---
 log.errorHandler.startCatching();

@@ -973,7 +973,7 @@ function fitMediaText(root) {
   } catch { /* noop */ }
 }
 
-function setupMediaTextAutoFit(div) {
+function _setupMediaTextAutoFit(div) {
   try {
     if (!div) return;
     mediaFitElements.add(div);
@@ -2301,7 +2301,7 @@ function showCoverControls(coverEntity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPosition = coverEntity.attributes.current_position || 0;
-    const state = coverEntity.state;
+    const _state = coverEntity.state;
 
     const modal = document.createElement('div');
     modal.className = 'modal cover-modal';

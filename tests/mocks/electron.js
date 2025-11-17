@@ -71,8 +71,8 @@ function createMockElectronAPI() {
     }),
 
     // Window Operations
-    setOpacity: jest.fn((opacity) => Promise.resolve()),
-    setAlwaysOnTop: jest.fn((value) => Promise.resolve()),
+    setOpacity: jest.fn((_opacity) => Promise.resolve()),
+    setAlwaysOnTop: jest.fn((_value) => Promise.resolve()),
     getWindowState: jest.fn(() => Promise.resolve({
       isAlwaysOnTop: mockConfig.alwaysOnTop,
       opacity: mockConfig.opacity,
@@ -85,20 +85,20 @@ function createMockElectronAPI() {
     quitApp: jest.fn(() => Promise.resolve()),
 
     // Hotkey Operations
-    registerHotkey: jest.fn((entityId, hotkey, action) => Promise.resolve({ success: true })),
-    unregisterHotkey: jest.fn((entityId) => Promise.resolve({ success: true })),
+    registerHotkey: jest.fn((_entityId, _hotkey, _action) => Promise.resolve({ success: true })),
+    unregisterHotkey: jest.fn((_entityId) => Promise.resolve({ success: true })),
     registerHotkeys: jest.fn(() => Promise.resolve({ success: true })),
-    toggleHotkeys: jest.fn((enabled) => Promise.resolve({ success: true })),
-    validateHotkey: jest.fn((hotkey) => Promise.resolve({ valid: true, error: null })),
-    registerPopupHotkey: jest.fn((hotkey) => Promise.resolve({ success: true })),
+    toggleHotkeys: jest.fn((_enabled) => Promise.resolve({ success: true })),
+    validateHotkey: jest.fn((_hotkey) => Promise.resolve({ valid: true, error: null })),
+    registerPopupHotkey: jest.fn((_hotkey) => Promise.resolve({ success: true })),
     unregisterPopupHotkey: jest.fn(() => Promise.resolve({ success: true })),
     getPopupHotkey: jest.fn(() => Promise.resolve(mockConfig.popupHotkey)),
     isPopupHotkeyAvailable: jest.fn(() => Promise.resolve(true)),
 
     // Alert Operations
-    setEntityAlert: jest.fn((entityId, alertConfig) => Promise.resolve()),
-    removeEntityAlert: jest.fn((entityId) => Promise.resolve()),
-    toggleAlerts: jest.fn((enabled) => Promise.resolve({ success: true })),
+    setEntityAlert: jest.fn((_entityId, _alertConfig) => Promise.resolve()),
+    removeEntityAlert: jest.fn((_entityId) => Promise.resolve()),
+    toggleAlerts: jest.fn((_enabled) => Promise.resolve({ success: true })),
 
     // Update Operations
     checkForUpdates: jest.fn(() => Promise.resolve({ updateAvailable: false })),

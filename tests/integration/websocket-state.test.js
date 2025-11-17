@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-const { sampleStates, sampleServices, sampleAreas, sampleUnitSystemMetric } = require('../fixtures/ha-data.js');
+const { sampleStates, sampleServices: _sampleServices, sampleAreas: _sampleAreas, sampleUnitSystemMetric } = require('../fixtures/ha-data.js');
 const { getMockConfig } = require('../mocks/electron.js');
 
 // Mock electron-log

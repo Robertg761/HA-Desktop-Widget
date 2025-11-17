@@ -3,7 +3,7 @@
  */
 
 const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
-const { sampleStates, sampleConfig } = require('../fixtures/ha-data.js');
+const { sampleStates, sampleConfig: _sampleConfig } = require('../fixtures/ha-data.js');
 
 // Mock dependencies that settings.js requires
 const mockWebsocket = {

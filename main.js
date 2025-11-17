@@ -192,7 +192,7 @@ function loadConfig() {
             // Encryption not available - preserve encrypted token on disk but set in-memory token to default
             log.warn('Encryption not available on this system. Encrypted token cannot be decrypted.');
             log.warn('Token preserved on disk. User must re-enter token or use on a system with encryption support.');
-            const encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
+            const _encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
             config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN'; // In-memory default for UI
             config.tokenResetReason = 'encryption_unavailable';
             // Don't save config here - this preserves the encrypted token on disk as a backup
@@ -202,7 +202,7 @@ function loadConfig() {
           // Decryption failed - token may be corrupted or encryption API failed
           log.error('Exception during token decryption:', error);
           log.warn('Encrypted token preserved on disk. User must re-enter token.');
-          const encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
+          const _encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
           config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN'; // In-memory default for UI
           config.tokenResetReason = 'decryption_failed';
           // Don't save config here - this preserves the encrypted token on disk

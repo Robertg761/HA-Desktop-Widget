@@ -26,11 +26,6 @@ const state = require('../../src/state');
 
 // Mock WebSocket class
 class MockWebSocket extends EventEmitter {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
-
   constructor(url) {
     super();
     this.url = url;
@@ -73,6 +68,12 @@ class MockWebSocket extends EventEmitter {
   }
 }
 
+// Define WebSocket constants
+MockWebSocket.CONNECTING = 0;
+MockWebSocket.OPEN = 1;
+MockWebSocket.CLOSING = 2;
+MockWebSocket.CLOSED = 3;
+
 // Set global WebSocket
 global.WebSocket = MockWebSocket;
 
@@ -98,7 +99,7 @@ describe('WebSocket Manager', () => {
     if (wsManager.ws) {
       try {
         wsManager.ws.close();
-      } catch (e) {
+      } catch (_e) {
         // Ignore errors
       }
       wsManager.ws = null;
@@ -396,7 +397,7 @@ describe('WebSocket Manager', () => {
 
       try {
         await promise;
-      } catch (e) {
+      } catch (_e) {
         // Expected to throw
       }
 

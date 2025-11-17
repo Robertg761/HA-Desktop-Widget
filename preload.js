@@ -52,6 +52,6 @@ window.electronAPI = {
     ipcRenderer.on('auto-update', (event, data) => callback(data));
   },
   onOpenSettings: (callback) => {
-    ipcRenderer.on('open-settings', (event) => callback());
+    ipcRenderer.on('open-settings', (_event) => callback());
   }
 };
