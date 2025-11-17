@@ -406,19 +406,19 @@ function createWindow() {
   // Load the index.html file
   mainWindow.loadFile('index.html');
 
-  // Save position when window is moved
-  mainWindow.on('moved', () => {
-    const [x, y] = mainWindow.getPosition();
-    config.windowPosition = { x, y };
+  const changeWin = () => {
+    const bounds = mainWindow.getBounds();
+
+    config.windowPosition = { x: bounds.x, y: bounds.y };
+    config.windowSize = { width: bounds.width, height: bounds.height };
     saveConfig();
-  });
+  };
+
+  // Save position when window is moved
+  mainWindow.on('moved', changeWin);
 
   // Save size when window is resized
-  mainWindow.on('resized', () => {
-    const [width, height] = mainWindow.getSize();
-    config.windowSize = { width, height };
-    saveConfig();
-  });
+  mainWindow.on('resized', changeWin);
 
   // Hide to tray when minimizing
   mainWindow.on('minimize', (event) => {
