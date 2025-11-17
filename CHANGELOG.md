@@ -16,6 +16,176 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [3.0.0] - 2025-11-17
+
+### 🎉 Major Release Highlights
+
+Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,000 lines of code changed**. This release focuses on critical bug fixes, security enhancements, new media player integration, and extensive UI/UX improvements.
+
+### 🐛 Critical Bug Fixes
+
+- **Camera Live Streaming**: Restored camera live streaming functionality for cloud cameras (Arlo, Ring, Nest, etc.)
+  - Fixed HLS streaming path resolution
+  - Improved error handling for camera feeds
+  - Better fallback to snapshots when streaming unavailable
+- **Token Data Loss & App Freeze**: Prevented token loss and app freeze during v2.3.9 to v3.0.0 upgrade
+  - Added automatic token migration system
+  - Implemented version detection and upgrade handling
+  - Added MIGRATION.md with detailed upgrade instructions
+- **Installer Issues**: Resolved critical installer and connection issues
+  - Fixed desktop shortcut creation
+  - Improved installer icon embedding
+  - Added custom NSIS installer script for better upgrade experience
+- **Desktop Icon**: Fixed application icon showing as default Electron icon
+  - Properly embedded icon in executable
+  - Removed problematic `signAndEditExecutable` flag that was corrupting icon data
+
+### ✨ New Features
+
+#### Media Player Integration
+- **Primary Media Player Tile**: Dedicated tile in main area showing now playing information
+- **Album Artwork Display**: Full album art with proxy support for Spotify, YouTube, and other services
+- **Advanced Media Controls**:
+  - Play/pause, previous/next track buttons
+  - Live-updating seek bar with drag-to-seek functionality
+  - Real-time playback progress (updates every second)
+  - Hour-aware timestamp formatting (h:mm:ss for long tracks)
+- **Enhanced Media Tiles**: Click to toggle play/pause, long-press for detailed controls modal
+- **Media Detail Modal**: Full-screen media information with visual-only progress bar and large control buttons
+
+#### Security Enhancements
+- **Token Encryption**: Home Assistant tokens now encrypted at rest using Electron's `safeStorage` API
+- **Automatic Migration**: Seamless upgrade from plaintext tokens to encrypted storage
+- **Graceful Fallback**: Platform-aware encryption with appropriate warnings when unavailable
+- **Secure IPC**: All renderer IPC calls whitelisted through explicit `window.electronAPI` interface
+
+#### Global Hotkeys System
+- **Hold-to-Popup Hotkey**: Optional feature using `uiohook-napi` for press/release detection
+  - Hold configured key to bring window to front, release to hide
+  - Platform-aware with graceful fallback when unavailable
+  - Configurable in Settings → Hotkeys tab
+- **Enhanced Entity Hotkeys**: Assign global keyboard shortcuts to control any entity
+- **Hotkey Validation**: Prevents conflicts with system shortcuts
+
+#### Entity Alert System
+- **Redesigned UI**: Inline list with entity picker modal for better organization
+- **Condition Types**: Equals, greater than, less than, between, contains
+- **Desktop Notifications**: System notifications when alert conditions are met
+- **Toggle Control**: Easily enable/disable alerts globally from settings
+
+#### UI Customization
+- **Weather Entity Selector**: Long-press weather card to choose preferred weather entity or use auto-detect
+- **Unit System Support**: Respects Home Assistant's configured units (metric/imperial) for temperature, wind speed, etc.
+- **Custom Glassmorphism Dropdowns**: Replaced native selects with styled dropdowns matching app aesthetic
+- **Density Settings**: Choose between comfortable and compact display modes
+- **High Contrast Mode**: Enhanced visibility for accessibility
+
+#### Logging System
+- **electron-log Integration**: Comprehensive logging for troubleshooting
+- **Log Viewer**: Access logs directly from Settings → Advanced → "View Logs"
+- **Structured Logging**: Timestamped logs with levels (info/warn/error/debug)
+- **WebSocket Heartbeat**: Automatic ping/pong to keep connections alive
+
+### 🎨 UI/UX Improvements
+
+#### Drag-and-Drop System
+- **Transform-Based Architecture**: Complete rewrite using GPU-accelerated CSS transforms for smooth 60fps movement
+- **Eliminated Thrashing**: DOM stays stable during drag, only reorders on drop
+- **iOS/Android-Style Movement**: Smooth, deliberate tile animations with improved easing
+- **Distance-Based Detection**: Accurate target detection using actual tile positions
+- **Visual Feedback**: Clear drag indicators and drop target highlighting
+
+#### Entity Tiles
+- **Hover Glow Effects**: Subtle glow on quick access entity tiles
+- **Advanced Controls**:
+  - Brightness sliders for lights
+  - Color temperature controls
+  - Fan speed controls
+  - Thermostat temperature controls
+  - Volume sliders for media players
+- **Better Visual Feedback**: State-based coloring, smooth transitions, and improved iconography
+- **Text Handling**: Proper overflow handling with ellipsis and marquee scrolling on hover
+
+#### Window Management
+- **Improved Icon**: Custom application icon properly embedded in executable and shown in taskbar/desktop
+- **Opacity Range**: Enforced minimum 50% opacity (0.5-1.0 range) for better visibility
+- **Window State Persistence**: Remembers position, size, and transparency settings
+
+#### Settings Modal
+- **Reorganized Tabs**:
+  - General (connection, theme, updates)
+  - Quick Access (favorites management)
+  - Custom Tabs (entity organization)
+  - Filters (entity visibility)
+  - Hotkeys (global shortcuts)
+  - Alerts (entity monitoring)
+  - Advanced (opacity, logs, debug options)
+- **Improved Layout**: Better spacing, clearer sections, consistent styling
+- **Entity Picker**: Enhanced entity selection with search and filtering
+
+### 🔧 Additional Bug Fixes
+
+#### UI Fixes
+- **Quick Access Remove Button**: Fixed regression from SortableJS refactor that broke entity removal
+- **Reorganize Mode**: Resolved 5 critical bugs in drag-and-drop system
+  - Fixed grid position calculation
+  - Fixed animation restart issues
+  - Fixed column calculation errors
+  - Added bounds checking
+- **Search Bar**: Fixed unresponsiveness after entity removal via custom confirmation modal
+- **Quick Access Disappearing**: Fixed items disappearing during Home Assistant restart
+  - Improved WebSocket reconnection handling
+  - Better state persistence
+- **Media Player Controls**: Fixed setup timing and button functionality
+- **Weather Card**: Removed dead camera code and completed entity selector implementation
+
+#### Connection & Performance
+- **Unnecessary Reconnects**: Prevented WebSocket reconnections when connection parameters haven't changed
+- **WebSocket Stability**: Improved reconnection logic with exponential backoff (1s → 30s max with jitter)
+- **Timeout Handling**: Better WebSocket timeout handling to prevent log spam
+- **Memory Leaks**: Added proper cleanup for modal intervals and event listeners
+
+### 🔧 Code Quality & Maintenance
+
+#### Refactoring
+- **Dead Code Removal**: Removed unused dependencies, UI elements, and functions to reduce bundle size
+- **Module Organization**: Better separation of concerns with new `src/icons.js` module
+- **State Management**: Improved centralized state management with proper getter/setter functions
+- **Error Handling**: Comprehensive error handling with structured logging throughout codebase
+
+#### Documentation
+- **CLAUDE.md**: Comprehensive project documentation (655 lines)
+- **TESTING.md**: Complete testing documentation (140 lines)
+- **MIGRATION.md**: Upgrade guide from v2.x to v3.0.0 (73 lines)
+- **UPGRADE-FIX-SUMMARY.md**: Detailed summary of upgrade-related fixes (298 lines)
+- **UPGRADE-TEST-PLAN.md**: Comprehensive test plan for upgrade scenarios (314 lines)
+
+#### Dependencies
+- **Updated**: axios (1.11.0), electron-log (5.4.3), electron-updater (6.6.2)
+- **Added**: sortablejs (1.15.6), hls.js (1.4.12), uiohook-napi (1.5.4, optional)
+- **Removed**: Cleaned up unused dependencies to reduce bundle size
+
+#### Testing Infrastructure (Developer)
+- **Comprehensive Test Suite**: 403 automated tests across 11 test suites (~5,500 lines of test code)
+  - Unit tests for all core modules (state, utils, websocket, alerts, hotkeys, camera, ui-utils)
+  - Integration tests for settings/config and websocket/state interactions
+  - Mock utilities for Electron APIs and WebSocket connections
+- **CI Integration**: Automated testing in GitHub Actions on every pull request
+- **Coverage Reporting**: Overall coverage of 34.73% focused on business logic (77-100% on critical modules)
+
+### 📊 Statistics
+
+- **Code Changes**: 15,040+ insertions, 1,306 deletions across 43 files
+- **Test Coverage**: 403 tests, 34.73% overall coverage (77-100% on critical modules)
+- **Documentation**: 1,700+ lines of new documentation
+- **Commits**: 57 commits across multiple feature branches
+
+### 🙏 Acknowledgments
+
+This release represents months of development focused on stability, testing, and user experience. Special thanks to the Home Assistant community for feedback and bug reports.
+
+---
+
 ## [2.3.6] - 2025-10-21
 
 ### Changed
