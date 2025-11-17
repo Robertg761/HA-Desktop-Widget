@@ -1,6 +1,6 @@
 {
   "name": "home-assistant-widget",
-  "version": "2.3.9",
+  "version": "3.0.0-rc.3",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -27,7 +27,7 @@
   ],
   "author": "Robertg761",
   "license": "MIT",
-  "description": "A modern, transparent desktop widget for Home Assistant with real-time updates, drag-and-drop customization, and Rainmeter-style aesthetics",
+  "description": "Modern desktop widget for Home Assistant with real-time updates and drag-and-drop customization",
   "repository": {
     "type": "git",
     "url": "https://github.com/Robertg761/HA-Desktop-Widget.git"
@@ -46,8 +46,8 @@
     "files": [
       "index.html",
       "main.js",
+      "preload.js",
       "renderer.js",
-      "keyboard.js",
       "styles.css",
       "build/**/*",
       "src/**/*",
@@ -79,17 +79,17 @@
             "x64"
           ]
         }
-      ],
-      "signAndEditExecutable": false
+      ]
     },
     "nsis": {
       "artifactName": "${productName}-${version}-win-${arch}-Setup.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Home Assistant Widget"
     },
@@ -98,23 +98,24 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^9.13.0",
     "electron": "^37.4.0",
     "electron-builder": "^24.13.3",
     "eslint": "^9.10.0",
     "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.9.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "prettier": "^3.3.3",
-    "@eslint/js": "^9.13.0",
-    "globals": "^15.9.0"
+    "prettier": "^3.3.3"
   },
   "dependencies": {
-    "hls.js": "^1.4.12",
     "axios": "^1.11.0",
-    "chart.js": "^4.5.0",
-    "chartjs-adapter-date-fns": "^3.0.0",
-    "dotenv": "^17.2.1",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "hls.js": "^1.4.12",
+    "sortablejs": "^1.15.6"
+  },
+  "optionalDependencies": {
+    "uiohook-napi": "^1.5.4"
   }
 }

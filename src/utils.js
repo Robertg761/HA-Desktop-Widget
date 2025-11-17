@@ -159,10 +159,10 @@ function getEntityDisplayState(entity) {
         // Check if state is a valid future timestamp
         let stateIsTimestamp = false;
         if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-            // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
-            // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
-            // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
-            const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+            // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+            // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+            // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+            const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
             const looksLikeTimestamp = iso8601Pattern.test(entity.state);
             if (looksLikeTimestamp) {
                 const stateTime = new Date(entity.state).getTime();
@@ -228,10 +228,10 @@ function getTimerDisplay(entity) {
             
             // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
             if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-                // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
-                // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
-                // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
-                const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+                // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+                // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+                // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+                const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
                 const looksLikeTimestamp = iso8601Pattern.test(entity.state);
                 if (looksLikeTimestamp) {
                     const stateTime = new Date(entity.state).getTime();
@@ -295,6 +295,18 @@ function getTimerDisplay(entity) {
     }
 }
 
+/**
+ * Escapes HTML special characters to prevent XSS attacks
+ * @param {string} text - The text to escape
+ * @returns {string} - HTML-safe text
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return text;
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 module.exports = {
     getEntityDisplayName,
     getEntityTypeDescription,
@@ -304,4 +316,5 @@ module.exports = {
     getSearchScore,
     getEntityDisplayState,
     getTimerDisplay,
+    escapeHtml,
 };

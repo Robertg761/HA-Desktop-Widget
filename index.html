@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' ha: data: blob:; media-src 'self' ha: blob:; connect-src * ha:;">
     <title>Home Assistant Widget</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -54,6 +55,31 @@
             </div>
         </div>
 
+        <!-- Media Player Tile -->
+        <div class="media-tile" id="media-tile" style="display: none;">
+            <div class="media-tile-artwork" id="media-tile-artwork">
+                <div class="media-tile-artwork-placeholder">🎵</div>
+            </div>
+            <div class="media-tile-content">
+                <div class="media-tile-info">
+                    <div class="media-tile-title" id="media-tile-title">No media playing</div>
+                    <div class="media-tile-artist" id="media-tile-artist"></div>
+                </div>
+                <div class="media-tile-seek">
+                    <div class="media-tile-time" id="media-tile-time-current">0:00</div>
+                    <div class="media-tile-seek-bar">
+                        <div class="media-tile-seek-fill" id="media-tile-seek-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="media-tile-time" id="media-tile-time-total">0:00</div>
+                </div>
+                <div class="media-tile-controls">
+                    <button class="media-tile-btn" id="media-tile-prev" title="Previous"></button>
+                    <button class="media-tile-btn media-tile-btn-play" id="media-tile-play" title="Play/Pause"></button>
+                    <button class="media-tile-btn" id="media-tile-next" title="Next"></button>
+                </div>
+            </div>
+        </div>
+
         <!-- Quick Access -->
         <div class="controls-section">
                     <div class="section-header">
@@ -68,31 +94,6 @@
             </div>
         </div>
 
-        <!-- Entity Cards - Hidden by default, shown only when needed -->
-        <div class="entities-section hidden">
-            <div class="section-header">
-                <span class="section-title">Entities</span>
-                <div class="section-controls">
-                    <button id="filter-btn" class="mini-btn" title="Filter">🔍</button>
-                    <button id="layout-btn" class="mini-btn" title="Layout">📐</button>
-                </div>
-            </div>
-            <div id="entities-container" class="entities-grid">
-                <!-- Dynamic entity cards will be added here -->
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Floating context menu (appears on right-click) -->
-    <div id="context-menu" class="context-menu hidden">
-        <div class="menu-item" data-action="refresh">🔄 Refresh</div>
-        <div class="menu-item" data-action="settings">⚙️ Settings</div>
-        <div class="menu-item" data-action="filter">🔍 Filter</div>
-        <div class="menu-item" data-action="layout">📐 Layout</div>
-        <div class="menu-divider"></div>
-        <div class="menu-item" data-action="minimize">➖ Minimize</div>
-        <div class="menu-item" data-action="close">❌ Close</div>
     </div>
 
     <!-- Settings Modal (same as before but cleaner) -->
@@ -129,6 +130,21 @@
                             <input type="checkbox" id="always-on-top">
                             Always on top
                         </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="primary-media-player">Primary Media Player:</label>
+                        <div class="custom-dropdown" id="primary-media-player-dropdown">
+                            <button type="button" class="custom-dropdown-trigger" id="primary-media-player-trigger" aria-haspopup="listbox" aria-expanded="false">
+                                <span class="custom-dropdown-value">None (Hide Media Tile)</span>
+                                <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            <div class="custom-dropdown-menu" role="listbox" id="primary-media-player-menu">
+                                <div class="custom-dropdown-option" role="option" data-value="">None (Hide Media Tile)</div>
+                            </div>
+                        </div>
+                        <div class="form-help">Select which media player to display in the main media tile</div>
                     </div>
                     <div class="form-group update-section">
                         <label>Application Updates</label>
@@ -167,9 +183,25 @@
                 </div>
                 <div id="hotkeys-tab" class="tab-content">
                     <div class="form-group">
+                        <label>Popup Hotkey (Hold to Bring Window to Front)</label>
+                        <p class="help-text">Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.</p>
+                        <div class="popup-hotkey-config">
+                            <input type="text" id="popup-hotkey-input" placeholder="Not set (click Set Hotkey)" readonly>
+                            <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">Set Hotkey</button>
+                            <button id="popup-hotkey-clear-btn" class="btn btn-danger btn-small" style="display: none;">Clear</button>
+                        </div>
+                        <p class="help-text" style="margin-top: 8px;">
+                            <strong>Recommended presets (click to use):</strong><br>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Alt+H">Ctrl+Alt+H</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
+                        </p>
+                    </div>
+                    <hr>
+                    <div class="form-group">
                         <label>
                             <input type="checkbox" id="global-hotkeys-enabled">
-                            Enable Global Hotkeys
+                            Enable Entity Hotkeys
                         </label>
                     </div>
                     <div id="hotkeys-list-container">
@@ -192,56 +224,15 @@
                     </div>
                     <div id="alerts-section" style="display: none;">
                         <p>Configure which entities should trigger desktop notifications.</p>
-                        <button id="manage-alerts-btn" class="btn btn-secondary">Manage Alerts</button>
+                        <div id="inline-alerts-list" class="inline-alerts-container">
+                            <!-- Inline alerts list will be rendered here -->
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button id="save-settings" class="btn btn-primary">Save</button>
                 <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Filter Modal (simplified) -->
-    <div id="filter-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="filter-title">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="filter-title">Filter Entities</h2>
-                <button id="close-filter" class="close-btn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Domains:</label>
-                    <div id="filter-domains" class="checkbox-grid">
-                        <!-- Dynamic checkboxes will be added here -->
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="apply-filters" class="btn btn-primary">Apply</button>
-                <button id="cancel-filters" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Entity Selector Modal -->
-    <div id="entity-selector" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="entity-selector-title">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="entity-selector-title">Add Entities to Dashboard</h2>
-                <button id="close-entity-selector" class="close-btn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <input type="text" id="entity-search" placeholder="Search entities..." class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Available Entities:</label>
-                    <div id="available-entities-list" class="entity-selector-list">
-                        <!-- Available entities will be loaded here -->
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -263,6 +254,22 @@
                         <!-- Available entities will be loaded here -->
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header">
+                <h2 id="confirm-title">Confirm Action</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="confirm-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-ok-btn" class="btn btn-danger">Remove</button>
             </div>
         </div>
     </div>
@@ -415,6 +422,27 @@
             <div class="modal-footer">
                 <button id="save-alert" class="btn btn-primary">Save</button>
                 <button id="cancel-alert" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Entity Picker Modal -->
+    <div id="alert-entity-picker-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alert-entity-picker-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="alert-entity-picker-title">Add Alert</h2>
+                <button id="close-alert-entity-picker" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="alert-entity-picker-search" placeholder="Search entities..." class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Select Entity to Configure Alert:</label>
+                    <div id="alert-entity-picker-list" class="entity-selector-list">
+                        <!-- Available entities will be loaded here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>

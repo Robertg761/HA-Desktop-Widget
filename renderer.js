@@ -1,5 +1,4 @@
 // Load all required modules
-const { ipcRenderer } = require('electron');
 const log = require('electron-log');
 const state = require('./src/state.js');
 const websocket = require('./src/websocket.js');
@@ -8,12 +7,11 @@ const alerts = require('./src/alerts.js');
 const ui = require('./src/ui.js');
 const settings = require('./src/settings.js');
 const uiUtils = require('./src/ui-utils.js');
+const { setIconContent } = require('./src/icons.js');
+const Sortable = require('sortablejs');
 
 // --- Renderer Log Configuration ---
-// This will catch any uncaught errors in your renderer process (the UI)
 log.errorHandler.startCatching();
-
-// Reduce console verbosity in DevTools; keep file logs detailed
 if (log?.transports?.console) {
   log.transports.console.level = 'warn';
 }
@@ -38,7 +36,7 @@ websocket.on('open', () => {
 });
 
 // Track request IDs for proper result handling
-let getStatesId, getServicesId, getAreasId;
+let getStatesId, getServicesId, getAreasId, getConfigId;
 
 // WebSocket reconnection constants and state
 const BASE_RECONNECT_DELAY = 1000; // 1 second
@@ -54,21 +52,32 @@ websocket.on('message', (msg) => {
       const statesReq = websocket.request({ type: 'get_states' });
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
+      const configReq = websocket.request({ type: 'get_config' });
 
       // Store IDs for matching results
       getStatesId = statesReq.id;
       getServicesId = servicesReq.id;
       getAreasId = areasReq.id;
+      getConfigId = configReq.id;
+
+      log.debug(`Sent get_config request with ID: ${getConfigId}`);
 
       // Prevent unhandled rejections from surfacing as global errors
       statesReq.catch(() => {});
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
+      configReq.catch((err) => {
+        log.error('get_config request failed:', err);
+      });
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
       uiUtils.setStatus(false);
       uiUtils.showLoading(false);
+      // Show clear error message to user
+      uiUtils.showToast('Authentication failed. Please check your Home Assistant token in Settings.', 'error', 15000);
+      // Render the UI so user can access settings
+      ui.renderActiveTab();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
@@ -76,18 +85,33 @@ websocket.on('message', (msg) => {
         ui.updateEntityInUI(entity);
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
       }
-    } else if (msg.type === 'result' && msg.result) {
-      if (msg.id === getStatesId) { // get_states response
+    } else if (msg.type === 'result') {
+      log.debug(`Received result for message ID: ${msg.id}`);
+      if (msg.result) {
+        if (msg.id === getStatesId) { // get_states response
         const newStates = {};
         if (Array.isArray(msg.result)) {
           log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
           msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
-          state.setStates(newStates);
-          
+
+          // Preserve only favorited entities from old states (in case they're temporarily unavailable during HA restart)
+          // This prevents deleted entities from persisting indefinitely while still protecting favorites
+          const favoriteEntityIds = state.CONFIG.favoriteEntities || [];
+          const preservedFavorites = {};
+          favoriteEntityIds.forEach(entityId => {
+            if (state.STATES[entityId] && !newStates[entityId]) {
+              preservedFavorites[entityId] = state.STATES[entityId];
+            }
+          });
+
+          const mergedStates = { ...newStates, ...preservedFavorites };
+          log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites = ${Object.keys(mergedStates).length} total`);
+          state.setStates(mergedStates);
+
           // This is the correct place to render and hide loading
           ui.renderActiveTab();
           uiUtils.showLoading(false);
-          
+
           alerts.initializeEntityAlerts();
         }
       } else if (msg.id === getServicesId) { // get_services response
@@ -98,6 +122,23 @@ websocket.on('message', (msg) => {
             msg.result.forEach(area => { newAreas[area.area_id] = area; });
             state.setAreas(newAreas);
           }
+      } else if (msg.id === getConfigId) { // get_config response
+        log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
+        if (msg.result && msg.result.unit_system) {
+          log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
+          state.setUnitSystem(msg.result.unit_system);
+          // Re-render weather card with correct units
+          if (ui.updateWeatherFromHA) {
+            ui.updateWeatherFromHA();
+          }
+        } else {
+          log.warn('No unit_system found in config response');
+        }
+      } else {
+        log.debug(`Unhandled result message ID: ${msg.id}`);
+      }
+      } else {
+        log.debug(`Result message with no result data: ${msg.id}`);
       }
     }
   } catch (error) {
@@ -130,17 +171,35 @@ websocket.on('error', (error) => {
     log.error('WebSocket error:', error);
     uiUtils.setStatus(false);
     uiUtils.showLoading(false); // Hide loading on failure
-    
+
     // Show the UI with setup message
     ui.renderActiveTab();
+
+    // Show user-friendly error message
+    if (error.message.includes('default token')) {
+      uiUtils.showToast('Please configure your Home Assistant token in Settings (gear icon).', 'error', 20000);
+    } else if (error.message.includes('Invalid configuration')) {
+      uiUtils.showToast('Please configure connection settings (gear icon).', 'error', 20000);
+    } else if (!error.message.includes('auth_invalid')) {
+      // Don't show toast for auth_invalid as it's already handled elsewhere
+      uiUtils.showToast(`Connection error: ${error.message}`, 'error', 15000);
+    }
   } catch (err) {
     log.error('Error handling WebSocket error:', err);
   }
 });
 
+websocket.on('showLoading', (show) => {
+  try {
+    uiUtils.showLoading(show);
+  } catch (err) {
+    log.error('Error handling showLoading event:', err);
+  }
+});
+
 
 // --- IPC Event Handlers ---
-ipcRenderer.on('hotkey-triggered', (event, { entityId, action }) => {
+window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
   const entity = state.STATES[entityId];
   if (entity) {
     // Use the action sent from main.js, fallback to toggle if not provided
@@ -148,12 +207,62 @@ ipcRenderer.on('hotkey-triggered', (event, { entityId, action }) => {
     ui.executeHotkeyAction(entity, finalAction);
   }
 });
+
+/**
+ * Replace all emoji icons with SVG icons
+ * This runs once on initialization to modernize the UI
+ */
+function replaceEmojiIcons() {
+  try {
+    log.info('Replacing emoji icons with SVG icons');
+
+    // Header Controls
+    const settingsBtn = document.getElementById('settings-btn');
+    if (settingsBtn) setIconContent(settingsBtn, 'settings', { size: 18 });
+
+    const minimizeBtn = document.getElementById('minimize-btn');
+    if (minimizeBtn) setIconContent(minimizeBtn, 'minimize', { size: 18 });
+
+    const closeBtn = document.getElementById('close-btn');
+    if (closeBtn) setIconContent(closeBtn, 'close', { size: 18 });
+
+    // Quick Access Controls
+    const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
+    if (reorganizeBtn) setIconContent(reorganizeBtn, 'dragHandle', { size: 18 });
+
+    const manageBtn = document.getElementById('manage-quick-controls-btn');
+    if (manageBtn) setIconContent(manageBtn, 'add', { size: 18 });
+
+    // Media Player Controls
+    const mediaPrevBtn = document.getElementById('media-tile-prev');
+    if (mediaPrevBtn) setIconContent(mediaPrevBtn, 'skipPrevious', { size: 20 });
+
+    const mediaPlayBtn = document.getElementById('media-tile-play');
+    if (mediaPlayBtn) setIconContent(mediaPlayBtn, 'play', { size: 30 });
+
+    const mediaNextBtn = document.getElementById('media-tile-next');
+    if (mediaNextBtn) setIconContent(mediaNextBtn, 'skipNext', { size: 20 });
+
+    // Modal Close Buttons (with × emoji)
+    const closeButtons = document.querySelectorAll('.close-btn');
+    closeButtons.forEach(btn => {
+      if (btn.textContent.includes('×')) {
+        setIconContent(btn, 'close', { size: 20 });
+      }
+    });
+
+    log.info('Successfully replaced emoji icons with SVG icons');
+  } catch (error) {
+    log.error('Error replacing emoji icons:', error);
+  }
+}
+
 async function init() {
   try {
     log.info('Initializing application');
     uiUtils.showLoading(true);
 
-    const config = await ipcRenderer.invoke('get-config');
+    const config = await window.electronAPI.getConfig();
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
       state.setConfig({
@@ -171,14 +280,39 @@ async function init() {
         },
       });
       wireUI();
+      replaceEmojiIcons();
       uiUtils.showLoading(false);
       ui.renderActiveTab();
       return;
     }
-    
+
     state.setConfig(config);
     wireUI();
-    
+    replaceEmojiIcons();
+
+    // Check if token was reset due to encryption issues
+    if (state.CONFIG.tokenResetReason) {
+      const reason = state.CONFIG.tokenResetReason;
+      delete state.CONFIG.tokenResetReason; // Clear flag
+      await window.electronAPI.updateConfig(state.CONFIG); // Save cleared flag
+
+      let message = 'Your Home Assistant token needs to be re-entered. ';
+      let detailMessage = '';
+      if (reason === 'encryption_unavailable') {
+        message += 'Token encryption is not available on this system.';
+        detailMessage = 'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.';
+      } else if (reason === 'decryption_failed') {
+        message += 'The stored token could not be decrypted.';
+        detailMessage = 'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.';
+      }
+
+      log.warn('[Init] Token reset:', message);
+      log.info('[Init]', detailMessage);
+
+      // Show prominent warning message with extended duration
+      uiUtils.showToast(message + ' Click the gear icon to open Settings.', 'warning', 20000);
+    }
+
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       log.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
       uiUtils.showLoading(false);
@@ -196,6 +330,17 @@ async function init() {
     
     // Initialize timer updates (every second)
     setInterval(() => ui.updateTimerDisplays(), 1000);
+    
+    // Initialize media tile seek bar updates (every second)
+    setInterval(() => {
+      const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+      if (primaryPlayer && state.STATES[primaryPlayer]) {
+        const entity = state.STATES[primaryPlayer];
+        if (entity.state === 'playing') {
+          ui.updateMediaSeekBar(entity);
+        }
+      }
+    }, 1000);
     
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
@@ -226,9 +371,6 @@ function wireUI() {
     if (settingsBtn) {
       settingsBtn.onclick = () => {
         settings.openSettings({
-          populateDomainFilters: ui.populateDomainFilters,
-          populateAreaFilter: ui.populateAreaFilter,
-          setupEntitySearchInput: ui.setupEntitySearchInput,
           initUpdateUI: ui.initUpdateUI,
           exitReorganizeMode: () => {
             // Exit reorganize mode if active
@@ -254,7 +396,7 @@ function wireUI() {
     if (viewLogsBtn) {
       viewLogsBtn.onclick = async () => {
         try {
-          const result = await ipcRenderer.invoke('open-logs');
+          const result = await window.electronAPI.openLogs();
           if (result.success) {
             log.info('Log file opened successfully');
           } else {
@@ -280,7 +422,7 @@ function wireUI() {
         const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
         opacityValue.textContent = `${sliderValue}`;
         // Apply opacity in real-time
-        ipcRenderer.invoke('set-opacity', opacity).catch(err => {
+        window.electronAPI.setOpacity(opacity).catch(err => {
           log.error('Failed to set opacity:', err);
         });
       });
@@ -290,14 +432,14 @@ function wireUI() {
     const closeBtn = document.getElementById('close-btn');
     if (closeBtn) {
       closeBtn.onclick = () => {
-        ipcRenderer.invoke('quit-app');
+        window.electronAPI.quitApp();
       };
     }
 
     const minimizeBtn = document.getElementById('minimize-btn');
     if (minimizeBtn) {
       minimizeBtn.onclick = () => {
-        ipcRenderer.invoke('minimize-window');
+        window.electronAPI.minimizeWindow();
       };
     }
 
@@ -310,6 +452,7 @@ function wireUI() {
         if (modal) {
           modal.classList.remove('hidden');
           modal.style.display = 'flex';
+          uiUtils.trapFocus(modal); // Trap focus to manage keyboard navigation and focus
         }
       };
     }
@@ -321,6 +464,7 @@ function wireUI() {
         if (modal) {
           modal.classList.add('hidden');
           modal.style.display = 'none';
+          uiUtils.releaseFocusTrap(); // Release focus trap and restore previous focus
         }
       };
     }
@@ -338,6 +482,7 @@ function wireUI() {
         pressTimer = setTimeout(() => {
           const modal = document.getElementById('weather-config-modal');
           if (modal) {
+            ui.populateWeatherEntitiesList();
             modal.classList.remove('hidden');
             modal.style.display = 'flex';
           }
@@ -352,16 +497,11 @@ function wireUI() {
     }
     
     // Wire up alerts management
-    const manageAlertsBtn = document.getElementById('manage-alerts-btn');
-    if (manageAlertsBtn) {
-      manageAlertsBtn.onclick = settings.openAlertsModal;
+    const closeAlertEntityPickerBtn = document.getElementById('close-alert-entity-picker');
+    if (closeAlertEntityPickerBtn) {
+      closeAlertEntityPickerBtn.onclick = settings.closeAlertEntityPicker;
     }
-    
-    const closeAlertsBtn = document.getElementById('close-alerts');
-    if (closeAlertsBtn) {
-      closeAlertsBtn.onclick = settings.closeAlertsModal;
-    }
-    
+
     const closeAlertConfigBtn = document.getElementById('close-alert-config');
     if (closeAlertConfigBtn) {
       closeAlertConfigBtn.onclick = settings.closeAlertConfigModal;
@@ -377,6 +517,29 @@ function wireUI() {
       cancelAlertBtn.onclick = settings.closeAlertConfigModal;
     }
     
+    // Wire up media tile controls
+    const mediaTilePlay = document.getElementById('media-tile-play');
+    if (mediaTilePlay) {
+      mediaTilePlay.onclick = () => {
+        const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+        if (!primaryPlayer) return;
+        const entity = state.STATES[primaryPlayer];
+        if (!entity) return;
+        const isPlaying = entity.state === 'playing';
+        ui.callMediaTileService(isPlaying ? 'pause' : 'play');
+      };
+    }
+    
+    const mediaTilePrev = document.getElementById('media-tile-prev');
+    if (mediaTilePrev) {
+      mediaTilePrev.onclick = () => ui.callMediaTileService('previous');
+    }
+    
+    const mediaTileNext = document.getElementById('media-tile-next');
+    if (mediaTileNext) {
+      mediaTileNext.onclick = () => ui.callMediaTileService('next');
+    }
+    
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
     if (closeWeatherConfigBtn) {
       closeWeatherConfigBtn.onclick = () => {
@@ -384,6 +547,33 @@ function wireUI() {
         if (modal) {
           modal.classList.add('hidden');
           modal.style.display = 'none';
+        }
+      };
+    }
+
+    const clearWeatherBtn = document.getElementById('clear-weather');
+    if (clearWeatherBtn) {
+      clearWeatherBtn.onclick = async () => {
+        try {
+          // Clear the selected weather entity (revert to default)
+          const updatedConfig = {
+            ...state.CONFIG,
+            selectedWeatherEntity: undefined
+          };
+
+          await window.electronAPI.updateConfig(updatedConfig);
+          state.setConfig(updatedConfig);
+
+          // Refresh weather display
+          ui.updateWeatherFromHA();
+
+          // Refresh the list
+          ui.populateWeatherEntitiesList();
+
+          uiUtils.showToast('Weather entity cleared (using first available)', 'success', 2000);
+        } catch (error) {
+          console.error('Error clearing weather entity:', error);
+          uiUtils.showToast('Failed to clear weather entity', 'error', 3000);
         }
       };
     }
@@ -405,6 +595,10 @@ function wireUI() {
       const alertsSection = document.getElementById('alerts-section');
       if (alertsSection) {
         alertsSection.style.display = e.target.checked ? 'block' : 'none';
+      }
+      // Render inline alerts list when enabled
+      if (e.target.checked) {
+        settings.renderAlertsListInline();
       }
       alerts.toggleAlerts(e.target.checked);
     };
@@ -433,7 +627,7 @@ function wireUI() {
   if (widgetContent) {
     widgetContent.addEventListener('mousedown', () => {
       // Request window focus when clicking on content
-      ipcRenderer.invoke('focus-window').catch(err => {
+      window.electronAPI.focusWindow().catch(err => {
         log.error('Failed to focus window:', err);
       });
     });
@@ -449,7 +643,7 @@ function wireUI() {
       const hotkey = await hotkeys.captureHotkey();
       if (hotkey) {
         const action = target.parentElement.querySelector('.hotkey-action-select').value;
-        const result = await ipcRenderer.invoke('register-hotkey', entityId, hotkey, action);
+        const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
         if (result.success) {
           target.value = hotkey;
           state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
@@ -466,7 +660,7 @@ function wireUI() {
       const container = target.parentElement;
       const input = container.querySelector('.hotkey-input');
       const entityId = input.dataset.entityId;
-      await ipcRenderer.invoke('unregister-hotkey', entityId);
+      await window.electronAPI.unregisterHotkey(entityId);
       input.value = '';
       delete state.CONFIG.globalHotkeys.hotkeys[entityId];
       hotkeys.renderHotkeysTab();

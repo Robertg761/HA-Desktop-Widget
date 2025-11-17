@@ -1,9 +1,44 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const websocket = require('./websocket.js');
-const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap } = require('./ui-utils.js');
+const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast } = require('./ui-utils.js');
+const { cleanupHotkeyEventListeners } = require('./hotkeys.js');
 // Note: ui.js is not imported to prevent circular dependencies
 // Functions like populateDomainFilters will be passed in from renderer.js if needed
+
+/**
+ * Validate Home Assistant URL format
+ * @param {string} url - The URL to validate
+ * @returns {object} - { valid: boolean, error: string|null, url: string }
+ */
+function validateHomeAssistantUrl(url) {
+  if (!url || url.trim() === '') {
+    return { valid: false, error: 'Home Assistant URL cannot be empty', url: null };
+  }
+
+  const trimmedUrl = url.trim();
+
+  // Check if URL starts with http:// or https://
+  if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+    return { valid: false, error: 'URL must start with http:// or https://', url: null };
+  }
+
+  // Try to parse as URL
+  try {
+    const urlObj = new URL(trimmedUrl);
+
+    // Validate it has a hostname
+    if (!urlObj.hostname) {
+      return { valid: false, error: 'Invalid URL: missing hostname', url: null };
+    }
+
+    // Remove trailing slash for consistency
+    const normalizedUrl = trimmedUrl.replace(/\/$/, '');
+
+    return { valid: true, error: null, url: normalizedUrl };
+  } catch (e) {
+    return { valid: false, error: 'Invalid URL format', url: null };
+  }
+}
 
 async function openSettings(uiHooks) {
   try {
@@ -24,7 +59,22 @@ async function openSettings(uiHooks) {
     const opacityValue = document.getElementById('opacity-value');
 
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
-    if (haToken) haToken.value = state.CONFIG.homeAssistant.token || '';
+    if (haToken) {
+      const tokenValue = state.CONFIG.homeAssistant.token || '';
+      // Don't display default token - show empty field instead to prompt user to enter real token
+      haToken.value = tokenValue === 'YOUR_LONG_LIVED_ACCESS_TOKEN' ? '' : tokenValue;
+
+      // Show warning if token was reset due to decryption failure
+      if (state.CONFIG.tokenResetReason) {
+        let warningMessage = 'Your access token needs to be re-entered. ';
+        if (state.CONFIG.tokenResetReason === 'encryption_unavailable') {
+          warningMessage += 'Encryption is not available on this system.';
+        } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
+          warningMessage += 'Token decryption failed.';
+        }
+        uiHooks.showToast(warningMessage, 'warning', 10000);
+      }
+    }
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     
@@ -51,17 +101,22 @@ async function openSettings(uiHooks) {
       if (alertsSection) {
         alertsSection.style.display = entityAlertsEnabled.checked ? 'block' : 'none';
       }
+      // Render inline alerts list if alerts are enabled
+      if (entityAlertsEnabled.checked) {
+        renderAlertsListInline();
+      }
     }
 
     // Call UI hooks passed from renderer.js
     if (uiHooks) {
-      uiHooks.populateDomainFilters();
-      uiHooks.populateAreaFilter();
-      uiHooks.setupEntitySearchInput('favorite-entities');
-      uiHooks.setupEntitySearchInput('camera-entities', ['camera']);
-      uiHooks.setupEntitySearchInput('motion-popup-cameras', ['camera']);
       uiHooks.initUpdateUI();
     }
+
+    // Populate media player dropdown after UI hooks (when states are loaded)
+    populateMediaPlayerDropdown();
+
+    // Initialize popup hotkey UI
+    initializePopupHotkey();
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
@@ -73,6 +128,9 @@ async function openSettings(uiHooks) {
 
 function closeSettings() {
   try {
+    // Clean up hotkey event listeners to prevent memory leaks
+    cleanupHotkeyEventListeners();
+
     const modal = document.getElementById('settings-modal');
     if (modal) {
       modal.classList.add('hidden');
@@ -88,6 +146,11 @@ async function saveSettings() {
   try {
     const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
 
+    // Store previous HA connection settings to detect if reconnect is needed
+    const prevHaUrl = state.CONFIG.homeAssistant?.url;
+    const prevHaToken = state.CONFIG.homeAssistant?.token;
+    const prevUpdateInterval = state.CONFIG.updateInterval;
+
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
     const updateInterval = document.getElementById('update-interval');
@@ -96,8 +159,26 @@ async function saveSettings() {
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
 
-    if (haUrl) state.CONFIG.homeAssistant.url = haUrl.value.trim();
-    if (haToken) state.CONFIG.homeAssistant.token = haToken.value.trim();
+    // Validate and save Home Assistant URL
+    if (haUrl && haUrl.value.trim()) {
+      const validation = validateHomeAssistantUrl(haUrl.value);
+      if (!validation.valid) {
+        showToast(validation.error, 'error', 4000);
+        return; // Don't save if URL is invalid
+      }
+      state.CONFIG.homeAssistant.url = validation.url;
+    } else if (haUrl && !haUrl.value.trim()) {
+      showToast('Home Assistant URL cannot be empty', 'error', 3000);
+      return;
+    }
+
+    if (haToken) {
+      state.CONFIG.homeAssistant.token = haToken.value.trim();
+      // Clear tokenResetReason when user enters a new token
+      if (state.CONFIG.tokenResetReason) {
+        delete state.CONFIG.tokenResetReason;
+      }
+    }
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
     
@@ -113,6 +194,12 @@ async function saveSettings() {
     state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
     if (entityAlertsEnabled) state.CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
 
+    // Save primary media player selection from custom dropdown
+    // Read directly from DOM to avoid using global state variable
+    const selectedOption = document.querySelector('#primary-media-player-menu .custom-dropdown-option.selected');
+    const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
+    state.CONFIG.primaryMediaPlayer = selectedValue || null;
+
     const domainFilters = document.getElementById('domain-filters');
     if (domainFilters) {
       const checkboxes = domainFilters.querySelectorAll('input[type="checkbox"]');
@@ -123,239 +210,308 @@ async function saveSettings() {
       state.CONFIG.filters = state.FILTERS;
     }
 
-    await ipcRenderer.invoke('update-config', state.CONFIG);
+    await window.electronAPI.updateConfig(state.CONFIG);
 
     // Apply opacity immediately
     if (opacitySlider) {
-      await ipcRenderer.invoke('set-opacity', state.CONFIG.opacity);
+      await window.electronAPI.setOpacity(state.CONFIG.opacity);
     }
 
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
-      const res = await ipcRenderer.invoke('set-always-on-top', state.CONFIG.alwaysOnTop);
-      const windowState = await ipcRenderer.invoke('get-window-state');
+      const res = await window.electronAPI.setAlwaysOnTop(state.CONFIG.alwaysOnTop);
+      const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
-          await ipcRenderer.invoke('restart-app');
+          // Force window to regain focus after confirm dialog (Windows focus bug workaround)
+          await window.electronAPI.focusWindow().catch(err => console.error('Failed to refocus window:', err));
+          await window.electronAPI.restartApp();
           return;
         }
+        // Force window to regain focus even if user cancelled (Windows focus bug workaround)
+        await window.electronAPI.focusWindow().catch(err => console.error('Failed to refocus window:', err));
       }
     }
 
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyUiPreferences(state.CONFIG.ui || {});
-    websocket.connect();
+    
+    // Update media tile to reflect new selection
+    const ui = require('./ui.js');
+    if (ui.updateMediaTile) {
+      ui.updateMediaTile();
+    }
+
+    // Only reconnect WebSocket if HA connection settings actually changed
+    const haSettingsChanged =
+      prevHaUrl !== state.CONFIG.homeAssistant.url ||
+      prevHaToken !== state.CONFIG.homeAssistant.token ||
+      prevUpdateInterval !== state.CONFIG.updateInterval;
+
+    if (haSettingsChanged) {
+      websocket.connect();
+    }
   } catch (error) {
     console.error('Failed to save config:', error);
   }
 }
 
-function openAlertsModal() {
+
+function renderAlertsListInline() {
   try {
-    const modal = document.getElementById('alerts-modal');
-    if (!modal) return;
-    
-    populateAlertsList();
-    
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
-    trapFocus(modal);
+    const alertsList = document.getElementById('inline-alerts-list');
+    if (!alertsList) return;
+
+    alertsList.innerHTML = '';
+
+    const alerts = state.CONFIG.entityAlerts?.alerts || {};
+    const utils = require('./utils.js');
+
+    // Show message if no alerts
+    if (Object.keys(alerts).length === 0) {
+      const noAlertsMsg = document.createElement('div');
+      noAlertsMsg.className = 'no-alerts-message';
+      noAlertsMsg.textContent = 'No alerts configured yet. Click the button below to add your first alert.';
+      noAlertsMsg.style.padding = '20px';
+      noAlertsMsg.style.textAlign = 'center';
+      noAlertsMsg.style.color = 'var(--text-muted)';
+      alertsList.appendChild(noAlertsMsg);
+    }
+
+    // Add existing alerts
+    Object.keys(alerts).forEach(entityId => {
+      const entity = state.STATES[entityId];
+      if (!entity) return;
+
+      const alertItem = document.createElement('div');
+      alertItem.className = 'alert-item';
+
+      const alertConfig = alerts[entityId];
+      let alertType = alertConfig.onStateChange ? 'State Change' : 'Specific State';
+      if (alertConfig.onSpecificState) {
+        alertType += ` (${utils.escapeHtml(alertConfig.targetState)})`;
+      }
+
+      alertItem.innerHTML = `
+        <div class="alert-item-info">
+          <span class="alert-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
+          <div class="alert-details">
+            <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
+            <span class="alert-type">${alertType}</span>
+          </div>
+        </div>
+        <div class="alert-actions">
+          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtml(entityId)}">Edit</button>
+          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtml(entityId)}">Remove</button>
+        </div>
+      `;
+
+      alertsList.appendChild(alertItem);
+    });
+
+    // Add "Add new alert" button
+    const addButton = document.createElement('button');
+    addButton.className = 'btn btn-secondary btn-block add-alert-btn';
+    addButton.textContent = '+ Add New Alert';
+    addButton.onclick = () => openAlertEntityPicker();
+    addButton.style.marginTop = '10px';
+    alertsList.appendChild(addButton);
+
+    // Wire up event handlers
+    alertsList.querySelectorAll('.edit-alert').forEach(btn => {
+      btn.onclick = () => openAlertConfigModal(btn.dataset.entity);
+    });
+
+    alertsList.querySelectorAll('.remove-alert').forEach(btn => {
+      btn.onclick = () => removeAlert(btn.dataset.entity);
+    });
   } catch (error) {
-    console.error('Error opening alerts modal:', error);
+    console.error('Error rendering alerts list inline:', error);
   }
 }
 
-function closeAlertsModal() {
+function openAlertEntityPicker() {
   try {
-    const modal = document.getElementById('alerts-modal');
+    populateAlertEntityPicker();
+    const modal = document.getElementById('alert-entity-picker-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      trapFocus(modal);
+    }
+  } catch (error) {
+    console.error('Error opening alert entity picker:', error);
+  }
+}
+
+function closeAlertEntityPicker() {
+  try {
+    const modal = document.getElementById('alert-entity-picker-modal');
     if (modal) {
       modal.classList.add('hidden');
       modal.style.display = 'none';
       releaseFocusTrap(modal);
     }
   } catch (error) {
-    console.error('Error closing alerts modal:', error);
+    console.error('Error closing alert entity picker:', error);
   }
 }
 
-function populateAlertsList() {
+function populateAlertEntityPicker() {
   try {
-    const alertsList = document.getElementById('alerts-list');
-    if (!alertsList) return;
-    
-    alertsList.innerHTML = '';
-    
-    const alerts = state.CONFIG.entityAlerts?.alerts || {};
+    const list = document.getElementById('alert-entity-picker-list');
+    if (!list) return;
+
     const utils = require('./utils.js');
-    
-    // Show message if no alerts
-    if (Object.keys(alerts).length === 0) {
-      const noAlertsMsg = document.createElement('div');
-      noAlertsMsg.className = 'no-alerts-message';
-      noAlertsMsg.textContent = 'No alerts configured yet. Click the button below to add your first alert.';
-      alertsList.appendChild(noAlertsMsg);
+    const alerts = state.CONFIG.entityAlerts?.alerts || {};
+    const entities = Object.values(state.STATES || {})
+      .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
+      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+
+    list.innerHTML = '';
+
+    if (entities.length === 0) {
+      list.innerHTML = '<div class="no-entities-message">No entities available. Make sure you\'re connected to Home Assistant.</div>';
+      return;
     }
-    
-    // Add existing alerts
-    Object.keys(alerts).forEach(entityId => {
-      const entity = state.STATES[entityId];
-      if (!entity) return;
-      
-      const alertItem = document.createElement('div');
-      alertItem.className = 'alert-item';
-      
-      const alertConfig = alerts[entityId];
-      let alertType = alertConfig.onStateChange ? 'State Change' : 'Specific State';
-      if (alertConfig.onSpecificState) {
-        alertType += ` (${alertConfig.targetState})`;
-      }
-      
-      alertItem.innerHTML = `
-        <div class="alert-item-info">
-          <span class="alert-icon">${utils.getEntityIcon(entity)}</span>
-          <div class="alert-details">
-            <span class="alert-name">${utils.getEntityDisplayName(entity)}</span>
-            <span class="alert-type">${alertType}</span>
+
+    entities.forEach(entity => {
+      const entityId = entity.entity_id;
+      const hasAlert = !!alerts[entityId];
+
+      const item = document.createElement('div');
+      item.className = 'entity-item';
+
+      const icon = utils.getEntityIcon(entity);
+      const displayName = utils.getEntityDisplayName(entity);
+
+      item.innerHTML = `
+        <div class="entity-item-main">
+          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <div class="entity-item-info">
+            <span class="entity-name">${utils.escapeHtml(displayName)}</span>
+            <span class="entity-id">${utils.escapeHtml(entityId)}</span>
           </div>
         </div>
-        <div class="alert-actions">
-          <button class="btn btn-small btn-secondary edit-alert" data-entity="${entityId}">Edit</button>
-          <button class="btn btn-small btn-danger remove-alert" data-entity="${entityId}">Remove</button>
-        </div>
+        <button class="entity-selector-btn ${hasAlert ? 'edit' : 'add'}" data-entity-id="${utils.escapeHtml(entityId)}">
+          ${hasAlert ? '⚙️ Edit Alert' : '+ Add Alert'}
+        </button>
       `;
-      
-      alertsList.appendChild(alertItem);
+
+      // Add badge if alert exists
+      if (hasAlert) {
+        const badge = document.createElement('span');
+        badge.className = 'alert-badge';
+        badge.textContent = '🔔';
+        badge.title = 'Alert configured';
+        badge.style.marginLeft = '8px';
+        badge.style.fontSize = '14px';
+        item.querySelector('.entity-item-main').appendChild(badge);
+      }
+
+      list.appendChild(item);
     });
-    
-    // Add "Add new alert" button
-    const addButton = document.createElement('button');
-    addButton.className = 'btn btn-secondary btn-block add-alert-btn';
-    addButton.textContent = '+ Add New Alert';
-    addButton.onclick = () => openAlertConfigModal();
-    alertsList.appendChild(addButton);
-    
-    // Wire up event handlers
-    alertsList.querySelectorAll('.edit-alert').forEach(btn => {
-      btn.onclick = () => openAlertConfigModal(btn.dataset.entity);
+
+    // Wire up click handlers
+    list.querySelectorAll('.entity-selector-btn').forEach(btn => {
+      btn.onclick = () => {
+        const entityId = btn.dataset.entityId;
+        closeAlertEntityPicker();
+        openAlertConfigModal(entityId);
+      };
     });
-    
-    alertsList.querySelectorAll('.remove-alert').forEach(btn => {
-      btn.onclick = () => removeAlert(btn.dataset.entity);
-    });
-    
-    // Search functionality - always set up
-    const searchInput = document.getElementById('alert-search');
+
+    // Search functionality
+    const searchInput = document.getElementById('alert-entity-picker-search');
     if (searchInput) {
-      // Clear previous handler
       searchInput.oninput = null;
       searchInput.value = '';
-      
+
       searchInput.oninput = (e) => {
-        const query = e.target.value.toLowerCase();
-        alertsList.querySelectorAll('.alert-item').forEach(item => {
-          const name = item.querySelector('.alert-name')?.textContent.toLowerCase() || '';
-          item.style.display = name.includes(query) ? 'flex' : 'none';
+        const query = e.target.value.toLowerCase().trim();
+        if (!query) {
+          // Show all items if search is empty
+          list.querySelectorAll('.entity-item').forEach(item => {
+            item.style.display = 'flex';
+          });
+          return;
+        }
+
+        // Score each item and show/hide based on score
+        list.querySelectorAll('.entity-item').forEach(item => {
+          const name = item.querySelector('.entity-name')?.textContent || '';
+          const id = item.querySelector('.entity-id')?.textContent || '';
+
+          // Calculate separate scores for name and ID, then add them
+          const nameScore = utils.getSearchScore(name, query);
+          const idScore = utils.getSearchScore(id, query);
+          const totalScore = nameScore + idScore;
+
+          item.style.display = totalScore > 0 ? 'flex' : 'none';
         });
-        // Don't hide the add button or no alerts message
-        const addBtn = alertsList.querySelector('.add-alert-btn');
-        const noMsg = alertsList.querySelector('.no-alerts-message');
-        if (addBtn) addBtn.style.display = 'block';
-        if (noMsg) noMsg.style.display = 'block';
       };
     }
   } catch (error) {
-    console.error('Error populating alerts list:', error);
+    console.error('Error populating alert entity picker:', error);
   }
 }
 
 let currentAlertEntity = null;
 
-function openAlertConfigModal(entityId = null) {
+function openAlertConfigModal(entityId) {
   try {
+    if (!entityId) {
+      console.error('openAlertConfigModal requires entityId');
+      return;
+    }
+
     const modal = document.getElementById('alert-config-modal');
     if (!modal) return;
-    
+
     currentAlertEntity = entityId;
-    
+
     const stateChangeRadio = modal.querySelector('input[value="state-change"]');
     const specificStateRadio = modal.querySelector('input[value="specific-state"]');
     const specificStateGroup = document.getElementById('specific-state-group');
     const targetStateInput = document.getElementById('target-state-input');
     const title = document.getElementById('alert-config-title');
-    
-    // If editing existing alert
-    if (entityId) {
-      const alertConfig = state.CONFIG.entityAlerts?.alerts[entityId];
-      const entity = state.STATES[entityId];
-      const utils = require('./utils.js');
-      
-      if (title) title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
-      
-      if (alertConfig) {
-        if (alertConfig.onStateChange) {
-          if (stateChangeRadio) stateChangeRadio.checked = true;
-          if (specificStateGroup) specificStateGroup.style.display = 'none';
-        } else if (alertConfig.onSpecificState) {
-          if (specificStateRadio) specificStateRadio.checked = true;
-          if (specificStateGroup) specificStateGroup.style.display = 'block';
-          if (targetStateInput) targetStateInput.value = alertConfig.targetState || '';
-        }
+
+    const alertConfig = state.CONFIG.entityAlerts?.alerts[entityId];
+    const entity = state.STATES[entityId];
+    const utils = require('./utils.js');
+
+    if (title) title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
+
+    // Load existing alert config or set defaults
+    if (alertConfig) {
+      if (alertConfig.onStateChange) {
+        if (stateChangeRadio) stateChangeRadio.checked = true;
+        if (specificStateGroup) specificStateGroup.style.display = 'none';
+      } else if (alertConfig.onSpecificState) {
+        if (specificStateRadio) specificStateRadio.checked = true;
+        if (specificStateGroup) specificStateGroup.style.display = 'block';
+        if (targetStateInput) targetStateInput.value = alertConfig.targetState || '';
       }
     } else {
-      // New alert - show entity selector in the modal
-      if (title) title.textContent = 'Configure Alert - Select Entity';
-      
-      // Create entity selector
-      const modalBody = modal.querySelector('.modal-body');
-      if (modalBody) {
-        // Add entity selector as the first element
-        let entitySelectGroup = modal.querySelector('.entity-select-group');
-        if (!entitySelectGroup) {
-          entitySelectGroup = document.createElement('div');
-          entitySelectGroup.className = 'form-group entity-select-group';
-          entitySelectGroup.innerHTML = `
-            <label for="alert-entity-select">Select Entity:</label>
-            <select id="alert-entity-select" class="form-control">
-              <option value="">-- Choose an entity --</option>
-            </select>
-          `;
-          modalBody.insertBefore(entitySelectGroup, modalBody.firstChild);
-          
-          // Populate with all entities
-          const entitySelect = entitySelectGroup.querySelector('#alert-entity-select');
-          const utils = require('./utils.js');
-          
-          Object.values(state.STATES)
-            .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
-            .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))
-            .forEach(entity => {
-              const option = document.createElement('option');
-              option.value = entity.entity_id;
-              option.textContent = `${utils.getEntityIcon(entity)} ${utils.getEntityDisplayName(entity)}`;
-              entitySelect.appendChild(option);
-            });
-          
-          // Update currentAlertEntity when selection changes
-          entitySelect.onchange = (e) => {
-            currentAlertEntity = e.target.value;
-          };
-        }
-      }
+      // New alert - set defaults
+      if (stateChangeRadio) stateChangeRadio.checked = true;
+      if (specificStateGroup) specificStateGroup.style.display = 'none';
+      if (targetStateInput) targetStateInput.value = '';
     }
-    
+
     // Radio button handlers
     if (stateChangeRadio) {
       stateChangeRadio.onchange = () => {
         if (specificStateGroup) specificStateGroup.style.display = 'none';
       };
     }
-    
+
     if (specificStateRadio) {
       specificStateRadio.onchange = () => {
         if (specificStateGroup) specificStateGroup.style.display = 'block';
       };
     }
-    
+
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
     trapFocus(modal);
@@ -368,12 +524,6 @@ function closeAlertConfigModal() {
   try {
     const modal = document.getElementById('alert-config-modal');
     if (modal) {
-      // Remove entity selector if it exists
-      const entitySelectGroup = modal.querySelector('.entity-select-group');
-      if (entitySelectGroup) {
-        entitySelectGroup.remove();
-      }
-      
       modal.classList.add('hidden');
       modal.style.display = 'none';
       releaseFocusTrap(modal);
@@ -387,27 +537,27 @@ function closeAlertConfigModal() {
 async function saveAlert() {
   try {
     if (!currentAlertEntity) return;
-    
+
     const modal = document.getElementById('alert-config-modal');
     const stateChangeRadio = modal.querySelector('input[value="state-change"]');
     const specificStateRadio = modal.querySelector('input[value="specific-state"]');
     const targetStateInput = document.getElementById('target-state-input');
-    
+
     state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
-    
+
     const alertConfig = {
       onStateChange: stateChangeRadio?.checked || false,
       onSpecificState: specificStateRadio?.checked || false,
       targetState: targetStateInput?.value.trim() || ''
     };
-    
+
     state.CONFIG.entityAlerts.alerts[currentAlertEntity] = alertConfig;
-    
-    await ipcRenderer.invoke('update-config', state.CONFIG);
-    
+
+    await window.electronAPI.updateConfig(state.CONFIG);
+
     closeAlertConfigModal();
-    populateAlertsList();
-    
+    renderAlertsListInline();
+
     const { showToast } = require('./ui-utils.js');
     showToast('Alert saved successfully', 'success', 2000);
   } catch (error) {
@@ -419,14 +569,24 @@ async function saveAlert() {
 
 async function removeAlert(entityId) {
   try {
-    if (!confirm('Remove this alert?')) return;
-    
+    const entity = state.STATES[entityId];
+    const utils = require('./utils.js');
+    const { showConfirm, showToast } = require('./ui-utils.js');
+    const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
+
+    const confirmed = await showConfirm(
+      'Remove Alert',
+      `Remove alert for "${entityName}"?`,
+      { confirmText: 'Remove', confirmClass: 'btn-danger' }
+    );
+
+    if (!confirmed) return;
+
     if (state.CONFIG.entityAlerts?.alerts[entityId]) {
       delete state.CONFIG.entityAlerts.alerts[entityId];
-      await ipcRenderer.invoke('update-config', state.CONFIG);
-      populateAlertsList();
-      
-      const { showToast } = require('./ui-utils.js');
+      await window.electronAPI.updateConfig(state.CONFIG);
+      renderAlertsListInline();
+
       showToast('Alert removed', 'success', 2000);
     }
   } catch (error) {
@@ -436,13 +596,369 @@ async function removeAlert(entityId) {
   }
 }
 
+// Custom Dropdown Management
+function initCustomDropdown() {
+  try {
+    const dropdown = document.getElementById('primary-media-player-dropdown');
+    const trigger = document.getElementById('primary-media-player-trigger');
+    const menu = document.getElementById('primary-media-player-menu');
+
+    if (!dropdown || !trigger || !menu) {
+      console.warn('Custom dropdown elements not found');
+      return;
+    }
+
+    // Toggle dropdown
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.contains('open');
+
+      if (isOpen) {
+        closeCustomDropdown();
+      } else {
+        dropdown.classList.add('open');
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) {
+        closeCustomDropdown();
+      }
+    });
+
+    // Handle keyboard navigation
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        dropdown.classList.toggle('open');
+        trigger.setAttribute('aria-expanded', dropdown.classList.contains('open') ? 'true' : 'false');
+      } else if (e.key === 'Escape') {
+        closeCustomDropdown();
+      }
+    });
+
+    // Option selection handled in populateMediaPlayerDropdown
+  } catch (error) {
+    console.error('Error initializing custom dropdown:', error);
+  }
+}
+
+function closeCustomDropdown() {
+  const dropdown = document.getElementById('primary-media-player-dropdown');
+  const trigger = document.getElementById('primary-media-player-trigger');
+
+  if (dropdown) {
+    dropdown.classList.remove('open');
+  }
+  if (trigger) {
+    trigger.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function setCustomDropdownValue(value, displayText) {
+  // Update displayed value
+  const valueSpan = document.querySelector('.custom-dropdown-value');
+  if (valueSpan) {
+    valueSpan.textContent = displayText;
+  }
+
+  // Update selected state on options (the DOM itself stores the selection state)
+  const options = document.querySelectorAll('.custom-dropdown-option');
+  options.forEach(opt => {
+    if (opt.getAttribute('data-value') === value) {
+      opt.classList.add('selected');
+    } else {
+      opt.classList.remove('selected');
+    }
+  });
+}
+
+function populateMediaPlayerDropdown() {
+  try {
+    const menu = document.getElementById('primary-media-player-menu');
+    if (!menu) {
+      console.warn('Media player dropdown menu not found');
+      return;
+    }
+
+    // Clear existing options
+    menu.innerHTML = '';
+
+    // Add "None" option
+    const noneOption = document.createElement('div');
+    noneOption.className = 'custom-dropdown-option';
+    noneOption.setAttribute('role', 'option');
+    noneOption.setAttribute('data-value', '');
+    noneOption.textContent = 'None (Hide Media Tile)';
+    menu.appendChild(noneOption);
+
+    // Get all media player entities
+    const mediaPlayers = Object.values(state.STATES || {})
+      .filter(entity => entity.entity_id.startsWith('media_player.'))
+      .sort((a, b) => {
+        const utils = require('./utils.js');
+        const nameA = utils.getEntityDisplayName(a).toLowerCase();
+        const nameB = utils.getEntityDisplayName(b).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+
+    // Populate dropdown
+    mediaPlayers.forEach(entity => {
+      const option = document.createElement('div');
+      option.className = 'custom-dropdown-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('data-value', entity.entity_id);
+      const utils = require('./utils.js');
+      option.textContent = utils.getEntityDisplayName(entity);
+      menu.appendChild(option);
+    });
+
+    // Add click handlers to all options
+    const options = menu.querySelectorAll('.custom-dropdown-option');
+    options.forEach(option => {
+      option.addEventListener('click', () => {
+        const value = option.getAttribute('data-value');
+        const displayText = option.textContent;
+        setCustomDropdownValue(value, displayText);
+        closeCustomDropdown();
+      });
+    });
+
+    // Set current selection
+    const currentValue = state.CONFIG.primaryMediaPlayer || '';
+    const selectedOption = Array.from(options).find(opt => opt.getAttribute('data-value') === currentValue);
+    const displayText = selectedOption ? selectedOption.textContent : 'None (Hide Media Tile)';
+    setCustomDropdownValue(currentValue, displayText);
+
+    // Initialize dropdown behavior (only once)
+    if (!menu.dataset.initialized) {
+      initCustomDropdown();
+      menu.dataset.initialized = 'true';
+    }
+  } catch (error) {
+    console.error('Error populating media player dropdown:', error);
+  }
+}
+
+// Popup Hotkey Management
+let isCapturingPopupHotkey = false;
+
+async function initializePopupHotkey() {
+  try {
+    // Check if popup hotkey feature is available
+    const isAvailable = await window.electronAPI.isPopupHotkeyAvailable();
+
+    const input = document.getElementById('popup-hotkey-input');
+    const setBtn = document.getElementById('popup-hotkey-set-btn');
+    const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+    const container = document.getElementById('popup-hotkey-container');
+
+    if (!input || !setBtn || !clearBtn) return;
+
+    // If not available, disable the UI and show a message
+    if (!isAvailable) {
+      input.disabled = true;
+      input.value = '';
+      input.placeholder = 'Not available on this platform';
+      setBtn.disabled = true;
+      clearBtn.disabled = true;
+      clearBtn.style.display = 'none';
+
+      // Add a notice message if not already present
+      if (container && !container.querySelector('.unavailable-notice')) {
+        const notice = document.createElement('p');
+        notice.className = 'unavailable-notice';
+        notice.style.color = '#888';
+        notice.style.fontSize = '12px';
+        notice.style.marginTop = '8px';
+        notice.textContent = 'Popup hotkey feature is not available on this platform.';
+        container.appendChild(notice);
+      }
+      return;
+    }
+
+    // Load current popup hotkey
+    const currentHotkey = state.CONFIG.popupHotkey || '';
+    if (currentHotkey) {
+      input.value = currentHotkey;
+      input.placeholder = currentHotkey;
+      clearBtn.style.display = 'inline-block';
+    }
+
+    // Set hotkey button
+    setBtn.onclick = () => {
+      if (isCapturingPopupHotkey) {
+        stopCapturingPopupHotkey();
+        return;
+      }
+      startCapturingPopupHotkey();
+    };
+
+    // Clear button
+    clearBtn.onclick = async () => {
+      try {
+        const result = await window.electronAPI.unregisterPopupHotkey();
+        if (result.success) {
+          input.value = '';
+          input.placeholder = 'Not set (click Set Hotkey)';
+          clearBtn.style.display = 'none';
+          state.CONFIG.popupHotkey = '';
+          const { showToast } = require('./ui-utils.js');
+          showToast('Popup hotkey cleared', 'success');
+        }
+      } catch (error) {
+        console.error('Failed to clear popup hotkey:', error);
+        const { showToast } = require('./ui-utils.js');
+        showToast('Failed to clear popup hotkey', 'error');
+      }
+    };
+
+    // Preset hotkey buttons
+    const presetButtons = document.querySelectorAll('.preset-hotkey-btn');
+    presetButtons.forEach(btn => {
+      btn.onclick = async () => {
+        const hotkey = btn.dataset.hotkey;
+        try {
+          const result = await window.electronAPI.registerPopupHotkey(hotkey);
+          if (result.success) {
+            input.value = hotkey;
+            input.placeholder = hotkey;
+            clearBtn.style.display = 'inline-block';
+            state.CONFIG.popupHotkey = hotkey;
+            const { showToast } = require('./ui-utils.js');
+            showToast(`Popup hotkey set to ${hotkey}`, 'success');
+          } else {
+            const { showToast } = require('./ui-utils.js');
+            showToast(result.error || 'Failed to set popup hotkey', 'error');
+          }
+        } catch (error) {
+          console.error('Failed to set preset hotkey:', error);
+          const { showToast } = require('./ui-utils.js');
+          showToast('Failed to set popup hotkey', 'error');
+        }
+      };
+    });
+  } catch (error) {
+    console.error('Error initializing popup hotkey:', error);
+  }
+}
+
+function startCapturingPopupHotkey() {
+  isCapturingPopupHotkey = true;
+  const input = document.getElementById('popup-hotkey-input');
+  const setBtn = document.getElementById('popup-hotkey-set-btn');
+
+  if (input) {
+    input.value = 'Press keys...';
+    input.focus();
+  }
+  if (setBtn) {
+    setBtn.textContent = 'Cancel';
+    setBtn.classList.add('btn-danger');
+    setBtn.classList.remove('btn-secondary');
+  }
+
+  // Capture keydown event
+  const captureHandler = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ignore pure modifier keys - wait for a main key to be pressed
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+      return; // Don't process until user presses a non-modifier key
+    }
+
+    // Build hotkey string
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Command');
+
+    // Add the main key
+    let mainKeyAdded = false;
+    if (e.key && e.key.length === 1) {
+      parts.push(e.key.toUpperCase());
+      mainKeyAdded = true;
+    } else if (e.key === ' ') {
+      parts.push('Space');
+      mainKeyAdded = true;
+    } else if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+      parts.push(e.key);
+      mainKeyAdded = true;
+    }
+
+    // Only proceed if we have a main key (not just modifiers)
+    if (mainKeyAdded && parts.length > 0) {
+      const hotkey = parts.join('+');
+
+      try {
+        const result = await window.electronAPI.registerPopupHotkey(hotkey);
+        if (result.success) {
+          if (input) {
+            input.value = hotkey;
+            input.placeholder = hotkey;
+          }
+          const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+          if (clearBtn) clearBtn.style.display = 'inline-block';
+          state.CONFIG.popupHotkey = hotkey;
+          const { showToast } = require('./ui-utils.js');
+          showToast(`Popup hotkey set to ${hotkey}`, 'success');
+        } else {
+          const { showToast } = require('./ui-utils.js');
+          showToast(result.error || 'Failed to set popup hotkey', 'error');
+          if (input) input.value = state.CONFIG.popupHotkey || '';
+        }
+      } catch (error) {
+        console.error('Failed to register popup hotkey:', error);
+        const { showToast } = require('./ui-utils.js');
+        showToast('Failed to register popup hotkey', 'error');
+        if (input) input.value = state.CONFIG.popupHotkey || '';
+      }
+
+      stopCapturingPopupHotkey();
+    }
+  };
+
+  // Store handler for cleanup
+  input._captureHandler = captureHandler;
+  document.addEventListener('keydown', captureHandler, true);
+}
+
+function stopCapturingPopupHotkey() {
+  isCapturingPopupHotkey = false;
+  const input = document.getElementById('popup-hotkey-input');
+  const setBtn = document.getElementById('popup-hotkey-set-btn');
+
+  if (input) {
+    input.value = state.CONFIG.popupHotkey || '';
+    input.placeholder = state.CONFIG.popupHotkey || 'Not set (click Set Hotkey)';
+    input.blur();
+
+    if (input._captureHandler) {
+      document.removeEventListener('keydown', input._captureHandler, true);
+      input._captureHandler = null;
+    }
+  }
+
+  if (setBtn) {
+    setBtn.textContent = 'Set Hotkey';
+    setBtn.classList.remove('btn-danger');
+    setBtn.classList.add('btn-secondary');
+  }
+}
+
 module.exports = {
     openSettings,
     closeSettings,
     saveSettings,
-    openAlertsModal,
-    closeAlertsModal,
+    renderAlertsListInline,
+    openAlertEntityPicker,
+    closeAlertEntityPicker,
     openAlertConfigModal,
     closeAlertConfigModal,
     saveAlert,
+    initializePopupHotkey,
 };
