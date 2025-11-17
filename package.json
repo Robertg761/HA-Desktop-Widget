@@ -79,13 +79,13 @@
             "x64"
           ]
         }
-      ],
-      "signAndEditExecutable": false
+      ]
     },
     "nsis": {
       "artifactName": "${productName}-${version}-win-${arch}-Setup.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
