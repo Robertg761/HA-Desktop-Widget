@@ -208,8 +208,8 @@ function openCamera(cameraId) {
           hls.on(Hls.Events.ERROR, (_evt, data) => {
             console.warn('HLS error', data?.details || data);
             if (data?.fatal) {
-              try { 
-                hls.destroy(); 
+              try {
+                hls.destroy();
               } catch (_error) {
                 console.warn('Failed to destroy HLS instance:', _error);
               }
@@ -238,9 +238,16 @@ function openCamera(cameraId) {
       
       if (!hlsStarted) {
         // Fallback to MJPEG stream using ha:// protocol
+        // Hide video element if it was created during HLS attempt
+        const modalBody = modal.querySelector('.modal-body');
+        const video = modalBody?.querySelector('video.camera-video');
+        if (video) {
+          video.style.display = 'none';
+        }
+
         img.style.display = 'block';
         img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
-        
+
         // Hide loading when MJPEG starts
         img.onload = () => showLoading(false);
         img.onerror = () => showLoading(false);

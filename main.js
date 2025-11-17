@@ -4,6 +4,25 @@ const fs = require('fs');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
+
+// HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
+const httpKeepAliveAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 1000,
+  maxSockets: 100,
+  maxFreeSockets: 10,
+  timeout: 60000
+});
+
+const httpsKeepAliveAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 1000,
+  maxSockets: 100,
+  maxFreeSockets: 10,
+  timeout: 60000
+});
 
 // Try to load uiohook-napi (optional dependency for popup hotkey feature)
 let uIOhook, UiohookKey;
@@ -1193,10 +1212,15 @@ app.whenReady().then(() => {
         }
         if (host === 'camera_stream') {
           const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy_stream/${entityId}`;
+          const isHttps = haUrl.startsWith('https://');
           const res = await axios.get(upstream, {
             headers: { Authorization: `Bearer ${token}` },
             responseType: 'stream',
-            validateStatus: () => true
+            validateStatus: () => true,
+            timeout: 0,
+            maxRedirects: 5,
+            httpAgent: !isHttps ? httpKeepAliveAgent : undefined,
+            httpsAgent: isHttps ? httpsKeepAliveAgent : undefined
           });
           if (res.status >= 200 && res.status < 300) {
             const contentType = res.headers['content-type'] || 'multipart/x-mixed-replace;boundary=--myboundary';
@@ -1206,10 +1230,15 @@ app.whenReady().then(() => {
           }
         } else if (host === 'hls') {
           const upstream = `${haUrl.replace(/\/$/, '')}${url.pathname}${url.search || ''}`;
+          const isHttps = haUrl.startsWith('https://');
           const res = await axios.get(upstream, {
             headers: { Authorization: `Bearer ${token}` },
             responseType: 'stream',
-            validateStatus: () => true
+            validateStatus: () => true,
+            timeout: 0,
+            maxRedirects: 5,
+            httpAgent: !isHttps ? httpKeepAliveAgent : undefined,
+            httpsAgent: isHttps ? httpsKeepAliveAgent : undefined
           });
           if (res.status >= 200 && res.status < 300) {
             const contentType = res.headers['content-type'] || (upstream.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/MP2T');
@@ -1222,7 +1251,9 @@ app.whenReady().then(() => {
           const res = await axios.get(upstream, {
             headers: { Authorization: `Bearer ${token}` },
             responseType: 'arraybuffer',
-            validateStatus: () => true
+            validateStatus: () => true,
+            timeout: 15000, // 15 second timeout for snapshots
+            maxRedirects: 5
           });
           if (res.status >= 200 && res.status < 300) {
             const buf = Buffer.from(res.data);
