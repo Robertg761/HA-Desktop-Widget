@@ -5,7 +5,6 @@ let WS_ID = 1000;
 let STATES = {};
 let SERVICES = {};
 let AREAS = {};
-let HISTORY_CHART = null;
 let CAMERA_REFRESH_INTERVAL = null;
 let LIVE_CAMERAS = new Set();
 const LIVE_SNAPSHOT_INTERVALS = new Map();
@@ -31,6 +30,15 @@ let FILTERS = {
   hidden: []
 };
 let THEME_MEDIA_QUERY = null;
+let UNIT_SYSTEM = {
+  temperature: '°C',
+  length: 'km',
+  wind_speed: 'm/s',  // Home Assistant metric uses m/s, not km/h
+  pressure: 'hPa',
+  precipitation: 'mm',
+  volume: 'L',
+  mass: 'kg'
+};
 
 function setConfig(newConfig) { 
   try { CONFIG = newConfig; } 
@@ -48,15 +56,11 @@ function setServices(newServices) {
   try { SERVICES = newServices; } 
   catch (error) { console.error('Error setting services:', error); }
 }
-function setAreas(newAreas) { 
-  try { AREAS = newAreas; } 
+function setAreas(newAreas) {
+  try { AREAS = newAreas; }
   catch (error) { console.error('Error setting areas:', error); }
 }
-function setHistoryChart(newChart) { 
-  try { HISTORY_CHART = newChart; } 
-  catch (error) { console.error('Error setting history chart:', error); }
-}
-function setTimerTick(newTick) { 
+function setTimerTick(newTick) {
   try { TIMER_TICK = newTick; } 
   catch (error) { console.error('Error setting timer tick:', error); }
 }
@@ -96,9 +100,13 @@ function setDragPlaceholder(newPlaceholder) {
   try { DRAG_PLACEHOLDER = newPlaceholder; } 
   catch (error) { console.error('Error setting drag placeholder:', error); }
 }
-function setEditSnapshotLayouts(newLayouts) { 
-  try { EDIT_SNAPSHOT_LAYOUTS = newLayouts; } 
+function setEditSnapshotLayouts(newLayouts) {
+  try { EDIT_SNAPSHOT_LAYOUTS = newLayouts; }
   catch (error) { console.error('Error setting edit snapshot layouts:', error); }
+}
+function setUnitSystem(newUnitSystem) {
+  try { UNIT_SYSTEM = newUnitSystem; }
+  catch (error) { console.error('Error setting unit system:', error); }
 }
 
 module.exports = {
@@ -109,7 +117,6 @@ module.exports = {
   get STATES() { return STATES; },
   get SERVICES() { return SERVICES; },
   get AREAS() { return AREAS; },
-  get HISTORY_CHART() { return HISTORY_CHART; },
   CAMERA_REFRESH_INTERVAL,
   LIVE_CAMERAS,
   LIVE_SNAPSHOT_INTERVALS,
@@ -130,12 +137,12 @@ module.exports = {
   get EDIT_MODE_TAB_ID() { return EDIT_MODE_TAB_ID; },
   get FILTERS() { return FILTERS; },
   get THEME_MEDIA_QUERY() { return THEME_MEDIA_QUERY; },
+  get UNIT_SYSTEM() { return UNIT_SYSTEM; },
   setConfig,
   setWs,
   setStates,
   setServices,
   setAreas,
-  setHistoryChart,
   setTimerTick,
   setTimerSensorTick,
   setTimerSensorSyncTick,
@@ -147,4 +154,5 @@ module.exports = {
   setThemeMediaQuery,
   setDragPlaceholder,
   setEditSnapshotLayouts,
+  setUnitSystem,
 };

@@ -64,24 +64,14 @@ async function startSnapshotLive(img, entityId, rate = 1) {
   if (!img || !entityId) return;
   if (state.LIVE_SNAPSHOT_INTERVALS.has(entityId)) return; // Already running
 
-  const url = `${state.CONFIG.homeAssistant.url}/api/camera_proxy/${entityId}`;
-  const headers = {
-    Authorization: `Bearer ${state.CONFIG.homeAssistant.token}`,
-    'Content-Type': 'application/json',
-  };
-
-  const update = async () => {
+  // Use ha:// protocol which proxies through main process (secure, bypasses CORS)
+  const update = () => {
     try {
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-        const blob = await res.blob();
-        img.src = URL.createObjectURL(blob);
-      } else {
-        console.warn('Snapshot fetch failed:', res.status, res.statusText);
-        img.src = '';
-      }
+      // Add cache buster to force refresh
+      const cacheBuster = `t=${Date.now()}`;
+      img.src = `ha://camera/${entityId}?${cacheBuster}`;
     } catch (e) {
-      console.warn('Snapshot fetch failed:', e?.message || e);
+      console.warn('Snapshot update failed:', e?.message || e);
       img.src = '';
     }
   };
@@ -127,12 +117,12 @@ function openCamera(cameraId) {
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
-          <h2>${utils.getEntityDisplayName(camera)}</h2>
+          <h2>${utils.escapeHtml(utils.getEntityDisplayName(camera))}</h2>
           <button class="close-btn">×</button>
         </div>
         <div class="modal-body">
           <div style="position: relative;">
-            <img alt="${utils.getEntityDisplayName(camera)}" class="camera-stream camera-img">
+            <img alt="${utils.escapeHtml(utils.getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
               Loading live stream...
@@ -218,8 +208,8 @@ function openCamera(cameraId) {
           hls.on(Hls.Events.ERROR, (_evt, data) => {
             console.warn('HLS error', data?.details || data);
             if (data?.fatal) {
-              try { 
-                hls.destroy(); 
+              try {
+                hls.destroy();
               } catch (_error) {
                 console.warn('Failed to destroy HLS instance:', _error);
               }
@@ -248,9 +238,16 @@ function openCamera(cameraId) {
       
       if (!hlsStarted) {
         // Fallback to MJPEG stream using ha:// protocol
+        // Hide video element if it was created during HLS attempt
+        const modalBody = modal.querySelector('.modal-body');
+        const video = modalBody?.querySelector('video.camera-video');
+        if (video) {
+          video.style.display = 'none';
+        }
+
         img.style.display = 'block';
         img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
-        
+
         // Hide loading when MJPEG starts
         img.onload = () => showLoading(false);
         img.onerror = () => showLoading(false);

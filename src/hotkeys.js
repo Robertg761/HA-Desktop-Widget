@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 const state = require('./state.js');
 const { showToast } = require('./ui-utils.js');
 const { getEntityDisplayName, getSearchScore } = require('./utils.js');
@@ -22,7 +21,7 @@ function initializeHotkeys() {
   }
 }
 
-function getActionOptionsForDomain(domain, selectedAction) {
+function getActionOptionsForDomain(domain) {
     const options = {
         light: [
             { value: 'toggle', label: 'Toggle' },
@@ -59,10 +58,31 @@ function getActionOptionsForDomain(domain, selectedAction) {
         ]
     };
 
-    const domainOptions = options[domain] || options.switch;
-    return domainOptions.map(opt => 
-        `<option value="${opt.value}" ${selectedAction === opt.value ? 'selected' : ''}>${opt.label}</option>`
+    return options[domain] || options.switch;
+}
+
+function createCustomDropdownHTML(options, selectedAction, entityId) {
+    const selectedOption = options.find(opt => opt.value === selectedAction) || options[0];
+    const selectedLabel = escapeHtml(selectedOption.label);
+    const escapedEntityId = escapeHtml(entityId);
+
+    const optionsHTML = options.map(opt =>
+        `<div class="custom-dropdown-option ${opt.value === selectedAction ? 'selected' : ''}" role="option" data-value="${opt.value}">${escapeHtml(opt.label)}</div>`
     ).join('');
+
+    return `
+        <div class="custom-dropdown hotkey-action-dropdown" data-entity-id="${escapedEntityId}">
+            <button type="button" class="custom-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <span class="custom-dropdown-value">${selectedLabel}</span>
+                <svg class="custom-dropdown-arrow" width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+            <div class="custom-dropdown-menu" role="listbox">
+                ${optionsHTML}
+            </div>
+        </div>
+    `;
 }
 
 function renderHotkeysTab() {
@@ -87,8 +107,9 @@ function renderHotkeysTab() {
             const action = (typeof hotkeyConfig === 'object' && hotkeyConfig.action) ? hotkeyConfig.action : 'toggle';
             const domain = entity.entity_id.split('.')[0];
 
-            // Generate action options based on entity type
-            const actionOptions = getActionOptionsForDomain(domain, action);
+            // Get action options based on entity type
+            const actionOptions = getActionOptionsForDomain(domain);
+            const dropdownHTML = createCustomDropdownHTML(actionOptions, action, entity.entity_id);
 
             const item = document.createElement('div');
             item.className = 'hotkey-item';
@@ -99,15 +120,13 @@ function renderHotkeysTab() {
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
                     <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="No hotkey set" data-entity-id="${escapedEntityId}">
-                    <select class="hotkey-action-select" data-entity-id="${escapedEntityId}">
-                        ${actionOptions}
-                    </select>
+                    ${dropdownHTML}
                     <button class="btn-clear-hotkey" title="Clear hotkey">&times;</button>
                 </div>
             `;
             container.appendChild(item);
         });
-        
+
         // Set up event listeners after rendering
         setupHotkeyEventListenersInternal();
     } catch (error) {
@@ -117,7 +136,7 @@ function renderHotkeysTab() {
 
 async function toggleHotkeys(enabled) {
   try {
-    const result = await ipcRenderer.invoke('toggle-hotkeys', enabled);
+    const result = await window.electronAPI.toggleHotkeys(enabled);
     if (result.success) {
       if (state.CONFIG.globalHotkeys) {
         state.CONFIG.globalHotkeys.enabled = enabled;
@@ -254,22 +273,66 @@ function renderExistingHotkeys() {
 
 // Flag to track if listeners have been set up
 let listenersSetUp = false;
+// Store reference to document-level click handler for cleanup
+let documentClickHandler = null;
 
 function setupHotkeyEventListenersInternal() {
     try {
         // Prevent duplicate event listeners
         if (listenersSetUp) return;
-        
+
         const container = document.getElementById('hotkeys-list');
         if (!container) return;
 
-        // Use event delegation on the container
-        container.addEventListener('change', async (e) => {
-            if (e.target.classList.contains('hotkey-action-select')) {
-                const entityId = e.target.dataset.entityId;
-                const action = e.target.value;
+        // Handle custom dropdown toggle
+        container.addEventListener('click', (e) => {
+            const trigger = e.target.closest('.custom-dropdown-trigger');
+            if (trigger) {
+                e.stopPropagation();
+                const dropdown = trigger.closest('.custom-dropdown');
+                const isOpen = dropdown.classList.contains('open');
+
+                // Close all other dropdowns first
+                container.querySelectorAll('.custom-dropdown.open').forEach(dd => {
+                    dd.classList.remove('open');
+                    dd.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
+                });
+
+                // Toggle current dropdown
+                if (!isOpen) {
+                    dropdown.classList.add('open');
+                    trigger.setAttribute('aria-expanded', 'true');
+                }
+            }
+        });
+
+        // Handle custom dropdown option selection
+        container.addEventListener('click', async (e) => {
+            const option = e.target.closest('.custom-dropdown-option');
+            if (option) {
+                const dropdown = option.closest('.custom-dropdown');
+                const entityId = dropdown.dataset.entityId;
+                const action = option.dataset.value;
+                const actionLabel = option.textContent;
+
+                // Update dropdown display
+                const valueSpan = dropdown.querySelector('.custom-dropdown-value');
+                if (valueSpan) {
+                    valueSpan.textContent = actionLabel;
+                }
+
+                // Update selected state
+                dropdown.querySelectorAll('.custom-dropdown-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                option.classList.add('selected');
+
+                // Close dropdown
+                dropdown.classList.remove('open');
+                dropdown.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
+
+                // Save to config
                 const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
-                
                 if (hotkeyConfig) {
                     // Update the action in the config
                     if (typeof hotkeyConfig === 'string') {
@@ -281,14 +344,46 @@ function setupHotkeyEventListenersInternal() {
                     } else {
                         hotkeyConfig.action = action;
                     }
-                    
+
                     // Save the updated config
-                    await ipcRenderer.invoke('save-config', state.CONFIG);
-                    
+                    await window.electronAPI.updateConfig(state.CONFIG);
+
                     // Re-register hotkeys to apply the new action
-                    await ipcRenderer.invoke('register-hotkeys');
-                    
-                    showToast(`Action updated to: ${action}`, 'success', 2000);
+                    await window.electronAPI.registerHotkeys();
+
+                    showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
+                }
+            }
+        });
+
+        // Close dropdowns when clicking outside - store handler reference for cleanup
+        documentClickHandler = (e) => {
+            const container = document.getElementById('hotkeys-list');
+            if (!container) return; // Container was removed
+
+            if (!e.target.closest('.custom-dropdown')) {
+                container.querySelectorAll('.custom-dropdown.open').forEach(dropdown => {
+                    dropdown.classList.remove('open');
+                    const trigger = dropdown.querySelector('.custom-dropdown-trigger');
+                    if (trigger) {
+                        trigger.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+        };
+        document.addEventListener('click', documentClickHandler);
+
+        // Handle keyboard navigation
+        container.addEventListener('keydown', (e) => {
+            const trigger = e.target.closest('.custom-dropdown-trigger');
+            if (trigger) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    trigger.click();
+                } else if (e.key === 'Escape') {
+                    const dropdown = trigger.closest('.custom-dropdown');
+                    dropdown.classList.remove('open');
+                    trigger.setAttribute('aria-expanded', 'false');
                 }
             }
         });
@@ -296,6 +391,19 @@ function setupHotkeyEventListenersInternal() {
         listenersSetUp = true;
     } catch (error) {
         console.error('Error setting up hotkey event listeners:', error);
+    }
+}
+
+// Cleanup function to remove event listeners
+function cleanupHotkeyEventListeners() {
+    try {
+        if (documentClickHandler) {
+            document.removeEventListener('click', documentClickHandler);
+            documentClickHandler = null;
+        }
+        listenersSetUp = false;
+    } catch (error) {
+        console.error('Error cleaning up hotkey event listeners:', error);
     }
 }
 
@@ -312,4 +420,5 @@ module.exports = {
     captureHotkey,
     renderExistingHotkeys,
     setupHotkeyEventListeners,
+    cleanupHotkeyEventListeners,
 };

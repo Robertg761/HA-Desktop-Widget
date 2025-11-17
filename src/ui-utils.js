@@ -1,4 +1,3 @@
-const { ipcRenderer } = require('electron');
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
 
@@ -107,9 +106,85 @@ function setStatus(connected) {
   }
 }
 
-ipcRenderer.on('hotkey-registration-failed', (event, { hotkey }) => {
+window.electronAPI.onHotkeyRegistrationFailed(({ hotkey }) => {
   showToast(`Hotkey "${hotkey}" is already in use by another application.`, 'error', 5000);
 });
+
+function showConfirm(title, message, options = {}) {
+  return new Promise((resolve) => {
+    try {
+      const modal = document.getElementById('confirm-modal');
+      const titleEl = document.getElementById('confirm-title');
+      const messageEl = document.getElementById('confirm-message');
+      const cancelBtn = document.getElementById('confirm-cancel-btn');
+      const okBtn = document.getElementById('confirm-ok-btn');
+
+      if (!modal || !titleEl || !messageEl || !cancelBtn || !okBtn) {
+        console.error('Confirm modal elements not found');
+        resolve(false);
+        return;
+      }
+
+      // Set content
+      titleEl.textContent = title || 'Confirm Action';
+      messageEl.textContent = message || 'Are you sure?';
+      okBtn.textContent = options.confirmText || 'Confirm';
+      cancelBtn.textContent = options.cancelText || 'Cancel';
+
+      // Configure buttons
+      okBtn.className = `btn ${options.confirmClass || 'btn-danger'}`;
+
+      // Handle confirmation
+      const handleConfirm = () => {
+        cleanup();
+        resolve(true);
+      };
+
+      const handleCancel = () => {
+        cleanup();
+        resolve(false);
+      };
+
+      const handleKeydown = (e) => {
+        if (e.key === 'Escape') {
+          handleCancel();
+        } else if (e.key === 'Enter') {
+          handleConfirm();
+        }
+      };
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', handleConfirm);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modal.removeEventListener('click', handleBackdropClick);
+        document.removeEventListener('keydown', handleKeydown);
+        releaseFocusTrap(modal);
+      };
+
+      const handleBackdropClick = (e) => {
+        if (e.target === modal) {
+          handleCancel();
+        }
+      };
+
+      // Wire up events
+      okBtn.addEventListener('click', handleConfirm);
+      cancelBtn.addEventListener('click', handleCancel);
+      modal.addEventListener('click', handleBackdropClick);
+      document.addEventListener('keydown', handleKeydown);
+
+      // Show modal
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      trapFocus(modal);
+    } catch (error) {
+      console.error('Error showing confirm dialog:', error);
+      resolve(false);
+    }
+  });
+}
 
 module.exports = {
   showToast,
@@ -119,4 +194,5 @@ module.exports = {
   releaseFocusTrap,
   showLoading,
   setStatus,
+  showConfirm,
 };

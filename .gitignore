@@ -7,6 +7,7 @@ node_modules/
 /build/*
 !/build/icon.png
 !/build/icon.ico
+!/build/installer.nsh
 /*.log
 npm-debug.log*
 yarn-debug.log*
@@ -64,3 +65,8 @@ gha-creds-*.json
 
 # Genkit (local AI tooling cache)
 .genkit/
+
+# Local development notes (not for commit)
+todo.md
+improvement_suggestions.md
+testing-progress.md

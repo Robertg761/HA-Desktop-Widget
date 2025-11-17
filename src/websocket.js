@@ -16,6 +16,7 @@ class WebSocketManager extends EventEmitter {
       log.error('Invalid configuration for WebSocket');
       this.emit('status', false);
       this.emit('error', new Error('Invalid configuration. Please check settings.'));
+      this.emit('showLoading', false);
       return;
     }
 
@@ -23,6 +24,7 @@ class WebSocketManager extends EventEmitter {
       log.error('Configuration contains default token');
       this.emit('status', false);
       this.emit('error', new Error('Configuration contains default token. Please update settings.'));
+      this.emit('showLoading', false);
       return;
     }
 

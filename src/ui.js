@@ -3,31 +3,95 @@ const utils = require('./utils.js');
 const websocket = require('./websocket.js');
 const camera = require('./camera.js');
 const uiUtils = require('./ui-utils.js');
+const { setIconContent } = require('./icons.js');
+const Sortable = require('sortablejs');
 
 let isReorganizeMode = false;
-let draggedElement = null;
-let dragOverElement = null;
+// Track all active long-press timers to cancel them when mode changes
+const activePressTimers = new Set();
+
+/**
+ * Handle WebSocket service call errors with user feedback
+ * @param {Error} error - The error that occurred
+ * @param {string} entityName - Optional entity name for better error messages
+ */
+function handleServiceError(error, entityName = null) {
+  const errorMessage = error?.message || 'Unknown error';
+  const displayMessage = entityName
+    ? `Failed to control ${entityName}: ${errorMessage}`
+    : `Service call failed: ${errorMessage}`;
+
+  console.error('WebSocket service call failed:', error);
+  uiUtils.showToast(displayMessage, 'error', 4000);
+}
+
+/**
+ * Clear all active long-press timers
+ * Called when reorganize mode changes to prevent inconsistent state
+ */
+function clearAllPressTimers() {
+  activePressTimers.forEach(timer => clearTimeout(timer));
+  activePressTimers.clear();
+}
+
+let sortableInstance = null; // SortableJS instance for reorganize mode
+
+const mediaFitElements = new Set();
+let mediaFitScheduled = false;
+let mediaFitResizeBound = false;
 
 function toggleReorganizeMode() {
   try {
+    // Clear any active long-press timers to prevent state inconsistency
+    clearAllPressTimers();
+
     isReorganizeMode = !isReorganizeMode;
     const container = document.getElementById('quick-controls');
     const btn = document.getElementById('reorganize-quick-controls-btn');
-    
+
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
-      if (btn) btn.textContent = '✓';
-      if (btn) btn.title = 'Save & Exit Reorganize Mode';
-      addDragAndDropListeners();
+      if (btn) {
+        setIconContent(btn, 'check', { size: 18 });
+        btn.classList.add('reorganize-active');
+        btn.title = 'Save & Exit Reorganize Mode (ESC)';
+      }
+
+      // Initialize SortableJS for drag-and-drop
+      sortableInstance = Sortable.create(container, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        handle: '.control-item', // Allow dragging by any part of the item
+        filter: '.remove-btn, .rename-btn', // Ignore these elements
+        preventOnFilter: false, // Allow clicks on filtered elements
+        onEnd: () => {
+          // SortableJS has already reordered the DOM
+          // Just save the new order
+          saveQuickAccessOrder();
+        }
+      });
+
       addRemoveButtons();
-      uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove', 'info', 3000);
+      addEscapeKeyListener();
+      uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit', 'info', 3000);
     } else {
+      // Destroy Sortable instance
+      if (sortableInstance) {
+        sortableInstance.destroy();
+        sortableInstance = null;
+      }
+
       container.classList.remove('reorganize-mode');
-      if (btn) btn.textContent = '⋮⋮';
-      if (btn) btn.title = 'Reorganize Quick Access';
+      if (btn) {
+        setIconContent(btn, 'dragHandle', { size: 18 });
+        btn.classList.remove('reorganize-active');
+        btn.title = 'Reorganize Quick Access';
+      }
       saveQuickAccessOrder();
       removeRemoveButtons();
-      removeDragAndDropListeners();
+      removeEscapeKeyListener();
       uiUtils.showToast('Quick Access order saved', 'success', 2000);
     }
   } catch (error) {
@@ -61,7 +125,7 @@ function addButtonsToElement(item) {
     if (!item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
-      renameBtn.innerHTML = '✏️';
+      setIconContent(renameBtn, 'edit', { size: 14 });
       renameBtn.title = 'Rename Entity';
       renameBtn.setAttribute('draggable', 'false');
       renameBtn.addEventListener('mousedown', (e) => {
@@ -79,12 +143,12 @@ function addButtonsToElement(item) {
       }, true);
       item.appendChild(renameBtn);
     }
-    
+
     // Add remove button
     if (!item.querySelector('.remove-btn')) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'remove-btn';
-      removeBtn.innerHTML = '×';
+      setIconContent(removeBtn, 'close', { size: 16 });
       removeBtn.title = 'Remove from Quick Access';
       removeBtn.setAttribute('draggable', 'false');
       removeBtn.addEventListener('mousedown', (e) => {
@@ -95,29 +159,28 @@ function addButtonsToElement(item) {
         e.stopPropagation();
         return false;
       }, true);
-      removeBtn.addEventListener('click', (e) => {
+      removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        removeFromQuickAccess(item.dataset.entityId);
+
+        const entityId = item.dataset.entityId;
+        const entity = state.STATES[entityId];
+        const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
+
+        const confirmed = await uiUtils.showConfirm(
+          'Remove from Quick Access',
+          `Remove "${entityName}" from Quick Access?`,
+          { confirmText: 'Remove', confirmClass: 'btn-danger' }
+        );
+
+        if (confirmed) {
+          removeFromQuickAccess(entityId);
+        }
       }, true);
       item.appendChild(removeBtn);
     }
   } catch (error) {
     console.error('Error adding buttons to element:', error);
-  }
-}
-
-function addDragListenersToElement(item) {
-  try {
-    item.draggable = true;
-    item.addEventListener('dragstart', handleDragStart);
-    item.addEventListener('dragend', handleDragEnd);
-    item.addEventListener('dragover', handleDragOver);
-    item.addEventListener('drop', handleDrop);
-    item.addEventListener('dragenter', handleDragEnter);
-    item.addEventListener('dragleave', handleDragLeave);
-  } catch (error) {
-    console.error('Error adding drag listeners to element:', error);
   }
 }
 
@@ -127,19 +190,19 @@ function showRenameModal(entityId) {
     if (!entity) return;
     
     const currentName = state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
-    
+
     const modal = document.createElement('div');
     modal.className = 'modal rename-modal';
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
           <h2>Rename Entity</h2>
-          <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+          <button class="close-btn">×</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
             <label for="rename-input">Display Name:</label>
-            <input type="text" id="rename-input" class="form-control" value="${currentName}" placeholder="Enter custom name">
+            <input type="text" id="rename-input" class="form-control" value="${utils.escapeHtml(currentName)}" placeholder="Enter custom name">
           </div>
         </div>
         <div class="modal-footer">
@@ -150,11 +213,12 @@ function showRenameModal(entityId) {
       </div>
     `;
     document.body.appendChild(modal);
-    
+
     const input = modal.querySelector('#rename-input');
     const saveBtn = modal.querySelector('#save-rename-btn');
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
+    const closeBtn = modal.querySelector('.close-btn');
     
     if (input) input.focus();
     
@@ -168,17 +232,15 @@ function showRenameModal(entityId) {
           }
           state.CONFIG.customEntityNames[entityId] = newName;
           
-          const { ipcRenderer } = require('electron');
-          await ipcRenderer.invoke('update-config', state.CONFIG);
+          await window.electronAPI.updateConfig(state.CONFIG);
           
           renderActiveTab();
           if (isReorganizeMode) {
             const container = document.getElementById('quick-controls');
             if (container) container.classList.add('reorganize-mode');
-            addDragAndDropListeners();
             addRemoveButtons();
           }
-          
+
           uiUtils.showToast(`Renamed to "${newName}"`, 'success', 2000);
         }
         modal.remove();
@@ -190,17 +252,15 @@ function showRenameModal(entityId) {
         if (state.CONFIG.customEntityNames && state.CONFIG.customEntityNames[entityId]) {
           delete state.CONFIG.customEntityNames[entityId];
           
-          const { ipcRenderer } = require('electron');
-          await ipcRenderer.invoke('update-config', state.CONFIG);
+          await window.electronAPI.updateConfig(state.CONFIG);
           
           renderActiveTab();
           if (isReorganizeMode) {
             const container = document.getElementById('quick-controls');
             if (container) container.classList.add('reorganize-mode');
-            addDragAndDropListeners();
             addRemoveButtons();
           }
-          
+
           uiUtils.showToast('Reset to default name', 'info', 2000);
         }
         modal.remove();
@@ -210,7 +270,11 @@ function showRenameModal(entityId) {
     if (cancelBtn) {
       cancelBtn.onclick = () => modal.remove();
     }
-    
+
+    if (closeBtn) {
+      closeBtn.onclick = () => modal.remove();
+    }
+
     modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
   } catch (error) {
     console.error('Error showing rename modal:', error);
@@ -219,22 +283,19 @@ function showRenameModal(entityId) {
 
 function removeFromQuickAccess(entityId) {
   try {
-    if (!confirm(`Remove ${entityId} from Quick Access?`)) return;
-    
+    // Note: Confirmation is handled by two-click pattern in the remove button itself
     const favorites = state.CONFIG.favoriteEntities || [];
     const newFavorites = favorites.filter(id => id !== entityId);
     state.CONFIG.favoriteEntities = newFavorites;
     
     // Save to config
-    const { ipcRenderer } = require('electron');
-    ipcRenderer.invoke('update-config', state.CONFIG);
-    
+    window.electronAPI.updateConfig(state.CONFIG);
+
     // Re-render
     renderQuickControls();
     if (isReorganizeMode) {
       const container = document.getElementById('quick-controls');
       container.classList.add('reorganize-mode');
-      addDragAndDropListeners();
       addRemoveButtons();
     }
     
@@ -255,8 +316,7 @@ function saveQuickAccessOrder() {
     state.CONFIG.favoriteEntities = newOrder;
     
     // Save to config
-    const { ipcRenderer } = require('electron');
-    ipcRenderer.invoke('update-config', state.CONFIG);
+    window.electronAPI.updateConfig(state.CONFIG);
   } catch (error) {
     console.error('Error saving quick access order:', error);
   }
@@ -266,8 +326,8 @@ function saveQuickAccessOrder() {
 function renderActiveTab() {
   try {
     renderQuickControls();
-    renderCameras();
     updateWeatherFromHA();
+    updateMediaTile();
     if (Object.keys(state.STATES).length === 0) {
       showNoConnectionMessage();
     }
@@ -279,12 +339,17 @@ function renderActiveTab() {
 function updateEntityInUI(entity) {
   try {
     if (!entity) return;
-    
+
     // Update weather card if this is a weather entity
     if (entity.entity_id.startsWith('weather.')) {
       updateWeatherFromHA();
     }
-    
+
+    // Update media tile if this is the primary media player
+    if (entity.entity_id === state.CONFIG.primaryMediaPlayer) {
+      updateMediaTile();
+    }
+
     const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
     items.forEach(item => {
       const newControl = createControlElement(entity);
@@ -293,11 +358,11 @@ function updateEntityInUI(entity) {
         newControl.classList.add('reorganize-mode');
       }
       item.replaceWith(newControl);
-      
-      // If in reorganize mode, add buttons and drag listeners to the newly created element
+
+      // If in reorganize mode, add buttons to the newly created element
+      // Note: SortableJS automatically handles drag behavior for all children
       if (isReorganizeMode) {
         addButtonsToElement(newControl);
-        addDragListenersToElement(newControl);
       }
     });
   } catch (error) {
@@ -313,29 +378,32 @@ function renderQuickControls() {
       console.error('[UI] Quick controls container not found');
       return;
     }
-    
+
     container.innerHTML = '';
-    
+
     // Get favorite entities for quick access
     const favorites = state.CONFIG.favoriteEntities || [];
-    const entities = Object.values(state.STATES).filter(e => favorites.includes(e.entity_id));
-    
-    // Sort entities by the order they appear in CONFIG.favoriteEntities (user's custom order)
-    entities
-      .sort((a, b) => {
-        const indexA = favorites.indexOf(a.entity_id);
-        const indexB = favorites.indexOf(b.entity_id);
-        return indexA - indexB;
-      })
+
+    // Iterate through ALL favorited entity IDs (not just those in STATES)
+    // This ensures unavailable entities are still shown with an error state
+    favorites
       .slice(0, 12)
-      .forEach(entity => {
-        const control = createControlElement(entity);
-        container.appendChild(control);
+      .forEach(entityId => {
+        const entity = state.STATES[entityId];
+
+        if (entity) {
+          // Entity exists in STATES - render normally
+          const control = createControlElement(entity);
+          container.appendChild(control);
+        } else {
+          // Entity does not exist in STATES - render unavailable state
+          const control = createUnavailableElement(entityId);
+          container.appendChild(control);
+        }
       });
 
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
-      addDragAndDropListeners();
       addRemoveButtons();
     }
   } catch (error) {
@@ -348,6 +416,11 @@ function createControlElement(entity) {
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
+
+    // Per-entity column span (default 2 for media, 1 otherwise)
+    const span = getTileSpan(entity);
+    div.dataset.span = String(span);
+    try { div.style.gridColumn = `span ${span}`; } catch { /* no-op */ }
 
     // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
@@ -362,10 +435,10 @@ function createControlElement(entity) {
     const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
     let stateIsTimestamp = false;
     if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
-      // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
-      // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
-      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+      // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+      // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+      // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
       const looksLikeTimestamp = iso8601Pattern.test(entity.state);
       if (looksLikeTimestamp) {
         const stateTime = new Date(entity.state).getTime();
@@ -397,6 +470,17 @@ function createControlElement(entity) {
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
       div.title = `Click to toggle, hold for brightness control`;
+    } else if (entity.entity_id.startsWith('climate.')) {
+      setupClimateControls(div, entity);
+      div.title = `Click to toggle, hold for temperature control`;
+    } else if (entity.entity_id.startsWith('fan.')) {
+      setupFanControls(div, entity);
+      div.title = `Click to toggle, hold for speed control`;
+    } else if (entity.entity_id.startsWith('cover.')) {
+      setupCoverControls(div, entity);
+      div.title = `Click to toggle, hold for position control`;
+    } else if (entity.entity_id.startsWith('media_player.')) {
+      div.title = `Click to play/pause, hold for controls`;
     } else {
       div.onclick = () => {
         if (!isReorganizeMode) toggleEntity(entity);
@@ -404,24 +488,30 @@ function createControlElement(entity) {
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
     
-    const icon = utils.getEntityIcon(entity);
-    const name = utils.getEntityDisplayName(entity);
-    const state = utils.getEntityDisplayState(entity);
-    
+    const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+    const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
+
     let stateDisplay = '';
     if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
       stateDisplay = `<div class="control-state">${state}</div>`;
     } else if (isTimer) {
-      const timerDisplay = utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state;
+      const timerDisplay = utils.escapeHtml(utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state);
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
     } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
-      const brightness = Math.round((entity.attributes.brightness / 255) * 100);
-      stateDisplay = `<div class="control-state">${brightness}%</div>`;
+      const brightnessValue = Number(entity.attributes.brightness);
+      if (!isNaN(brightnessValue) && brightnessValue >= 0) {
+        const brightness = Math.round((brightnessValue / 255) * 100);
+        stateDisplay = `<div class="control-state">${brightness}%</div>`;
+      }
     } else if (entity.entity_id.startsWith('light.') && entity.state !== 'on') {
       stateDisplay = `<div class="control-state">Off</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
-      if (temp) stateDisplay = `<div class="control-state">${temp}°</div>`;
+      if (temp) stateDisplay = `<div class="control-state">${utils.escapeHtml(String(temp))}°</div>`;
+    } else if (entity.entity_id.startsWith('media_player.')) {
+      // Media player state will be handled in setupMediaPlayerControls
+      stateDisplay = '';
     }
 
     // Special layout for timer entities (no icon, larger timer display)
@@ -434,6 +524,16 @@ function createControlElement(entity) {
       `;
       div.classList.add('timer-entity');
       div.setAttribute('data-state', entity.state);
+    } else if (entity.entity_id.startsWith('media_player.')) {
+      // Media player layout will be handled in setupMediaPlayerControls
+      div.innerHTML = `
+        <div class="control-icon">${icon}</div>
+        <div class="control-info">
+          <div class="control-name">${name}</div>
+          ${stateDisplay}
+        </div>
+      `;
+      div.classList.add('media-player-entity');
     } else {
       div.innerHTML = `
         <div class="control-icon">${icon}</div>
@@ -444,9 +544,49 @@ function createControlElement(entity) {
       `;
     }
     
+    // Setup special controls after HTML is set
+    if (entity.entity_id.startsWith('media_player.')) {
+      setupMediaPlayerControls(div, entity);
+      // Auto-fit removed - using CSS ellipsis and marquee instead
+    }
+    
     return div;
   } catch (error) {
     console.error('Error creating control element:', error);
+    return document.createElement('div');
+  }
+}
+
+/**
+ * Create an unavailable entity element for favorited entities that no longer exist
+ * @param {string} entityId - The entity ID that is unavailable
+ * @returns {HTMLElement} - The unavailable entity element
+ */
+function createUnavailableElement(entityId) {
+  try {
+    const div = document.createElement('div');
+    div.className = 'control-item unavailable-entity';
+    div.dataset.entityId = entityId;
+    div.dataset.span = '1';
+    div.style.gridColumn = 'span 1';
+
+    // Get custom name if available, otherwise use entity ID
+    const customName = state.CONFIG.customEntityNames?.[entityId];
+    const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
+
+    div.innerHTML = `
+      <div class="control-icon unavailable-icon">⚠️</div>
+      <div class="control-info">
+        <div class="control-name">${utils.escapeHtml(displayName)}</div>
+        <div class="control-state unavailable-state">Unavailable</div>
+      </div>
+    `;
+
+    div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
+
+    return div;
+  } catch (error) {
+    console.error('Error creating unavailable element:', error);
     return document.createElement('div');
   }
 }
@@ -472,11 +612,18 @@ function setupLightControls(div, entity) {
       longPressTriggered = false;
       pressTimer = setTimeout(() => {
         longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
         showBrightnessSlider(entity);
       }, 500);
+      activePressTimers.add(pressTimer);
     };
 
-    const cancelPress = () => clearTimeout(pressTimer);
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
 
     div.addEventListener('mousedown', startPress);
     div.addEventListener('mouseup', cancelPress);
@@ -493,6 +640,556 @@ function setupLightControls(div, entity) {
     console.error('Error setting up light controls:', error);
   }
 }
+
+function setupClimateControls(div, entity) {
+  try {
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
+      if (isReorganizeMode) {
+        return;
+      }
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
+        showClimateControls(entity);
+      }, 500);
+      activePressTimers.add(pressTimer);
+    };
+
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+  } catch (error) {
+    console.error('Error setting up climate controls:', error);
+  }
+}
+
+function setupFanControls(div, entity) {
+  try {
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
+      if (isReorganizeMode) {
+        return;
+      }
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
+        showFanControls(entity);
+      }, 500);
+      activePressTimers.add(pressTimer);
+    };
+
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+  } catch (error) {
+    console.error('Error setting up fan controls:', error);
+  }
+}
+
+function setupCoverControls(div, entity) {
+  try {
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    const startPress = (_e) => {
+      if (isReorganizeMode) {
+        return;
+      }
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        activePressTimers.delete(pressTimer);
+        showCoverControls(entity);
+      }, 500);
+      activePressTimers.add(pressTimer);
+    };
+
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
+    };
+
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', (e) => {
+      if (isReorganizeMode || longPressTriggered) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      toggleEntity(entity);
+    });
+  } catch (error) {
+    console.error('Error setting up cover controls:', error);
+  }
+}
+
+function setupMediaPlayerControls(div, entity) {
+  try {
+    if (!div || !entity) return;
+
+    // Get media info
+    const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
+    const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
+    const mediaAlbum = utils.escapeHtml(entity.attributes?.media_album_name || '');
+    const isPlaying = entity.state === 'playing';
+    const isOff = entity.state === 'off' || entity.state === 'idle';
+
+    // Create media info display
+    let mediaInfo = '';
+    if (mediaTitle) {
+      // Show title and artist on separate lines, album only if there's space
+      mediaInfo = `<div class="media-info">
+        <div class="media-title">${mediaTitle}</div>
+        ${mediaArtist ? `<div class="media-artist">${mediaArtist}</div>` : ''}
+        ${mediaAlbum && !mediaArtist ? `<div class="media-album">${mediaAlbum}</div>` : ''}
+      </div>`;
+    } else if (isOff) {
+      mediaInfo = '<div class="media-info"><div class="media-title">No media</div></div>';
+    } else {
+      mediaInfo = '<div class="media-info"><div class="media-title">Ready</div></div>';
+    }
+
+    // Update the control info section (no inline controls; whole tile toggles)
+    const controlInfo = div.querySelector('.control-info');
+    if (controlInfo) {
+      controlInfo.innerHTML = `
+        <div class="control-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
+        ${mediaInfo}
+      `;
+    }
+
+    // Update album art in the icon - show when media info is present
+    const controlIcon = div.querySelector('.control-icon');
+    if (controlIcon) {
+      // Save the original icon on first setup
+      if (!controlIcon.dataset.defaultIcon) {
+        controlIcon.dataset.defaultIcon = controlIcon.innerHTML;
+      }
+
+      const artworkUrl = entity.attributes?.entity_picture ||
+                        entity.attributes?.media_image_url ||
+                        entity.attributes?.media_content_id;
+
+      // Show artwork when media info is present (playing or paused with media loaded)
+      // Only hide when idle/off or no media info available
+      const hasMediaInfo = mediaTitle && !isOff;
+      if (hasMediaInfo && artworkUrl) {
+        // Use ha:// protocol to proxy artwork (handles external CDNs and HA paths with auth)
+        const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
+
+        // Determine the full URL to encode
+        let urlToEncode;
+        if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
+          // Already a full URL (external CDN like Spotify, YouTube)
+          urlToEncode = artworkUrl;
+        } else {
+          // Relative path - construct full HA URL
+          const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
+          urlToEncode = baseUrl + imgUrl;
+        }
+
+        // Encode URL in base64 for the ha:// protocol
+        const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+
+        // Add cache buster for better updates (rounded to 30 seconds to allow caching)
+        const cacheBuster = Math.floor(Date.now() / 30000);
+        const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+
+        // Replace icon with album art image
+        const img = document.createElement('img');
+        img.src = proxyUrl;
+        img.alt = 'Album art';
+        img.className = 'media-player-artwork';
+        img.onerror = function() {
+          // Restore original icon on error
+          const icon = this.parentElement;
+          if (icon && icon.dataset.defaultIcon) {
+            icon.innerHTML = icon.dataset.defaultIcon;
+            icon.classList.remove('has-artwork');
+          }
+        };
+        controlIcon.innerHTML = '';
+        controlIcon.appendChild(img);
+        controlIcon.classList.add('has-artwork');
+      } else {
+        // No media info or no artwork - show original icon
+        if (controlIcon.dataset.defaultIcon) {
+          controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
+        }
+        controlIcon.classList.remove('has-artwork');
+      }
+    }
+
+    // Only set up event listeners once
+    if (!div.dataset.mediaControlsSetup) {
+      div.dataset.mediaControlsSetup = 'true';
+
+      // Make entire tile a play/pause toggle with long-press for details
+      let pressTimer = null;
+      let longPressTriggered = false;
+
+      const startPress = (_e) => {
+        if (isReorganizeMode) return;
+        longPressTriggered = false;
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          activePressTimers.delete(pressTimer);
+        }
+        pressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          activePressTimers.delete(pressTimer);
+          const currentEntity = state.STATES[entity.entity_id];
+          if (currentEntity) showMediaDetail(currentEntity);
+        }, 500);
+        activePressTimers.add(pressTimer);
+      };
+
+      const cancelPress = () => {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          activePressTimers.delete(pressTimer);
+        }
+      };
+
+      div.addEventListener('mousedown', startPress);
+      div.addEventListener('mouseup', cancelPress);
+      div.addEventListener('mouseleave', cancelPress);
+
+      div.addEventListener('click', (e) => {
+        if (isReorganizeMode || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+        const currentEntity = state.STATES[entity.entity_id];
+        if (!currentEntity) return;
+        const nowPlaying = currentEntity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
+        callMediaPlayerService(currentEntity.entity_id, nowPlaying ? 'pause' : 'play');
+      });
+    }
+
+    // Update data attributes for styling (always update these)
+    div.setAttribute('data-state', entity.state);
+    div.setAttribute('data-media-playing', isPlaying ? 'true' : 'false');
+
+  } catch (error) {
+    console.error('Error setting up media player controls:', error);
+  }
+}
+
+// Return desired grid span for an entity (configurable per entity)
+function getTileSpan(entity) {
+  try {
+    const id = entity.entity_id;
+    const spanCfg = state.CONFIG.tileSpans && state.CONFIG.tileSpans[id];
+    if (Number.isInteger(spanCfg) && spanCfg > 0) return spanCfg;
+    // Media players use 2-column span for better information display with centered layout
+    return id.startsWith('media_player.') ? 2 : 1;
+  } catch {
+    return entity.entity_id.startsWith('media_player.') ? 2 : 1;
+  }
+}
+
+// Simple single-line fit: shrink font-size until text fits width
+function fitSingleLine(el, opts = {}) {
+  if (!el || !el.isConnected) return;
+  if (!el.dataset.baseFontSize) {
+    const computed = parseFloat(getComputedStyle(el).fontSize) || 12;
+    el.dataset.baseFontSize = String(computed);
+  }
+  const base = parseFloat(el.dataset.baseFontSize) || 12;
+  const max = opts.max || base;
+  const min = opts.min || Math.max(base * 0.6, 8);
+  if (!el.clientWidth) {
+    el.style.fontSize = `${max}px`;
+    return;
+  }
+  el.style.fontSize = `${max}px`;
+  if (el.scrollWidth <= el.clientWidth + 1) {
+    return;
+  }
+  let low = min;
+  let high = max;
+  let best = min;
+  for (let i = 0; i < 6; i++) {
+    const mid = (low + high) / 2;
+    el.style.fontSize = `${mid}px`;
+    if (el.scrollWidth <= el.clientWidth + 1) {
+      best = mid;
+      high = mid - 0.1;
+    } else {
+      low = mid + 0.1;
+    }
+  }
+  el.style.fontSize = `${Math.max(min, best)}px`;
+}
+
+function fitMediaText(root) {
+  try {
+    if (!root || !root.isConnected) return;
+    const title = root.querySelector('.media-title');
+    const artist = root.querySelector('.media-artist');
+    const album = root.querySelector('.media-album');
+    fitSingleLine(title);
+    fitSingleLine(artist);
+    fitSingleLine(album);
+  } catch { /* noop */ }
+}
+
+function _setupMediaTextAutoFit(div) {
+  try {
+    if (!div) return;
+    mediaFitElements.add(div);
+    fitMediaText(div);
+    scheduleMediaFit();
+    if (!mediaFitResizeBound && typeof window !== 'undefined') {
+      window.addEventListener('resize', scheduleMediaFit);
+      mediaFitResizeBound = true;
+    }
+  } catch { /* noop */ }
+}
+
+function showMediaDetail(entity) {
+  try {
+    const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
+    const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
+
+    // Validate numeric attributes to prevent NaN
+    const durationValue = Number(entity.attributes?.media_duration);
+    const duration = (!isNaN(durationValue) && durationValue >= 0) ? durationValue : 0;
+
+    const basePosValue = Number(entity.attributes?.media_position);
+    const basePos = (!isNaN(basePosValue) && basePosValue >= 0) ? basePosValue : 0;
+
+    const updatedAtValue = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+    const updatedAt = !isNaN(updatedAtValue) ? updatedAtValue : 0;
+
+    const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
+
+    const modal = document.createElement('div');
+    modal.className = 'modal media-modal';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="media-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="media-detail-info">
+            <div class="media-detail-title">${mediaTitle || '—'}</div>
+            ${mediaArtist ? `<div class="media-detail-artist">${mediaArtist}</div>` : ''}
+          </div>
+          <div class="media-progress">
+            <div class="media-time-row">
+              <span id="media-current">${fmt(basePos)}</span>
+              <span id="media-total">${duration ? fmt(duration) : '--:--'}</span>
+            </div>
+            <div class="media-progress-track">
+              <div class="media-progress-fill" id="media-progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="media-detail-controls">
+            <button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous"></button>
+            <button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="Play/Pause"></button>
+            <button class="btn media-detail-next-btn" data-action="next_track" title="Next"></button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="media-close-footer">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Set SVG icons for media controls
+    const { setIconContent } = require('./icons.js');
+    const prevBtn = modal.querySelector('.media-detail-prev-btn');
+    const playBtn = modal.querySelector('.media-detail-play-btn');
+    const nextBtn = modal.querySelector('.media-detail-next-btn');
+
+    if (prevBtn) setIconContent(prevBtn, 'skipPrevious', { size: 20 });
+    if (nextBtn) setIconContent(nextBtn, 'skipNext', { size: 20 });
+    if (playBtn) {
+      const isPlaying = entity.state === 'playing';
+      setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 24 });
+      if (isPlaying) playBtn.classList.add('playing');
+    }
+
+    const closeBtns = modal.querySelectorAll('#media-close, #media-close-footer');
+    const progressFill = modal.querySelector('#media-progress-fill');
+    const curEl = modal.querySelector('#media-current');
+    const totalEl = modal.querySelector('#media-total');
+
+    const getLivePos = () => {
+      if (entity.state !== 'playing') return basePos;
+      if (!updatedAt) return basePos;
+      const delta = (Date.now() - updatedAt) / 1000;
+      let p = basePos + delta;
+      if (duration) p = Math.min(p, duration);
+      return p;
+    };
+
+    let tick;
+    const startTick = () => {
+      if (tick) clearInterval(tick);
+      tick = setInterval(() => {
+        let p = getLivePos();
+        if (duration) p = Math.min(p, duration);
+        curEl.textContent = fmt(p);
+        if (progressFill && duration > 0) {
+          const pct = Math.max(0, Math.min(100, (p / duration) * 100));
+          progressFill.style.width = pct + '%';
+        }
+      }, 1000);
+    };
+
+    // Wire up controls
+    const updatePlayPauseBtn = () => {
+      const currentEntity = state.STATES[entity.entity_id];
+      const isCurrentlyPlaying = currentEntity?.state === 'playing';
+      const pp = modal.querySelector('.play-pause-btn');
+      if (pp) {
+        const { setIconContent } = require('./icons.js');
+        setIconContent(pp, isCurrentlyPlaying ? 'pause' : 'play', { size: 24 });
+        pp.classList.toggle('playing', isCurrentlyPlaying);
+      }
+      return isCurrentlyPlaying;
+    };
+
+    modal.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'previous_track' || action === 'next_track') {
+        callMediaPlayerService(entity.entity_id, action);
+      } else if (action === 'play_pause') {
+        const nowPlaying = updatePlayPauseBtn();
+        callMediaPlayerService(entity.entity_id, nowPlaying ? 'pause' : 'play');
+        // Optimistically update UI
+        setTimeout(() => updatePlayPauseBtn(), 100);
+      }
+    });
+
+    // Update button when entity state changes
+    const updateInterval = setInterval(() => {
+      if (!modal.isConnected) {
+        clearInterval(updateInterval);
+        return;
+      }
+      updatePlayPauseBtn();
+    }, 500);
+
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      if (tick) clearInterval(tick);
+      if (updateInterval) clearInterval(updateInterval);
+      setTimeout(() => modal.remove(), 150);
+    };
+    closeBtns.forEach((b) => b && (b.onclick = closeModal));
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+    // Init
+    if (totalEl && duration) totalEl.textContent = fmt(duration);
+    startTick();
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+  } catch (error) {
+    console.error('Error showing media details:', error);
+  }
+}
+
+function scheduleMediaFit() {
+  if (mediaFitScheduled || typeof window === 'undefined') return;
+  mediaFitScheduled = true;
+  window.requestAnimationFrame(() => {
+    mediaFitScheduled = false;
+    mediaFitElements.forEach((el) => {
+      if (!el || !el.isConnected) {
+        mediaFitElements.delete(el);
+        return;
+      }
+      fitMediaText(el);
+    });
+  });
+}
+
+function callMediaPlayerService(entityId, action) {
+  try {
+    const websocket = require('./websocket.js');
+    const entity = state.STATES[entityId];
+    const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
+
+    let serviceCall;
+    switch (action) {
+      case 'play':
+        serviceCall = websocket.callService('media_player', 'media_play', { entity_id: entityId });
+        break;
+      case 'pause':
+        serviceCall = websocket.callService('media_player', 'media_pause', { entity_id: entityId });
+        break;
+      case 'next_track':
+        serviceCall = websocket.callService('media_player', 'media_next_track', { entity_id: entityId });
+        break;
+      case 'previous_track':
+        serviceCall = websocket.callService('media_player', 'media_previous_track', { entity_id: entityId });
+        break;
+      default:
+        console.warn('Unknown media player action:', action);
+        return;
+    }
+
+    if (serviceCall) {
+      serviceCall.catch(error => handleServiceError(error, entityName));
+    }
+  } catch (error) {
+    console.error('Error calling media player service:', error);
+    uiUtils.showToast('Failed to control media player', 'error', 3000);
+  }
+}
+
 
 function toggleEntity(entity) {
     try {
@@ -516,78 +1213,106 @@ function toggleEntity(entity) {
             case 'scene':
             case 'script':
                 service = 'turn_on';
+                // Add activation animation for scenes and scripts
+                triggerActivationFeedback(entity.entity_id);
                 break;
             default:
                 // No toggle action for this domain
                 return;
         }
-        websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data);
+        websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data)
+          .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
     } catch (error) {
         console.error('Error toggling entity:', error);
+        uiUtils.showToast('Failed to toggle entity', 'error', 3000);
+    }
+}
+
+function triggerActivationFeedback(entityId) {
+    try {
+        const tile = document.querySelector(`[data-entity-id="${entityId}"]`);
+        if (tile) {
+            tile.classList.add('activating');
+            setTimeout(() => {
+                tile.classList.remove('activating');
+            }, 600);
+        }
+    } catch (error) {
+        console.error('Error triggering activation feedback:', error);
     }
 }
 
 function executeHotkeyAction(entity, action) {
   try {
     const domain = entity.entity_id.split('.')[0];
-    const currentBrightness = entity.attributes?.brightness || 0;
-    
+
+    // Validate numeric attributes to prevent NaN
+    const brightnessValue = Number(entity.attributes?.brightness);
+    const currentBrightness = (!isNaN(brightnessValue) && brightnessValue >= 0) ? brightnessValue : 0;
+
+    const entityName = utils.getEntityDisplayName(entity);
+
     switch (action) {
       case 'toggle':
         toggleEntity(entity);
         break;
       case 'turn_on':
-        websocket.callService(domain, 'turn_on', { entity_id: entity.entity_id });
+        websocket.callService(domain, 'turn_on', { entity_id: entity.entity_id })
+          .catch(error => handleServiceError(error, entityName));
         break;
       case 'turn_off':
-        websocket.callService(domain, 'turn_off', { entity_id: entity.entity_id });
+        websocket.callService(domain, 'turn_off', { entity_id: entity.entity_id })
+          .catch(error => handleServiceError(error, entityName));
         break;
       case 'brightness_up':
         // Increase brightness by 20% (51 units out of 255)
         if (domain === 'light') {
           const newBrightness = Math.min(255, currentBrightness + 51);
-          websocket.callService('light', 'turn_on', { 
+          websocket.callService('light', 'turn_on', {
             entity_id: entity.entity_id,
             brightness: newBrightness
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'brightness_down':
         // Decrease brightness by 20% (51 units out of 255)
         if (domain === 'light') {
           const newBrightness = Math.max(0, currentBrightness - 51);
-          websocket.callService('light', 'turn_on', { 
+          websocket.callService('light', 'turn_on', {
             entity_id: entity.entity_id,
             brightness: newBrightness
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'trigger':
         // For automations
         if (domain === 'automation') {
-          websocket.callService('automation', 'trigger', { entity_id: entity.entity_id });
+          websocket.callService('automation', 'trigger', { entity_id: entity.entity_id })
+            .catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'increase_speed':
         // For fans - increase percentage by 33%
         if (domain === 'fan') {
-          const currentPercentage = entity.attributes?.percentage || 0;
+          const percentageValue = Number(entity.attributes?.percentage);
+          const currentPercentage = (!isNaN(percentageValue) && percentageValue >= 0) ? percentageValue : 0;
           const newPercentage = Math.min(100, currentPercentage + 33);
-          websocket.callService('fan', 'set_percentage', { 
+          websocket.callService('fan', 'set_percentage', {
             entity_id: entity.entity_id,
             percentage: newPercentage
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       case 'decrease_speed':
         // For fans - decrease percentage by 33%
         if (domain === 'fan') {
-          const currentPercentage = entity.attributes?.percentage || 0;
+          const percentageValue = Number(entity.attributes?.percentage);
+          const currentPercentage = (!isNaN(percentageValue) && percentageValue >= 0) ? percentageValue : 0;
           const newPercentage = Math.max(0, currentPercentage - 33);
-          websocket.callService('fan', 'set_percentage', { 
+          websocket.callService('fan', 'set_percentage', {
             entity_id: entity.entity_id,
             percentage: newPercentage
-          });
+          }).catch(error => handleServiceError(error, entityName));
         }
         break;
       default:
@@ -596,58 +1321,17 @@ function executeHotkeyAction(entity, action) {
     }
   } catch (error) {
     console.error(`Error executing hotkey action '${action}' for entity ${entity.entity_id}:`, error);
-  }
-}
-function renderCameras() {
-  try {
-    const container = document.getElementById('cameras-container');
-    const section = document.getElementById('cameras-section');
-    if (!container || !section) return;
-    
-    const cameras = Object.values(state.STATES).filter(e => e.entity_id.startsWith('camera.'));
-    
-    if (cameras.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-    
-    section.style.display = 'block';
-    container.innerHTML = '';
-    
-    cameras.slice(0, 4).forEach(cameraEntity => {
-      const card = createCameraCard(cameraEntity);
-      container.appendChild(card);
-    });
-  } catch (error) {
-    console.error('Error rendering cameras:', error);
-  }
-}
-
-function createCameraCard(cameraEntity) {
-  try {
-    const div = document.createElement('div');
-    div.className = 'camera-card';
-    const name = utils.getEntityDisplayName(cameraEntity);
-    
-    div.innerHTML = `
-      <div class="camera-header">
-        <div class="camera-name">${name}</div>
-      </div>
-      <div class="camera-embed">
-        <img class="camera-img" alt="${name}" src="ha://camera/${cameraEntity.entity_id}?t=${Date.now()}">
-      </div>
-    `;
-    return div;
-  } catch (error) {
-    console.error('Error creating camera card:', error);
-    return document.createElement('div');
+    uiUtils.showToast(`Failed to execute hotkey action`, 'error', 3000);
   }
 }
 
 // --- Weather ---
 function updateWeatherFromHA() {
   try {
-    const weatherEntity = state.STATES[state.CONFIG.selectedWeatherEntity] || Object.values(state.STATES).find(e => e.entity_id.startsWith('weather.'));
+    const weatherEntity = state.STATES[state.CONFIG.selectedWeatherEntity] ||
+      Object.values(state.STATES)
+        .filter(e => e.entity_id.startsWith('weather.'))
+        .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
     if (!weatherEntity) return;
 
     const tempEl = document.getElementById('weather-temp');
@@ -656,10 +1340,39 @@ function updateWeatherFromHA() {
     const windEl = document.getElementById('weather-wind');
     const iconEl = document.getElementById('weather-icon');
 
-    if (tempEl) tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}°`;
+    // Use Home Assistant's global unit system (from config)
+    const tempUnit = state.UNIT_SYSTEM.temperature || '°C';
+
+    // Handle wind speed: trust entity's unit if provided, otherwise use HA system units
+    let windSpeed = weatherEntity.attributes.wind_speed || 0;
+    let windUnit;
+
+    // Check if weather entity specifies its own wind_speed_unit (OpenWeatherMap and others do)
+    const entityWindUnit = weatherEntity.attributes.wind_speed_unit;
+
+    if (entityWindUnit) {
+      // Entity provides its own unit - use it as-is
+      windSpeed = Math.round(windSpeed);
+      windUnit = entityWindUnit;
+    } else {
+      // Fall back to HA global unit system
+      const haWindUnit = state.UNIT_SYSTEM.wind_speed || 'm/s';
+
+      if (haWindUnit === 'mph') {
+        // Imperial: display as-is in mph
+        windSpeed = Math.round(windSpeed);
+        windUnit = 'mph';
+      } else {
+        // Metric: HA uses m/s but display km/h for better UX
+        windSpeed = Math.round(windSpeed * 3.6); // m/s to km/h
+        windUnit = 'km/h';
+      }
+    }
+
+    if (tempEl) tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
     if (conditionEl) conditionEl.textContent = weatherEntity.state || '--';
     if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
-    if (windEl) windEl.textContent = `${weatherEntity.attributes.wind_speed || 0} km/h`;
+    if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
     
     // Update weather icon based on current condition
     if (iconEl) {
@@ -702,6 +1415,295 @@ function updateWeatherFromHA() {
   }
 }
 
+function populateWeatherEntitiesList() {
+  try {
+    const list = document.getElementById('weather-entities-list');
+    const currentNameEl = document.getElementById('current-weather-name');
+    if (!list) return;
+
+    const weatherEntities = Object.values(state.STATES || {})
+      .filter(e => e.entity_id.startsWith('weather.'))
+      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+
+    list.innerHTML = '';
+
+    if (weatherEntities.length === 0) {
+      list.innerHTML = '<div class="no-entities-message">No weather entities available. Make sure you\'re connected to Home Assistant.</div>';
+      return;
+    }
+
+    const selectedEntityId = state.CONFIG.selectedWeatherEntity;
+
+    // Update current weather name display
+    if (currentNameEl) {
+      if (selectedEntityId && state.STATES[selectedEntityId]) {
+        currentNameEl.textContent = utils.getEntityDisplayName(state.STATES[selectedEntityId]) + ' ✓ (selected)';
+        currentNameEl.style.fontWeight = '600';
+        currentNameEl.style.color = 'var(--primary-color)';
+        currentNameEl.style.fontStyle = 'normal';
+      } else {
+        // Find the actual fallback entity being used (alphabetically first)
+        const fallbackEntity = Object.values(state.STATES)
+          .filter(e => e.entity_id.startsWith('weather.'))
+          .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
+
+        if (fallbackEntity) {
+          currentNameEl.textContent = utils.getEntityDisplayName(fallbackEntity) + ' (auto-detected)';
+          currentNameEl.style.fontWeight = '400';
+          currentNameEl.style.color = 'var(--text-secondary)';
+          currentNameEl.style.fontStyle = 'italic';
+        } else {
+          currentNameEl.textContent = 'None available';
+          currentNameEl.style.fontWeight = '400';
+          currentNameEl.style.color = 'var(--text-secondary)';
+          currentNameEl.style.fontStyle = 'normal';
+        }
+      }
+    }
+
+    weatherEntities.forEach(entity => {
+      const entityId = entity.entity_id;
+      const isSelected = entityId === selectedEntityId;
+
+      const item = document.createElement('div');
+      item.className = 'entity-item' + (isSelected ? ' selected' : '');
+
+      const icon = utils.getEntityIcon(entity);
+      const displayName = utils.getEntityDisplayName(entity);
+
+      item.innerHTML = `
+        <div class="entity-item-main">
+          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <div class="entity-item-info">
+            <span class="entity-name">${utils.escapeHtml(displayName)}</span>
+            <span class="entity-id">${utils.escapeHtml(entityId)}</span>
+          </div>
+        </div>
+        ${isSelected ? '<span class="selected-badge">✓ Selected</span>' : ''}
+      `;
+
+      // Add click handler to select this entity
+      item.onclick = () => {
+        selectWeatherEntity(entityId);
+      };
+
+      item.style.cursor = 'pointer';
+
+      list.appendChild(item);
+    });
+  } catch (error) {
+    console.error('Error populating weather entities list:', error);
+  }
+}
+
+async function selectWeatherEntity(entityId) {
+  try {
+    // Update config
+    const updatedConfig = {
+      ...state.CONFIG,
+      selectedWeatherEntity: entityId
+    };
+
+    // Persist to disk
+    await window.electronAPI.updateConfig(updatedConfig);
+
+    // Update local state
+    state.setConfig(updatedConfig);
+
+    // Refresh weather display
+    updateWeatherFromHA();
+
+    // Refresh the list to update selection highlight
+    populateWeatherEntitiesList();
+
+    // Show success toast
+    const entity = state.STATES[entityId];
+    if (entity) {
+      uiUtils.showToast(`Weather entity set to ${utils.getEntityDisplayName(entity)}`, 'success', 2000);
+    }
+  } catch (error) {
+    console.error('Error selecting weather entity:', error);
+    uiUtils.showToast('Failed to save weather entity selection', 'error', 3000);
+  }
+}
+
+// --- Media Player Tile ---
+function updateMediaTile() {
+  try {
+    const tile = document.getElementById('media-tile');
+    if (!tile) return;
+    
+    // Check if a primary media player is configured
+    const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+    if (!primaryPlayer) {
+      tile.style.display = 'none';
+      return;
+    }
+    
+    // Get the media player entity
+    const entity = state.STATES[primaryPlayer];
+    if (!entity) {
+      tile.style.display = 'none';
+      return;
+    }
+    
+    // Show the tile
+    tile.style.display = 'grid';
+    
+    // Update artwork
+    const artworkContainer = document.getElementById('media-tile-artwork');
+    // Try multiple artwork sources (smart speakers might use different attributes)
+    let artworkUrl = entity.attributes?.entity_picture || 
+                     entity.attributes?.media_image_url ||
+                     entity.attributes?.media_content_id;
+    
+    // Some media players provide thumbnail or image_url
+    if (!artworkUrl && entity.attributes?.media_album_name) {
+      // If we have album info but no artwork, entity_picture might update later
+      artworkUrl = entity.attributes?.entity_picture;
+    }
+    
+    if (artworkUrl && artworkContainer) {
+      // Use the ha:// protocol to proxy artwork (handles both external CDN URLs and HA-relative paths)
+      // This bypasses CSP restrictions and adds authentication when needed
+      const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
+
+      // Determine the full URL to encode
+      let urlToEncode;
+      if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
+        // Already a full URL (external CDN like Spotify, YouTube)
+        urlToEncode = artworkUrl;
+      } else {
+        // Relative path - construct full HA URL
+        const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
+        urlToEncode = baseUrl + imgUrl;
+      }
+
+      // Encode URL in base64 for the ha:// protocol
+      const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+
+      // Add cache buster for better updates (rounded to 30 seconds to allow caching)
+      const cacheBuster = Math.floor(Date.now() / 30000);
+      const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+
+      // Create img element safely without inline event handler
+      const img = document.createElement('img');
+      img.src = proxyUrl;
+      img.alt = 'Album art';
+      img.onerror = function() {
+        this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+      };
+      artworkContainer.innerHTML = '';
+      artworkContainer.appendChild(img);
+    } else if (artworkContainer) {
+      artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+    }
+    
+    // Update media info
+    const titleEl = document.getElementById('media-tile-title');
+    const artistEl = document.getElementById('media-tile-artist');
+    const mediaTitle = entity.attributes?.media_title || 'No media playing';
+    const mediaArtist = entity.attributes?.media_artist || '';
+    
+    if (titleEl) titleEl.textContent = mediaTitle;
+    if (artistEl) artistEl.textContent = mediaArtist;
+    
+    // Update seek bar
+    updateMediaSeekBar(entity);
+    
+    // Update play/pause button
+    const playBtn = document.getElementById('media-tile-play');
+    if (playBtn) {
+      const isPlaying = entity.state === 'playing';
+      // Update icon using the icon system
+      const { setIconContent } = require('./icons.js');
+      setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
+      playBtn.classList.toggle('playing', isPlaying);
+    }
+  } catch (error) {
+    console.error('Error updating media tile:', error);
+  }
+}
+
+function updateMediaSeekBar(entity) {
+  try {
+    if (!entity) return;
+
+    const seekFill = document.getElementById('media-tile-seek-fill');
+    const timeCurrent = document.getElementById('media-tile-time-current');
+    const timeTotal = document.getElementById('media-tile-time-total');
+
+    // Validate numeric attributes to prevent NaN
+    const durationValue = Number(entity.attributes?.media_duration);
+    const duration = (!isNaN(durationValue) && durationValue >= 0) ? durationValue : 0;
+
+    const basePosValue = Number(entity.attributes?.media_position);
+    const basePosition = (!isNaN(basePosValue) && basePosValue >= 0) ? basePosValue : 0;
+
+    const updatedAtValue = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
+    const updatedAt = !isNaN(updatedAtValue) ? updatedAtValue : 0;
+
+    // Calculate current position (accounting for playback if playing)
+    let currentPosition = basePosition;
+    if (entity.state === 'playing' && updatedAt) {
+      const elapsedSinceUpdate = (Date.now() - updatedAt) / 1000;
+      currentPosition = Math.min(basePosition + elapsedSinceUpdate, duration);
+    }
+    
+    // Format time as mm:ss or h:mm:ss when hours are present
+    const formatTime = (seconds) => {
+      const totalSeconds = Math.max(0, Math.floor(seconds));
+      const hours = Math.floor(totalSeconds / 3600);
+      const mins = Math.floor((totalSeconds % 3600) / 60);
+      const secs = totalSeconds % 60;
+      const minPart = hours > 0 ? mins.toString().padStart(2, '0') : mins.toString();
+      const secPart = secs.toString().padStart(2, '0');
+      return hours > 0 ? `${hours}:${minPart}:${secPart}` : `${minPart}:${secPart}`;
+    };
+    
+    // Update UI
+    if (timeCurrent) timeCurrent.textContent = formatTime(currentPosition);
+    if (timeTotal) timeTotal.textContent = duration > 0 ? formatTime(duration) : '0:00';
+    
+    if (seekFill && duration > 0) {
+      const percentage = Math.max(0, Math.min(100, (currentPosition / duration) * 100));
+      seekFill.style.width = `${percentage}%`;
+    } else if (seekFill) {
+      seekFill.style.width = '0%';
+    }
+  } catch (error) {
+    console.error('Error updating seek bar:', error);
+  }
+}
+
+function callMediaTileService(action) {
+  try {
+    const primaryPlayer = state.CONFIG.primaryMediaPlayer;
+    if (!primaryPlayer) return;
+
+    const entity = state.STATES[primaryPlayer];
+    const entityName = entity ? utils.getEntityDisplayName(entity) : 'Media Player';
+
+    const serviceCalls = {
+      'play': () => websocket.callService('media_player', 'media_play', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName)),
+      'pause': () => websocket.callService('media_player', 'media_pause', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName)),
+      'previous': () => websocket.callService('media_player', 'media_previous_track', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName)),
+      'next': () => websocket.callService('media_player', 'media_next_track', { entity_id: primaryPlayer })
+        .catch(error => handleServiceError(error, entityName))
+    };
+
+    if (serviceCalls[action]) {
+      serviceCalls[action]();
+    }
+  } catch (error) {
+    console.error('Error calling media tile service:', error);
+    uiUtils.showToast('Failed to control media player', 'error', 3000);
+  }
+}
+
 // --- Misc UI ---
 function showNoConnectionMessage() {
   try {
@@ -726,7 +1728,7 @@ function showNoConnectionMessage() {
         container.innerHTML = `
           <div class="status-message">
             <h3>🔄 Connecting to Home Assistant</h3>
-            <p>Attempting to connect to: ${state.CONFIG.homeAssistant.url}</p>
+            <p>Attempting to connect to: ${utils.escapeHtml(state.CONFIG.homeAssistant.url)}</p>
             <p><strong>Status:</strong> Connecting...</p>
             <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">
               If this persists, check your Home Assistant URL and token in settings.
@@ -802,10 +1804,10 @@ function updateTimerDisplays() {
         
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
         if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-          // Only treat as timestamp if it looks like a proper ISO 8601 date/time string
-          // Require at least a date format (YYYY-MM-DD) or full ISO format (YYYY-MM-DDTHH:mm:ss)
-          // This prevents numeric values like "150" (watts) or "2025" (years only) from being parsed
-          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
+          // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+          // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+          // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
           const looksLikeTimestamp = iso8601Pattern.test(entity.state);
           if (looksLikeTimestamp) {
             const stateTime = new Date(entity.state).getTime();
@@ -858,7 +1860,7 @@ function updateTimerDisplays() {
 
 function showBrightnessSlider(light) {
   try {
-    const name = utils.getEntityDisplayName(light);
+    const name = utils.escapeHtml(utils.getEntityDisplayName(light));
     const currentBrightness = light.state === 'on' && light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 0;
 
     const modal = document.createElement('div');
@@ -1028,57 +2030,408 @@ function showBrightnessSlider(light) {
   }
 }
 
-function populateDomainFilters() {
-    try {
-        const container = document.getElementById('filter-domains');
-        if (!container) return;
-        const allDomains = [...new Set(Object.values(state.STATES).map(e => e.entity_id.split('.')[0]))].sort();
-        container.innerHTML = allDomains.map(domain => `
-            <label>
-                <input type="checkbox" value="${domain}" ${state.FILTERS.domains.includes(domain) ? 'checked' : ''}>
-                ${domain}
-            </label>
-        `).join('');
-    } catch (error) {
-        console.error('Error populating domain filters:', error);
-    }
-}
+function showClimateControls(climateEntity) {
+  try {
+    const name = utils.escapeHtml(utils.getEntityDisplayName(climateEntity));
+    const currentTemp = climateEntity.attributes.current_temperature || 0;
+    const targetTemp = climateEntity.attributes.temperature || 20;
+    const currentMode = climateEntity.state || 'off';
+    const minTemp = climateEntity.attributes.min_temp || 10;
+    const maxTemp = climateEntity.attributes.max_temp || 30;
+    const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
+    const availableModes = climateEntity.attributes.hvac_modes || ['off', 'heat', 'cool', 'auto'];
 
-function populateAreaFilter() {
-    try {
-        const select = document.getElementById('filter-areas');
-        if (!select) return;
-        select.innerHTML = Object.values(state.AREAS).map(area => `
-            <option value="${area.area_id}" ${state.FILTERS.areas.includes(area.area_id) ? 'selected' : ''}>
-                ${area.name}
-            </option>
-        `).join('');
-    } catch (error) {
-        console.error('Error populating area filter:', error);
-    }
-}
+    const modal = document.createElement('div');
+    modal.className = 'modal climate-modal';
+    modal.innerHTML = `
+      <div class="modal-content climate-modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="climate-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="climate-content">
+            <div class="climate-temp-display">
+              <div class="climate-current-temp">
+                <div class="climate-temp-label">Current</div>
+                <div class="climate-temp-value">${currentTemp}${tempUnit}</div>
+              </div>
+              <div class="climate-target-temp">
+                <div class="climate-temp-label">Target</div>
+                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp}${tempUnit}</div>
+              </div>
+            </div>
 
-function setupEntitySearchInput(inputId, _allowedDomains = null) {
-    try {
-        const input = document.getElementById(inputId);
-        if (!input) return;
-        
-        input.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            const container = document.getElementById(inputId.replace('-search', '-list')) || 
-                            document.getElementById(inputId.replace('-search', '-entities-list'));
-            if (!container) return;
-            
-            const items = container.querySelectorAll('.entity-item, .hotkey-item, .alert-item');
-            items.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                const matches = text.includes(query);
-                item.style.display = matches ? 'block' : 'none';
-            });
+            <div class="climate-slider-wrapper">
+              <input
+                type="range"
+                min="${minTemp}"
+                max="${maxTemp}"
+                step="0.5"
+                value="${targetTemp}"
+                id="climate-slider"
+                class="climate-slider"
+                aria-label="Target Temperature"
+              />
+              <div class="climate-slider-labels">
+                <span>${minTemp}${tempUnit}</span>
+                <span>${maxTemp}${tempUnit}</span>
+              </div>
+            </div>
+
+            <div class="climate-modes">
+              <div class="climate-modes-label">Mode</div>
+              <div class="climate-mode-buttons" id="climate-mode-buttons">
+                ${availableModes.map(mode => `
+                  <button
+                    class="climate-mode-btn ${mode === currentMode ? 'active' : ''}"
+                    data-mode="${mode}"
+                    title="${mode.charAt(0).toUpperCase() + mode.slice(1)}"
+                  >
+                    <span class="climate-mode-icon">${getModeIcon(mode)}</span>
+                    <span class="climate-mode-label">${mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="climate-cancel">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const slider = modal.querySelector('#climate-slider');
+    const targetValue = modal.querySelector('#climate-target-value');
+    const closeBtn = modal.querySelector('#climate-close');
+    const cancelBtn = modal.querySelector('#climate-cancel');
+    const modeButtons = modal.querySelectorAll('.climate-mode-btn');
+
+    // Helper function to get mode icons
+    function getModeIcon(mode) {
+      const icons = {
+        'off': '⏻',
+        'heat': '🔥',
+        'cool': '❄️',
+        'auto': '🔄',
+        'heat_cool': '🔄',
+        'fan_only': '💨',
+        'dry': '💧'
+      };
+      return icons[mode] || '⚙️';
+    }
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+
+    // Temperature slider behavior with debounce
+    if (slider) {
+      let debounceTimer;
+      slider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        if (targetValue) targetValue.textContent = `${value}${tempUnit}`;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          websocket.callService('climate', 'set_temperature', {
+            entity_id: climateEntity.entity_id,
+            temperature: value
+          });
+        }, 300);
+      });
+    }
+
+    // Mode button handlers
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+
+        // Update UI immediately
+        modeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Call service
+        websocket.callService('climate', 'set_hvac_mode', {
+          entity_id: climateEntity.entity_id,
+          hvac_mode: mode
         });
-    } catch (error) {
-        console.error('Error setting up entity search input:', error);
+      });
+    });
+
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  } catch (error) {
+    console.error('Error showing climate controls:', error);
+  }
+}
+
+function showFanControls(fanEntity) {
+  try {
+    const name = utils.escapeHtml(utils.getEntityDisplayName(fanEntity));
+    const currentSpeed = fanEntity.attributes.percentage || 0;
+    const isOn = fanEntity.state === 'on';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal fan-modal';
+    modal.innerHTML = `
+      <div class="modal-content fan-modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="fan-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="fan-content">
+            <div class="fan-icon-wrapper">
+              <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
+            </div>
+            <div class="fan-speed-value" id="fan-speed-value">${currentSpeed}%</div>
+            <div class="fan-speed-label">Fan Speed</div>
+
+            <div class="fan-slider-wrapper">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="${currentSpeed}"
+                id="fan-slider"
+                class="fan-slider"
+                aria-label="Fan Speed"
+              />
+            </div>
+
+            <div class="fan-presets">
+              <button class="fan-preset-btn" data-speed="0">Off</button>
+              <button class="fan-preset-btn" data-speed="33">Low</button>
+              <button class="fan-preset-btn" data-speed="66">Medium</button>
+              <button class="fan-preset-btn" data-speed="100">High</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="fan-cancel">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const slider = modal.querySelector('#fan-slider');
+    const speedValue = modal.querySelector('#fan-speed-value');
+    const fanIcon = modal.querySelector('#fan-icon');
+    const closeBtn = modal.querySelector('#fan-close');
+    const cancelBtn = modal.querySelector('#fan-cancel');
+    const presetButtons = modal.querySelectorAll('.fan-preset-btn');
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+
+    // Update icon based on speed
+    const updateIcon = (speed) => {
+      if (!fanIcon) return;
+      if (speed > 0) {
+        fanIcon.classList.add('spinning');
+      } else {
+        fanIcon.classList.remove('spinning');
+      }
+    };
+
+    // Slider behavior with debounce
+    if (slider) {
+      let debounceTimer;
+      slider.addEventListener('input', (e) => {
+        const speed = parseInt(e.target.value, 10);
+        if (speedValue) speedValue.textContent = `${speed}%`;
+        updateIcon(speed);
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (speed > 0) {
+            websocket.callService('fan', 'set_percentage', {
+              entity_id: fanEntity.entity_id,
+              percentage: speed
+            });
+          } else {
+            websocket.callService('fan', 'turn_off', {
+              entity_id: fanEntity.entity_id
+            });
+          }
+        }, 200);
+      });
     }
+
+    // Preset buttons
+    presetButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const speed = parseInt(btn.getAttribute('data-speed'), 10);
+        if (slider) {
+          slider.value = String(speed);
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    });
+
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  } catch (error) {
+    console.error('Error showing fan controls:', error);
+  }
+}
+
+function showCoverControls(coverEntity) {
+  try {
+    const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
+    const currentPosition = coverEntity.attributes.current_position || 0;
+    const _state = coverEntity.state;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal cover-modal';
+    modal.innerHTML = `
+      <div class="modal-content cover-modal-content">
+        <div class="modal-header">
+          <h2>${name}</h2>
+          <button class="close-btn" id="cover-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="cover-content">
+            <div class="cover-visual">
+              <div class="cover-icon-container">
+                <div class="cover-icon" id="cover-icon">🪟</div>
+                <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
+              </div>
+            </div>
+            <div class="cover-position-value" id="cover-position-value">${currentPosition}%</div>
+            <div class="cover-position-label">Position</div>
+
+            <div class="cover-slider-wrapper">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="${currentPosition}"
+                id="cover-slider"
+                class="cover-slider"
+                aria-label="Cover Position"
+              />
+              <div class="cover-slider-labels">
+                <span>Closed</span>
+                <span>Open</span>
+              </div>
+            </div>
+
+            <div class="cover-actions">
+              <button class="cover-action-btn" data-action="close_cover">
+                <span class="cover-action-icon">⬇</span>
+                <span class="cover-action-label">Close</span>
+              </button>
+              <button class="cover-action-btn" data-action="stop_cover">
+                <span class="cover-action-icon">⏸</span>
+                <span class="cover-action-label">Stop</span>
+              </button>
+              <button class="cover-action-btn" data-action="open_cover">
+                <span class="cover-action-icon">⬆</span>
+                <span class="cover-action-label">Open</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cover-cancel">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const slider = modal.querySelector('#cover-slider');
+    const positionValue = modal.querySelector('#cover-position-value');
+    const coverOverlay = modal.querySelector('#cover-overlay');
+    const closeBtn = modal.querySelector('#cover-close');
+    const cancelBtn = modal.querySelector('#cover-cancel');
+    const actionButtons = modal.querySelectorAll('.cover-action-btn');
+
+    // Close handlers
+    const closeModal = () => {
+      modal.classList.add('modal-closing');
+      setTimeout(() => modal.remove(), 200);
+    };
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+    // Animate in
+    setTimeout(() => modal.classList.add('modal-open'), 10);
+
+    // Update visual overlay based on position
+    const updateVisual = (position) => {
+      if (coverOverlay) {
+        coverOverlay.style.height = `${100 - position}%`;
+      }
+    };
+
+    // Slider behavior with debounce
+    if (slider) {
+      let debounceTimer;
+      slider.addEventListener('input', (e) => {
+        const position = parseInt(e.target.value, 10);
+        if (positionValue) positionValue.textContent = `${position}%`;
+        updateVisual(position);
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          websocket.callService('cover', 'set_cover_position', {
+            entity_id: coverEntity.entity_id,
+            position: position
+          });
+        }, 300);
+      });
+    }
+
+    // Action buttons
+    actionButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.getAttribute('data-action');
+        websocket.callService('cover', action, {
+          entity_id: coverEntity.entity_id
+        });
+
+        // Visual feedback
+        if (action === 'open_cover' && slider) {
+          slider.value = '100';
+          if (positionValue) positionValue.textContent = '100%';
+          updateVisual(100);
+        } else if (action === 'close_cover' && slider) {
+          slider.value = '0';
+          if (positionValue) positionValue.textContent = '0%';
+          updateVisual(0);
+        }
+      });
+    });
+
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+  } catch (error) {
+    console.error('Error showing cover controls:', error);
+  }
 }
 
 function populateQuickControlsList() {
@@ -1119,16 +2472,16 @@ function populateQuickControlsList() {
                 item.className = 'entity-item';
                 
                 const isFavorite = favorites.includes(entity.entity_id);
-                
+
                 item.innerHTML = `
                     <div class="entity-item-main">
-                        <span class="entity-icon">${utils.getEntityIcon(entity)}</span>
+                        <span class="entity-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
                         <div class="entity-item-info">
-                            <span class="entity-name">${utils.getEntityDisplayName(entity)}</span>
-                            <span class="entity-id" title="${entity.entity_id}">${entity.entity_id}</span>
+                            <span class="entity-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
+                            <span class="entity-id" title="${utils.escapeHtml(entity.entity_id)}">${utils.escapeHtml(entity.entity_id)}</span>
                         </div>
                     </div>
-                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${entity.entity_id}">
+                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${utils.escapeHtml(entity.entity_id)}">
                         ${isFavorite ? 'Remove' : 'Add'}
                     </button>
                 `;
@@ -1147,6 +2500,7 @@ function populateQuickControlsList() {
         if (searchInput) {
             searchInput.value = '';
             searchInput.oninput = () => renderList();
+            // Note: Focus is managed by trapFocus() in renderer.js when modal opens
         }
     } catch (error) {
         console.error('Error populating quick controls list:', error);
@@ -1155,9 +2509,8 @@ function populateQuickControlsList() {
 
 function toggleQuickAccess(entityId) {
     try {
-        const { ipcRenderer } = require('electron');
         const favorites = state.CONFIG.favoriteEntities || [];
-        
+
         if (favorites.includes(entityId)) {
             // Remove from favorites
             state.CONFIG.favoriteEntities = favorites.filter(id => id !== entityId);
@@ -1165,9 +2518,9 @@ function toggleQuickAccess(entityId) {
             // Add to favorites
             state.CONFIG.favoriteEntities = [...favorites, entityId];
         }
-        
+
         // Save and update UI
-        ipcRenderer.invoke('update-config', state.CONFIG);
+        window.electronAPI.updateConfig(state.CONFIG);
         renderQuickControls();
         populateQuickControlsList();
     } catch (error) {
@@ -1177,7 +2530,6 @@ function toggleQuickAccess(entityId) {
 
 function initUpdateUI() {
     try {
-        const { ipcRenderer } = require('electron');
         const { version } = require('../package.json');
         
         // Set current version
@@ -1203,7 +2555,7 @@ function initUpdateUI() {
                 if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
                 
                 try {
-                    const result = await ipcRenderer.invoke('check-for-updates');
+                    const result = await window.electronAPI.checkForUpdates();
                     if (result.status === 'dev') {
                         // In development mode, auto-updater doesn't work
                         if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
@@ -1222,12 +2574,12 @@ function initUpdateUI() {
         // Wire up install button
         if (installUpdateBtn) {
             installUpdateBtn.onclick = () => {
-                ipcRenderer.invoke('quit-and-install');
+                window.electronAPI.quitAndInstall();
             };
         }
         
         // Listen for auto-update events from main process
-        ipcRenderer.on('auto-update', (event, data) => {
+        window.electronAPI.onAutoUpdate((data) => {
             try {
                 if (!data) return;
                 
@@ -1298,130 +2650,22 @@ function initUpdateUI() {
     }
 }
 
-function _getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.control-item:not(.dragging)')];
-    
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
 
-function handleDragStart(e) {
-    // Don't allow drag to start if clicking on rename or remove buttons
-    if (e.target.classList.contains('rename-btn') || 
-        e.target.classList.contains('remove-btn') ||
-        e.target.closest('.rename-btn') || 
-        e.target.closest('.remove-btn')) {
-        e.preventDefault();
-        return false;
-    }
-    
-    draggedElement = e.currentTarget;
-    e.currentTarget.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
-}
-
-function handleDragEnd(e) {
-    const item = e.currentTarget;
-    item.classList.remove('dragging');
-    
-    // Force animation restart by temporarily removing and re-adding it
-    // This prevents the jarring jump when animation restarts from 0%
-    item.style.animation = 'none';
-    
-    // Use requestAnimationFrame to ensure the style change takes effect
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            item.style.animation = '';
-        });
-    });
-    
-    draggedElement = null;
-    
-    // Clean up drag-over classes
-    const controlItems = document.querySelectorAll('#quick-controls .control-item');
-    controlItems.forEach(i => {
-        i.classList.remove('drag-over');
-    });
-}
-
-function handleDragOver(e) {
+// ESC key handler for reorganize mode
+function handleEscapeKey(e) {
+  if (e.key === 'Escape' && isReorganizeMode) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.stopPropagation();
+    toggleReorganizeMode();
+  }
 }
 
-function handleDragEnter(e) {
-    e.preventDefault();
-    if (e.currentTarget !== draggedElement && e.currentTarget.classList.contains('control-item')) {
-        e.currentTarget.classList.add('drag-over');
-        dragOverElement = e.currentTarget;
-    }
+function addEscapeKeyListener() {
+  document.addEventListener('keydown', handleEscapeKey);
 }
 
-function handleDragLeave(e) {
-    if (e.currentTarget.classList.contains('control-item')) {
-        e.currentTarget.classList.remove('drag-over');
-    }
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    
-    if (draggedElement && dragOverElement && draggedElement !== dragOverElement) {
-        const controlsGrid = document.getElementById('quick-controls');
-        const draggedIndex = Array.from(controlsGrid.children).indexOf(draggedElement);
-        const targetIndex = Array.from(controlsGrid.children).indexOf(dragOverElement);
-        
-        // Reorder the elements
-        if (draggedIndex < targetIndex) {
-            controlsGrid.insertBefore(draggedElement, dragOverElement.nextSibling);
-        } else {
-            controlsGrid.insertBefore(draggedElement, dragOverElement);
-        }
-    }
-    
-    dragOverElement = null;
-}
-
-function setupDragAndDrop() {
-    // This function is called on init - drag-and-drop is actually set up when entering reorganize mode
-}
-
-function addDragAndDropListeners() {
-    try {
-        const items = document.querySelectorAll('#quick-controls .control-item');
-        
-        items.forEach(item => {
-            addDragListenersToElement(item);
-        });
-    } catch (error) {
-        console.error('Error adding drag and drop listeners:', error);
-    }
-}
-
-function removeDragAndDropListeners() {
-    try {
-        const items = document.querySelectorAll('#quick-controls .control-item');
-        items.forEach(item => {
-            item.draggable = false;
-            item.removeEventListener('dragstart', handleDragStart);
-            item.removeEventListener('dragend', handleDragEnd);
-            item.removeEventListener('dragover', handleDragOver);
-            item.removeEventListener('drop', handleDrop);
-            item.removeEventListener('dragenter', handleDragEnter);
-            item.removeEventListener('dragleave', handleDragLeave);
-        });
-    } catch (error) {
-        console.error('Error removing drag and drop listeners:', error);
-    }
+function removeEscapeKeyListener() {
+  document.removeEventListener('keydown', handleEscapeKey);
 }
 
 
@@ -1429,14 +2673,15 @@ module.exports = {
   renderActiveTab,
   updateEntityInUI,
   updateWeatherFromHA,
-  populateAreaFilter,
-  populateDomainFilters,
-  setupEntitySearchInput,
+  populateWeatherEntitiesList,
+  selectWeatherEntity,
   initUpdateUI,
   updateTimeDisplay,
   updateTimerDisplays,
-  setupDragAndDrop,
   toggleReorganizeMode,
   populateQuickControlsList,
   executeHotkeyAction,
+  updateMediaTile,
+  updateMediaSeekBar,
+  callMediaTileService,
 };
