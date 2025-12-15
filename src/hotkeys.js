@@ -6,19 +6,19 @@ let globalHotkeys = {};
 
 // Helper function to escape HTML
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function initializeHotkeys() {
-  try {
-    if (state.CONFIG && state.CONFIG.globalHotkeys) {
-      globalHotkeys = state.CONFIG.globalHotkeys;
+    try {
+        if (state.CONFIG && state.CONFIG.globalHotkeys) {
+            globalHotkeys = state.CONFIG.globalHotkeys;
+        }
+    } catch (error) {
+        console.error('Error initializing hotkeys:', error);
     }
-  } catch (error) {
-    console.error('Error initializing hotkeys:', error);
-  }
 }
 
 function getActionOptionsForDomain(domain) {
@@ -135,21 +135,21 @@ function renderHotkeysTab() {
 }
 
 async function toggleHotkeys(enabled) {
-  try {
-    const result = await window.electronAPI.toggleHotkeys(enabled);
-    if (result.success) {
-      if (state.CONFIG.globalHotkeys) {
-        state.CONFIG.globalHotkeys.enabled = enabled;
-      }
-      globalHotkeys.enabled = enabled;
-      showToast(`Global hotkeys ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
-      return true;
+    try {
+        const result = await window.electronAPI.toggleHotkeys(enabled);
+        if (result.success) {
+            if (state.CONFIG.globalHotkeys) {
+                state.CONFIG.globalHotkeys.enabled = enabled;
+            }
+            globalHotkeys.enabled = enabled;
+            showToast(`Global hotkeys ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
+            return true;
+        }
+    } catch (error) {
+        console.error('Error toggling hotkeys:', error);
+        showToast('Error toggling hotkeys', 'error', 2000);
     }
-  } catch (error) {
-    console.error('Error toggling hotkeys:', error);
-    showToast('Error toggling hotkeys', 'error', 2000);
-  }
-  return false;
+    return false;
 }
 
 function getAcceleratorString(e) {
@@ -185,7 +185,7 @@ function getAcceleratorString(e) {
             key = keyIdentifier;
         }
     }
-    
+
     const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
     if (!isModifier && key) {
         parts.push(key);
@@ -220,12 +220,21 @@ function captureHotkey() {
                 }
 
                 const accelerator = getAcceleratorString(e);
-                previewBox.textContent = accelerator;
-
                 const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
-                if (!isModifier && accelerator.includes('+')) {
-                    cleanup();
-                    resolve(accelerator);
+
+                if (!isModifier) {
+                    // Check if at least one modifier is held
+                    if (accelerator.includes('+')) {
+                        previewBox.textContent = accelerator;
+                        cleanup();
+                        resolve(accelerator);
+                    } else {
+                        // Show feedback that a modifier is required
+                        previewBox.textContent = accelerator + ' (add Ctrl/Alt/Shift)';
+                    }
+                } else {
+                    // Just show the modifiers being pressed
+                    previewBox.textContent = accelerator;
                 }
             };
 
@@ -246,14 +255,14 @@ function renderExistingHotkeys() {
     try {
         const container = document.getElementById('existing-hotkeys-list');
         if (!container) return;
-        
+
         container.innerHTML = '';
         const hotkeys = state.CONFIG.globalHotkeys?.hotkeys || {};
-        
+
         Object.entries(hotkeys).forEach(([entityId, hotkey]) => {
             const entity = state.STATES[entityId];
             if (!entity) return;
-            
+
             const item = document.createElement('div');
             item.className = 'existing-hotkey-item';
             const displayName = escapeHtml(getEntityDisplayName(entity));
