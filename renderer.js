@@ -63,9 +63,9 @@ websocket.on('message', (msg) => {
       log.debug(`Sent get_config request with ID: ${getConfigId}`);
 
       // Prevent unhandled rejections from surfacing as global errors
-      statesReq.catch(() => {});
-      servicesReq.catch(() => {});
-      areasReq.catch(() => {});
+      statesReq.catch(() => { });
+      servicesReq.catch(() => { });
+      areasReq.catch(() => { });
       configReq.catch((err) => {
         log.error('get_config request failed:', err);
       });
@@ -89,54 +89,54 @@ websocket.on('message', (msg) => {
       log.debug(`Received result for message ID: ${msg.id}`);
       if (msg.result) {
         if (msg.id === getStatesId) { // get_states response
-        const newStates = {};
-        if (Array.isArray(msg.result)) {
-          log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
-          msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
+          const newStates = {};
+          if (Array.isArray(msg.result)) {
+            log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
+            msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
 
-          // Preserve only favorited entities from old states (in case they're temporarily unavailable during HA restart)
-          // This prevents deleted entities from persisting indefinitely while still protecting favorites
-          const favoriteEntityIds = state.CONFIG.favoriteEntities || [];
-          const preservedFavorites = {};
-          favoriteEntityIds.forEach(entityId => {
-            if (state.STATES[entityId] && !newStates[entityId]) {
-              preservedFavorites[entityId] = state.STATES[entityId];
-            }
-          });
+            // Preserve only favorited entities from old states (in case they're temporarily unavailable during HA restart)
+            // This prevents deleted entities from persisting indefinitely while still protecting favorites
+            const favoriteEntityIds = state.CONFIG.favoriteEntities || [];
+            const preservedFavorites = {};
+            favoriteEntityIds.forEach(entityId => {
+              if (state.STATES[entityId] && !newStates[entityId]) {
+                preservedFavorites[entityId] = state.STATES[entityId];
+              }
+            });
 
-          const mergedStates = { ...newStates, ...preservedFavorites };
-          log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites = ${Object.keys(mergedStates).length} total`);
-          state.setStates(mergedStates);
+            const mergedStates = { ...newStates, ...preservedFavorites };
+            log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites = ${Object.keys(mergedStates).length} total`);
+            state.setStates(mergedStates);
 
-          // This is the correct place to render and hide loading
-          ui.renderActiveTab();
-          uiUtils.showLoading(false);
+            // This is the correct place to render and hide loading
+            ui.renderActiveTab();
+            uiUtils.showLoading(false);
 
-          alerts.initializeEntityAlerts();
-        }
-      } else if (msg.id === getServicesId) { // get_services response
-        state.setServices(msg.result);
-      } else if (msg.id === getAreasId) { // get_areas response
+            alerts.initializeEntityAlerts();
+          }
+        } else if (msg.id === getServicesId) { // get_services response
+          state.setServices(msg.result);
+        } else if (msg.id === getAreasId) { // get_areas response
           const newAreas = {};
           if (Array.isArray(msg.result)) {
             msg.result.forEach(area => { newAreas[area.area_id] = area; });
             state.setAreas(newAreas);
           }
-      } else if (msg.id === getConfigId) { // get_config response
-        log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
-        if (msg.result && msg.result.unit_system) {
-          log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
-          state.setUnitSystem(msg.result.unit_system);
-          // Re-render weather card with correct units
-          if (ui.updateWeatherFromHA) {
-            ui.updateWeatherFromHA();
+        } else if (msg.id === getConfigId) { // get_config response
+          log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
+          if (msg.result && msg.result.unit_system) {
+            log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
+            state.setUnitSystem(msg.result.unit_system);
+            // Re-render weather card with correct units
+            if (ui.updateWeatherFromHA) {
+              ui.updateWeatherFromHA();
+            }
+          } else {
+            log.warn('No unit_system found in config response');
           }
         } else {
-          log.warn('No unit_system found in config response');
+          log.debug(`Unhandled result message ID: ${msg.id}`);
         }
-      } else {
-        log.debug(`Unhandled result message ID: ${msg.id}`);
-      }
       } else {
         log.debug(`Result message with no result data: ${msg.id}`);
       }
@@ -150,7 +150,7 @@ websocket.on('close', () => {
   try {
     uiUtils.setStatus(false);
     uiUtils.showLoading(false);
-    
+
     // Implement exponential backoff with jitter
     const delay = Math.min(
       BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
@@ -158,7 +158,7 @@ websocket.on('close', () => {
     );
     const jitter = Math.random() * 1000; // Add up to 1 second of jitter
     reconnectAttempts++;
-    
+
     log.debug(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
     setTimeout(() => websocket.connect(), delay + jitter);
   } catch (error) {
@@ -319,18 +319,18 @@ async function init() {
       ui.renderActiveTab();
       return;
     }
-    
+
     // Apply theme and UI preferences from saved config
     uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    
+
     // Initialize time display
     ui.updateTimeDisplay();
     setInterval(() => ui.updateTimeDisplay(), 1000);
-    
+
     // Initialize timer updates (every second)
     setInterval(() => ui.updateTimerDisplays(), 1000);
-    
+
     // Initialize media tile seek bar updates (every second)
     setInterval(() => {
       const primaryPlayer = state.CONFIG.primaryMediaPlayer;
@@ -341,24 +341,24 @@ async function init() {
         }
       }
     }, 1000);
-    
+
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
-    
+
     // Always hide loading and show UI
     uiUtils.showLoading(false);
     ui.renderActiveTab();
-    
+
     // Connect to WebSocket in background
     log.info('Connecting to Home Assistant WebSocket');
     websocket.connect();
-    
+
     // Backup timeout to ensure loading is hidden
     setTimeout(() => {
       uiUtils.showLoading(false);
     }, 5000);
-    
+
   } catch (error) {
     log.error('Initialization error:', error);
     uiUtils.showLoading(false);
@@ -382,16 +382,16 @@ function wireUI() {
         });
       };
     }
-    
+
     const closeSettingsBtn = document.getElementById('close-settings');
     if (closeSettingsBtn) closeSettingsBtn.onclick = settings.closeSettings;
-    
+
     const cancelSettingsBtn = document.getElementById('cancel-settings');
     if (cancelSettingsBtn) cancelSettingsBtn.onclick = settings.closeSettings;
-    
+
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
-    
+
     const viewLogsBtn = document.getElementById('view-logs-btn');
     if (viewLogsBtn) {
       viewLogsBtn.onclick = async () => {
@@ -409,7 +409,7 @@ function wireUI() {
         }
       };
     }
-    
+
     // Opacity slider handler with real-time application
     // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
@@ -456,7 +456,7 @@ function wireUI() {
         }
       };
     }
-    
+
     const closeQuickControlsBtn = document.getElementById('close-quick-controls');
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = () => {
@@ -468,12 +468,12 @@ function wireUI() {
         }
       };
     }
-    
+
     const reorganizeQuickControlsBtn = document.getElementById('reorganize-quick-controls-btn');
     if (reorganizeQuickControlsBtn) {
       reorganizeQuickControlsBtn.onclick = ui.toggleReorganizeMode;
     }
-    
+
     // Wire up weather card long press
     const weatherCard = document.getElementById('weather-card');
     if (weatherCard) {
@@ -495,7 +495,7 @@ function wireUI() {
         clearTimeout(pressTimer);
       });
     }
-    
+
     // Wire up alerts management
     const closeAlertEntityPickerBtn = document.getElementById('close-alert-entity-picker');
     if (closeAlertEntityPickerBtn) {
@@ -506,17 +506,17 @@ function wireUI() {
     if (closeAlertConfigBtn) {
       closeAlertConfigBtn.onclick = settings.closeAlertConfigModal;
     }
-    
+
     const saveAlertBtn = document.getElementById('save-alert');
     if (saveAlertBtn) {
       saveAlertBtn.onclick = settings.saveAlert;
     }
-    
+
     const cancelAlertBtn = document.getElementById('cancel-alert');
     if (cancelAlertBtn) {
       cancelAlertBtn.onclick = settings.closeAlertConfigModal;
     }
-    
+
     // Wire up media tile controls
     const mediaTilePlay = document.getElementById('media-tile-play');
     if (mediaTilePlay) {
@@ -529,17 +529,17 @@ function wireUI() {
         ui.callMediaTileService(isPlaying ? 'pause' : 'play');
       };
     }
-    
+
     const mediaTilePrev = document.getElementById('media-tile-prev');
     if (mediaTilePrev) {
       mediaTilePrev.onclick = () => ui.callMediaTileService('previous');
     }
-    
+
     const mediaTileNext = document.getElementById('media-tile-next');
     if (mediaTileNext) {
       mediaTileNext.onclick = () => ui.callMediaTileService('next');
     }
-    
+
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
     if (closeWeatherConfigBtn) {
       closeWeatherConfigBtn.onclick = () => {
@@ -578,95 +578,98 @@ function wireUI() {
       };
     }
 
-  const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
-  if (globalHotkeysEnabled) {
-    globalHotkeysEnabled.onchange = (e) => {
-      const hotkeysSection = document.getElementById('hotkeys-section');
-      if (hotkeysSection) {
-        hotkeysSection.style.display = e.target.checked ? 'block' : 'none';
-      }
-      hotkeys.toggleHotkeys(e.target.checked);
-    };
-  }
+    const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
+    if (globalHotkeysEnabled) {
+      globalHotkeysEnabled.onchange = (e) => {
+        const hotkeysSection = document.getElementById('hotkeys-section');
+        if (hotkeysSection) {
+          hotkeysSection.style.display = e.target.checked ? 'block' : 'none';
+        }
+        hotkeys.toggleHotkeys(e.target.checked);
+      };
+    }
 
-  const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
-  if (entityAlertsEnabled) {
-    entityAlertsEnabled.onchange = (e) => {
-      const alertsSection = document.getElementById('alerts-section');
-      if (alertsSection) {
-        alertsSection.style.display = e.target.checked ? 'block' : 'none';
-      }
-      // Render inline alerts list when enabled
-      if (e.target.checked) {
-        settings.renderAlertsListInline();
-      }
-      alerts.toggleAlerts(e.target.checked);
-    };
-  }
+    const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
+    if (entityAlertsEnabled) {
+      entityAlertsEnabled.onchange = (e) => {
+        const alertsSection = document.getElementById('alerts-section');
+        if (alertsSection) {
+          alertsSection.style.display = e.target.checked ? 'block' : 'none';
+        }
+        // Render inline alerts list when enabled
+        if (e.target.checked) {
+          settings.renderAlertsListInline();
+        }
+        alerts.toggleAlerts(e.target.checked);
+      };
+    }
 
-  document.querySelectorAll('.modal-tabs .tab-link').forEach(button => {
-    button.addEventListener('click', () => {
-      const tab = button.dataset.tab;
-      document.querySelectorAll('.modal-tabs .tab-link').forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
-      document.getElementById(`${tab}-tab`).classList.add('active');
-      if (tab === 'hotkeys') {
-        hotkeys.renderHotkeysTab();
-      }
-    });
-  });
-
-  const hotkeySearch = document.getElementById('hotkey-entity-search');
-  if (hotkeySearch) {
-    hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
-  }
-
-  // Add click handler to widget content to bring window to focus
-  const widgetContent = document.querySelector('.widget-content');
-  if (widgetContent) {
-    widgetContent.addEventListener('mousedown', () => {
-      // Request window focus when clicking on content
-      window.electronAPI.focusWindow().catch(err => {
-        log.error('Failed to focus window:', err);
+    document.querySelectorAll('.modal-tabs .tab-link').forEach(button => {
+      button.addEventListener('click', () => {
+        const tab = button.dataset.tab;
+        document.querySelectorAll('.modal-tabs .tab-link').forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
+        document.getElementById(`${tab}-tab`).classList.add('active');
+        if (tab === 'hotkeys') {
+          hotkeys.renderHotkeysTab();
+        }
       });
     });
-  }
 
-  const hotkeysList = document.getElementById('hotkeys-list');
-  if (hotkeysList) {
-    hotkeysList.addEventListener('click', async (e) => {
-    const target = e.target;
-    if (target.classList.contains('hotkey-input')) {
-      const entityId = target.dataset.entityId;
-      target.value = 'Recording...';
-      const hotkey = await hotkeys.captureHotkey();
-      if (hotkey) {
-        const action = target.parentElement.querySelector('.hotkey-action-select').value;
-        const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
-        if (result.success) {
-          target.value = hotkey;
-          state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
-        } else {
-          uiUtils.showToast(result.error, 'error');
-          const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-          target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
-        }
-      } else {
-        const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-        target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
-      }
-    } else if (target.classList.contains('btn-clear-hotkey')) {
-      const container = target.parentElement;
-      const input = container.querySelector('.hotkey-input');
-      const entityId = input.dataset.entityId;
-      await window.electronAPI.unregisterHotkey(entityId);
-      input.value = '';
-      delete state.CONFIG.globalHotkeys.hotkeys[entityId];
-      hotkeys.renderHotkeysTab();
+    const hotkeySearch = document.getElementById('hotkey-entity-search');
+    if (hotkeySearch) {
+      hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
     }
-  });
-  }
+
+    // Add click handler to widget content to bring window to focus
+    const widgetContent = document.querySelector('.widget-content');
+    if (widgetContent) {
+      widgetContent.addEventListener('mousedown', () => {
+        // Request window focus when clicking on content
+        window.electronAPI.focusWindow().catch(err => {
+          log.error('Failed to focus window:', err);
+        });
+      });
+    }
+
+    const hotkeysList = document.getElementById('hotkeys-list');
+    if (hotkeysList) {
+      hotkeysList.addEventListener('click', async (e) => {
+        const target = e.target;
+        if (target.classList.contains('hotkey-input')) {
+          const entityId = target.dataset.entityId;
+          target.value = 'Recording...';
+          const hotkey = await hotkeys.captureHotkey();
+          if (hotkey) {
+            // Get selected action from custom dropdown
+            const dropdown = target.parentElement.querySelector('.hotkey-action-dropdown');
+            const selectedOption = dropdown?.querySelector('.custom-dropdown-option.selected');
+            const action = selectedOption?.dataset?.value || 'toggle';
+            const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
+            if (result.success) {
+              target.value = hotkey;
+              state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+            } else {
+              uiUtils.showToast(result.error, 'error');
+              const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+              target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
+            }
+          } else {
+            const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+            target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
+          }
+        } else if (target.classList.contains('btn-clear-hotkey')) {
+          const container = target.parentElement;
+          const input = container.querySelector('.hotkey-input');
+          const entityId = input.dataset.entityId;
+          await window.electronAPI.unregisterHotkey(entityId);
+          input.value = '';
+          delete state.CONFIG.globalHotkeys.hotkeys[entityId];
+          hotkeys.renderHotkeysTab();
+        }
+      });
+    }
   } catch (error) {
     log.error('Error wiring UI:', error);
   }

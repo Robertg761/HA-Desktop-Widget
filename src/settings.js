@@ -46,7 +46,7 @@ async function openSettings(uiHooks) {
     if (uiHooks && uiHooks.exitReorganizeMode) {
       uiHooks.exitReorganizeMode();
     }
-    
+
     const modal = document.getElementById('settings-modal');
     if (!modal) return;
 
@@ -77,7 +77,7 @@ async function openSettings(uiHooks) {
     }
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
-    
+
     // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     // Formula: scale = 1 + (opacity - 0.5) * 198
@@ -181,7 +181,7 @@ async function saveSettings() {
     }
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
-    
+
     // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
       const sliderValue = parseInt(opacitySlider.value) || 90;
@@ -235,7 +235,7 @@ async function saveSettings() {
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyUiPreferences(state.CONFIG.ui || {});
-    
+
     // Update media tile to reflect new selection
     const ui = require('./ui.js');
     if (ui.updateMediaTile) {
@@ -787,6 +787,29 @@ async function initializePopupHotkey() {
       clearBtn.style.display = 'inline-block';
     }
 
+    // Initialize "Hide on release" checkbox
+    const hideOnReleaseCheckbox = document.getElementById('popup-hotkey-hide-on-release');
+    if (hideOnReleaseCheckbox) {
+      hideOnReleaseCheckbox.checked = !!state.CONFIG.popupHotkeyHideOnRelease;
+
+      hideOnReleaseCheckbox.onchange = async () => {
+        state.CONFIG.popupHotkeyHideOnRelease = hideOnReleaseCheckbox.checked;
+        try {
+          await window.electronAPI.updateConfig(state.CONFIG);
+          const { showToast } = require('./ui-utils.js');
+          showToast(
+            hideOnReleaseCheckbox.checked
+              ? 'Window will hide when popup hotkey is released'
+              : 'Window will stay visible when popup hotkey is released',
+            'success',
+            2000
+          );
+        } catch (error) {
+          console.error('Failed to save popup hotkey setting:', error);
+        }
+      };
+    }
+
     // Set hotkey button
     setBtn.onclick = () => {
       if (isCapturingPopupHotkey) {
@@ -951,14 +974,14 @@ function stopCapturingPopupHotkey() {
 }
 
 module.exports = {
-    openSettings,
-    closeSettings,
-    saveSettings,
-    renderAlertsListInline,
-    openAlertEntityPicker,
-    closeAlertEntityPicker,
-    openAlertConfigModal,
-    closeAlertConfigModal,
-    saveAlert,
-    initializePopupHotkey,
+  openSettings,
+  closeSettings,
+  saveSettings,
+  renderAlertsListInline,
+  openAlertEntityPicker,
+  closeAlertEntityPicker,
+  openAlertConfigModal,
+  closeAlertConfigModal,
+  saveAlert,
+  initializePopupHotkey,
 };

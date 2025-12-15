@@ -163,13 +163,15 @@ function loadConfig() {
       enabled: false,
       alerts: {} // entityId -> alert configuration
     },
-    popupHotkey: '' // Global hotkey to temporarily bring window to front while held
+    popupHotkey: '', // Global hotkey to temporarily bring window to front while held
+    popupHotkeyHideOnRelease: false // Hide window when popup hotkey is released (instead of just restoring z-order)
   };
 
   try {
     if (fs.existsSync(configPath)) {
       const userConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      config = { ...defaultConfig, ...userConfig,
+      config = {
+        ...defaultConfig, ...userConfig,
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) }
       };
@@ -209,8 +211,8 @@ function loadConfig() {
           log.info('Encrypted token preserved in config file for recovery attempts.');
         }
       } else if (config.homeAssistant?.token &&
-                 config.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
-                 !config.homeAssistant?.tokenEncrypted) {
+        config.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
+        !config.homeAssistant?.tokenEncrypted) {
         // Migration: existing plaintext token from pre-encryption version
         log.info('Detected plaintext token from pre-encryption version - attempting migration...');
 
@@ -334,7 +336,7 @@ function saveConfig() {
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
   try {
-    fs.mkdirSync(userDataDir, { recursive: true});
+    fs.mkdirSync(userDataDir, { recursive: true });
 
     // Create a copy for saving with encrypted token
     const configToSave = JSON.parse(JSON.stringify(config));
@@ -342,7 +344,7 @@ function saveConfig() {
     // Encrypt token before saving
     // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
     if (configToSave.homeAssistant?.token &&
-        configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+      configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       if (safeStorage.isEncryptionAvailable()) {
         try {
           const plainToken = configToSave.homeAssistant.token;
@@ -717,16 +719,20 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
 
   config.globalHotkeys.hotkeys[entityId] = { hotkey, action };
   saveConfig();
-  registerGlobalHotkeys(); // This will re-register all hotkeys
 
-  // Final check to see if Electron successfully registered it
-  if (!globalShortcut.isRegistered(hotkey)) {
-    log.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
-    // Unset it from config so the user can try again
-    delete config.globalHotkeys.hotkeys[entityId];
-    saveConfig();
-    registerGlobalHotkeys();
-    return { success: false, error: 'Hotkey is likely in use by another application' };
+  // Only register if hotkeys are enabled
+  if (config.globalHotkeys.enabled) {
+    registerGlobalHotkeys(); // This will re-register all hotkeys
+
+    // Final check to see if Electron successfully registered it
+    if (!globalShortcut.isRegistered(hotkey)) {
+      log.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
+      // Unset it from config so the user can try again
+      delete config.globalHotkeys.hotkeys[entityId];
+      saveConfig();
+      registerGlobalHotkeys();
+      return { success: false, error: 'Hotkey is likely in use by another application' };
+    }
   }
 
   return { success: true };
@@ -758,13 +764,13 @@ ipcMain.handle('save-config', (event, newConfig) => {
 ipcMain.handle('toggle-hotkeys', (event, enabled) => {
   config.globalHotkeys.enabled = enabled;
   saveConfig();
-  
+
   if (enabled) {
     registerGlobalHotkeys();
   } else {
     unregisterGlobalHotkeys();
   }
-  
+
   return { success: true };
 });
 
@@ -835,10 +841,10 @@ ipcMain.handle('is-popup-hotkey-available', () => {
 // Global Hotkey Management
 function registerGlobalHotkeys() {
   if (!config.globalHotkeys.enabled) return;
-  
+
   // Unregister all existing hotkeys first
   globalShortcut.unregisterAll();
-  
+
   // Register each configured hotkey
   Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
     const { hotkey, action } = (typeof hotkeyConfig === 'object') ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
@@ -850,7 +856,7 @@ function registerGlobalHotkeys() {
             mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
           }
         });
-        
+
         if (!success) {
           log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
           if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1035,10 +1041,10 @@ function registerPopupHotkey() {
 
       // Check if this is our hotkey - use Boolean coercion to handle undefined values
       if (event.keycode === keycode &&
-          Boolean(event.ctrlKey) === ctrl &&
-          Boolean(event.altKey) === alt &&
-          Boolean(event.shiftKey) === shift &&
-          Boolean(event.metaKey) === meta) {
+        Boolean(event.ctrlKey) === ctrl &&
+        Boolean(event.altKey) === alt &&
+        Boolean(event.shiftKey) === shift &&
+        Boolean(event.metaKey) === meta) {
 
         popupHotkeyPressed = true;
         log.info('Popup hotkey matched! Bringing window to front...');
@@ -1078,7 +1084,13 @@ function registerPopupHotkey() {
           // Restore original alwaysOnTop state
           mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
 
-          log.debug('Popup hotkey released - window state restored');
+          // Hide window if setting is enabled (Issue #21)
+          if (config.popupHotkeyHideOnRelease) {
+            mainWindow.hide();
+            log.debug('Popup hotkey released - window hidden');
+          } else {
+            log.debug('Popup hotkey released - window state restored');
+          }
         }
       }
     };
@@ -1171,7 +1183,7 @@ function setupAutoUpdates() {
     });
 
     // Initial check
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3000);
+    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => { }), 3000);
   } catch (error) {
     log.error('Auto-update setup failed:', error);
   }
