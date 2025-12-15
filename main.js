@@ -163,7 +163,8 @@ function loadConfig() {
       enabled: false,
       alerts: {} // entityId -> alert configuration
     },
-    popupHotkey: '' // Global hotkey to temporarily bring window to front while held
+    popupHotkey: '', // Global hotkey to temporarily bring window to front while held
+    popupHotkeyHideOnRelease: false // Hide window when popup hotkey is released (instead of just restoring z-order)
   };
 
   try {
@@ -1083,7 +1084,13 @@ function registerPopupHotkey() {
           // Restore original alwaysOnTop state
           mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
 
-          log.debug('Popup hotkey released - window state restored');
+          // Hide window if setting is enabled (Issue #21)
+          if (config.popupHotkeyHideOnRelease) {
+            mainWindow.hide();
+            log.debug('Popup hotkey released - window hidden');
+          } else {
+            log.debug('Popup hotkey released - window state restored');
+          }
         }
       }
     };
