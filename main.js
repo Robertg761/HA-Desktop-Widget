@@ -1049,12 +1049,21 @@ function registerPopupHotkey() {
         Boolean(event.metaKey) === meta) {
 
         if (config.popupHotkeyToggleMode) {
-          // Toggle mode: single press toggles visibility
-          popupHotkeyWindowVisible = !popupHotkeyWindowVisible;
+          // Smart toggle mode: only hide if window is visible AND focused, otherwise bring to top
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            const isVisible = mainWindow.isVisible();
+            const isFocused = mainWindow.isFocused();
 
-          if (popupHotkeyWindowVisible) {
-            log.info('Popup hotkey toggle: showing window...');
-            if (mainWindow && !mainWindow.isDestroyed()) {
+            if (isVisible && isFocused) {
+              // Window is already visible and focused - hide it
+              log.info('Popup hotkey toggle: window is focused, hiding...');
+              mainWindow.hide();
+              popupHotkeyWindowVisible = false;
+              log.debug('Popup hotkey toggle - window hidden');
+            } else {
+              // Window is hidden, minimized, or not focused - bring to top
+              log.info('Popup hotkey toggle: bringing window to top...');
+
               // Save current alwaysOnTop state
               wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
 
@@ -1070,15 +1079,8 @@ function registerPopupHotkey() {
               // Restore original alwaysOnTop state immediately so popup doesn't override user preference
               mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
 
-              log.debug('Popup hotkey toggle - window shown, alwaysOnTop restored to user preference');
-            }
-          } else {
-            log.info('Popup hotkey toggle: hiding window...');
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              // Restore original alwaysOnTop state and hide
-              mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
-              mainWindow.hide();
-              log.debug('Popup hotkey toggle - window hidden');
+              popupHotkeyWindowVisible = true;
+              log.debug('Popup hotkey toggle - window shown and focused, alwaysOnTop restored to user preference');
             }
           }
         } else {
