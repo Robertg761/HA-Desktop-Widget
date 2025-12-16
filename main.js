@@ -73,6 +73,7 @@ let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanu
 let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
+let popupHotkeyLastShownTime = null; // Timestamp when window was last shown via hotkey (for debounce)
 
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
@@ -1049,12 +1050,29 @@ function registerPopupHotkey() {
         Boolean(event.metaKey) === meta) {
 
         if (config.popupHotkeyToggleMode) {
-          // Toggle mode: single press toggles visibility
-          popupHotkeyWindowVisible = !popupHotkeyWindowVisible;
+          // Smart toggle mode: only hide if window is visible AND focused, otherwise bring to top
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            const isVisible = mainWindow.isVisible();
+            const isFocused = mainWindow.isFocused();
+            const now = Date.now();
 
-          if (popupHotkeyWindowVisible) {
-            log.info('Popup hotkey toggle: showing window...');
-            if (mainWindow && !mainWindow.isDestroyed()) {
+            // Use timestamp to prevent hiding immediately after showing (debounce 300ms)
+            // This handles edge cases where focus detection is unreliable
+            const recentlyShown = popupHotkeyLastShownTime && (now - popupHotkeyLastShownTime) < 300;
+
+            log.debug(`Popup hotkey: visible=${isVisible}, focused=${isFocused}, recentlyShown=${recentlyShown}`);
+
+            if (isVisible && isFocused && !recentlyShown) {
+              // Window is already visible and focused (and not recently shown) - hide it
+              log.info('Popup hotkey toggle: window is focused, hiding...');
+              mainWindow.hide();
+              popupHotkeyWindowVisible = false;
+              popupHotkeyLastShownTime = null;
+              log.debug('Popup hotkey toggle - window hidden');
+            } else {
+              // Window is hidden, minimized, not focused, or was just shown - bring to top
+              log.info('Popup hotkey toggle: bringing window to top...');
+
               // Save current alwaysOnTop state
               wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
 
@@ -1067,15 +1085,12 @@ function registerPopupHotkey() {
               mainWindow.focus();
               mainWindow.moveTop();
 
-              log.debug('Popup hotkey toggle - window shown');
-            }
-          } else {
-            log.info('Popup hotkey toggle: hiding window...');
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              // Restore original alwaysOnTop state and hide
+              // Restore original alwaysOnTop state immediately so popup doesn't override user preference
               mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
-              mainWindow.hide();
-              log.debug('Popup hotkey toggle - window hidden');
+
+              popupHotkeyWindowVisible = true;
+              popupHotkeyLastShownTime = now;
+              log.debug('Popup hotkey toggle - window shown and focused, alwaysOnTop restored to user preference');
             }
           }
         } else {
