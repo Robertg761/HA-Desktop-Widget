@@ -1067,7 +1067,10 @@ function registerPopupHotkey() {
               mainWindow.focus();
               mainWindow.moveTop();
 
-              log.debug('Popup hotkey toggle - window shown');
+              // Restore original alwaysOnTop state immediately so popup doesn't override user preference
+              mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
+
+              log.debug('Popup hotkey toggle - window shown, alwaysOnTop restored to user preference');
             }
           } else {
             log.info('Popup hotkey toggle: hiding window...');
