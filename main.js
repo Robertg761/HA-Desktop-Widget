@@ -72,6 +72,7 @@ let wasAlwaysOnTop = false; // Track original alwaysOnTop state
 let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanup
 let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
+let popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
@@ -164,7 +165,8 @@ function loadConfig() {
       alerts: {} // entityId -> alert configuration
     },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
-    popupHotkeyHideOnRelease: false // Hide window when popup hotkey is released (instead of just restoring z-order)
+    popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
+    popupHotkeyToggleMode: false // Press once to show, press again to hide (instead of hold)
   };
 
   try {
@@ -1031,7 +1033,7 @@ function registerPopupHotkey() {
 
     // Create new event handlers
     popupHotkeyKeydownHandler = (event) => {
-      if (!popupHotkeyConfig || popupHotkeyPressed) return;
+      if (!popupHotkeyConfig) return;
 
       const { keycode, ctrl, alt, shift, meta } = popupHotkeyConfig;
 
@@ -1046,29 +1048,70 @@ function registerPopupHotkey() {
         Boolean(event.shiftKey) === shift &&
         Boolean(event.metaKey) === meta) {
 
-        popupHotkeyPressed = true;
-        log.info('Popup hotkey matched! Bringing window to front...');
+        if (config.popupHotkeyToggleMode) {
+          // Toggle mode: single press toggles visibility
+          popupHotkeyWindowVisible = !popupHotkeyWindowVisible;
 
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          // Save current alwaysOnTop state
-          wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
+          if (popupHotkeyWindowVisible) {
+            log.info('Popup hotkey toggle: showing window...');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              // Save current alwaysOnTop state
+              wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
 
-          // Bring window to front
-          if (mainWindow.isMinimized()) {
-            mainWindow.restore();
+              // Bring window to front
+              if (mainWindow.isMinimized()) {
+                mainWindow.restore();
+              }
+              mainWindow.show();
+              mainWindow.setAlwaysOnTop(true);
+              mainWindow.focus();
+              mainWindow.moveTop();
+
+              log.debug('Popup hotkey toggle - window shown');
+            }
+          } else {
+            log.info('Popup hotkey toggle: hiding window...');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              // Restore original alwaysOnTop state and hide
+              mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
+              mainWindow.hide();
+              log.debug('Popup hotkey toggle - window hidden');
+            }
           }
-          mainWindow.show();
-          mainWindow.setAlwaysOnTop(true);
-          mainWindow.focus();
-          mainWindow.moveTop();
+        } else {
+          // Hold mode (existing behavior): only process if not already pressed
+          if (popupHotkeyPressed) return;
 
-          log.debug('Popup hotkey pressed - window brought to front');
+          popupHotkeyPressed = true;
+          log.info('Popup hotkey matched! Bringing window to front...');
+
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            // Save current alwaysOnTop state
+            wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
+
+            // Bring window to front
+            if (mainWindow.isMinimized()) {
+              mainWindow.restore();
+            }
+            mainWindow.show();
+            mainWindow.setAlwaysOnTop(true);
+            mainWindow.focus();
+            mainWindow.moveTop();
+
+            log.debug('Popup hotkey pressed - window brought to front');
+          }
         }
       }
     };
 
     popupHotkeyKeyupHandler = (event) => {
-      if (!popupHotkeyConfig || !popupHotkeyPressed) return;
+      if (!popupHotkeyConfig) return;
+
+      // In toggle mode, keyup is ignored
+      if (config.popupHotkeyToggleMode) return;
+
+      // Hold mode: only process if hotkey was pressed
+      if (!popupHotkeyPressed) return;
 
       const { keycode } = popupHotkeyConfig;
 
@@ -1140,6 +1183,7 @@ function unregisterPopupHotkey() {
     // Clear state
     popupHotkeyConfig = null;
     popupHotkeyPressed = false;
+    popupHotkeyWindowVisible = false;
   } catch (error) {
     log.error('Failed to unregister popup hotkey:', error);
   }

@@ -787,13 +787,63 @@ async function initializePopupHotkey() {
       clearBtn.style.display = 'inline-block';
     }
 
-    // Initialize "Hide on release" checkbox
+    // Initialize "Toggle mode" checkbox and "Hide on release" checkbox with mutual exclusivity
+    const toggleModeCheckbox = document.getElementById('popup-hotkey-toggle-mode');
+    const toggleModeLabel = document.getElementById('popup-hotkey-toggle-mode-label');
     const hideOnReleaseCheckbox = document.getElementById('popup-hotkey-hide-on-release');
+    const hideOnReleaseLabel = document.getElementById('popup-hotkey-hide-on-release-label');
+
+    // Helper function to update disabled states
+    const updateMutualExclusivity = () => {
+      if (toggleModeCheckbox && hideOnReleaseCheckbox) {
+        // When toggle mode is enabled, disable hide-on-release
+        hideOnReleaseCheckbox.disabled = toggleModeCheckbox.checked;
+        if (hideOnReleaseLabel) {
+          hideOnReleaseLabel.classList.toggle('disabled', toggleModeCheckbox.checked);
+        }
+
+        // When hide-on-release is enabled, disable toggle mode
+        toggleModeCheckbox.disabled = hideOnReleaseCheckbox.checked;
+        if (toggleModeLabel) {
+          toggleModeLabel.classList.toggle('disabled', hideOnReleaseCheckbox.checked);
+        }
+      }
+    };
+
+    if (toggleModeCheckbox) {
+      toggleModeCheckbox.checked = !!state.CONFIG.popupHotkeyToggleMode;
+
+      toggleModeCheckbox.onchange = async () => {
+        state.CONFIG.popupHotkeyToggleMode = toggleModeCheckbox.checked;
+        updateMutualExclusivity();
+
+        try {
+          await window.electronAPI.updateConfig(state.CONFIG);
+          // Re-register hotkey to apply new mode
+          if (state.CONFIG.popupHotkey) {
+            await window.electronAPI.registerPopupHotkey(state.CONFIG.popupHotkey);
+          }
+          const { showToast } = require('./ui-utils.js');
+          showToast(
+            toggleModeCheckbox.checked
+              ? 'Toggle mode enabled: tap to show/hide'
+              : 'Hold mode enabled: hold to show, release to restore',
+            'success',
+            2000
+          );
+        } catch (error) {
+          console.error('Failed to save popup hotkey toggle mode setting:', error);
+        }
+      };
+    }
+
     if (hideOnReleaseCheckbox) {
       hideOnReleaseCheckbox.checked = !!state.CONFIG.popupHotkeyHideOnRelease;
 
       hideOnReleaseCheckbox.onchange = async () => {
         state.CONFIG.popupHotkeyHideOnRelease = hideOnReleaseCheckbox.checked;
+        updateMutualExclusivity();
+
         try {
           await window.electronAPI.updateConfig(state.CONFIG);
           const { showToast } = require('./ui-utils.js');
@@ -809,6 +859,9 @@ async function initializePopupHotkey() {
         }
       };
     }
+
+    // Set initial mutual exclusivity state
+    updateMutualExclusivity();
 
     // Set hotkey button
     setBtn.onclick = () => {

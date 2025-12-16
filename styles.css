@@ -5423,6 +5423,13 @@ textarea:disabled,
   pointer-events: none;
 }
 
+/* Disabled label styling for mutually exclusive options */
+label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* Loading state accessibility */
 [aria-busy="true"] {
   opacity: 0.6;
