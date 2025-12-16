@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' ha: data: blob:; media-src 'self' ha: blob:; connect-src * ha:;">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' ha: data: blob:; media-src 'self' ha: blob:; connect-src * ha:;">
     <title>Home Assistant Widget</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
     <!-- Minimal header with just drag area and essential controls -->
     <div class="widget-header">
@@ -14,11 +17,11 @@
             <span class="widget-title">Home Assistant</span>
             <div class="connection-indicator" id="connection-status"></div>
         </div>
-                <div class="header-controls">
-                    <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
-                    <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
-                    <button id="close-btn" class="control-btn" title="Close">❌</button>
-                </div>
+        <div class="header-controls">
+            <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
+            <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
+            <button id="close-btn" class="control-btn" title="Close">❌</button>
+        </div>
     </div>
 
     <!-- Main widget content - single view, no tabs -->
@@ -82,13 +85,14 @@
 
         <!-- Quick Access -->
         <div class="controls-section">
-                    <div class="section-header">
-                        <span class="section-title">Quick Access</span>
-                        <div class="section-buttons">
-                            <button id="reorganize-quick-controls-btn" class="section-btn" title="Reorganize Quick Access">⋮⋮</button>
-                            <button id="manage-quick-controls-btn" class="section-btn" title="Manage Quick Access">➕</button>
-                        </div>
-                    </div>
+            <div class="section-header">
+                <span class="section-title">Quick Access</span>
+                <div class="section-buttons">
+                    <button id="reorganize-quick-controls-btn" class="section-btn"
+                        title="Reorganize Quick Access">⋮⋮</button>
+                    <button id="manage-quick-controls-btn" class="section-btn" title="Manage Quick Access">➕</button>
+                </div>
+            </div>
             <div id="quick-controls" class="controls-grid">
                 <!-- Dynamic controls will be added here -->
             </div>
@@ -119,7 +123,7 @@
                         <label for="ha-token">Access Token:</label>
                         <input type="password" id="ha-token" placeholder="Your long-lived access token">
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="opacity-slider">Window Opacity:</label>
                         <input type="range" id="opacity-slider" min="1" max="100" step="1" value="90">
@@ -134,14 +138,18 @@
                     <div class="form-group">
                         <label for="primary-media-player">Primary Media Player:</label>
                         <div class="custom-dropdown" id="primary-media-player-dropdown">
-                            <button type="button" class="custom-dropdown-trigger" id="primary-media-player-trigger" aria-haspopup="listbox" aria-expanded="false">
+                            <button type="button" class="custom-dropdown-trigger" id="primary-media-player-trigger"
+                                aria-haspopup="listbox" aria-expanded="false">
                                 <span class="custom-dropdown-value">None (Hide Media Tile)</span>
-                                <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 16 16"
+                                    fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
                             </button>
                             <div class="custom-dropdown-menu" role="listbox" id="primary-media-player-menu">
-                                <div class="custom-dropdown-option" role="option" data-value="">None (Hide Media Tile)</div>
+                                <div class="custom-dropdown-option" role="option" data-value="">None (Hide Media Tile)
+                                </div>
                             </div>
                         </div>
                         <div class="form-help">Select which media player to display in the main media tile</div>
@@ -178,30 +186,46 @@
                         <input type="number" id="update-interval" min="1" max="60" value="5">
                     </div>
                     <div class="form-group">
-                        <button id="view-logs-btn" class="btn btn-secondary" title="Opens the log file location in your file explorer">📋 View Logs</button>
+                        <button id="view-logs-btn" class="btn btn-secondary"
+                            title="Opens the log file location in your file explorer">📋 View Logs</button>
                     </div>
                 </div>
                 <div id="hotkeys-tab" class="tab-content">
                     <div class="form-group">
                         <label>Popup Hotkey (Hold to Bring Window to Front)</label>
-                        <p class="help-text">Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.</p>
+                        <p class="help-text">Configure a global hotkey that brings the window to front while held down.
+                            When released, the window returns to normal z-order.</p>
                         <div class="popup-hotkey-config">
-                            <input type="text" id="popup-hotkey-input" placeholder="Not set (click Set Hotkey)" readonly>
+                            <input type="text" id="popup-hotkey-input" placeholder="Not set (click Set Hotkey)"
+                                readonly>
                             <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">Set Hotkey</button>
-                            <button id="popup-hotkey-clear-btn" class="btn btn-danger btn-small" style="display: none;">Clear</button>
+                            <button id="popup-hotkey-clear-btn" class="btn btn-danger btn-small"
+                                style="display: none;">Clear</button>
                         </div>
                         <p class="help-text" style="margin-top: 8px;">
                             <strong>Recommended presets (click to use):</strong><br>
-                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
-                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Alt+H">Ctrl+Alt+H</button>
-                            <button class="btn btn-secondary btn-small preset-hotkey-btn" data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn"
+                                data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn"
+                                data-hotkey="Ctrl+Alt+H">Ctrl+Alt+H</button>
+                            <button class="btn btn-secondary btn-small preset-hotkey-btn"
+                                data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
                         </p>
                         <div class="form-group" style="margin-top: 12px;">
-                            <label>
+                            <label id="popup-hotkey-toggle-mode-label">
+                                <input type="checkbox" id="popup-hotkey-toggle-mode">
+                                Press to toggle (tap to show/hide)
+                            </label>
+                            <p class="help-text">When enabled, press the hotkey once to show the window and again to
+                                hide it. This disables hold-to-show behavior.</p>
+                        </div>
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label id="popup-hotkey-hide-on-release-label">
                                 <input type="checkbox" id="popup-hotkey-hide-on-release">
                                 Hide window when hotkey is released
                             </label>
-                            <p class="help-text">When enabled, the window will hide when you release the popup hotkey instead of just returning to normal z-order.</p>
+                            <p class="help-text">When enabled, the window will hide when you release the popup hotkey
+                                instead of just returning to normal z-order.</p>
                         </div>
                     </div>
                     <hr>
@@ -213,7 +237,8 @@
                     </div>
                     <div id="hotkeys-list-container">
                         <div class="form-group">
-                            <input type="text" id="hotkey-entity-search" placeholder="Search entities to assign hotkeys...">
+                            <input type="text" id="hotkey-entity-search"
+                                placeholder="Search entities to assign hotkeys...">
                         </div>
                         <div id="hotkeys-list"></div>
                     </div>
@@ -245,7 +270,8 @@
     </div>
 
     <!-- Quick Access Management Modal -->
-    <div id="quick-controls-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="quick-controls-title">
+    <div id="quick-controls-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="quick-controls-title">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="quick-controls-title">Manage Quick Access</h2>
@@ -282,7 +308,8 @@
     </div>
 
     <!-- Weather Configuration Modal -->
-    <div id="weather-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="weather-config-title">
+    <div id="weather-config-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="weather-config-title">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="weather-config-title">Configure Weather</h2>
@@ -331,8 +358,10 @@
                 </div>
                 <div class="hotkey-help">
                     <h4>Hotkey Format:</h4>
-                    <p>Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code></p>
-                    <p>Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code></p>
+                    <p>Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>
+                    </p>
+                    <p>Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code>
+                    </p>
                 </div>
             </div>
         </div>
@@ -371,7 +400,8 @@
     </div>
 
     <!-- Hotkey Configuration Modal -->
-    <div id="hotkey-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hotkey-config-title">
+    <div id="hotkey-config-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="hotkey-config-title">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="hotkey-config-title">Configure Hotkey</h2>
@@ -381,7 +411,8 @@
                 <div class="form-group">
                     <label for="hotkey-input">Hotkey Combination:</label>
                     <button id="hotkey-input" class="form-control hotkey-capture-btn">Click to set hotkey</button>
-                    <div class="form-help">Click the button and press your desired key combination. Press <code>ESC</code> to clear.</div>
+                    <div class="form-help">Click the button and press your desired key combination. Press
+                        <code>ESC</code> to clear.</div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -394,7 +425,8 @@
     <!-- Camera Viewer Modal (created dynamically by openCamera) -->
 
     <!-- Alert Configuration Modal -->
-    <div id="alert-config-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alert-config-title">
+    <div id="alert-config-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="alert-config-title">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="alert-config-title">Configure Alert</h2>
@@ -422,7 +454,8 @@
                 </div>
                 <div class="form-group" id="specific-state-group" style="display: none;">
                     <label for="target-state-input">Target State:</label>
-                    <input type="text" id="target-state-input" placeholder="e.g., on, off, open, closed" class="form-control">
+                    <input type="text" id="target-state-input" placeholder="e.g., on, off, open, closed"
+                        class="form-control">
                     <div class="form-help">Enter the state you want to be notified about</div>
                 </div>
             </div>
@@ -434,7 +467,8 @@
     </div>
 
     <!-- Alert Entity Picker Modal -->
-    <div id="alert-entity-picker-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alert-entity-picker-title">
+    <div id="alert-entity-picker-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="alert-entity-picker-title">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="alert-entity-picker-title">Add Alert</h2>
@@ -442,7 +476,8 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <input type="text" id="alert-entity-picker-search" placeholder="Search entities..." class="form-control">
+                    <input type="text" id="alert-entity-picker-search" placeholder="Search entities..."
+                        class="form-control">
                 </div>
                 <div class="form-group">
                     <label>Select Entity to Configure Alert:</label>
@@ -465,4 +500,5 @@
 
     <script src="renderer.js"></script>
 </body>
+
 </html>
