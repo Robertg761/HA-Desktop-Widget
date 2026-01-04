@@ -8,6 +8,8 @@ A semi-transparent, desktop widget for Home Assistant that provides quick access
 
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 
+- [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-me-orange)](https://github.com/sponsors/robertg761)
+
 ![Main View](Main_View.png) ![Edit View](Edit_View.png) ![Light_Adjust](Light_Adjust.png)
 
 ## Features
