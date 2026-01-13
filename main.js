@@ -593,6 +593,33 @@ ipcMain.handle('get-window-state', () => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
+// Start with Windows IPC handlers
+ipcMain.handle('get-login-item-settings', () => {
+  try {
+    const settings = app.getLoginItemSettings();
+    log.debug('Login item settings:', settings);
+    return { openAtLogin: settings.openAtLogin };
+  } catch (error) {
+    log.error('Failed to get login item settings:', error);
+    return { openAtLogin: false };
+  }
+});
+
+ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
+  try {
+    log.info(`Setting app to ${openAtLogin ? 'start' : 'not start'} with Windows`);
+    app.setLoginItemSettings({
+      openAtLogin: openAtLogin,
+      path: app.getPath('exe'),
+      args: []
+    });
+    return { success: true, openAtLogin };
+  } catch (error) {
+    log.error('Failed to set login item settings:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('restart-app', () => {
   log.info('Restarting application');
   try {

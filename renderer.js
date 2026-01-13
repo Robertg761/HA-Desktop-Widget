@@ -208,6 +208,20 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
   }
 });
 
+// Listen for open-settings event from tray menu
+window.electronAPI.onOpenSettings(() => {
+  settings.openSettings({
+    initUpdateUI: ui.initUpdateUI,
+    exitReorganizeMode: () => {
+      // Exit reorganize mode if active
+      const container = document.getElementById('quick-controls');
+      if (container && container.classList.contains('reorganize-mode')) {
+        ui.toggleReorganizeMode();
+      }
+    },
+  });
+});
+
 /**
  * Replace all emoji icons with SVG icons
  * This runs once on initialization to modernize the UI

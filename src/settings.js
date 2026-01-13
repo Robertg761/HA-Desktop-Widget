@@ -78,6 +78,18 @@ async function openSettings(uiHooks) {
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
 
+    // Initialize "Start with Windows" checkbox
+    const startWithWindows = document.getElementById('start-with-windows');
+    if (startWithWindows) {
+      try {
+        const loginSettings = await window.electronAPI.getLoginItemSettings();
+        startWithWindows.checked = loginSettings.openAtLogin || false;
+      } catch (error) {
+        console.error('Failed to get login item settings:', error);
+        startWithWindows.checked = false;
+      }
+    }
+
     // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     // Formula: scale = 1 + (opacity - 0.5) * 198
@@ -181,6 +193,20 @@ async function saveSettings() {
     }
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
+
+    // Save "Start with Windows" setting
+    const startWithWindows = document.getElementById('start-with-windows');
+    if (startWithWindows) {
+      try {
+        const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
+        if (!result.success) {
+          console.error('Failed to set login item settings:', result.error);
+          showToast('Failed to update Start with Windows setting', 'warning', 3000);
+        }
+      } catch (error) {
+        console.error('Failed to set login item settings:', error);
+      }
+    }
 
     // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
