@@ -1,12 +1,13 @@
 const { EventEmitter } = require('events');
 const log = require('electron-log');
 const state = require('./state.js');
+const { WS_REQUEST_TIMEOUT_MS, WS_INITIAL_ID } = require('./constants.js');
 
 class WebSocketManager extends EventEmitter {
   constructor() {
     super();
     this.ws = null;
-    this.wsId = 1000;
+    this.wsId = WS_INITIAL_ID;
     this.pendingWs = new Map();
   }
 
@@ -41,17 +42,17 @@ class WebSocketManager extends EventEmitter {
         log.debug('WebSocket connection established');
         this.emit('open');
       };
-      
+
       this.ws.onmessage = (event) => {
         this.handleMessage(event);
       };
-      
+
       this.ws.onerror = (event) => {
         const message = (event && event.message) || (event && event.error && event.error.message) || 'Unknown WebSocket error';
         log.error('WebSocket error:', message);
         this.emit('error', new Error(message));
       };
-      
+
       this.ws.onclose = (_event) => {
         log.debug('WebSocket connection closed');
         this.emit('close');
@@ -107,7 +108,7 @@ class WebSocketManager extends EventEmitter {
             // Reject without emitting a global error to avoid log spam for optional calls
             reject(new Error('WebSocket request timeout'));
           }
-        }, 15000);
+        }, WS_REQUEST_TIMEOUT_MS);
       } catch (error) {
         log.error('Error making WebSocket request:', error);
         reject(error);
