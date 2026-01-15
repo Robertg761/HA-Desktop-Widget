@@ -254,7 +254,7 @@ function setIconContent(element, iconName, options = {}) {
   return icon;
 }
 
-module.exports = {
+export {
   createIcon,
   Icons,
   replaceWithIcon,

@@ -1,9 +1,9 @@
-const state = require('./state.js');
-const websocket = require('./websocket.js');
-const { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast } = require('./ui-utils.js');
-const { cleanupHotkeyEventListeners } = require('./hotkeys.js');
-// Note: ui.js is not imported to prevent circular dependencies
-// Functions like populateDomainFilters will be passed in from renderer.js if needed
+import state from './state.js';
+import websocket from './websocket.js';
+import { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast, showConfirm } from './ui-utils.js';
+import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import * as utils from './utils.js';
+// Note: ui.js is imported dynamically to prevent circular dependencies
 
 /**
  * Validate Home Assistant URL format
@@ -263,7 +263,8 @@ async function saveSettings() {
     applyUiPreferences(state.CONFIG.ui || {});
 
     // Update media tile to reflect new selection
-    const ui = require('./ui.js');
+    // Dynamic import to avoid circular dependency
+    const ui = await import('./ui.js');
     if (ui.updateMediaTile) {
       ui.updateMediaTile();
     }
@@ -291,7 +292,7 @@ function renderAlertsListInline() {
     alertsList.innerHTML = '';
 
     const alerts = state.CONFIG.entityAlerts?.alerts || {};
-    const utils = require('./utils.js');
+    // utils already imported at top
 
     // Show message if no alerts
     if (Object.keys(alerts).length === 0) {
@@ -388,7 +389,7 @@ function populateAlertEntityPicker() {
     const list = document.getElementById('alert-entity-picker-list');
     if (!list) return;
 
-    const utils = require('./utils.js');
+    // utils already imported at top
     const alerts = state.CONFIG.entityAlerts?.alerts || {};
     const entities = Object.values(state.STATES || {})
       .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
@@ -504,7 +505,7 @@ function openAlertConfigModal(entityId) {
 
     const alertConfig = state.CONFIG.entityAlerts?.alerts[entityId];
     const entity = state.STATES[entityId];
-    const utils = require('./utils.js');
+    // utils already imported at top
 
     if (title) title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
 
@@ -584,11 +585,11 @@ async function saveAlert() {
     closeAlertConfigModal();
     renderAlertsListInline();
 
-    const { showToast } = require('./ui-utils.js');
+    // showToast already imported at top
     showToast('Alert saved successfully', 'success', 2000);
   } catch (error) {
     console.error('Error saving alert:', error);
-    const { showToast } = require('./ui-utils.js');
+    // showToast already imported at top
     showToast('Error saving alert', 'error', 2000);
   }
 }
@@ -596,8 +597,8 @@ async function saveAlert() {
 async function removeAlert(entityId) {
   try {
     const entity = state.STATES[entityId];
-    const utils = require('./utils.js');
-    const { showConfirm, showToast } = require('./ui-utils.js');
+    // utils already imported at top
+    // showToast, showConfirm, utils already imported at top
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
     const confirmed = await showConfirm(
@@ -617,7 +618,7 @@ async function removeAlert(entityId) {
     }
   } catch (error) {
     console.error('Error removing alert:', error);
-    const { showToast } = require('./ui-utils.js');
+    // showToast already imported at top
     showToast('Error removing alert', 'error', 2000);
   }
 }
@@ -724,7 +725,7 @@ function populateMediaPlayerDropdown() {
     const mediaPlayers = Object.values(state.STATES || {})
       .filter(entity => entity.entity_id.startsWith('media_player.'))
       .sort((a, b) => {
-        const utils = require('./utils.js');
+        // utils already imported at top
         const nameA = utils.getEntityDisplayName(a).toLowerCase();
         const nameB = utils.getEntityDisplayName(b).toLowerCase();
         return nameA.localeCompare(nameB);
@@ -736,7 +737,7 @@ function populateMediaPlayerDropdown() {
       option.className = 'custom-dropdown-option';
       option.setAttribute('role', 'option');
       option.setAttribute('data-value', entity.entity_id);
-      const utils = require('./utils.js');
+      // utils already imported at top
       option.textContent = utils.getEntityDisplayName(entity);
       menu.appendChild(option);
     });
@@ -849,7 +850,7 @@ async function initializePopupHotkey() {
           if (state.CONFIG.popupHotkey) {
             await window.electronAPI.registerPopupHotkey(state.CONFIG.popupHotkey);
           }
-          const { showToast } = require('./ui-utils.js');
+          // showToast already imported at top
           showToast(
             toggleModeCheckbox.checked
               ? 'Toggle mode enabled: tap to show/hide'
@@ -872,7 +873,7 @@ async function initializePopupHotkey() {
 
         try {
           await window.electronAPI.updateConfig(state.CONFIG);
-          const { showToast } = require('./ui-utils.js');
+          // showToast already imported at top
           showToast(
             hideOnReleaseCheckbox.checked
               ? 'Window will hide when popup hotkey is released'
@@ -907,12 +908,12 @@ async function initializePopupHotkey() {
           input.placeholder = 'Not set (click Set Hotkey)';
           clearBtn.style.display = 'none';
           state.CONFIG.popupHotkey = '';
-          const { showToast } = require('./ui-utils.js');
+          // showToast already imported at top
           showToast('Popup hotkey cleared', 'success');
         }
       } catch (error) {
         console.error('Failed to clear popup hotkey:', error);
-        const { showToast } = require('./ui-utils.js');
+        // showToast already imported at top
         showToast('Failed to clear popup hotkey', 'error');
       }
     };
@@ -929,15 +930,15 @@ async function initializePopupHotkey() {
             input.placeholder = hotkey;
             clearBtn.style.display = 'inline-block';
             state.CONFIG.popupHotkey = hotkey;
-            const { showToast } = require('./ui-utils.js');
+            // showToast already imported at top
             showToast(`Popup hotkey set to ${hotkey}`, 'success');
           } else {
-            const { showToast } = require('./ui-utils.js');
+            // showToast already imported at top
             showToast(result.error || 'Failed to set popup hotkey', 'error');
           }
         } catch (error) {
           console.error('Failed to set preset hotkey:', error);
-          const { showToast } = require('./ui-utils.js');
+          // showToast already imported at top
           showToast('Failed to set popup hotkey', 'error');
         }
       };
@@ -1006,16 +1007,16 @@ function startCapturingPopupHotkey() {
           const clearBtn = document.getElementById('popup-hotkey-clear-btn');
           if (clearBtn) clearBtn.style.display = 'inline-block';
           state.CONFIG.popupHotkey = hotkey;
-          const { showToast } = require('./ui-utils.js');
+          // showToast already imported at top
           showToast(`Popup hotkey set to ${hotkey}`, 'success');
         } else {
-          const { showToast } = require('./ui-utils.js');
+          // showToast already imported at top
           showToast(result.error || 'Failed to set popup hotkey', 'error');
           if (input) input.value = state.CONFIG.popupHotkey || '';
         }
       } catch (error) {
         console.error('Failed to register popup hotkey:', error);
-        const { showToast } = require('./ui-utils.js');
+        // showToast already imported at top
         showToast('Failed to register popup hotkey', 'error');
         if (input) input.value = state.CONFIG.popupHotkey || '';
       }
@@ -1052,7 +1053,7 @@ function stopCapturingPopupHotkey() {
   }
 }
 
-module.exports = {
+export {
   openSettings,
   closeSettings,
   saveSettings,

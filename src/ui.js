@@ -1,10 +1,10 @@
-const state = require('./state.js');
-const utils = require('./utils.js');
-const websocket = require('./websocket.js');
-const camera = require('./camera.js');
-const uiUtils = require('./ui-utils.js');
-const { setIconContent } = require('./icons.js');
-const Sortable = require('sortablejs');
+import state from './state.js';
+import * as utils from './utils.js';
+import websocket from './websocket.js';
+import * as camera from './camera.js';
+import * as uiUtils from './ui-utils.js';
+import { setIconContent } from './icons.js';
+import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
 // Track all active long-press timers to cancel them when mode changes
@@ -188,7 +188,7 @@ function showRenameModal(entityId) {
   try {
     const entity = state.STATES[entityId];
     if (!entity) return;
-    
+
     const currentName = state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
 
     const modal = document.createElement('div');
@@ -219,9 +219,9 @@ function showRenameModal(entityId) {
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
     const closeBtn = modal.querySelector('.close-btn');
-    
+
     if (input) input.focus();
-    
+
     if (saveBtn) {
       saveBtn.onclick = async () => {
         const newName = input.value.trim();
@@ -231,9 +231,9 @@ function showRenameModal(entityId) {
             state.CONFIG.customEntityNames = {};
           }
           state.CONFIG.customEntityNames[entityId] = newName;
-          
+
           await window.electronAPI.updateConfig(state.CONFIG);
-          
+
           renderActiveTab();
           if (isReorganizeMode) {
             const container = document.getElementById('quick-controls');
@@ -246,14 +246,14 @@ function showRenameModal(entityId) {
         modal.remove();
       };
     }
-    
+
     if (resetBtn) {
       resetBtn.onclick = async () => {
         if (state.CONFIG.customEntityNames && state.CONFIG.customEntityNames[entityId]) {
           delete state.CONFIG.customEntityNames[entityId];
-          
+
           await window.electronAPI.updateConfig(state.CONFIG);
-          
+
           renderActiveTab();
           if (isReorganizeMode) {
             const container = document.getElementById('quick-controls');
@@ -266,7 +266,7 @@ function showRenameModal(entityId) {
         modal.remove();
       };
     }
-    
+
     if (cancelBtn) {
       cancelBtn.onclick = () => modal.remove();
     }
@@ -287,7 +287,7 @@ function removeFromQuickAccess(entityId) {
     const favorites = state.CONFIG.favoriteEntities || [];
     const newFavorites = favorites.filter(id => id !== entityId);
     state.CONFIG.favoriteEntities = newFavorites;
-    
+
     // Save to config
     window.electronAPI.updateConfig(state.CONFIG);
 
@@ -298,7 +298,7 @@ function removeFromQuickAccess(entityId) {
       container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
-    
+
     uiUtils.showToast('Entity removed from Quick Access', 'success', 2000);
   } catch (error) {
     console.error('Error removing from quick access:', error);
@@ -309,12 +309,12 @@ function saveQuickAccessOrder() {
   try {
     const container = document.getElementById('quick-controls');
     if (!container) return;
-    
+
     const items = container.querySelectorAll('.control-item');
     const newOrder = Array.from(items).map(item => item.dataset.entityId);
-    
+
     state.CONFIG.favoriteEntities = newOrder;
-    
+
     // Save to config
     window.electronAPI.updateConfig(state.CONFIG);
   } catch (error) {
@@ -425,12 +425,12 @@ function createControlElement(entity) {
     // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
     const hasTimerAttributes = entity.attributes && (
-      entity.attributes.finishes_at || 
-      entity.attributes.end_time || 
+      entity.attributes.finishes_at ||
+      entity.attributes.end_time ||
       entity.attributes.finish_time ||
       entity.attributes.duration
     );
-    
+
     // Check if entity ID contains "timer" or if state is a valid future timestamp
     const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
     let stateIsTimestamp = false;
@@ -447,7 +447,7 @@ function createControlElement(entity) {
         }
       }
     }
-    
+
     const isTimerSensor = entity.entity_id.startsWith('sensor.') && (hasTimerAttributes || hasTimerInName || stateIsTimestamp);
     const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
 
@@ -487,7 +487,7 @@ function createControlElement(entity) {
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
-    
+
     const icon = utils.escapeHtml(utils.getEntityIcon(entity));
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
@@ -543,13 +543,13 @@ function createControlElement(entity) {
         </div>
       `;
     }
-    
+
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
       setupMediaPlayerControls(div, entity);
       // Auto-fit removed - using CSS ellipsis and marquee instead
     }
-    
+
     return div;
   } catch (error) {
     console.error('Error creating control element:', error);
@@ -808,8 +808,8 @@ function setupMediaPlayerControls(div, entity) {
       }
 
       const artworkUrl = entity.attributes?.entity_picture ||
-                        entity.attributes?.media_image_url ||
-                        entity.attributes?.media_content_id;
+        entity.attributes?.media_image_url ||
+        entity.attributes?.media_content_id;
 
       // Show artwork when media info is present (playing or paused with media loaded)
       // Only hide when idle/off or no media info available
@@ -841,7 +841,7 @@ function setupMediaPlayerControls(div, entity) {
         img.src = proxyUrl;
         img.alt = 'Album art';
         img.className = 'media-player-artwork';
-        img.onerror = function() {
+        img.onerror = function () {
           // Restore original icon on error
           const icon = this.parentElement;
           if (icon && icon.dataset.defaultIcon) {
@@ -1041,7 +1041,7 @@ function showMediaDetail(entity) {
     document.body.appendChild(modal);
 
     // Set SVG icons for media controls
-    const { setIconContent } = require('./icons.js');
+    // setIconContent already imported at top
     const prevBtn = modal.querySelector('.media-detail-prev-btn');
     const playBtn = modal.querySelector('.media-detail-play-btn');
     const nextBtn = modal.querySelector('.media-detail-next-btn');
@@ -1088,7 +1088,7 @@ function showMediaDetail(entity) {
       const isCurrentlyPlaying = currentEntity?.state === 'playing';
       const pp = modal.querySelector('.play-pause-btn');
       if (pp) {
-        const { setIconContent } = require('./icons.js');
+        // setIconContent already imported at top
         setIconContent(pp, isCurrentlyPlaying ? 'pause' : 'play', { size: 24 });
         pp.classList.toggle('playing', isCurrentlyPlaying);
       }
@@ -1158,7 +1158,7 @@ function scheduleMediaFit() {
 
 function callMediaPlayerService(entityId, action) {
   try {
-    const websocket = require('./websocket.js');
+    // websocket already imported at top
     const entity = state.STATES[entityId];
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
@@ -1192,54 +1192,54 @@ function callMediaPlayerService(entityId, action) {
 
 
 function toggleEntity(entity) {
-    try {
-        const domain = entity.entity_id.split('.')[0];
-        let service;
-        let service_data = { entity_id: entity.entity_id };
+  try {
+    const domain = entity.entity_id.split('.')[0];
+    let service;
+    let service_data = { entity_id: entity.entity_id };
 
-        switch(domain) {
-            case 'light':
-            case 'switch':
-            case 'fan':
-            case 'input_boolean':
-                service = 'toggle';
-                break;
-            case 'lock':
-                service = entity.state === 'locked' ? 'unlock' : 'lock';
-                break;
-            case 'cover':
-                service = entity.state === 'open' ? 'close_cover' : 'open_cover';
-                break;
-            case 'scene':
-            case 'script':
-                service = 'turn_on';
-                // Add activation animation for scenes and scripts
-                triggerActivationFeedback(entity.entity_id);
-                break;
-            default:
-                // No toggle action for this domain
-                return;
-        }
-        websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data)
-          .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
-    } catch (error) {
-        console.error('Error toggling entity:', error);
-        uiUtils.showToast('Failed to toggle entity', 'error', 3000);
+    switch (domain) {
+      case 'light':
+      case 'switch':
+      case 'fan':
+      case 'input_boolean':
+        service = 'toggle';
+        break;
+      case 'lock':
+        service = entity.state === 'locked' ? 'unlock' : 'lock';
+        break;
+      case 'cover':
+        service = entity.state === 'open' ? 'close_cover' : 'open_cover';
+        break;
+      case 'scene':
+      case 'script':
+        service = 'turn_on';
+        // Add activation animation for scenes and scripts
+        triggerActivationFeedback(entity.entity_id);
+        break;
+      default:
+        // No toggle action for this domain
+        return;
     }
+    websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data)
+      .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
+  } catch (error) {
+    console.error('Error toggling entity:', error);
+    uiUtils.showToast('Failed to toggle entity', 'error', 3000);
+  }
 }
 
 function triggerActivationFeedback(entityId) {
-    try {
-        const tile = document.querySelector(`[data-entity-id="${entityId}"]`);
-        if (tile) {
-            tile.classList.add('activating');
-            setTimeout(() => {
-                tile.classList.remove('activating');
-            }, 600);
-        }
-    } catch (error) {
-        console.error('Error triggering activation feedback:', error);
+  try {
+    const tile = document.querySelector(`[data-entity-id="${entityId}"]`);
+    if (tile) {
+      tile.classList.add('activating');
+      setTimeout(() => {
+        tile.classList.remove('activating');
+      }, 600);
     }
+  } catch (error) {
+    console.error('Error triggering activation feedback:', error);
+  }
 }
 
 function executeHotkeyAction(entity, action) {
@@ -1373,13 +1373,13 @@ function updateWeatherFromHA() {
     if (conditionEl) conditionEl.textContent = weatherEntity.state || '--';
     if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
     if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
-    
+
     // Update weather icon based on current condition
     if (iconEl) {
       const condition = weatherEntity.state?.toLowerCase() || '';
       let icon = '🌤️'; // default
       let classes = 'weather-icon';
-      
+
       if (condition.includes('sunny') || condition === 'clear') {
         icon = '☀️';
         classes += ' sunny';
@@ -1406,7 +1406,7 @@ function updateWeatherFromHA() {
       } else if (condition.includes('night') || condition.includes('clear-night')) {
         icon = '🌙';
       }
-      
+
       iconEl.textContent = icon;
       iconEl.className = classes;
     }
@@ -1532,37 +1532,37 @@ function updateMediaTile() {
   try {
     const tile = document.getElementById('media-tile');
     if (!tile) return;
-    
+
     // Check if a primary media player is configured
     const primaryPlayer = state.CONFIG.primaryMediaPlayer;
     if (!primaryPlayer) {
       tile.style.display = 'none';
       return;
     }
-    
+
     // Get the media player entity
     const entity = state.STATES[primaryPlayer];
     if (!entity) {
       tile.style.display = 'none';
       return;
     }
-    
+
     // Show the tile
     tile.style.display = 'grid';
-    
+
     // Update artwork
     const artworkContainer = document.getElementById('media-tile-artwork');
     // Try multiple artwork sources (smart speakers might use different attributes)
-    let artworkUrl = entity.attributes?.entity_picture || 
-                     entity.attributes?.media_image_url ||
-                     entity.attributes?.media_content_id;
-    
+    let artworkUrl = entity.attributes?.entity_picture ||
+      entity.attributes?.media_image_url ||
+      entity.attributes?.media_content_id;
+
     // Some media players provide thumbnail or image_url
     if (!artworkUrl && entity.attributes?.media_album_name) {
       // If we have album info but no artwork, entity_picture might update later
       artworkUrl = entity.attributes?.entity_picture;
     }
-    
+
     if (artworkUrl && artworkContainer) {
       // Use the ha:// protocol to proxy artwork (handles both external CDN URLs and HA-relative paths)
       // This bypasses CSP restrictions and adds authentication when needed
@@ -1590,7 +1590,7 @@ function updateMediaTile() {
       const img = document.createElement('img');
       img.src = proxyUrl;
       img.alt = 'Album art';
-      img.onerror = function() {
+      img.onerror = function () {
         this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
       };
       artworkContainer.innerHTML = '';
@@ -1598,25 +1598,25 @@ function updateMediaTile() {
     } else if (artworkContainer) {
       artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
     }
-    
+
     // Update media info
     const titleEl = document.getElementById('media-tile-title');
     const artistEl = document.getElementById('media-tile-artist');
     const mediaTitle = entity.attributes?.media_title || 'No media playing';
     const mediaArtist = entity.attributes?.media_artist || '';
-    
+
     if (titleEl) titleEl.textContent = mediaTitle;
     if (artistEl) artistEl.textContent = mediaArtist;
-    
+
     // Update seek bar
     updateMediaSeekBar(entity);
-    
+
     // Update play/pause button
     const playBtn = document.getElementById('media-tile-play');
     if (playBtn) {
       const isPlaying = entity.state === 'playing';
       // Update icon using the icon system
-      const { setIconContent } = require('./icons.js');
+      // setIconContent already imported at top
       setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
       playBtn.classList.toggle('playing', isPlaying);
     }
@@ -1649,7 +1649,7 @@ function updateMediaSeekBar(entity) {
       const elapsedSinceUpdate = (Date.now() - updatedAt) / 1000;
       currentPosition = Math.min(basePosition + elapsedSinceUpdate, duration);
     }
-    
+
     // Format time as mm:ss or h:mm:ss when hours are present
     const formatTime = (seconds) => {
       const totalSeconds = Math.max(0, Math.floor(seconds));
@@ -1660,11 +1660,11 @@ function updateMediaSeekBar(entity) {
       const secPart = secs.toString().padStart(2, '0');
       return hours > 0 ? `${hours}:${minPart}:${secPart}` : `${minPart}:${secPart}`;
     };
-    
+
     // Update UI
     if (timeCurrent) timeCurrent.textContent = formatTime(currentPosition);
     if (timeTotal) timeTotal.textContent = duration > 0 ? formatTime(duration) : '0:00';
-    
+
     if (seekFill && duration > 0) {
       const percentage = Math.max(0, Math.min(100, (currentPosition / duration) * 100));
       seekFill.style.width = `${percentage}%`;
@@ -1711,8 +1711,8 @@ function showNoConnectionMessage() {
     if (container) {
       // Check if configuration needs setup
       if (!state.CONFIG ||
-          !state.CONFIG.homeAssistant ||
-          state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+        !state.CONFIG.homeAssistant ||
+        state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
         container.innerHTML = `
           <div class="status-message">
             <h3>⚙️ Setup Required</h3>
@@ -1746,7 +1746,7 @@ function updateTimeDisplay() {
     const now = new Date();
     const timeEl = document.getElementById('current-time');
     const dateEl = document.getElementById('current-date');
-    
+
     if (timeEl) timeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (dateEl) dateEl.textContent = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   } catch (error) {
@@ -1758,37 +1758,37 @@ function updateTimerDisplays() {
   try {
     // Find all timer entities AND sensor entities with timer attributes in Quick Access
     const timerElements = document.querySelectorAll('.control-item.timer-entity');
-    
+
     timerElements.forEach(timerEl => {
       const entityId = timerEl.dataset.entityId;
       const entity = state.STATES[entityId];
-      
+
       if (!entity) return;
-      
+
       // Handle timer.* entities
       if (entityId.startsWith('timer.')) {
         if (entity.state !== 'active') return;
-        
+
         // Calculate remaining time
         const finishesAt = entity.attributes?.finishes_at;
         if (!finishesAt) return;
-        
+
         const endTime = new Date(finishesAt).getTime();
         const now = Date.now();
         const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-        
+
         // Format as mm:ss or hh:mm:ss
         const hours = Math.floor(remaining / 3600);
         const minutes = Math.floor((remaining % 3600) / 60);
         const seconds = remaining % 60;
-        
+
         let display;
         if (hours > 0) {
           display = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         } else {
           display = `${minutes}:${String(seconds).padStart(2, '0')}`;
         }
-        
+
         // Update the countdown display
         const countdownEl = timerEl.querySelector('.timer-countdown');
         if (countdownEl && countdownEl.textContent !== display) {
@@ -1798,10 +1798,10 @@ function updateTimerDisplays() {
       // Handle sensor.* entities that are timers (like Google Kitchen Timer)
       else if (entityId.startsWith('sensor.')) {
         // Check for various timer end time attributes
-        let finishesAt = entity.attributes?.finishes_at || 
-                         entity.attributes?.end_time || 
-                         entity.attributes?.finish_time;
-        
+        let finishesAt = entity.attributes?.finishes_at ||
+          entity.attributes?.end_time ||
+          entity.attributes?.finish_time;
+
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
         if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
           // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
@@ -1816,13 +1816,13 @@ function updateTimerDisplays() {
             }
           }
         }
-        
+
         if (!finishesAt) return;
-        
+
         // Check if timer is active (finishes_at is in the future)
         const endTime = new Date(finishesAt).getTime();
         const now = Date.now();
-        
+
         if (endTime <= now) {
           // Timer finished
           const countdownEl = timerEl.querySelector('.timer-countdown');
@@ -1831,21 +1831,21 @@ function updateTimerDisplays() {
           }
           return;
         }
-        
+
         const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-        
+
         // Format as mm:ss or hh:mm:ss
         const hours = Math.floor(remaining / 3600);
         const minutes = Math.floor((remaining % 3600) / 60);
         const seconds = remaining % 60;
-        
+
         let display;
         if (hours > 0) {
           display = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         } else {
           display = `${minutes}:${String(seconds).padStart(2, '0')}`;
         }
-        
+
         // Update the countdown display
         const countdownEl = timerEl.querySelector('.timer-countdown');
         if (countdownEl && countdownEl.textContent !== display) {
@@ -2435,45 +2435,45 @@ function showCoverControls(coverEntity) {
 }
 
 function populateQuickControlsList() {
-    try {
-        const list = document.getElementById('quick-controls-list');
-        const searchInput = document.getElementById('quick-controls-search');
-        if (!list) return;
-        
-        const renderList = () => {
-            const filter = searchInput ? searchInput.value.toLowerCase() : '';
-            const favorites = state.CONFIG.favoriteEntities || [];
-            
-            // Score and filter entities
-            const scoredEntities = Object.values(state.STATES)
-                .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
-                .map(entity => {
-                    if (!filter) {
-                        return { entity, score: 1 };
-                    }
-                    // Search both display name and entity ID
-                    const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), filter);
-                    const idScore = utils.getSearchScore(entity.entity_id, filter);
-                    return { entity, score: nameScore + idScore };
-                })
-                .filter(item => item.score > 0)
-                .sort((a, b) => {
-                    // Sort by score first, then alphabetically
-                    if (b.score !== a.score) {
-                        return b.score - a.score;
-                    }
-                    return utils.getEntityDisplayName(a.entity).localeCompare(utils.getEntityDisplayName(b.entity));
-                });
-            
-            list.innerHTML = '';
-            
-            scoredEntities.forEach(({ entity }) => {
-                const item = document.createElement('div');
-                item.className = 'entity-item';
-                
-                const isFavorite = favorites.includes(entity.entity_id);
+  try {
+    const list = document.getElementById('quick-controls-list');
+    const searchInput = document.getElementById('quick-controls-search');
+    if (!list) return;
 
-                item.innerHTML = `
+    const renderList = () => {
+      const filter = searchInput ? searchInput.value.toLowerCase() : '';
+      const favorites = state.CONFIG.favoriteEntities || [];
+
+      // Score and filter entities
+      const scoredEntities = Object.values(state.STATES)
+        .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
+        .map(entity => {
+          if (!filter) {
+            return { entity, score: 1 };
+          }
+          // Search both display name and entity ID
+          const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), filter);
+          const idScore = utils.getSearchScore(entity.entity_id, filter);
+          return { entity, score: nameScore + idScore };
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => {
+          // Sort by score first, then alphabetically
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          return utils.getEntityDisplayName(a.entity).localeCompare(utils.getEntityDisplayName(b.entity));
+        });
+
+      list.innerHTML = '';
+
+      scoredEntities.forEach(({ entity }) => {
+        const item = document.createElement('div');
+        item.className = 'entity-item';
+
+        const isFavorite = favorites.includes(entity.entity_id);
+
+        item.innerHTML = `
                     <div class="entity-item-main">
                         <span class="entity-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
                         <div class="entity-item-info">
@@ -2485,169 +2485,170 @@ function populateQuickControlsList() {
                         ${isFavorite ? 'Remove' : 'Add'}
                     </button>
                 `;
-                
-                const button = item.querySelector('button');
-                button.onclick = () => toggleQuickAccess(entity.entity_id);
-                
-                list.appendChild(item);
-            });
-        };
-        
-        // Initial render
-        renderList();
-        
-        // Set up search with proper scoring
-        if (searchInput) {
-            searchInput.value = '';
-            searchInput.oninput = () => renderList();
-            // Note: Focus is managed by trapFocus() in renderer.js when modal opens
-        }
-    } catch (error) {
-        console.error('Error populating quick controls list:', error);
+
+        const button = item.querySelector('button');
+        button.onclick = () => toggleQuickAccess(entity.entity_id);
+
+        list.appendChild(item);
+      });
+    };
+
+    // Initial render
+    renderList();
+
+    // Set up search with proper scoring
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.oninput = () => renderList();
+      // Note: Focus is managed by trapFocus() in renderer.js when modal opens
     }
+  } catch (error) {
+    console.error('Error populating quick controls list:', error);
+  }
 }
 
 function toggleQuickAccess(entityId) {
-    try {
-        const favorites = state.CONFIG.favoriteEntities || [];
+  try {
+    const favorites = state.CONFIG.favoriteEntities || [];
 
-        if (favorites.includes(entityId)) {
-            // Remove from favorites
-            state.CONFIG.favoriteEntities = favorites.filter(id => id !== entityId);
-        } else {
-            // Add to favorites
-            state.CONFIG.favoriteEntities = [...favorites, entityId];
-        }
-
-        // Save and update UI
-        window.electronAPI.updateConfig(state.CONFIG);
-        renderQuickControls();
-        populateQuickControlsList();
-    } catch (error) {
-        console.error('Error toggling quick access:', error);
+    if (favorites.includes(entityId)) {
+      // Remove from favorites
+      state.CONFIG.favoriteEntities = favorites.filter(id => id !== entityId);
+    } else {
+      // Add to favorites
+      state.CONFIG.favoriteEntities = [...favorites, entityId];
     }
+
+    // Save and update UI
+    window.electronAPI.updateConfig(state.CONFIG);
+    renderQuickControls();
+    populateQuickControlsList();
+  } catch (error) {
+    console.error('Error toggling quick access:', error);
+  }
 }
 
 function initUpdateUI() {
-    try {
-        const { version } = require('../package.json');
-        
-        // Set current version
-        const currentVersionEl = document.getElementById('current-version');
-        if (currentVersionEl) {
-            currentVersionEl.textContent = `v${version}`;
-        }
-        
-        // Wire up check for updates button
-        const checkUpdatesBtn = document.getElementById('check-updates-btn');
-        const updateStatusText = document.getElementById('update-status-text');
-        const installUpdateBtn = document.getElementById('install-update-btn');
-        const updateProgress = document.getElementById('update-progress');
-        const progressFill = document.getElementById('progress-fill');
-        const progressText = document.getElementById('progress-text');
-        
-        // Enable the check button
-        if (checkUpdatesBtn) {
-            checkUpdatesBtn.disabled = false;
-            checkUpdatesBtn.onclick = async () => {
-                // Disable button and show checking status
-                if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-                if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
-                
-                try {
-                    const result = await window.electronAPI.checkForUpdates();
-                    if (result.status === 'dev') {
-                        // In development mode, auto-updater doesn't work
-                        if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-                    }
-                    // In packaged mode, the auto-update events will update the UI
-                    // The button will be re-enabled by the event handlers
-                } catch (error) {
-                    console.error('Error checking for updates:', error);
-                    if (updateStatusText) updateStatusText.textContent = 'Error checking for updates';
-                    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-                }
-            };
-        }
-        
-        // Wire up install button
-        if (installUpdateBtn) {
-            installUpdateBtn.onclick = () => {
-                window.electronAPI.quitAndInstall();
-            };
-        }
-        
-        // Listen for auto-update events from main process
-        window.electronAPI.onAutoUpdate((data) => {
-            try {
-                if (!data) return;
-                
-                switch (data.status) {
-                    case 'checking':
-                        if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-                        if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-                        if (updateProgress) updateProgress.classList.add('hidden');
-                        break;
-                        
-                    case 'available':
-                        if (updateStatusText) {
-                            const version = data.info?.version || 'unknown';
-                            updateStatusText.textContent = `Update available: v${version}`;
-                        }
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-                        if (updateProgress) updateProgress.classList.remove('hidden');
-                        break;
-                        
-                    case 'none':
-                        if (updateStatusText) updateStatusText.textContent = 'You are up to date!';
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-                        if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-                        if (updateProgress) updateProgress.classList.add('hidden');
-                        break;
-                        
-                    case 'downloading':
-                        if (updateStatusText) updateStatusText.textContent = 'Downloading update...';
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-                        if (updateProgress) updateProgress.classList.remove('hidden');
-                        if (data.progress) {
-                            const percent = Math.round(data.progress.percent);
-                            if (progressFill) progressFill.style.width = `${percent}%`;
-                            if (progressText) progressText.textContent = `${percent}%`;
-                        }
-                        break;
-                        
-                    case 'downloaded':
-                        if (updateStatusText) {
-                            const version = data.info?.version || 'unknown';
-                            updateStatusText.textContent = `Update v${version} ready to install`;
-                        }
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-                        if (installUpdateBtn) installUpdateBtn.classList.remove('hidden');
-                        if (updateProgress) updateProgress.classList.add('hidden');
-                        break;
-                        
-                    case 'error':
-                        if (updateStatusText) {
-                            updateStatusText.textContent = `Error: ${data.error || 'Unknown error'}`;
-                        }
-                        if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-                        if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-                        if (updateProgress) updateProgress.classList.add('hidden');
-                        break;
-                }
-            } catch (error) {
-                console.error('Error handling auto-update event:', error);
-            }
-        });
-        
-        // Initialize with ready status
-        if (updateStatusText) updateStatusText.textContent = 'Ready to check for updates';
-        
-    } catch (error) {
-        console.error('Error initializing update UI:', error);
+  try {
+    // Use version injected by Vite at build time
+    const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+
+    // Set current version
+    const currentVersionEl = document.getElementById('current-version');
+    if (currentVersionEl) {
+      currentVersionEl.textContent = `v${version}`;
     }
+
+    // Wire up check for updates button
+    const checkUpdatesBtn = document.getElementById('check-updates-btn');
+    const updateStatusText = document.getElementById('update-status-text');
+    const installUpdateBtn = document.getElementById('install-update-btn');
+    const updateProgress = document.getElementById('update-progress');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+
+    // Enable the check button
+    if (checkUpdatesBtn) {
+      checkUpdatesBtn.disabled = false;
+      checkUpdatesBtn.onclick = async () => {
+        // Disable button and show checking status
+        if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+        if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
+
+        try {
+          const result = await window.electronAPI.checkForUpdates();
+          if (result.status === 'dev') {
+            // In development mode, auto-updater doesn't work
+            if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+          }
+          // In packaged mode, the auto-update events will update the UI
+          // The button will be re-enabled by the event handlers
+        } catch (error) {
+          console.error('Error checking for updates:', error);
+          if (updateStatusText) updateStatusText.textContent = 'Error checking for updates';
+          if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+        }
+      };
+    }
+
+    // Wire up install button
+    if (installUpdateBtn) {
+      installUpdateBtn.onclick = () => {
+        window.electronAPI.quitAndInstall();
+      };
+    }
+
+    // Listen for auto-update events from main process
+    window.electronAPI.onAutoUpdate((data) => {
+      try {
+        if (!data) return;
+
+        switch (data.status) {
+          case 'checking':
+            if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
+            break;
+
+          case 'available':
+            if (updateStatusText) {
+              const version = data.info?.version || 'unknown';
+              updateStatusText.textContent = `Update available: v${version}`;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (updateProgress) updateProgress.classList.remove('hidden');
+            break;
+
+          case 'none':
+            if (updateStatusText) updateStatusText.textContent = 'You are up to date!';
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
+            break;
+
+          case 'downloading':
+            if (updateStatusText) updateStatusText.textContent = 'Downloading update...';
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+            if (updateProgress) updateProgress.classList.remove('hidden');
+            if (data.progress) {
+              const percent = Math.round(data.progress.percent);
+              if (progressFill) progressFill.style.width = `${percent}%`;
+              if (progressText) progressText.textContent = `${percent}%`;
+            }
+            break;
+
+          case 'downloaded':
+            if (updateStatusText) {
+              const version = data.info?.version || 'unknown';
+              updateStatusText.textContent = `Update v${version} ready to install`;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) installUpdateBtn.classList.remove('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
+            break;
+
+          case 'error':
+            if (updateStatusText) {
+              updateStatusText.textContent = `Error: ${data.error || 'Unknown error'}`;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
+            break;
+        }
+      } catch (error) {
+        console.error('Error handling auto-update event:', error);
+      }
+    });
+
+    // Initialize with ready status
+    if (updateStatusText) updateStatusText.textContent = 'Ready to check for updates';
+
+  } catch (error) {
+    console.error('Error initializing update UI:', error);
+  }
 }
 
 
@@ -2669,7 +2670,7 @@ function removeEscapeKeyListener() {
 }
 
 
-module.exports = {
+export {
   renderActiveTab,
   updateEntityInUI,
   updateWeatherFromHA,

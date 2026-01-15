@@ -397,8 +397,8 @@ function createWindow() {
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: true,
-      contextIsolation: false, // Set to false for CommonJS compatibility; preload.js still provides IPC security boundary
+      nodeIntegration: false, // Security: disabled, renderer uses bundled code
+      contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true
     }
   });

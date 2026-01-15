@@ -1,10 +1,21 @@
-const state = require('./state.js');
-const websocket = require('./websocket.js');
+import state from './state.js';
+import websocket from './websocket.js';
+import { escapeHtml, getEntityDisplayName } from './utils.js';
+import { showToast } from './ui-utils.js';
+
+// Dynamic import for hls.js (large library, lazy loaded)
 let Hls = null;
-try {
-  Hls = require('hls.js');
-} catch (e) {
-  console.warn('hls.js not available:', e?.message || e);
+
+async function loadHls() {
+  if (Hls !== null) return Hls;
+  try {
+    const hlsModule = await import('hls.js');
+    Hls = hlsModule.default;
+    return Hls;
+  } catch (e) {
+    console.warn('hls.js not available:', e?.message || e);
+    return null;
+  }
 }
 
 async function getHlsStreamUrl(entityId) {
@@ -23,21 +34,22 @@ async function getHlsStreamUrl(entityId) {
 }
 
 async function startHlsStream(video, entityId, streamUrl, imgElement) {
-  if (!Hls || !Hls.isSupported() || !video || !entityId) return;
+  const HlsLib = await loadHls();
+  if (!HlsLib || !HlsLib.isSupported() || !video || !entityId) return;
 
   if (state.ACTIVE_HLS.has(entityId)) {
     state.ACTIVE_HLS.get(entityId).destroy();
   }
 
-  const hls = new Hls();
+  const hls = new HlsLib();
   state.ACTIVE_HLS.set(entityId, hls);
   hls.loadSource(streamUrl);
   hls.attachMedia(video);
-  hls.on(Hls.Events.ERROR, (_evt, data) => {
+  hls.on(HlsLib.Events.ERROR, (_evt, data) => {
     console.warn('HLS error', data?.details || data);
     if (data?.fatal) {
-      try { 
-        hls.destroy(); 
+      try {
+        hls.destroy();
       } catch (_error) {
         console.warn('Failed to destroy HLS instance:', _error);
       }
@@ -96,33 +108,31 @@ function stopAllCameraStreams() {
   }
 }
 
-function openCamera(cameraId) {
+async function openCamera(cameraId) {
   try {
     if (!state.CONFIG || !state.CONFIG.homeAssistant.url) {
       console.error('Home Assistant not configured');
       return;
     }
-    
+
     const camera = state.STATES[cameraId];
     if (!camera) {
       console.error('Camera not found:', cameraId);
       return;
     }
-    
-    const utils = require('./utils.js');
-    
+
     // Create a camera popup modal
     const modal = document.createElement('div');
     modal.className = 'modal camera-modal';
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
-          <h2>${utils.escapeHtml(utils.getEntityDisplayName(camera))}</h2>
+          <h2>${escapeHtml(getEntityDisplayName(camera))}</h2>
           <button class="close-btn">×</button>
         </div>
         <div class="modal-body">
           <div style="position: relative;">
-            <img alt="${utils.escapeHtml(utils.getEntityDisplayName(camera))}" class="camera-stream camera-img">
+            <img alt="${escapeHtml(getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
               Loading live stream...
@@ -139,9 +149,9 @@ function openCamera(cameraId) {
         </div>
       </div>
     `;
-    
+
     document.body.appendChild(modal);
-    
+
     const img = modal.querySelector('.camera-stream');
     const snapshotBtn = modal.querySelector('#snapshot-btn');
     const liveBtn = modal.querySelector('#live-btn');
@@ -181,11 +191,14 @@ function openCamera(cameraId) {
     const startLive = async () => {
       stopLive();
       showLoading(true);
-      
+
+      // Load HLS library dynamically
+      const HlsLib = await loadHls();
+
       // Try HLS first
       const hlsUrl = await getHlsStreamUrl(cameraId);
       let hlsStarted = false;
-      
+
       if (hlsUrl) {
         const modalBody = modal.querySelector('.modal-body');
         let video = modalBody.querySelector('video.camera-video');
@@ -200,12 +213,12 @@ function openCamera(cameraId) {
           video.style.height = 'auto';
           modalBody.insertBefore(video, modalBody.firstChild);
         }
-        
-        if (Hls && Hls.isSupported()) {
-          const hls = new Hls({ lowLatencyMode: true, backBufferLength: 90 });
+
+        if (HlsLib && HlsLib.isSupported()) {
+          const hls = new HlsLib({ lowLatencyMode: true, backBufferLength: 90 });
           hls.loadSource(hlsUrl);
           hls.attachMedia(video);
-          hls.on(Hls.Events.ERROR, (_evt, data) => {
+          hls.on(HlsLib.Events.ERROR, (_evt, data) => {
             console.warn('HLS error', data?.details || data);
             if (data?.fatal) {
               try {
@@ -235,7 +248,7 @@ function openCamera(cameraId) {
           showLoading(false);
         }
       }
-      
+
       if (!hlsStarted) {
         // Fallback to MJPEG stream using ha:// protocol
         // Hide video element if it was created during HLS attempt
@@ -252,7 +265,7 @@ function openCamera(cameraId) {
         img.onload = () => showLoading(false);
         img.onerror = () => showLoading(false);
       }
-      
+
       isLive = true;
       if (liveBtn) { liveBtn.textContent = 'Stop'; }
     };
@@ -289,20 +302,19 @@ function openCamera(cameraId) {
 
     // Load initial snapshot
     loadSnapshot();
-    
+
   } catch (error) {
     console.error('Error opening camera:', error);
-    const uiUtils = require('./ui-utils.js');
-    uiUtils.showToast('Failed to open camera viewer', 'error', 2000);
+    showToast('Failed to open camera viewer', 'error', 2000);
   }
 }
 
-module.exports = {
-    getHlsStreamUrl,
-    startHlsStream,
-    stopHlsStream,
-    startSnapshotLive,
-    clearSnapshotLive,
-    stopAllCameraStreams,
-    openCamera,
+export {
+  getHlsStreamUrl,
+  startHlsStream,
+  stopHlsStream,
+  startSnapshotLive,
+  clearSnapshotLive,
+  stopAllCameraStreams,
+  openCamera,
 };

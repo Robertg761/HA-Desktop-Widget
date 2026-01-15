@@ -1,6 +1,6 @@
-const state = require('./state.js');
-const { showToast } = require('./ui-utils.js');
-const { getEntityDisplayName, getEntityIcon } = require('./utils.js');
+import state from './state.js';
+import { showToast } from './ui-utils.js';
+import { getEntityDisplayName, getEntityIcon } from './utils.js';
 
 let entityAlerts = {};
 let alertStates = {};
@@ -10,7 +10,7 @@ function initializeEntityAlerts() {
     entityAlerts = state.CONFIG.entityAlerts;
   }
   if (!entityAlerts.enabled) return;
-  
+
   Object.keys(entityAlerts.alerts).forEach(entityId => {
     if (state.STATES[entityId]) {
       alertStates[entityId] = state.STATES[entityId].state;
@@ -21,15 +21,15 @@ function initializeEntityAlerts() {
 function checkEntityAlerts(entityId, newState) {
   try {
     if (!entityAlerts.enabled || !entityAlerts.alerts[entityId]) return;
-    
+
     const alertConfig = entityAlerts.alerts[entityId];
     const previousState = alertStates[entityId];
-    
+
     alertStates[entityId] = newState;
-    
+
     let shouldAlert = false;
     let alertMessage = '';
-    
+
     if (alertConfig.onStateChange && previousState !== newState) {
       shouldAlert = true;
       alertMessage = `${getEntityDisplayName(state.STATES[entityId])} changed from ${previousState} to ${newState}`;
@@ -37,7 +37,7 @@ function checkEntityAlerts(entityId, newState) {
       shouldAlert = true;
       alertMessage = `${getEntityDisplayName(state.STATES[entityId])} is now ${newState}`;
     }
-    
+
     if (shouldAlert) {
       showEntityAlert(alertMessage, entityId);
     }
@@ -58,7 +58,7 @@ function showEntityAlert(message, entityId) {
         requireInteraction: false
       });
     }
-    
+
     showToast(message, 'info', 4000);
   } catch (error) {
     console.error('Error showing entity alert:', error);
@@ -96,9 +96,9 @@ function requestNotificationPermission() {
   }
 }
 
-module.exports = {
-    initializeEntityAlerts,
-    checkEntityAlerts,
-    toggleAlerts,
-    requestNotificationPermission,
+export {
+  initializeEntityAlerts,
+  checkEntityAlerts,
+  toggleAlerts,
+  requestNotificationPermission,
 };

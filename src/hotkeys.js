@@ -1,6 +1,6 @@
-const state = require('./state.js');
-const { showToast } = require('./ui-utils.js');
-const { getEntityDisplayName, getSearchScore } = require('./utils.js');
+import state from './state.js';
+import { showToast } from './ui-utils.js';
+import { getEntityDisplayName, getSearchScore } from './utils.js';
 
 let globalHotkeys = {};
 
@@ -422,7 +422,7 @@ function setupHotkeyEventListeners() {
     // Keeping it for backward compatibility
 }
 
-module.exports = {
+export {
     initializeHotkeys,
     renderHotkeysTab,
     toggleHotkeys,

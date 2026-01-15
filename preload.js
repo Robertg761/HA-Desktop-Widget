@@ -1,8 +1,8 @@
-const { ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
-// With contextIsolation: false, we're in the same context as the renderer
-// So we can directly set window.electronAPI without using contextBridge
-window.electronAPI = {
+// With contextIsolation: true, we must use contextBridge to expose API
+// This creates a secure bridge between the main and renderer processes
+contextBridge.exposeInMainWorld('electronAPI', {
   // Config operations
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
@@ -65,4 +65,4 @@ window.electronAPI = {
     ipcRenderer.on('open-settings', handler);
     return () => ipcRenderer.removeListener('open-settings', handler);
   }
-};
+});
