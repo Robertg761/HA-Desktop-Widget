@@ -155,6 +155,13 @@ export function initGraph(container, uiCallback) {
         .attr('width', '100%')
         .attr('height', '100%')
         .attr('fill', 'transparent')
+        .on('click', (event) => {
+            // Single click on background deselects when focused
+            if (focusedNode) {
+                event.stopPropagation();
+                unfocusAll();
+            }
+        })
         .on('dblclick', () => {
             handleBackgroundDoubleClick();
             unfocusAll();
@@ -184,6 +191,18 @@ export function initGraph(container, uiCallback) {
         });
 
     svg.call(zoomBehavior);
+
+    // Filter to disable pan during focus (still allow wheel zoom)
+    zoomBehavior.filter((event) => {
+        // Always allow wheel events (zoom)
+        if (event.type === 'wheel') return true;
+        // When focused, disable drag-to-pan (so clicking background deselects)
+        if (focusedNode && (event.type === 'mousedown' || event.type === 'touchstart')) {
+            return false;
+        }
+        // Allow all other zoom behavior
+        return true;
+    });
 
     // Initialize interaction module
     initInteraction(handleInteractionStateChange);
@@ -582,17 +601,49 @@ function tick(nodes, edges) {
 }
 
 /**
- * Handles node click.
+ * Handles node click - expands to show all connections from full graph.
  * @param {Object} node
  */
 function onNodeClick(node) {
+    // Get ALL connected nodes from the full graph (ignores current filter)
+    const connectedNodes = relationshipStore.getConnectedNodes(node.id, 1);
+    const connectedEdges = relationshipStore.getConnectedEdges(node.id);
+
+    // Track that we clicked this node
     const result = handleNodeClick(node);
     focusedNode = result.focusedNode;
 
-    // Apply focus visual state
-    applyFocusState(node, result.connectedNodes);
+    // Add any connected nodes that aren't currently rendered
+    const newNodesToAdd = [];
+    const newEdgesToAdd = [];
 
-    // Update layout - don't pin, just pan to node
+    for (const connectedNode of connectedNodes) {
+        if (!visibleNodeIds.has(connectedNode.id)) {
+            // This connected node is not in the current view - add it!
+            newNodesToAdd.push({ ...connectedNode });
+            visibleNodeIds.add(connectedNode.id);
+        }
+    }
+
+    // Add edges for new nodes
+    for (const edge of connectedEdges) {
+        const sourceId = edge.source.id || edge.source;
+        const targetId = edge.target.id || edge.target;
+        // Only add edge if both nodes are now visible
+        if (visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId)) {
+            newEdgesToAdd.push({ ...edge });
+        }
+    }
+
+    // If we have new nodes, add them to the simulation dynamically
+    if (newNodesToAdd.length > 0) {
+        addNodesToGraph(node, newNodesToAdd, newEdgesToAdd);
+    }
+
+    // Apply focus visual state (now includes newly added nodes)
+    applyFocusState(node, connectedNodes);
+
+    // Pan to the focused node
     panToPoint(node.x, node.y, true);
 
     // Update UI
@@ -602,6 +653,57 @@ function onNodeClick(node) {
             focusedNode: node,
         });
     }
+}
+
+/**
+ * Dynamically adds new nodes and edges to the graph.
+ * @param {Object} focusNode - The node that was clicked
+ * @param {Array} newNodes - New nodes to add
+ * @param {Array} newEdges - New edges to add
+ */
+function addNodesToGraph(focusNode, newNodes, newEdges) {
+    // Position new nodes around the focus node
+    const angleStep = (2 * Math.PI) / newNodes.length;
+    const orbitDistance = 150;
+
+    for (let i = 0; i < newNodes.length; i++) {
+        const angle = i * angleStep;
+        newNodes[i].x = focusNode.x + Math.cos(angle) * orbitDistance;
+        newNodes[i].y = focusNode.y + Math.sin(angle) * orbitDistance;
+    }
+
+    // Add to working nodes reference
+    workingNodesRef.push(...newNodes);
+
+    // Get current simulation nodes and edges
+    const currentNodes = simulation.nodes();
+    const allNodes = [...currentNodes, ...newNodes];
+
+    // Build new edges array (need to reference node objects, not just IDs)
+    const nodeMap = new Map(allNodes.map(n => [n.id, n]));
+    const resolvedNewEdges = newEdges.map(e => ({
+        ...e,
+        source: nodeMap.get(e.source.id || e.source) || e.source,
+        target: nodeMap.get(e.target.id || e.target) || e.target,
+    })).filter(e => e.source && e.target && typeof e.source === 'object');
+
+    // Get current link force edges
+    const currentEdges = simulation.force('link').links();
+    const allEdges = [...currentEdges, ...resolvedNewEdges];
+
+    // Update simulation
+    simulation.nodes(allNodes);
+    simulation.force('link').links(allEdges);
+    simulation.alpha(0.5).restart();
+
+    // Render the new nodes
+    renderEdges(allEdges);
+    renderNodes(allNodes);
+    renderLabels(allNodes);
+
+    // Set up drag for new nodes
+    const drag = createDragBehavior(simulation);
+    nodesGroup.selectAll('.node-group').call(drag);
 }
 
 /**
