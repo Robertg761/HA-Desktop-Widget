@@ -223,6 +223,21 @@ const Icons = {
     'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
     { ...options, ariaLabel: options?.ariaLabel || 'Check' }
   ),
+
+  // Graph/Network
+  graph: (options) => createIcon(
+    [
+      // Nodes (circles represented as paths)
+      'M12 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+      'M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+      'M18 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+      'M9 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+      'M15 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+      // Edges (lines between nodes)
+      'M12 8v1.5M12 9.5L7.5 11M12 9.5L16.5 11M7.5 13L9 17M16.5 13L15 17M9.5 19h5',
+    ],
+    { ...options, ariaLabel: options?.ariaLabel || 'Connection Map' }
+  ),
 };
 
 /**

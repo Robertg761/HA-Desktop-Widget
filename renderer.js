@@ -9,6 +9,7 @@ import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
+import { openConnectionMap, closeConnectionMap, isConnectionMapOpen } from './src/connection-map/index.js';
 import Sortable from 'sortablejs';
 
 // --- Renderer Log Configuration ---
@@ -239,6 +240,10 @@ function replaceEmojiIcons() {
     const closeBtn = document.getElementById('close-btn');
     if (closeBtn) setIconContent(closeBtn, 'close', { size: 18 });
 
+    // Connection Map button
+    const connectionMapBtn = document.getElementById('connection-map-btn');
+    if (connectionMapBtn) setIconContent(connectionMapBtn, 'graph', { size: 18 });
+
     // Quick Access Controls
     const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
     if (reorganizeBtn) setIconContent(reorganizeBtn, 'dragHandle', { size: 18 });
@@ -453,6 +458,26 @@ function wireUI() {
     if (minimizeBtn) {
       minimizeBtn.onclick = () => {
         window.electronAPI.minimizeWindow();
+      };
+    }
+
+    // Wire up Connection Map button
+    const connectionMapBtn = document.getElementById('connection-map-btn');
+    if (connectionMapBtn) {
+      connectionMapBtn.onclick = () => {
+        if (isConnectionMapOpen()) {
+          closeConnectionMap();
+        } else {
+          const panel = document.getElementById('connection-map-panel');
+          if (panel) {
+            openConnectionMap({
+              container: panel,
+              onClose: () => {
+                log.debug('Connection map closed');
+              },
+            });
+          }
+        }
       };
     }
 
