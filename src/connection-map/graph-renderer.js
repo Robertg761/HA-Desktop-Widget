@@ -23,6 +23,8 @@ import {
     getState as getInteractionState,
     getBreadcrumbs,
 } from './graph-interaction.js';
+import { initContextMenu, showContextMenu, hideContextMenu } from './node-context-menu.js';
+import { initDetailsModal, showDetailsModal } from './node-details-modal.js';
 
 /**
  * Node type to color mapping.
@@ -222,6 +224,13 @@ export function initGraph(container, uiCallback) {
 
     // Initialize interaction module
     initInteraction(handleInteractionStateChange);
+
+    // Initialize context menu and details modal
+    initContextMenu({
+        onViewDetails: (node) => showDetailsModal(node),
+        onFocusNode: (node) => onNodeClick(node),
+    });
+    initDetailsModal();
 
     // Add defs for markers (arrowheads)
     const defs = svg.append('defs');
@@ -523,6 +532,7 @@ function renderNodes(nodes) {
         .attr('cursor', 'pointer')
         .on('click', (event, d) => {
             event.stopPropagation();
+            hideContextMenu();
             onNodeClick(d);
         })
         .on('mouseenter', (event, d) => {
@@ -530,6 +540,11 @@ function renderNodes(nodes) {
         })
         .on('mouseleave', () => {
             onNodeHover(null);
+        })
+        .on('contextmenu', (event, d) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showContextMenu(d, event.clientX, event.clientY);
         });
 
     // Add node shape
