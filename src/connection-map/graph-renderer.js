@@ -1,6 +1,7 @@
 /**
  * Graph Renderer Module
  * D3.js-based SVG renderer for the force-directed relationship graph.
+ * Implements an infinite canvas with zoom/pan controls.
  */
 
 import * as d3 from 'd3';
@@ -9,11 +10,8 @@ import relationshipStore from './relationship-store.js';
 import {
     createForceSimulation,
     getNodeRadius,
-    calculateInitialPositions,
     focusOnNode,
     unfocusNode,
-    constrainToBounds,
-    updateSimulationCenter,
 } from './graph-layout.js';
 import {
     initInteraction,
@@ -21,9 +19,7 @@ import {
     handleNodeHover,
     handleBackClick,
     handleBackgroundDoubleClick,
-    setupZoom,
     createDragBehavior,
-    panTo,
     getState as getInteractionState,
     getBreadcrumbs,
 } from './graph-interaction.js';
@@ -54,7 +50,7 @@ const EDGE_STYLES = {
 };
 
 /**
- * Domain icon map (simplified SVG paths or unicode)
+ * Domain icon map (emoji icons)
  */
 const DOMAIN_ICONS = {
     light: '💡',
@@ -100,6 +96,9 @@ let nodesGroup = null;
 /** @type {d3.Selection|null} Labels group */
 let labelsGroup = null;
 
+/** @type {d3.ZoomBehavior|null} Zoom behavior */
+let zoomBehavior = null;
+
 /** @type {number} Container width */
 let width = 800;
 
@@ -115,6 +114,15 @@ let visibleNodeIds = new Set();
 /** @type {Function|null} Callback for UI updates */
 let onUIUpdate = null;
 
+/** @type {Array} Working copy of nodes for reference */
+let workingNodesRef = [];
+
+/** @type {number} Current zoom level */
+let currentZoomLevel = 1;
+
+/** @type {HTMLElement|null} The container element */
+let containerRef = null;
+
 /**
  * Initializes the graph renderer.
  * @param {HTMLElement} container - Container element for the graph
@@ -123,6 +131,7 @@ let onUIUpdate = null;
 export function initGraph(container, uiCallback) {
     log.debug('[ConnectionMap] Initializing graph renderer');
     onUIUpdate = uiCallback;
+    containerRef = container;
 
     // Get container dimensions
     const rect = container.getBoundingClientRect();
@@ -132,17 +141,17 @@ export function initGraph(container, uiCallback) {
     // Clear any existing content
     d3.select(container).selectAll('*').remove();
 
-    // Create SVG
+    // Create SVG - use actual pixel dimensions, no viewBox constraint
     svg = d3.select(container)
         .append('svg')
         .attr('width', '100%')
         .attr('height', '100%')
-        .attr('viewBox', `0 0 ${width} ${height}`)
-        .attr('preserveAspectRatio', 'xMidYMid meet')
-        .attr('class', 'connection-map-svg');
+        .attr('class', 'connection-map-svg')
+        .style('cursor', 'grab');
 
-    // Add background for click handling
+    // Add background rect for pan/click handling
     svg.append('rect')
+        .attr('class', 'graph-background')
         .attr('width', '100%')
         .attr('height', '100%')
         .attr('fill', 'transparent')
@@ -151,7 +160,7 @@ export function initGraph(container, uiCallback) {
             unfocusAll();
         });
 
-    // Create main group for zoom/pan
+    // Create main group for zoom/pan transform
     graphGroup = svg.append('g').attr('class', 'graph-container');
 
     // Create layer groups
@@ -159,8 +168,22 @@ export function initGraph(container, uiCallback) {
     nodesGroup = graphGroup.append('g').attr('class', 'nodes-layer');
     labelsGroup = graphGroup.append('g').attr('class', 'labels-layer');
 
-    // Set up zoom
-    setupZoom(svg, graphGroup, handleZoomChange);
+    // Set up zoom behavior with infinite canvas
+    zoomBehavior = d3.zoom()
+        .scaleExtent([0.1, 5]) // Allow zooming out to 10% and up to 500%
+        .on('zoom', (event) => {
+            graphGroup.attr('transform', event.transform);
+            currentZoomLevel = event.transform.k;
+            updateZoomLevelDisplay();
+        })
+        .on('start', () => {
+            svg.style('cursor', 'grabbing');
+        })
+        .on('end', () => {
+            svg.style('cursor', 'grab');
+        });
+
+    svg.call(zoomBehavior);
 
     // Initialize interaction module
     initInteraction(handleInteractionStateChange);
@@ -169,15 +192,14 @@ export function initGraph(container, uiCallback) {
     const defs = svg.append('defs');
     addArrowMarkers(defs);
 
+    // Add zoom controls overlay
+    addZoomControls(container);
+
     // Handle window resize
     const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
             width = entry.contentRect.width;
             height = entry.contentRect.height;
-            svg.attr('viewBox', `0 0 ${width} ${height}`);
-            if (simulation) {
-                updateSimulationCenter(simulation, width, height);
-            }
         }
     });
     resizeObserver.observe(container);
@@ -187,7 +209,6 @@ export function initGraph(container, uiCallback) {
             const rect = container.getBoundingClientRect();
             width = rect.width;
             height = rect.height;
-            svg.attr('viewBox', `0 0 ${width} ${height}`);
         },
         destroy: () => {
             resizeObserver.disconnect();
@@ -195,6 +216,126 @@ export function initGraph(container, uiCallback) {
             d3.select(container).selectAll('*').remove();
         },
     };
+}
+
+/**
+ * Adds zoom control buttons to the container.
+ * @param {HTMLElement} container
+ */
+function addZoomControls(container) {
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'connection-map-zoom-controls';
+    controlsDiv.innerHTML = `
+    <button class="zoom-btn zoom-in" title="Zoom In">+</button>
+    <span class="zoom-level">100%</span>
+    <button class="zoom-btn zoom-out" title="Zoom Out">−</button>
+    <button class="zoom-btn zoom-fit" title="Fit to View">⊡</button>
+    <button class="zoom-btn zoom-reset" title="Reset View">↺</button>
+  `;
+
+    container.appendChild(controlsDiv);
+
+    // Wire up zoom controls
+    controlsDiv.querySelector('.zoom-in').addEventListener('click', () => zoomIn());
+    controlsDiv.querySelector('.zoom-out').addEventListener('click', () => zoomOut());
+    controlsDiv.querySelector('.zoom-fit').addEventListener('click', () => fitToView());
+    controlsDiv.querySelector('.zoom-reset').addEventListener('click', () => resetView());
+}
+
+/**
+ * Updates the zoom level display.
+ */
+function updateZoomLevelDisplay() {
+    const zoomDisplay = containerRef?.querySelector('.zoom-level');
+    if (zoomDisplay) {
+        zoomDisplay.textContent = `${Math.round(currentZoomLevel * 100)}%`;
+    }
+}
+
+/**
+ * Zooms in by a step.
+ */
+export function zoomIn() {
+    if (!svg || !zoomBehavior) return;
+    svg.transition().duration(300).call(zoomBehavior.scaleBy, 1.3);
+}
+
+/**
+ * Zooms out by a step.
+ */
+export function zoomOut() {
+    if (!svg || !zoomBehavior) return;
+    svg.transition().duration(300).call(zoomBehavior.scaleBy, 0.7);
+}
+
+/**
+ * Fits the view to show all nodes.
+ */
+export function fitToView() {
+    if (!svg || !zoomBehavior || workingNodesRef.length === 0) return;
+
+    // Calculate bounding box of all nodes
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    for (const node of workingNodesRef) {
+        const radius = getNodeRadius(node);
+        minX = Math.min(minX, node.x - radius);
+        minY = Math.min(minY, node.y - radius);
+        maxX = Math.max(maxX, node.x + radius);
+        maxY = Math.max(maxY, node.y + radius);
+    }
+
+    const graphWidth = maxX - minX;
+    const graphHeight = maxY - minY;
+    const graphCenterX = (minX + maxX) / 2;
+    const graphCenterY = (minY + maxY) / 2;
+
+    // Calculate scale to fit with padding
+    const padding = 80;
+    const scaleX = (width - padding * 2) / graphWidth;
+    const scaleY = (height - padding * 2) / graphHeight;
+    const scale = Math.min(scaleX, scaleY, 2); // Cap at 200% zoom
+
+    // Calculate translation to center
+    const translateX = width / 2 - graphCenterX * scale;
+    const translateY = height / 2 - graphCenterY * scale;
+
+    // Apply transform
+    svg.transition()
+        .duration(500)
+        .call(
+            zoomBehavior.transform,
+            d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+        );
+}
+
+/**
+ * Resets the view to center with 100% zoom.
+ */
+export function resetView() {
+    if (!svg || !zoomBehavior) return;
+
+    svg.transition()
+        .duration(300)
+        .call(zoomBehavior.transform, d3.zoomIdentity.translate(width / 2, height / 2));
+}
+
+/**
+ * Pans to center on a specific point.
+ * @param {number} x - Target X coordinate (in graph space)
+ * @param {number} y - Target Y coordinate (in graph space)
+ * @param {boolean} [animate=true]
+ */
+export function panToPoint(x, y, animate = true) {
+    if (!svg || !zoomBehavior) return;
+
+    const transform = d3.zoomTransform(svg.node());
+    const newTransform = d3.zoomIdentity
+        .translate(width / 2 - x * transform.k, height / 2 - y * transform.k)
+        .scale(transform.k);
+
+    const transition = animate ? svg.transition().duration(500) : svg;
+    transition.call(zoomBehavior.transform, newTransform);
 }
 
 /**
@@ -238,17 +379,29 @@ export function renderGraph(nodes, edges) {
     const workingNodes = graphData.nodes.map((n) => ({ ...n }));
     const workingEdges = graphData.edges.map((e) => ({ ...e }));
 
+    // Store reference for fit-to-view calculations
+    workingNodesRef = workingNodes;
+
     // Track visible nodes
     visibleNodeIds = new Set(workingNodes.map((n) => n.id));
 
-    // Calculate initial positions
-    calculateInitialPositions(workingNodes, width, height, 'type');
+    // Initialize nodes at random positions around center (0,0)
+    // The infinite canvas uses (0,0) as the graph center
+    const spreadRadius = Math.min(width, height) * 0.5;
+    for (const node of workingNodes) {
+        if (node.x === undefined) {
+            const angle = Math.random() * 2 * Math.PI;
+            const distance = Math.random() * spreadRadius;
+            node.x = Math.cos(angle) * distance;
+            node.y = Math.sin(angle) * distance;
+        }
+    }
 
-    // Create/update force simulation
+    // Create/update force simulation centered at origin (0,0)
     if (simulation) {
         simulation.stop();
     }
-    simulation = createForceSimulation(workingNodes, workingEdges, width, height);
+    simulation = createForceSimulation(workingNodes, workingEdges, 0, 0);
     simulation.on('tick', () => tick(workingNodes, workingEdges));
 
     // Render edges
@@ -263,6 +416,11 @@ export function renderGraph(nodes, edges) {
     // Set up drag behavior
     const drag = createDragBehavior(simulation);
     nodesGroup.selectAll('.node-group').call(drag);
+
+    // Auto-fit to view after simulation settles a bit
+    setTimeout(() => {
+        fitToView();
+    }, 500);
 
     // Update UI callback
     if (onUIUpdate) {
@@ -399,13 +557,12 @@ function renderLabels(nodes) {
 }
 
 /**
- * Simulation tick - update positions.
+ * Simulation tick - update positions (no bounds constraint - infinite canvas).
  * @param {Array} nodes
  * @param {Array} edges
  */
 function tick(nodes, edges) {
-    // Constrain to bounds
-    constrainToBounds(nodes, width, height, 60);
+    // No bounds constraint - nodes exist in infinite space
 
     // Update edges
     edgesGroup.selectAll('.edge')
@@ -435,17 +592,8 @@ function onNodeClick(node) {
     // Apply focus visual state
     applyFocusState(node, result.connectedNodes);
 
-    // Update layout
-    if (simulation) {
-        const connectedNodeObjs = result.connectedNodes.map((n) =>
-            simulation.nodes().find((sn) => sn.id === n.id)
-        ).filter(Boolean);
-
-        focusOnNode(simulation, node, connectedNodeObjs, width, height);
-    }
-
-    // Pan to focused node
-    panTo(svg, node.x, node.y, width, height, true);
+    // Update layout - don't pin, just pan to node
+    panToPoint(node.x, node.y, true);
 
     // Update UI
     if (onUIUpdate) {
@@ -551,6 +699,9 @@ function unfocusAll() {
         .duration(300)
         .attr('opacity', 0.6);
 
+    // Fit to view after unfocus
+    setTimeout(() => fitToView(), 100);
+
     // Update UI
     if (onUIUpdate) {
         onUIUpdate({
@@ -569,7 +720,7 @@ export function goBack() {
     if (result) {
         focusedNode = result.focusedNode;
         applyFocusState(result.focusedNode, result.connectedNodes);
-        panTo(svg, result.focusedNode.x, result.focusedNode.y, width, height, true);
+        panToPoint(result.focusedNode.x, result.focusedNode.y, true);
     } else {
         unfocusAll();
     }
@@ -643,14 +794,6 @@ export function clearSearch() {
         .transition()
         .duration(200)
         .attr('opacity', 1);
-}
-
-/**
- * Handles zoom change callback.
- * @param {d3.ZoomTransform} transform
- */
-function handleZoomChange(transform) {
-    // Could update UI with zoom level if needed
 }
 
 /**

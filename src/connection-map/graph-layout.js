@@ -43,12 +43,12 @@ const FORCE_PRESETS = {
  * Creates a D3 force simulation for the graph.
  * @param {Array} nodes - Graph nodes
  * @param {Array} edges - Graph edges
- * @param {number} width - Container width
- * @param {number} height - Container height
+ * @param {number} centerX - X center for forces (use 0 for infinite canvas)
+ * @param {number} centerY - Y center for forces (use 0 for infinite canvas)
  * @param {string} [preset='default'] - Force preset to use
  * @returns {d3.Simulation}
  */
-export function createForceSimulation(nodes, edges, width, height, preset = 'default') {
+export function createForceSimulation(nodes, edges, centerX = 0, centerY = 0, preset = 'default') {
     const config = FORCE_PRESETS[preset] || FORCE_PRESETS.default;
 
     log.debug(`[ConnectionMap] Creating force simulation: ${nodes.length} nodes, ${edges.length} edges`);
@@ -61,17 +61,16 @@ export function createForceSimulation(nodes, edges, width, height, preset = 'def
         )
         .force('charge', d3.forceManyBody()
             .strength(config.chargeStrength)
-            .distanceMax(500)
+            .distanceMax(800)
         )
-        .force('center', d3.forceCenter(width / 2, height / 2)
-            .strength(config.centerStrength)
+        .force('center', d3.forceCenter(centerX, centerY)
+            .strength(0.02) // Weak center force - lets nodes spread naturally
         )
         .force('collision', d3.forceCollide()
-            .radius((d) => getNodeRadius(d) + 10)
-            .strength(0.7)
+            .radius((d) => getNodeRadius(d) + 15)
+            .strength(0.8)
         )
-        .force('x', d3.forceX(width / 2).strength(0.03))
-        .force('y', d3.forceY(height / 2).strength(0.03))
+        // Remove x/y positioning forces for infinite canvas
         .alphaTarget(ALPHA_TARGET)
         .alphaDecay(ALPHA_DECAY)
         .velocityDecay(VELOCITY_DECAY);
