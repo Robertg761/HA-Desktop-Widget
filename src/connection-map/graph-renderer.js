@@ -123,6 +123,22 @@ let currentZoomLevel = 1;
 /** @type {HTMLElement|null} The container element */
 let containerRef = null;
 
+// ===== NAVIGATION STACK STATE =====
+
+/**
+ * @typedef {Object} NavigationLevel
+ * @property {string} focusedNodeId - ID of the focused node at this level
+ * @property {Set<string>} addedNodeIds - Node IDs added at this level
+ * @property {Set<string>} addedEdgeKeys - Edge keys added at this level
+ * @property {Object} transform - Zoom transform at this level
+ */
+
+/** @type {NavigationLevel[]} Navigation history stack */
+let navigationStack = [];
+
+/** @type {{nodeIds: Set<string>, edgeKeys: Set<string>}} Base state from initial filter */
+let baseState = { nodeIds: new Set(), edgeKeys: new Set() };
+
 /**
  * Initializes the graph renderer.
  * @param {HTMLElement} container - Container element for the graph
@@ -404,6 +420,14 @@ export function renderGraph(nodes, edges) {
     // Track visible nodes
     visibleNodeIds = new Set(workingNodes.map((n) => n.id));
 
+    // ===== SAVE BASE STATE (new filter = fresh start) =====
+    baseState = {
+        nodeIds: new Set(workingNodes.map((n) => n.id)),
+        edgeKeys: new Set(workingEdges.map((e) => getEdgeKey(e))),
+    };
+    navigationStack = [];  // Clear navigation history
+    focusedNode = null;
+
     // Initialize nodes at random positions around center (0,0)
     // The infinite canvas uses (0,0) as the graph center
     const spreadRadius = Math.min(width, height) * 0.5;
@@ -448,6 +472,17 @@ export function renderGraph(nodes, edges) {
             stats: relationshipStore.getStats(),
         });
     }
+}
+
+/**
+ * Gets a unique key for an edge.
+ * @param {Object} edge
+ * @returns {string}
+ */
+function getEdgeKey(edge) {
+    const sourceId = edge.source.id || edge.source;
+    const targetId = edge.target.id || edge.target;
+    return `${sourceId}|${targetId}|${edge.type}`;
 }
 
 /**
@@ -605,6 +640,9 @@ function tick(nodes, edges) {
  * @param {Object} node
  */
 function onNodeClick(node) {
+    // Get current zoom transform before changes
+    const currentTransform = svg ? d3.zoomTransform(svg.node()) : null;
+
     // Get ALL connected nodes from the full graph (ignores current filter)
     const connectedNodes = relationshipStore.getConnectedNodes(node.id, 1);
     const connectedEdges = relationshipStore.getConnectedEdges(node.id);
@@ -613,15 +651,18 @@ function onNodeClick(node) {
     const result = handleNodeClick(node);
     focusedNode = result.focusedNode;
 
-    // Add any connected nodes that aren't currently rendered
+    // Find nodes and edges that are NEW (not currently visible)
     const newNodesToAdd = [];
     const newEdgesToAdd = [];
+    const addedNodeIds = new Set();
+    const addedEdgeKeys = new Set();
 
     for (const connectedNode of connectedNodes) {
         if (!visibleNodeIds.has(connectedNode.id)) {
             // This connected node is not in the current view - add it!
             newNodesToAdd.push({ ...connectedNode });
             visibleNodeIds.add(connectedNode.id);
+            addedNodeIds.add(connectedNode.id);
         }
     }
 
@@ -629,14 +670,31 @@ function onNodeClick(node) {
     for (const edge of connectedEdges) {
         const sourceId = edge.source.id || edge.source;
         const targetId = edge.target.id || edge.target;
-        // Only add edge if both nodes are now visible
+        const edgeKey = getEdgeKey(edge);
+        // Only add edge if both nodes are now visible and edge is new
         if (visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId)) {
-            newEdgesToAdd.push({ ...edge });
+            // Check if this edge already exists
+            const existingEdges = simulation.force('link').links();
+            const edgeExists = existingEdges.some(e => getEdgeKey(e) === edgeKey);
+            if (!edgeExists) {
+                newEdgesToAdd.push({ ...edge });
+                addedEdgeKeys.add(edgeKey);
+            }
         }
     }
 
-    // If we have new nodes, add them to the simulation dynamically
+    // ===== PUSH TO NAVIGATION STACK =====
+    // Only push if we're adding new nodes (actual expansion)
     if (newNodesToAdd.length > 0) {
+        navigationStack.push({
+            focusedNodeId: node.id,
+            addedNodeIds: addedNodeIds,
+            addedEdgeKeys: addedEdgeKeys,
+            transform: currentTransform ? { k: currentTransform.k, x: currentTransform.x, y: currentTransform.y } : null,
+        });
+        log.debug(`[ConnectionMap] Pushed to navigation stack. Depth: ${navigationStack.length}, Added: ${addedNodeIds.size} nodes`);
+
+        // Add nodes to graph
         addNodesToGraph(node, newNodesToAdd, newEdgesToAdd);
     }
 
@@ -646,13 +704,29 @@ function onNodeClick(node) {
     // Pan to the focused node
     panToPoint(node.x, node.y, true);
 
-    // Update UI
+    // Update UI with breadcrumbs
     if (onUIUpdate) {
         onUIUpdate({
-            breadcrumbs: getBreadcrumbs(),
+            breadcrumbs: buildBreadcrumbs(),
             focusedNode: node,
+            canGoBack: navigationStack.length > 0,
         });
     }
+}
+
+/**
+ * Builds breadcrumb trail from navigation stack.
+ * @returns {Array<{id: string, label: string}>}
+ */
+function buildBreadcrumbs() {
+    const breadcrumbs = [{ id: 'base', label: 'Overview' }];
+    for (const level of navigationStack) {
+        const node = relationshipStore.getNode(level.focusedNodeId);
+        if (node) {
+            breadcrumbs.push({ id: level.focusedNodeId, label: node.label });
+        }
+    }
+    return breadcrumbs;
 }
 
 /**
@@ -773,13 +847,101 @@ function applyFocusState(focusNode, connectedNodes) {
 }
 
 /**
- * Unfocuses all nodes and returns to overview.
+ * Pops one level from navigation stack, removing added nodes.
  */
-function unfocusAll() {
+function popNavigationLevel() {
+    if (navigationStack.length === 0) {
+        // Already at base state - just clear focus
+        clearFocusVisuals();
+        focusedNode = null;
+        setTimeout(() => fitToView(), 100);
+        return;
+    }
+
+    // Pop the top level
+    const poppedLevel = navigationStack.pop();
+    log.debug(`[ConnectionMap] Popped navigation level. Remaining depth: ${navigationStack.length}`);
+
+    // Remove the nodes and edges that were added at this level
+    removeNodesFromGraph(poppedLevel.addedNodeIds, poppedLevel.addedEdgeKeys);
+
+    // Determine new focus
+    if (navigationStack.length > 0) {
+        // Focus on the previous level's node
+        const previousLevel = navigationStack[navigationStack.length - 1];
+        const prevNode = simulation.nodes().find(n => n.id === previousLevel.focusedNodeId);
+        if (prevNode) {
+            focusedNode = prevNode;
+            const connectedNodes = relationshipStore.getConnectedNodes(prevNode.id, 1);
+            applyFocusState(prevNode, connectedNodes);
+            panToPoint(prevNode.x, prevNode.y, true);
+        }
+    } else {
+        // Back to base state - no focus
+        clearFocusVisuals();
+        focusedNode = null;
+        setTimeout(() => fitToView(), 100);
+    }
+
+    // Update UI
+    if (onUIUpdate) {
+        onUIUpdate({
+            breadcrumbs: buildBreadcrumbs(),
+            focusedNode: focusedNode,
+            canGoBack: navigationStack.length > 0,
+        });
+    }
+}
+
+/**
+ * Removes nodes and edges from the graph.
+ * @param {Set<string>} nodeIdsToRemove
+ * @param {Set<string>} edgeKeysToRemove
+ */
+function removeNodesFromGraph(nodeIdsToRemove, edgeKeysToRemove) {
+    if (nodeIdsToRemove.size === 0) return;
+
+    // Remove from visible tracking
+    for (const nodeId of nodeIdsToRemove) {
+        visibleNodeIds.delete(nodeId);
+    }
+
+    // Filter nodes
+    const currentNodes = simulation.nodes();
+    const remainingNodes = currentNodes.filter(n => !nodeIdsToRemove.has(n.id));
+
+    // Filter edges
+    const currentEdges = simulation.force('link').links();
+    const remainingEdges = currentEdges.filter(e => {
+        const edgeKey = getEdgeKey(e);
+        return !edgeKeysToRemove.has(edgeKey);
+    });
+
+    // Update working refs
+    workingNodesRef = remainingNodes;
+
+    // Update simulation
+    simulation.nodes(remainingNodes);
+    simulation.force('link').links(remainingEdges);
+    simulation.alpha(0.3).restart();
+
+    // Re-render with filtered data
+    renderEdges(remainingEdges);
+    renderNodes(remainingNodes);
+    renderLabels(remainingNodes);
+
+    // Re-apply drag behavior
+    const drag = createDragBehavior(simulation);
+    nodesGroup.selectAll('.node-group').call(drag);
+}
+
+/**
+ * Clears focus visual state without removing nodes.
+ */
+function clearFocusVisuals() {
     if (focusedNode && simulation) {
         unfocusNode(simulation, focusedNode);
     }
-    focusedNode = null;
 
     // Reset visuals
     nodesGroup.selectAll('.node-group')
@@ -800,6 +962,21 @@ function unfocusAll() {
         .transition()
         .duration(300)
         .attr('opacity', 0.6);
+}
+
+/**
+ * Unfocuses all nodes and returns to base state.
+ * Removes all added nodes and clears navigation stack.
+ */
+function unfocusAll() {
+    // Pop all levels one by one
+    while (navigationStack.length > 0) {
+        const poppedLevel = navigationStack.pop();
+        removeNodesFromGraph(poppedLevel.addedNodeIds, poppedLevel.addedEdgeKeys);
+    }
+
+    clearFocusVisuals();
+    focusedNode = null;
 
     // Fit to view after unfocus
     setTimeout(() => fitToView(), 100);
@@ -807,32 +984,18 @@ function unfocusAll() {
     // Update UI
     if (onUIUpdate) {
         onUIUpdate({
-            breadcrumbs: [],
+            breadcrumbs: buildBreadcrumbs(),
             focusedNode: null,
+            canGoBack: false,
         });
     }
 }
 
 /**
- * Handles back button click.
+ * Handles back button click - pops one navigation level.
  */
 export function goBack() {
-    const result = handleBackClick();
-
-    if (result) {
-        focusedNode = result.focusedNode;
-        applyFocusState(result.focusedNode, result.connectedNodes);
-        panToPoint(result.focusedNode.x, result.focusedNode.y, true);
-    } else {
-        unfocusAll();
-    }
-
-    if (onUIUpdate) {
-        onUIUpdate({
-            breadcrumbs: getBreadcrumbs(),
-            focusedNode: focusedNode,
-        });
-    }
+    popNavigationLevel();
 }
 
 /**
