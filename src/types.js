@@ -138,4 +138,4 @@
  */
 
 // Export empty object - this file is for JSDoc type definitions only
-module.exports = {};
+export default {};

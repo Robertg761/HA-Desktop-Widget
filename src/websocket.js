@@ -1,7 +1,7 @@
-const { EventEmitter } = require('events');
-const log = require('electron-log');
-const state = require('./state.js');
-const { WS_REQUEST_TIMEOUT_MS, WS_INITIAL_ID } = require('./constants.js');
+import { EventEmitter } from 'events';
+import log from './logger.js';
+import state from './state.js';
+import { WS_REQUEST_TIMEOUT_MS, WS_INITIAL_ID } from './constants.js';
 
 class WebSocketManager extends EventEmitter {
   constructor() {
@@ -145,4 +145,6 @@ class WebSocketManager extends EventEmitter {
   }
 }
 
-module.exports = new WebSocketManager();
+// Create singleton instance
+const websocket = new WebSocketManager();
+export default websocket;

@@ -42,10 +42,10 @@ jest.mock('../../src/websocket.js', () => ({
 
 // Import modules after mocks
 const ui = require('../../src/ui.js');
-const state = require('../../src/state.js');
+const state = require('../../src/state.js').default;
 const utils = require('../../src/utils.js');
 const uiUtils = require('../../src/ui-utils.js');
-const websocket = require('../../src/websocket.js');
+const websocket = require('../../src/websocket.js').default;
 const camera = require('../../src/camera.js');
 const { setIconContent } = require('../../src/icons.js');
 

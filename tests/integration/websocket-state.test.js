@@ -81,8 +81,8 @@ describe('WebSocket + State Integration', () => {
 
     jest.resetModules();
 
-    state = require('../../src/state.js');
-    websocket = require('../../src/websocket.js');
+    state = require('../../src/state.js').default;
+    websocket = require('../../src/websocket.js').default;
 
     const config = getMockConfig();
     config.homeAssistant = {

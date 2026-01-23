@@ -3,10 +3,11 @@
   "version": "3.1.2",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "dist": "electron-builder --win nsis portable",
-    "dist:win": "electron-builder --win nsis",
+    "build:renderer": "vite build",
+    "start": "npm run build:renderer && electron .",
+    "dev": "npm run build:renderer && electron . --dev",
+    "dist": "npm run build:renderer && electron-builder --win nsis portable",
+    "dist:win": "npm run build:renderer && electron-builder --win nsis",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -47,10 +48,9 @@
       "index.html",
       "main.js",
       "preload.js",
-      "renderer.js",
+      "dist-renderer/**/*",
       "styles.css",
       "build/**/*",
-      "src/**/*",
       "node_modules/**/*",
       "package.json"
     ],
@@ -98,7 +98,11 @@
     }
   },
   "devDependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/preset-env": "^7.28.6",
     "@eslint/js": "^9.13.0",
+    "babel-jest": "^30.2.0",
+    "concurrently": "^9.2.1",
     "electron": "^37.4.0",
     "electron-builder": "^24.13.3",
     "eslint": "^9.10.0",
@@ -106,12 +110,15 @@
     "globals": "^15.9.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "prettier": "^3.3.3"
+    "prettier": "^3.3.3",
+    "vite": "^7.3.1",
+    "wait-on": "^9.0.3"
   },
   "dependencies": {
     "axios": "^1.11.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
+    "events": "^3.3.0",
     "hls.js": "^1.4.12",
     "sortablejs": "^1.15.6"
   },

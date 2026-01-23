@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-const state = require('../../src/state');
+const state = require('../../src/state').default;
 
 describe('State Module', () => {
   describe('Initial State', () => {

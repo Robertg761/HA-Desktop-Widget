@@ -1,15 +1,15 @@
-// Load all required modules
-const log = require('electron-log');
-const state = require('./src/state.js');
-const websocket = require('./src/websocket.js');
-const hotkeys = require('./src/hotkeys.js');
-const alerts = require('./src/alerts.js');
-const ui = require('./src/ui.js');
-const settings = require('./src/settings.js');
-const uiUtils = require('./src/ui-utils.js');
-const { setIconContent } = require('./src/icons.js');
-const { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } = require('./src/constants.js');
-const _Sortable = require('sortablejs');
+// Load all required modules (ES Modules)
+import log from './src/logger.js';
+import state from './src/state.js';
+import websocket from './src/websocket.js';
+import * as hotkeys from './src/hotkeys.js';
+import * as alerts from './src/alerts.js';
+import * as ui from './src/ui.js';
+import * as settings from './src/settings.js';
+import * as uiUtils from './src/ui-utils.js';
+import { setIconContent } from './src/icons.js';
+import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
+import Sortable from 'sortablejs';
 
 // --- Renderer Log Configuration ---
 log.errorHandler.startCatching();

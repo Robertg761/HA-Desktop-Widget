@@ -11,5 +11,11 @@ module.exports = {
     '/dist/',
     '/build/'
   ],
+  transform: {
+    '^.+\\.js$': 'babel-jest'
+  },
+  transformIgnorePatterns: [
+    '/node_modules/(?!(sortablejs|hls.js)/)'
+  ],
 };
 

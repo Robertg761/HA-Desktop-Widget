@@ -186,7 +186,7 @@ function showConfirm(title, message, options = {}) {
   });
 }
 
-module.exports = {
+export {
   showToast,
   applyTheme,
   applyUiPreferences,

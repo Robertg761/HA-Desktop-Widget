@@ -1,27 +1,32 @@
+/**
+ * Global application state
+ * Uses a singleton pattern with getters for reactive access
+ */
+
 let CONFIG = null;
 let WS = null;
-const PENDING_WS = new Map();
+export const PENDING_WS = new Map();
 let WS_ID = 1000;
 let STATES = {};
 let SERVICES = {};
 let AREAS = {};
-let CAMERA_REFRESH_INTERVAL = null;
-let LIVE_CAMERAS = new Set();
-const LIVE_SNAPSHOT_INTERVALS = new Map();
-const ACTIVE_HLS = new Map();
+export let CAMERA_REFRESH_INTERVAL = null;
+export const LIVE_CAMERAS = new Set();
+export const LIVE_SNAPSHOT_INTERVALS = new Map();
+export const ACTIVE_HLS = new Map();
 let TAB_LAYOUTS = {};
 let DRAG_PLACEHOLDER = null;
 let EDIT_SNAPSHOT_LAYOUTS = {};
-const DASHBOARD_CAMERA_EXPANDED = new Set();
-const TIMER_MAP = new Map();
+export const DASHBOARD_CAMERA_EXPANDED = new Set();
+export const TIMER_MAP = new Map();
 let TIMER_TICK = null;
-const TIMER_SENSOR_MAP = new Map();
+export const TIMER_SENSOR_MAP = new Map();
 let TIMER_SENSOR_TICK = null;
 let TIMER_SENSOR_SYNC_TICK = null;
 let MOTION_POPUP = null;
 let MOTION_POPUP_TIMER = null;
 let MOTION_POPUP_CAMERA = null;
-const MOTION_LAST_TRIGGER = new Map();
+export const MOTION_LAST_TRIGGER = new Map();
 let EDIT_MODE_TAB_ID = null;
 let FILTERS = {
   domains: ['light', 'switch', 'sensor', 'climate', 'media_player', 'scene', 'automation', 'camera'],
@@ -33,83 +38,86 @@ let THEME_MEDIA_QUERY = null;
 let UNIT_SYSTEM = {
   temperature: '°C',
   length: 'km',
-  wind_speed: 'm/s',  // Home Assistant metric uses m/s, not km/h
+  wind_speed: 'm/s',
   pressure: 'hPa',
   precipitation: 'mm',
   volume: 'L',
   mass: 'kg'
 };
 
-function setConfig(newConfig) { 
-  try { CONFIG = newConfig; } 
+// Setter functions
+export function setConfig(newConfig) {
+  try { CONFIG = newConfig; }
   catch (error) { console.error('Error setting config:', error); }
 }
-function setWs(newWs) { 
-  try { WS = newWs; } 
+export function setWs(newWs) {
+  try { WS = newWs; }
   catch (error) { console.error('Error setting WebSocket:', error); }
 }
-function setStates(newStates) { 
-  try { STATES = newStates; } 
+export function setStates(newStates) {
+  try { STATES = newStates; }
   catch (error) { console.error('Error setting states:', error); }
 }
-function setServices(newServices) { 
-  try { SERVICES = newServices; } 
+export function setServices(newServices) {
+  try { SERVICES = newServices; }
   catch (error) { console.error('Error setting services:', error); }
 }
-function setAreas(newAreas) {
+export function setAreas(newAreas) {
   try { AREAS = newAreas; }
   catch (error) { console.error('Error setting areas:', error); }
 }
-function setTimerTick(newTick) {
-  try { TIMER_TICK = newTick; } 
+export function setTimerTick(newTick) {
+  try { TIMER_TICK = newTick; }
   catch (error) { console.error('Error setting timer tick:', error); }
 }
-function setTimerSensorTick(newTick) { 
-  try { TIMER_SENSOR_TICK = newTick; } 
+export function setTimerSensorTick(newTick) {
+  try { TIMER_SENSOR_TICK = newTick; }
   catch (error) { console.error('Error setting timer sensor tick:', error); }
 }
-function setTimerSensorSyncTick(newTick) { 
-  try { TIMER_SENSOR_SYNC_TICK = newTick; } 
+export function setTimerSensorSyncTick(newTick) {
+  try { TIMER_SENSOR_SYNC_TICK = newTick; }
   catch (error) { console.error('Error setting timer sensor sync tick:', error); }
 }
-function setMotionPopup(newPopup) { 
-  try { MOTION_POPUP = newPopup; } 
+export function setMotionPopup(newPopup) {
+  try { MOTION_POPUP = newPopup; }
   catch (error) { console.error('Error setting motion popup:', error); }
 }
-function setMotionPopupTimer(newTimer) { 
-  try { MOTION_POPUP_TIMER = newTimer; } 
+export function setMotionPopupTimer(newTimer) {
+  try { MOTION_POPUP_TIMER = newTimer; }
   catch (error) { console.error('Error setting motion popup timer:', error); }
 }
-function setMotionPopupCamera(newCamera) { 
-  try { MOTION_POPUP_CAMERA = newCamera; } 
+export function setMotionPopupCamera(newCamera) {
+  try { MOTION_POPUP_CAMERA = newCamera; }
   catch (error) { console.error('Error setting motion popup camera:', error); }
 }
-function setEditModeTabId(newTabId) { 
-  try { EDIT_MODE_TAB_ID = newTabId; } 
+export function setEditModeTabId(newTabId) {
+  try { EDIT_MODE_TAB_ID = newTabId; }
   catch (error) { console.error('Error setting edit mode tab ID:', error); }
 }
-function setFilters(newFilters) { 
-  try { FILTERS = newFilters; } 
+export function setFilters(newFilters) {
+  try { FILTERS = newFilters; }
   catch (error) { console.error('Error setting filters:', error); }
 }
-function setThemeMediaQuery(newQuery) { 
-  try { THEME_MEDIA_QUERY = newQuery; } 
+export function setThemeMediaQuery(newQuery) {
+  try { THEME_MEDIA_QUERY = newQuery; }
   catch (error) { console.error('Error setting theme media query:', error); }
 }
-function setDragPlaceholder(newPlaceholder) { 
-  try { DRAG_PLACEHOLDER = newPlaceholder; } 
+export function setDragPlaceholder(newPlaceholder) {
+  try { DRAG_PLACEHOLDER = newPlaceholder; }
   catch (error) { console.error('Error setting drag placeholder:', error); }
 }
-function setEditSnapshotLayouts(newLayouts) {
+export function setEditSnapshotLayouts(newLayouts) {
   try { EDIT_SNAPSHOT_LAYOUTS = newLayouts; }
   catch (error) { console.error('Error setting edit snapshot layouts:', error); }
 }
-function setUnitSystem(newUnitSystem) {
+export function setUnitSystem(newUnitSystem) {
   try { UNIT_SYSTEM = newUnitSystem; }
   catch (error) { console.error('Error setting unit system:', error); }
 }
 
-module.exports = {
+// State object with getters for reactive access
+// This pattern allows other modules to always get the current value
+const state = {
   get CONFIG() { return CONFIG; },
   get WS() { return WS; },
   PENDING_WS,
@@ -156,3 +164,5 @@ module.exports = {
   setEditSnapshotLayouts,
   setUnitSystem,
 };
+
+export default state;
