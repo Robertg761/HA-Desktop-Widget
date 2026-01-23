@@ -9,7 +9,7 @@ function getEntityDisplayName(entity) {
         if (customName) return customName;
 
         // Fall back to friendly_name or entity_id
-        return entity.attributes.friendly_name || entity.entity_id;
+        return entity.attributes?.friendly_name || entity.entity_id;
     } catch (error) {
         console.error('Error getting entity display name:', error);
         return 'Unknown';

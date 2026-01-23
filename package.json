@@ -98,7 +98,10 @@
     }
   },
   "devDependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/preset-env": "^7.28.6",
     "@eslint/js": "^9.13.0",
+    "babel-jest": "^30.2.0",
     "concurrently": "^9.2.1",
     "electron": "^37.4.0",
     "electron-builder": "^24.13.3",

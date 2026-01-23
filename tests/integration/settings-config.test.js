@@ -55,7 +55,7 @@ beforeEach(() => {
   createSettingsModalDOM();
 
   // Reset state module
-  const state = require('../../src/state.js');
+  const state = require('../../src/state.js').default;
   const testConfig = getMockConfig();
   testConfig.homeAssistant = {
     url: 'http://homeassistant.local:8123',
@@ -175,7 +175,7 @@ function createSettingsModalDOM() {
 
 describe('Settings + Config Integration', () => {
   const settings = require('../../src/settings.js');
-  const state = require('../../src/state.js');
+  const state = require('../../src/state.js').default;
 
   describe('Settings Open/Close Flow', () => {
     test('opening settings populates fields from config', async () => {

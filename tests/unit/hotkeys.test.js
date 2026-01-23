@@ -30,10 +30,7 @@ const mockState = {
   STATES: {}
 };
 
-jest.mock('../../src/state.js', () => ({
-  get CONFIG() { return mockState.CONFIG; },
-  get STATES() { return mockState.STATES; }
-}));
+const state = require('../../src/state.js').default;
 
 // Create mock electronAPI instance
 let mockElectronAPI;
@@ -64,20 +61,22 @@ describe('hotkeys module', () => {
 
   describe('initializeHotkeys', () => {
     it('should load hotkey configuration from state.CONFIG', () => {
-      mockState.CONFIG = getMockConfig();
-      mockState.CONFIG.globalHotkeys = {
+      const config = getMockConfig();
+      config.globalHotkeys = {
         enabled: true,
         hotkeys: {
           'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' }
         }
       };
+      state.setConfig(config);
 
       expect(() => hotkeys.initializeHotkeys()).not.toThrow();
     });
 
     it('should handle missing globalHotkeys config gracefully', () => {
-      mockState.CONFIG = getMockConfig();
-      mockState.CONFIG.globalHotkeys = undefined;
+      const config = getMockConfig();
+      config.globalHotkeys = undefined;
+      state.setConfig(config);
 
       expect(() => hotkeys.initializeHotkeys()).not.toThrow();
     });
@@ -92,11 +91,8 @@ describe('hotkeys module', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       // Force an error by making CONFIG a getter that throws
-      Object.defineProperty(mockState, 'CONFIG', {
-        get: () => {
-          throw new Error('Test error');
-        },
-        configurable: true
+      const configSpy = jest.spyOn(state, 'CONFIG', 'get').mockImplementation(() => {
+        throw new Error('Test error');
       });
 
       expect(() => hotkeys.initializeHotkeys()).not.toThrow();
@@ -104,11 +100,8 @@ describe('hotkeys module', () => {
 
       consoleError.mockRestore();
 
-      // Restore normal CONFIG getter
-      Object.defineProperty(mockState, 'CONFIG', {
-        get: () => null,
-        configurable: true
-      });
+      // Restore normal state
+      state.setConfig(null);
     });
   });
 
@@ -119,7 +112,7 @@ describe('hotkeys module', () => {
         enabled: false,
         hotkeys: {}
       };
-      mockState.CONFIG = config;
+      state.setConfig(config);
     });
 
     it('should call IPC to enable hotkeys', async () => {
@@ -163,8 +156,8 @@ describe('hotkeys module', () => {
           'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' }
         }
       };
-      mockState.CONFIG = config;
-      mockState.STATES = sampleStates;
+      state.setConfig(config);
+      state.setStates(sampleStates);
     });
 
     it('should handle missing container gracefully', () => {
@@ -229,8 +222,8 @@ describe('hotkeys module', () => {
           'switch.bedroom': 'Ctrl+Shift+B'
         }
       };
-      mockState.CONFIG = config;
-      mockState.STATES = sampleStates;
+      state.setConfig(config);
+      state.setStates(sampleStates);
     });
 
     it('should handle missing container gracefully', () => {
@@ -259,7 +252,7 @@ describe('hotkeys module', () => {
           'light.nonexistent': 'Ctrl+Shift+N'
         }
       };
-      mockState.CONFIG = config;
+      state.setConfig(config);
 
       // Create real DOM element
       const container = document.createElement('div');
