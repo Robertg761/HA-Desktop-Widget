@@ -44,16 +44,25 @@ window.electronAPI = {
   openLogs: () => ipcRenderer.invoke('open-logs'),
 
   // Event listeners (one-way from main to renderer)
+  // Each returns a cleanup function to remove the listener
   onHotkeyTriggered: (callback) => {
-    ipcRenderer.on('hotkey-triggered', (event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('hotkey-triggered', handler);
+    return () => ipcRenderer.removeListener('hotkey-triggered', handler);
   },
   onHotkeyRegistrationFailed: (callback) => {
-    ipcRenderer.on('hotkey-registration-failed', (event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('hotkey-registration-failed', handler);
+    return () => ipcRenderer.removeListener('hotkey-registration-failed', handler);
   },
   onAutoUpdate: (callback) => {
-    ipcRenderer.on('auto-update', (event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('auto-update', handler);
+    return () => ipcRenderer.removeListener('auto-update', handler);
   },
   onOpenSettings: (callback) => {
-    ipcRenderer.on('open-settings', (_event) => callback());
+    const handler = () => callback();
+    ipcRenderer.on('open-settings', handler);
+    return () => ipcRenderer.removeListener('open-settings', handler);
   }
 };

@@ -8,6 +8,7 @@ const ui = require('./src/ui.js');
 const settings = require('./src/settings.js');
 const uiUtils = require('./src/ui-utils.js');
 const { setIconContent } = require('./src/icons.js');
+const { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } = require('./src/constants.js');
 const _Sortable = require('sortablejs');
 
 // --- Renderer Log Configuration ---
@@ -38,9 +39,7 @@ websocket.on('open', () => {
 // Track request IDs for proper result handling
 let getStatesId, getServicesId, getAreasId, getConfigId;
 
-// WebSocket reconnection constants and state
-const BASE_RECONNECT_DELAY = 1000; // 1 second
-const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+// WebSocket reconnection state
 let reconnectAttempts = 0;
 
 websocket.on('message', (msg) => {
@@ -153,8 +152,8 @@ websocket.on('close', () => {
 
     // Implement exponential backoff with jitter
     const delay = Math.min(
-      BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
-      MAX_RECONNECT_DELAY
+      BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts),
+      MAX_RECONNECT_DELAY_MS
     );
     const jitter = Math.random() * 1000; // Add up to 1 second of jitter
     reconnectAttempts++;
