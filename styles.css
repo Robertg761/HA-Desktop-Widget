@@ -3189,6 +3189,60 @@ body {
   box-shadow: none;
 }
 
+/* Personalization collapsible section */
+.personalization-section {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-5);
+}
+
+.section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.section-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.section-toggle-icon {
+  transition: transform var(--transition-base);
+  font-size: var(--font-size-md);
+}
+
+.section-body {
+  margin-top: var(--space-4);
+  max-height: 2000px;
+  opacity: 1;
+  transition: max-height var(--transition-slow), opacity var(--transition-base);
+  overflow: hidden;
+}
+
+.personalization-section.collapsed .section-body {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+  pointer-events: none;
+}
+
+.personalization-section.collapsed .section-toggle-icon {
+  transform: rotate(-90deg);
+}
+
 /* Accent theme picker */
 .accent-theme-grid {
   display: grid;

@@ -197,19 +197,30 @@
                     </div>
                 </div>
                 <div id="personalization-tab" class="tab-content">
-                    <div class="form-group">
-                        <label>Accent Color</label>
-                        <div class="form-help">Choose a color theme for highlights, buttons, and focus rings.</div>
-                        <div id="accent-theme-options" class="accent-theme-grid" role="radiogroup"
-                            aria-label="Accent color themes"></div>
-                        <div class="form-help">Selections preview instantly and save when you click Save.</div>
-                    </div>
-                    <div class="form-group">
-                        <label>Background Color</label>
-                        <div class="form-help">Applies a subtle tint to panels and glass surfaces.</div>
-                        <div id="background-theme-options" class="accent-theme-grid" role="radiogroup"
-                            aria-label="Background color themes"></div>
-                        <div class="form-help">Background previews instantly and keeps text readable.</div>
+                    <div class="personalization-section" id="color-themes-section">
+                        <button type="button" class="section-toggle" id="color-themes-toggle" aria-expanded="true"
+                            aria-controls="color-themes-body">
+                            <span>Color Themes</span>
+                            <span class="section-toggle-icon">▾</span>
+                        </button>
+                        <div id="color-themes-body" class="section-body">
+                            <div class="form-group">
+                                <label for="color-target-select">Editing</label>
+                                <select id="color-target-select">
+                                    <option value="accent">Accent Color</option>
+                                    <option value="background">Background Color</option>
+                                </select>
+                                <div class="form-help">Choose which part of the UI the palette will update.</div>
+                            </div>
+                            <div class="form-group">
+                                <label id="theme-options-label">Color Options</label>
+                                <div class="form-help">Pick a theme color for the selected target.</div>
+                                <div id="theme-options" class="accent-theme-grid" role="radiogroup"
+                                    aria-label="Theme colors"></div>
+                                <div class="form-help" id="theme-current-selection"></div>
+                                <div class="form-help">Selections preview instantly and save when you click Save.</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="advanced-tab" class="tab-content">
