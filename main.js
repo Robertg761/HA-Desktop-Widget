@@ -152,6 +152,7 @@ function loadConfig() {
     windowSize: { width: 500, height: 600 },
     alwaysOnTop: true,
     opacity: 0.95,
+    frostedGlass: true,
     homeAssistant: {
       url: 'http://homeassistant.local:8123',
       token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
@@ -373,6 +374,42 @@ function saveConfig() {
   }
 }
 
+function applyFrostedGlass(override) {
+  if (!mainWindow) return;
+  const enabled = typeof override === 'boolean' ? override : !!config?.frostedGlass;
+
+  if (process.platform === 'win32') {
+    if (typeof mainWindow.setBackgroundMaterial === 'function') {
+      try {
+        mainWindow.setBackgroundMaterial(enabled ? 'acrylic' : 'none');
+      } catch (error) {
+        log.warn('Failed to set background material:', error.message);
+      }
+    }
+  } else if (process.platform === 'darwin') {
+    if (typeof mainWindow.setVibrancy === 'function') {
+      try {
+        mainWindow.setVibrancy(enabled ? 'sidebar' : null);
+      } catch (error) {
+        log.warn('Failed to set vibrancy:', error.message);
+      }
+    }
+    if (typeof mainWindow.setVisualEffectState === 'function') {
+      try {
+        mainWindow.setVisualEffectState(enabled ? 'active' : 'inactive');
+      } catch (error) {
+        log.warn('Failed to set visual effect state:', error.message);
+      }
+    }
+  }
+
+  try {
+    mainWindow.setBackgroundColor('#00000000');
+  } catch (error) {
+    log.warn('Failed to set background color:', error.message);
+  }
+}
+
 function createWindow() {
   log.info('Creating main window');
   // Get the primary display's work area
@@ -383,12 +420,13 @@ function createWindow() {
   const iconPath = path.join(__dirname, 'build', 'icon.ico');
 
   // Create the browser window with transparency
-  mainWindow = new BrowserWindow({
+  const windowOptions = {
     x: config.windowPosition.x,
     y: config.windowPosition.y,
     width: config.windowSize.width,
     height: config.windowSize.height,
     transparent: true,
+    backgroundColor: '#00000000',
     frame: false,
     alwaysOnTop: config.alwaysOnTop,
     skipTaskbar: true,
@@ -401,12 +439,23 @@ function createWindow() {
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true
     }
-  });
+  };
+
+  if (config.frostedGlass) {
+    if (process.platform === 'win32') {
+      windowOptions.backgroundMaterial = 'acrylic';
+    } else if (process.platform === 'darwin') {
+      windowOptions.vibrancy = 'sidebar';
+    }
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // Set window opacity with failsafe
   const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
   mainWindow.setOpacity(safeOpacity);
   config.opacity = safeOpacity; // Update config to safe value
+  applyFrostedGlass();
 
   // Load the index.html file
   mainWindow.loadFile('index.html');
@@ -563,8 +612,12 @@ ipcMain.handle('get-config', () => {
 
 ipcMain.handle('update-config', (event, newConfig) => {
   log.debug('Updating configuration');
+  const prevFrostedGlass = config?.frostedGlass;
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   config = { ...config, ...newConfig, customTabs };
+  if (prevFrostedGlass !== config.frostedGlass) {
+    applyFrostedGlass();
+  }
   saveConfig();
   return config;
 });
@@ -575,6 +628,17 @@ ipcMain.handle('set-opacity', (event, opacity) => {
   mainWindow.setOpacity(safeOpacity);
   config.opacity = safeOpacity;
   saveConfig();
+});
+
+ipcMain.handle('preview-window-effects', (event, effects = {}) => {
+  if (!mainWindow) return;
+  if (typeof effects.opacity === 'number') {
+    const safeOpacity = Math.max(0.5, Math.min(1, effects.opacity));
+    mainWindow.setOpacity(safeOpacity);
+  }
+  if (typeof effects.frostedGlass === 'boolean') {
+    applyFrostedGlass(effects.frostedGlass);
+  }
 });
 
 ipcMain.handle('set-always-on-top', (event, value) => {

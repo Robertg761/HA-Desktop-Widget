@@ -1,4 +1,16 @@
 /* Modern Glassmorphism Design System */
+
+/* ============================================
+   ROOT ELEMENT TRANSPARENCY
+   Required for frosted glass effect to work properly.
+   The HTML element must be transparent to allow the 
+   desktop/show-through effect.
+   ============================================ */
+html {
+  background: transparent;
+  height: 100%;
+}
+
 :root {
   /* ============================================
      COLOR SYSTEM
@@ -211,6 +223,148 @@
   --shadow-2xl: 0 16px 48px rgba(0, 0, 0, 0.18);
 }
 
+/* ============================================
+   FROSTED GLASS MODE
+   
+   The frosted glass effect requires a multi-layer approach:
+   1. HTML element: transparent (see above)
+   2. Body element: transparent background + backdrop-filter for blur
+   3. Content containers: semi-transparent backgrounds with blur
+   
+   This creates the "glass" effect where desktop content shows through
+   but is blurred for readability.
+   ============================================ */
+
+/* Frosted Glass Mode - Dark Theme */
+body.frosted-glass {
+  /* 
+   * CRITICAL: Body must be transparent for the frosted glass effect.
+   * The backdrop-filter on body blurs what's behind the window.
+   */
+  background: transparent !important;
+  backdrop-filter: blur(var(--bg-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(180%);
+  
+  /* Glass-specific CSS variables for content containers */
+  --bg-color: rgba(20, 20, 25, var(--frosted-bg-alpha, 0.45));
+  --bg-elevated: rgba(30, 30, 35, var(--frosted-elevated-alpha, 0.5));
+  --bg-primary: rgba(20, 20, 25, var(--frosted-bg-alpha, 0.5));
+  --bg-secondary: rgba(30, 30, 35, var(--frosted-elevated-alpha, 0.5));
+  --bg-tertiary: rgba(40, 40, 45, var(--frosted-bg-alpha, 0.45));
+
+  --surface-1: rgba(25, 25, 30, var(--frosted-surface-alpha, 0.45));
+  --surface-2: rgba(35, 35, 40, var(--frosted-elevated-alpha, 0.5));
+  --surface-3: rgba(45, 45, 50, var(--frosted-elevated-alpha, 0.5));
+  --surface-hover: rgba(50, 50, 55, var(--frosted-surface-hover-alpha, 0.6));
+  --card-bg: rgba(30, 30, 35, var(--frosted-card-alpha, 0.4));
+
+  --glass-surface: rgba(30, 30, 35, var(--frosted-glass-alpha, 0.35));
+  --glass-elevated: rgba(40, 40, 45, var(--frosted-glass-elevated-alpha, 0.45));
+  --glass-overlay: rgba(20, 20, 25, var(--frosted-glass-overlay-alpha, 0.5));
+
+  /* Update blur variable for child elements */
+  --bg-blur: var(--frosted-blur, 32px);
+  --glass-blur-strong: var(--bg-blur);
+  --glass-blur-medium: calc(var(--bg-blur) * 0.85);
+  --glass-blur-light: calc(var(--bg-blur) * 0.65);
+}
+
+/* Frosted Glass Mode - Light Theme */
+body.theme-light.frosted-glass {
+  background: transparent !important;
+  backdrop-filter: blur(var(--bg-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(180%);
+  
+  --bg-color: rgba(245, 245, 250, var(--frosted-bg-alpha, 0.5));
+  --bg-elevated: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.55));
+  --bg-primary: rgba(245, 245, 250, var(--frosted-bg-alpha, 0.55));
+  --bg-secondary: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.6));
+  --bg-tertiary: rgba(240, 240, 245, var(--frosted-bg-alpha, 0.5));
+
+  --surface-1: rgba(250, 250, 255, var(--frosted-surface-alpha, 0.5));
+  --surface-2: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.55));
+  --surface-3: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.6));
+  --surface-hover: rgba(240, 240, 245, var(--frosted-surface-hover-alpha, 0.65));
+  --card-bg: rgba(255, 255, 255, var(--frosted-card-alpha, 0.45));
+
+  --glass-surface: rgba(255, 255, 255, var(--frosted-glass-alpha, 0.45));
+  --glass-elevated: rgba(250, 250, 250, var(--frosted-glass-elevated-alpha, 0.55));
+  --glass-overlay: rgba(245, 245, 250, var(--frosted-glass-overlay-alpha, 0.6));
+
+  --bg-blur: var(--frosted-blur, 32px);
+}
+
+/* Reduce CSS blur when native glass effects are active */
+body.native-glass.frosted-glass {
+  --bg-blur: calc(var(--frosted-blur, 32px) * 0.5);
+}
+
+/* 
+ * Frosted Glass Header & Content
+ * When frosted glass is enabled, these elements need proper glass styling
+ */
+body.frosted-glass .widget-header {
+  background: var(--surface-1);
+  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.frosted-glass .widget-content {
+  background: transparent;
+}
+
+/* Status cards in frosted glass mode */
+body.frosted-glass .status-card {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Media tile in frosted glass mode */
+body.frosted-glass .media-tile {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+}
+
+/* Control items in frosted glass mode */
+body.frosted-glass .control-item {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+body.frosted-glass .control-item:hover {
+  background: var(--glass-elevated);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Section headers in frosted glass mode */
+body.frosted-glass .section-title {
+  color: var(--text-primary);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Loading overlay in frosted glass mode */
+body.frosted-glass .loading-overlay {
+  background: rgba(20, 20, 25, 0.7);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
+}
+
+body.theme-light.frosted-glass .loading-overlay {
+  background: rgba(245, 245, 250, 0.7);
+}
+
+/* Modal content in frosted glass mode */
+body.frosted-glass .modal-content {
+  background: var(--glass-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 /* Base styles */
 * {
   margin: 0;
@@ -221,12 +375,15 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-color);
-  backdrop-filter: blur(var(--bg-blur));
-  -webkit-backdrop-filter: blur(var(--bg-blur));
   color: var(--text-color);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+  /* 
+   * Note: backdrop-filter is NOT applied here by default.
+   * It's only applied when frosted-glass class is present (see below).
+   * This prevents double-blur effects and ensures proper transparency.
+   */
 }
 
 /* Minimal header */
@@ -237,8 +394,7 @@ body {
   padding: 8px 12px;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border-color);
-  backdrop-filter: blur(var(--bg-blur));
-  -webkit-backdrop-filter: blur(var(--bg-blur));
+  /* backdrop-filter is applied via body.frosted-glass selector when enabled */
 }
 
 .drag-area {
@@ -5478,4 +5634,3 @@ label.disabled {
   border-radius: var(--radius-md);
   margin-top: var(--space-2);
 }
-

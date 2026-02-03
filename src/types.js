@@ -71,6 +71,7 @@
  * @property {WindowSize} windowSize - Saved window size
  * @property {boolean} alwaysOnTop - Whether window stays on top
  * @property {number} opacity - Window opacity (0.5 to 1.0)
+ * @property {boolean} [frostedGlass] - Enable frosted glass window background
  * @property {HomeAssistantConfig} homeAssistant - HA connection settings
  * @property {number} updateInterval - Entity update interval in ms
  * @property {GlobalHotkeysConfig} globalHotkeys - Global hotkeys configuration

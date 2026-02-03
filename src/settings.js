@@ -1,9 +1,84 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast, showConfirm } from './ui-utils.js';
+import { applyTheme, applyUiPreferences, applyWindowEffects, trapFocus, releaseFocusTrap, showToast, showConfirm } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import * as utils from './utils.js';
 // Note: ui.js is imported dynamically to prevent circular dependencies
+
+let previewState = null;
+let previewRaf = null;
+
+function getPreviewValuesFromInputs() {
+  const opacitySlider = document.getElementById('opacity-slider');
+  const frostedGlass = document.getElementById('frosted-glass');
+  if (!opacitySlider || !frostedGlass) return null;
+
+  const sliderValue = parseInt(opacitySlider.value, 10) || 90;
+  const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+  const frostedGlassEnabled = !!frostedGlass.checked;
+
+  return {
+    opacity,
+    frostedGlass: frostedGlassEnabled,
+  };
+}
+
+function previewWindowEffectsNow() {
+  try {
+    const values = getPreviewValuesFromInputs();
+    if (!values) return;
+
+    applyWindowEffects(values);
+
+    if (window?.electronAPI?.previewWindowEffects) {
+      window.electronAPI.previewWindowEffects({
+        opacity: values.opacity,
+        frostedGlass: values.frostedGlass,
+      }).catch(err => {
+        console.error('Failed to preview window effects:', err);
+      });
+    }
+  } catch (error) {
+    console.error('Error applying preview window effects:', error);
+  }
+}
+
+function previewWindowEffects() {
+  if (previewRaf) return;
+  if (typeof requestAnimationFrame !== 'function') {
+    previewWindowEffectsNow();
+    return;
+  }
+  previewRaf = requestAnimationFrame(() => {
+    previewRaf = null;
+    previewWindowEffectsNow();
+  });
+}
+
+function cancelPreviewWindowEffects() {
+  if (!previewRaf || typeof cancelAnimationFrame !== 'function') return;
+  cancelAnimationFrame(previewRaf);
+  previewRaf = null;
+}
+
+function restorePreviewWindowEffects() {
+  if (!previewState) return;
+
+  try {
+    cancelPreviewWindowEffects();
+    applyWindowEffects(previewState);
+    if (window?.electronAPI?.previewWindowEffects) {
+      window.electronAPI.previewWindowEffects({
+        opacity: previewState.opacity,
+        frostedGlass: previewState.frostedGlass,
+      }).catch(err => {
+        console.error('Failed to restore preview window effects:', err);
+      });
+    }
+  } catch (error) {
+    console.error('Error restoring preview window effects:', error);
+  }
+}
 
 /**
  * Validate Home Assistant URL format
@@ -57,7 +132,7 @@ async function openSettings(uiHooks) {
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
-
+    const frostedGlass = document.getElementById('frosted-glass');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
@@ -77,6 +152,7 @@ async function openSettings(uiHooks) {
     }
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
+    if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
 
     // Initialize "Start with Windows" checkbox
     const startWithWindows = document.getElementById('start-with-windows');
@@ -96,6 +172,11 @@ async function openSettings(uiHooks) {
     const sliderScale = Math.round(1 + ((storedOpacity - 0.5) * 198));
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
+
+    previewState = {
+      opacity: storedOpacity,
+      frostedGlass: !!state.CONFIG.frostedGlass,
+    };
 
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
@@ -140,6 +221,12 @@ async function openSettings(uiHooks) {
 
 function closeSettings() {
   try {
+    cancelPreviewWindowEffects();
+    if (previewState) {
+      restorePreviewWindowEffects();
+      previewState = null;
+    }
+
     // Clean up hotkey event listeners to prevent memory leaks
     cleanupHotkeyEventListeners();
 
@@ -168,6 +255,7 @@ async function saveSettings() {
     const updateInterval = document.getElementById('update-interval');
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
+    const frostedGlass = document.getElementById('frosted-glass');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
 
@@ -193,6 +281,9 @@ async function saveSettings() {
     }
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
+    if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
+    delete state.CONFIG.frostedGlassStrength;
+    delete state.CONFIG.frostedGlassTint;
 
     // Save "Start with Windows" setting
     const startWithWindows = document.getElementById('start-with-windows');
@@ -258,9 +349,11 @@ async function saveSettings() {
       }
     }
 
+    previewState = null;
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyUiPreferences(state.CONFIG.ui || {});
+    applyWindowEffects(state.CONFIG || {});
 
     // Update media tile to reflect new selection
     // Dynamic import to avoid circular dependency
@@ -1057,6 +1150,7 @@ export {
   openSettings,
   closeSettings,
   saveSettings,
+  previewWindowEffects,
   renderAlertsListInline,
   openAlertEntityPicker,
   closeAlertEntityPicker,

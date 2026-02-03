@@ -1,5 +1,23 @@
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
+let cachedPlatform = null;
+const DEFAULT_FROSTED_STRENGTH = 60;
+const DEFAULT_FROSTED_TINT = 60;
+
+function getPlatform() {
+  if (cachedPlatform) return cachedPlatform;
+  const platform = window?.electronAPI?.platform;
+  if (platform) {
+    cachedPlatform = platform;
+    return cachedPlatform;
+  }
+  return null;
+}
+
+function isNativeGlassPlatform() {
+  const platform = getPlatform();
+  return platform === 'win32' || platform === 'darwin';
+}
 
 function showToast(message, type = 'success', timeout = 2000) {
   try {
@@ -44,6 +62,88 @@ function applyUiPreferences(ui = {}) {
     body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
   } catch (error) {
     console.error('Error applying UI preferences:', error);
+  }
+}
+
+/**
+ * Applies frosted glass window effects to the application.
+ * 
+ * This function implements a multi-layer glassmorphism approach:
+ * 1. Sets CSS custom properties for blur strength and opacity values
+ * 2. Toggles the 'frosted-glass' class on the body element
+ * 3. CSS handles the actual rendering (backdrop-filter, transparency)
+ * 
+ * The effect requires:
+ * - HTML element to be transparent (set in CSS)
+ * - Body to have backdrop-filter when frosted-glass class is present
+ * - Content containers to have semi-transparent backgrounds
+ * 
+ * @param {Object} config - Configuration object
+ * @param {boolean} config.frostedGlass - Whether to enable frosted glass
+ */
+function applyWindowEffects(config = {}) {
+  try {
+    const body = document.body;
+    const enabled = !!config.frostedGlass;
+
+    if (!enabled) {
+      // Remove frosted glass class first
+      body.classList.remove('frosted-glass');
+      body.classList.remove('native-glass');
+      
+      // Then clear all custom properties
+      body.style.removeProperty('--frosted-blur');
+      body.style.removeProperty('--frosted-bg-alpha');
+      body.style.removeProperty('--frosted-elevated-alpha');
+      body.style.removeProperty('--frosted-surface-alpha');
+      body.style.removeProperty('--frosted-surface-hover-alpha');
+      body.style.removeProperty('--frosted-card-alpha');
+      body.style.removeProperty('--frosted-glass-alpha');
+      body.style.removeProperty('--frosted-glass-elevated-alpha');
+      body.style.removeProperty('--frosted-glass-overlay-alpha');
+      return;
+    }
+
+    const strength = DEFAULT_FROSTED_STRENGTH;
+    const tint = DEFAULT_FROSTED_TINT / 100;
+    
+    // Linear interpolation helper
+    const lerp = (min, max, value) => min + (max - min) * value;
+
+    // Calculate blur amount based on strength (0px to 42px range)
+    const blur = lerp(0, 42, strength / 100);
+
+    // Calculate alpha values based on tint
+    // Lower tint = more transparent, higher tint = more opaque
+    const bgAlpha = lerp(0.25, 0.75, tint);
+    const elevatedAlpha = lerp(0.3, 0.8, tint);
+    const surfaceAlpha = lerp(0.25, 0.75, tint);
+    const surfaceHoverAlpha = lerp(0.35, 0.85, tint);
+    const cardAlpha = lerp(0.2, 0.65, tint);
+    const glassAlpha = lerp(0.2, 0.6, tint);
+    const glassElevatedAlpha = lerp(0.25, 0.7, tint);
+    const glassOverlayAlpha = lerp(0.3, 0.85, tint);
+
+    /* 
+     * CRITICAL: Set CSS custom properties BEFORE adding the class.
+     * This ensures the browser has the values ready when it processes
+     * the class change, preventing flash of unstyled content.
+     */
+    body.style.setProperty('--frosted-blur', `${blur.toFixed(1)}px`);
+    body.style.setProperty('--frosted-bg-alpha', bgAlpha.toFixed(3));
+    body.style.setProperty('--frosted-elevated-alpha', elevatedAlpha.toFixed(3));
+    body.style.setProperty('--frosted-surface-alpha', surfaceAlpha.toFixed(3));
+    body.style.setProperty('--frosted-surface-hover-alpha', surfaceHoverAlpha.toFixed(3));
+    body.style.setProperty('--frosted-card-alpha', cardAlpha.toFixed(3));
+    body.style.setProperty('--frosted-glass-alpha', glassAlpha.toFixed(3));
+    body.style.setProperty('--frosted-glass-elevated-alpha', glassElevatedAlpha.toFixed(3));
+    body.style.setProperty('--frosted-glass-overlay-alpha', glassOverlayAlpha.toFixed(3));
+    
+    // Now add the frosted-glass class
+    body.classList.add('frosted-glass');
+    body.classList.toggle('native-glass', isNativeGlassPlatform());
+  } catch (error) {
+    console.error('Error applying window effects:', error);
   }
 }
 
@@ -190,6 +290,7 @@ export {
   showToast,
   applyTheme,
   applyUiPreferences,
+  applyWindowEffects,
   trapFocus,
   releaseFocusTrap,
   showLoading,
