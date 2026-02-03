@@ -17,7 +17,7 @@ html {
      ============================================ */
 
   /* Base Colors */
-  --bg-color: rgba(20, 20, 25, 0.85);
+  --bg-color: rgba(40, 40, 45, 0.8);
   --bg-elevated: rgba(30, 30, 35, 0.9);
   --bg-primary: rgba(20, 20, 25, 0.95);
   --bg-secondary: rgba(30, 30, 35, 0.9);
@@ -185,7 +185,7 @@ html {
 /* Light Theme (Glassmorphism) */
 .theme-light {
   /* Base Colors */
-  --bg-color: rgba(245, 245, 250, 0.85);
+  --bg-color: rgba(250, 250, 250, 0.8);
   --bg-elevated: rgba(255, 255, 255, 0.9);
   --bg-primary: rgba(245, 245, 250, 0.95);
   --bg-secondary: rgba(255, 255, 255, 0.9);
@@ -304,14 +304,17 @@ body.native-glass.frosted-glass {
  * When frosted glass is enabled, these elements need proper glass styling
  */
 body.frosted-glass .widget-header {
-  background: var(--surface-1);
-  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 body.frosted-glass .widget-content {
-  background: transparent;
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Status cards in frosted glass mode */
@@ -392,9 +395,11 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: var(--surface-1);
+  background: var(--glass-elevated);
   border-bottom: 1px solid var(--border-color);
-  /* backdrop-filter is applied via body.frosted-glass selector when enabled */
+  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .drag-area {
@@ -462,6 +467,11 @@ body {
   height: calc(100vh - 40px);
   overflow-y: auto;
   overflow-x: hidden;
+  background: var(--glass-elevated);
+  border-top: 1px solid var(--border-color);
+  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* Status grid - top cards */
@@ -3246,7 +3256,7 @@ body {
 /* Accent theme picker */
 .accent-theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
@@ -3255,7 +3265,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--space-2);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   background: var(--glass-surface);
@@ -3267,6 +3277,9 @@ body {
   transition: var(--transition-base);
   box-shadow: var(--shadow-sm);
   text-align: left;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  position: relative;
 }
 
 .theme-option:hover {
@@ -3288,8 +3301,8 @@ body {
 }
 
 .accent-theme-swatch {
-  width: 36px;
-  height: 36px;
+  width: 100%;
+  height: 100%;
   border-radius: var(--radius-md);
   background: var(--swatch, var(--accent));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35),
@@ -3297,20 +3310,72 @@ body {
   flex-shrink: 0;
 }
 
-.accent-theme-meta {
+.theme-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translate(-50%, 6px);
+  background: linear-gradient(160deg, rgba(var(--swatch-rgb, var(--accent-rgb)), 0.2), var(--glass-elevated));
+  color: var(--text-primary);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(var(--blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(160%);
+  opacity: 0;
+  pointer-events: none;
+  transition: var(--transition-fast);
+  z-index: var(--z-tooltip);
+  min-width: 160px;
+  max-width: 240px;
+  text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
-.accent-theme-name {
+.theme-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border-width: 8px 8px 0 8px;
+  border-style: solid;
+  border-color: rgba(var(--swatch-rgb, var(--accent-rgb)), 0.6) transparent transparent transparent;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+}
+
+.theme-tooltip-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.01em;
 }
 
-.accent-theme-note {
+.theme-tooltip-name::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--swatch, var(--accent));
+  box-shadow: 0 0 0 2px rgba(var(--swatch-rgb, var(--accent-rgb)), 0.25);
+  flex-shrink: 0;
+}
+
+.theme-tooltip-note {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.theme-option:hover .theme-tooltip,
+.theme-option:focus-visible .theme-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* Custom Dropdown */

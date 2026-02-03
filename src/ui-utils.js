@@ -22,7 +22,7 @@ const ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
 
 const BACKGROUND_BASES = {
   dark: {
-    bgColor: { r: 20, g: 20, b: 25, a: 0.85 },
+    bgColor: { r: 40, g: 40, b: 45, a: 0.8 },
     bgElevated: { r: 30, g: 30, b: 35, a: 0.9 },
     bgPrimary: { r: 20, g: 20, b: 25, a: 0.95 },
     bgSecondary: { r: 30, g: 30, b: 35, a: 0.9 },
@@ -38,7 +38,7 @@ const BACKGROUND_BASES = {
     loadingOverlay: { r: 20, g: 20, b: 25, a: 0.7 },
   },
   light: {
-    bgColor: { r: 245, g: 245, b: 250, a: 0.85 },
+    bgColor: { r: 250, g: 250, b: 250, a: 0.8 },
     bgElevated: { r: 255, g: 255, b: 255, a: 0.9 },
     bgPrimary: { r: 245, g: 245, b: 250, a: 0.95 },
     bgSecondary: { r: 255, g: 255, b: 255, a: 0.9 },

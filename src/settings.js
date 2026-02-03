@@ -112,6 +112,10 @@ function setActiveColorTarget(target) {
   updateThemeSummary();
 }
 
+function refreshBackgroundTheme() {
+  applyBackgroundTheme(pendingBackground || getCurrentBackgroundTheme());
+}
+
 function renderColorThemeOptions() {
   const container = document.getElementById('theme-options');
   if (!container) return;
@@ -125,7 +129,9 @@ function renderColorThemeOptions() {
     option.type = 'button';
     option.className = 'theme-option color-theme-option';
     option.dataset.theme = theme.id;
+    option.title = `${theme.name} — ${theme.description}`;
     option.setAttribute('role', 'radio');
+    option.setAttribute('aria-label', `${theme.name}. ${theme.description}`);
     option.setAttribute('aria-checked', theme.id === selectedTheme ? 'true' : 'false');
     if (theme.id === selectedTheme) {
       option.classList.add('selected');
@@ -140,23 +146,22 @@ function renderColorThemeOptions() {
 
     const swatch = document.createElement('span');
     swatch.className = 'accent-theme-swatch';
-
-    const meta = document.createElement('span');
-    meta.className = 'accent-theme-meta';
-
-    const name = document.createElement('span');
-    name.className = 'accent-theme-name';
-    name.textContent = theme.name;
-
-    const note = document.createElement('span');
-    note.className = 'accent-theme-note';
-    note.textContent = theme.description;
-
-    meta.appendChild(name);
-    meta.appendChild(note);
-
     option.appendChild(swatch);
-    option.appendChild(meta);
+
+    const tooltip = document.createElement('span');
+    tooltip.className = 'theme-tooltip';
+
+    const tooltipName = document.createElement('span');
+    tooltipName.className = 'theme-tooltip-name';
+    tooltipName.textContent = theme.name;
+
+    const tooltipNote = document.createElement('span');
+    tooltipNote.className = 'theme-tooltip-note';
+    tooltipNote.textContent = theme.description;
+
+    tooltip.appendChild(tooltipName);
+    tooltip.appendChild(tooltipNote);
+    option.appendChild(tooltip);
 
     option.addEventListener('click', () => {
       if (activeColorTarget === COLOR_TARGETS.background) {
@@ -216,6 +221,7 @@ function previewWindowEffectsNow() {
     const values = getPreviewValuesFromInputs();
     if (!values) return;
 
+    refreshBackgroundTheme();
     applyWindowEffects(values);
 
     if (window?.electronAPI?.previewWindowEffects) {
@@ -254,6 +260,7 @@ function restorePreviewWindowEffects() {
 
   try {
     cancelPreviewWindowEffects();
+    refreshBackgroundTheme();
     applyWindowEffects(previewState);
     if (window?.electronAPI?.previewWindowEffects) {
       window.electronAPI.previewWindowEffects({
