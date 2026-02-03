@@ -336,6 +336,7 @@ async function init() {
     // Apply theme and UI preferences from saved config
     uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
     uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'sky');
+    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'slate');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
     uiUtils.applyWindowEffects(state.CONFIG || {});
 

@@ -246,21 +246,21 @@ body.frosted-glass {
   -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(180%);
   
   /* Glass-specific CSS variables for content containers */
-  --bg-color: rgba(20, 20, 25, var(--frosted-bg-alpha, 0.45));
-  --bg-elevated: rgba(30, 30, 35, var(--frosted-elevated-alpha, 0.5));
-  --bg-primary: rgba(20, 20, 25, var(--frosted-bg-alpha, 0.5));
-  --bg-secondary: rgba(30, 30, 35, var(--frosted-elevated-alpha, 0.5));
-  --bg-tertiary: rgba(40, 40, 45, var(--frosted-bg-alpha, 0.45));
+  --bg-color: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.45));
+  --bg-elevated: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
+  --bg-primary: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.5));
+  --bg-secondary: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
+  --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 40, 40, 45), var(--frosted-bg-alpha, 0.45));
 
-  --surface-1: rgba(25, 25, 30, var(--frosted-surface-alpha, 0.45));
-  --surface-2: rgba(35, 35, 40, var(--frosted-elevated-alpha, 0.5));
-  --surface-3: rgba(45, 45, 50, var(--frosted-elevated-alpha, 0.5));
-  --surface-hover: rgba(50, 50, 55, var(--frosted-surface-hover-alpha, 0.6));
-  --card-bg: rgba(30, 30, 35, var(--frosted-card-alpha, 0.4));
+  --surface-1: rgba(var(--frosted-surface-rgb, 25, 25, 30), var(--frosted-surface-alpha, 0.45));
+  --surface-2: rgba(var(--frosted-elevated-rgb, 35, 35, 40), var(--frosted-elevated-alpha, 0.5));
+  --surface-3: rgba(var(--frosted-elevated-rgb, 45, 45, 50), var(--frosted-elevated-alpha, 0.5));
+  --surface-hover: rgba(var(--frosted-surface-hover-rgb, 50, 50, 55), var(--frosted-surface-hover-alpha, 0.6));
+  --card-bg: rgba(var(--frosted-card-rgb, 30, 30, 35), var(--frosted-card-alpha, 0.4));
 
-  --glass-surface: rgba(30, 30, 35, var(--frosted-glass-alpha, 0.35));
-  --glass-elevated: rgba(40, 40, 45, var(--frosted-glass-elevated-alpha, 0.45));
-  --glass-overlay: rgba(20, 20, 25, var(--frosted-glass-overlay-alpha, 0.5));
+  --glass-surface: rgba(var(--frosted-glass-rgb, 30, 30, 35), var(--frosted-glass-alpha, 0.35));
+  --glass-elevated: rgba(var(--frosted-glass-elevated-rgb, 40, 40, 45), var(--frosted-glass-elevated-alpha, 0.45));
+  --glass-overlay: rgba(var(--frosted-glass-overlay-rgb, 20, 20, 25), var(--frosted-glass-overlay-alpha, 0.5));
 
   /* Update blur variable for child elements */
   --bg-blur: var(--frosted-blur, 32px);
@@ -275,21 +275,21 @@ body.theme-light.frosted-glass {
   backdrop-filter: blur(var(--bg-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(180%);
   
-  --bg-color: rgba(245, 245, 250, var(--frosted-bg-alpha, 0.5));
-  --bg-elevated: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.55));
-  --bg-primary: rgba(245, 245, 250, var(--frosted-bg-alpha, 0.55));
-  --bg-secondary: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.6));
-  --bg-tertiary: rgba(240, 240, 245, var(--frosted-bg-alpha, 0.5));
+  --bg-color: rgba(var(--frosted-bg-rgb, 245, 245, 250), var(--frosted-bg-alpha, 0.5));
+  --bg-elevated: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.55));
+  --bg-primary: rgba(var(--frosted-bg-rgb, 245, 245, 250), var(--frosted-bg-alpha, 0.55));
+  --bg-secondary: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.6));
+  --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 240, 240, 245), var(--frosted-bg-alpha, 0.5));
 
-  --surface-1: rgba(250, 250, 255, var(--frosted-surface-alpha, 0.5));
-  --surface-2: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.55));
-  --surface-3: rgba(255, 255, 255, var(--frosted-elevated-alpha, 0.6));
-  --surface-hover: rgba(240, 240, 245, var(--frosted-surface-hover-alpha, 0.65));
-  --card-bg: rgba(255, 255, 255, var(--frosted-card-alpha, 0.45));
+  --surface-1: rgba(var(--frosted-surface-rgb, 250, 250, 255), var(--frosted-surface-alpha, 0.5));
+  --surface-2: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.55));
+  --surface-3: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.6));
+  --surface-hover: rgba(var(--frosted-surface-hover-rgb, 240, 240, 245), var(--frosted-surface-hover-alpha, 0.65));
+  --card-bg: rgba(var(--frosted-card-rgb, 255, 255, 255), var(--frosted-card-alpha, 0.45));
 
-  --glass-surface: rgba(255, 255, 255, var(--frosted-glass-alpha, 0.45));
-  --glass-elevated: rgba(250, 250, 250, var(--frosted-glass-elevated-alpha, 0.55));
-  --glass-overlay: rgba(245, 245, 250, var(--frosted-glass-overlay-alpha, 0.6));
+  --glass-surface: rgba(var(--frosted-glass-rgb, 255, 255, 255), var(--frosted-glass-alpha, 0.45));
+  --glass-elevated: rgba(var(--frosted-glass-elevated-rgb, 250, 250, 250), var(--frosted-glass-elevated-alpha, 0.55));
+  --glass-overlay: rgba(var(--frosted-glass-overlay-rgb, 245, 245, 250), var(--frosted-glass-overlay-alpha, 0.6));
 
   --bg-blur: var(--frosted-blur, 32px);
 }
@@ -350,13 +350,13 @@ body.frosted-glass .section-title {
 
 /* Loading overlay in frosted glass mode */
 body.frosted-glass .loading-overlay {
-  background: rgba(20, 20, 25, 0.7);
+  background: rgba(var(--loading-overlay-rgb, 20, 20, 25), 0.7);
   backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
 }
 
 body.theme-light.frosted-glass .loading-overlay {
-  background: rgba(245, 245, 250, 0.7);
+  background: rgba(var(--loading-overlay-rgb, 245, 245, 250), 0.7);
 }
 
 /* Modal content in frosted glass mode */
@@ -3197,7 +3197,7 @@ body {
   margin-top: var(--space-3);
 }
 
-.accent-theme-option {
+.theme-option {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -3215,19 +3215,19 @@ body {
   text-align: left;
 }
 
-.accent-theme-option:hover {
+.theme-option:hover {
   border-color: var(--border-hover);
   background: var(--glass-elevated);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-.accent-theme-option:focus-visible {
+.theme-option:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.accent-theme-option.selected {
+.theme-option.selected {
   border-color: var(--swatch, var(--accent));
   box-shadow: 0 0 0 1px var(--swatch, var(--accent)),
     0 10px 24px rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);

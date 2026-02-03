@@ -3,7 +3,9 @@ import websocket from './websocket.js';
 import {
   applyTheme,
   applyAccentTheme,
+  applyBackgroundTheme,
   getAccentThemes,
+  getBackgroundThemes,
   applyUiPreferences,
   applyWindowEffects,
   trapFocus,
@@ -19,11 +21,19 @@ let previewState = null;
 let previewRaf = null;
 let previewAccent = null;
 let pendingAccent = null;
+let previewBackground = null;
+let pendingBackground = null;
 
 function getCurrentAccentTheme() {
   const themes = getAccentThemes();
   const fallback = themes[0]?.id || 'sky';
   return state.CONFIG?.ui?.accent || fallback;
+}
+
+function getCurrentBackgroundTheme() {
+  const themes = getBackgroundThemes();
+  const fallback = themes.find(theme => theme.id === 'slate')?.id || themes[0]?.id || 'sky';
+  return state.CONFIG?.ui?.background || fallback;
 }
 
 function updateAccentSelectionUI(accentKey) {
@@ -48,6 +58,30 @@ function selectAccentTheme(accentKey, { preview = true } = {}) {
   }
 }
 
+function updateBackgroundSelectionUI(backgroundKey) {
+  const options = document.querySelectorAll('.background-theme-option');
+  options.forEach(option => {
+    const isSelected = option.dataset.background === backgroundKey;
+    option.classList.toggle('selected', isSelected);
+    option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+  });
+}
+
+function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
+  const themes = getBackgroundThemes();
+  const validIds = new Set(themes.map(theme => theme.id));
+  const resolvedBackground = validIds.has(backgroundKey)
+    ? backgroundKey
+    : (themes.find(theme => theme.id === 'slate')?.id || themes[0]?.id || 'sky');
+
+  pendingBackground = resolvedBackground;
+  updateBackgroundSelectionUI(resolvedBackground);
+
+  if (preview) {
+    applyBackgroundTheme(resolvedBackground);
+  }
+}
+
 function renderAccentThemeOptions() {
   const container = document.getElementById('accent-theme-options');
   if (!container) return;
@@ -58,7 +92,7 @@ function renderAccentThemeOptions() {
   themes.forEach(theme => {
     const option = document.createElement('button');
     option.type = 'button';
-    option.className = 'accent-theme-option';
+    option.className = 'theme-option accent-theme-option';
     option.dataset.accent = theme.id;
     option.setAttribute('role', 'radio');
     option.setAttribute('aria-checked', 'false');
@@ -98,6 +132,55 @@ function renderAccentThemeOptions() {
   });
 }
 
+function renderBackgroundThemeOptions() {
+  const container = document.getElementById('background-theme-options');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const themes = getBackgroundThemes();
+
+  themes.forEach(theme => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'theme-option background-theme-option';
+    option.dataset.background = theme.id;
+    option.setAttribute('role', 'radio');
+    option.setAttribute('aria-checked', 'false');
+
+    if (theme.color) {
+      option.style.setProperty('--swatch', theme.color);
+    }
+    if (theme.rgb) {
+      option.style.setProperty('--swatch-rgb', theme.rgb);
+    }
+
+    const swatch = document.createElement('span');
+    swatch.className = 'accent-theme-swatch';
+
+    const meta = document.createElement('span');
+    meta.className = 'accent-theme-meta';
+
+    const name = document.createElement('span');
+    name.className = 'accent-theme-name';
+    name.textContent = theme.name;
+
+    const note = document.createElement('span');
+    note.className = 'accent-theme-note';
+    note.textContent = theme.description;
+
+    meta.appendChild(name);
+    meta.appendChild(note);
+
+    option.appendChild(swatch);
+    option.appendChild(meta);
+
+    option.addEventListener('click', () => {
+      selectBackgroundTheme(theme.id, { preview: true });
+    });
+
+    container.appendChild(option);
+  });
+}
 function getPreviewValuesFromInputs() {
   const opacitySlider = document.getElementById('opacity-slider');
   const frostedGlass = document.getElementById('frosted-glass');
@@ -269,10 +352,15 @@ async function openSettings(uiHooks) {
     };
 
     renderAccentThemeOptions();
+    renderBackgroundThemeOptions();
     const currentAccent = getCurrentAccentTheme();
     previewAccent = currentAccent;
     pendingAccent = currentAccent;
     selectAccentTheme(currentAccent, { preview: false });
+    const currentBackground = getCurrentBackgroundTheme();
+    previewBackground = currentBackground;
+    pendingBackground = currentBackground;
+    selectBackgroundTheme(currentBackground, { preview: false });
 
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
@@ -327,6 +415,11 @@ function closeSettings() {
     }
     previewAccent = null;
     pendingAccent = null;
+    if (previewBackground && pendingBackground && previewBackground !== pendingBackground) {
+      applyBackgroundTheme(previewBackground);
+    }
+    previewBackground = null;
+    pendingBackground = null;
 
     // Clean up hotkey event listeners to prevent memory leaks
     cleanupHotkeyEventListeners();
@@ -387,6 +480,7 @@ async function saveSettings() {
     delete state.CONFIG.frostedGlassTint;
     state.CONFIG.ui = state.CONFIG.ui || {};
     state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
+    state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
 
     // Save "Start with Windows" setting
     const startWithWindows = document.getElementById('start-with-windows');
@@ -455,9 +549,12 @@ async function saveSettings() {
     previewState = null;
     previewAccent = null;
     pendingAccent = null;
+    previewBackground = null;
+    pendingBackground = null;
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
+    applyBackgroundTheme(state.CONFIG.ui?.background || getCurrentBackgroundTheme());
     applyUiPreferences(state.CONFIG.ui || {});
     applyWindowEffects(state.CONFIG || {});
 

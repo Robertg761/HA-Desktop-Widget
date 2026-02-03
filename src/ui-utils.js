@@ -20,6 +20,41 @@ const ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
   return acc;
 }, {});
 
+const BACKGROUND_BASES = {
+  dark: {
+    bgColor: { r: 20, g: 20, b: 25, a: 0.85 },
+    bgElevated: { r: 30, g: 30, b: 35, a: 0.9 },
+    bgPrimary: { r: 20, g: 20, b: 25, a: 0.95 },
+    bgSecondary: { r: 30, g: 30, b: 35, a: 0.9 },
+    bgTertiary: { r: 40, g: 40, b: 45, a: 0.85 },
+    surface1: { r: 25, g: 25, b: 30, a: 0.8 },
+    surface2: { r: 35, g: 35, b: 40, a: 0.85 },
+    surface3: { r: 45, g: 45, b: 50, a: 0.9 },
+    surfaceHover: { r: 50, g: 50, b: 55, a: 0.95 },
+    cardBg: { r: 30, g: 30, b: 35, a: 0.7 },
+    glassSurface: { r: 30, g: 30, b: 35, a: 0.7 },
+    glassElevated: { r: 40, g: 40, b: 45, a: 0.8 },
+    glassOverlay: { r: 20, g: 20, b: 25, a: 0.85 },
+    loadingOverlay: { r: 20, g: 20, b: 25, a: 0.7 },
+  },
+  light: {
+    bgColor: { r: 245, g: 245, b: 250, a: 0.85 },
+    bgElevated: { r: 255, g: 255, b: 255, a: 0.9 },
+    bgPrimary: { r: 245, g: 245, b: 250, a: 0.95 },
+    bgSecondary: { r: 255, g: 255, b: 255, a: 0.9 },
+    bgTertiary: { r: 240, g: 240, b: 245, a: 0.85 },
+    surface1: { r: 250, g: 250, b: 255, a: 0.8 },
+    surface2: { r: 255, g: 255, b: 255, a: 0.85 },
+    surface3: { r: 255, g: 255, b: 255, a: 0.9 },
+    surfaceHover: { r: 240, g: 240, b: 245, a: 0.95 },
+    cardBg: { r: 255, g: 255, b: 255, a: 0.7 },
+    glassSurface: { r: 255, g: 255, b: 255, a: 0.7 },
+    glassElevated: { r: 250, g: 250, b: 250, a: 0.8 },
+    glassOverlay: { r: 245, g: 245, b: 250, a: 0.85 },
+    loadingOverlay: { r: 245, g: 245, b: 250, a: 0.7 },
+  },
+};
+
 function hexToRgb(hex) {
   if (!hex || typeof hex !== 'string') return null;
   const normalized = hex.replace('#', '').trim();
@@ -53,9 +88,18 @@ function getAccentThemes() {
   });
 }
 
+function getBackgroundThemes() {
+  return getAccentThemes();
+}
+
 function resolveAccentThemeId(accentKey) {
   if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
   return ACCENT_THEMES[0]?.id || 'sky';
+}
+
+function resolveBackgroundThemeId(backgroundKey) {
+  if (backgroundKey && ACCENT_THEME_MAP[backgroundKey]) return backgroundKey;
+  return ACCENT_THEME_MAP.slate ? 'slate' : (ACCENT_THEMES[0]?.id || 'sky');
 }
 
 function applyAccentTheme(accentKey) {
@@ -92,6 +136,66 @@ function applyAccentTheme(accentKey) {
     }
   } catch (error) {
     console.error('Error applying accent theme:', error);
+  }
+}
+
+function applyBackgroundTheme(backgroundKey) {
+  try {
+    const resolvedKey = resolveBackgroundThemeId(backgroundKey);
+    const theme = ACCENT_THEME_MAP[resolvedKey];
+    if (!theme) return;
+
+    const rgb = hexToRgb(theme.color);
+    if (!rgb) return;
+
+    const root = document.documentElement;
+    const body = document.body;
+    if (!root || !body) return;
+
+    const isLightTheme = body.classList.contains('theme-light');
+    const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
+    const tintAmount = isLightTheme ? 0.08 : 0.12;
+    const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
+    const setRgbaVar = (name, baseEntry) => {
+      const tinted = tint(baseEntry);
+      root.style.setProperty(name, `rgba(${tinted.r}, ${tinted.g}, ${tinted.b}, ${baseEntry.a})`);
+      return tinted;
+    };
+
+    const bgColor = setRgbaVar('--bg-color', base.bgColor);
+    const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
+    const bgPrimary = setRgbaVar('--bg-primary', base.bgPrimary);
+    const bgSecondary = setRgbaVar('--bg-secondary', base.bgSecondary);
+    const bgTertiary = setRgbaVar('--bg-tertiary', base.bgTertiary);
+    const surface1 = setRgbaVar('--surface-1', base.surface1);
+    const surface2 = setRgbaVar('--surface-2', base.surface2);
+    const surface3 = setRgbaVar('--surface-3', base.surface3);
+    const surfaceHover = setRgbaVar('--surface-hover', base.surfaceHover);
+    const cardBg = setRgbaVar('--card-bg', base.cardBg);
+    const glassSurface = setRgbaVar('--glass-surface', base.glassSurface);
+    const glassElevated = setRgbaVar('--glass-elevated', base.glassElevated);
+    const glassOverlay = setRgbaVar('--glass-overlay', base.glassOverlay);
+
+    const setBodyRgb = (name, value) => {
+      body.style.setProperty(name, `${value.r}, ${value.g}, ${value.b}`);
+    };
+
+    setBodyRgb('--frosted-bg-rgb', bgColor);
+    setBodyRgb('--frosted-elevated-rgb', bgElevated);
+    setBodyRgb('--frosted-tertiary-rgb', bgTertiary);
+    setBodyRgb('--frosted-surface-rgb', surface1);
+    setBodyRgb('--frosted-surface-hover-rgb', surfaceHover);
+    setBodyRgb('--frosted-card-rgb', cardBg);
+    setBodyRgb('--frosted-glass-rgb', glassSurface);
+    setBodyRgb('--frosted-glass-elevated-rgb', glassElevated);
+    setBodyRgb('--frosted-glass-overlay-rgb', glassOverlay);
+
+    const loadingOverlay = tint(base.loadingOverlay);
+    setBodyRgb('--loading-overlay-rgb', loadingOverlay);
+
+    body.dataset.background = resolvedKey;
+  } catch (error) {
+    console.error('Error applying background theme:', error);
   }
 }
 
@@ -381,7 +485,9 @@ export {
   showToast,
   applyTheme,
   applyAccentTheme,
+  applyBackgroundTheme,
   getAccentThemes,
+  getBackgroundThemes,
   applyUiPreferences,
   applyWindowEffects,
   trapFocus,

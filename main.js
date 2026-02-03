@@ -168,7 +168,8 @@ function loadConfig() {
     },
     ui: {
       theme: 'auto',
-      accent: 'sky'
+      accent: 'sky',
+      background: 'slate'
     },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
