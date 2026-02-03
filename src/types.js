@@ -84,7 +84,7 @@
  * @property {string[]} [favoriteEntities] - List of favorited entity IDs
  * @property {Object.<string, string>} [customEntityNames] - Custom display names
  * @property {Object} [customTabs] - Custom tab configurations
- * @property {Object} [ui] - UI preferences (theme, etc.)
+ * @property {Object} [ui] - UI preferences (theme, accent, etc.)
  */
 
 /**

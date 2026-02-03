@@ -166,6 +166,10 @@ function loadConfig() {
       enabled: false,
       alerts: {} // entityId -> alert configuration
     },
+    ui: {
+      theme: 'auto',
+      accent: 'sky'
+    },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
     popupHotkeyToggleMode: false // Press once to show, press again to hide (instead of hold)
@@ -177,7 +181,8 @@ function loadConfig() {
       config = {
         ...defaultConfig, ...userConfig,
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
-        entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) }
+        entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
+        ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) }
       };
 
       // Handle token encryption/decryption

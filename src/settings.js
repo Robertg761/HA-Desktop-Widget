@@ -1,12 +1,102 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { applyTheme, applyUiPreferences, applyWindowEffects, trapFocus, releaseFocusTrap, showToast, showConfirm } from './ui-utils.js';
+import {
+  applyTheme,
+  applyAccentTheme,
+  getAccentThemes,
+  applyUiPreferences,
+  applyWindowEffects,
+  trapFocus,
+  releaseFocusTrap,
+  showToast,
+  showConfirm,
+} from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import * as utils from './utils.js';
 // Note: ui.js is imported dynamically to prevent circular dependencies
 
 let previewState = null;
 let previewRaf = null;
+let previewAccent = null;
+let pendingAccent = null;
+
+function getCurrentAccentTheme() {
+  const themes = getAccentThemes();
+  const fallback = themes[0]?.id || 'sky';
+  return state.CONFIG?.ui?.accent || fallback;
+}
+
+function updateAccentSelectionUI(accentKey) {
+  const options = document.querySelectorAll('.accent-theme-option');
+  options.forEach(option => {
+    const isSelected = option.dataset.accent === accentKey;
+    option.classList.toggle('selected', isSelected);
+    option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+  });
+}
+
+function selectAccentTheme(accentKey, { preview = true } = {}) {
+  const themes = getAccentThemes();
+  const validIds = new Set(themes.map(theme => theme.id));
+  const resolvedAccent = validIds.has(accentKey) ? accentKey : (themes[0]?.id || 'sky');
+
+  pendingAccent = resolvedAccent;
+  updateAccentSelectionUI(resolvedAccent);
+
+  if (preview) {
+    applyAccentTheme(resolvedAccent);
+  }
+}
+
+function renderAccentThemeOptions() {
+  const container = document.getElementById('accent-theme-options');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const themes = getAccentThemes();
+
+  themes.forEach(theme => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'accent-theme-option';
+    option.dataset.accent = theme.id;
+    option.setAttribute('role', 'radio');
+    option.setAttribute('aria-checked', 'false');
+
+    if (theme.color) {
+      option.style.setProperty('--swatch', theme.color);
+    }
+    if (theme.rgb) {
+      option.style.setProperty('--swatch-rgb', theme.rgb);
+    }
+
+    const swatch = document.createElement('span');
+    swatch.className = 'accent-theme-swatch';
+
+    const meta = document.createElement('span');
+    meta.className = 'accent-theme-meta';
+
+    const name = document.createElement('span');
+    name.className = 'accent-theme-name';
+    name.textContent = theme.name;
+
+    const note = document.createElement('span');
+    note.className = 'accent-theme-note';
+    note.textContent = theme.description;
+
+    meta.appendChild(name);
+    meta.appendChild(note);
+
+    option.appendChild(swatch);
+    option.appendChild(meta);
+
+    option.addEventListener('click', () => {
+      selectAccentTheme(theme.id, { preview: true });
+    });
+
+    container.appendChild(option);
+  });
+}
 
 function getPreviewValuesFromInputs() {
   const opacitySlider = document.getElementById('opacity-slider');
@@ -178,6 +268,12 @@ async function openSettings(uiHooks) {
       frostedGlass: !!state.CONFIG.frostedGlass,
     };
 
+    renderAccentThemeOptions();
+    const currentAccent = getCurrentAccentTheme();
+    previewAccent = currentAccent;
+    pendingAccent = currentAccent;
+    selectAccentTheme(currentAccent, { preview: false });
+
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
       globalHotkeysEnabled.checked = !!(state.CONFIG.globalHotkeys && state.CONFIG.globalHotkeys.enabled);
@@ -226,6 +322,11 @@ function closeSettings() {
       restorePreviewWindowEffects();
       previewState = null;
     }
+    if (previewAccent && pendingAccent && previewAccent !== pendingAccent) {
+      applyAccentTheme(previewAccent);
+    }
+    previewAccent = null;
+    pendingAccent = null;
 
     // Clean up hotkey event listeners to prevent memory leaks
     cleanupHotkeyEventListeners();
@@ -284,6 +385,8 @@ async function saveSettings() {
     if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
     delete state.CONFIG.frostedGlassStrength;
     delete state.CONFIG.frostedGlassTint;
+    state.CONFIG.ui = state.CONFIG.ui || {};
+    state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
 
     // Save "Start with Windows" setting
     const startWithWindows = document.getElementById('start-with-windows');
@@ -350,8 +453,11 @@ async function saveSettings() {
     }
 
     previewState = null;
+    previewAccent = null;
+    pendingAccent = null;
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
+    applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
     applyUiPreferences(state.CONFIG.ui || {});
     applyWindowEffects(state.CONFIG || {});
 

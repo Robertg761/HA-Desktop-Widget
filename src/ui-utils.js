@@ -3,6 +3,97 @@ const focusTrapHandlers = new WeakMap();
 let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
+const ACCENT_THEMES = [
+  { id: 'sky', name: 'Sky', color: '#64b5f6', description: 'Clean, bright blue' },
+  { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
+  { id: 'violet', name: 'Violet', color: '#8b5cf6', description: 'Creative and bold' },
+  { id: 'rose', name: 'Rose', color: '#f43f5e', description: 'Vivid and energetic' },
+  { id: 'coral', name: 'Coral', color: '#f97316', description: 'Warm and upbeat' },
+  { id: 'amber', name: 'Amber', color: '#f59e0b', description: 'Golden and friendly' },
+  { id: 'emerald', name: 'Emerald', color: '#10b981', description: 'Fresh and balanced' },
+  { id: 'teal', name: 'Teal', color: '#14b8a6', description: 'Calm and refined' },
+  { id: 'aqua', name: 'Aqua', color: '#22d3ee', description: 'Light and airy' },
+  { id: 'slate', name: 'Slate', color: '#94a3b8', description: 'Neutral and understated' },
+];
+const ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
+  acc[theme.id] = theme;
+  return acc;
+}, {});
+
+function hexToRgb(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const normalized = hex.replace('#', '').trim();
+  if (![3, 6].includes(normalized.length)) return null;
+  const value = normalized.length === 3
+    ? normalized.split('').map(ch => ch + ch).join('')
+    : normalized;
+  const r = Number.parseInt(value.slice(0, 2), 16);
+  const g = Number.parseInt(value.slice(2, 4), 16);
+  const b = Number.parseInt(value.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+  return { r, g, b };
+}
+
+function mixRgb(base, mixin, amount) {
+  const mix = (channel) => Math.round(base[channel] + (mixin[channel] - base[channel]) * amount);
+  return {
+    r: mix('r'),
+    g: mix('g'),
+    b: mix('b'),
+  };
+}
+
+function getAccentThemes() {
+  return ACCENT_THEMES.map(theme => {
+    const rgb = hexToRgb(theme.color);
+    return {
+      ...theme,
+      rgb: rgb ? `${rgb.r}, ${rgb.g}, ${rgb.b}` : null,
+    };
+  });
+}
+
+function resolveAccentThemeId(accentKey) {
+  if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
+  return ACCENT_THEMES[0]?.id || 'sky';
+}
+
+function applyAccentTheme(accentKey) {
+  try {
+    const resolvedKey = resolveAccentThemeId(accentKey);
+    const theme = ACCENT_THEME_MAP[resolvedKey];
+    if (!theme) return;
+
+    const rgb = hexToRgb(theme.color);
+    if (!rgb) return;
+
+    const root = document.documentElement;
+    if (!root) return;
+
+    const isLightTheme = document.body?.classList.contains('theme-light');
+    const hoverMix = isLightTheme ? 0.18 : 0.22;
+    const hoverRgb = mixRgb(rgb, isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 }, hoverMix);
+    const accentBgAlpha = isLightTheme ? 0.12 : 0.18;
+    const glowAlpha = isLightTheme ? 0.22 : 0.35;
+    const focusAlpha = isLightTheme ? 0.18 : 0.25;
+
+    root.style.setProperty('--accent', theme.color);
+    root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+    root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+    root.style.setProperty('--primary', theme.color);
+    root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+    root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
+    root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
+    root.style.setProperty('--glow-accent', `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`);
+    root.style.setProperty('--glow-focus', `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${focusAlpha})`);
+
+    if (document.body) {
+      document.body.dataset.accent = resolvedKey;
+    }
+  } catch (error) {
+    console.error('Error applying accent theme:', error);
+  }
+}
 
 function getPlatform() {
   if (cachedPlatform) return cachedPlatform;
@@ -289,6 +380,8 @@ function showConfirm(title, message, options = {}) {
 export {
   showToast,
   applyTheme,
+  applyAccentTheme,
+  getAccentThemes,
   applyUiPreferences,
   applyWindowEffects,
   trapFocus,
