@@ -14,6 +14,7 @@ import {
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import * as utils from './utils.js';
+import { PRIMARY_CARD_DEFAULTS, isPrimaryCardSpecial, normalizePrimaryCards } from './primary-cards.js';
 // Note: ui.js is imported dynamically to prevent circular dependencies
 
 let previewState = null;
@@ -29,6 +30,11 @@ const COLOR_TARGETS = {
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
+
+const PRIMARY_CARD_OPTIONS = [
+  { value: 'weather', label: 'Weather (default)' },
+  { value: 'time', label: 'Time (default)' },
+];
 
 function resolveThemeId(themeId, { preferSlate = false } = {}) {
   const themes = getAccentThemes();
@@ -286,6 +292,99 @@ function initColorThemeSectionToggle() {
   });
 }
 
+function getPrimaryCardSelectionsFromConfig() {
+  return normalizePrimaryCards(state.CONFIG?.primaryCards);
+}
+
+function getPrimaryCardEntityOptions() {
+  return Object.values(state.STATES || {})
+    .filter(entity => !entity.entity_id.startsWith('sun.') && !entity.entity_id.startsWith('zone.'))
+    .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+}
+
+function populatePrimaryCardSelect(selectEl, currentValue, otherValue) {
+  if (!selectEl) return;
+
+  const normalizedValue = typeof currentValue === 'string' && currentValue ? currentValue : PRIMARY_CARD_DEFAULTS[0];
+  const entities = getPrimaryCardEntityOptions();
+  const entityIds = new Set(entities.map(entity => entity.entity_id));
+
+  selectEl.innerHTML = '';
+
+  const addOption = (label, value, { disabled = false } = {}) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    option.disabled = disabled;
+    selectEl.appendChild(option);
+  };
+
+  PRIMARY_CARD_OPTIONS.forEach(option => {
+    const disabled = isPrimaryCardSpecial(option.value) &&
+      option.value === otherValue &&
+      option.value !== normalizedValue;
+    addOption(option.label, option.value, { disabled });
+  });
+
+  if (!isPrimaryCardSpecial(normalizedValue) && normalizedValue && !entityIds.has(normalizedValue)) {
+    addOption(`Unavailable: ${normalizedValue}`, normalizedValue);
+  }
+
+  if (entities.length > 0) {
+    entities.forEach(entity => {
+      const label = `${utils.getEntityDisplayName(entity)} (${entity.entity_id})`;
+      addOption(label, entity.entity_id);
+    });
+  } else {
+    addOption('No entities available', '', { disabled: true });
+  }
+
+  selectEl.value = normalizedValue;
+}
+
+function populatePrimaryCardSelectors({ fromConfig = true } = {}) {
+  const selectOne = document.getElementById('primary-card-1-select');
+  const selectTwo = document.getElementById('primary-card-2-select');
+  if (!selectOne || !selectTwo) return;
+
+  const selections = fromConfig
+    ? getPrimaryCardSelectionsFromConfig()
+    : [
+      selectOne.value || PRIMARY_CARD_DEFAULTS[0],
+      selectTwo.value || PRIMARY_CARD_DEFAULTS[1],
+    ];
+
+  populatePrimaryCardSelect(selectOne, selections[0], selections[1]);
+  populatePrimaryCardSelect(selectTwo, selections[1], selections[0]);
+}
+
+function handlePrimaryCardChange(changedSelect, otherSelect) {
+  if (!changedSelect || !otherSelect) return;
+
+  const changedValue = changedSelect.value;
+  if (isPrimaryCardSpecial(changedValue) && changedValue === otherSelect.value) {
+    otherSelect.value = changedValue === 'weather' ? 'time' : 'weather';
+  }
+
+  populatePrimaryCardSelectors({ fromConfig: false });
+}
+
+function initPrimaryCardSelectors() {
+  const selectOne = document.getElementById('primary-card-1-select');
+  const selectTwo = document.getElementById('primary-card-2-select');
+  if (!selectOne || !selectTwo) return;
+
+  if (!selectOne.dataset.initialized) {
+    selectOne.addEventListener('change', () => handlePrimaryCardChange(selectOne, selectTwo));
+    selectOne.dataset.initialized = 'true';
+  }
+
+  if (!selectTwo.dataset.initialized) {
+    selectTwo.addEventListener('change', () => handlePrimaryCardChange(selectTwo, selectOne));
+    selectTwo.dataset.initialized = 'true';
+  }
+}
+
 function getPreviewValuesFromInputs() {
   const opacitySlider = document.getElementById('opacity-slider');
   const frostedGlass = document.getElementById('frosted-glass');
@@ -500,6 +599,8 @@ async function openSettings(uiHooks) {
 
     // Populate media player dropdown after UI hooks (when states are loaded)
     populateMediaPlayerDropdown();
+    populatePrimaryCardSelectors();
+    initPrimaryCardSelectors();
 
     // Initialize popup hotkey UI
     initializePopupHotkey();
@@ -624,6 +725,15 @@ async function saveSettings() {
     const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
     state.CONFIG.primaryMediaPlayer = selectedValue || null;
 
+    const primaryCardOne = document.getElementById('primary-card-1-select');
+    const primaryCardTwo = document.getElementById('primary-card-2-select');
+    if (primaryCardOne && primaryCardTwo) {
+      state.CONFIG.primaryCards = normalizePrimaryCards([
+        primaryCardOne.value,
+        primaryCardTwo.value,
+      ]);
+    }
+
     const domainFilters = document.getElementById('domain-filters');
     if (domainFilters) {
       const checkboxes = domainFilters.querySelectorAll('input[type="checkbox"]');
@@ -673,6 +783,9 @@ async function saveSettings() {
     const ui = await import('./ui.js');
     if (ui.updateMediaTile) {
       ui.updateMediaTile();
+    }
+    if (ui.renderPrimaryCards) {
+      ui.renderPrimaryCards();
     }
 
     // Only reconnect WebSocket if HA connection settings actually changed

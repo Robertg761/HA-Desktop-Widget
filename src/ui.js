@@ -4,6 +4,7 @@ import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import { setIconContent } from './icons.js';
+import { normalizePrimaryCards } from './primary-cards.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -39,6 +40,119 @@ let sortableInstance = null; // SortableJS instance for reorganize mode
 const mediaFitElements = new Set();
 let mediaFitScheduled = false;
 let mediaFitResizeBound = false;
+
+let weatherCardTemplate = null;
+let timeCardTemplate = null;
+
+function cachePrimaryCardTemplates() {
+  if (!weatherCardTemplate) {
+    const weatherCard = document.getElementById('weather-card');
+    if (weatherCard) weatherCardTemplate = weatherCard.innerHTML;
+  }
+  if (!timeCardTemplate) {
+    const timeCard = document.getElementById('time-card');
+    if (timeCard) timeCardTemplate = timeCard.innerHTML;
+  }
+}
+
+function getPrimaryCardSelections() {
+  return normalizePrimaryCards(state.CONFIG?.primaryCards);
+}
+
+function renderPrimaryEntityCard(cardEl, entityId) {
+  if (!cardEl) return;
+
+  const entity = state.STATES[entityId];
+  const icon = entity ? utils.getEntityIcon(entity) : '❓';
+  const name = entity ? utils.getEntityDisplayName(entity) : entityId;
+  const displayState = entity ? utils.getEntityDisplayState(entity) : 'Unavailable';
+
+  cardEl.classList.add('entity-card');
+  cardEl.classList.toggle('unavailable-entity', !entity);
+  cardEl.dataset.primaryType = 'entity';
+  cardEl.dataset.entityId = entityId;
+  if (entity?.state) {
+    cardEl.dataset.state = entity.state;
+  } else {
+    cardEl.removeAttribute('data-state');
+  }
+
+  cardEl.title = entity ? `${name}: ${displayState}` : `${entityId}: Unavailable`;
+  cardEl.innerHTML = `
+    <div class="entity-card-icon">${utils.escapeHtml(icon)}</div>
+    <div class="entity-card-info">
+      <div class="entity-card-name">${utils.escapeHtml(name)}</div>
+      <div class="entity-card-state">${utils.escapeHtml(displayState)}</div>
+      <div class="entity-card-id">${utils.escapeHtml(entityId)}</div>
+    </div>
+  `;
+}
+
+function renderPrimaryCard(cardEl, selection, slotIndex) {
+  if (!cardEl) return;
+
+  cardEl.dataset.primarySlot = String(slotIndex);
+  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'unavailable-entity');
+  cardEl.removeAttribute('data-entity-id');
+  cardEl.removeAttribute('data-state');
+  cardEl.title = '';
+
+  if (selection === 'weather') {
+    cardEl.dataset.primaryType = 'weather';
+    cardEl.classList.add('weather-card');
+    cardEl.title = 'Long-press to configure weather';
+    cardEl.innerHTML = weatherCardTemplate || '';
+    return;
+  }
+
+  if (selection === 'time') {
+    cardEl.dataset.primaryType = 'time';
+    cardEl.classList.add('time-card');
+    cardEl.title = 'Current time';
+    cardEl.innerHTML = timeCardTemplate || '';
+    return;
+  }
+
+  renderPrimaryEntityCard(cardEl, selection);
+}
+
+function renderPrimaryCards() {
+  try {
+    const weatherCard = document.getElementById('weather-card');
+    const timeCard = document.getElementById('time-card');
+    if (!weatherCard || !timeCard) return;
+
+    cachePrimaryCardTemplates();
+
+    const [slotOne, slotTwo] = getPrimaryCardSelections();
+    renderPrimaryCard(weatherCard, slotOne, 1);
+    renderPrimaryCard(timeCard, slotTwo, 2);
+
+    if (slotOne === 'weather' || slotTwo === 'weather') {
+      updateWeatherFromHA();
+    }
+    if (slotOne === 'time' || slotTwo === 'time') {
+      updateTimeDisplay();
+    }
+  } catch (error) {
+    console.error('[UI] Error rendering primary cards:', error);
+  }
+}
+
+function updatePrimaryEntityCards(entity) {
+  try {
+    if (!entity) return;
+    const [slotOne, slotTwo] = getPrimaryCardSelections();
+    if (slotOne === entity.entity_id) {
+      renderPrimaryEntityCard(document.getElementById('weather-card'), entity.entity_id);
+    }
+    if (slotTwo === entity.entity_id) {
+      renderPrimaryEntityCard(document.getElementById('time-card'), entity.entity_id);
+    }
+  } catch (error) {
+    console.error('[UI] Error updating primary entity cards:', error);
+  }
+}
 
 function toggleReorganizeMode() {
   try {
@@ -325,6 +439,7 @@ function saveQuickAccessOrder() {
 // --- Core UI Rendering ---
 function renderActiveTab() {
   try {
+    renderPrimaryCards();
     renderQuickControls();
     updateWeatherFromHA();
     updateMediaTile();
@@ -349,6 +464,8 @@ function updateEntityInUI(entity) {
     if (entity.entity_id === state.CONFIG.primaryMediaPlayer) {
       updateMediaTile();
     }
+
+    updatePrimaryEntityCards(entity);
 
     const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
     items.forEach(item => {
@@ -2679,6 +2796,7 @@ export {
   initUpdateUI,
   updateTimeDisplay,
   updateTimerDisplays,
+  renderPrimaryCards,
   toggleReorganizeMode,
   populateQuickControlsList,
   executeHotkeyAction,

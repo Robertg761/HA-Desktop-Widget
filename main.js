@@ -171,6 +171,7 @@ function loadConfig() {
       accent: 'original',
       background: 'original'
     },
+    primaryCards: ['weather', 'time'],
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
     popupHotkeyToggleMode: false // Press once to show, press again to hide (instead of hold)

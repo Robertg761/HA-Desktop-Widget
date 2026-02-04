@@ -1685,6 +1685,65 @@ body {
   width: 100%;
 }
 
+/* Primary Entity Card Styles */
+.status-card.entity-card {
+  min-height: 120px;
+  align-items: center;
+}
+
+.status-card.entity-card .entity-card-icon {
+  font-size: 30px;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.status-card.entity-card .entity-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.status-card.entity-card .entity-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-card.entity-card .entity-card-state {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-card.entity-card .entity-card-id {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-card.entity-card.unavailable-entity {
+  opacity: 0.7;
+  border-color: rgba(158, 158, 158, 0.35);
+}
+
 .camera-info {
   padding: 16px;
   background: var(--surface-1);

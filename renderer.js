@@ -498,10 +498,15 @@ function wireUI() {
     }
 
     // Wire up weather card long press
-    const weatherCard = document.getElementById('weather-card');
-    if (weatherCard) {
+    const statusCards = [
+      document.getElementById('weather-card'),
+      document.getElementById('time-card')
+    ];
+    statusCards.forEach((card) => {
+      if (!card) return;
       let pressTimer = null;
-      weatherCard.addEventListener('mousedown', () => {
+      const startPress = () => {
+        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card')) return;
         pressTimer = setTimeout(() => {
           const modal = document.getElementById('weather-config-modal');
           if (modal) {
@@ -510,14 +515,14 @@ function wireUI() {
             modal.style.display = 'flex';
           }
         }, 500);
-      });
-      weatherCard.addEventListener('mouseup', () => {
+      };
+      const cancelPress = () => {
         clearTimeout(pressTimer);
-      });
-      weatherCard.addEventListener('mouseleave', () => {
-        clearTimeout(pressTimer);
-      });
-    }
+      };
+      card.addEventListener('mousedown', startPress);
+      card.addEventListener('mouseup', cancelPress);
+      card.addEventListener('mouseleave', cancelPress);
+    });
 
     // Wire up alerts management
     const closeAlertEntityPickerBtn = document.getElementById('close-alert-entity-picker');
