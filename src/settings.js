@@ -378,6 +378,7 @@ function renderColorThemeOptions() {
 
   updateThemeOptionsLabel();
   updateThemeSummary();
+  syncPersonalizationSectionHeight(document.getElementById('color-themes-section'));
 }
 
 /**
@@ -407,14 +408,28 @@ function initColorThemeSectionToggle() {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
 
-    section.classList.remove('collapsed');
-    toggle.setAttribute('aria-expanded', 'true');
+    section.classList.add('collapsed');
+    toggle.setAttribute('aria-expanded', 'false');
+    syncPersonalizationSectionHeight(section);
 
     toggle.onclick = () => {
+      syncPersonalizationSectionHeight(section);
       const isCollapsed = section.classList.toggle('collapsed');
       toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
     };
   });
+}
+
+function syncPersonalizationSectionHeight(section) {
+  if (!section) return;
+  const body = section.querySelector('.section-body');
+  if (!body) return;
+  const height = body.scrollHeight;
+  if (!height) return;
+  const nextValue = `${height}px`;
+  if (section.style.getPropertyValue('--section-body-height') !== nextValue) {
+    section.style.setProperty('--section-body-height', nextValue);
+  }
 }
 
 function getPendingPrimaryCards() {
@@ -516,6 +531,8 @@ function renderPrimaryCardsEntityList() {
 
     list.appendChild(item);
   });
+
+  syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
 
 function setPendingPrimaryCards(value) {

@@ -3424,10 +3424,12 @@ body {
 
 .section-body {
   margin-top: var(--space-4);
-  max-height: 2000px;
+  max-height: var(--section-body-height, 2000px);
   opacity: 1;
-  transition: max-height var(--transition-slow), opacity var(--transition-base);
+  transition: max-height var(--transition-slow), opacity var(--transition-base), margin-top var(--transition-base);
   overflow: hidden;
+  contain: paint;
+  will-change: max-height, opacity;
 }
 
 .personalization-section.collapsed .section-body {
