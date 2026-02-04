@@ -269,17 +269,21 @@ function initColorTargetSelect() {
 }
 
 function initColorThemeSectionToggle() {
-  const section = document.getElementById('color-themes-section');
-  const toggle = document.getElementById('color-themes-toggle');
-  if (!section || !toggle) return;
+  const sections = document.querySelectorAll('.personalization-section');
+  if (!sections.length) return;
 
-  section.classList.remove('collapsed');
-  toggle.setAttribute('aria-expanded', 'true');
+  sections.forEach(section => {
+    const toggle = section.querySelector('.section-toggle');
+    if (!toggle) return;
 
-  toggle.onclick = () => {
-    const isCollapsed = section.classList.toggle('collapsed');
-    toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
-  };
+    section.classList.remove('collapsed');
+    toggle.setAttribute('aria-expanded', 'true');
+
+    toggle.onclick = () => {
+      const isCollapsed = section.classList.toggle('collapsed');
+      toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    };
+  });
 }
 
 function getPreviewValuesFromInputs() {

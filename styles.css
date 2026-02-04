@@ -3509,6 +3509,20 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* Settings: keep primary media dropdown within scroll flow to avoid clipping */
+#primary-media-player-dropdown .custom-dropdown-menu {
+  position: static;
+  margin-top: var(--space-2);
+  display: none;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+#primary-media-player-dropdown.open .custom-dropdown-menu {
+  display: block;
+}
+
 /* Buttons */
 .btn {
   padding: var(--space-3) var(--space-5);

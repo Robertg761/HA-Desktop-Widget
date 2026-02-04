@@ -126,20 +126,6 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="opacity-slider">Window Opacity:</label>
-                        <input type="range" id="opacity-slider" min="1" max="100" step="1" value="90">
-                        <span id="opacity-value">90</span>
-                        <div class="form-help">Affects the entire window (including text)</div>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="frosted-glass">
-                            Frosted glass background
-                        </label>
-                        <div class="form-help">Blurs what's behind the widget to keep it readable while transparent
-                        </div>
-                    </div>
-                    <div class="form-group">
                         <label>
                             <input type="checkbox" id="always-on-top">
                             Always on top
@@ -150,25 +136,6 @@
                             <input type="checkbox" id="start-with-windows">
                             Start with Windows
                         </label>
-                    </div>
-                    <div class="form-group">
-                        <label for="primary-media-player">Primary Media Player:</label>
-                        <div class="custom-dropdown" id="primary-media-player-dropdown">
-                            <button type="button" class="custom-dropdown-trigger" id="primary-media-player-trigger"
-                                aria-haspopup="listbox" aria-expanded="false">
-                                <span class="custom-dropdown-value">None (Hide Media Tile)</span>
-                                <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 16 16"
-                                    fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            </button>
-                            <div class="custom-dropdown-menu" role="listbox" id="primary-media-player-menu">
-                                <div class="custom-dropdown-option" role="option" data-value="">None (Hide Media Tile)
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-help">Select which media player to display in the main media tile</div>
                     </div>
                     <div class="form-group update-section">
                         <label>Application Updates</label>
@@ -219,6 +186,57 @@
                                     aria-label="Theme colors"></div>
                                 <div class="form-help" id="theme-current-selection"></div>
                                 <div class="form-help">Selections preview instantly and save when you click Save.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="personalization-section" id="window-effects-section">
+                        <button type="button" class="section-toggle" id="window-effects-toggle" aria-expanded="true"
+                            aria-controls="window-effects-body">
+                            <span>Window Effects</span>
+                            <span class="section-toggle-icon">▾</span>
+                        </button>
+                        <div id="window-effects-body" class="section-body">
+                            <div class="form-group">
+                                <label for="opacity-slider">Window Opacity:</label>
+                                <input type="range" id="opacity-slider" min="1" max="100" step="1" value="90">
+                                <span id="opacity-value">90</span>
+                                <div class="form-help">Affects the entire window (including text)</div>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="frosted-glass">
+                                    Frosted glass background
+                                </label>
+                                <div class="form-help">Blurs what's behind the widget to keep it readable while
+                                    transparent</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="personalization-section" id="media-tile-section">
+                        <button type="button" class="section-toggle" id="media-tile-toggle" aria-expanded="true"
+                            aria-controls="media-tile-body">
+                            <span>Media Tile</span>
+                            <span class="section-toggle-icon">▾</span>
+                        </button>
+                        <div id="media-tile-body" class="section-body">
+                            <div class="form-group">
+                                <label for="primary-media-player">Primary Media Player:</label>
+                                <div class="custom-dropdown" id="primary-media-player-dropdown">
+                                    <button type="button" class="custom-dropdown-trigger"
+                                        id="primary-media-player-trigger" aria-haspopup="listbox" aria-expanded="false">
+                                        <span class="custom-dropdown-value">None (Hide Media Tile)</span>
+                                        <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 16 16"
+                                            fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                    </button>
+                                    <div class="custom-dropdown-menu" role="listbox" id="primary-media-player-menu">
+                                        <div class="custom-dropdown-option" role="option" data-value="">None (Hide
+                                            Media Tile)</div>
+                                    </div>
+                                </div>
+                                <div class="form-help">Select which media player to display in the main media tile</div>
                             </div>
                         </div>
                     </div>
