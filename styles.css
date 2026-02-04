@@ -482,6 +482,39 @@ body {
   margin-bottom: 8px;
 }
 
+.status-grid.single-card {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.status-grid.single-card .status-card {
+  width: 100%;
+  min-height: 160px;
+  justify-content: center;
+}
+
+.status-grid.single-card .status-card:not(.primary-entity-card) {
+  padding: var(--space-5);
+}
+
+.status-grid.primary-cards-hidden {
+  display: none;
+}
+
+.status-grid.single-card .weather-temp {
+  font-size: 32px;
+}
+
+.status-grid.single-card .weather-condition {
+  font-size: 14px;
+}
+
+.status-grid.single-card .weather-details {
+  gap: 16px;
+}
+
 /* Media Player Tile */
 .media-tile {
   grid-column: 1 / -1; /* Span full width */
@@ -728,6 +761,10 @@ body {
   transition: var(--transition-base);
   position: relative;
   overflow: hidden;
+}
+
+.primary-card-hidden {
+  display: none;
 }
 
 .status-card::before {
@@ -1315,6 +1352,24 @@ body {
   min-height: 120px;
 }
 
+.status-card.weather-card {
+  justify-content: center;
+}
+
+.status-card.weather-card .weather-content {
+  flex: 0 1 auto;
+  align-items: center;
+  text-align: center;
+}
+
+.status-card.weather-card .weather-main {
+  align-items: center;
+}
+
+.status-card.weather-card .weather-details {
+  justify-content: center;
+}
+
 .weather-icon {
   font-size: 32px;
   width: 40px;
@@ -1683,6 +1738,137 @@ body {
   overflow-wrap: break-word;
   hyphens: auto;
   width: 100%;
+}
+
+/* Primary Entity Card Styles */
+.status-card.primary-entity-card {
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  overflow: visible;
+  display: block;
+}
+
+.status-card.primary-entity-card::before {
+  display: none;
+}
+
+.status-card.primary-entity-card:hover {
+  background: transparent;
+  border-color: transparent;
+  transform: none;
+  box-shadow: none;
+}
+
+.status-card.primary-entity-card .control-item {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  padding: var(--space-4);
+}
+
+.status-grid.single-card .status-card.primary-entity-card .control-item {
+  min-height: 160px;
+}
+
+.status-card.primary-entity-card .control-icon {
+  font-size: 24px;
+  min-height: 24px;
+}
+
+.status-card.primary-entity-card .control-name {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
+.status-card.primary-entity-card .control-state {
+  font-size: 14px;
+}
+
+/* Primary Cards Settings */
+.primary-cards-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.primary-cards-summary {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.primary-card-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+}
+
+.primary-card-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.primary-card-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.primary-card-row {
+  margin-bottom: var(--space-3);
+}
+
+.primary-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.primary-card-action-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 46px;
+}
+
+.primary-card-actions .btn {
+  min-height: 28px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.primary-card-actions .btn[disabled] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.primary-cards-list-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.primary-cards-list-actions .btn {
+  min-height: 28px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.primary-cards-list-actions .btn[disabled] {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .camera-info {
@@ -3507,6 +3693,20 @@ body {
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Settings: keep primary media dropdown within scroll flow to avoid clipping */
+#primary-media-player-dropdown .custom-dropdown-menu {
+  position: static;
+  margin-top: var(--space-2);
+  display: none;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+#primary-media-player-dropdown.open .custom-dropdown-menu {
+  display: block;
 }
 
 /* Buttons */

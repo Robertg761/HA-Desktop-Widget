@@ -80,6 +80,7 @@
  * @property {boolean} [popupHotkeyHideOnRelease] - Hide window when hotkey released
  * @property {boolean} [popupHotkeyToggleMode] - Toggle mode for popup hotkey
  * @property {string} [primaryMediaPlayer] - Primary media player entity ID
+ * @property {string[]} [primaryCards] - Primary status cards (e.g., ["weather", "time"] or entity IDs)
  * @property {string} [selectedWeatherEntity] - Selected weather entity ID
  * @property {string[]} [favoriteEntities] - List of favorited entity IDs
  * @property {Object.<string, string>} [customEntityNames] - Custom display names

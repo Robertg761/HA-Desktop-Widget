@@ -4,6 +4,7 @@ import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import { setIconContent } from './icons.js';
+import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -34,11 +35,124 @@ function clearAllPressTimers() {
   activePressTimers.clear();
 }
 
+function isPrimaryControlElement(el) {
+  return Boolean(el && el.dataset && el.dataset.primaryCard === 'true');
+}
+
+function shouldBlockInteraction(el) {
+  return isReorganizeMode && !isPrimaryControlElement(el);
+}
+
 let sortableInstance = null; // SortableJS instance for reorganize mode
 
 const mediaFitElements = new Set();
 let mediaFitScheduled = false;
 let mediaFitResizeBound = false;
+
+let weatherCardTemplate = null;
+let timeCardTemplate = null;
+
+function cachePrimaryCardTemplates() {
+  if (!weatherCardTemplate) {
+    const weatherCard = document.getElementById('weather-card');
+    if (weatherCard) weatherCardTemplate = weatherCard.innerHTML;
+  }
+  if (!timeCardTemplate) {
+    const timeCard = document.getElementById('time-card');
+    if (timeCard) timeCardTemplate = timeCard.innerHTML;
+  }
+}
+
+function getPrimaryCardSelections() {
+  return normalizePrimaryCards(state.CONFIG?.primaryCards);
+}
+
+function renderPrimaryEntityCard(cardEl, entityId) {
+  if (!cardEl) return;
+
+  const entity = state.STATES[entityId];
+  const control = entity ? createControlElement(entity) : createUnavailableElement(entityId);
+
+  control.dataset.primaryCard = 'true';
+
+  cardEl.classList.add('primary-entity-card');
+  cardEl.dataset.primaryType = 'entity';
+  cardEl.dataset.entityId = entityId;
+  if (entity?.state) {
+    cardEl.dataset.state = entity.state;
+  } else {
+    cardEl.removeAttribute('data-state');
+  }
+
+  cardEl.innerHTML = '';
+  cardEl.appendChild(control);
+}
+
+function renderPrimaryCard(cardEl, selection, slotIndex) {
+  if (!cardEl) return;
+
+  cardEl.dataset.primarySlot = String(slotIndex);
+  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'primary-entity-card', 'unavailable-entity', 'primary-card-hidden');
+  cardEl.removeAttribute('data-entity-id');
+  cardEl.removeAttribute('data-state');
+  cardEl.title = '';
+
+  if (selection === PRIMARY_CARD_NONE) {
+    cardEl.dataset.primaryType = 'none';
+    cardEl.classList.add('primary-card-hidden');
+    cardEl.innerHTML = '';
+    return;
+  }
+
+  if (selection === 'weather') {
+    cardEl.dataset.primaryType = 'weather';
+    cardEl.classList.add('weather-card');
+    cardEl.title = 'Long-press to configure weather';
+    cardEl.innerHTML = weatherCardTemplate || '';
+    return;
+  }
+
+  if (selection === 'time') {
+    cardEl.dataset.primaryType = 'time';
+    cardEl.classList.add('time-card');
+    cardEl.title = 'Current time';
+    cardEl.innerHTML = timeCardTemplate || '';
+    return;
+  }
+
+  renderPrimaryEntityCard(cardEl, selection);
+}
+
+function renderPrimaryCards() {
+  try {
+    const weatherCard = document.getElementById('weather-card');
+    const timeCard = document.getElementById('time-card');
+    if (!weatherCard || !timeCard) return;
+    const grid = document.querySelector('.status-grid');
+
+    cachePrimaryCardTemplates();
+
+    const [slotOne, slotTwo] = getPrimaryCardSelections();
+    renderPrimaryCard(weatherCard, slotOne, 1);
+    renderPrimaryCard(timeCard, slotTwo, 2);
+
+    if (grid) {
+      const visibleCount = [slotOne, slotTwo].filter(selection => selection !== PRIMARY_CARD_NONE).length;
+      grid.classList.toggle('single-card', visibleCount === 1);
+      grid.classList.toggle('primary-cards-hidden', visibleCount === 0);
+      grid.classList.remove('primary-cards-weather-only');
+    }
+
+    if (slotOne === 'weather' || slotTwo === 'weather') {
+      updateWeatherFromHA();
+    }
+    if (slotOne === 'time' || slotTwo === 'time') {
+      updateTimeDisplay();
+    }
+  } catch (error) {
+    console.error('[UI] Error rendering primary cards:', error);
+  }
+}
 
 function toggleReorganizeMode() {
   try {
@@ -66,10 +180,10 @@ function toggleReorganizeMode() {
         handle: '.control-item', // Allow dragging by any part of the item
         filter: '.remove-btn, .rename-btn', // Ignore these elements
         preventOnFilter: false, // Allow clicks on filtered elements
-        onEnd: () => {
+        onEnd: (evt) => {
           // SortableJS has already reordered the DOM
-          // Just save the new order
-          saveQuickAccessOrder();
+          // Just save the new order (pass moved item for duplicate cleanup)
+          saveQuickAccessOrder(evt?.item || null);
         }
       });
 
@@ -121,6 +235,8 @@ function removeRemoveButtons() {
 
 function addButtonsToElement(item) {
   try {
+    if (!item || item.dataset.primaryCard === 'true') return;
+
     // Add rename button
     if (!item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
@@ -305,13 +421,39 @@ function removeFromQuickAccess(entityId) {
   }
 }
 
-function saveQuickAccessOrder() {
+function saveQuickAccessOrder(movedItem = null) {
   try {
     const container = document.getElementById('quick-controls');
     if (!container) return;
 
-    const items = container.querySelectorAll('.control-item');
-    const newOrder = Array.from(items).map(item => item.dataset.entityId);
+    const items = Array.from(container.querySelectorAll('.control-item'));
+    const movedId = movedItem?.dataset?.entityId || null;
+
+    // Remove any leftover sortable ghost/duplicate elements before saving order
+    items.forEach(item => {
+      const entityId = item.dataset.entityId;
+      if (item.classList.contains('sortable-ghost')) {
+        item.remove();
+        return;
+      }
+      if (movedId && entityId === movedId && item !== movedItem) {
+        item.remove();
+      }
+    });
+
+    const seen = new Set();
+    const newOrder = [];
+
+    items.forEach(item => {
+      if (!item.isConnected) return;
+      const entityId = item.dataset.entityId;
+      if (!entityId || seen.has(entityId)) {
+        if (item.isConnected) item.remove();
+        return;
+      }
+      seen.add(entityId);
+      newOrder.push(entityId);
+    });
 
     state.CONFIG.favoriteEntities = newOrder;
 
@@ -325,6 +467,7 @@ function saveQuickAccessOrder() {
 // --- Core UI Rendering ---
 function renderActiveTab() {
   try {
+    renderPrimaryCards();
     renderQuickControls();
     updateWeatherFromHA();
     updateMediaTile();
@@ -352,7 +495,11 @@ function updateEntityInUI(entity) {
 
     const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
     items.forEach(item => {
+      const isPrimary = item.dataset.primaryCard === 'true';
       const newControl = createControlElement(entity);
+      if (isPrimary) {
+        newControl.dataset.primaryCard = 'true';
+      }
       // Preserve reorganize-mode classes if active
       if (item.classList.contains('reorganize-mode')) {
         newControl.classList.add('reorganize-mode');
@@ -454,17 +601,17 @@ function createControlElement(entity) {
     // Handle different entity types (matching main branch)
     if (entity.entity_id.startsWith('camera.')) {
       div.onclick = () => {
-        if (!isReorganizeMode) camera.openCamera(entity.entity_id);
+        if (!shouldBlockInteraction(div)) camera.openCamera(entity.entity_id);
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
       div.onclick = () => {
-        if (!isReorganizeMode) showSensorDetails(entity);
+        if (!shouldBlockInteraction(div)) showSensorDetails(entity);
       };
       div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
     } else if (isTimer) {
       div.onclick = () => {
-        if (!isReorganizeMode) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) toggleEntity(entity);
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('light.')) {
@@ -483,7 +630,7 @@ function createControlElement(entity) {
       div.title = `Click to play/pause, hold for controls`;
     } else {
       div.onclick = () => {
-        if (!isReorganizeMode) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) toggleEntity(entity);
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
@@ -605,7 +752,7 @@ function setupLightControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         // In reorganize mode, don't handle mousedown - let drag work
         return;
       }
@@ -629,7 +776,7 @@ function setupLightControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -647,7 +794,7 @@ function setupClimateControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         return;
       }
       longPressTriggered = false;
@@ -670,7 +817,7 @@ function setupClimateControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -688,7 +835,7 @@ function setupFanControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         return;
       }
       longPressTriggered = false;
@@ -711,7 +858,7 @@ function setupFanControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -729,7 +876,7 @@ function setupCoverControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         return;
       }
       longPressTriggered = false;
@@ -752,7 +899,7 @@ function setupCoverControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -870,7 +1017,7 @@ function setupMediaPlayerControls(div, entity) {
       let longPressTriggered = false;
 
       const startPress = (_e) => {
-        if (isReorganizeMode) return;
+        if (shouldBlockInteraction(div)) return;
         longPressTriggered = false;
         if (pressTimer) {
           clearTimeout(pressTimer);
@@ -897,7 +1044,7 @@ function setupMediaPlayerControls(div, entity) {
       div.addEventListener('mouseleave', cancelPress);
 
       div.addEventListener('click', (e) => {
-        if (isReorganizeMode || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+        if (shouldBlockInteraction(div) || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
         const currentEntity = state.STATES[entity.entity_id];
         if (!currentEntity) return;
         const nowPlaying = currentEntity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
@@ -2679,6 +2826,7 @@ export {
   initUpdateUI,
   updateTimeDisplay,
   updateTimerDisplays,
+  renderPrimaryCards,
   toggleReorganizeMode,
   populateQuickControlsList,
   executeHotkeyAction,

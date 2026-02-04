@@ -14,6 +14,11 @@ import {
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import * as utils from './utils.js';
+import {
+  PRIMARY_CARD_DEFAULTS,
+  PRIMARY_CARD_NONE,
+  normalizePrimaryCards,
+} from './primary-cards.js';
 // Note: ui.js is imported dynamically to prevent circular dependencies
 
 let previewState = null;
@@ -29,6 +34,8 @@ const COLOR_TARGETS = {
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
+let pendingPrimaryCards = null;
+
 
 /**
  * Resolve a valid accent theme id from a candidate, with optional preference for the 'slate' theme.
@@ -393,17 +400,169 @@ function initColorTargetSelect() {
  * If the section or toggle elements are not present in the DOM, the function no-ops.
  */
 function initColorThemeSectionToggle() {
-  const section = document.getElementById('color-themes-section');
-  const toggle = document.getElementById('color-themes-toggle');
-  if (!section || !toggle) return;
+  const sections = document.querySelectorAll('.personalization-section');
+  if (!sections.length) return;
 
-  section.classList.remove('collapsed');
-  toggle.setAttribute('aria-expanded', 'true');
+  sections.forEach(section => {
+    const toggle = section.querySelector('.section-toggle');
+    if (!toggle) return;
 
-  toggle.onclick = () => {
-    const isCollapsed = section.classList.toggle('collapsed');
-    toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
-  };
+    section.classList.remove('collapsed');
+    toggle.setAttribute('aria-expanded', 'true');
+
+    toggle.onclick = () => {
+      const isCollapsed = section.classList.toggle('collapsed');
+      toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    };
+  });
+}
+
+function getPendingPrimaryCards() {
+  return normalizePrimaryCards(pendingPrimaryCards || state.CONFIG?.primaryCards);
+}
+
+function getPrimaryCardEntityOptions(filter = '') {
+  const normalizedFilter = filter.toLowerCase();
+  return Object.values(state.STATES || {})
+    .filter(entity => !entity.entity_id.startsWith('sun.') && !entity.entity_id.startsWith('zone.'))
+    .map(entity => {
+      if (!normalizedFilter) return { entity, score: 1 };
+      const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), normalizedFilter);
+      const idScore = utils.getSearchScore(entity.entity_id, normalizedFilter);
+      return { entity, score: nameScore + idScore };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return utils.getEntityDisplayName(a.entity).localeCompare(utils.getEntityDisplayName(b.entity));
+    });
+}
+
+function getPrimaryCardDisplay(selection) {
+  if (selection === PRIMARY_CARD_NONE) return 'Hidden';
+  if (selection === 'weather') return 'Weather (default)';
+  if (selection === 'time') return 'Time (default)';
+  const entity = state.STATES?.[selection];
+  if (entity) return `${utils.getEntityDisplayName(entity)} (${selection})`;
+  return `Unavailable: ${selection}`;
+}
+
+function updatePrimaryCardSummary() {
+  const selections = getPendingPrimaryCards();
+  const cardOne = document.getElementById('primary-card-1-current');
+  const cardTwo = document.getElementById('primary-card-2-current');
+  if (cardOne) cardOne.textContent = getPrimaryCardDisplay(selections[0]);
+  if (cardTwo) cardTwo.textContent = getPrimaryCardDisplay(selections[1]);
+}
+
+function updatePrimaryCardActionButtons() {
+  const selections = getPendingPrimaryCards();
+  document.querySelectorAll('[data-primary-card][data-primary-value]').forEach(btn => {
+    const cardIndex = Number(btn.dataset.primaryCard);
+    const value = btn.dataset.primaryValue;
+    const isActive = selections[cardIndex] === value;
+    btn.classList.toggle('btn-primary', isActive);
+    btn.classList.toggle('btn-secondary', !isActive);
+  });
+}
+
+function renderPrimaryCardsEntityList() {
+  const list = document.getElementById('primary-cards-list');
+  const searchInput = document.getElementById('primary-cards-search');
+  if (!list || !searchInput) return;
+
+  const filter = searchInput.value || '';
+  const selections = getPendingPrimaryCards();
+  const scoredEntities = getPrimaryCardEntityOptions(filter);
+
+  list.innerHTML = '';
+
+  if (!scoredEntities.length) {
+    list.innerHTML = '<div class="no-entities-message">No matching entities found.</div>';
+    return;
+  }
+
+  scoredEntities.forEach(({ entity }) => {
+    const item = document.createElement('div');
+    item.className = 'entity-item';
+
+    const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+    const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const entityId = utils.escapeHtml(entity.entity_id);
+
+    const isCardOne = selections[0] === entity.entity_id;
+    const isCardTwo = selections[1] === entity.entity_id;
+
+    const cardOneLabel = isCardOne ? 'Card 1 ✓' : 'Set Card 1';
+    const cardTwoLabel = isCardTwo ? 'Card 2 ✓' : 'Set Card 2';
+    const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+    const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+    const cardOneDisabled = isCardOne ? 'disabled' : '';
+    const cardTwoDisabled = isCardTwo ? 'disabled' : '';
+
+    item.innerHTML = `
+      <div class="entity-item-main">
+        <span class="entity-icon">${icon}</span>
+        <div class="entity-item-info">
+          <span class="entity-name">${displayName}</span>
+          <span class="entity-id" title="${entityId}">${entityId}</span>
+        </div>
+      </div>
+      <div class="primary-cards-list-actions">
+        <button class="${cardOneClass}" type="button" data-primary-assign="0" data-entity-id="${entityId}" ${cardOneDisabled}>${cardOneLabel}</button>
+        <button class="${cardTwoClass}" type="button" data-primary-assign="1" data-entity-id="${entityId}" ${cardTwoDisabled}>${cardTwoLabel}</button>
+      </div>
+    `;
+
+    list.appendChild(item);
+  });
+}
+
+function setPendingPrimaryCards(value) {
+  pendingPrimaryCards = normalizePrimaryCards(value);
+  updatePrimaryCardSummary();
+  updatePrimaryCardActionButtons();
+  renderPrimaryCardsEntityList();
+}
+
+function initPrimaryCardsUI() {
+  const section = document.getElementById('primary-cards-section');
+  if (!section || section.dataset.initialized) return;
+
+  const resetBtn = document.getElementById('primary-cards-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      setPendingPrimaryCards(PRIMARY_CARD_DEFAULTS);
+    });
+  }
+
+  section.addEventListener('click', (event) => {
+    const actionBtn = event.target.closest('[data-primary-card][data-primary-value]');
+    if (actionBtn) {
+      const cardIndex = Number(actionBtn.dataset.primaryCard);
+      const value = actionBtn.dataset.primaryValue;
+      const selections = getPendingPrimaryCards();
+      selections[cardIndex] = value;
+      setPendingPrimaryCards(selections);
+      return;
+    }
+
+    const assignBtn = event.target.closest('[data-primary-assign][data-entity-id]');
+    if (assignBtn) {
+      const cardIndex = Number(assignBtn.dataset.primaryAssign);
+      const entityId = assignBtn.dataset.entityId;
+      const selections = getPendingPrimaryCards();
+      selections[cardIndex] = entityId;
+      setPendingPrimaryCards(selections);
+    }
+  });
+
+  const searchInput = document.getElementById('primary-cards-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', renderPrimaryCardsEntityList);
+  }
+
+  section.dataset.initialized = 'true';
 }
 
 /**
@@ -661,6 +820,10 @@ async function openSettings(uiHooks) {
 
     // Populate media player dropdown after UI hooks (when states are loaded)
     populateMediaPlayerDropdown();
+    initPrimaryCardsUI();
+    const primarySearch = document.getElementById('primary-cards-search');
+    if (primarySearch) primarySearch.value = '';
+    setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS);
 
     // Initialize popup hotkey UI
     initializePopupHotkey();
@@ -695,6 +858,7 @@ function closeSettings() {
     }
     previewBackground = null;
     pendingBackground = null;
+    pendingPrimaryCards = null;
     hideThemeTooltip();
 
     // Clean up hotkey event listeners to prevent memory leaks
@@ -799,6 +963,8 @@ async function saveSettings() {
     const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
     state.CONFIG.primaryMediaPlayer = selectedValue || null;
 
+    state.CONFIG.primaryCards = getPendingPrimaryCards();
+
     const domainFilters = document.getElementById('domain-filters');
     if (domainFilters) {
       const checkboxes = domainFilters.querySelectorAll('input[type="checkbox"]');
@@ -848,6 +1014,9 @@ async function saveSettings() {
     const ui = await import('./ui.js');
     if (ui.updateMediaTile) {
       ui.updateMediaTile();
+    }
+    if (ui.renderPrimaryCards) {
+      ui.renderPrimaryCards();
     }
 
     // Only reconnect WebSocket if HA connection settings actually changed
