@@ -180,10 +180,10 @@ function toggleReorganizeMode() {
         handle: '.control-item', // Allow dragging by any part of the item
         filter: '.remove-btn, .rename-btn', // Ignore these elements
         preventOnFilter: false, // Allow clicks on filtered elements
-        onEnd: () => {
+        onEnd: (evt) => {
           // SortableJS has already reordered the DOM
-          // Just save the new order
-          saveQuickAccessOrder();
+          // Just save the new order (pass moved item for duplicate cleanup)
+          saveQuickAccessOrder(evt?.item || null);
         }
       });
 
@@ -421,13 +421,39 @@ function removeFromQuickAccess(entityId) {
   }
 }
 
-function saveQuickAccessOrder() {
+function saveQuickAccessOrder(movedItem = null) {
   try {
     const container = document.getElementById('quick-controls');
     if (!container) return;
 
-    const items = container.querySelectorAll('.control-item');
-    const newOrder = Array.from(items).map(item => item.dataset.entityId);
+    const items = Array.from(container.querySelectorAll('.control-item'));
+    const movedId = movedItem?.dataset?.entityId || null;
+
+    // Remove any leftover sortable ghost/duplicate elements before saving order
+    items.forEach(item => {
+      const entityId = item.dataset.entityId;
+      if (item.classList.contains('sortable-ghost')) {
+        item.remove();
+        return;
+      }
+      if (movedId && entityId === movedId && item !== movedItem) {
+        item.remove();
+      }
+    });
+
+    const seen = new Set();
+    const newOrder = [];
+
+    items.forEach(item => {
+      if (!item.isConnected) return;
+      const entityId = item.dataset.entityId;
+      if (!entityId || seen.has(entityId)) {
+        if (item.isConnected) item.remove();
+        return;
+      }
+      seen.add(entityId);
+      newOrder.push(entityId);
+    });
 
     state.CONFIG.favoriteEntities = newOrder;
 
