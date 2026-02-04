@@ -111,6 +111,7 @@ function getAccentThemes() {
  * Each theme object includes `id`, `name`, `color`, and `description`. When the theme's hex color is valid,
  * an `rgb` string in the form "r, g, b" is included.
  * @returns {Array<Object>} An array of theme objects with optional `rgb` string.
+ */
 function getBackgroundThemes() {
   return getAccentThemes();
 }

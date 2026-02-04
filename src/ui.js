@@ -147,7 +147,9 @@ function renderPrimaryCards() {
       updateWeatherFromHA();
     }
     if (slotOne === 'time' || slotTwo === 'time') {
-      updateTimeDisplay();
+      startTimeTicker();
+    } else {
+      stopTimeTicker();
     }
   } catch (error) {
     console.error('[UI] Error rendering primary cards:', error);
@@ -1901,6 +1903,20 @@ function updateTimeDisplay() {
   }
 }
 
+let timeTickerId = null;
+
+function startTimeTicker() {
+  if (timeTickerId) return;
+  updateTimeDisplay();
+  timeTickerId = setInterval(updateTimeDisplay, 1000);
+}
+
+function stopTimeTicker() {
+  if (!timeTickerId) return;
+  clearInterval(timeTickerId);
+  timeTickerId = null;
+}
+
 function updateTimerDisplays() {
   try {
     // Find all timer entities AND sensor entities with timer attributes in Quick Access
@@ -2825,6 +2841,8 @@ export {
   selectWeatherEntity,
   initUpdateUI,
   updateTimeDisplay,
+  startTimeTicker,
+  stopTimeTicker,
   updateTimerDisplays,
   renderPrimaryCards,
   toggleReorganizeMode,
