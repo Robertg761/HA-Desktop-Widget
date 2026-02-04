@@ -33,9 +33,9 @@ function resolveThemeId(themeId, { preferSlate = false } = {}) {
   const validIds = new Set(themes.map(theme => theme.id));
   if (themeId && validIds.has(themeId)) return themeId;
   if (preferSlate) {
-    return themes.find(theme => theme.id === 'slate')?.id || themes[0]?.id || 'sky';
+    return themes.find(theme => theme.id === 'slate')?.id || themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'sky';
   }
-  return themes[0]?.id || 'sky';
+  return themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'sky';
 }
 
 function getCurrentAccentTheme() {
@@ -107,9 +107,7 @@ function updateThemeSummary() {
 
 function setActiveColorTarget(target) {
   activeColorTarget = target === COLOR_TARGETS.background ? COLOR_TARGETS.background : COLOR_TARGETS.accent;
-  updateThemeOptionsLabel();
-  updateThemeSelectionUI();
-  updateThemeSummary();
+  renderColorThemeOptions();
 }
 
 function refreshBackgroundTheme() {
@@ -129,19 +127,32 @@ function renderColorThemeOptions() {
     option.type = 'button';
     option.className = 'theme-option color-theme-option';
     option.dataset.theme = theme.id;
-    option.title = `${theme.name} — ${theme.description}`;
+    const isOriginalTheme = theme.id === 'original';
+    const isBackgroundTarget = activeColorTarget === COLOR_TARGETS.background;
+    const tooltipName = theme.name;
+    const tooltipDescription = isOriginalTheme
+      ? (isBackgroundTarget ? 'Original dark base (no tint)' : 'Original accent blue')
+      : theme.description;
     option.setAttribute('role', 'radio');
-    option.setAttribute('aria-label', `${theme.name}. ${theme.description}`);
+    option.setAttribute('aria-label', `${tooltipName}. ${tooltipDescription}`);
     option.setAttribute('aria-checked', theme.id === selectedTheme ? 'true' : 'false');
     if (theme.id === selectedTheme) {
       option.classList.add('selected');
     }
 
-    if (theme.color) {
-      option.style.setProperty('--swatch', theme.color);
-    }
-    if (theme.rgb) {
-      option.style.setProperty('--swatch-rgb', theme.rgb);
+    if (isOriginalTheme && isBackgroundTarget) {
+      const isLightTheme = document.body?.classList.contains('theme-light');
+      const swatchRgb = isLightTheme ? '250, 250, 250' : '40, 40, 45';
+      const swatchHex = isLightTheme ? '#fafafa' : '#28282d';
+      option.style.setProperty('--swatch', swatchHex);
+      option.style.setProperty('--swatch-rgb', swatchRgb);
+    } else {
+      if (theme.color) {
+        option.style.setProperty('--swatch', theme.color);
+      }
+      if (theme.rgb) {
+        option.style.setProperty('--swatch-rgb', theme.rgb);
+      }
     }
 
     const swatch = document.createElement('span');
@@ -151,15 +162,15 @@ function renderColorThemeOptions() {
     const tooltip = document.createElement('span');
     tooltip.className = 'theme-tooltip';
 
-    const tooltipName = document.createElement('span');
-    tooltipName.className = 'theme-tooltip-name';
-    tooltipName.textContent = theme.name;
+    const tooltipNameEl = document.createElement('span');
+    tooltipNameEl.className = 'theme-tooltip-name';
+    tooltipNameEl.textContent = tooltipName;
 
     const tooltipNote = document.createElement('span');
     tooltipNote.className = 'theme-tooltip-note';
-    tooltipNote.textContent = theme.description;
+    tooltipNote.textContent = tooltipDescription;
 
-    tooltip.appendChild(tooltipName);
+    tooltip.appendChild(tooltipNameEl);
     tooltip.appendChild(tooltipNote);
     option.appendChild(tooltip);
 

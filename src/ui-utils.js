@@ -4,6 +4,7 @@ let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const ACCENT_THEMES = [
+  { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
   { id: 'sky', name: 'Sky', color: '#64b5f6', description: 'Clean, bright blue' },
   { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
   { id: 'violet', name: 'Violet', color: '#8b5cf6', description: 'Creative and bold' },
@@ -94,12 +95,12 @@ function getBackgroundThemes() {
 
 function resolveAccentThemeId(accentKey) {
   if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
-  return ACCENT_THEMES[0]?.id || 'sky';
+  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'sky');
 }
 
 function resolveBackgroundThemeId(backgroundKey) {
   if (backgroundKey && ACCENT_THEME_MAP[backgroundKey]) return backgroundKey;
-  return ACCENT_THEME_MAP.slate ? 'slate' : (ACCENT_THEMES[0]?.id || 'sky');
+  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'sky');
 }
 
 function applyAccentTheme(accentKey) {
@@ -154,7 +155,7 @@ function applyBackgroundTheme(backgroundKey) {
 
     const isLightTheme = body.classList.contains('theme-light');
     const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
-    const tintAmount = isLightTheme ? 0.08 : 0.12;
+    const tintAmount = resolvedKey === 'original' ? 0 : (isLightTheme ? 0.08 : 0.12);
     const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
     const setRgbaVar = (name, baseEntry) => {
       const tinted = tint(baseEntry);
