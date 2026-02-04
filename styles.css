@@ -3310,11 +3310,11 @@ body {
   flex-shrink: 0;
 }
 
-.theme-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 12px);
-  transform: translate(-50%, 6px);
+.theme-tooltip-flyout {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: translateY(6px);
   background: linear-gradient(160deg, rgba(var(--swatch-rgb, var(--accent-rgb)), 0.2), var(--glass-elevated));
   color: var(--text-primary);
   padding: 10px 14px;
@@ -3335,7 +3335,7 @@ body {
   gap: 4px;
 }
 
-.theme-tooltip::after {
+.theme-tooltip-flyout::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -3345,6 +3345,17 @@ body {
   border-style: solid;
   border-color: rgba(var(--swatch-rgb, var(--accent-rgb)), 0.6) transparent transparent transparent;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+}
+
+.theme-tooltip-flyout[data-placement="bottom"]::after {
+  top: -8px;
+  bottom: auto;
+  transform: translateX(-50%) rotate(180deg);
+}
+
+.theme-tooltip-flyout.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .theme-tooltip-name {
@@ -3370,12 +3381,6 @@ body {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   line-height: 1.4;
-}
-
-.theme-option:hover .theme-tooltip,
-.theme-option:focus-visible .theme-tooltip {
-  opacity: 1;
-  transform: translate(-50%, 0);
 }
 
 /* Custom Dropdown */

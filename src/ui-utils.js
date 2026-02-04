@@ -5,7 +5,6 @@ const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
-  { id: 'sky', name: 'Sky', color: '#64b5f6', description: 'Clean, bright blue' },
   { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
   { id: 'violet', name: 'Violet', color: '#8b5cf6', description: 'Creative and bold' },
   { id: 'rose', name: 'Rose', color: '#f43f5e', description: 'Vivid and energetic' },
@@ -95,12 +94,14 @@ function getBackgroundThemes() {
 
 function resolveAccentThemeId(accentKey) {
   if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
-  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'sky');
+  if (accentKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
+  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'original');
 }
 
 function resolveBackgroundThemeId(backgroundKey) {
   if (backgroundKey && ACCENT_THEME_MAP[backgroundKey]) return backgroundKey;
-  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'sky');
+  if (backgroundKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
+  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'original');
 }
 
 function applyAccentTheme(accentKey) {

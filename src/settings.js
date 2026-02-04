@@ -27,15 +27,21 @@ const COLOR_TARGETS = {
   background: 'background',
 };
 let activeColorTarget = COLOR_TARGETS.accent;
+let themeTooltip = null;
+let themeTooltipScrollBound = false;
 
 function resolveThemeId(themeId, { preferSlate = false } = {}) {
   const themes = getAccentThemes();
   const validIds = new Set(themes.map(theme => theme.id));
   if (themeId && validIds.has(themeId)) return themeId;
-  if (preferSlate) {
-    return themes.find(theme => theme.id === 'slate')?.id || themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'sky';
+  if (themeId === 'sky') {
+    const original = themes.find(theme => theme.id === 'original')?.id;
+    if (original) return original;
   }
-  return themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'sky';
+  if (preferSlate) {
+    return themes.find(theme => theme.id === 'slate')?.id || themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
+  }
+  return themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
 }
 
 function getCurrentAccentTheme() {
@@ -110,6 +116,74 @@ function setActiveColorTarget(target) {
   renderColorThemeOptions();
 }
 
+function ensureThemeTooltip() {
+  if (themeTooltip) return themeTooltip;
+  const tooltip = document.createElement('div');
+  tooltip.id = 'theme-tooltip-flyout';
+  tooltip.className = 'theme-tooltip-flyout';
+  tooltip.setAttribute('role', 'tooltip');
+  tooltip.setAttribute('aria-hidden', 'true');
+  tooltip.innerHTML = `
+    <span class="theme-tooltip-name"></span>
+    <span class="theme-tooltip-note"></span>
+  `;
+  document.body.appendChild(tooltip);
+  themeTooltip = tooltip;
+
+  if (!themeTooltipScrollBound) {
+    const modalBody = document.querySelector('#settings-modal .modal-body');
+    if (modalBody) {
+      modalBody.addEventListener('scroll', hideThemeTooltip, { passive: true });
+      themeTooltipScrollBound = true;
+    }
+  }
+
+  return tooltip;
+}
+
+function positionThemeTooltip(target) {
+  if (!themeTooltip || !target) return;
+  const rect = target.getBoundingClientRect();
+  const tooltipRect = themeTooltip.getBoundingClientRect();
+  const padding = 12;
+  const preferredTop = rect.top - tooltipRect.height - 12;
+  const placeBelow = preferredTop < padding;
+  const top = placeBelow ? rect.bottom + 12 : preferredTop;
+  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding));
+  themeTooltip.style.top = `${top}px`;
+  themeTooltip.style.left = `${left}px`;
+  themeTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+}
+
+function showThemeTooltip(target, name, note) {
+  const tooltip = ensureThemeTooltip();
+  const nameEl = tooltip.querySelector('.theme-tooltip-name');
+  const noteEl = tooltip.querySelector('.theme-tooltip-note');
+  if (nameEl) nameEl.textContent = name;
+  if (noteEl) noteEl.textContent = note;
+  if (target) {
+    const computed = window.getComputedStyle(target);
+    const swatch = computed.getPropertyValue('--swatch').trim();
+    const swatchRgb = computed.getPropertyValue('--swatch-rgb').trim();
+    if (swatch) {
+      tooltip.style.setProperty('--swatch', swatch);
+    }
+    if (swatchRgb) {
+      tooltip.style.setProperty('--swatch-rgb', swatchRgb);
+    }
+  }
+  tooltip.classList.add('visible');
+  tooltip.setAttribute('aria-hidden', 'false');
+  positionThemeTooltip(target);
+}
+
+function hideThemeTooltip() {
+  if (!themeTooltip) return;
+  themeTooltip.classList.remove('visible');
+  themeTooltip.setAttribute('aria-hidden', 'true');
+}
+
 function refreshBackgroundTheme() {
   applyBackgroundTheme(pendingBackground || getCurrentBackgroundTheme());
 }
@@ -159,27 +233,23 @@ function renderColorThemeOptions() {
     swatch.className = 'accent-theme-swatch';
     option.appendChild(swatch);
 
-    const tooltip = document.createElement('span');
-    tooltip.className = 'theme-tooltip';
-
-    const tooltipNameEl = document.createElement('span');
-    tooltipNameEl.className = 'theme-tooltip-name';
-    tooltipNameEl.textContent = tooltipName;
-
-    const tooltipNote = document.createElement('span');
-    tooltipNote.className = 'theme-tooltip-note';
-    tooltipNote.textContent = tooltipDescription;
-
-    tooltip.appendChild(tooltipNameEl);
-    tooltip.appendChild(tooltipNote);
-    option.appendChild(tooltip);
-
     option.addEventListener('click', () => {
       if (activeColorTarget === COLOR_TARGETS.background) {
         selectBackgroundTheme(theme.id, { preview: true });
       } else {
         selectAccentTheme(theme.id, { preview: true });
       }
+    });
+    option.addEventListener('mouseenter', () => {
+      showThemeTooltip(option, tooltipName, tooltipDescription);
+    });
+    option.addEventListener('mouseleave', hideThemeTooltip);
+    option.addEventListener('focus', () => {
+      showThemeTooltip(option, tooltipName, tooltipDescription);
+    });
+    option.addEventListener('blur', hideThemeTooltip);
+    option.addEventListener('mousemove', () => {
+      positionThemeTooltip(option);
     });
 
     container.appendChild(option);
@@ -455,6 +525,7 @@ function closeSettings() {
     }
     previewBackground = null;
     pendingBackground = null;
+    hideThemeTooltip();
 
     // Clean up hotkey event listeners to prevent memory leaks
     cleanupHotkeyEventListeners();
