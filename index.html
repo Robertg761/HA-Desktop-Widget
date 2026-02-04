@@ -219,15 +219,44 @@
                             <span class="section-toggle-icon">▾</span>
                         </button>
                         <div id="primary-cards-body" class="section-body">
-                            <div class="form-group">
-                                <label for="primary-card-1-select">Primary Card 1</label>
-                                <select id="primary-card-1-select"></select>
+                            <div class="primary-cards-toolbar">
+                                <div class="primary-cards-summary">
+                                    <div class="primary-card-summary">
+                                        <span class="primary-card-label">Card 1</span>
+                                        <span class="primary-card-value" id="primary-card-1-current">Weather (default)</span>
+                                    </div>
+                                    <div class="primary-card-summary">
+                                        <span class="primary-card-label">Card 2</span>
+                                        <span class="primary-card-value" id="primary-card-2-current">Time (default)</span>
+                                    </div>
+                                </div>
+                                <button id="primary-cards-reset" class="btn btn-secondary btn-sm" type="button">Reset to defaults</button>
+                            </div>
+                            <div class="primary-card-row">
+                                <div class="primary-card-actions" data-primary-card="0">
+                                    <span class="primary-card-action-label">Card 1</span>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-primary-card="0" data-primary-value="weather">Weather</button>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-primary-card="0" data-primary-value="time">Time</button>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-primary-card="0" data-primary-value="none">Hide</button>
+                                </div>
+                            </div>
+                            <div class="primary-card-row">
+                                <div class="primary-card-actions" data-primary-card="1">
+                                    <span class="primary-card-action-label">Card 2</span>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-primary-card="1" data-primary-value="weather">Weather</button>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-primary-card="1" data-primary-value="time">Time</button>
+                                    <button class="btn btn-secondary btn-sm" type="button" data-primary-card="1" data-primary-value="none">Hide</button>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="primary-card-2-select">Primary Card 2</label>
-                                <select id="primary-card-2-select"></select>
+                                <label for="primary-cards-search">Search Entities</label>
+                                <input type="text" id="primary-cards-search" placeholder="Search entities...">
                             </div>
-                            <div class="form-help">Weather and Time are the defaults. Choose any entity to pin to a card.</div>
+                            <div class="form-group">
+                                <label>Available Entities</label>
+                                <div id="primary-cards-list" class="entity-selector-list"></div>
+                            </div>
+                            <div class="form-help">Weather and Time are the defaults. Choose an entity below to pin it to a card.</div>
                         </div>
                     </div>
                     <div class="personalization-section" id="media-tile-section">
