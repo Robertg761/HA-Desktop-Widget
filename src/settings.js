@@ -37,6 +37,18 @@ let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
 
 
+/**
+ * Resolve a valid accent theme id from a candidate, with optional preference for the 'slate' theme.
+ *
+ * If the provided `themeId` is a known theme id it is returned. If `themeId` is `'sky'`, it maps to
+ * the `'original'` theme when available. When `preferSlate` is true the function prefers `'slate'`,
+ * then `'original'`, then the first available theme; otherwise it prefers `'original'` then the
+ * first available theme. Always falls back to `'original'` if no themes are available.
+ * @param {string|undefined|null} themeId - Candidate theme id to validate or resolve.
+ * @param {{preferSlate?: boolean}=} options - Resolution options.
+ * @param {boolean} [options.preferSlate=false] - When true prefer the `slate` theme over `original`.
+ * @return {string} The resolved valid theme id.
+ */
 function resolveThemeId(themeId, { preferSlate = false } = {}) {
   const themes = getAccentThemes();
   const validIds = new Set(themes.map(theme => theme.id));
@@ -51,16 +63,29 @@ function resolveThemeId(themeId, { preferSlate = false } = {}) {
   return themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
 }
 
+/**
+ * Get the current accent theme id from the configuration or a resolved default.
+ * @returns {string} The configured accent theme id, or the resolved fallback theme id.
+ */
 function getCurrentAccentTheme() {
   const fallback = resolveThemeId(null);
   return state.CONFIG?.ui?.accent || fallback;
 }
 
+/**
+ * Determine the current background theme ID, falling back to a preferred default.
+ * @returns {string} The background theme id from configuration, or a resolved default if not set.
+ */
 function getCurrentBackgroundTheme() {
   const fallback = resolveThemeId(null, { preferSlate: true });
   return state.CONFIG?.ui?.background || fallback;
 }
 
+/**
+ * Get the currently pending theme id for the specified color target, or the active theme id if none is pending.
+ * @param {string} target - Color target, either COLOR_TARGETS.accent or COLOR_TARGETS.background.
+ * @returns {string} The pending theme id for the target, or the current theme id if no pending selection exists.
+ */
 function getPendingTheme(target) {
   if (target === COLOR_TARGETS.background) {
     return pendingBackground || getCurrentBackgroundTheme();
@@ -68,6 +93,15 @@ function getPendingTheme(target) {
   return pendingAccent || getCurrentAccentTheme();
 }
 
+/**
+ * Selects an accent theme as the pending choice and updates the UI accordingly.
+ *
+ * Sets the pending accent theme to the resolved theme for `accentKey`, optionally applies it as a live preview, and refreshes theme selection visuals and the summary text.
+ *
+ * @param {string} accentKey - Identifier or key of the accent theme to select.
+ * @param {{preview?: boolean}} [options] - Selection options.
+ * @param {boolean} [options.preview=true] - If `true`, apply the selected accent immediately as a live preview.
+ */
 function selectAccentTheme(accentKey, { preview = true } = {}) {
   const resolvedAccent = resolveThemeId(accentKey);
   pendingAccent = resolvedAccent;
@@ -80,6 +114,16 @@ function selectAccentTheme(accentKey, { preview = true } = {}) {
   updateThemeSummary();
 }
 
+/**
+ * Selects a background color theme and updates the pending state and UI.
+ *
+ * Sets the pending background theme, optionally applies it as a live preview, and refreshes
+ * the theme selection UI and summary text.
+ *
+ * @param {string} backgroundKey - The identifier of the background theme to select.
+ * @param {Object} [options] - Optional settings.
+ * @param {boolean} [options.preview=true] - If true, apply the selected background as a live preview.
+ */
 function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
   const resolvedBackground = resolveThemeId(backgroundKey, { preferSlate: true });
   pendingBackground = resolvedBackground;
@@ -92,6 +136,11 @@ function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
   updateThemeSummary();
 }
 
+/**
+ * Update the visual selection and ARIA state of theme option buttons to match the pending theme for the active color target.
+ *
+ * Finds elements with the `color-theme-option` class and toggles their `selected` class and `aria-checked` attribute based on the currently pending theme.
+ */
 function updateThemeSelectionUI() {
   const selectedTheme = getPendingTheme(activeColorTarget);
   const options = document.querySelectorAll('.color-theme-option');
@@ -102,6 +151,12 @@ function updateThemeSelectionUI() {
   });
 }
 
+/**
+ * Update the theme options label to indicate whether Accent or Background colors are active.
+ *
+ * Sets the element with id "theme-options-label" to "Color Options (Accent)" or
+ * "Color Options (Background)" based on the current active color target. Does nothing if the label element is not present.
+ */
 function updateThemeOptionsLabel() {
   const label = document.getElementById('theme-options-label');
   if (!label) return;
@@ -109,6 +164,13 @@ function updateThemeOptionsLabel() {
   label.textContent = `Color Options (${labelTarget})`;
 }
 
+/**
+ * Update the visible summary text to show the current accent and background theme names.
+ *
+ * Looks up the pending accent and background theme ids, uses their display names when available,
+ * and sets the textContent of the element with id "theme-current-selection". If a theme id
+ * cannot be resolved, the name "Custom" is used as a fallback.
+ */
 function updateThemeSummary() {
   const summary = document.getElementById('theme-current-selection');
   if (!summary) return;
@@ -118,11 +180,24 @@ function updateThemeSummary() {
   summary.textContent = `Accent: ${accentName} • Background: ${backgroundName}`;
 }
 
+/**
+ * Set which color target (accent or background) is active for the theme options UI.
+ * @param {string} target - Desired color target; expected values are `"accent"` or `"background"`. Any other value selects `"accent"`. 
+ */
 function setActiveColorTarget(target) {
   activeColorTarget = target === COLOR_TARGETS.background ? COLOR_TARGETS.background : COLOR_TARGETS.accent;
   renderColorThemeOptions();
 }
 
+/**
+ * Create and initialize the theme tooltip flyout and return its DOM element.
+ *
+ * If the tooltip already exists this returns the existing element. When first created,
+ * the tooltip is appended to document.body and a scroll listener is bound to the
+ * settings modal body to hide the tooltip on scroll.
+ *
+ * @returns {HTMLElement} The tooltip DOM element used for theme previews.
+ */
 function ensureThemeTooltip() {
   if (themeTooltip) return themeTooltip;
   const tooltip = document.createElement('div');
@@ -148,6 +223,14 @@ function ensureThemeTooltip() {
   return tooltip;
 }
 
+/**
+ * Position the theme tooltip relative to a target element.
+ *
+ * Computes whether the tooltip should be placed above or below the target based on available space,
+ * clamps horizontal placement within the viewport with a padding margin, sets the tooltip's `top`
+ * and `left` CSS properties, and records the chosen placement in `dataset.placement`.
+ * @param {Element} target - The DOM element to anchor the tooltip to.
+ */
 function positionThemeTooltip(target) {
   if (!themeTooltip || !target) return;
   const rect = target.getBoundingClientRect();
@@ -163,6 +246,17 @@ function positionThemeTooltip(target) {
   themeTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
 }
 
+/**
+ * Display the theme tooltip populated with the given title and note.
+ *
+ * If a target element is provided, the tooltip will copy its `--swatch` and
+ * `--swatch-rgb` CSS custom properties when present and will be positioned
+ * relative to the target.
+ *
+ * @param {HTMLElement|null} target - Element the tooltip should reference/anchor to, or `null` to show without swatch/anchor.
+ * @param {string} name - Title text to display in the tooltip.
+ * @param {string} note - Supplemental note text to display in the tooltip.
+ */
 function showThemeTooltip(target, name, note) {
   const tooltip = ensureThemeTooltip();
   const nameEl = tooltip.querySelector('.theme-tooltip-name');
@@ -185,16 +279,36 @@ function showThemeTooltip(target, name, note) {
   positionThemeTooltip(target);
 }
 
+/**
+ * Hide the theme tooltip and update its accessibility state.
+ *
+ * If a tooltip exists, it will be hidden from view and marked with `aria-hidden="true"` for assistive technologies.
+ */
 function hideThemeTooltip() {
   if (!themeTooltip) return;
   themeTooltip.classList.remove('visible');
   themeTooltip.setAttribute('aria-hidden', 'true');
 }
 
+/**
+ * Apply the pending background theme if present, otherwise apply the currently selected background theme.
+ */
 function refreshBackgroundTheme() {
   applyBackgroundTheme(pendingBackground || getCurrentBackgroundTheme());
 }
 
+/**
+ * Render interactive color theme option buttons for the currently active color target.
+ *
+ * Clears and populates the #theme-options container with a button for each available theme.
+ * Each option includes a visual swatch, appropriate ARIA attributes, and event listeners to:
+ * - apply the theme as a pending preview when clicked,
+ * - show and position a tooltip on hover/focus/mousemove,
+ * - hide the tooltip on blur/leave.
+ *
+ * Does nothing if the theme options container is not present in the DOM. Updates the theme
+ * options label and the summary text after rendering.
+ */
 function renderColorThemeOptions() {
   const container = document.getElementById('theme-options');
   if (!container) return;
@@ -266,6 +380,11 @@ function renderColorThemeOptions() {
   updateThemeSummary();
 }
 
+/**
+ * Initialize the "color-target-select" dropdown and bind its change handler to update the active color target.
+ *
+ * Sets the select's value to the current activeColorTarget and calls setActiveColorTarget when the user changes selection.
+ */
 function initColorTargetSelect() {
   const select = document.getElementById('color-target-select');
   if (!select) return;
@@ -275,6 +394,11 @@ function initColorTargetSelect() {
   };
 }
 
+/**
+ * Initialize the color themes section toggle: ensure the section is expanded and wire the toggle button to collapse/expand it.
+ *
+ * If the section or toggle elements are not present in the DOM, the function no-ops.
+ */
 function initColorThemeSectionToggle() {
   const sections = document.querySelectorAll('.personalization-section');
   if (!sections.length) return;
@@ -441,6 +565,13 @@ function initPrimaryCardsUI() {
   section.dataset.initialized = 'true';
 }
 
+/**
+ * Read preview controls from the DOM and derive window effect values.
+ *
+ * Reads the #opacity-slider and #frosted-glass inputs; if either is missing, returns `null`.
+ * Maps the slider (1–100, default 90) to an opacity value in the range 0.5–1.0 and reads the frosted glass checkbox state.
+ * @returns {{opacity: number, frostedGlass: boolean} | null} An object with `opacity` (0.5–1.0) and `frostedGlass` boolean, or `null` if required inputs are not present.
+ */
 function getPreviewValuesFromInputs() {
   const opacitySlider = document.getElementById('opacity-slider');
   const frostedGlass = document.getElementById('frosted-glass');
@@ -456,6 +587,11 @@ function getPreviewValuesFromInputs() {
   };
 }
 
+/**
+ * Apply the current preview window effect settings from the UI and request a native preview.
+ *
+ * Reads preview controls, re-applies the background preview, applies the window effects in-page, and, if present, asks the Electron API to show a native preview. Errors during application or the native preview request are logged to the console.
+ */
 function previewWindowEffectsNow() {
   try {
     const values = getPreviewValuesFromInputs();
@@ -477,6 +613,11 @@ function previewWindowEffectsNow() {
   }
 }
 
+/**
+ * Schedule an update to the window preview effects, coalescing multiple calls into a single animation frame.
+ *
+ * If `requestAnimationFrame` is not available, performs the update immediately. Additional calls while an update is already scheduled have no effect.
+ */
 function previewWindowEffects() {
   if (previewRaf) return;
   if (typeof requestAnimationFrame !== 'function') {
@@ -489,12 +630,26 @@ function previewWindowEffects() {
   });
 }
 
+/**
+ * Cancel any pending window-effects preview and clear its scheduled handle.
+ *
+ * This stops a previously scheduled animation-frame preview (if any) and resets the internal RAF handle.
+ */
 function cancelPreviewWindowEffects() {
   if (!previewRaf || typeof cancelAnimationFrame !== 'function') return;
   cancelAnimationFrame(previewRaf);
   previewRaf = null;
 }
 
+/**
+ * Restore the window's visual effects from the saved preview state.
+ *
+ * If no preview state is available this function is a no-op. When a preview
+ * exists it cancels any pending preview updates, re-applies the current
+ * background theme, applies the saved window effect values (opacity and
+ * frosted-glass) and requests the native/Electron layer to apply the same
+ * preview. Errors are logged to the console.
+ */
 function restorePreviewWindowEffects() {
   if (!previewState) return;
 
@@ -550,6 +705,16 @@ function validateHomeAssistantUrl(url) {
   }
 }
 
+/**
+ * Open and initialize the settings modal, populate controls from persisted config, initialize theme and preview state, and trap focus.
+ *
+ * Populates Home Assistant fields, window and visual-effect controls, start-on-login, hotkeys, alerts, media player selection, and color theme previews; initializes related UI components, renders theme options, and shows the modal.
+ *
+ * @param {Object} [uiHooks] - Optional UI hook callbacks provided by the renderer.
+ * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
+ * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
+ * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ */
 async function openSettings(uiHooks) {
   try {
     // Exit reorganize mode if active to prevent state conflicts
@@ -671,6 +836,11 @@ async function openSettings(uiHooks) {
   }
 }
 
+/**
+ * Close the settings modal and revert any in-progress previews and UI changes.
+ *
+ * Restores window effect previews and theme previews that were active while the settings modal was open, clears pending preview state, hides the theme tooltip, removes hotkey listeners, and hides/releases the settings modal's focus trap.
+ */
 function closeSettings() {
   try {
     cancelPreviewWindowEffects();
@@ -705,6 +875,15 @@ function closeSettings() {
   }
 }
 
+/**
+ * Persist current settings from the settings UI, apply them to the app, and update related subsystems.
+ *
+ * Reads and validates form fields (including Home Assistant URL and token), persists the resulting configuration,
+ * applies UI and window-effect changes (opacity, themes, frosted glass, always-on-top), updates platform-specific
+ * settings (Start with Windows, global hotkeys, entity alerts, primary media player, filters), refreshes the media tile,
+ * and reconnects to Home Assistant only if connection settings changed. May prompt the user to restart the app when
+ * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
+ */
 async function saveSettings() {
   try {
     const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;

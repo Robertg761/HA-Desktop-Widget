@@ -55,6 +55,11 @@ const BACKGROUND_BASES = {
   },
 };
 
+/**
+ * Convert a hex color string into an object containing numeric RGB channels.
+ * @param {string} hex - Hex color in 3- or 6-digit form, with or without a leading `#` (e.g. `#abc`, `abc`, `#aabbcc`, `aabbcc`).
+ * @returns {{r: number, g: number, b: number} | null} The RGB components if `hex` is valid, or `null` for invalid input.
+ */
 function hexToRgb(hex) {
   if (!hex || typeof hex !== 'string') return null;
   const normalized = hex.replace('#', '').trim();
@@ -69,6 +74,14 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
+/**
+ * Interpolate two RGB colors by a given fraction.
+ *
+ * @param {{r:number, g:number, b:number}} base - Source RGB color used when `amount` is 0.
+ * @param {{r:number, g:number, b:number}} mixin - Target RGB color used when `amount` is 1.
+ * @param {number} amount - Interpolation factor between 0 and 1 where 0 returns `base` and 1 returns `mixin`.
+ * @returns {{r:number, g:number, b:number}} The resulting RGB color channels, each linearly interpolated and rounded to the nearest integer.
+ */
 function mixRgb(base, mixin, amount) {
   const mix = (channel) => Math.round(base[channel] + (mixin[channel] - base[channel]) * amount);
   return {
@@ -78,6 +91,10 @@ function mixRgb(base, mixin, amount) {
   };
 }
 
+/**
+ * Produce the list of accent themes augmented with an `rgb` string when the theme color is a valid hex.
+ * @returns {Array<{id: string, name: string, color: string, description?: string, rgb: string|null}>} An array of accent theme objects; each includes original theme properties and an `rgb` string in the form `"r, g, b"` when `color` could be parsed, or `null` otherwise.
+ */
 function getAccentThemes() {
   return ACCENT_THEMES.map(theme => {
     const rgb = hexToRgb(theme.color);
@@ -88,18 +105,47 @@ function getAccentThemes() {
   });
 }
 
+/**
+ * Provide the list of available background themes with RGB color strings.
+ *
+ * Each theme object includes `id`, `name`, `color`, and `description`. When the theme's hex color is valid,
+ * an `rgb` string in the form "r, g, b" is included.
+ * @returns {Array<Object>} An array of theme objects with optional `rgb` string.
+ */
+function getBackgroundThemes() {
+  return getAccentThemes();
+}
+
+/**
+ * Resolve an accent theme key to a valid theme id.
+ *
+ * @param {string} accentKey - Requested accent key; may be undefined or invalid.
+ * @returns {string} The resolved accent theme id: `accentKey` if it exists in the map; if `accentKey` is `'sky'` and `'original'` exists, returns `'original'`; otherwise returns `'original'` if available, or the first defined theme id, or `'original'` as a final fallback.
+ */
 function resolveAccentThemeId(accentKey) {
   if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
   if (accentKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
   return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'original');
 }
 
+/**
+ * Resolve a valid background theme id from a provided key.
+ *
+ * @param {string} backgroundKey - Candidate background key (may be undefined or invalid).
+ * @returns {string} The resolved theme id: the provided key if it exists in ACCENT_THEME_MAP; if the key is `'sky'` and `'original'` exists, `'original'` is returned; otherwise `'original'` if available, or the first accent theme id, or `'original'` as a final fallback.
+ */
 function resolveBackgroundThemeId(backgroundKey) {
   if (backgroundKey && ACCENT_THEME_MAP[backgroundKey]) return backgroundKey;
   if (backgroundKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
   return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'original');
 }
 
+/**
+ * Apply the chosen accent theme to the document by updating CSS custom properties and the body's data-accent attribute.
+ *
+ * Sets a set of CSS variables (accent color, RGB components, hover/primary variants, accent background, focus/border and glow styles) derived from the resolved theme and the current light/dark mode. If the accent key cannot be resolved or required DOM elements are unavailable, the function performs no action.
+ * @param {string} accentKey - Accent theme identifier or alias to apply.
+ */
 function applyAccentTheme(accentKey) {
   try {
     const resolvedKey = resolveAccentThemeId(accentKey);
@@ -137,6 +183,17 @@ function applyAccentTheme(accentKey) {
   }
 }
 
+/**
+ * Apply a named background theme by updating CSS custom properties and the document body dataset.
+ *
+ * Resolves the provided background key to a concrete theme, computes tinted RGBA values appropriate
+ * for the current light/dark mode, sets a collection of `--bg-*`, `--surface-*`, `--glass-*` CSS
+ * variables on `:root` and corresponding RGB variables on `document.body`, and stores the resolved
+ * theme id in `body.dataset.background`. If the key cannot be resolved or required DOM elements are
+ * unavailable, the function performs no changes.
+ *
+ * @param {string} backgroundKey - Theme identifier or alias to apply; if omitted or unresolvable, no changes are made.
+ */
 function applyBackgroundTheme(backgroundKey) {
   try {
     const resolvedKey = resolveBackgroundThemeId(backgroundKey);
@@ -197,6 +254,10 @@ function applyBackgroundTheme(backgroundKey) {
   }
 }
 
+/**
+ * Get the application's runtime platform identifier and cache it for subsequent calls.
+ * @returns {string|null} The platform identifier (e.g. 'win32', 'darwin') if available, `null` otherwise.
+ */
 function getPlatform() {
   if (cachedPlatform) return cachedPlatform;
   const platform = window?.electronAPI?.platform;
@@ -207,11 +268,22 @@ function getPlatform() {
   return null;
 }
 
+/**
+ * Detects whether the current platform supports native glass/window blur effects.
+ * @returns {boolean} `true` if the platform is 'win32' or 'darwin', `false` otherwise.
+ */
 function isNativeGlassPlatform() {
   const platform = getPlatform();
   return platform === 'win32' || platform === 'darwin';
 }
 
+/**
+ * Display a transient toast notification in the element with id "toast-container".
+ *
+ * @param {string} message - Text to show inside the toast.
+ * @param {string} [type='success'] - Visual variant/class to apply (e.g., 'success', 'error', 'info').
+ * @param {number} [timeout=2000] - Time in milliseconds before the toast begins fading out.
+ */
 function showToast(message, type = 'success', timeout = 2000) {
   try {
     const container = document.getElementById('toast-container');
@@ -247,6 +319,17 @@ function applyTheme(mode = 'auto') {
   }
 }
 
+/**
+ * Apply user interface preference flags as CSS classes on the document body.
+ *
+ * Sets or removes classes to reflect high-contrast mode, opaque panel rendering,
+ * and compact density so CSS can adapt the UI accordingly.
+ *
+ * @param {Object} ui - UI preferences.
+ * @param {boolean} [ui.highContrast] - Enable high-contrast styles when true.
+ * @param {boolean} [ui.opaquePanels] - Render panels as opaque when true.
+ * @param {string} [ui.density] - Layout density; use 'compact' to enable compact spacing.
+ */
 function applyUiPreferences(ui = {}) {
   try {
     const body = document.body;
@@ -259,20 +342,12 @@ function applyUiPreferences(ui = {}) {
 }
 
 /**
- * Applies frosted glass window effects to the application.
- * 
- * This function implements a multi-layer glassmorphism approach:
- * 1. Sets CSS custom properties for blur strength and opacity values
- * 2. Toggles the 'frosted-glass' class on the body element
- * 3. CSS handles the actual rendering (backdrop-filter, transparency)
- * 
- * The effect requires:
- * - HTML element to be transparent (set in CSS)
- * - Body to have backdrop-filter when frosted-glass class is present
- * - Content containers to have semi-transparent backgrounds
- * 
- * @param {Object} config - Configuration object
- * @param {boolean} config.frostedGlass - Whether to enable frosted glass
+ * Configure and apply frosted-glass (glassmorphism) window visual effects by setting CSS custom properties and body classes.
+ *
+ * When `config.frostedGlass` is true, this function sets CSS variables that control blur and multiple layer opacities and then adds the `frosted-glass` class (and `native-glass` on supported platforms). When false, it removes those classes and clears the related CSS custom properties.
+ *
+ * @param {Object} [config={}] - Configuration options.
+ * @param {boolean} [config.frostedGlass=false] - Enable or disable the frosted glass effect.
  */
 function applyWindowEffects(config = {}) {
   try {
@@ -340,6 +415,12 @@ function applyWindowEffects(config = {}) {
   }
 }
 
+/**
+ * Activate a focus trap inside a modal element so keyboard Tab navigation cycles within it.
+ *
+ * Attaches a keydown handler to the provided modal that confines Tab (and Shift+Tab) focus movement to the modal's focusable descendants, sets focus to the first focusable element, and records the previously focused element for later restoration. The handler is stored in the module-level `focusTrapHandlers` WeakMap keyed by the modal.
+ * @param {HTMLElement} modal - The modal container element within which focus should be trapped.
+ */
 function trapFocus(modal) {
   try {
     lastFocusedElement = document.activeElement;
@@ -485,6 +566,7 @@ export {
   applyAccentTheme,
   applyBackgroundTheme,
   getAccentThemes,
+  getBackgroundThemes,
   applyUiPreferences,
   applyWindowEffects,
   trapFocus,

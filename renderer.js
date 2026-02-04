@@ -269,6 +269,11 @@ function replaceEmojiIcons() {
   }
 }
 
+/**
+ * Initialize the renderer: load configuration, apply UI preferences, wire UI, start periodic updates, initialize hotkeys and alerts, and connect to Home Assistant.
+ *
+ * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
+ */
 async function init() {
   try {
     log.info('Initializing application');
@@ -379,6 +384,12 @@ async function init() {
   }
 }
 
+/**
+ * Attach event listeners and wire up interactive UI controls, modals, and settings handlers.
+ *
+ * Sets up button clicks, input/change handlers, modal open/close behavior, quick-controls and weather interactions,
+ * media controls, hotkeys registration and management, alert toggles, preview hooks for window effects, and focus/trap utilities.
+ */
 function wireUI() {
   try {
     const settingsBtn = document.getElementById('settings-btn');
