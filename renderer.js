@@ -9,7 +9,6 @@ import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
-import Sortable from 'sortablejs';
 
 // --- Renderer Log Configuration ---
 log.errorHandler.startCatching();
@@ -335,7 +334,10 @@ async function init() {
 
     // Apply theme and UI preferences from saved config
     uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+    uiUtils.applyWindowEffects(state.CONFIG || {});
 
     // Initialize time display
     ui.updateTimeDisplay();
@@ -423,7 +425,7 @@ function wireUI() {
       };
     }
 
-    // Opacity slider handler with real-time application
+    // Opacity slider handler with real-time preview
     // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
@@ -432,12 +434,20 @@ function wireUI() {
         const sliderValue = parseInt(e.target.value) || 90;
         // Convert slider value (1-100) to opacity (0.5-1.0)
         // Formula: opacity = 0.5 + (sliderValue - 1) * 0.5 / 99
-        const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
         opacityValue.textContent = `${sliderValue}`;
-        // Apply opacity in real-time
-        window.electronAPI.setOpacity(opacity).catch(err => {
-          log.error('Failed to set opacity:', err);
-        });
+        // Apply preview without persisting
+        if (settings.previewWindowEffects) {
+          settings.previewWindowEffects();
+        }
+      });
+    }
+
+    const frostedGlassToggle = document.getElementById('frosted-glass');
+    if (frostedGlassToggle) {
+      frostedGlassToggle.addEventListener('change', () => {
+        if (settings.previewWindowEffects) {
+          settings.previewWindowEffects();
+        }
       });
     }
 

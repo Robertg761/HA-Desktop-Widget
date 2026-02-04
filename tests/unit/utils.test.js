@@ -203,6 +203,16 @@ describe('Utils Module', () => {
   });
 
   describe('getTimerEnd', () => {
+    let consoleError;
+
+    beforeEach(() => {
+      consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleError.mockRestore();
+    });
+
     test('should return timestamp from finishes_at attribute', () => {
       const futureTime = new Date(Date.now() + 60000).toISOString();
       const entity = {

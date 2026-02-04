@@ -72,7 +72,7 @@ let wasAlwaysOnTop = false; // Track original alwaysOnTop state
 let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanup
 let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
-let popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
+let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null; // Timestamp when window was last shown via hotkey (for debounce)
 
 function resolveTrayIcon() {
@@ -152,6 +152,7 @@ function loadConfig() {
     windowSize: { width: 500, height: 600 },
     alwaysOnTop: true,
     opacity: 0.95,
+    frostedGlass: true,
     homeAssistant: {
       url: 'http://homeassistant.local:8123',
       token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
@@ -165,6 +166,11 @@ function loadConfig() {
       enabled: false,
       alerts: {} // entityId -> alert configuration
     },
+    ui: {
+      theme: 'auto',
+      accent: 'original',
+      background: 'original'
+    },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
     popupHotkeyToggleMode: false // Press once to show, press again to hide (instead of hold)
@@ -176,7 +182,8 @@ function loadConfig() {
       config = {
         ...defaultConfig, ...userConfig,
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
-        entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) }
+        entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
+        ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) }
       };
 
       // Handle token encryption/decryption
@@ -373,6 +380,42 @@ function saveConfig() {
   }
 }
 
+function applyFrostedGlass(override) {
+  if (!mainWindow) return;
+  const enabled = typeof override === 'boolean' ? override : !!config?.frostedGlass;
+
+  if (process.platform === 'win32') {
+    if (typeof mainWindow.setBackgroundMaterial === 'function') {
+      try {
+        mainWindow.setBackgroundMaterial(enabled ? 'acrylic' : 'none');
+      } catch (error) {
+        log.warn('Failed to set background material:', error.message);
+      }
+    }
+  } else if (process.platform === 'darwin') {
+    if (typeof mainWindow.setVibrancy === 'function') {
+      try {
+        mainWindow.setVibrancy(enabled ? 'sidebar' : null);
+      } catch (error) {
+        log.warn('Failed to set vibrancy:', error.message);
+      }
+    }
+    if (typeof mainWindow.setVisualEffectState === 'function') {
+      try {
+        mainWindow.setVisualEffectState(enabled ? 'active' : 'inactive');
+      } catch (error) {
+        log.warn('Failed to set visual effect state:', error.message);
+      }
+    }
+  }
+
+  try {
+    mainWindow.setBackgroundColor('#00000000');
+  } catch (error) {
+    log.warn('Failed to set background color:', error.message);
+  }
+}
+
 function createWindow() {
   log.info('Creating main window');
   // Get the primary display's work area
@@ -383,12 +426,13 @@ function createWindow() {
   const iconPath = path.join(__dirname, 'build', 'icon.ico');
 
   // Create the browser window with transparency
-  mainWindow = new BrowserWindow({
+  const windowOptions = {
     x: config.windowPosition.x,
     y: config.windowPosition.y,
     width: config.windowSize.width,
     height: config.windowSize.height,
     transparent: true,
+    backgroundColor: '#00000000',
     frame: false,
     alwaysOnTop: config.alwaysOnTop,
     skipTaskbar: true,
@@ -401,12 +445,23 @@ function createWindow() {
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true
     }
-  });
+  };
+
+  if (config.frostedGlass) {
+    if (process.platform === 'win32') {
+      windowOptions.backgroundMaterial = 'acrylic';
+    } else if (process.platform === 'darwin') {
+      windowOptions.vibrancy = 'sidebar';
+    }
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // Set window opacity with failsafe
   const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
   mainWindow.setOpacity(safeOpacity);
   config.opacity = safeOpacity; // Update config to safe value
+  applyFrostedGlass();
 
   // Load the index.html file
   mainWindow.loadFile('index.html');
@@ -563,8 +618,12 @@ ipcMain.handle('get-config', () => {
 
 ipcMain.handle('update-config', (event, newConfig) => {
   log.debug('Updating configuration');
+  const prevFrostedGlass = config?.frostedGlass;
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   config = { ...config, ...newConfig, customTabs };
+  if (prevFrostedGlass !== config.frostedGlass) {
+    applyFrostedGlass();
+  }
   saveConfig();
   return config;
 });
@@ -575,6 +634,17 @@ ipcMain.handle('set-opacity', (event, opacity) => {
   mainWindow.setOpacity(safeOpacity);
   config.opacity = safeOpacity;
   saveConfig();
+});
+
+ipcMain.handle('preview-window-effects', (event, effects = {}) => {
+  if (!mainWindow) return;
+  if (typeof effects.opacity === 'number') {
+    const safeOpacity = Math.max(0.5, Math.min(1, effects.opacity));
+    mainWindow.setOpacity(safeOpacity);
+  }
+  if (typeof effects.frostedGlass === 'boolean') {
+    applyFrostedGlass(effects.frostedGlass);
+  }
 });
 
 ipcMain.handle('set-always-on-top', (event, value) => {
@@ -1093,7 +1163,7 @@ function registerPopupHotkey() {
               // Window is already visible and focused (and not recently shown) - hide it
               log.info('Popup hotkey toggle: window is focused, hiding...');
               mainWindow.hide();
-              popupHotkeyWindowVisible = false;
+              _popupHotkeyWindowVisible = false;
               popupHotkeyLastShownTime = null;
               log.debug('Popup hotkey toggle - window hidden');
             } else {
@@ -1115,7 +1185,7 @@ function registerPopupHotkey() {
               // Restore original alwaysOnTop state immediately so popup doesn't override user preference
               mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
 
-              popupHotkeyWindowVisible = true;
+              _popupHotkeyWindowVisible = true;
               popupHotkeyLastShownTime = now;
               log.debug('Popup hotkey toggle - window shown and focused, alwaysOnTop restored to user preference');
             }
@@ -1225,7 +1295,7 @@ function unregisterPopupHotkey() {
     // Clear state
     popupHotkeyConfig = null;
     popupHotkeyPressed = false;
-    popupHotkeyWindowVisible = false;
+    _popupHotkeyWindowVisible = false;
   } catch (error) {
     log.error('Failed to unregister popup hotkey:', error);
   }

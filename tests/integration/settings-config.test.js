@@ -12,7 +12,33 @@ const mockWebsocket = {
 
 const mockUiUtils = {
   applyTheme: jest.fn(),
+  applyAccentTheme: jest.fn(),
+  applyBackgroundTheme: jest.fn(),
   applyUiPreferences: jest.fn(),
+  applyWindowEffects: jest.fn(),
+  getAccentThemes: jest.fn(() => ([
+    {
+      id: 'original',
+      name: 'Original',
+      color: '#64b5f6',
+      description: 'Mock theme',
+      rgb: '100, 181, 246'
+    },
+    {
+      id: 'slate',
+      name: 'Slate',
+      color: '#94a3b8',
+      description: 'Mock theme',
+      rgb: '148, 163, 184'
+    },
+    {
+      id: 'rose',
+      name: 'Rose',
+      color: '#f43f5e',
+      description: 'Mock theme',
+      rgb: '244, 63, 94'
+    },
+  ])),
   trapFocus: jest.fn(),
   releaseFocusTrap: jest.fn(),
   showToast: jest.fn(),

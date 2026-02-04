@@ -1,9 +1,360 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { applyTheme, applyUiPreferences, trapFocus, releaseFocusTrap, showToast, showConfirm } from './ui-utils.js';
+import {
+  applyTheme,
+  applyAccentTheme,
+  applyBackgroundTheme,
+  getAccentThemes,
+  applyUiPreferences,
+  applyWindowEffects,
+  trapFocus,
+  releaseFocusTrap,
+  showToast,
+  showConfirm,
+} from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import * as utils from './utils.js';
 // Note: ui.js is imported dynamically to prevent circular dependencies
+
+let previewState = null;
+let previewRaf = null;
+let previewAccent = null;
+let pendingAccent = null;
+let previewBackground = null;
+let pendingBackground = null;
+const COLOR_TARGETS = {
+  accent: 'accent',
+  background: 'background',
+};
+let activeColorTarget = COLOR_TARGETS.accent;
+let themeTooltip = null;
+let themeTooltipScrollBound = false;
+
+function resolveThemeId(themeId, { preferSlate = false } = {}) {
+  const themes = getAccentThemes();
+  const validIds = new Set(themes.map(theme => theme.id));
+  if (themeId && validIds.has(themeId)) return themeId;
+  if (themeId === 'sky') {
+    const original = themes.find(theme => theme.id === 'original')?.id;
+    if (original) return original;
+  }
+  if (preferSlate) {
+    return themes.find(theme => theme.id === 'slate')?.id || themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
+  }
+  return themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
+}
+
+function getCurrentAccentTheme() {
+  const fallback = resolveThemeId(null);
+  return state.CONFIG?.ui?.accent || fallback;
+}
+
+function getCurrentBackgroundTheme() {
+  const fallback = resolveThemeId(null, { preferSlate: true });
+  return state.CONFIG?.ui?.background || fallback;
+}
+
+function getPendingTheme(target) {
+  if (target === COLOR_TARGETS.background) {
+    return pendingBackground || getCurrentBackgroundTheme();
+  }
+  return pendingAccent || getCurrentAccentTheme();
+}
+
+function selectAccentTheme(accentKey, { preview = true } = {}) {
+  const resolvedAccent = resolveThemeId(accentKey);
+  pendingAccent = resolvedAccent;
+  if (preview) {
+    applyAccentTheme(resolvedAccent);
+  }
+  if (activeColorTarget === COLOR_TARGETS.accent) {
+    updateThemeSelectionUI();
+  }
+  updateThemeSummary();
+}
+
+function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
+  const resolvedBackground = resolveThemeId(backgroundKey, { preferSlate: true });
+  pendingBackground = resolvedBackground;
+  if (preview) {
+    applyBackgroundTheme(resolvedBackground);
+  }
+  if (activeColorTarget === COLOR_TARGETS.background) {
+    updateThemeSelectionUI();
+  }
+  updateThemeSummary();
+}
+
+function updateThemeSelectionUI() {
+  const selectedTheme = getPendingTheme(activeColorTarget);
+  const options = document.querySelectorAll('.color-theme-option');
+  options.forEach(option => {
+    const isSelected = option.dataset.theme === selectedTheme;
+    option.classList.toggle('selected', isSelected);
+    option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+  });
+}
+
+function updateThemeOptionsLabel() {
+  const label = document.getElementById('theme-options-label');
+  if (!label) return;
+  const labelTarget = activeColorTarget === COLOR_TARGETS.background ? 'Background' : 'Accent';
+  label.textContent = `Color Options (${labelTarget})`;
+}
+
+function updateThemeSummary() {
+  const summary = document.getElementById('theme-current-selection');
+  if (!summary) return;
+  const themes = getAccentThemes();
+  const accentName = themes.find(theme => theme.id === getPendingTheme(COLOR_TARGETS.accent))?.name || 'Custom';
+  const backgroundName = themes.find(theme => theme.id === getPendingTheme(COLOR_TARGETS.background))?.name || 'Custom';
+  summary.textContent = `Accent: ${accentName} • Background: ${backgroundName}`;
+}
+
+function setActiveColorTarget(target) {
+  activeColorTarget = target === COLOR_TARGETS.background ? COLOR_TARGETS.background : COLOR_TARGETS.accent;
+  renderColorThemeOptions();
+}
+
+function ensureThemeTooltip() {
+  if (themeTooltip) return themeTooltip;
+  const tooltip = document.createElement('div');
+  tooltip.id = 'theme-tooltip-flyout';
+  tooltip.className = 'theme-tooltip-flyout';
+  tooltip.setAttribute('role', 'tooltip');
+  tooltip.setAttribute('aria-hidden', 'true');
+  tooltip.innerHTML = `
+    <span class="theme-tooltip-name"></span>
+    <span class="theme-tooltip-note"></span>
+  `;
+  document.body.appendChild(tooltip);
+  themeTooltip = tooltip;
+
+  if (!themeTooltipScrollBound) {
+    const modalBody = document.querySelector('#settings-modal .modal-body');
+    if (modalBody) {
+      modalBody.addEventListener('scroll', hideThemeTooltip, { passive: true });
+      themeTooltipScrollBound = true;
+    }
+  }
+
+  return tooltip;
+}
+
+function positionThemeTooltip(target) {
+  if (!themeTooltip || !target) return;
+  const rect = target.getBoundingClientRect();
+  const tooltipRect = themeTooltip.getBoundingClientRect();
+  const padding = 12;
+  const preferredTop = rect.top - tooltipRect.height - 12;
+  const placeBelow = preferredTop < padding;
+  const top = placeBelow ? rect.bottom + 12 : preferredTop;
+  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding));
+  themeTooltip.style.top = `${top}px`;
+  themeTooltip.style.left = `${left}px`;
+  themeTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+}
+
+function showThemeTooltip(target, name, note) {
+  const tooltip = ensureThemeTooltip();
+  const nameEl = tooltip.querySelector('.theme-tooltip-name');
+  const noteEl = tooltip.querySelector('.theme-tooltip-note');
+  if (nameEl) nameEl.textContent = name;
+  if (noteEl) noteEl.textContent = note;
+  if (target) {
+    const computed = window.getComputedStyle(target);
+    const swatch = computed.getPropertyValue('--swatch').trim();
+    const swatchRgb = computed.getPropertyValue('--swatch-rgb').trim();
+    if (swatch) {
+      tooltip.style.setProperty('--swatch', swatch);
+    }
+    if (swatchRgb) {
+      tooltip.style.setProperty('--swatch-rgb', swatchRgb);
+    }
+  }
+  tooltip.classList.add('visible');
+  tooltip.setAttribute('aria-hidden', 'false');
+  positionThemeTooltip(target);
+}
+
+function hideThemeTooltip() {
+  if (!themeTooltip) return;
+  themeTooltip.classList.remove('visible');
+  themeTooltip.setAttribute('aria-hidden', 'true');
+}
+
+function refreshBackgroundTheme() {
+  applyBackgroundTheme(pendingBackground || getCurrentBackgroundTheme());
+}
+
+function renderColorThemeOptions() {
+  const container = document.getElementById('theme-options');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const themes = getAccentThemes();
+  const selectedTheme = getPendingTheme(activeColorTarget);
+
+  themes.forEach(theme => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'theme-option color-theme-option';
+    option.dataset.theme = theme.id;
+    const isOriginalTheme = theme.id === 'original';
+    const isBackgroundTarget = activeColorTarget === COLOR_TARGETS.background;
+    const tooltipName = theme.name;
+    const tooltipDescription = isOriginalTheme
+      ? (isBackgroundTarget ? 'Original dark base (no tint)' : 'Original accent blue')
+      : theme.description;
+    option.setAttribute('role', 'radio');
+    option.setAttribute('aria-label', `${tooltipName}. ${tooltipDescription}`);
+    option.setAttribute('aria-checked', theme.id === selectedTheme ? 'true' : 'false');
+    if (theme.id === selectedTheme) {
+      option.classList.add('selected');
+    }
+
+    if (isOriginalTheme && isBackgroundTarget) {
+      const isLightTheme = document.body?.classList.contains('theme-light');
+      const swatchRgb = isLightTheme ? '250, 250, 250' : '40, 40, 45';
+      const swatchHex = isLightTheme ? '#fafafa' : '#28282d';
+      option.style.setProperty('--swatch', swatchHex);
+      option.style.setProperty('--swatch-rgb', swatchRgb);
+    } else {
+      if (theme.color) {
+        option.style.setProperty('--swatch', theme.color);
+      }
+      if (theme.rgb) {
+        option.style.setProperty('--swatch-rgb', theme.rgb);
+      }
+    }
+
+    const swatch = document.createElement('span');
+    swatch.className = 'accent-theme-swatch';
+    option.appendChild(swatch);
+
+    option.addEventListener('click', () => {
+      if (activeColorTarget === COLOR_TARGETS.background) {
+        selectBackgroundTheme(theme.id, { preview: true });
+      } else {
+        selectAccentTheme(theme.id, { preview: true });
+      }
+    });
+    option.addEventListener('mouseenter', () => {
+      showThemeTooltip(option, tooltipName, tooltipDescription);
+    });
+    option.addEventListener('mouseleave', hideThemeTooltip);
+    option.addEventListener('focus', () => {
+      showThemeTooltip(option, tooltipName, tooltipDescription);
+    });
+    option.addEventListener('blur', hideThemeTooltip);
+    option.addEventListener('mousemove', () => {
+      positionThemeTooltip(option);
+    });
+
+    container.appendChild(option);
+  });
+
+  updateThemeOptionsLabel();
+  updateThemeSummary();
+}
+
+function initColorTargetSelect() {
+  const select = document.getElementById('color-target-select');
+  if (!select) return;
+  select.value = activeColorTarget;
+  select.onchange = (e) => {
+    setActiveColorTarget(e.target.value);
+  };
+}
+
+function initColorThemeSectionToggle() {
+  const section = document.getElementById('color-themes-section');
+  const toggle = document.getElementById('color-themes-toggle');
+  if (!section || !toggle) return;
+
+  section.classList.remove('collapsed');
+  toggle.setAttribute('aria-expanded', 'true');
+
+  toggle.onclick = () => {
+    const isCollapsed = section.classList.toggle('collapsed');
+    toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+  };
+}
+
+function getPreviewValuesFromInputs() {
+  const opacitySlider = document.getElementById('opacity-slider');
+  const frostedGlass = document.getElementById('frosted-glass');
+  if (!opacitySlider || !frostedGlass) return null;
+
+  const sliderValue = parseInt(opacitySlider.value, 10) || 90;
+  const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+  const frostedGlassEnabled = !!frostedGlass.checked;
+
+  return {
+    opacity,
+    frostedGlass: frostedGlassEnabled,
+  };
+}
+
+function previewWindowEffectsNow() {
+  try {
+    const values = getPreviewValuesFromInputs();
+    if (!values) return;
+
+    refreshBackgroundTheme();
+    applyWindowEffects(values);
+
+    if (window?.electronAPI?.previewWindowEffects) {
+      window.electronAPI.previewWindowEffects({
+        opacity: values.opacity,
+        frostedGlass: values.frostedGlass,
+      }).catch(err => {
+        console.error('Failed to preview window effects:', err);
+      });
+    }
+  } catch (error) {
+    console.error('Error applying preview window effects:', error);
+  }
+}
+
+function previewWindowEffects() {
+  if (previewRaf) return;
+  if (typeof requestAnimationFrame !== 'function') {
+    previewWindowEffectsNow();
+    return;
+  }
+  previewRaf = requestAnimationFrame(() => {
+    previewRaf = null;
+    previewWindowEffectsNow();
+  });
+}
+
+function cancelPreviewWindowEffects() {
+  if (!previewRaf || typeof cancelAnimationFrame !== 'function') return;
+  cancelAnimationFrame(previewRaf);
+  previewRaf = null;
+}
+
+function restorePreviewWindowEffects() {
+  if (!previewState) return;
+
+  try {
+    cancelPreviewWindowEffects();
+    refreshBackgroundTheme();
+    applyWindowEffects(previewState);
+    if (window?.electronAPI?.previewWindowEffects) {
+      window.electronAPI.previewWindowEffects({
+        opacity: previewState.opacity,
+        frostedGlass: previewState.frostedGlass,
+      }).catch(err => {
+        console.error('Failed to restore preview window effects:', err);
+      });
+    }
+  } catch (error) {
+    console.error('Error restoring preview window effects:', error);
+  }
+}
 
 /**
  * Validate Home Assistant URL format
@@ -57,7 +408,7 @@ async function openSettings(uiHooks) {
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
-
+    const frostedGlass = document.getElementById('frosted-glass');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
@@ -77,6 +428,7 @@ async function openSettings(uiHooks) {
     }
     if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
+    if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
 
     // Initialize "Start with Windows" checkbox
     const startWithWindows = document.getElementById('start-with-windows');
@@ -96,6 +448,24 @@ async function openSettings(uiHooks) {
     const sliderScale = Math.round(1 + ((storedOpacity - 0.5) * 198));
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
+
+    previewState = {
+      opacity: storedOpacity,
+      frostedGlass: !!state.CONFIG.frostedGlass,
+    };
+
+    const currentAccent = getCurrentAccentTheme();
+    previewAccent = currentAccent;
+    pendingAccent = currentAccent;
+    selectAccentTheme(currentAccent, { preview: false });
+    const currentBackground = getCurrentBackgroundTheme();
+    previewBackground = currentBackground;
+    pendingBackground = currentBackground;
+    selectBackgroundTheme(currentBackground, { preview: false });
+    activeColorTarget = COLOR_TARGETS.accent;
+    renderColorThemeOptions();
+    initColorTargetSelect();
+    initColorThemeSectionToggle();
 
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
@@ -140,6 +510,23 @@ async function openSettings(uiHooks) {
 
 function closeSettings() {
   try {
+    cancelPreviewWindowEffects();
+    if (previewState) {
+      restorePreviewWindowEffects();
+      previewState = null;
+    }
+    if (previewAccent && pendingAccent && previewAccent !== pendingAccent) {
+      applyAccentTheme(previewAccent);
+    }
+    previewAccent = null;
+    pendingAccent = null;
+    if (previewBackground && pendingBackground && previewBackground !== pendingBackground) {
+      applyBackgroundTheme(previewBackground);
+    }
+    previewBackground = null;
+    pendingBackground = null;
+    hideThemeTooltip();
+
     // Clean up hotkey event listeners to prevent memory leaks
     cleanupHotkeyEventListeners();
 
@@ -168,6 +555,7 @@ async function saveSettings() {
     const updateInterval = document.getElementById('update-interval');
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
+    const frostedGlass = document.getElementById('frosted-glass');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
 
@@ -193,6 +581,12 @@ async function saveSettings() {
     }
     if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
+    if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
+    delete state.CONFIG.frostedGlassStrength;
+    delete state.CONFIG.frostedGlassTint;
+    state.CONFIG.ui = state.CONFIG.ui || {};
+    state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
+    state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
 
     // Save "Start with Windows" setting
     const startWithWindows = document.getElementById('start-with-windows');
@@ -258,9 +652,17 @@ async function saveSettings() {
       }
     }
 
+    previewState = null;
+    previewAccent = null;
+    pendingAccent = null;
+    previewBackground = null;
+    pendingBackground = null;
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
+    applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
+    applyBackgroundTheme(state.CONFIG.ui?.background || getCurrentBackgroundTheme());
     applyUiPreferences(state.CONFIG.ui || {});
+    applyWindowEffects(state.CONFIG || {});
 
     // Update media tile to reflect new selection
     // Dynamic import to avoid circular dependency
@@ -1057,6 +1459,7 @@ export {
   openSettings,
   closeSettings,
   saveSettings,
+  previewWindowEffects,
   renderAlertsListInline,
   openAlertEntityPicker,
   closeAlertEntityPicker,

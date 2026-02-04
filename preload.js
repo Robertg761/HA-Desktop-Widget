@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // With contextIsolation: true, we must use contextBridge to expose API
 // This creates a secure bridge between the main and renderer processes
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
   // Config operations
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
@@ -10,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window operations
   setOpacity: (opacity) => ipcRenderer.invoke('set-opacity', opacity),
+  previewWindowEffects: (effects) => ipcRenderer.invoke('preview-window-effects', effects),
   setAlwaysOnTop: (value) => ipcRenderer.invoke('set-always-on-top', value),
   getWindowState: () => ipcRenderer.invoke('get-window-state'),
   getLoginItemSettings: () => ipcRenderer.invoke('get-login-item-settings'),

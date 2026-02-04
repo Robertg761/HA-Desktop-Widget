@@ -3,7 +3,6 @@
  */
 
 const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
-const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Setup mocks BEFORE loading modules
 const mockElectronAPI = createMockElectronAPI();
@@ -43,11 +42,7 @@ jest.mock('../../src/websocket.js', () => ({
 // Import modules after mocks
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
-const utils = require('../../src/utils.js');
 const uiUtils = require('../../src/ui-utils.js');
-const websocket = require('../../src/websocket.js').default;
-const camera = require('../../src/camera.js');
-const { setIconContent } = require('../../src/icons.js');
 
 describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   beforeEach(() => {

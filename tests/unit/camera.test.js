@@ -119,7 +119,6 @@ afterAll(() => {
 describe('Camera Module', () => {
   // Require modules once
   const camera = require('../../src/camera.js');
-  const uiUtils = require('../../src/ui-utils.js');
 
   describe('getHlsStreamUrl', () => {
     beforeEach(() => {

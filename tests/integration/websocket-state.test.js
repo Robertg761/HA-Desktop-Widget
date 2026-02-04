@@ -134,6 +134,7 @@ describe('WebSocket + State Integration', () => {
     });
 
     test('authentication failure handling', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
       const errorPromise = new Promise(resolve => websocket.on('error', resolve));
 
       const config = state.CONFIG;
@@ -145,6 +146,7 @@ describe('WebSocket + State Integration', () => {
       const error = await errorPromise;
       expect(error.message).toContain('default token');
       expect(MockWebSocket.lastInstance).toBeNull();
+      consoleError.mockRestore();
     });
 
     test('concurrent request handling', async () => {
