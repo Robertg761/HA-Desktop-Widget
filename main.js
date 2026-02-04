@@ -73,7 +73,14 @@ let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanu
 let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
-let popupHotkeyLastShownTime = null; // Timestamp when window was last shown via hotkey (for debounce)
+let popupHotkeyLastShownTime = null; /**
+ * Selects and returns an appropriate tray icon image for the current platform.
+ *
+ * Searches common resource locations (including packaged resources when available) for platform-preferred icon files,
+ * resizes the found image to the platform's tray size (16px on Windows, 24px otherwise), and returns a fallback generated
+ * placeholder image if no icon is found.
+ * @returns {Electron.NativeImage} The resolved and appropriately sized tray icon image.
+ */
 
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
@@ -140,7 +147,26 @@ function resolveTrayIcon() {
     .resize({ width: traySize, height: traySize });
 }
 
-// Load configuration
+/**
+ * Load the application's configuration into the in-memory `config` variable.
+ *
+ * Loads user configuration from the userData config.json, merges it with sensible defaults,
+ * and performs necessary migrations and persistence. Specifically:
+ * - Merges persisted values with defaults for window, UI, hotkeys, and alerts.
+ * - If a token is stored as encrypted, attempts to decrypt it for runtime use; if decryption
+ *   is unavailable or fails, preserves the encrypted token on disk and sets a placeholder
+ *   in memory with a migration reason recorded.
+ * - If a plaintext token from a pre-encryption version is detected, attempts to migrate it
+ *   to encrypted storage (creating a backup before migration); if encryption is unavailable
+ *   or encryption fails, records migration info and preserves plaintext as configured.
+ * - If no user config exists, attempts to migrate a legacy config from the app directory,
+ *   ensures the userData directory exists, and saves the initial config.
+ *
+ * Side effects:
+ * - Mutates the module-level `config` variable.
+ * - May call `saveConfig()` and `backupConfig()` to persist changes or backups.
+ * - Logs migration and error information.
+ */
 function loadConfig() {
   log.debug('Loading configuration');
   const userDataDir = app.getPath('userData');
@@ -340,7 +366,16 @@ function backupConfig() {
   return false;
 }
 
-// Save configuration
+/**
+ * Persist the in-memory configuration to the user's config.json and attempt to secure the Home Assistant token.
+ *
+ * Writes the current `config` object to the application's userData/config.json. If `homeAssistant.token` is present
+ * and not the placeholder value, this function attempts to encrypt the token using Electron's `safeStorage`; on
+ * successful encryption the token is stored as a base64 string and `homeAssistant.tokenEncrypted` is set to `true`.
+ * If encryption is unavailable or fails, the token is written as plaintext and `homeAssistant.tokenEncrypted` is set to
+ * `false`. The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during
+ * the save process are logged; the function does not throw.
+ */
 function saveConfig() {
   log.debug('Saving configuration');
   const userDataDir = app.getPath('userData');
@@ -380,6 +415,14 @@ function saveConfig() {
   }
 }
 
+/**
+ * Apply or remove platform-appropriate frosted glass effects to the main window.
+ *
+ * Applies Windows acrylic or macOS vibrancy/visual-effect state and ensures the window background is transparent.
+ * If `override` is provided, its value determines whether effects are enabled; otherwise the function uses `config.frostedGlass`.
+ * No-op if the main window is not available.
+ * @param {boolean} [override] - When set, force enable (`true`) or disable (`false`) frosted glass effects.
+ */
 function applyFrostedGlass(override) {
   if (!mainWindow) return;
   const enabled = typeof override === 'boolean' ? override : !!config?.frostedGlass;
@@ -416,6 +459,18 @@ function applyFrostedGlass(override) {
   }
 }
 
+/**
+ * Create and configure the application's main BrowserWindow.
+ *
+ * Creates the primary transparent window, applies visual effects (frosted glass and safe opacity),
+ * loads the renderer (index.html), and attaches runtime behavior: persisting window position/size,
+ * hiding to tray on minimize, preventing quit on close (hides instead unless the app is quitting),
+ * and opening DevTools when the process was started with --dev.
+ *
+ * The window is created with security-conscious webPreferences and respects configured options
+ * such as always-on-top, resizability, and the configured icon. This function updates in-memory
+ * configuration (e.g., clamped opacity) and calls saveConfig() when position/size changes.
+ */
 function createWindow() {
   log.info('Creating main window');
   // Get the primary display's work area
@@ -1097,6 +1152,11 @@ function acceleratorToUIOhookKey(accelerator) {
   return { keycode, ...config };
 }
 
+/**
+ * Register and enable the configured popup hotkey using uiohook, replacing any previous handlers.
+ *
+ * Registers keydown and keyup handlers derived from `config.popupHotkey` and honors `config.popupHotkeyToggleMode` and related settings (e.g., `popupHotkeyHideOnRelease`). Starts uIOhook if not running, updates internal popup hotkey state, and brings, focuses, hides, or restores the main window according to the configured behavior. If uiohook is not available or the configured accelerator is invalid or empty, the function logs a warning and returns without registering handlers.
+ */
 function registerPopupHotkey() {
   if (!uiohookAvailable) {
     log.warn('Cannot register popup hotkey: uiohook-napi not available on this platform');
@@ -1267,6 +1327,13 @@ function registerPopupHotkey() {
   }
 }
 
+/**
+ * Unregisters the configured popup hotkey and clears its runtime state.
+ *
+ * Removes any registered keydown/keyup handlers, stops the uIOhook listener if it is running, and resets related popup-hotkey state flags.
+ *
+ * Does nothing when the native uiohook integration is unavailable.
+ */
 function unregisterPopupHotkey() {
   if (!uiohookAvailable) {
     return;
