@@ -4,7 +4,7 @@ import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import { setIconContent } from './icons.js';
-import { normalizePrimaryCards } from './primary-cards.js';
+import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -92,10 +92,17 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (!cardEl) return;
 
   cardEl.dataset.primarySlot = String(slotIndex);
-  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'unavailable-entity');
+  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'unavailable-entity', 'primary-card-hidden');
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
   cardEl.title = '';
+
+  if (selection === PRIMARY_CARD_NONE) {
+    cardEl.dataset.primaryType = 'none';
+    cardEl.classList.add('primary-card-hidden');
+    cardEl.innerHTML = '';
+    return;
+  }
 
   if (selection === 'weather') {
     cardEl.dataset.primaryType = 'weather';
@@ -121,12 +128,19 @@ function renderPrimaryCards() {
     const weatherCard = document.getElementById('weather-card');
     const timeCard = document.getElementById('time-card');
     if (!weatherCard || !timeCard) return;
+    const grid = document.querySelector('.status-grid');
 
     cachePrimaryCardTemplates();
 
     const [slotOne, slotTwo] = getPrimaryCardSelections();
     renderPrimaryCard(weatherCard, slotOne, 1);
     renderPrimaryCard(timeCard, slotTwo, 2);
+
+    if (grid) {
+      const visibleCount = [slotOne, slotTwo].filter(selection => selection !== PRIMARY_CARD_NONE).length;
+      grid.classList.toggle('single-card', visibleCount === 1);
+      grid.classList.toggle('primary-cards-hidden', visibleCount === 0);
+    }
 
     if (slotOne === 'weather' || slotTwo === 'weather') {
       updateWeatherFromHA();
@@ -143,10 +157,10 @@ function updatePrimaryEntityCards(entity) {
   try {
     if (!entity) return;
     const [slotOne, slotTwo] = getPrimaryCardSelections();
-    if (slotOne === entity.entity_id) {
+    if (slotOne === entity.entity_id && slotOne !== PRIMARY_CARD_NONE) {
       renderPrimaryEntityCard(document.getElementById('weather-card'), entity.entity_id);
     }
-    if (slotTwo === entity.entity_id) {
+    if (slotTwo === entity.entity_id && slotTwo !== PRIMARY_CARD_NONE) {
       renderPrimaryEntityCard(document.getElementById('time-card'), entity.entity_id);
     }
   } catch (error) {

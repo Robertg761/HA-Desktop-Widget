@@ -14,7 +14,13 @@ import {
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import * as utils from './utils.js';
-import { PRIMARY_CARD_DEFAULTS, isPrimaryCardSpecial, normalizePrimaryCards } from './primary-cards.js';
+import {
+  PRIMARY_CARD_DEFAULTS,
+  PRIMARY_CARD_NONE,
+  isPrimaryCardDefault,
+  isPrimaryCardSpecial,
+  normalizePrimaryCards,
+} from './primary-cards.js';
 // Note: ui.js is imported dynamically to prevent circular dependencies
 
 let previewState = null;
@@ -32,6 +38,7 @@ let themeTooltip = null;
 let themeTooltipScrollBound = false;
 
 const PRIMARY_CARD_OPTIONS = [
+  { value: PRIMARY_CARD_NONE, label: 'None (hide card)' },
   { value: 'weather', label: 'Weather (default)' },
   { value: 'time', label: 'Time (default)' },
 ];
@@ -320,7 +327,7 @@ function populatePrimaryCardSelect(selectEl, currentValue, otherValue) {
   };
 
   PRIMARY_CARD_OPTIONS.forEach(option => {
-    const disabled = isPrimaryCardSpecial(option.value) &&
+    const disabled = isPrimaryCardDefault(option.value) &&
       option.value === otherValue &&
       option.value !== normalizedValue;
     addOption(option.label, option.value, { disabled });
@@ -362,7 +369,7 @@ function handlePrimaryCardChange(changedSelect, otherSelect) {
   if (!changedSelect || !otherSelect) return;
 
   const changedValue = changedSelect.value;
-  if (isPrimaryCardSpecial(changedValue) && changedValue === otherSelect.value) {
+  if (isPrimaryCardDefault(changedValue) && changedValue === otherSelect.value) {
     otherSelect.value = changedValue === 'weather' ? 'time' : 'weather';
   }
 

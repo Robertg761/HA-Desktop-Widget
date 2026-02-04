@@ -1,7 +1,12 @@
 const PRIMARY_CARD_DEFAULTS = ['weather', 'time'];
+const PRIMARY_CARD_NONE = 'none';
+
+function isPrimaryCardDefault(value) {
+  return value === 'weather' || value === 'time';
+}
 
 function isPrimaryCardSpecial(value) {
-  return value === 'weather' || value === 'time';
+  return isPrimaryCardDefault(value) || value === PRIMARY_CARD_NONE;
 }
 
 function normalizePrimaryCardValue(value, index) {
@@ -17,25 +22,31 @@ function normalizePrimaryCards(value) {
     normalizePrimaryCardValue(raw[1], 1),
   ];
 
-  const usedSpecial = new Set();
+  const usedDefaults = new Set();
   return normalized.map((selection) => {
+    if (selection === PRIMARY_CARD_NONE) {
+      return selection;
+    }
+
     if (!isPrimaryCardSpecial(selection)) {
       return selection;
     }
 
-    if (!usedSpecial.has(selection)) {
-      usedSpecial.add(selection);
+    if (!usedDefaults.has(selection)) {
+      usedDefaults.add(selection);
       return selection;
     }
 
-    const fallback = PRIMARY_CARD_DEFAULTS.find(option => !usedSpecial.has(option)) || selection;
-    usedSpecial.add(fallback);
+    const fallback = PRIMARY_CARD_DEFAULTS.find(option => !usedDefaults.has(option)) || selection;
+    usedDefaults.add(fallback);
     return fallback;
   });
 }
 
 export {
   PRIMARY_CARD_DEFAULTS,
+  PRIMARY_CARD_NONE,
+  isPrimaryCardDefault,
   isPrimaryCardSpecial,
   normalizePrimaryCards,
 };

@@ -482,6 +482,14 @@ body {
   margin-bottom: 8px;
 }
 
+.status-grid.single-card {
+  grid-template-columns: 1fr;
+}
+
+.status-grid.primary-cards-hidden {
+  display: none;
+}
+
 /* Media Player Tile */
 .media-tile {
   grid-column: 1 / -1; /* Span full width */
@@ -728,6 +736,10 @@ body {
   transition: var(--transition-base);
   position: relative;
   overflow: hidden;
+}
+
+.primary-card-hidden {
+  display: none;
 }
 
 .status-card::before {
