@@ -1352,6 +1352,24 @@ body {
   min-height: 120px;
 }
 
+.status-card.weather-card {
+  justify-content: center;
+}
+
+.status-card.weather-card .weather-content {
+  flex: 0 1 auto;
+  align-items: center;
+  text-align: center;
+}
+
+.status-card.weather-card .weather-main {
+  align-items: center;
+}
+
+.status-card.weather-card .weather-details {
+  justify-content: center;
+}
+
 .weather-icon {
   font-size: 32px;
   width: 40px;
