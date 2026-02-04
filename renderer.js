@@ -340,8 +340,7 @@ async function init() {
     uiUtils.applyWindowEffects(state.CONFIG || {});
 
     // Initialize time display
-    ui.updateTimeDisplay();
-    setInterval(() => ui.updateTimeDisplay(), 1000);
+    ui.startTimeTicker();
 
     // Initialize timer updates (every second)
     setInterval(() => ui.updateTimerDisplays(), 1000);
