@@ -88,10 +88,6 @@ function getAccentThemes() {
   });
 }
 
-function getBackgroundThemes() {
-  return getAccentThemes();
-}
-
 function resolveAccentThemeId(accentKey) {
   if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
   if (accentKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
@@ -489,7 +485,6 @@ export {
   applyAccentTheme,
   applyBackgroundTheme,
   getAccentThemes,
-  getBackgroundThemes,
   applyUiPreferences,
   applyWindowEffects,
   trapFocus,
