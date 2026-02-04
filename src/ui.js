@@ -35,6 +35,14 @@ function clearAllPressTimers() {
   activePressTimers.clear();
 }
 
+function isPrimaryControlElement(el) {
+  return Boolean(el && el.dataset && el.dataset.primaryCard === 'true');
+}
+
+function shouldBlockInteraction(el) {
+  return isReorganizeMode && !isPrimaryControlElement(el);
+}
+
 let sortableInstance = null; // SortableJS instance for reorganize mode
 
 const mediaFitElements = new Set();
@@ -63,12 +71,11 @@ function renderPrimaryEntityCard(cardEl, entityId) {
   if (!cardEl) return;
 
   const entity = state.STATES[entityId];
-  const icon = entity ? utils.getEntityIcon(entity) : '❓';
-  const name = entity ? utils.getEntityDisplayName(entity) : entityId;
-  const displayState = entity ? utils.getEntityDisplayState(entity) : 'Unavailable';
+  const control = entity ? createControlElement(entity) : createUnavailableElement(entityId);
 
-  cardEl.classList.add('entity-card');
-  cardEl.classList.toggle('unavailable-entity', !entity);
+  control.dataset.primaryCard = 'true';
+
+  cardEl.classList.add('primary-entity-card');
   cardEl.dataset.primaryType = 'entity';
   cardEl.dataset.entityId = entityId;
   if (entity?.state) {
@@ -77,22 +84,15 @@ function renderPrimaryEntityCard(cardEl, entityId) {
     cardEl.removeAttribute('data-state');
   }
 
-  cardEl.title = entity ? `${name}: ${displayState}` : `${entityId}: Unavailable`;
-  cardEl.innerHTML = `
-    <div class="entity-card-icon">${utils.escapeHtml(icon)}</div>
-    <div class="entity-card-info">
-      <div class="entity-card-name">${utils.escapeHtml(name)}</div>
-      <div class="entity-card-state">${utils.escapeHtml(displayState)}</div>
-      <div class="entity-card-id">${utils.escapeHtml(entityId)}</div>
-    </div>
-  `;
+  cardEl.innerHTML = '';
+  cardEl.appendChild(control);
 }
 
 function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (!cardEl) return;
 
   cardEl.dataset.primarySlot = String(slotIndex);
-  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'unavailable-entity', 'primary-card-hidden');
+  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'primary-entity-card', 'unavailable-entity', 'primary-card-hidden');
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
   cardEl.title = '';
@@ -140,6 +140,7 @@ function renderPrimaryCards() {
       const visibleCount = [slotOne, slotTwo].filter(selection => selection !== PRIMARY_CARD_NONE).length;
       grid.classList.toggle('single-card', visibleCount === 1);
       grid.classList.toggle('primary-cards-hidden', visibleCount === 0);
+      grid.classList.remove('primary-cards-weather-only');
     }
 
     if (slotOne === 'weather' || slotTwo === 'weather') {
@@ -150,21 +151,6 @@ function renderPrimaryCards() {
     }
   } catch (error) {
     console.error('[UI] Error rendering primary cards:', error);
-  }
-}
-
-function updatePrimaryEntityCards(entity) {
-  try {
-    if (!entity) return;
-    const [slotOne, slotTwo] = getPrimaryCardSelections();
-    if (slotOne === entity.entity_id && slotOne !== PRIMARY_CARD_NONE) {
-      renderPrimaryEntityCard(document.getElementById('weather-card'), entity.entity_id);
-    }
-    if (slotTwo === entity.entity_id && slotTwo !== PRIMARY_CARD_NONE) {
-      renderPrimaryEntityCard(document.getElementById('time-card'), entity.entity_id);
-    }
-  } catch (error) {
-    console.error('[UI] Error updating primary entity cards:', error);
   }
 }
 
@@ -249,6 +235,8 @@ function removeRemoveButtons() {
 
 function addButtonsToElement(item) {
   try {
+    if (!item || item.dataset.primaryCard === 'true') return;
+
     // Add rename button
     if (!item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
@@ -479,11 +467,13 @@ function updateEntityInUI(entity) {
       updateMediaTile();
     }
 
-    updatePrimaryEntityCards(entity);
-
     const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
     items.forEach(item => {
+      const isPrimary = item.dataset.primaryCard === 'true';
       const newControl = createControlElement(entity);
+      if (isPrimary) {
+        newControl.dataset.primaryCard = 'true';
+      }
       // Preserve reorganize-mode classes if active
       if (item.classList.contains('reorganize-mode')) {
         newControl.classList.add('reorganize-mode');
@@ -585,17 +575,17 @@ function createControlElement(entity) {
     // Handle different entity types (matching main branch)
     if (entity.entity_id.startsWith('camera.')) {
       div.onclick = () => {
-        if (!isReorganizeMode) camera.openCamera(entity.entity_id);
+        if (!shouldBlockInteraction(div)) camera.openCamera(entity.entity_id);
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
       div.onclick = () => {
-        if (!isReorganizeMode) showSensorDetails(entity);
+        if (!shouldBlockInteraction(div)) showSensorDetails(entity);
       };
       div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
     } else if (isTimer) {
       div.onclick = () => {
-        if (!isReorganizeMode) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) toggleEntity(entity);
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('light.')) {
@@ -614,7 +604,7 @@ function createControlElement(entity) {
       div.title = `Click to play/pause, hold for controls`;
     } else {
       div.onclick = () => {
-        if (!isReorganizeMode) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) toggleEntity(entity);
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
@@ -736,7 +726,7 @@ function setupLightControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         // In reorganize mode, don't handle mousedown - let drag work
         return;
       }
@@ -760,7 +750,7 @@ function setupLightControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -778,7 +768,7 @@ function setupClimateControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         return;
       }
       longPressTriggered = false;
@@ -801,7 +791,7 @@ function setupClimateControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -819,7 +809,7 @@ function setupFanControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         return;
       }
       longPressTriggered = false;
@@ -842,7 +832,7 @@ function setupFanControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -860,7 +850,7 @@ function setupCoverControls(div, entity) {
     let longPressTriggered = false;
 
     const startPress = (_e) => {
-      if (isReorganizeMode) {
+      if (shouldBlockInteraction(div)) {
         return;
       }
       longPressTriggered = false;
@@ -883,7 +873,7 @@ function setupCoverControls(div, entity) {
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (isReorganizeMode || longPressTriggered) {
+      if (shouldBlockInteraction(div) || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -1001,7 +991,7 @@ function setupMediaPlayerControls(div, entity) {
       let longPressTriggered = false;
 
       const startPress = (_e) => {
-        if (isReorganizeMode) return;
+        if (shouldBlockInteraction(div)) return;
         longPressTriggered = false;
         if (pressTimer) {
           clearTimeout(pressTimer);
@@ -1028,7 +1018,7 @@ function setupMediaPlayerControls(div, entity) {
       div.addEventListener('mouseleave', cancelPress);
 
       div.addEventListener('click', (e) => {
-        if (isReorganizeMode || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+        if (shouldBlockInteraction(div) || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
         const currentEntity = state.STATES[entity.entity_id];
         if (!currentEntity) return;
         const nowPlaying = currentEntity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
