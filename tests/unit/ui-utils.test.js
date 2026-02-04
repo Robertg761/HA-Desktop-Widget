@@ -235,7 +235,6 @@ describe('UI Utilities', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       // Save original classList
-      const originalBody = document.body;
       const originalClassList = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(document.body), 'classList');
 
       // Make classList operations throw
@@ -396,7 +395,6 @@ describe('UI Utilities', () => {
     });
 
     it('should trap Tab key at last element', () => {
-      const firstButton = modal.querySelector('#first');
       const lastButton = modal.querySelector('#last');
 
       uiUtils.trapFocus(modal);
@@ -874,11 +872,13 @@ describe('UI Utilities', () => {
     });
 
     it('should handle missing modal elements gracefully', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
       document.body.removeChild(modal);
 
       const result = await uiUtils.showConfirm('Test', 'Message');
 
       expect(result).toBe(false);
+      consoleError.mockRestore();
     });
 
     it('should handle errors during modal display', async () => {

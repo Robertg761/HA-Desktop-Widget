@@ -9,7 +9,6 @@ import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
-import Sortable from 'sortablejs';
 
 // --- Renderer Log Configuration ---
 log.errorHandler.startCatching();

@@ -166,12 +166,12 @@ function applyBackgroundTheme(backgroundKey) {
 
     const bgColor = setRgbaVar('--bg-color', base.bgColor);
     const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
-    const bgPrimary = setRgbaVar('--bg-primary', base.bgPrimary);
-    const bgSecondary = setRgbaVar('--bg-secondary', base.bgSecondary);
+    setRgbaVar('--bg-primary', base.bgPrimary);
+    setRgbaVar('--bg-secondary', base.bgSecondary);
     const bgTertiary = setRgbaVar('--bg-tertiary', base.bgTertiary);
     const surface1 = setRgbaVar('--surface-1', base.surface1);
-    const surface2 = setRgbaVar('--surface-2', base.surface2);
-    const surface3 = setRgbaVar('--surface-3', base.surface3);
+    setRgbaVar('--surface-2', base.surface2);
+    setRgbaVar('--surface-3', base.surface3);
     const surfaceHover = setRgbaVar('--surface-hover', base.surfaceHover);
     const cardBg = setRgbaVar('--card-bg', base.cardBg);
     const glassSurface = setRgbaVar('--glass-surface', base.glassSurface);

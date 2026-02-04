@@ -91,7 +91,7 @@ describe('WebSocket Manager', () => {
     if (wsManager.ws) {
       try {
         wsManager.ws.close();
-      } catch (_e) {
+      } catch {
         // Ignore errors
       }
       wsManager.ws = null;
@@ -385,7 +385,7 @@ describe('WebSocket Manager', () => {
 
       try {
         await promise;
-      } catch (_e) {
+      } catch {
         // Expected to throw
       }
 

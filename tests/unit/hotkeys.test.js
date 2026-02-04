@@ -99,6 +99,7 @@ describe('hotkeys module', () => {
       expect(consoleError).toHaveBeenCalledWith('Error initializing hotkeys:', expect.any(Error));
 
       consoleError.mockRestore();
+      configSpy.mockRestore();
 
       // Restore normal state
       state.setConfig(null);
