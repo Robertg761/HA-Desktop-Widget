@@ -61,7 +61,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
-          npm run dist -- --mac dmg zip --publish always
+          npm run dist:mac -- --publish always
 
       - name: Upload artifacts (fallback)
         if: ${{ always() }}
