@@ -902,7 +902,7 @@ ipcMain.handle('open-logs', () => {
   }
 });
 
-ipcMain.handle('open-external', (event, url) => {
+ipcMain.handle('open-external', async (event, url) => {
   try {
     if (!url || typeof url !== 'string') {
       return { success: false, error: 'Invalid URL' };
@@ -911,7 +911,7 @@ ipcMain.handle('open-external', (event, url) => {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return { success: false, error: 'Only http/https URLs are allowed' };
     }
-    shell.openExternal(parsed.toString());
+    await shell.openExternal(parsed.toString());
     return { success: true };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };
