@@ -117,11 +117,14 @@ npm run dist  # Build for distribution
 
 ### Configuration
 - **Config Location**: Stored as `config.json` in Electron's userData directory.
-  - **Windows (packaged)**: `%AppData%/HA Desktop Widget/config.json`
+  - **Windows (packaged)**: `%AppData%/Home Assistant Widget/config.json`
   - **macOS (packaged)**: `~/Library/Application Support/HA Desktop Widget/config.json`
   - **Development builds**: typically use `home-assistant-widget` as the folder name
-- **Custom Names**: Stored in `customEntityNames` object
-- **Favorites**: Stored in `favoriteEntities` array
+- **Config Contents**: `homeAssistant` (url, token, tokenEncrypted), `favoriteEntities`, `customEntityNames`,
+  `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,
+  `windowPosition`, `windowSize`, `opacity`, `ui` (theme, highContrast, opaquePanels, density, accent, background),
+  and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
+  `popupHotkeyHideOnRelease`, and `popupHotkeyToggleMode`.
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
 
 ## Troubleshooting
