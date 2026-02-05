@@ -307,6 +307,27 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+/**
+ * Base64-encode a string using UTF-8 bytes (safe for Unicode).
+ * @param {string} input - The string to encode.
+ * @returns {string} - Base64 encoded string.
+ */
+function base64Encode(input) {
+    try {
+        const text = input == null ? '' : String(input);
+        const bytes = new TextEncoder().encode(text);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+    } catch (error) {
+        console.error('Error base64 encoding string:', error);
+        return '';
+    }
+}
+
 export {
     getEntityDisplayName,
     getEntityTypeDescription,
@@ -317,4 +338,5 @@ export {
     getEntityDisplayState,
     getTimerDisplay,
     escapeHtml,
+    base64Encode,
 };

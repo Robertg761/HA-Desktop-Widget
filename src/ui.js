@@ -979,7 +979,7 @@ function setupMediaPlayerControls(div, entity) {
         }
 
         // Encode URL in base64 for the ha:// protocol
-        const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+        const encodedUrl = utils.base64Encode(urlToEncode);
 
         // Add cache buster for better updates (rounded to 30 seconds to allow caching)
         const cacheBuster = Math.floor(Date.now() / 30000);
@@ -1729,7 +1729,7 @@ function updateMediaTile() {
       }
 
       // Encode URL in base64 for the ha:// protocol
-      const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+      const encodedUrl = utils.base64Encode(urlToEncode);
 
       // Add cache buster for better updates (rounded to 30 seconds to allow caching)
       const cacheBuster = Math.floor(Date.now() / 30000);

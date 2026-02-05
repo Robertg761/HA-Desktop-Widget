@@ -73,7 +73,6 @@
  * @property {number} opacity - Window opacity (0.5 to 1.0)
  * @property {boolean} [frostedGlass] - Enable frosted glass window background
  * @property {HomeAssistantConfig} homeAssistant - HA connection settings
- * @property {number} updateInterval - Entity update interval in ms
  * @property {GlobalHotkeysConfig} globalHotkeys - Global hotkeys configuration
  * @property {EntityAlertsConfig} entityAlerts - Entity alerts configuration
  * @property {string} [popupHotkey] - Hotkey to bring window to front

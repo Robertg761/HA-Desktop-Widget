@@ -89,7 +89,6 @@ describe('WebSocket + State Integration', () => {
       url: 'http://homeassistant.local:8123',
       token: 'valid-token-123'
     };
-    config.updateInterval = 5000;
     state.setConfig(config);
   });
 

@@ -111,7 +111,6 @@ npm run dist  # Build for distribution
 
 ### Performance Issues
 - **Reduce Entities**: Limit the number of entities in Quick Access
-- **Update Interval**: Increase the update interval in settings if needed
 - **Visual Effects**: Disable transparency if experiencing performance issues
 
 ### Common Solutions

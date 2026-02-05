@@ -19,7 +19,6 @@ const sampleConfig = {
     token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock_token',
     tokenEncrypted: false
   },
-  updateInterval: 5000,
   globalHotkeys: {
     enabled: true,
     hotkeys: {
@@ -63,12 +62,6 @@ const sampleConfig = {
     highContrast: false,
     opaquePanels: false,
     density: 'comfortable'
-  },
-  filters: {
-    domains: ['light', 'switch', 'sensor', 'climate', 'media_player', 'scene', 'automation', 'camera'],
-    areas: ['living_room', 'bedroom'],
-    favorites: [],
-    hidden: []
   },
   customTabs: [
     {

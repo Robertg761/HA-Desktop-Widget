@@ -17,7 +17,6 @@ let mockConfig = {
     token: 'mock_long_lived_access_token',
     tokenEncrypted: false
   },
-  updateInterval: 5000,
   globalHotkeys: {
     enabled: false,
     hotkeys: {}
@@ -36,12 +35,6 @@ let mockConfig = {
     highContrast: false,
     opaquePanels: false,
     density: 'comfortable'
-  },
-  filters: {
-    domains: ['light', 'switch', 'sensor', 'climate', 'media_player', 'scene', 'automation', 'camera'],
-    areas: [],
-    favorites: [],
-    hidden: []
   },
   customTabs: []
 };
@@ -164,7 +157,6 @@ function resetMockElectronAPI() {
       token: 'mock_long_lived_access_token',
       tokenEncrypted: false
     },
-    updateInterval: 5000,
     globalHotkeys: {
       enabled: false,
       hotkeys: {}
@@ -183,12 +175,6 @@ function resetMockElectronAPI() {
       highContrast: false,
       opaquePanels: false,
       density: 'comfortable'
-    },
-    filters: {
-      domains: ['light', 'switch', 'sensor', 'climate', 'media_player', 'scene', 'automation', 'camera'],
-      areas: [],
-      favorites: [],
-      hidden: []
     },
     customTabs: []
   };

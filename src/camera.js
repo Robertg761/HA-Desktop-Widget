@@ -33,78 +33,10 @@ async function getHlsStreamUrl(entityId) {
   return null;
 }
 
-async function startHlsStream(video, entityId, streamUrl, imgElement) {
-  const HlsLib = await loadHls();
-  if (!HlsLib || !HlsLib.isSupported() || !video || !entityId) return;
-
-  if (state.ACTIVE_HLS.has(entityId)) {
-    state.ACTIVE_HLS.get(entityId).destroy();
-  }
-
-  const hls = new HlsLib();
-  state.ACTIVE_HLS.set(entityId, hls);
-  hls.loadSource(streamUrl);
-  hls.attachMedia(video);
-  hls.on(HlsLib.Events.ERROR, (_evt, data) => {
-    console.warn('HLS error', data?.details || data);
-    if (data?.fatal) {
-      try {
-        hls.destroy();
-      } catch (_error) {
-        console.warn('Failed to destroy HLS instance:', _error);
-      }
-      state.ACTIVE_HLS.delete(entityId);
-      video.style.display = 'none';
-      // Fallback to img if provided
-      if (imgElement) {
-        imgElement.style.display = 'block';
-        imgElement.src = `ha://camera_stream/${entityId}?t=${Date.now()}`;
-      }
-    }
-  });
-  return true;
-}
-
 function stopHlsStream(entityId) {
   if (state.ACTIVE_HLS.has(entityId)) {
     state.ACTIVE_HLS.get(entityId).destroy();
     state.ACTIVE_HLS.delete(entityId);
-  }
-}
-
-async function startSnapshotLive(img, entityId, rate = 1) {
-  if (!img || !entityId) return;
-  if (state.LIVE_SNAPSHOT_INTERVALS.has(entityId)) return; // Already running
-
-  // Use ha:// protocol which proxies through main process (secure, bypasses CORS)
-  const update = () => {
-    try {
-      // Add cache buster to force refresh
-      const cacheBuster = `t=${Date.now()}`;
-      img.src = `ha://camera/${entityId}?${cacheBuster}`;
-    } catch (e) {
-      console.warn('Snapshot update failed:', e?.message || e);
-      img.src = '';
-    }
-  };
-  update();
-  const iv = setInterval(update, rate * 1000);
-  state.LIVE_SNAPSHOT_INTERVALS.set(entityId, iv);
-}
-
-function clearSnapshotLive(entityId) {
-  if (state.LIVE_SNAPSHOT_INTERVALS.has(entityId)) {
-    clearInterval(state.LIVE_SNAPSHOT_INTERVALS.get(entityId));
-    state.LIVE_SNAPSHOT_INTERVALS.delete(entityId);
-  }
-}
-
-function stopAllCameraStreams() {
-  for (const entityId of state.ACTIVE_HLS.keys()) {
-    stopHlsStream(entityId);
-  }
-  for (const entityId of state.LIVE_SNAPSHOT_INTERVALS.keys()) {
-    clearSnapshotLive(entityId);
   }
 }
 
@@ -314,10 +246,6 @@ async function openCamera(cameraId) {
 
 export {
   getHlsStreamUrl,
-  startHlsStream,
   stopHlsStream,
-  startSnapshotLive,
-  clearSnapshotLive,
-  stopAllCameraStreams,
   openCamera,
 };

@@ -284,6 +284,10 @@ function renderExistingHotkeys() {
 let listenersSetUp = false;
 // Store reference to document-level click handler for cleanup
 let documentClickHandler = null;
+let containerClickHandler = null;
+let containerOptionHandler = null;
+let containerKeydownHandler = null;
+let activeContainer = null;
 
 function setupHotkeyEventListenersInternal() {
     try {
@@ -292,9 +296,10 @@ function setupHotkeyEventListenersInternal() {
 
         const container = document.getElementById('hotkeys-list');
         if (!container) return;
+        activeContainer = container;
 
         // Handle custom dropdown toggle
-        container.addEventListener('click', (e) => {
+        containerClickHandler = (e) => {
             const trigger = e.target.closest('.custom-dropdown-trigger');
             if (trigger) {
                 e.stopPropagation();
@@ -313,10 +318,11 @@ function setupHotkeyEventListenersInternal() {
                     trigger.setAttribute('aria-expanded', 'true');
                 }
             }
-        });
+        };
+        container.addEventListener('click', containerClickHandler);
 
         // Handle custom dropdown option selection
-        container.addEventListener('click', async (e) => {
+        containerOptionHandler = async (e) => {
             const option = e.target.closest('.custom-dropdown-option');
             if (option) {
                 const dropdown = option.closest('.custom-dropdown');
@@ -363,7 +369,8 @@ function setupHotkeyEventListenersInternal() {
                     showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
                 }
             }
-        });
+        };
+        container.addEventListener('click', containerOptionHandler);
 
         // Close dropdowns when clicking outside - store handler reference for cleanup
         documentClickHandler = (e) => {
@@ -383,7 +390,7 @@ function setupHotkeyEventListenersInternal() {
         document.addEventListener('click', documentClickHandler);
 
         // Handle keyboard navigation
-        container.addEventListener('keydown', (e) => {
+        containerKeydownHandler = (e) => {
             const trigger = e.target.closest('.custom-dropdown-trigger');
             if (trigger) {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -395,7 +402,8 @@ function setupHotkeyEventListenersInternal() {
                     trigger.setAttribute('aria-expanded', 'false');
                 }
             }
-        });
+        };
+        container.addEventListener('keydown', containerKeydownHandler);
 
         listenersSetUp = true;
     } catch (error) {
@@ -406,6 +414,21 @@ function setupHotkeyEventListenersInternal() {
 // Cleanup function to remove event listeners
 function cleanupHotkeyEventListeners() {
     try {
+        if (activeContainer) {
+            if (containerClickHandler) {
+                activeContainer.removeEventListener('click', containerClickHandler);
+            }
+            if (containerOptionHandler) {
+                activeContainer.removeEventListener('click', containerOptionHandler);
+            }
+            if (containerKeydownHandler) {
+                activeContainer.removeEventListener('keydown', containerKeydownHandler);
+            }
+        }
+        containerClickHandler = null;
+        containerOptionHandler = null;
+        containerKeydownHandler = null;
+        activeContainer = null;
         if (documentClickHandler) {
             document.removeEventListener('click', documentClickHandler);
             documentClickHandler = null;

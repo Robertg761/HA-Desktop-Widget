@@ -25,6 +25,3 @@ export const DEFAULT_WINDOW_HEIGHT = 600;
 export const DEFAULT_OPACITY = 0.95;
 export const MIN_OPACITY = 0.5;
 export const MAX_OPACITY = 1.0;
-
-// Update Interval
-export const DEFAULT_UPDATE_INTERVAL_MS = 5000;
