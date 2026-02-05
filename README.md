@@ -10,11 +10,11 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 - [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-me-orange)](https://github.com/sponsors/robertg761)
 
-![Main View](Main_View.png) ![Edit View](Edit_View.png) ![Light_Adjust](Light_Adjust.png)
+![Main View](images/Main_View.png) ![Edit View](images/Edit_View.png) ![Light_Adjust](images/Light_Adjust.png)
 
 ## Settings: Personalization
 
-![Personalization Tab](Personalization_Tab.png)
+![Personalization Tab](images/Personalization_Tab.png)
 
 The Personalization tab covers themes, window effects, primary cards, and media tile selection. Other Settings tabs include hotkeys, alerts, updates, and log access.
 
