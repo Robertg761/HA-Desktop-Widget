@@ -74,7 +74,20 @@ let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanu
 let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
-let popupHotkeyLastShownTime = null; /**
+let popupHotkeyLastShownTime = null;
+
+function isPortableBuild() {
+  if (!app.isPackaged) return false;
+  const env = process.env || {};
+  return Boolean(env.PORTABLE_EXECUTABLE_DIR || env.PORTABLE_EXECUTABLE_FILE || env.PORTABLE_EXECUTABLE_APP_FILENAME);
+}
+
+function normalizeVersion(value) {
+  if (!value) return '';
+  return String(value).trim().replace(/^v/i, '');
+}
+
+/**
  * Selects and returns an appropriate tray icon image for the current platform.
  *
  * Searches common resource locations (including packaged resources when available) for platform-preferred icon files,
@@ -82,7 +95,6 @@ let popupHotkeyLastShownTime = null; /**
  * placeholder image if no icon is found.
  * @returns {Electron.NativeImage} The resolved and appropriately sized tray icon image.
  */
-
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
   const preferIco = process.platform === 'win32';
@@ -654,7 +666,19 @@ function createTray() {
       label: 'Check for Updates',
       click: () => {
         if (app.isPackaged) {
-          autoUpdater.checkForUpdates();
+          if (isPortableBuild()) {
+            checkPortableUpdate().then((result) => {
+              if (mainWindow && result) {
+                mainWindow.webContents.send('auto-update', result);
+              }
+            }).catch((error) => {
+              if (mainWindow) {
+                mainWindow.webContents.send('auto-update', { status: 'error', error: error?.message || String(error) });
+              }
+            });
+          } else {
+            autoUpdater.checkForUpdates();
+          }
         } else {
           log.info('Update check is only available in packaged builds.');
         }
@@ -814,6 +838,9 @@ ipcMain.handle('focus-window', () => {
 // Updates IPC
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) return { status: 'dev' };
+  if (isPortableBuild()) {
+    return checkPortableUpdate();
+  }
   try {
     const info = await autoUpdater.checkForUpdates();
     return { status: 'checking', info };
@@ -823,7 +850,7 @@ ipcMain.handle('check-for-updates', async () => {
 });
 
 ipcMain.handle('quit-and-install', () => {
-  if (app.isPackaged) {
+  if (app.isPackaged && !isPortableBuild()) {
     isQuitting = true;
     autoUpdater.quitAndInstall();
   }
@@ -871,6 +898,22 @@ ipcMain.handle('open-logs', () => {
     return { success: true, path: logFilePath };
   } catch (error) {
     log.error('Failed to open log file:', error);
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle('open-external', (event, url) => {
+  try {
+    if (!url || typeof url !== 'string') {
+      return { success: false, error: 'Invalid URL' };
+    }
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { success: false, error: 'Only http/https URLs are allowed' };
+    }
+    shell.openExternal(parsed.toString());
+    return { success: true };
+  } catch (error) {
     return { success: false, error: error?.message || String(error) };
   }
 });
@@ -1408,9 +1451,63 @@ function setupEntityAlerts() {
   log.info('Entity alerts enabled');
 }
 
+async function checkPortableUpdate() {
+  const repo = 'Robertg761/HA-Desktop-Widget';
+  const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
+  try {
+    const response = await axios.get(apiUrl, {
+      headers: {
+        'User-Agent': 'HA-Desktop-Widget',
+        'Accept': 'application/vnd.github+json'
+      },
+      timeout: 10000
+    });
+
+    const release = response?.data || {};
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const arch = process.arch || 'x64';
+    const archToken = `win-${arch}`;
+    let portableAsset = assets.find((asset) => {
+      const name = String(asset?.name || '').toLowerCase();
+      return name.includes('portable') && name.includes(archToken);
+    });
+    if (!portableAsset) {
+      portableAsset = assets.find((asset) => String(asset?.name || '').toLowerCase().includes('portable'));
+    }
+
+    const latestVersion = normalizeVersion(release.tag_name || release.name || '');
+    const currentVersion = normalizeVersion(app.getVersion());
+    const downloadUrl = portableAsset?.browser_download_url || release.html_url || '';
+    if (!latestVersion) {
+      return {
+        status: 'error',
+        error: 'Unable to determine the latest Portable release version.',
+        downloadUrl
+      };
+    }
+
+    if (currentVersion && latestVersion === currentVersion) {
+      return { status: 'none', message: 'You are up to date!' };
+    }
+
+    return {
+      status: 'portable',
+      message: `Portable update available: v${latestVersion}. Click "Download Portable Update" to get the Portable build.`,
+      version: latestVersion,
+      downloadUrl
+    };
+  } catch (error) {
+    return { status: 'error', error: error?.message || String(error) };
+  }
+}
+
 // App event handlers
 function setupAutoUpdates() {
   if (!app.isPackaged) return;
+  if (isPortableBuild()) {
+    log.info('Portable build detected; auto-updates are disabled.');
+    return;
+  }
   try {
     autoUpdater.logger = log;
     autoUpdater.logger.transports.file.level = 'info';

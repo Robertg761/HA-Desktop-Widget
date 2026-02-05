@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [3.2.2] - 2026-02-05
+
+### Added
+- Portable update check now fetches the latest GitHub release and surfaces a direct Portable download link.
+
+### Changed
+- Portable builds no longer attempt in-app auto-updates and instead guide users to the Portable download.
+
+### Fixed
+- Prevented Portable installs from accidentally running the NSIS installer update path.
+
 ## [3.0.0] - 2025-11-17
 
 ### 🎉 Major Release Highlights

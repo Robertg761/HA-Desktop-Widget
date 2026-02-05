@@ -2724,6 +2724,7 @@ function initUpdateUI() {
     const updateProgress = document.getElementById('update-progress');
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
+    let portableDownloadUrl = null;
 
     // Enable the check button
     if (checkUpdatesBtn) {
@@ -2739,6 +2740,40 @@ function initUpdateUI() {
             // In development mode, auto-updater doesn't work
             if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+          } else if (result.status === 'portable') {
+            portableDownloadUrl = result.downloadUrl || null;
+            if (updateStatusText) {
+              const baseMessage = result.message || 'Portable builds do not support in-app updates.';
+              updateStatusText.textContent = baseMessage;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) {
+              if (portableDownloadUrl) {
+                installUpdateBtn.textContent = 'Download Portable Update';
+                installUpdateBtn.classList.remove('hidden');
+              } else {
+                installUpdateBtn.classList.add('hidden');
+              }
+            }
+            if (updateProgress) updateProgress.classList.add('hidden');
+          } else if (result.status === 'none') {
+            portableDownloadUrl = null;
+            if (updateStatusText) {
+              const baseMessage = result.message || 'You are up to date!';
+              updateStatusText.textContent = baseMessage;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
+          } else if (result.status === 'error') {
+            portableDownloadUrl = null;
+            if (updateStatusText) {
+              const baseMessage = `Error: ${result.error || 'Unknown error'}`;
+              updateStatusText.textContent = baseMessage;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
           }
           // In packaged mode, the auto-update events will update the UI
           // The button will be re-enabled by the event handlers
@@ -2753,7 +2788,11 @@ function initUpdateUI() {
     // Wire up install button
     if (installUpdateBtn) {
       installUpdateBtn.onclick = () => {
-        window.electronAPI.quitAndInstall();
+        if (portableDownloadUrl) {
+          window.electronAPI.openExternal(portableDownloadUrl);
+        } else {
+          window.electronAPI.quitAndInstall();
+        }
       };
     }
 
@@ -2764,6 +2803,7 @@ function initUpdateUI() {
 
         switch (data.status) {
           case 'checking':
+            portableDownloadUrl = null;
             if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
@@ -2771,6 +2811,7 @@ function initUpdateUI() {
             break;
 
           case 'available':
+            portableDownloadUrl = null;
             if (updateStatusText) {
               const version = data.info?.version || 'unknown';
               updateStatusText.textContent = `Update available: v${version}`;
@@ -2780,6 +2821,7 @@ function initUpdateUI() {
             break;
 
           case 'none':
+            portableDownloadUrl = null;
             if (updateStatusText) updateStatusText.textContent = 'You are up to date!';
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
@@ -2787,6 +2829,7 @@ function initUpdateUI() {
             break;
 
           case 'downloading':
+            portableDownloadUrl = null;
             if (updateStatusText) updateStatusText.textContent = 'Downloading update...';
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (updateProgress) updateProgress.classList.remove('hidden');
@@ -2798,21 +2841,44 @@ function initUpdateUI() {
             break;
 
           case 'downloaded':
+            portableDownloadUrl = null;
             if (updateStatusText) {
               const version = data.info?.version || 'unknown';
               updateStatusText.textContent = `Update v${version} ready to install`;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-            if (installUpdateBtn) installUpdateBtn.classList.remove('hidden');
+            if (installUpdateBtn) {
+              installUpdateBtn.textContent = 'Install Update';
+              installUpdateBtn.classList.remove('hidden');
+            }
             if (updateProgress) updateProgress.classList.add('hidden');
             break;
 
           case 'error':
+            portableDownloadUrl = null;
             if (updateStatusText) {
               updateStatusText.textContent = `Error: ${data.error || 'Unknown error'}`;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
+            if (updateProgress) updateProgress.classList.add('hidden');
+            break;
+
+          case 'portable':
+            portableDownloadUrl = data.downloadUrl || null;
+            if (updateStatusText) {
+              const baseMessage = data.message || 'Portable builds do not support in-app updates.';
+              updateStatusText.textContent = baseMessage;
+            }
+            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            if (installUpdateBtn) {
+              if (portableDownloadUrl) {
+                installUpdateBtn.textContent = 'Download Portable Update';
+                installUpdateBtn.classList.remove('hidden');
+              } else {
+                installUpdateBtn.classList.add('hidden');
+              }
+            }
             if (updateProgress) updateProgress.classList.add('hidden');
             break;
         }
