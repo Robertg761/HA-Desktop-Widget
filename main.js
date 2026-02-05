@@ -64,6 +64,7 @@ let mainWindow;
 let tray;
 let config;
 let isQuitting = false;
+let windowStateSaveTimer = null;
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -148,6 +149,22 @@ function resolveTrayIcon() {
 }
 
 /**
+ * Remove deprecated config keys from an object in place.
+ * @param {Object} target
+ * @returns {Object} The same object reference after pruning.
+ */
+function pruneConfig(target) {
+  if (!target || typeof target !== 'object') return target;
+  if (Object.prototype.hasOwnProperty.call(target, 'updateInterval')) {
+    delete target.updateInterval;
+  }
+  if (Object.prototype.hasOwnProperty.call(target, 'filters')) {
+    delete target.filters;
+  }
+  return target;
+}
+
+/**
  * Load the application's configuration into the in-memory `config` variable.
  *
  * Loads user configuration from the userData config.json, merges it with sensible defaults,
@@ -183,7 +200,6 @@ function loadConfig() {
       url: 'http://homeassistant.local:8123',
       token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
     },
-    updateInterval: 5000, // Update every 5 seconds
     globalHotkeys: {
       enabled: false,
       hotkeys: {} // entityId -> hotkey combination
@@ -212,6 +228,7 @@ function loadConfig() {
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
         ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) }
       };
+      pruneConfig(config);
 
       // Handle token encryption/decryption
       if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
@@ -328,6 +345,7 @@ function loadConfig() {
         try {
           const legacyConfig = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
           config = { ...defaultConfig, ...legacyConfig };
+          pruneConfig(config);
           migrated = true;
         } catch (error) {
           log.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
@@ -346,6 +364,7 @@ function loadConfig() {
   } catch (error) {
     log.error('Error loading config:', error);
     config = defaultConfig;
+    pruneConfig(config);
   }
 }
 
@@ -386,6 +405,7 @@ function saveConfig() {
 
     // Create a copy for saving with encrypted token
     const configToSave = JSON.parse(JSON.stringify(config));
+    pruneConfig(configToSave);
 
     // Encrypt token before saving
     // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
@@ -527,7 +547,13 @@ function createWindow() {
 
     config.windowPosition = { x: bounds.x, y: bounds.y };
     config.windowSize = { width: bounds.width, height: bounds.height };
-    saveConfig();
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+    }
+    windowStateSaveTimer = setTimeout(() => {
+      windowStateSaveTimer = null;
+      saveConfig();
+    }, 400);
   };
 
   // Save position when window is moved
@@ -675,8 +701,10 @@ ipcMain.handle('get-config', () => {
 ipcMain.handle('update-config', (event, newConfig) => {
   log.debug('Updating configuration');
   const prevFrostedGlass = config?.frostedGlass;
+  pruneConfig(newConfig);
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   config = { ...config, ...newConfig, customTabs };
+  pruneConfig(config);
   if (prevFrostedGlass !== config.frostedGlass) {
     applyFrostedGlass();
   }
@@ -912,7 +940,9 @@ ipcMain.handle('register-hotkeys', () => {
 ipcMain.handle('save-config', (event, newConfig) => {
   log.warn('save-config handler is deprecated, use update-config instead');
   // Update the config with the new values
+  pruneConfig(newConfig);
   config = newConfig;
+  pruneConfig(config);
   saveConfig();
   return { success: true };
 });
@@ -1415,6 +1445,11 @@ function setupAutoUpdates() {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (windowStateSaveTimer) {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+    saveConfig();
+  }
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
 });

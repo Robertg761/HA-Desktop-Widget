@@ -378,6 +378,7 @@ function renderColorThemeOptions() {
 
   updateThemeOptionsLabel();
   updateThemeSummary();
+  syncPersonalizationSectionHeight(document.getElementById('color-themes-section'));
 }
 
 /**
@@ -407,13 +408,35 @@ function initColorThemeSectionToggle() {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
 
-    section.classList.remove('collapsed');
-    toggle.setAttribute('aria-expanded', 'true');
+    section.classList.add('collapsed');
+    toggle.setAttribute('aria-expanded', 'false');
+    syncPersonalizationSectionHeight(section);
 
     toggle.onclick = () => {
+      syncPersonalizationSectionHeight(section);
       const isCollapsed = section.classList.toggle('collapsed');
       toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
     };
+  });
+}
+
+function syncPersonalizationSectionHeight(section) {
+  if (!section) return;
+  const body = section.querySelector('.section-body');
+  if (!body) return;
+  const height = body.scrollHeight;
+  if (!height) return;
+  const nextValue = `${height}px`;
+  if (section.style.getPropertyValue('--section-body-height') !== nextValue) {
+    section.style.setProperty('--section-body-height', nextValue);
+  }
+}
+
+function schedulePersonalizationSectionHeightSync(sourceEl) {
+  const section = sourceEl?.closest?.('.personalization-section');
+  if (!section) return;
+  requestAnimationFrame(() => {
+    syncPersonalizationSectionHeight(section);
   });
 }
 
@@ -516,6 +539,8 @@ function renderPrimaryCardsEntityList() {
 
     list.appendChild(item);
   });
+
+  syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
 
 function setPendingPrimaryCards(value) {
@@ -728,7 +753,6 @@ async function openSettings(uiHooks) {
     // Populate fields
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
-    const updateInterval = document.getElementById('update-interval');
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
@@ -750,7 +774,6 @@ async function openSettings(uiHooks) {
         uiHooks.showToast(warningMessage, 'warning', 10000);
       }
     }
-    if (updateInterval) updateInterval.value = Math.max(1, Math.round((state.CONFIG.updateInterval || 5000) / 1000));
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
 
@@ -880,7 +903,7 @@ function closeSettings() {
  *
  * Reads and validates form fields (including Home Assistant URL and token), persists the resulting configuration,
  * applies UI and window-effect changes (opacity, themes, frosted glass, always-on-top), updates platform-specific
- * settings (Start with Windows, global hotkeys, entity alerts, primary media player, filters), refreshes the media tile,
+ * settings (Start with Windows, global hotkeys, entity alerts, primary media player), refreshes the media tile,
  * and reconnects to Home Assistant only if connection settings changed. May prompt the user to restart the app when
  * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
  */
@@ -891,11 +914,9 @@ async function saveSettings() {
     // Store previous HA connection settings to detect if reconnect is needed
     const prevHaUrl = state.CONFIG.homeAssistant?.url;
     const prevHaToken = state.CONFIG.homeAssistant?.token;
-    const prevUpdateInterval = state.CONFIG.updateInterval;
 
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
-    const updateInterval = document.getElementById('update-interval');
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
@@ -922,7 +943,6 @@ async function saveSettings() {
         delete state.CONFIG.tokenResetReason;
       }
     }
-    if (updateInterval) state.CONFIG.updateInterval = Math.max(1000, parseInt(updateInterval.value, 10) * 1000);
     if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
     if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
     delete state.CONFIG.frostedGlassStrength;
@@ -965,15 +985,6 @@ async function saveSettings() {
 
     state.CONFIG.primaryCards = getPendingPrimaryCards();
 
-    const domainFilters = document.getElementById('domain-filters');
-    if (domainFilters) {
-      const checkboxes = domainFilters.querySelectorAll('input[type="checkbox"]');
-      const newDomains = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-      const areaSelect = document.getElementById('area-select');
-      const newAreas = areaSelect ? Array.from(areaSelect.selectedOptions).map(opt => opt.value) : [];
-      state.setFilters({ ...state.FILTERS, domains: newDomains, areas: newAreas });
-      state.CONFIG.filters = state.FILTERS;
-    }
 
     await window.electronAPI.updateConfig(state.CONFIG);
 
@@ -1022,8 +1033,7 @@ async function saveSettings() {
     // Only reconnect WebSocket if HA connection settings actually changed
     const haSettingsChanged =
       prevHaUrl !== state.CONFIG.homeAssistant.url ||
-      prevHaToken !== state.CONFIG.homeAssistant.token ||
-      prevUpdateInterval !== state.CONFIG.updateInterval;
+      prevHaToken !== state.CONFIG.homeAssistant.token;
 
     if (haSettingsChanged) {
       websocket.connect();
@@ -1395,6 +1405,7 @@ function initCustomDropdown() {
       } else {
         dropdown.classList.add('open');
         trigger.setAttribute('aria-expanded', 'true');
+        schedulePersonalizationSectionHeightSync(dropdown);
       }
     });
 
@@ -1409,8 +1420,9 @@ function initCustomDropdown() {
     trigger.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        dropdown.classList.toggle('open');
-        trigger.setAttribute('aria-expanded', dropdown.classList.contains('open') ? 'true' : 'false');
+        const isOpen = dropdown.classList.toggle('open');
+        trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        schedulePersonalizationSectionHeightSync(dropdown);
       } else if (e.key === 'Escape') {
         closeCustomDropdown();
       }
@@ -1428,6 +1440,7 @@ function closeCustomDropdown() {
 
   if (dropdown) {
     dropdown.classList.remove('open');
+    schedulePersonalizationSectionHeightSync(dropdown);
   }
   if (trigger) {
     trigger.setAttribute('aria-expanded', 'false');

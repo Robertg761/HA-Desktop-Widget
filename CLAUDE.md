@@ -103,7 +103,7 @@ The `state.js` module provides centralized state management with getter/setter f
   - `globalHotkeys`, `entityAlerts`, `popupHotkey` - Automation and notifications
   - `windowPosition`, `windowSize`, `opacity` - Window preferences
   - `ui` (theme, highContrast, opaquePanels, density) - UI customization
-  - `filters`, `customTabs` - Entity filtering and organization
+  - `customTabs` - Entity organization
 - **Access**: Use `window.electronAPI.getConfig()` and `window.electronAPI.updateConfig(newConfig)` from renderer
 - **Theme Options**: `ui.theme` can be 'auto' (system), 'light', or 'dark'; supports high contrast mode and density settings (comfortable/compact)
 
@@ -115,7 +115,7 @@ The `state.js` module provides centralized state management with getter/setter f
 4. Subscribe to `state_changed` events for real-time updates
 5. Implements exponential backoff reconnection on disconnect (1s → 30s max with jitter)
 6. Ping/pong heartbeat keeps connection alive
-7. Reconnection only triggered when connection parameters (URL, token, updateInterval) change in settings
+7. Reconnection only triggered when connection parameters (URL, token) change in settings
 
 ### Application Initialization
 

@@ -979,7 +979,7 @@ function setupMediaPlayerControls(div, entity) {
         }
 
         // Encode URL in base64 for the ha:// protocol
-        const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+        const encodedUrl = utils.base64Encode(urlToEncode);
 
         // Add cache buster for better updates (rounded to 30 seconds to allow caching)
         const cacheBuster = Math.floor(Date.now() / 30000);
@@ -1729,7 +1729,7 @@ function updateMediaTile() {
       }
 
       // Encode URL in base64 for the ha:// protocol
-      const encodedUrl = Buffer.from(urlToEncode).toString('base64');
+      const encodedUrl = utils.base64Encode(urlToEncode);
 
       // Add cache buster for better updates (rounded to 30 seconds to allow caching)
       const cacheBuster = Math.floor(Date.now() / 30000);
@@ -1902,6 +1902,21 @@ function updateTimeDisplay() {
     console.error('Error updating time display:', error);
   }
 }
+
+function handleCameraModalClosed(event) {
+  try {
+    const entityId = event?.detail?.entityId;
+    if (!entityId) return;
+    const entity = state.STATES[entityId];
+    if (entity) {
+      updateEntityInUI(entity);
+    }
+  } catch (error) {
+    console.error('Error refreshing camera tile after modal close:', error);
+  }
+}
+
+document.addEventListener('camera-modal-closed', handleCameraModalClosed);
 
 let timeTickerId = null;
 

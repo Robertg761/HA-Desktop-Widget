@@ -87,13 +87,11 @@ beforeEach(() => {
     url: 'http://homeassistant.local:8123',
     token: 'test-token-123'
   };
-  testConfig.updateInterval = 5000;
   testConfig.opacity = 0.95;
   testConfig.alwaysOnTop = true;
   testConfig.globalHotkeys = { enabled: true, hotkeys: {} };
   testConfig.entityAlerts = { enabled: false, alerts: {} };
   testConfig.primaryMediaPlayer = null;
-  testConfig.filters = { domains: ['light', 'switch'], areas: [] };
   testConfig.ui = { theme: 'auto', highContrast: false, opaquePanels: false, density: 'comfortable' };
   state.setConfig(testConfig);
 
@@ -138,9 +136,6 @@ function createSettingsModalDOM() {
       <label for="ha-token">Access Token</label>
       <input type="password" id="ha-token" />
 
-      <label for="update-interval">Update Interval (seconds)</label>
-      <input type="number" id="update-interval" min="1" />
-
       <label for="always-on-top">
         <input type="checkbox" id="always-on-top" />
         Always on Top
@@ -172,19 +167,6 @@ function createSettingsModalDOM() {
         <div id="primary-media-player-menu" class="custom-dropdown-menu"></div>
       </div>
 
-      <label>Domain Filters</label>
-      <div id="domain-filters">
-        <label><input type="checkbox" value="light" /> Lights</label>
-        <label><input type="checkbox" value="switch" /> Switches</label>
-        <label><input type="checkbox" value="sensor" /> Sensors</label>
-      </div>
-
-      <label>Areas</label>
-      <select id="area-select" multiple>
-        <option value="living_room">Living Room</option>
-        <option value="bedroom">Bedroom</option>
-      </select>
-
       <div id="popup-hotkey-container">
         <input type="text" id="popup-hotkey-input" />
         <button id="popup-hotkey-set-btn">Set Hotkey</button>
@@ -215,7 +197,6 @@ describe('Settings + Config Integration', () => {
       const modal = document.getElementById('settings-modal');
       const haUrl = document.getElementById('ha-url');
       const haToken = document.getElementById('ha-token');
-      const updateInterval = document.getElementById('update-interval');
       const alwaysOnTop = document.getElementById('always-on-top');
       const opacitySlider = document.getElementById('opacity-slider');
 
@@ -223,7 +204,6 @@ describe('Settings + Config Integration', () => {
       expect(modal.style.display).toBe('flex');
       expect(haUrl.value).toBe('http://homeassistant.local:8123');
       expect(haToken.value).toBe('test-token-123');
-      expect(updateInterval.value).toBe('5'); // 5000ms / 1000
       expect(alwaysOnTop.checked).toBe(true);
       expect(parseInt(opacitySlider.value)).toBeGreaterThan(0);
 
@@ -268,7 +248,6 @@ describe('Settings + Config Integration', () => {
       // Modify fields
       document.getElementById('ha-url').value = 'https://new-ha.example.com';
       document.getElementById('ha-token').value = 'new-token-456';
-      document.getElementById('update-interval').value = '10';
       document.getElementById('always-on-top').checked = false;
       document.getElementById('opacity-slider').value = '75';
 
@@ -278,7 +257,6 @@ describe('Settings + Config Integration', () => {
       // Verify config updated
       expect(state.CONFIG.homeAssistant.url).toBe('https://new-ha.example.com');
       expect(state.CONFIG.homeAssistant.token).toBe('new-token-456');
-      expect(state.CONFIG.updateInterval).toBe(10000);
       expect(state.CONFIG.alwaysOnTop).toBe(false);
       expect(state.CONFIG.opacity).toBeCloseTo(0.87, 2); // slider 75 → opacity
 
@@ -418,25 +396,6 @@ describe('Settings + Config Integration', () => {
 
       // Verify updateMediaTile was called
       expect(mockUI.updateMediaTile).toHaveBeenCalled();
-    });
-
-    test('domain filters update state and config', async () => {
-      await settings.openSettings();
-
-      // Get checkboxes and modify selection
-      const domainFilters = document.getElementById('domain-filters');
-      const checkboxes = domainFilters.querySelectorAll('input[type="checkbox"]');
-
-      // Uncheck all, then check only sensor
-      checkboxes.forEach(cb => {
-        cb.checked = cb.value === 'sensor';
-      });
-
-      await settings.saveSettings();
-
-      // Verify filters updated
-      expect(state.FILTERS.domains).toEqual(['sensor']);
-      expect(state.CONFIG.filters.domains).toEqual(['sensor']);
     });
 
     test('theme and UI preferences applied immediately', async () => {
