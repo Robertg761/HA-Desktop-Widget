@@ -285,18 +285,21 @@ async function openCamera(cameraId) {
       };
     }
 
+    const closeModal = () => {
+      stopLive();
+      modal.remove();
+      // Ensure any tile visuals tied to this entity are refreshed after modal closes
+      document.dispatchEvent(new CustomEvent('camera-modal-closed', { detail: { entityId: cameraId } }));
+    };
+
     if (closeBtn) {
-      closeBtn.onclick = () => {
-        stopLive();
-        modal.remove();
-      };
+      closeBtn.onclick = closeModal;
     }
 
     // Click outside to close
     modal.onclick = (e) => {
       if (e.target === modal) {
-        stopLive();
-        modal.remove();
+        closeModal();
       }
     };
 

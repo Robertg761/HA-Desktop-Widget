@@ -1742,23 +1742,12 @@ body {
 
 /* Primary Entity Card Styles */
 .status-card.primary-entity-card {
-  background: transparent;
-  border: none;
   padding: 0;
-  box-shadow: none;
-  overflow: visible;
   display: block;
 }
 
 .status-card.primary-entity-card::before {
-  display: none;
-}
-
-.status-card.primary-entity-card:hover {
-  background: transparent;
-  border-color: transparent;
-  transform: none;
-  box-shadow: none;
+  display: block;
 }
 
 .status-card.primary-entity-card .control-item {
@@ -1766,6 +1755,18 @@ body {
   height: 100%;
   min-height: 120px;
   padding: var(--space-4);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.status-card.primary-entity-card .control-item:hover {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  transform: none;
 }
 
 .status-grid.single-card .status-card.primary-entity-card .control-item {

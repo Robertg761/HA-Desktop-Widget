@@ -1903,6 +1903,21 @@ function updateTimeDisplay() {
   }
 }
 
+function handleCameraModalClosed(event) {
+  try {
+    const entityId = event?.detail?.entityId;
+    if (!entityId) return;
+    const entity = state.STATES[entityId];
+    if (entity) {
+      updateEntityInUI(entity);
+    }
+  } catch (error) {
+    console.error('Error refreshing camera tile after modal close:', error);
+  }
+}
+
+document.addEventListener('camera-modal-closed', handleCameraModalClosed);
+
 let timeTickerId = null;
 
 function startTimeTicker() {

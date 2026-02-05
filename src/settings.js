@@ -432,6 +432,14 @@ function syncPersonalizationSectionHeight(section) {
   }
 }
 
+function schedulePersonalizationSectionHeightSync(sourceEl) {
+  const section = sourceEl?.closest?.('.personalization-section');
+  if (!section) return;
+  requestAnimationFrame(() => {
+    syncPersonalizationSectionHeight(section);
+  });
+}
+
 function getPendingPrimaryCards() {
   return normalizePrimaryCards(pendingPrimaryCards || state.CONFIG?.primaryCards);
 }
@@ -1412,6 +1420,7 @@ function initCustomDropdown() {
       } else {
         dropdown.classList.add('open');
         trigger.setAttribute('aria-expanded', 'true');
+        schedulePersonalizationSectionHeightSync(dropdown);
       }
     });
 
@@ -1426,8 +1435,9 @@ function initCustomDropdown() {
     trigger.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        dropdown.classList.toggle('open');
-        trigger.setAttribute('aria-expanded', dropdown.classList.contains('open') ? 'true' : 'false');
+        const isOpen = dropdown.classList.toggle('open');
+        trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        schedulePersonalizationSectionHeightSync(dropdown);
       } else if (e.key === 'Escape') {
         closeCustomDropdown();
       }
@@ -1445,6 +1455,7 @@ function closeCustomDropdown() {
 
   if (dropdown) {
     dropdown.classList.remove('open');
+    schedulePersonalizationSectionHeightSync(dropdown);
   }
   if (trigger) {
     trigger.setAttribute('aria-expanded', 'false');
