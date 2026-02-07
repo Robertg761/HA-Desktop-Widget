@@ -223,7 +223,8 @@ function loadConfig() {
     ui: {
       theme: 'auto',
       accent: 'original',
-      background: 'original'
+      background: 'original',
+      personalizationSectionsCollapsed: {}
     },
     primaryCards: ['weather', 'time'],
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
