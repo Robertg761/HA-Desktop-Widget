@@ -664,6 +664,7 @@ function wireUI() {
     const widgetContent = document.querySelector('.widget-content');
     if (widgetContent) {
       widgetContent.addEventListener('mousedown', () => {
+        if (document.hasFocus()) return;
         // Request window focus when clicking on content
         window.electronAPI.focusWindow().catch(err => {
           log.error('Failed to focus window:', err);

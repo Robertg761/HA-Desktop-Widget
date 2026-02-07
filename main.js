@@ -816,7 +816,11 @@ ipcMain.handle('minimize-window', () => {
 });
 
 ipcMain.handle('focus-window', () => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isFocused()) {
+      return { focused: true };
+    }
+
     // Ensure window is visible and restored from minimized state
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
@@ -832,7 +836,11 @@ ipcMain.handle('focus-window', () => {
     const wasOnTop = mainWindow.isAlwaysOnTop();
     mainWindow.setAlwaysOnTop(true);
     mainWindow.setAlwaysOnTop(wasOnTop);
+
+    return { focused: mainWindow.isFocused() };
   }
+
+  return { focused: false };
 });
 
 // Updates IPC

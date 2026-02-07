@@ -1369,7 +1369,7 @@ function toggleEntity(entity) {
         // No toggle action for this domain
         return;
     }
-    websocket.callService(domain === 'light' ? 'homeassistant' : domain, service, service_data)
+    websocket.callService(domain, service, service_data)
       .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
   } catch (error) {
     console.error('Error toggling entity:', error);

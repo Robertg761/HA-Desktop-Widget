@@ -299,9 +299,10 @@ describe('WebSocket + State Integration', () => {
         error: { code: 'not_found', message: 'Entity not found' }
       });
 
-      const result = await servicePromise;
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
+      await expect(servicePromise).rejects.toMatchObject({
+        message: 'Entity not found',
+        code: 'not_found'
+      });
     });
 
     test('multiple concurrent service calls', async () => {
