@@ -512,6 +512,24 @@ describe('Utils Module', () => {
       };
       expect(utils.resolveEntityId('light.nonexistent light', states)).toBeNull();
     });
+
+    test('should return null for null, undefined, and empty entity IDs', () => {
+      const states = {
+        'light.closet_light': { entity_id: 'light.closet_light' }
+      };
+      expect(utils.resolveEntityId(null, states)).toBeNull();
+      expect(utils.resolveEntityId(undefined, states)).toBeNull();
+      expect(utils.resolveEntityId('', states)).toBeNull();
+    });
+
+    test('should return null when states are null, undefined, or empty', () => {
+      expect(utils.resolveEntityId('light.closet_light', null)).toBeNull();
+      expect(utils.resolveEntityId('light.closet_light', undefined)).toBeNull();
+      expect(utils.resolveEntityId('light.closet_light', {})).toBeNull();
+      expect(utils.resolveEntityId('', null)).toBeNull();
+      expect(utils.resolveEntityId('', undefined)).toBeNull();
+      expect(utils.resolveEntityId('', {})).toBeNull();
+    });
   });
 
   describe('reconcileConfigEntityIds', () => {
@@ -566,6 +584,72 @@ describe('Utils Module', () => {
       const result = utils.reconcileConfigEntityIds(config, states);
       expect(result.changed).toBe(false);
       expect(result.config).toBe(config);
+    });
+
+    test('should not change config with null, undefined, and empty IDs when states are missing', () => {
+      const config = {
+        primaryMediaPlayer: null,
+        selectedWeatherEntity: '',
+        favoriteEntities: [null, undefined, ''],
+        primaryCards: ['weather', null, ''],
+        customEntityNames: {
+          '': 'Empty key'
+        },
+        tileSpans: {
+          '': 2
+        },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: {
+            '': { hotkey: 'Ctrl+1', action: 'toggle' }
+          }
+        },
+        entityAlerts: {
+          enabled: true,
+          alerts: {
+            '': { onStateChange: true }
+          }
+        }
+      };
+
+      [null, undefined, {}].forEach(states => {
+        const result = utils.reconcileConfigEntityIds(config, states);
+        expect(result.changed).toBe(false);
+        expect(result.config).toBe(config);
+        expect(result.config).toEqual(config);
+      });
+    });
+
+    test('should not remap when states are valid but do not contain matching entity IDs', () => {
+      const states = {
+        'light.kitchen': { entity_id: 'light.kitchen' },
+        'switch.fan': { entity_id: 'switch.fan' }
+      };
+      const config = {
+        favoriteEntities: ['light.missing room', '', null],
+        primaryMediaPlayer: 'media_player.missing room',
+        selectedWeatherEntity: 'weather.missing city',
+        primaryCards: ['weather', 'light.missing room'],
+        customEntityNames: { 'light.missing room': 'Missing Light', '': 'Empty key' },
+        tileSpans: { 'light.missing room': 2 },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: {
+            'light.missing room': { hotkey: 'Ctrl+1', action: 'toggle' }
+          }
+        },
+        entityAlerts: {
+          enabled: true,
+          alerts: {
+            'light.missing room': { onStateChange: true }
+          }
+        }
+      };
+
+      const result = utils.reconcileConfigEntityIds(config, states);
+      expect(result.changed).toBe(false);
+      expect(result.config).toBe(config);
+      expect(result.config).toEqual(config);
     });
   });
 
