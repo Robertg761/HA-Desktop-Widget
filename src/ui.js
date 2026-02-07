@@ -10,6 +10,29 @@ import Sortable from 'sortablejs';
 let isReorganizeMode = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
+const DEBUG_INTERACTION_LOGS = true;
+
+function emitUiDebug(event, details = {}) {
+  if (!DEBUG_INTERACTION_LOGS) return;
+
+  try {
+    const payload = {
+      scope: 'ui',
+      event,
+      details: {
+        timestamp: new Date().toISOString(),
+        ...details,
+      },
+    };
+
+    console.info('[UI DEBUG]', event, payload.details);
+    if (window?.electronAPI?.debugLog) {
+      window.electronAPI.debugLog(payload).catch(() => { /* no-op */ });
+    }
+  } catch {
+    // no-op: debug logging must never break UI execution
+  }
+}
 
 /**
  * Handle WebSocket service call errors with user feedback
@@ -23,6 +46,12 @@ function handleServiceError(error, entityName = null) {
     : `Service call failed: ${errorMessage}`;
 
   console.error('WebSocket service call failed:', error);
+  emitUiDebug('service.error', {
+    entityName: entityName || null,
+    message: errorMessage,
+    code: error?.code || null,
+    details: error?.details || null,
+  });
   uiUtils.showToast(displayMessage, 'error', 4000);
 }
 
@@ -70,14 +99,20 @@ function getPrimaryCardSelections() {
 function renderPrimaryEntityCard(cardEl, entityId) {
   if (!cardEl) return;
 
-  const entity = state.STATES[entityId];
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  const entity = state.STATES[resolvedEntityId];
+  emitUiDebug('primary.render_entity_card', {
+    requestedEntityId: entityId,
+    resolvedEntityId,
+    entityFound: !!entity,
+  });
   const control = entity ? createControlElement(entity) : createUnavailableElement(entityId);
 
   control.dataset.primaryCard = 'true';
 
   cardEl.classList.add('primary-entity-card');
   cardEl.dataset.primaryType = 'entity';
-  cardEl.dataset.entityId = entityId;
+  cardEl.dataset.entityId = resolvedEntityId;
   if (entity?.state) {
     cardEl.dataset.state = entity.state;
   } else {
@@ -538,7 +573,15 @@ function renderQuickControls() {
     favorites
       .slice(0, 12)
       .forEach(entityId => {
-        const entity = state.STATES[entityId];
+        const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+        const entity = state.STATES[resolvedEntityId];
+        emitUiDebug('quick_access.render_tile', {
+          requestedEntityId: entityId,
+          resolvedEntityId,
+          entityFound: !!entity,
+          state: entity?.state || null,
+          domain: resolvedEntityId.includes('.') ? resolvedEntityId.split('.')[0] : null,
+        });
 
         if (entity) {
           // Entity exists in STATES - render normally
@@ -565,6 +608,15 @@ function createControlElement(entity) {
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
+    emitUiDebug('quick_access.create_control', {
+      entityId: entity.entity_id,
+      state: entity.state,
+      domain: entity.entity_id.split('.')[0],
+      attributes: {
+        brightness: entity?.attributes?.brightness ?? null,
+        percentage: entity?.attributes?.percentage ?? null,
+      },
+    });
 
     // Per-entity column span (default 2 for media, 1 otherwise)
     const span = getTileSpan(entity);
@@ -732,6 +784,7 @@ function createUnavailableElement(entityId) {
     `;
 
     div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
+    emitUiDebug('quick_access.create_unavailable', { entityId });
 
     return div;
   } catch (error) {
@@ -748,43 +801,123 @@ function showSensorDetails(entity) {
   }
 }
 
-function setupLightControls(div, entity) {
+function setupPressAndHoldToggle(div, entity, onLongPress) {
   try {
     let pressTimer = null;
     let longPressTriggered = false;
+    let shortPressHandled = false;
 
-    const startPress = (_e) => {
-      if (shouldBlockInteraction(div)) {
-        // In reorganize mode, don't handle mousedown - let drag work
+    const startPress = (e) => {
+      if (e && typeof e.button === 'number' && e.button !== 0) return;
+      const blocked = shouldBlockInteraction(div);
+      emitUiDebug('quick_access.pointer_down', {
+        entityId: entity.entity_id,
+        pointerType: e?.pointerType || 'unknown',
+        button: typeof e?.button === 'number' ? e.button : null,
+        blocked,
+        reorganizeMode: isReorganizeMode,
+      });
+      if (blocked) {
         return;
       }
       longPressTriggered = false;
+      shortPressHandled = false;
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        activePressTimers.delete(pressTimer);
+      }
       pressTimer = setTimeout(() => {
         longPressTriggered = true;
         activePressTimers.delete(pressTimer);
-        showBrightnessSlider(entity);
+        pressTimer = null;
+        emitUiDebug('quick_access.long_press', {
+          entityId: entity.entity_id,
+          domain: entity.entity_id.split('.')[0],
+          state: entity.state,
+        });
+        onLongPress();
       }, 500);
       activePressTimers.add(pressTimer);
     };
 
     const cancelPress = () => {
+      emitUiDebug('quick_access.pointer_cancel', {
+        entityId: entity.entity_id,
+        hadActiveTimer: !!pressTimer,
+      });
       if (pressTimer) {
         clearTimeout(pressTimer);
         activePressTimers.delete(pressTimer);
+        pressTimer = null;
       }
     };
 
-    div.addEventListener('mousedown', startPress);
-    div.addEventListener('mouseup', cancelPress);
-    div.addEventListener('mouseleave', cancelPress);
+    const endPress = (e) => {
+      if (e && typeof e.button === 'number' && e.button !== 0) return;
+      const wasLongPress = longPressTriggered;
+      cancelPress();
+      const blocked = shouldBlockInteraction(div);
+      emitUiDebug('quick_access.pointer_up', {
+        entityId: entity.entity_id,
+        pointerType: e?.pointerType || 'unknown',
+        blocked,
+        wasLongPress,
+        reorganizeMode: isReorganizeMode,
+      });
+
+      if (blocked || wasLongPress) {
+        return;
+      }
+
+      shortPressHandled = true;
+      emitUiDebug('quick_access.short_press_toggle', {
+        entityId: entity.entity_id,
+        domain: entity.entity_id.split('.')[0],
+        state: entity.state,
+      });
+      toggleEntity(entity);
+      setTimeout(() => {
+        shortPressHandled = false;
+      }, 0);
+    };
+
+    div.addEventListener('pointerdown', startPress);
+    div.addEventListener('pointerup', endPress);
+    div.addEventListener('pointercancel', cancelPress);
+    div.addEventListener('pointerleave', cancelPress);
     div.addEventListener('click', (e) => {
-      if (shouldBlockInteraction(div) || longPressTriggered) {
+      const blocked = shouldBlockInteraction(div);
+      emitUiDebug('quick_access.click', {
+        entityId: entity.entity_id,
+        blocked,
+        shortPressHandled,
+        longPressTriggered,
+        reorganizeMode: isReorganizeMode,
+      });
+      if (shortPressHandled || blocked || longPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
+      emitUiDebug('quick_access.click_toggle', {
+        entityId: entity.entity_id,
+        domain: entity.entity_id.split('.')[0],
+        state: entity.state,
+      });
       toggleEntity(entity);
     });
+  } catch (error) {
+    console.error('Error setting up press/hold controls:', error);
+    emitUiDebug('quick_access.setup_press_hold_error', {
+      entityId: entity?.entity_id || null,
+      error: error?.message || String(error),
+    });
+  }
+}
+
+function setupLightControls(div, entity) {
+  try {
+    setupPressAndHoldToggle(div, entity, () => showBrightnessSlider(entity));
   } catch (error) {
     console.error('Error setting up light controls:', error);
   }
@@ -792,40 +925,7 @@ function setupLightControls(div, entity) {
 
 function setupClimateControls(div, entity) {
   try {
-    let pressTimer = null;
-    let longPressTriggered = false;
-
-    const startPress = (_e) => {
-      if (shouldBlockInteraction(div)) {
-        return;
-      }
-      longPressTriggered = false;
-      pressTimer = setTimeout(() => {
-        longPressTriggered = true;
-        activePressTimers.delete(pressTimer);
-        showClimateControls(entity);
-      }, 500);
-      activePressTimers.add(pressTimer);
-    };
-
-    const cancelPress = () => {
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        activePressTimers.delete(pressTimer);
-      }
-    };
-
-    div.addEventListener('mousedown', startPress);
-    div.addEventListener('mouseup', cancelPress);
-    div.addEventListener('mouseleave', cancelPress);
-    div.addEventListener('click', (e) => {
-      if (shouldBlockInteraction(div) || longPressTriggered) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      toggleEntity(entity);
-    });
+    setupPressAndHoldToggle(div, entity, () => showClimateControls(entity));
   } catch (error) {
     console.error('Error setting up climate controls:', error);
   }
@@ -833,40 +933,7 @@ function setupClimateControls(div, entity) {
 
 function setupFanControls(div, entity) {
   try {
-    let pressTimer = null;
-    let longPressTriggered = false;
-
-    const startPress = (_e) => {
-      if (shouldBlockInteraction(div)) {
-        return;
-      }
-      longPressTriggered = false;
-      pressTimer = setTimeout(() => {
-        longPressTriggered = true;
-        activePressTimers.delete(pressTimer);
-        showFanControls(entity);
-      }, 500);
-      activePressTimers.add(pressTimer);
-    };
-
-    const cancelPress = () => {
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        activePressTimers.delete(pressTimer);
-      }
-    };
-
-    div.addEventListener('mousedown', startPress);
-    div.addEventListener('mouseup', cancelPress);
-    div.addEventListener('mouseleave', cancelPress);
-    div.addEventListener('click', (e) => {
-      if (shouldBlockInteraction(div) || longPressTriggered) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      toggleEntity(entity);
-    });
+    setupPressAndHoldToggle(div, entity, () => showFanControls(entity));
   } catch (error) {
     console.error('Error setting up fan controls:', error);
   }
@@ -874,40 +941,7 @@ function setupFanControls(div, entity) {
 
 function setupCoverControls(div, entity) {
   try {
-    let pressTimer = null;
-    let longPressTriggered = false;
-
-    const startPress = (_e) => {
-      if (shouldBlockInteraction(div)) {
-        return;
-      }
-      longPressTriggered = false;
-      pressTimer = setTimeout(() => {
-        longPressTriggered = true;
-        activePressTimers.delete(pressTimer);
-        showCoverControls(entity);
-      }, 500);
-      activePressTimers.add(pressTimer);
-    };
-
-    const cancelPress = () => {
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        activePressTimers.delete(pressTimer);
-      }
-    };
-
-    div.addEventListener('mousedown', startPress);
-    div.addEventListener('mouseup', cancelPress);
-    div.addEventListener('mouseleave', cancelPress);
-    div.addEventListener('click', (e) => {
-      if (shouldBlockInteraction(div) || longPressTriggered) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      toggleEntity(entity);
-    });
+    setupPressAndHoldToggle(div, entity, () => showCoverControls(entity));
   } catch (error) {
     console.error('Error setting up cover controls:', error);
   }
@@ -1345,6 +1379,8 @@ function toggleEntity(entity) {
     const domain = entity.entity_id.split('.')[0];
     let service;
     let service_data = { entity_id: entity.entity_id };
+    const supportsExplicitFallback = ['light', 'switch', 'fan', 'input_boolean'].includes(domain);
+    const explicitFallbackService = entity.state === 'on' ? 'turn_off' : 'turn_on';
 
     switch (domain) {
       case 'light':
@@ -1367,12 +1403,79 @@ function toggleEntity(entity) {
         break;
       default:
         // No toggle action for this domain
+        emitUiDebug('entity.toggle_ignored_domain', {
+          entityId: entity.entity_id,
+          domain,
+          state: entity.state,
+        });
         return;
     }
+    emitUiDebug('entity.toggle_attempt', {
+      entityId: entity.entity_id,
+      domain,
+      service,
+      fallbackService: supportsExplicitFallback ? explicitFallbackService : null,
+      state: entity.state,
+      serviceData: service_data,
+    });
     websocket.callService(domain, service, service_data)
+      .then((response) => {
+        emitUiDebug('entity.toggle_success', {
+          entityId: entity.entity_id,
+          domain,
+          service,
+          responseSuccess: response?.success !== false,
+          responseId: response?.id || null,
+        });
+        return response;
+      })
+      .catch((error) => {
+        emitUiDebug('entity.toggle_primary_error', {
+          entityId: entity.entity_id,
+          domain,
+          service,
+          error: error?.message || String(error),
+          code: error?.code || null,
+        });
+        if (!supportsExplicitFallback || service !== 'toggle') {
+          throw error;
+        }
+        emitUiDebug('entity.toggle_fallback_attempt', {
+          entityId: entity.entity_id,
+          domain,
+          fallbackService: explicitFallbackService,
+          state: entity.state,
+        });
+        return websocket.callService(domain, explicitFallbackService, service_data)
+          .catch((fallbackError) => {
+            emitUiDebug('entity.toggle_fallback_error', {
+              entityId: entity.entity_id,
+              domain,
+              fallbackService: explicitFallbackService,
+              error: fallbackError?.message || String(fallbackError),
+              code: fallbackError?.code || null,
+            });
+            throw fallbackError;
+          });
+      })
+      .then((response) => {
+        if (supportsExplicitFallback && service === 'toggle') {
+          emitUiDebug('entity.toggle_finalized', {
+            entityId: entity.entity_id,
+            domain,
+            responseSuccess: response?.success !== false,
+            responseId: response?.id || null,
+          });
+        }
+        return response;
+      })
       .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
   } catch (error) {
     console.error('Error toggling entity:', error);
+    emitUiDebug('entity.toggle_exception', {
+      entityId: entity?.entity_id || null,
+      error: error?.message || String(error),
+    });
     uiUtils.showToast('Failed to toggle entity', 'error', 3000);
   }
 }

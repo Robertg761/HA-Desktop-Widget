@@ -926,6 +926,42 @@ ipcMain.handle('open-external', async (event, url) => {
   }
 });
 
+ipcMain.handle('debug-log', (_event, payload) => {
+  try {
+    if (typeof payload === 'string') {
+      log.info(`[RendererDebug] ${payload}`);
+      return { success: true };
+    }
+
+    if (payload && typeof payload === 'object') {
+      const scope = String(payload.scope || 'renderer');
+      const eventName = String(payload.event || 'log');
+      const details = payload.details && typeof payload.details === 'object' ? payload.details : {};
+      let serializedDetails = '';
+
+      try {
+        serializedDetails = JSON.stringify(details);
+      } catch (error) {
+        serializedDetails = `{"serializationError":"${error.message}"}`;
+      }
+
+      const maxLength = 6000;
+      const safeDetails = serializedDetails.length > maxLength
+        ? `${serializedDetails.slice(0, maxLength)}...[truncated]`
+        : serializedDetails;
+
+      log.info(`[RendererDebug][${scope}] ${eventName} ${safeDetails}`);
+      return { success: true };
+    }
+
+    log.info(`[RendererDebug] ${String(payload)}`);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to persist renderer debug log:', error);
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
 // Global Hotkey IPC Handlers
 ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
   // Check for conflicts with existing hotkeys first

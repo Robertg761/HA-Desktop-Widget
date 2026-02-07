@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   openLogs: () => ipcRenderer.invoke('open-logs'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  debugLog: (payload) => ipcRenderer.invoke('debug-log', payload),
 
   // Event listeners (one-way from main to renderer)
   // Each returns a cleanup function to remove the listener
