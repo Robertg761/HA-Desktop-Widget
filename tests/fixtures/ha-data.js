@@ -61,7 +61,8 @@ const sampleConfig = {
     theme: 'dark',
     highContrast: false,
     opaquePanels: false,
-    density: 'comfortable'
+    density: 'comfortable',
+    personalizationSectionsCollapsed: {}
   },
   customTabs: [
     {

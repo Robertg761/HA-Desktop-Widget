@@ -34,7 +34,8 @@ let mockConfig = {
     theme: 'auto',
     highContrast: false,
     opaquePanels: false,
-    density: 'comfortable'
+    density: 'comfortable',
+    personalizationSectionsCollapsed: {}
   },
   customTabs: []
 };
@@ -174,7 +175,8 @@ function resetMockElectronAPI() {
       theme: 'auto',
       highContrast: false,
       opaquePanels: false,
-      density: 'comfortable'
+      density: 'comfortable',
+      personalizationSectionsCollapsed: {}
     },
     customTabs: []
   };
