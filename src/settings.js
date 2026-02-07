@@ -35,6 +35,7 @@ let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
+const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 
 
 /**
@@ -395,6 +396,42 @@ function initColorTargetSelect() {
   };
 }
 
+function getSavedPersonalizationSectionStates() {
+  const savedStates = state.CONFIG?.ui?.[PERSONALIZATION_SECTION_STATE_KEY];
+  if (!savedStates || typeof savedStates !== 'object') return {};
+  return savedStates;
+}
+
+function applyPersonalizationSectionState(section, toggle, isCollapsed) {
+  section.classList.toggle('collapsed', isCollapsed);
+  toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+}
+
+function persistPersonalizationSectionState(sectionId, isCollapsed) {
+  if (!sectionId || !state.CONFIG) return;
+
+  state.CONFIG.ui = state.CONFIG.ui || {};
+  const currentStates = getSavedPersonalizationSectionStates();
+  if (currentStates[sectionId] === isCollapsed) return;
+
+  const nextStates = {
+    ...currentStates,
+    [sectionId]: isCollapsed,
+  };
+
+  state.CONFIG.ui[PERSONALIZATION_SECTION_STATE_KEY] = nextStates;
+
+  if (!window?.electronAPI?.updateConfig) return;
+  window.electronAPI.updateConfig({
+    ui: {
+      ...state.CONFIG.ui,
+      [PERSONALIZATION_SECTION_STATE_KEY]: nextStates,
+    },
+  }).catch(error => {
+    console.error('Failed to persist personalization section state:', error);
+  });
+}
+
 /**
  * Initialize the color themes section toggle: ensure the section is expanded and wire the toggle button to collapse/expand it.
  *
@@ -403,19 +440,22 @@ function initColorTargetSelect() {
 function initColorThemeSectionToggle() {
   const sections = document.querySelectorAll('.personalization-section');
   if (!sections.length) return;
+  const savedSectionStates = getSavedPersonalizationSectionStates();
 
   sections.forEach(section => {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
 
-    section.classList.add('collapsed');
-    toggle.setAttribute('aria-expanded', 'false');
+    const hasSavedState = Object.prototype.hasOwnProperty.call(savedSectionStates, section.id);
+    const isCollapsed = hasSavedState ? !!savedSectionStates[section.id] : section.classList.contains('collapsed');
+    applyPersonalizationSectionState(section, toggle, isCollapsed);
     syncPersonalizationSectionHeight(section);
 
     toggle.onclick = () => {
       syncPersonalizationSectionHeight(section);
-      const isCollapsed = section.classList.toggle('collapsed');
-      toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      const nextCollapsed = !section.classList.contains('collapsed');
+      applyPersonalizationSectionState(section, toggle, nextCollapsed);
+      persistPersonalizationSectionState(section.id, nextCollapsed);
     };
   });
 }

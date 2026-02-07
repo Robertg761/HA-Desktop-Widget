@@ -132,12 +132,28 @@ class WebSocketManager extends EventEmitter {
 
   callService(domain, service, serviceData) {
     try {
-      return this.request({
+      const requestPromise = this.request({
         type: 'call_service',
         domain,
         service,
         service_data: serviceData,
       });
+
+      const servicePromise = requestPromise.then((response) => {
+        if (response && response.success === false) {
+          const details = response.error || {};
+          const message = details.message || `${domain}.${service} failed`;
+          const serviceError = new Error(message);
+          if (details.code) serviceError.code = details.code;
+          serviceError.details = details;
+          throw serviceError;
+        }
+        return response;
+      });
+
+      // Preserve request ID for tests and callers that correlate responses
+      servicePromise.id = requestPromise.id;
+      return servicePromise;
     } catch (error) {
       log.error('Error calling service:', error);
       return Promise.reject(error);

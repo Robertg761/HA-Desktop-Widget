@@ -92,7 +92,13 @@ beforeEach(() => {
   testConfig.globalHotkeys = { enabled: true, hotkeys: {} };
   testConfig.entityAlerts = { enabled: false, alerts: {} };
   testConfig.primaryMediaPlayer = null;
-  testConfig.ui = { theme: 'auto', highContrast: false, opaquePanels: false, density: 'comfortable' };
+  testConfig.ui = {
+    theme: 'auto',
+    highContrast: false,
+    opaquePanels: false,
+    density: 'comfortable',
+    personalizationSectionsCollapsed: {}
+  };
   state.setConfig(testConfig);
 
   // Mock states with media players
@@ -157,6 +163,25 @@ function createSettingsModalDOM() {
       </label>
       <div id="alerts-section" style="display: none;">
         <div id="inline-alerts-list"></div>
+      </div>
+
+      <div id="personalization-tab" class="tab-content">
+        <div id="color-themes-section" class="personalization-section collapsed">
+          <button type="button" id="color-themes-toggle" class="section-toggle" aria-expanded="false">
+            Color Themes
+          </button>
+          <div class="section-body">
+            <div id="theme-options"></div>
+          </div>
+        </div>
+        <div id="window-effects-section" class="personalization-section collapsed">
+          <button type="button" id="window-effects-toggle" class="section-toggle" aria-expanded="false">
+            Window Effects
+          </button>
+          <div class="section-body">
+            <input type="checkbox" id="frosted-glass" />
+          </div>
+        </div>
       </div>
 
       <label>Primary Media Player</label>
@@ -237,6 +262,46 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings(mockUiHooks);
 
       expect(mockUiHooks.exitReorganizeMode).toHaveBeenCalled();
+    });
+
+    test('opening settings restores personalization section collapse states from config', async () => {
+      state.CONFIG.ui.personalizationSectionsCollapsed = {
+        'color-themes-section': true,
+        'window-effects-section': false
+      };
+
+      await settings.openSettings();
+
+      const colorThemesSection = document.getElementById('color-themes-section');
+      const colorThemesToggle = document.getElementById('color-themes-toggle');
+      const windowEffectsSection = document.getElementById('window-effects-section');
+      const windowEffectsToggle = document.getElementById('window-effects-toggle');
+
+      expect(colorThemesSection.classList.contains('collapsed')).toBe(true);
+      expect(colorThemesToggle.getAttribute('aria-expanded')).toBe('false');
+      expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
+      expect(windowEffectsToggle.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    test('toggling personalization sections persists collapse state', async () => {
+      await settings.openSettings();
+
+      const windowEffectsSection = document.getElementById('window-effects-section');
+      const windowEffectsToggle = document.getElementById('window-effects-toggle');
+
+      windowEffectsToggle.click();
+
+      expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
+      expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(false);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            personalizationSectionsCollapsed: expect.objectContaining({
+              'window-effects-section': false
+            })
+          })
+        })
+      );
     });
   });
 

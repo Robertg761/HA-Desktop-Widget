@@ -223,7 +223,8 @@ function loadConfig() {
     ui: {
       theme: 'auto',
       accent: 'original',
-      background: 'original'
+      background: 'original',
+      personalizationSectionsCollapsed: {}
     },
     primaryCards: ['weather', 'time'],
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
@@ -816,7 +817,11 @@ ipcMain.handle('minimize-window', () => {
 });
 
 ipcMain.handle('focus-window', () => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isFocused()) {
+      return { focused: true };
+    }
+
     // Ensure window is visible and restored from minimized state
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
@@ -832,7 +837,11 @@ ipcMain.handle('focus-window', () => {
     const wasOnTop = mainWindow.isAlwaysOnTop();
     mainWindow.setAlwaysOnTop(true);
     mainWindow.setAlwaysOnTop(wasOnTop);
+
+    return { focused: mainWindow.isFocused() };
   }
+
+  return { focused: false };
 });
 
 // Updates IPC
@@ -914,6 +923,42 @@ ipcMain.handle('open-external', async (event, url) => {
     await shell.openExternal(parsed.toString());
     return { success: true };
   } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle('debug-log', (_event, payload) => {
+  try {
+    if (typeof payload === 'string') {
+      log.info(`[RendererDebug] ${payload}`);
+      return { success: true };
+    }
+
+    if (payload && typeof payload === 'object') {
+      const scope = String(payload.scope || 'renderer');
+      const eventName = String(payload.event || 'log');
+      const details = payload.details && typeof payload.details === 'object' ? payload.details : {};
+      let serializedDetails = '';
+
+      try {
+        serializedDetails = JSON.stringify(details);
+      } catch (error) {
+        serializedDetails = `{"serializationError":"${error.message}"}`;
+      }
+
+      const maxLength = 6000;
+      const safeDetails = serializedDetails.length > maxLength
+        ? `${serializedDetails.slice(0, maxLength)}...[truncated]`
+        : serializedDetails;
+
+      log.info(`[RendererDebug][${scope}] ${eventName} ${safeDetails}`);
+      return { success: true };
+    }
+
+    log.info(`[RendererDebug] ${String(payload)}`);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to persist renderer debug log:', error);
     return { success: false, error: error?.message || String(error) };
   }
 });

@@ -328,6 +328,221 @@ function base64Encode(input) {
     }
 }
 
+/**
+ * Normalize an entity ID candidate for fuzzy matching.
+ * This does not guarantee a valid Home Assistant entity ID.
+ * @param {string} entityId
+ * @returns {string}
+ */
+function normalizeEntityIdCandidate(entityId) {
+    if (typeof entityId !== 'string') return '';
+    const trimmed = entityId.trim().toLowerCase();
+    if (!trimmed) return '';
+
+    const dotIndex = trimmed.indexOf('.');
+    if (dotIndex < 0) {
+        return trimmed.replace(/\s+/g, '_');
+    }
+
+    const domain = trimmed.slice(0, dotIndex).replace(/\s+/g, '_');
+    const objectId = trimmed.slice(dotIndex + 1).replace(/\s+/g, '_');
+    return `${domain}.${objectId}`;
+}
+
+/**
+ * Resolve a potentially malformed entity ID to an actual ID present in the current state map.
+ * Returns null when no safe mapping is found.
+ * @param {string} entityId
+ * @param {Object.<string, any>} [states]
+ * @returns {string|null}
+ */
+function resolveEntityId(entityId, states = state.STATES) {
+    if (typeof entityId !== 'string') return null;
+    if (!states || typeof states !== 'object') return null;
+
+    if (Object.prototype.hasOwnProperty.call(states, entityId)) {
+        return entityId;
+    }
+
+    const trimmed = entityId.trim();
+    if (trimmed && Object.prototype.hasOwnProperty.call(states, trimmed)) {
+        return trimmed;
+    }
+
+    const directLower = trimmed.toLowerCase();
+    if (directLower) {
+        const caseInsensitiveMatch = Object.keys(states).find(key => key.toLowerCase() === directLower);
+        if (caseInsensitiveMatch) return caseInsensitiveMatch;
+    }
+
+    const normalized = normalizeEntityIdCandidate(trimmed);
+    if (normalized && Object.prototype.hasOwnProperty.call(states, normalized)) {
+        return normalized;
+    }
+
+    if (normalized) {
+        const normalizedLower = normalized.toLowerCase();
+        const normalizedMatch = Object.keys(states).find(key => key.toLowerCase() === normalizedLower);
+        if (normalizedMatch) return normalizedMatch;
+    }
+
+    return null;
+}
+
+/**
+ * Reconcile entity IDs stored in local config against live Home Assistant states.
+ * IDs are only rewritten when a concrete matching entity exists in `states`.
+ * @param {Object} config
+ * @param {Object.<string, any>} [states]
+ * @returns {{ config: Object, changed: boolean }}
+ */
+function reconcileConfigEntityIds(config, states = state.STATES) {
+    if (!config || typeof config !== 'object' || !states || typeof states !== 'object') {
+        return { config, changed: false };
+    }
+
+    const sameArray = (a, b) =>
+        Array.isArray(a) && Array.isArray(b) &&
+        a.length === b.length &&
+        a.every((value, index) => value === b[index]);
+
+    const remapEntityId = (value) => {
+        if (typeof value !== 'string') return value;
+        return resolveEntityId(value, states) || value;
+    };
+
+    const remapArray = (list, options = {}) => {
+        if (!Array.isArray(list)) return { value: list, changed: false };
+        const specialValues = options.specialValues || null;
+        const dedupe = !!options.dedupe;
+        const seen = new Set();
+        let localChanged = false;
+
+        const next = list.reduce((acc, item) => {
+            const preserveSpecial = typeof item === 'string' && specialValues && specialValues.has(item);
+            const mapped = preserveSpecial ? item : remapEntityId(item);
+            if (mapped !== item) localChanged = true;
+
+            if (dedupe && typeof mapped === 'string') {
+                if (seen.has(mapped)) {
+                    localChanged = true;
+                    return acc;
+                }
+                seen.add(mapped);
+            }
+
+            acc.push(mapped);
+            return acc;
+        }, []);
+
+        if (!localChanged && sameArray(list, next)) {
+            return { value: list, changed: false };
+        }
+        return { value: next, changed: true };
+    };
+
+    const remapObjectKeys = (input) => {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+            return { value: input, changed: false };
+        }
+
+        let localChanged = false;
+        const next = {};
+
+        Object.entries(input).forEach(([key, value]) => {
+            const mappedKey = remapEntityId(key);
+            if (mappedKey !== key) localChanged = true;
+
+            if (Object.prototype.hasOwnProperty.call(next, mappedKey)) {
+                // Prefer exact keys when both malformed and corrected forms exist.
+                if (mappedKey === key) {
+                    next[mappedKey] = value;
+                } else {
+                    localChanged = true;
+                }
+                return;
+            }
+
+            next[mappedKey] = value;
+        });
+
+        return localChanged ? { value: next, changed: true } : { value: input, changed: false };
+    };
+
+    let changed = false;
+    let nextConfig = config;
+    const ensureConfigClone = () => {
+        if (nextConfig === config) nextConfig = { ...config };
+    };
+
+    if (typeof config.primaryMediaPlayer === 'string') {
+        const mapped = remapEntityId(config.primaryMediaPlayer);
+        if (mapped !== config.primaryMediaPlayer) {
+            ensureConfigClone();
+            nextConfig.primaryMediaPlayer = mapped;
+            changed = true;
+        }
+    }
+
+    if (typeof config.selectedWeatherEntity === 'string') {
+        const mapped = remapEntityId(config.selectedWeatherEntity);
+        if (mapped !== config.selectedWeatherEntity) {
+            ensureConfigClone();
+            nextConfig.selectedWeatherEntity = mapped;
+            changed = true;
+        }
+    }
+
+    const favoritesResult = remapArray(config.favoriteEntities, { dedupe: true });
+    if (favoritesResult.changed) {
+        ensureConfigClone();
+        nextConfig.favoriteEntities = favoritesResult.value;
+        changed = true;
+    }
+
+    const primaryCardSpecial = new Set(['weather', 'time', 'none']);
+    const primaryCardsResult = remapArray(config.primaryCards, { specialValues: primaryCardSpecial });
+    if (primaryCardsResult.changed) {
+        ensureConfigClone();
+        nextConfig.primaryCards = primaryCardsResult.value;
+        changed = true;
+    }
+
+    const customNamesResult = remapObjectKeys(config.customEntityNames);
+    if (customNamesResult.changed) {
+        ensureConfigClone();
+        nextConfig.customEntityNames = customNamesResult.value;
+        changed = true;
+    }
+
+    const tileSpansResult = remapObjectKeys(config.tileSpans);
+    if (tileSpansResult.changed) {
+        ensureConfigClone();
+        nextConfig.tileSpans = tileSpansResult.value;
+        changed = true;
+    }
+
+    if (config.globalHotkeys && typeof config.globalHotkeys === 'object') {
+        const hotkeysResult = remapObjectKeys(config.globalHotkeys.hotkeys);
+        if (hotkeysResult.changed) {
+            ensureConfigClone();
+            nextConfig.globalHotkeys = { ...config.globalHotkeys, hotkeys: hotkeysResult.value };
+            changed = true;
+        }
+    }
+
+    if (config.entityAlerts && typeof config.entityAlerts === 'object') {
+        const alertsResult = remapObjectKeys(config.entityAlerts.alerts);
+        if (alertsResult.changed) {
+            ensureConfigClone();
+            nextConfig.entityAlerts = { ...config.entityAlerts, alerts: alertsResult.value };
+            changed = true;
+        }
+    }
+
+    return { config: nextConfig, changed };
+}
+
 export {
     getEntityDisplayName,
     getEntityTypeDescription,
@@ -339,4 +554,6 @@ export {
     getTimerDisplay,
     escapeHtml,
     base64Encode,
+    resolveEntityId,
+    reconcileConfigEntityIds,
 };

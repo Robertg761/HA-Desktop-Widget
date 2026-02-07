@@ -491,6 +491,168 @@ describe('Utils Module', () => {
     });
   });
 
+  describe('resolveEntityId', () => {
+    test('should resolve exact entity IDs', () => {
+      const states = {
+        'light.closet_light': { entity_id: 'light.closet_light' }
+      };
+      expect(utils.resolveEntityId('light.closet_light', states)).toBe('light.closet_light');
+    });
+
+    test('should resolve space-separated IDs to existing underscore IDs', () => {
+      const states = {
+        'light.closet_light': { entity_id: 'light.closet_light' }
+      };
+      expect(utils.resolveEntityId('light.closet light', states)).toBe('light.closet_light');
+    });
+
+    test('should return null when no matching entity exists', () => {
+      const states = {
+        'light.closet_light': { entity_id: 'light.closet_light' }
+      };
+      expect(utils.resolveEntityId('light.nonexistent light', states)).toBeNull();
+    });
+
+    test('should return null for null, undefined, and empty entity IDs', () => {
+      const states = {
+        'light.closet_light': { entity_id: 'light.closet_light' }
+      };
+      expect(utils.resolveEntityId(null, states)).toBeNull();
+      expect(utils.resolveEntityId(undefined, states)).toBeNull();
+      expect(utils.resolveEntityId('', states)).toBeNull();
+    });
+
+    test('should return null when states are null, undefined, or empty', () => {
+      expect(utils.resolveEntityId('light.closet_light', null)).toBeNull();
+      expect(utils.resolveEntityId('light.closet_light', undefined)).toBeNull();
+      expect(utils.resolveEntityId('light.closet_light', {})).toBeNull();
+      expect(utils.resolveEntityId('', null)).toBeNull();
+      expect(utils.resolveEntityId('', undefined)).toBeNull();
+      expect(utils.resolveEntityId('', {})).toBeNull();
+    });
+  });
+
+  describe('reconcileConfigEntityIds', () => {
+    test('should remap config entity IDs to existing HA state IDs', () => {
+      const states = {
+        'light.closet_light': { entity_id: 'light.closet_light' },
+        'switch.kettle': { entity_id: 'switch.kettle' },
+        'weather.home': { entity_id: 'weather.home' },
+        'media_player.living_room': { entity_id: 'media_player.living_room' }
+      };
+      const config = {
+        favoriteEntities: ['light.closet light', 'light.closet_light', 'switch.kettle'],
+        primaryMediaPlayer: 'media_player.living room',
+        selectedWeatherEntity: 'weather.home',
+        primaryCards: ['weather', 'light.closet light'],
+        customEntityNames: { 'light.closet light': 'Closet Light' },
+        tileSpans: { 'light.closet light': 2 },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: {
+            'light.closet light': { hotkey: 'Ctrl+1', action: 'toggle' }
+          }
+        },
+        entityAlerts: {
+          enabled: true,
+          alerts: {
+            'light.closet light': { onStateChange: true }
+          }
+        }
+      };
+
+      const result = utils.reconcileConfigEntityIds(config, states);
+
+      expect(result.changed).toBe(true);
+      expect(result.config.favoriteEntities).toEqual(['light.closet_light', 'switch.kettle']);
+      expect(result.config.primaryMediaPlayer).toBe('media_player.living_room');
+      expect(result.config.primaryCards).toEqual(['weather', 'light.closet_light']);
+      expect(result.config.customEntityNames['light.closet_light']).toBe('Closet Light');
+      expect(result.config.tileSpans['light.closet_light']).toBe(2);
+      expect(result.config.globalHotkeys.hotkeys['light.closet_light']).toEqual({ hotkey: 'Ctrl+1', action: 'toggle' });
+      expect(result.config.entityAlerts.alerts['light.closet_light']).toEqual({ onStateChange: true });
+    });
+
+    test('should not change config when no IDs can be safely remapped', () => {
+      const states = {
+        'light.kitchen': { entity_id: 'light.kitchen' }
+      };
+      const config = {
+        favoriteEntities: ['light.unknown_light']
+      };
+
+      const result = utils.reconcileConfigEntityIds(config, states);
+      expect(result.changed).toBe(false);
+      expect(result.config).toBe(config);
+    });
+
+    test('should not change config with null, undefined, and empty IDs when states are missing', () => {
+      const config = {
+        primaryMediaPlayer: null,
+        selectedWeatherEntity: '',
+        favoriteEntities: [null, undefined, ''],
+        primaryCards: ['weather', null, ''],
+        customEntityNames: {
+          '': 'Empty key'
+        },
+        tileSpans: {
+          '': 2
+        },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: {
+            '': { hotkey: 'Ctrl+1', action: 'toggle' }
+          }
+        },
+        entityAlerts: {
+          enabled: true,
+          alerts: {
+            '': { onStateChange: true }
+          }
+        }
+      };
+
+      [null, undefined, {}].forEach(states => {
+        const result = utils.reconcileConfigEntityIds(config, states);
+        expect(result.changed).toBe(false);
+        expect(result.config).toBe(config);
+        expect(result.config).toEqual(config);
+      });
+    });
+
+    test('should not remap when states are valid but do not contain matching entity IDs', () => {
+      const states = {
+        'light.kitchen': { entity_id: 'light.kitchen' },
+        'switch.fan': { entity_id: 'switch.fan' }
+      };
+      const config = {
+        favoriteEntities: ['light.missing room', '', null],
+        primaryMediaPlayer: 'media_player.missing room',
+        selectedWeatherEntity: 'weather.missing city',
+        primaryCards: ['weather', 'light.missing room'],
+        customEntityNames: { 'light.missing room': 'Missing Light', '': 'Empty key' },
+        tileSpans: { 'light.missing room': 2 },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: {
+            'light.missing room': { hotkey: 'Ctrl+1', action: 'toggle' }
+          }
+        },
+        entityAlerts: {
+          enabled: true,
+          alerts: {
+            'light.missing room': { onStateChange: true }
+          }
+        }
+      };
+
+      const result = utils.reconcileConfigEntityIds(config, states);
+      expect(result.changed).toBe(false);
+      expect(result.config).toBe(config);
+      expect(result.config).toEqual(config);
+    });
+  });
+
   describe('escapeHtml', () => {
     test('should escape < and >', () => {
       expect(utils.escapeHtml('<script>alert("xss")</script>'))

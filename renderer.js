@@ -7,8 +7,25 @@ import * as alerts from './src/alerts.js';
 import * as ui from './src/ui.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
+import * as utils from './src/utils.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
+
+function emitRendererDebug(event, details = {}) {
+  try {
+    if (!window?.electronAPI?.debugLog) return;
+    window.electronAPI.debugLog({
+      scope: 'renderer',
+      event,
+      details: {
+        timestamp: new Date().toISOString(),
+        ...details,
+      },
+    }).catch(() => { });
+  } catch {
+    // no-op: debug logging must never break renderer flow
+  }
+}
 
 // --- Renderer Log Configuration ---
 log.errorHandler.startCatching();
@@ -59,6 +76,12 @@ websocket.on('message', (msg) => {
       getConfigId = configReq.id;
 
       log.debug(`Sent get_config request with ID: ${getConfigId}`);
+      emitRendererDebug('ws.auth_ok', {
+        getStatesId,
+        getServicesId,
+        getAreasId,
+        getConfigId,
+      });
 
       // Prevent unhandled rejections from surfacing as global errors
       statesReq.catch(() => { });
@@ -104,7 +127,38 @@ websocket.on('message', (msg) => {
 
             const mergedStates = { ...newStates, ...preservedFavorites };
             log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites = ${Object.keys(mergedStates).length} total`);
+            emitRendererDebug('ws.get_states.received', {
+              fetchedEntities: Object.keys(newStates).length,
+              preservedFavorites: Object.keys(preservedFavorites),
+              mergedTotal: Object.keys(mergedStates).length,
+              favoriteCount: Array.isArray(state.CONFIG?.favoriteEntities) ? state.CONFIG.favoriteEntities.length : 0,
+            });
             state.setStates(mergedStates);
+
+            const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
+            if (reconciliation.changed) {
+              emitRendererDebug('config.entity_id_reconciliation.changed', {
+                previousFavoriteEntities: state.CONFIG?.favoriteEntities || [],
+                nextFavoriteEntities: reconciliation.config?.favoriteEntities || [],
+                previousPrimaryMediaPlayer: state.CONFIG?.primaryMediaPlayer || null,
+                nextPrimaryMediaPlayer: reconciliation.config?.primaryMediaPlayer || null,
+                previousSelectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
+                nextSelectedWeatherEntity: reconciliation.config?.selectedWeatherEntity || null,
+              });
+              state.setConfig(reconciliation.config);
+              window.electronAPI.updateConfig(reconciliation.config).catch((error) => {
+                log.error('Failed to persist reconciled entity IDs:', error);
+                emitRendererDebug('config.entity_id_reconciliation.persist_error', {
+                  error: error?.message || String(error),
+                });
+              });
+            } else {
+              emitRendererDebug('config.entity_id_reconciliation.no_change', {
+                favoriteEntities: state.CONFIG?.favoriteEntities || [],
+                primaryMediaPlayer: state.CONFIG?.primaryMediaPlayer || null,
+                selectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
+              });
+            }
 
             // This is the correct place to render and hide loading
             ui.renderActiveTab();
@@ -198,7 +252,14 @@ websocket.on('showLoading', (show) => {
 
 // --- IPC Event Handlers ---
 window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
-  const entity = state.STATES[entityId];
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  emitRendererDebug('hotkey.triggered', {
+    entityId,
+    resolvedEntityId,
+    action: action || 'toggle',
+    entityFound: !!state.STATES[resolvedEntityId],
+  });
+  const entity = state.STATES[resolvedEntityId];
   if (entity) {
     // Use the action sent from main.js, fallback to toggle if not provided
     const finalAction = action || 'toggle';
@@ -664,6 +725,7 @@ function wireUI() {
     const widgetContent = document.querySelector('.widget-content');
     if (widgetContent) {
       widgetContent.addEventListener('mousedown', () => {
+        if (document.hasFocus()) return;
         // Request window focus when clicking on content
         window.electronAPI.focusWindow().catch(err => {
           log.error('Failed to focus window:', err);

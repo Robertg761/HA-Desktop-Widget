@@ -111,7 +111,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.executeHotkeyAction(entity, 'toggle');
 
       expect(mockCallService).toHaveBeenCalledWith(
-        'homeassistant',
+        'light',
         'toggle',
         { entity_id: 'light.bedroom' }
       );
@@ -324,7 +324,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.executeHotkeyAction(entity, 'unknown_action');
 
       expect(mockCallService).toHaveBeenCalledWith(
-        'homeassistant',
+        'light',
         'toggle',
         { entity_id: 'light.bedroom' }
       );
