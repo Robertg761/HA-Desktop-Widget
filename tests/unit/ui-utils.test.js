@@ -896,10 +896,85 @@ describe('UI Utilities', () => {
     });
   });
 
+  describe('custom theme utilities', () => {
+    beforeEach(() => {
+      uiUtils.setCustomThemes([]);
+      document.body.innerHTML = '';
+      document.body.dataset.accent = '';
+      document.body.dataset.background = '';
+    });
+
+    it('appends custom themes after built-in themes', () => {
+      uiUtils.setCustomThemes([
+        {
+          id: 'custom-ocean',
+          name: 'Ocean',
+          color: '#336699',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        }
+      ]);
+
+      const themes = uiUtils.getAccentThemes();
+      expect(themes[0].id).toBe('original');
+      expect(themes[themes.length - 1]).toEqual(expect.objectContaining({
+        id: 'custom-ocean',
+        name: 'Ocean',
+        color: '#336699',
+        isCustom: true
+      }));
+    });
+
+    it('filters invalid and duplicate custom colors by normalized hex', () => {
+      uiUtils.setCustomThemes([
+        { id: 'bad', name: 'Invalid', color: '#GGHHII' },
+        { id: 'one', name: 'One', color: '#123456' },
+        { id: 'dup', name: 'Duplicate', color: '#123456' },
+      ]);
+
+      const customThemes = uiUtils.getAccentThemes().filter(theme => theme.isCustom);
+      expect(customThemes).toHaveLength(1);
+      expect(customThemes[0]).toEqual(expect.objectContaining({
+        id: 'one',
+        color: '#123456'
+      }));
+    });
+
+    it('applies a registered custom accent theme', () => {
+      uiUtils.setCustomThemes([
+        { id: 'custom-night', name: 'Night', color: '#224466' },
+      ]);
+
+      uiUtils.applyAccentTheme('custom-night');
+
+      expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#224466');
+      expect(document.body.dataset.accent).toBe('custom-night');
+    });
+
+    it('applies unsaved accent/background preview colors from hex', () => {
+      const accentApplied = uiUtils.applyAccentThemeFromColor('#ABCDEF');
+      const backgroundApplied = uiUtils.applyBackgroundThemeFromColor('#445566');
+
+      expect(accentApplied).toBe(true);
+      expect(backgroundApplied).toBe(true);
+      expect(document.body.dataset.accent).toBe('custom-preview');
+      expect(document.body.dataset.background).toBe('custom-preview');
+      expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#ABCDEF');
+      expect(document.body.style.getPropertyValue('--frosted-bg-rgb')).toMatch(/\d+,\s\d+,\s\d+/);
+    });
+  });
+
   describe('Module exports', () => {
     it('should export all required functions', () => {
       expect(typeof uiUtils.showToast).toBe('function');
       expect(typeof uiUtils.applyTheme).toBe('function');
+      expect(typeof uiUtils.setCustomThemes).toBe('function');
+      expect(typeof uiUtils.applyAccentTheme).toBe('function');
+      expect(typeof uiUtils.applyAccentThemeFromColor).toBe('function');
+      expect(typeof uiUtils.applyBackgroundTheme).toBe('function');
+      expect(typeof uiUtils.applyBackgroundThemeFromColor).toBe('function');
+      expect(typeof uiUtils.getAccentThemes).toBe('function');
+      expect(typeof uiUtils.getBackgroundThemes).toBe('function');
       expect(typeof uiUtils.applyUiPreferences).toBe('function');
       expect(typeof uiUtils.trapFocus).toBe('function');
       expect(typeof uiUtils.releaseFocusTrap).toBe('function');

@@ -3,6 +3,7 @@ const focusTrapHandlers = new WeakMap();
 let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
+const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
   { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
@@ -15,10 +16,11 @@ const ACCENT_THEMES = [
   { id: 'aqua', name: 'Aqua', color: '#22d3ee', description: 'Light and airy' },
   { id: 'slate', name: 'Slate', color: '#94a3b8', description: 'Neutral and understated' },
 ];
-const ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
+const BUILTIN_ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
   acc[theme.id] = theme;
   return acc;
 }, {});
+let CUSTOM_THEMES = [];
 
 const BACKGROUND_BASES = {
   dark: {
@@ -64,6 +66,7 @@ function hexToRgb(hex) {
   if (!hex || typeof hex !== 'string') return null;
   const normalized = hex.replace('#', '').trim();
   if (![3, 6].includes(normalized.length)) return null;
+  if (!/^[0-9a-fA-F]+$/.test(normalized)) return null;
   const value = normalized.length === 3
     ? normalized.split('').map(ch => ch + ch).join('')
     : normalized;
@@ -92,17 +95,118 @@ function mixRgb(base, mixin, amount) {
 }
 
 /**
+ * Normalize a hex color string into uppercase 6-digit form (e.g. `#AABBCC`).
+ * @param {string} hex - Candidate color string.
+ * @returns {string|null} Normalized hex value or null when invalid.
+ */
+function normalizeHexColor(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const trimmed = hex.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
+  const sixDigit = normalized.length === 3
+    ? normalized.split('').map(ch => ch + ch).join('')
+    : normalized;
+  return `#${sixDigit.toUpperCase()}`;
+}
+
+/**
+ * Convert a color theme to include its RGB string representation.
+ * @param {Object} theme - Theme object containing a `color` field.
+ * @returns {Object} Theme with `rgb` field added.
+ */
+function toThemeWithRgb(theme) {
+  const normalizedColor = normalizeHexColor(theme?.color);
+  const rgb = hexToRgb(normalizedColor);
+  return {
+    ...theme,
+    color: normalizedColor || theme?.color,
+    rgb: rgb ? `${rgb.r}, ${rgb.g}, ${rgb.b}` : null,
+  };
+}
+
+/**
+ * Get all theme definitions in render order: built-ins first, then custom themes.
+ * @returns {Array<Object>} Combined theme list.
+ */
+function getAllThemes() {
+  return [...ACCENT_THEMES, ...CUSTOM_THEMES];
+}
+
+/**
+ * Build a map of all theme IDs to theme definitions.
+ * @returns {Object<string, Object>} Theme map keyed by ID.
+ */
+function getThemeMap() {
+  return getAllThemes().reduce((acc, theme) => {
+    acc[theme.id] = theme;
+    return acc;
+  }, {});
+}
+
+/**
+ * Register runtime custom themes from persisted user config.
+ * @param {Array<{id?: string, name?: string, color?: string, createdAt?: string, updatedAt?: string}>} customColors - Stored custom color entries.
+ */
+function setCustomThemes(customColors = []) {
+  if (!Array.isArray(customColors)) {
+    CUSTOM_THEMES = [];
+    return;
+  }
+
+  const seenThemeIds = new Set(Object.keys(BUILTIN_ACCENT_THEME_MAP));
+  const seenColors = new Set();
+  const nowIso = new Date().toISOString();
+  const nextCustomThemes = [];
+
+  customColors.forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object') return;
+    const color = normalizeHexColor(entry.color);
+    if (!color || seenColors.has(color)) return;
+
+    const providedId = typeof entry.id === 'string' ? entry.id.trim() : '';
+    let id = providedId;
+    if (!id || seenThemeIds.has(id)) {
+      id = `${CUSTOM_THEME_ID_PREFIX}${color.slice(1).toLowerCase()}`;
+    }
+    while (seenThemeIds.has(id)) {
+      id = `${CUSTOM_THEME_ID_PREFIX}${color.slice(1).toLowerCase()}-${index + 1}`;
+    }
+
+    const name = (typeof entry.name === 'string' && entry.name.trim())
+      ? entry.name.trim()
+      : `Custom ${color}`;
+    const createdAt = (typeof entry.createdAt === 'string' && entry.createdAt.trim())
+      ? entry.createdAt
+      : nowIso;
+    const updatedAt = (typeof entry.updatedAt === 'string' && entry.updatedAt.trim())
+      ? entry.updatedAt
+      : createdAt;
+
+    nextCustomThemes.push({
+      id,
+      name,
+      color,
+      description: 'Saved custom color',
+      isCustom: true,
+      createdAt,
+      updatedAt,
+    });
+
+    seenThemeIds.add(id);
+    seenColors.add(color);
+  });
+
+  CUSTOM_THEMES = nextCustomThemes;
+}
+
+/**
  * Produce the list of accent themes augmented with an `rgb` string when the theme color is a valid hex.
  * @returns {Array<{id: string, name: string, color: string, description?: string, rgb: string|null}>} An array of accent theme objects; each includes original theme properties and an `rgb` string in the form `"r, g, b"` when `color` could be parsed, or `null` otherwise.
  */
 function getAccentThemes() {
-  return ACCENT_THEMES.map(theme => {
-    const rgb = hexToRgb(theme.color);
-    return {
-      ...theme,
-      rgb: rgb ? `${rgb.r}, ${rgb.g}, ${rgb.b}` : null,
-    };
-  });
+  return getAllThemes().map(toThemeWithRgb);
 }
 
 /**
@@ -123,9 +227,11 @@ function getBackgroundThemes() {
  * @returns {string} The resolved accent theme id: `accentKey` if it exists in the map; if `accentKey` is `'sky'` and `'original'` exists, returns `'original'`; otherwise returns `'original'` if available, or the first defined theme id, or `'original'` as a final fallback.
  */
 function resolveAccentThemeId(accentKey) {
-  if (accentKey && ACCENT_THEME_MAP[accentKey]) return accentKey;
-  if (accentKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
-  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'original');
+  const themeMap = getThemeMap();
+  const allThemes = getAllThemes();
+  if (accentKey && themeMap[accentKey]) return accentKey;
+  if (accentKey === 'sky' && themeMap.original) return 'original';
+  return themeMap.original ? 'original' : (allThemes[0]?.id || 'original');
 }
 
 /**
@@ -135,9 +241,43 @@ function resolveAccentThemeId(accentKey) {
  * @returns {string} The resolved theme id: the provided key if it exists in ACCENT_THEME_MAP; if the key is `'sky'` and `'original'` exists, `'original'` is returned; otherwise `'original'` if available, or the first accent theme id, or `'original'` as a final fallback.
  */
 function resolveBackgroundThemeId(backgroundKey) {
-  if (backgroundKey && ACCENT_THEME_MAP[backgroundKey]) return backgroundKey;
-  if (backgroundKey === 'sky' && ACCENT_THEME_MAP.original) return 'original';
-  return ACCENT_THEME_MAP.original ? 'original' : (ACCENT_THEMES[0]?.id || 'original');
+  const themeMap = getThemeMap();
+  const allThemes = getAllThemes();
+  if (backgroundKey && themeMap[backgroundKey]) return backgroundKey;
+  if (backgroundKey === 'sky' && themeMap.original) return 'original';
+  return themeMap.original ? 'original' : (allThemes[0]?.id || 'original');
+}
+
+function applyAccentColor(color, accentId = 'custom-preview') {
+  const normalizedColor = normalizeHexColor(color);
+  const rgb = hexToRgb(normalizedColor);
+  if (!normalizedColor || !rgb) return false;
+
+  const root = document.documentElement;
+  if (!root) return false;
+
+  const isLightTheme = document.body?.classList.contains('theme-light');
+  const hoverMix = isLightTheme ? 0.18 : 0.22;
+  const hoverRgb = mixRgb(rgb, isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 }, hoverMix);
+  const accentBgAlpha = isLightTheme ? 0.12 : 0.18;
+  const glowAlpha = isLightTheme ? 0.22 : 0.35;
+  const focusAlpha = isLightTheme ? 0.18 : 0.25;
+
+  root.style.setProperty('--accent', normalizedColor);
+  root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+  root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+  root.style.setProperty('--primary', normalizedColor);
+  root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+  root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
+  root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
+  root.style.setProperty('--glow-accent', `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`);
+  root.style.setProperty('--glow-focus', `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${focusAlpha})`);
+
+  if (document.body) {
+    document.body.dataset.accent = accentId;
+  }
+
+  return true;
 }
 
 /**
@@ -149,38 +289,81 @@ function resolveBackgroundThemeId(backgroundKey) {
 function applyAccentTheme(accentKey) {
   try {
     const resolvedKey = resolveAccentThemeId(accentKey);
-    const theme = ACCENT_THEME_MAP[resolvedKey];
+    const theme = getThemeMap()[resolvedKey];
     if (!theme) return;
-
-    const rgb = hexToRgb(theme.color);
-    if (!rgb) return;
-
-    const root = document.documentElement;
-    if (!root) return;
-
-    const isLightTheme = document.body?.classList.contains('theme-light');
-    const hoverMix = isLightTheme ? 0.18 : 0.22;
-    const hoverRgb = mixRgb(rgb, isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 }, hoverMix);
-    const accentBgAlpha = isLightTheme ? 0.12 : 0.18;
-    const glowAlpha = isLightTheme ? 0.22 : 0.35;
-    const focusAlpha = isLightTheme ? 0.18 : 0.25;
-
-    root.style.setProperty('--accent', theme.color);
-    root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
-    root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
-    root.style.setProperty('--primary', theme.color);
-    root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
-    root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
-    root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
-    root.style.setProperty('--glow-accent', `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`);
-    root.style.setProperty('--glow-focus', `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${focusAlpha})`);
-
-    if (document.body) {
-      document.body.dataset.accent = resolvedKey;
-    }
+    applyAccentColor(theme.color, resolvedKey);
   } catch (error) {
     console.error('Error applying accent theme:', error);
   }
+}
+
+/**
+ * Apply an unsaved accent preview color from hex input.
+ * @param {string} hex - Hex color string.
+ * @returns {boolean} True when preview was applied.
+ */
+function applyAccentThemeFromColor(hex) {
+  try {
+    return applyAccentColor(hex, 'custom-preview');
+  } catch (error) {
+    console.error('Error applying accent preview color:', error);
+    return false;
+  }
+}
+
+function applyBackgroundColor(color, backgroundId = 'custom-preview', { disableTint = false } = {}) {
+  const normalizedColor = normalizeHexColor(color);
+  const rgb = hexToRgb(normalizedColor);
+  if (!normalizedColor || !rgb) return false;
+
+  const root = document.documentElement;
+  const body = document.body;
+  if (!root || !body) return false;
+
+  const isLightTheme = body.classList.contains('theme-light');
+  const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
+  const tintAmount = disableTint ? 0 : (isLightTheme ? 0.08 : 0.12);
+  const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
+  const setRgbaVar = (name, baseEntry) => {
+    const tinted = tint(baseEntry);
+    root.style.setProperty(name, `rgba(${tinted.r}, ${tinted.g}, ${tinted.b}, ${baseEntry.a})`);
+    return tinted;
+  };
+
+  const bgColor = setRgbaVar('--bg-color', base.bgColor);
+  const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
+  setRgbaVar('--bg-primary', base.bgPrimary);
+  setRgbaVar('--bg-secondary', base.bgSecondary);
+  const bgTertiary = setRgbaVar('--bg-tertiary', base.bgTertiary);
+  const surface1 = setRgbaVar('--surface-1', base.surface1);
+  setRgbaVar('--surface-2', base.surface2);
+  setRgbaVar('--surface-3', base.surface3);
+  const surfaceHover = setRgbaVar('--surface-hover', base.surfaceHover);
+  const cardBg = setRgbaVar('--card-bg', base.cardBg);
+  const glassSurface = setRgbaVar('--glass-surface', base.glassSurface);
+  const glassElevated = setRgbaVar('--glass-elevated', base.glassElevated);
+  const glassOverlay = setRgbaVar('--glass-overlay', base.glassOverlay);
+
+  const setBodyRgb = (name, value) => {
+    body.style.setProperty(name, `${value.r}, ${value.g}, ${value.b}`);
+  };
+
+  setBodyRgb('--frosted-bg-rgb', bgColor);
+  setBodyRgb('--frosted-elevated-rgb', bgElevated);
+  setBodyRgb('--frosted-tertiary-rgb', bgTertiary);
+  setBodyRgb('--frosted-surface-rgb', surface1);
+  setBodyRgb('--frosted-surface-hover-rgb', surfaceHover);
+  setBodyRgb('--frosted-card-rgb', cardBg);
+  setBodyRgb('--frosted-glass-rgb', glassSurface);
+  setBodyRgb('--frosted-glass-elevated-rgb', glassElevated);
+  setBodyRgb('--frosted-glass-overlay-rgb', glassOverlay);
+
+  const loadingOverlay = tint(base.loadingOverlay);
+  setBodyRgb('--loading-overlay-rgb', loadingOverlay);
+
+  body.dataset.background = backgroundId;
+
+  return true;
 }
 
 /**
@@ -197,60 +380,25 @@ function applyAccentTheme(accentKey) {
 function applyBackgroundTheme(backgroundKey) {
   try {
     const resolvedKey = resolveBackgroundThemeId(backgroundKey);
-    const theme = ACCENT_THEME_MAP[resolvedKey];
+    const theme = getThemeMap()[resolvedKey];
     if (!theme) return;
-
-    const rgb = hexToRgb(theme.color);
-    if (!rgb) return;
-
-    const root = document.documentElement;
-    const body = document.body;
-    if (!root || !body) return;
-
-    const isLightTheme = body.classList.contains('theme-light');
-    const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
-    const tintAmount = resolvedKey === 'original' ? 0 : (isLightTheme ? 0.08 : 0.12);
-    const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
-    const setRgbaVar = (name, baseEntry) => {
-      const tinted = tint(baseEntry);
-      root.style.setProperty(name, `rgba(${tinted.r}, ${tinted.g}, ${tinted.b}, ${baseEntry.a})`);
-      return tinted;
-    };
-
-    const bgColor = setRgbaVar('--bg-color', base.bgColor);
-    const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
-    setRgbaVar('--bg-primary', base.bgPrimary);
-    setRgbaVar('--bg-secondary', base.bgSecondary);
-    const bgTertiary = setRgbaVar('--bg-tertiary', base.bgTertiary);
-    const surface1 = setRgbaVar('--surface-1', base.surface1);
-    setRgbaVar('--surface-2', base.surface2);
-    setRgbaVar('--surface-3', base.surface3);
-    const surfaceHover = setRgbaVar('--surface-hover', base.surfaceHover);
-    const cardBg = setRgbaVar('--card-bg', base.cardBg);
-    const glassSurface = setRgbaVar('--glass-surface', base.glassSurface);
-    const glassElevated = setRgbaVar('--glass-elevated', base.glassElevated);
-    const glassOverlay = setRgbaVar('--glass-overlay', base.glassOverlay);
-
-    const setBodyRgb = (name, value) => {
-      body.style.setProperty(name, `${value.r}, ${value.g}, ${value.b}`);
-    };
-
-    setBodyRgb('--frosted-bg-rgb', bgColor);
-    setBodyRgb('--frosted-elevated-rgb', bgElevated);
-    setBodyRgb('--frosted-tertiary-rgb', bgTertiary);
-    setBodyRgb('--frosted-surface-rgb', surface1);
-    setBodyRgb('--frosted-surface-hover-rgb', surfaceHover);
-    setBodyRgb('--frosted-card-rgb', cardBg);
-    setBodyRgb('--frosted-glass-rgb', glassSurface);
-    setBodyRgb('--frosted-glass-elevated-rgb', glassElevated);
-    setBodyRgb('--frosted-glass-overlay-rgb', glassOverlay);
-
-    const loadingOverlay = tint(base.loadingOverlay);
-    setBodyRgb('--loading-overlay-rgb', loadingOverlay);
-
-    body.dataset.background = resolvedKey;
+    applyBackgroundColor(theme.color, resolvedKey, { disableTint: resolvedKey === 'original' });
   } catch (error) {
     console.error('Error applying background theme:', error);
+  }
+}
+
+/**
+ * Apply an unsaved background preview color from hex input.
+ * @param {string} hex - Hex color string.
+ * @returns {boolean} True when preview was applied.
+ */
+function applyBackgroundThemeFromColor(hex) {
+  try {
+    return applyBackgroundColor(hex, 'custom-preview');
+  } catch (error) {
+    console.error('Error applying background preview color:', error);
+    return false;
   }
 }
 
@@ -563,8 +711,11 @@ function showConfirm(title, message, options = {}) {
 export {
   showToast,
   applyTheme,
+  setCustomThemes,
   applyAccentTheme,
+  applyAccentThemeFromColor,
   applyBackgroundTheme,
+  applyBackgroundThemeFromColor,
   getAccentThemes,
   getBackgroundThemes,
   applyUiPreferences,

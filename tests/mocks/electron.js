@@ -35,6 +35,7 @@ let mockConfig = {
     highContrast: false,
     opaquePanels: false,
     density: 'comfortable',
+    customColors: [],
     personalizationSectionsCollapsed: {}
   },
   customTabs: []
@@ -176,6 +177,7 @@ function resetMockElectronAPI() {
       highContrast: false,
       opaquePanels: false,
       density: 'comfortable',
+      customColors: [],
       personalizationSectionsCollapsed: {}
     },
     customTabs: []

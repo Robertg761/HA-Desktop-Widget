@@ -187,6 +187,31 @@
                                 <div class="form-help" id="theme-current-selection"></div>
                                 <div class="form-help">Selections preview instantly and save when you click Save.</div>
                             </div>
+                            <div class="form-group custom-color-editor">
+                                <label for="custom-color-picker">Custom Color</label>
+                                <div class="custom-color-editor-grid">
+                                    <input id="custom-color-picker" type="color" value="#64B5F6" aria-label="Color picker">
+                                    <input id="custom-color-r" type="number" min="0" max="255" step="1" placeholder="R"
+                                        inputmode="numeric" aria-label="Red channel">
+                                    <input id="custom-color-g" type="number" min="0" max="255" step="1" placeholder="G"
+                                        inputmode="numeric" aria-label="Green channel">
+                                    <input id="custom-color-b" type="number" min="0" max="255" step="1" placeholder="B"
+                                        inputmode="numeric" aria-label="Blue channel">
+                                    <input id="custom-color-hex" type="text" maxlength="7" placeholder="#RRGGBB"
+                                        aria-label="Hex color">
+                                    <button type="button" id="save-custom-color-btn" class="btn btn-secondary">Save Custom Color</button>
+                                </div>
+                                <div class="form-help">Edit color freely, preview live, then save it to your reusable palette.</div>
+                            </div>
+                            <div class="form-group custom-theme-management hidden" id="custom-theme-management">
+                                <label for="custom-color-name-input">Selected Custom Color</label>
+                                <div class="custom-theme-management-row">
+                                    <input id="custom-color-name-input" type="text" maxlength="48"
+                                        placeholder="Custom color name" aria-label="Custom color name">
+                                    <button type="button" id="rename-custom-color-btn" class="btn btn-secondary">Rename</button>
+                                    <button type="button" id="remove-custom-color-btn" class="btn btn-danger">Remove</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="personalization-section collapsed" id="window-effects-section">
