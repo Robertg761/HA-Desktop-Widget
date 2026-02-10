@@ -3857,31 +3857,74 @@ body {
 .btn-primary {
   background: var(--accent);
   color: #000;
-  border-color: var(--accent);
+  border-color: transparent;
   font-weight: var(--font-weight-semibold);
-  box-shadow: var(--shadow-md),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2),
-              0 0 0 0 rgba(var(--accent-rgb), 0);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: all 0.2s ease;
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: var(--shadow-lg),
-              inset 0 1px 0 rgba(255, 255, 255, 0.3),
-              var(--glow-accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
 }
 
 .btn-secondary {
-  background: transparent;
-  color: var(--text-secondary);
-  border-color: var(--border-color);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  box-shadow: none;
 }
 
 .btn-secondary:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.btn-secondary:not([id*="cancel"]):not([id*="close"]):not([id*="reset"]) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:not([id*="cancel"]):not([id*="close"]):not([id*="reset"]):active {
+  transform: scale(0.98);
+}
+
+/* Explicitly keep key accent actions on the same visual recipe. */
+#save-settings.btn-primary,
+#save-custom-color-btn.btn-primary {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition: all 0.2s ease;
+}
+
+/* Neutral actions keep lower emphasis even with accent-forward button styling */
+.btn-secondary[id*="cancel"],
+.btn-secondary[id*="close"],
+.btn-secondary[id*="reset"] {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.btn-secondary[id*="cancel"]:hover,
+.btn-secondary[id*="close"]:hover,
+.btn-secondary[id*="reset"]:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Update section styles (from previous implementation) */
@@ -4419,11 +4462,11 @@ body {
 
 .rename-modal .btn-primary {
   background: var(--accent);
-    color: white;
+  color: #000;
 }
 
 .rename-modal .btn-primary:hover {
-  background: #1565c0;
+  background: var(--accent-hover);
   transform: translateY(-1px);
 }
 
@@ -5248,9 +5291,9 @@ body {
     width: 24px;
     height: 24px;
     flex-shrink: 0;
-    border: none;
-    background: transparent;
-    color: var(--muted-text);
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--accent);
     border-radius: 4px;
     cursor: pointer;
     font-size: 16px;
@@ -5262,8 +5305,9 @@ body {
 }
 
 .btn-clear-hotkey:hover {
-    background: var(--surface-3);
-    color: var(--danger);
+    background: rgba(var(--accent-rgb), 0.18);
+    color: var(--accent-hover);
+    border-color: var(--accent);
     transform: scale(1.1);
 }
 
