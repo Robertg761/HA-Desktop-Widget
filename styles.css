@@ -3576,14 +3576,27 @@ body {
 
 .custom-color-editor-grid {
   display: grid;
-  grid-template-columns: 56px repeat(3, minmax(56px, 1fr)) minmax(110px, 1fr) auto;
+  grid-template-columns: minmax(84px, 0.9fr) repeat(3, minmax(78px, 0.8fr)) minmax(120px, 1fr) auto;
   gap: var(--space-2);
-  align-items: center;
+  align-items: end;
   margin-top: var(--space-3);
 }
 
+.custom-color-field,
+.custom-color-action {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-color-field-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
 #custom-color-picker {
-  width: 56px;
+  width: 100%;
   height: 40px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -3640,8 +3653,8 @@ body {
     grid-template-columns: repeat(2, minmax(110px, 1fr));
   }
 
-  #custom-color-picker {
-    width: 100%;
+  .custom-color-action {
+    grid-column: 1 / -1;
   }
 
   .custom-theme-management-row {
