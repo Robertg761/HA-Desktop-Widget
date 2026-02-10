@@ -3552,10 +3552,12 @@ body {
 .theme-tooltip-name {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   letter-spacing: 0.01em;
+  text-align: center;
 }
 
 .theme-tooltip-name::before {
