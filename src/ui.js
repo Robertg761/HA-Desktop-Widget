@@ -1169,21 +1169,64 @@ function _setupMediaTextAutoFit(div) {
   } catch { /* noop */ }
 }
 
+function parseMediaSeconds(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const numericValue = Number(trimmed);
+  if (!isNaN(numericValue) && numericValue >= 0) {
+    return numericValue;
+  }
+
+  const parts = trimmed.split(':');
+  if (parts.length < 2 || parts.length > 3) return null;
+  if (!parts.every(part => /^\d+$/.test(part))) return null;
+
+  const [hours, minutes, seconds] = parts.length === 3
+    ? [Number(parts[0]), Number(parts[1]), Number(parts[2])]
+    : [0, Number(parts[0]), Number(parts[1])];
+
+  if (minutes > 59 || seconds > 59) return null;
+
+  return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+function getMediaTimeline(entity) {
+  const duration = parseMediaSeconds(entity?.attributes?.media_duration) ?? 0;
+  const basePosition = parseMediaSeconds(entity?.attributes?.media_position) ?? 0;
+
+  const updatedAtRaw = entity?.attributes?.media_position_updated_at;
+  const updatedAtValue = updatedAtRaw ? new Date(updatedAtRaw).getTime() : 0;
+  const updatedAt = Number.isFinite(updatedAtValue) ? updatedAtValue : 0;
+
+  let currentPosition = basePosition;
+  if (entity?.state === 'playing' && updatedAt > 0) {
+    const elapsedSinceUpdate = Math.max(0, (Date.now() - updatedAt) / 1000);
+    currentPosition = basePosition + elapsedSinceUpdate;
+  }
+
+  if (duration > 0) {
+    currentPosition = Math.min(currentPosition, duration);
+  }
+
+  return {
+    duration,
+    currentPosition: Math.max(0, currentPosition),
+  };
+}
+
 function showMediaDetail(entity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
-
-    // Validate numeric attributes to prevent NaN
-    const durationValue = Number(entity.attributes?.media_duration);
-    const duration = (!isNaN(durationValue) && durationValue >= 0) ? durationValue : 0;
-
-    const basePosValue = Number(entity.attributes?.media_position);
-    const basePos = (!isNaN(basePosValue) && basePosValue >= 0) ? basePosValue : 0;
-
-    const updatedAtValue = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
-    const updatedAt = !isNaN(updatedAtValue) ? updatedAtValue : 0;
+    const initialTimeline = getMediaTimeline(entity);
 
     const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
 
@@ -1202,8 +1245,8 @@ function showMediaDetail(entity) {
           </div>
           <div class="media-progress">
             <div class="media-time-row">
-              <span id="media-current">${fmt(basePos)}</span>
-              <span id="media-total">${duration ? fmt(duration) : '--:--'}</span>
+              <span id="media-current">${fmt(initialTimeline.currentPosition)}</span>
+              <span id="media-total">${initialTimeline.duration ? fmt(initialTimeline.duration) : '--:--'}</span>
             </div>
             <div class="media-progress-track">
               <div class="media-progress-fill" id="media-progress-fill" style="width: 0%"></div>
@@ -1242,25 +1285,23 @@ function showMediaDetail(entity) {
     const curEl = modal.querySelector('#media-current');
     const totalEl = modal.querySelector('#media-total');
 
-    const getLivePos = () => {
-      if (entity.state !== 'playing') return basePos;
-      if (!updatedAt) return basePos;
-      const delta = (Date.now() - updatedAt) / 1000;
-      let p = basePos + delta;
-      if (duration) p = Math.min(p, duration);
-      return p;
+    const getLiveTimeline = () => {
+      const currentEntity = state.STATES[entity.entity_id] || entity;
+      return getMediaTimeline(currentEntity);
     };
 
     let tick;
     const startTick = () => {
       if (tick) clearInterval(tick);
       tick = setInterval(() => {
-        let p = getLivePos();
-        if (duration) p = Math.min(p, duration);
-        curEl.textContent = fmt(p);
-        if (progressFill && duration > 0) {
-          const pct = Math.max(0, Math.min(100, (p / duration) * 100));
+        const timeline = getLiveTimeline();
+        curEl.textContent = fmt(timeline.currentPosition);
+        if (totalEl) totalEl.textContent = timeline.duration ? fmt(timeline.duration) : '--:--';
+        if (progressFill && timeline.duration > 0) {
+          const pct = Math.max(0, Math.min(100, (timeline.currentPosition / timeline.duration) * 100));
           progressFill.style.width = pct + '%';
+        } else if (progressFill) {
+          progressFill.style.width = '0%';
         }
       }, 1000);
     };
@@ -1314,7 +1355,14 @@ function showMediaDetail(entity) {
     modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
     // Init
-    if (totalEl && duration) totalEl.textContent = fmt(duration);
+    if (curEl) curEl.textContent = fmt(initialTimeline.currentPosition);
+    if (totalEl) totalEl.textContent = initialTimeline.duration ? fmt(initialTimeline.duration) : '--:--';
+    if (progressFill && initialTimeline.duration > 0) {
+      const pct = Math.max(0, Math.min(100, (initialTimeline.currentPosition / initialTimeline.duration) * 100));
+      progressFill.style.width = pct + '%';
+    } else if (progressFill) {
+      progressFill.style.width = '0%';
+    }
     startTick();
 
     // Animate in
@@ -1884,23 +1932,7 @@ function updateMediaSeekBar(entity) {
     const seekFill = document.getElementById('media-tile-seek-fill');
     const timeCurrent = document.getElementById('media-tile-time-current');
     const timeTotal = document.getElementById('media-tile-time-total');
-
-    // Validate numeric attributes to prevent NaN
-    const durationValue = Number(entity.attributes?.media_duration);
-    const duration = (!isNaN(durationValue) && durationValue >= 0) ? durationValue : 0;
-
-    const basePosValue = Number(entity.attributes?.media_position);
-    const basePosition = (!isNaN(basePosValue) && basePosValue >= 0) ? basePosValue : 0;
-
-    const updatedAtValue = entity.attributes?.media_position_updated_at ? new Date(entity.attributes.media_position_updated_at).getTime() : 0;
-    const updatedAt = !isNaN(updatedAtValue) ? updatedAtValue : 0;
-
-    // Calculate current position (accounting for playback if playing)
-    let currentPosition = basePosition;
-    if (entity.state === 'playing' && updatedAt) {
-      const elapsedSinceUpdate = (Date.now() - updatedAt) / 1000;
-      currentPosition = Math.min(basePosition + elapsedSinceUpdate, duration);
-    }
+    const { duration, currentPosition } = getMediaTimeline(entity);
 
     // Format time as mm:ss or h:mm:ss when hours are present
     const formatTime = (seconds) => {

@@ -683,6 +683,75 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         ui.updateMediaSeekBar(entity);
       }).not.toThrow();
     });
+
+    it('should keep advancing current time when duration is unavailable', () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+      try {
+        const entity = {
+          entity_id: 'media_player.spotify',
+          state: 'playing',
+          attributes: {
+            media_position: 60,
+            media_position_updated_at: '2023-11-14T22:13:10.000Z'
+          }
+        };
+
+        ui.updateMediaSeekBar(entity);
+
+        const currentTime = document.getElementById('media-tile-time-current');
+        const totalTime = document.getElementById('media-tile-time-total');
+        const seekFill = document.getElementById('media-tile-seek-fill');
+        expect(currentTime.textContent).toBe('1:10');
+        expect(totalTime.textContent).toBe('0:00');
+        expect(seekFill.style.width).toBe('0%');
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
+    it('should ignore future media_position_updated_at timestamps', () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+      try {
+        const entity = {
+          entity_id: 'media_player.spotify',
+          state: 'playing',
+          attributes: {
+            media_position: 90,
+            media_duration: 300,
+            media_position_updated_at: '2023-11-14T22:13:30.000Z'
+          }
+        };
+
+        ui.updateMediaSeekBar(entity);
+
+        const currentTime = document.getElementById('media-tile-time-current');
+        const seekFill = document.getElementById('media-tile-seek-fill');
+        expect(currentTime.textContent).toBe('1:30');
+        expect(parseFloat(seekFill.style.width)).toBeCloseTo(30, 5);
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
+    it('should parse time-formatted position and duration values', () => {
+      const entity = {
+        entity_id: 'media_player.spotify',
+        state: 'playing',
+        attributes: {
+          media_position: '0:02:05',
+          media_duration: '1:05:00'
+        }
+      };
+
+      ui.updateMediaSeekBar(entity);
+
+      const currentTime = document.getElementById('media-tile-time-current');
+      const totalTime = document.getElementById('media-tile-time-total');
+      const seekFill = document.getElementById('media-tile-seek-fill');
+      expect(currentTime.textContent).toBe('2:05');
+      expect(totalTime.textContent).toBe('1:05:00');
+      expect(parseFloat(seekFill.style.width)).toBeCloseTo(3.205, 2);
+    });
   });
 
   // ==============================================================================
