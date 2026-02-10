@@ -43,6 +43,7 @@ jest.mock('../../src/websocket.js', () => ({
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
+const { sampleConfig, sampleStates } = require('../fixtures/ha-data.js');
 
 describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   beforeEach(() => {
@@ -604,6 +605,26 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('updateMediaSeekBar', () => {
+    const createMediaEntityFromFixture = (attributeOverrides = {}, options = {}) => {
+      const entityId = sampleConfig.primaryMediaPlayer || 'media_player.spotify';
+      const baseEntity = sampleStates[entityId] || sampleStates['media_player.spotify'];
+      const baseAttributes = { ...(baseEntity.attributes || {}) };
+
+      // Keep edge-case expectations deterministic by avoiding elapsed-time adjustment.
+      delete baseAttributes.media_position_updated_at;
+
+      return {
+        ...baseEntity,
+        state: options.state || 'paused',
+        attributes: options.withoutAttributes
+          ? undefined
+          : {
+            ...baseAttributes,
+            ...attributeOverrides
+          }
+      };
+    };
+
     it('should calculate progress percentage', () => {
       const entity = {
         entity_id: 'media_player.spotify',
@@ -682,6 +703,43 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(() => {
         ui.updateMediaSeekBar(entity);
       }).not.toThrow();
+    });
+
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+      ['empty string', '']
+    ])('should handle %s media position/duration values from fixture entities', (_label, value) => {
+      const entity = createMediaEntityFromFixture({
+        media_position: value,
+        media_duration: value
+      });
+
+      expect(() => {
+        ui.updateMediaSeekBar(entity);
+      }).not.toThrow();
+
+      const currentTime = document.getElementById('media-tile-time-current');
+      const totalTime = document.getElementById('media-tile-time-total');
+      const seekFill = document.getElementById('media-tile-seek-fill');
+      expect(currentTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('0:00');
+      expect(seekFill.style.width).toBe('0%');
+    });
+
+    it('should handle missing media attributes object from fixture entities', () => {
+      const entity = createMediaEntityFromFixture({}, { withoutAttributes: true });
+
+      expect(() => {
+        ui.updateMediaSeekBar(entity);
+      }).not.toThrow();
+
+      const currentTime = document.getElementById('media-tile-time-current');
+      const totalTime = document.getElementById('media-tile-time-total');
+      const seekFill = document.getElementById('media-tile-seek-fill');
+      expect(currentTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('0:00');
+      expect(seekFill.style.width).toBe('0%');
     });
 
     it('should keep advancing current time when duration is unavailable', () => {
