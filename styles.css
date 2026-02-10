@@ -678,7 +678,7 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: var(--transition-base);
-  color: var(--text-secondary);
+  color: var(--accent);
   font-size: 22px;
   padding: 0;
   outline: none;
@@ -691,7 +691,7 @@ body {
 }
 
 .media-tile-btn:hover {
-  color: var(--accent);
+  color: var(--accent-hover);
   transform: scale(1.2);
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
 }
@@ -4573,13 +4573,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--accent);
   font-size: 22px;
   outline: none;
 }
 
 .media-btn:hover {
-  color: var(--accent);
+  color: var(--accent-hover);
   transform: scale(1.2);
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
 }
@@ -4836,7 +4836,7 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: var(--transition-base);
-  color: var(--text-secondary);
+  color: var(--accent);
   font-size: 22px;
   line-height: 1;
   padding: 0 !important;
@@ -4850,7 +4850,7 @@ body {
 }
 
 .media-detail-controls .btn:hover {
-  color: var(--accent);
+  color: var(--accent-hover);
   transform: scale(1.2);
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
   background: transparent !important;
