@@ -606,8 +606,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
   describe('updateMediaSeekBar', () => {
     const createMediaEntityFromFixture = (attributeOverrides = {}, options = {}) => {
-      const entityId = sampleConfig.primaryMediaPlayer || 'media_player.spotify';
-      const baseEntity = sampleStates[entityId] || sampleStates['media_player.spotify'];
+      const fallbackEntityId = sampleConfig.primaryMediaPlayer || 'media_player.spotify';
+      const selectedEntityId = options.entity_id || options.entityId || fallbackEntityId;
+      const baseEntity = sampleStates[selectedEntityId] || sampleStates[fallbackEntityId] || sampleStates['media_player.spotify'];
       const baseAttributes = { ...(baseEntity.attributes || {}) };
 
       // Keep edge-case expectations deterministic by avoiding elapsed-time adjustment.
@@ -615,6 +616,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       return {
         ...baseEntity,
+        entity_id: options.entity_id || options.entityId || baseEntity.entity_id,
         state: options.state || 'paused',
         attributes: options.withoutAttributes
           ? undefined
@@ -715,14 +717,16 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     ])(
       'should fallback to zeroed timeline when position/duration are %s',
       (_label, mediaPosition, mediaDuration) => {
-        const entity = {
-          entity_id: 'media_player.spotify',
-          state: 'playing',
-          attributes: {
+        const entity = createMediaEntityFromFixture(
+          {
             media_position: mediaPosition,
             media_duration: mediaDuration
+          },
+          {
+            entity_id: 'media_player.spotify',
+            state: 'playing'
           }
-        };
+        );
 
         ui.updateMediaSeekBar(entity);
 
@@ -783,14 +787,16 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     ])(
       'should show parsed current time and zero total when duration is %s',
       (_label, mediaDuration) => {
-        const entity = {
-          entity_id: 'media_player.spotify',
-          state: 'playing',
-          attributes: {
+        const entity = createMediaEntityFromFixture(
+          {
             media_position: '65:30',
             media_duration: mediaDuration
+          },
+          {
+            entity_id: 'media_player.spotify',
+            state: 'playing'
           }
-        };
+        );
 
         ui.updateMediaSeekBar(entity);
 
