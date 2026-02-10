@@ -145,6 +145,26 @@ function getCustomColorsForSave() {
   }));
 }
 
+function persistCustomColorsImmediately() {
+  if (!state.CONFIG) return;
+
+  const customColors = getCustomColorsForSave();
+  state.CONFIG.ui = state.CONFIG.ui || {};
+  state.CONFIG.ui.customColors = customColors;
+
+  if (!window?.electronAPI?.updateConfig) return;
+
+  window.electronAPI.updateConfig({
+    ui: {
+      ...state.CONFIG.ui,
+      customColors,
+    },
+  }).catch((error) => {
+    console.error('Failed to persist custom colors:', error);
+    showToast('Could not persist custom colors. Try Save in settings.', 'warning', 3000);
+  });
+}
+
 function getThemeById(themeId) {
   if (!themeId) return null;
   return getAccentThemes().find(theme => theme.id === themeId) || null;
@@ -287,6 +307,7 @@ function saveCustomColorFromEditor() {
 
   pendingCustomColors = [...pendingCustomColors, customColor];
   setCustomThemes(pendingCustomColors);
+  persistCustomColorsImmediately();
   selectThemeForActiveTarget(customColor.id);
   renderColorThemeOptions();
   showToast('Custom color saved.', 'success', 2000);
@@ -315,6 +336,7 @@ function renameSelectedCustomColor() {
   });
 
   setCustomThemes(pendingCustomColors);
+  persistCustomColorsImmediately();
   renderColorThemeOptions();
   showToast('Custom color renamed.', 'success', 1800);
 }
@@ -325,6 +347,7 @@ function removeSelectedCustomColor() {
 
   pendingCustomColors = pendingCustomColors.filter(entry => entry.id !== selectedTheme.id);
   setCustomThemes(pendingCustomColors);
+  persistCustomColorsImmediately();
 
   if (pendingAccent === selectedTheme.id) {
     pendingAccent = resolveThemeId(null);
