@@ -43,8 +43,20 @@ let activeCustomManagementThemeId = null;
 let isSyncingCustomColorEditor = false;
 let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
+let isCustomEditorActive = false;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
+const CUSTOM_EDITOR_SCOPE_SELECTOR = [
+  '#custom-color-picker',
+  '#custom-color-r',
+  '#custom-color-g',
+  '#custom-color-b',
+  '#custom-color-hex',
+  '#custom-color-name-input',
+  '#save-custom-color-btn',
+  '#rename-custom-color-btn',
+  '#remove-custom-color-btn',
+].join(', ');
 
 function normalizeHexColor(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -182,7 +194,38 @@ function getCustomColorEditorElements() {
     nameInput: document.getElementById('custom-color-name-input'),
     renameBtn: document.getElementById('rename-custom-color-btn'),
     removeBtn: document.getElementById('remove-custom-color-btn'),
+    lockHint: document.getElementById('custom-editor-save-lock-hint'),
   };
+}
+
+function getMainSettingsSaveButton() {
+  return document.getElementById('save-settings');
+}
+
+function isElementInsideCustomEditor(element) {
+  if (!element || typeof element !== 'object') return false;
+  if (typeof element.matches === 'function' && element.matches(CUSTOM_EDITOR_SCOPE_SELECTOR)) return true;
+  return !!element.closest?.(CUSTOM_EDITOR_SCOPE_SELECTOR);
+}
+
+function setMainSettingsSaveLocked(isLocked) {
+  if (isCustomEditorActive === isLocked) return;
+  isCustomEditorActive = isLocked;
+
+  const saveBtn = getMainSettingsSaveButton();
+  if (saveBtn) {
+    saveBtn.disabled = isLocked;
+    if (isLocked) {
+      saveBtn.setAttribute('aria-disabled', 'true');
+    } else {
+      saveBtn.removeAttribute('aria-disabled');
+    }
+  }
+
+  const { lockHint } = getCustomColorEditorElements();
+  if (lockHint) {
+    lockHint.classList.toggle('hidden', !isLocked);
+  }
 }
 
 function setCustomColorEditorValues(hex) {
@@ -285,7 +328,7 @@ function saveCustomColorFromEditor() {
   const color = getCustomColorHexFromEditor();
   if (!color) {
     showToast('Enter a valid color before saving.', 'warning', 2500);
-    return;
+    return false;
   }
 
   const existing = pendingCustomColors.find(entry => entry.color === color);
@@ -293,7 +336,7 @@ function saveCustomColorFromEditor() {
     selectThemeForActiveTarget(existing.id);
     renderColorThemeOptions();
     showToast('Color already saved. Selected existing custom color.', 'info', 2200);
-    return;
+    return true;
   }
 
   const timestamp = new Date().toISOString();
@@ -311,6 +354,7 @@ function saveCustomColorFromEditor() {
   selectThemeForActiveTarget(customColor.id);
   renderColorThemeOptions();
   showToast('Custom color saved.', 'success', 2000);
+  return true;
 }
 
 function renameSelectedCustomColor() {
@@ -364,10 +408,27 @@ function removeSelectedCustomColor() {
 
 function initCustomColorEditor() {
   const { picker, rInput, gInput, bInput, hexInput, saveBtn, nameInput, renameBtn, removeBtn } = getCustomColorEditorElements();
+  const customEditorControls = [picker, rInput, gInput, bInput, hexInput, nameInput, saveBtn, renameBtn, removeBtn].filter(Boolean);
+
+  const scheduleUnlockIfOutsideEditor = () => {
+    setTimeout(() => {
+      if (!isElementInsideCustomEditor(document.activeElement)) {
+        setMainSettingsSaveLocked(false);
+      }
+    }, 0);
+  };
+
+  customEditorControls.forEach(control => {
+    if (control.dataset.saveLockBound === 'true') return;
+    control.addEventListener('focus', () => setMainSettingsSaveLocked(true));
+    control.addEventListener('blur', scheduleUnlockIfOutsideEditor);
+    control.dataset.saveLockBound = 'true';
+  });
 
   if (picker) {
     picker.oninput = () => {
       if (isSyncingCustomColorEditor) return;
+      setMainSettingsSaveLocked(true);
       const normalized = normalizeHexColor(picker.value);
       if (!normalized) return;
       setCustomColorEditorValues(normalized);
@@ -377,6 +438,7 @@ function initCustomColorEditor() {
 
   const handleRgbInput = () => {
     if (isSyncingCustomColorEditor) return;
+    setMainSettingsSaveLocked(true);
     const color = getCustomColorHexFromEditor();
     if (!color) return;
     setCustomColorEditorValues(color);
@@ -416,26 +478,81 @@ function initCustomColorEditor() {
   }
 
   if (saveBtn) {
-    saveBtn.onclick = saveCustomColorFromEditor;
+    saveBtn.onclick = () => {
+      saveCustomColorFromEditor();
+      setMainSettingsSaveLocked(false);
+    };
   }
 
   if (renameBtn) {
-    renameBtn.onclick = renameSelectedCustomColor;
+    renameBtn.onclick = () => {
+      renameSelectedCustomColor();
+      setMainSettingsSaveLocked(false);
+    };
   }
 
   if (nameInput) {
+    nameInput.oninput = () => {
+      setMainSettingsSaveLocked(true);
+    };
     nameInput.onkeydown = (event) => {
       if (event.key !== 'Enter') return;
       event.preventDefault();
       renameSelectedCustomColor();
+      setMainSettingsSaveLocked(false);
     };
   }
 
   if (removeBtn) {
-    removeBtn.onclick = removeSelectedCustomColor;
+    removeBtn.onclick = () => {
+      removeSelectedCustomColor();
+      setMainSettingsSaveLocked(false);
+    };
   }
 
+  setMainSettingsSaveLocked(false);
   syncCustomColorEditorFromSelectedTheme();
+}
+
+function hasPendingCustomNameEdit() {
+  const selectedTheme = getSelectedThemeForActiveTarget();
+  if (!selectedTheme?.isCustom) return false;
+
+  const { nameInput } = getCustomColorEditorElements();
+  if (!nameInput) return false;
+
+  const pendingName = (nameInput.value || '').trim();
+  const currentName = (selectedTheme.name || '').trim();
+  return !!pendingName && pendingName !== currentName;
+}
+
+async function handlePendingCustomEditorChangesBeforeSave() {
+  const hasPendingColorDraft = hasDraftColorPreview;
+  const hasNameDraft = hasPendingCustomNameEdit();
+  if (!hasPendingColorDraft && !hasNameDraft) return true;
+
+  const shouldSavePendingChanges = await showConfirm(
+    'Unsaved Custom Color Changes',
+    'You have unsaved custom color edits. Save them before applying settings?',
+    {
+      confirmText: 'Save and Continue',
+      cancelText: 'Continue Without Saving',
+      confirmClass: 'btn-primary',
+    }
+  );
+
+  if (!shouldSavePendingChanges) return true;
+
+  if (hasPendingColorDraft) {
+    const saved = saveCustomColorFromEditor();
+    if (!saved) return false;
+  }
+
+  if (hasPendingCustomNameEdit()) {
+    renameSelectedCustomColor();
+  }
+
+  return true;
 }
 
 
@@ -1263,6 +1380,7 @@ async function openSettings(uiHooks) {
     activeColorTarget = COLOR_TARGETS.accent;
     renderColorThemeOptions();
     initColorTargetSelect();
+    setMainSettingsSaveLocked(false);
     initCustomColorEditor();
     initColorThemeSectionToggle();
 
@@ -1318,6 +1436,7 @@ async function openSettings(uiHooks) {
  */
 function closeSettings() {
   try {
+    setMainSettingsSaveLocked(false);
     cancelPreviewWindowEffects();
     if (previewState) {
       restorePreviewWindowEffects();
@@ -1382,6 +1501,9 @@ async function saveSettings() {
     const frostedGlass = document.getElementById('frosted-glass');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
+
+    const canProceedWithSave = await handlePendingCustomEditorChangesBeforeSave();
+    if (!canProceedWithSave) return;
 
     // Validate and save Home Assistant URL
     if (haUrl && haUrl.value.trim()) {
@@ -1476,6 +1598,7 @@ async function saveSettings() {
     previewBackground = null;
     pendingBackground = null;
     hasDraftColorPreview = false;
+    setMainSettingsSaveLocked(false);
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
