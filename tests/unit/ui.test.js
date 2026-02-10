@@ -684,6 +684,68 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }).not.toThrow();
     });
 
+    /**
+     * Ensures missing timeline values always fall back to 0:00 and 0% seek width.
+     */
+    it.each([
+      ['null', null, null],
+      ['undefined', undefined, undefined],
+      ['empty string', '', '']
+    ])(
+      'should fallback to zeroed timeline when position/duration are %s',
+      (_label, mediaPosition, mediaDuration) => {
+        const entity = {
+          entity_id: 'media_player.spotify',
+          state: 'playing',
+          attributes: {
+            media_position: mediaPosition,
+            media_duration: mediaDuration
+          }
+        };
+
+        ui.updateMediaSeekBar(entity);
+
+        const currentTime = document.getElementById('media-tile-time-current');
+        const totalTime = document.getElementById('media-tile-time-total');
+        const seekFill = document.getElementById('media-tile-seek-fill');
+
+        expect(currentTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('0:00');
+        expect(seekFill.style.width).toBe('0%');
+      }
+    );
+
+    /**
+     * Verifies parsed current time is preserved even when duration is unavailable.
+     */
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+      ['empty string', '']
+    ])(
+      'should show parsed current time and zero total when duration is %s',
+      (_label, mediaDuration) => {
+        const entity = {
+          entity_id: 'media_player.spotify',
+          state: 'playing',
+          attributes: {
+            media_position: '65:30',
+            media_duration: mediaDuration
+          }
+        };
+
+        ui.updateMediaSeekBar(entity);
+
+        const currentTime = document.getElementById('media-tile-time-current');
+        const totalTime = document.getElementById('media-tile-time-total');
+        const seekFill = document.getElementById('media-tile-seek-fill');
+
+        expect(currentTime.textContent).toBe('1:05:30');
+        expect(totalTime.textContent).toBe('0:00');
+        expect(seekFill.style.width).toBe('0%');
+      }
+    );
+
     it('should keep advancing current time when duration is unavailable', () => {
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
       try {

@@ -1192,7 +1192,8 @@ function parseMediaSeconds(value) {
     ? [Number(parts[0]), Number(parts[1]), Number(parts[2])]
     : [0, Number(parts[0]), Number(parts[1])];
 
-  if (minutes > 59 || seconds > 59) return null;
+  if (seconds > 59) return null;
+  if (parts.length === 3 && minutes > 59) return null;
 
   return (hours * 3600) + (minutes * 60) + seconds;
 }
