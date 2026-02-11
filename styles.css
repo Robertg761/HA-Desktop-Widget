@@ -1909,8 +1909,8 @@ body {
   font-weight: 600;
   letter-spacing: 0.3px;
   color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.14);
-  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  background: rgb(var(--accent-rgb) / 14%);
+  border: 1px solid rgb(var(--accent-rgb) / 28%);
   border-radius: 999px;
   padding: 2px 8px;
   margin-top: 3px;
@@ -1970,9 +1970,9 @@ body {
   gap: 8px;
   padding: 10px;
   border-radius: 8px;
-  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border: 1px solid rgb(var(--accent-rgb) / 35%);
   background: var(--surface-1);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 22%);
   z-index: 2;
 }
 
@@ -2009,10 +2009,10 @@ body {
 .custom-entity-icon-choice:hover,
 .custom-entity-icon-choice:focus-visible {
   border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.14);
+  background: rgb(var(--accent-rgb) / 14%);
 }
 
-@media (max-width: 640px) {
+@media (width <= 640px) {
   .custom-entity-icon-item {
     flex-direction: column;
     align-items: stretch;

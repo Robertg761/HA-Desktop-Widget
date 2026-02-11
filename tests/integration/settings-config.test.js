@@ -475,18 +475,19 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Custom Entity Icons', () => {
-    test('applies icon changes as draft state until main Save', async () => {
+    test('should apply icon changes as draft state until main Save', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const applyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
-
       expect(iconInput).toBeTruthy();
       expect(applyBtn).toBeTruthy();
 
+      // Act
       iconInput.value = '🔥';
       applyBtn.click();
 
+      // Assert
       const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
@@ -502,24 +503,30 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
     });
 
-    test('shows the full emoji catalog in the picker', async () => {
+    test('should show the full emoji catalog in the picker', async () => {
+      // Arrange
       await settings.openSettings();
-
       const chooseBtn = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
       expect(chooseBtn).toBeTruthy();
+
+      // Act
       chooseBtn.click();
 
+      // Assert
       const allChoices = document.querySelectorAll('[data-custom-icon-choice-entity="light.living_room"]');
       expect(allChoices.length).toBeGreaterThan(1000);
     });
 
-    test('opens picker with all icons when icon input is focused', async () => {
+    test('should open picker with all icons when icon input is focused', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
+
+      // Act
       iconInput.dispatchEvent(new Event('focusin', { bubbles: true }));
 
+      // Assert
       const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
       const pickerMeta = picker.querySelector('.custom-entity-icon-picker-meta');
       const list = document.getElementById('custom-entity-icons-list');
@@ -528,40 +535,46 @@ describe('Settings + Config Integration', () => {
       expect(list.classList.contains('custom-entity-icons-list-expanded')).toBe(true);
     });
 
-    test('closes picker when focus leaves the icon input row', async () => {
+    test('should close picker when focus leaves the icon input row', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const saveBtn = document.getElementById('save-settings');
       expect(iconInput).toBeTruthy();
       expect(saveBtn).toBeTruthy();
-
       iconInput.dispatchEvent(new Event('focusin', { bubbles: true }));
       expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
 
-      iconInput.dispatchEvent(new Event('focusout', { bubbles: true }));
-      saveBtn.focus();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      jest.useFakeTimers();
+      try {
+        // Act
+        iconInput.dispatchEvent(new Event('focusout', { bubbles: true }));
+        saveBtn.focus();
+        jest.runOnlyPendingTimers();
 
-      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeFalsy();
+        // Assert
+        expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeFalsy();
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
-    test('uses row input as icon search for picker selection', async () => {
+    test('should use row input as icon search for picker selection', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
+      // Act
       iconInput.value = 'timer';
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
-
       const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
       expect(picker).toBeTruthy();
-
       const iconChoiceBtn = document.querySelector('[data-custom-icon-choice="⏲️"][data-custom-icon-choice-entity="light.living_room"]');
       expect(iconChoiceBtn).toBeTruthy();
       iconChoiceBtn.click();
 
+      // Assert
       const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
@@ -569,27 +582,32 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.customEntityIcons).toEqual({});
     });
 
-    test('matches natural language keywords like tree', async () => {
+    test('should match natural language keywords like tree', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
+      // Act
       iconInput.value = 'tree';
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
 
+      // Assert
       const treeChoice = document.querySelector('[data-custom-icon-choice="🌲"][data-custom-icon-choice-entity="light.living_room"]');
       expect(treeChoice).toBeTruthy();
     });
 
-    test('matches animal keywords like rat and mouse', async () => {
+    test('should match animal keywords like rat and mouse', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
+      // Act
       iconInput.value = 'rat';
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Assert
       const ratChoice = document.querySelector('[data-custom-icon-choice="🐀"][data-custom-icon-choice-entity="light.living_room"]');
       expect(ratChoice).toBeTruthy();
       const ratSummary = document.querySelector('[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta');
@@ -598,35 +616,43 @@ describe('Settings + Config Integration', () => {
       const [, ratShown, ratTotal] = ratSummary.textContent.match(/Showing (\d+) of (\d+) icons for "rat"\./) || [];
       expect(Number(ratShown)).toBeLessThan(Number(ratTotal));
 
+      // Act
       iconInput.value = 'mouse';
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Assert
       const mouseChoice = document.querySelector('[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]');
       expect(mouseChoice).toBeTruthy();
     });
 
-    test('matches related category terms like mice -> mouse icons', async () => {
+    test('should match related category terms like mice to mouse icons', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
+      // Act
       iconInput.value = 'mice';
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Assert
       const mouseChoice = document.querySelector('[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]');
       expect(mouseChoice).toBeTruthy();
     });
 
-    test('allows choosing icons from picker instead of manual typing', async () => {
+    test('should allow choosing icons from picker instead of manual typing', async () => {
+      // Arrange
       await settings.openSettings();
-
       const chooseBtn = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
       expect(chooseBtn).toBeTruthy();
-      chooseBtn.click();
 
+      // Act
+      chooseBtn.click();
       const iconChoiceBtn = document.querySelector('[data-custom-icon-choice="⭐"][data-custom-icon-choice-entity="light.living_room"]');
       expect(iconChoiceBtn).toBeTruthy();
       iconChoiceBtn.click();
 
+      // Assert
       const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
@@ -634,36 +660,49 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.customEntityIcons).toEqual({});
     });
 
-    test('rejects invalid icon values that are not a single grapheme', async () => {
+    test('should reject invalid icon values that are not a single grapheme', async () => {
+      // Arrange
       await settings.openSettings();
-
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const applyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
+      expect(iconInput).toBeTruthy();
+      expect(applyBtn).toBeTruthy();
+
+      // Act
       iconInput.value = 'AB';
       applyBtn.click();
 
+      // Assert
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
         expect.stringContaining('single emoji or glyph'),
         'error',
         expect.any(Number)
       );
-
       const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
       expect(preview.textContent).toBe('💡');
     });
 
-    test('persists custom entity icons on main Save and re-renders active tab', async () => {
-      await settings.openSettings();
-
+    test('should persist custom entity icons on main Save and re-render active tab', async () => {
+      // Arrange
+      await settings.openSettings({
+        initUpdateUI: jest.fn(),
+        renderActiveTab: mockUI.renderActiveTab,
+        updateMediaTile: mockUI.updateMediaTile,
+        renderPrimaryCards: mockUI.renderPrimaryCards,
+      });
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const applyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
+      expect(iconInput).toBeTruthy();
+      expect(applyBtn).toBeTruthy();
       iconInput.value = '🔥';
       applyBtn.click();
 
+      // Act
       await settings.saveSettings();
 
+      // Assert
       expect(state.CONFIG.customEntityIcons).toEqual(
         expect.objectContaining({
           'light.living_room': '🔥'
@@ -679,25 +718,31 @@ describe('Settings + Config Integration', () => {
       expect(mockUI.renderActiveTab).toHaveBeenCalled();
     });
 
-    test('supports per-entity reset and reset-all actions', async () => {
+    test('should support per-entity reset and reset-all actions', async () => {
+      // Arrange
       state.CONFIG.customEntityIcons = {
         'light.living_room': '🔥',
         'switch.bedroom': '⚡'
       };
-
       await settings.openSettings();
-
       const resetSingleBtn = document.querySelector('[data-custom-icon-reset="light.living_room"]');
+      const resetAllBtn = document.getElementById('custom-entity-icons-reset-all');
+      expect(resetSingleBtn).toBeTruthy();
+      expect(resetAllBtn).toBeTruthy();
+
+      // Act
       resetSingleBtn.click();
 
+      // Assert
       const roomInputAfterReset = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const summaryAfterSingleReset = document.getElementById('custom-entity-icons-summary');
       expect(roomInputAfterReset.value).toBe('');
       expect(summaryAfterSingleReset.textContent).toContain('1 custom icon');
 
-      const resetAllBtn = document.getElementById('custom-entity-icons-reset-all');
+      // Act
       resetAllBtn.click();
 
+      // Assert
       const summaryAfterResetAll = document.getElementById('custom-entity-icons-summary');
       expect(summaryAfterResetAll.textContent).toContain('No custom icons configured');
     });
@@ -990,7 +1035,12 @@ describe('Settings + Config Integration', () => {
 
   describe('Settings Coordination', () => {
     test('media player selection updates immediately', async () => {
-      await settings.openSettings();
+      await settings.openSettings({
+        initUpdateUI: jest.fn(),
+        renderActiveTab: mockUI.renderActiveTab,
+        updateMediaTile: mockUI.updateMediaTile,
+        renderPrimaryCards: mockUI.renderPrimaryCards,
+      });
 
       // Simulate selecting a media player
       const menu = document.getElementById('primary-media-player-menu');

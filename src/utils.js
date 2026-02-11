@@ -83,8 +83,8 @@ function getEntityIcon(entity, options = {}) {
                 return '📈';
             case 'binary_sensor':
                 if (attributes.device_class === 'motion') return entityState === 'on' ? '🏃' : '🧍';
-                if (attributes.device_class === 'door') return entityState === 'on' ? '🚪' : '닫';
-                if (attributes.device_class === 'window') return entityState === 'on' ? '🪟' : '닫';
+                if (attributes.device_class === 'door') return entityState === 'on' ? '🚪' : '🚪';
+                if (attributes.device_class === 'window') return entityState === 'on' ? '🪟' : '🪟';
                 return entityState === 'on' ? '✔️' : '❌';
             case 'climate': return '🌡️';
             case 'media_player': return '🎵';

@@ -24,7 +24,6 @@ import {
   normalizePrimaryCards,
 } from './primary-cards.js';
 import * as rgiEmojiDataModule from 'regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js';
-// Note: ui.js is imported dynamically to prevent circular dependencies
 
 let previewState = null;
 let previewRaf = null;
@@ -50,6 +49,7 @@ let isSyncingCustomColorEditor = false;
 let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
+let settingsUiHooks = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const CUSTOM_EDITOR_SCOPE_SELECTOR = [
@@ -1894,10 +1894,13 @@ function initCustomEntityIconsUI() {
     if (!input) return;
     const entityId = input.dataset.customIconInput;
     if (!entityId || activeCustomEntityIconPickerEntityId !== entityId) return;
+    const capturedEntityId = entityId;
 
     // Allow focus to settle before deciding whether the picker should close.
     setTimeout(() => {
-      const controls = section.querySelector(`[data-custom-icon-input="${entityId}"]`)?.closest('.custom-entity-icon-controls');
+      if (activeCustomEntityIconPickerEntityId !== capturedEntityId) return;
+
+      const controls = section.querySelector(`[data-custom-icon-input="${capturedEntityId}"]`)?.closest('.custom-entity-icon-controls');
       const activeElement = document.activeElement;
       const shouldKeepOpen = !!(controls && activeElement && controls.contains(activeElement));
       if (shouldKeepOpen) return;
@@ -2074,9 +2077,14 @@ function validateHomeAssistantUrl(url) {
  * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
  * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
  * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ * @param {Function} [uiHooks.renderActiveTab] - Called after save to fully re-render the active UI tab when available.
+ * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
+ * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
  */
 async function openSettings(uiHooks) {
   try {
+    settingsUiHooks = uiHooks || null;
+
     // Exit reorganize mode if active to prevent state conflicts
     if (uiHooks && uiHooks.exitReorganizeMode) {
       uiHooks.exitReorganizeMode();
@@ -2393,18 +2401,12 @@ async function saveSettings() {
     applyUiPreferences(state.CONFIG.ui || {});
     applyWindowEffects(state.CONFIG || {});
 
-    // Update media tile to reflect new selection
-    // Dynamic import to avoid circular dependency
-    const ui = await import('./ui.js');
-    if (ui.renderActiveTab) {
-      ui.renderActiveTab();
+    // Update UI to reflect the newly saved settings selection.
+    if (settingsUiHooks?.renderActiveTab) {
+      settingsUiHooks.renderActiveTab();
     } else {
-      if (ui.updateMediaTile) {
-        ui.updateMediaTile();
-      }
-      if (ui.renderPrimaryCards) {
-        ui.renderPrimaryCards();
-      }
+      settingsUiHooks?.updateMediaTile?.();
+      settingsUiHooks?.renderPrimaryCards?.();
     }
 
     // Only reconnect WebSocket if HA connection settings actually changed
