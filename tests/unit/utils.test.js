@@ -79,6 +79,28 @@ describe('Utils Module', () => {
   });
 
   describe('getEntityIcon', () => {
+    test('should return custom icon when configured', () => {
+      state.CONFIG = {
+        ...sampleConfig,
+        customEntityIcons: {
+          'light.test': '🛋️'
+        }
+      };
+      const entity = { entity_id: 'light.test', state: 'on', attributes: {} };
+      expect(utils.getEntityIcon(entity)).toBe('🛋️');
+    });
+
+    test('should ignore invalid custom icon and fall back to default icon', () => {
+      state.CONFIG = {
+        ...sampleConfig,
+        customEntityIcons: {
+          'light.test': 'AB'
+        }
+      };
+      const entity = { entity_id: 'light.test', state: 'on', attributes: {} };
+      expect(utils.getEntityIcon(entity)).toBe('💡');
+    });
+
     test('should return light icon', () => {
       const entity = { entity_id: 'light.test', state: 'on', attributes: {} };
       expect(utils.getEntityIcon(entity)).toBe('💡');
@@ -546,6 +568,7 @@ describe('Utils Module', () => {
         selectedWeatherEntity: 'weather.home',
         primaryCards: ['weather', 'light.closet light'],
         customEntityNames: { 'light.closet light': 'Closet Light' },
+        customEntityIcons: { 'light.closet light': '🧰' },
         tileSpans: { 'light.closet light': 2 },
         globalHotkeys: {
           enabled: true,
@@ -568,6 +591,7 @@ describe('Utils Module', () => {
       expect(result.config.primaryMediaPlayer).toBe('media_player.living_room');
       expect(result.config.primaryCards).toEqual(['weather', 'light.closet_light']);
       expect(result.config.customEntityNames['light.closet_light']).toBe('Closet Light');
+      expect(result.config.customEntityIcons['light.closet_light']).toBe('🧰');
       expect(result.config.tileSpans['light.closet_light']).toBe(2);
       expect(result.config.globalHotkeys.hotkeys['light.closet_light']).toEqual({ hotkey: 'Ctrl+1', action: 'toggle' });
       expect(result.config.entityAlerts.alerts['light.closet_light']).toEqual({ onStateChange: true });
@@ -594,6 +618,9 @@ describe('Utils Module', () => {
         primaryCards: ['weather', null, ''],
         customEntityNames: {
           '': 'Empty key'
+        },
+        customEntityIcons: {
+          '': '🛋️'
         },
         tileSpans: {
           '': 2
@@ -631,6 +658,7 @@ describe('Utils Module', () => {
         selectedWeatherEntity: 'weather.missing city',
         primaryCards: ['weather', 'light.missing room'],
         customEntityNames: { 'light.missing room': 'Missing Light', '': 'Empty key' },
+        customEntityIcons: { 'light.missing room': '🔥' },
         tileSpans: { 'light.missing room': 2 },
         globalHotkeys: {
           enabled: true,

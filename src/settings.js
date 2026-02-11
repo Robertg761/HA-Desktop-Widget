@@ -23,7 +23,7 @@ import {
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-// Note: ui.js is imported dynamically to prevent circular dependencies
+import * as rgiEmojiDataModule from 'regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js';
 
 let previewState = null;
 let previewRaf = null;
@@ -39,12 +39,17 @@ let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
+let pendingCustomEntityIcons = {};
+let activeCustomEntityIconPickerEntityId = null;
+let customEntityIconPickerQueryByEntityId = {};
+let lastCustomEntityIconAction = null;
 let pendingCustomColors = [];
 let activeCustomManagementThemeId = null;
 let isSyncingCustomColorEditor = false;
 let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
+let settingsUiHooks = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const CUSTOM_EDITOR_SCOPE_SELECTOR = [
@@ -58,6 +63,104 @@ const CUSTOM_EDITOR_SCOPE_SELECTOR = [
   '#rename-custom-color-btn',
   '#remove-custom-color-btn',
 ].join(', ');
+const ICON_GRAPHEME_SEGMENTER = (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function')
+  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  : null;
+const CUSTOM_ENTITY_ICON_FALLBACKS = [
+  '💡', '🔌', '💨', '🌡️', '💧', '🔋', '⚡', '📈', '🏃', '🧍', '🚪', '🪟', '✔️', '❌', '🎵', '📷',
+  '🔒', '🔓', '🏠', '✈️', '⏲️', '🛡️', '🤖', '✨', '🧹', '🔥', '❄️', '🌙', '☀️', '⭐', '🛋️', '🛏️', '🍳', '🚿',
+];
+const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
+  '💡': ['light', 'lamp', 'bulb'],
+  '🔌': ['plug', 'socket', 'power'],
+  '💨': ['fan', 'wind', 'air'],
+  '🌡️': ['temperature', 'thermometer', 'temp'],
+  '💧': ['humidity', 'water', 'moisture'],
+  '🔋': ['battery', 'charge', 'power'],
+  '⚡': ['energy', 'electric', 'power'],
+  '📈': ['sensor', 'chart', 'trend'],
+  '🏃': ['motion', 'active', 'running'],
+  '🧍': ['motion', 'clear', 'idle'],
+  '🚪': ['door', 'entry'],
+  '🪟': ['window'],
+  '✔️': ['on', 'enabled', 'detected'],
+  '❌': ['off', 'disabled', 'clear'],
+  '🎵': ['media', 'music', 'audio'],
+  '📷': ['camera', 'snapshot'],
+  '🔒': ['lock', 'locked', 'secure'],
+  '🔓': ['unlock', 'unlocked', 'open'],
+  '🏠': ['home', 'house'],
+  '✈️': ['away', 'travel', 'vacation'],
+  '⏲️': ['timer', 'countdown', 'clock'],
+  '🛡️': ['security', 'shield', 'alarm'],
+  '🤖': ['automation', 'robot', 'bot'],
+  '✨': ['scene', 'sparkle'],
+  '🧹': ['vacuum', 'clean', 'cleanup'],
+  '🔥': ['heat', 'heating', 'fire'],
+  '❄️': ['cool', 'cooling', 'cold'],
+  '🌙': ['night', 'sleep', 'moon'],
+  '☀️': ['day', 'sun', 'bright'],
+  '⭐': ['favorite', 'star'],
+  '🛋️': ['living room', 'sofa'],
+  '🛏️': ['bedroom', 'bed', 'sleep'],
+  '🍳': ['kitchen', 'cook', 'food'],
+  '🚿': ['bathroom', 'shower'],
+};
+const CUSTOM_ENTITY_ICON_KEYWORD_GROUPS = {
+  tree: ['🌲', '🌳', '🌴', '🎄', '🌵', '🎋', '🪾'],
+  forest: ['🌲', '🌳', '🌴', '🏕️'],
+  plant: ['🌱', '🪴', '🌿', '☘️', '🍀', '🎍', '🎋', '🪾', '🌾'],
+  flower: ['🌸', '💮', '🪷', '🏵️', '🌹', '🥀', '🌺', '🌻', '🌼', '🌷', '🪻', '💐'],
+  leaf: ['🍃', '🍂', '🍁', '🌿', '☘️', '🍀'],
+  nature: ['🌲', '🌳', '🌴', '🌵', '🌱', '🌿', '🍃', '🍂', '🍁', '🌊', '⛰️', '🏞️'],
+  weather: ['☀️', '🌤️', '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '🌫️', '🌪️', '🌈', '☔'],
+  rain: ['🌧️', '☔', '🌦️', '⛈️'],
+  snow: ['❄️', '☃️', '⛄', '🌨️'],
+  sun: ['☀️', '🌤️', '🌞'],
+  moon: ['🌙', '🌕', '🌖', '🌗', '🌘', '🌑', '🌒', '🌓', '🌔'],
+  fire: ['🔥', '🧯', '♨️', '💥'],
+  water: ['💧', '🌊', '🚿', '🛁', '🚰'],
+  home: ['🏠', '🏡', '🏘️', '🏚️', '🛋️', '🛏️', '🪑', '🚪', '🪟'],
+  kitchen: ['🍳', '🍽️', '🥣', '🥄', '🧂', '🧊'],
+  bedroom: ['🛏️', '🛌'],
+  bathroom: ['🚿', '🛁', '🚽', '🧻'],
+  security: ['🛡️', '🔒', '🔓', '🚨', '🔔', '📹'],
+  power: ['⚡', '🔋', '🔌', '🪫', '💡'],
+  media: ['🎵', '🎶', '🎼', '🎧', '📻', '📺', '📷', '🎬'],
+  camera: ['📷', '📸', '📹'],
+  robot: ['🤖', '⚙️', '🦾', '🧠'],
+  timer: ['⏲️', '⏰', '⌚', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛'],
+  favorite: ['⭐', '🌟', '✨', '💖', '💛'],
+  travel: ['✈️', '🚗', '🚙', '🚌', '🚆', '🛳️'],
+  animal: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦉', '🦄', '🐝', '🦋', '🐞', '🐢', '🐍', '🐙', '🦑', '🦀', '🐠', '🐟', '🐡', '🐬', '🦈', '🐳', '🐋'],
+  pet: ['🐶', '🐱', '🐭', '🐹', '🐰', '🐦', '🐠', '🐢'],
+  rodent: ['🐀', '🐁', '🐭', '🐹', '🐿️', '🦫'],
+  rat: ['🐀', '🐁', '🐭'],
+  mouse: ['🐁', '🐭', '🐀'],
+  mammal: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐵', '🦄', '🐘', '🦒', '🦛', '🦏', '🐪', '🐫', '🦘', '🦥', '🦦', '🦨', '🦡', '🦫'],
+  bird: ['🐔', '🐤', '🐣', '🐥', '🐦', '🦅', '🦆', '🦉', '🦇', '🦜', '🦢', '🦩', '🕊️'],
+  fish: ['🐟', '🐠', '🐡', '🦈', '🐬', '🐳', '🐋', '🦭', '🐙', '🦑', '🦀', '🦞', '🦐'],
+  insect: ['🐝', '🪲', '🪳', '🦋', '🐛', '🐜', '🐞', '🕷️', '🦂', '🪰', '🪱'],
+};
+const CUSTOM_ENTITY_ICON_TERM_SYNONYMS = {
+  mice: ['mouse', 'rodent', 'rat', 'animal'],
+  mouse: ['rodent', 'rat', 'mice', 'animal', 'pet'],
+  rat: ['rodent', 'mouse', 'mice', 'animal'],
+  rodent: ['mouse', 'rat', 'hamster', 'animal'],
+  hamster: ['rodent', 'mouse', 'animal', 'pet'],
+  squirrel: ['rodent', 'animal'],
+  beaver: ['rodent', 'animal'],
+  pet: ['animal'],
+  creature: ['animal'],
+  fauna: ['animal'],
+  wildlife: ['animal', 'wild'],
+  birds: ['bird', 'animal'],
+  fishes: ['fish', 'animal'],
+  bugs: ['insect', 'animal'],
+  insects: ['insect', 'animal'],
+};
+const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
+const CUSTOM_ENTITY_ICON_CHOICES = buildCustomEntityIconChoices();
 
 function normalizeHexColor(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -156,6 +259,314 @@ function getCustomColorsForSave() {
     createdAt: color.createdAt,
     updatedAt: color.updatedAt,
   }));
+}
+
+function countIconGraphemes(value) {
+  if (!value || typeof value !== 'string') return 0;
+  if (ICON_GRAPHEME_SEGMENTER) {
+    let count = 0;
+    for (const _segment of ICON_GRAPHEME_SEGMENTER.segment(value)) {
+      count += 1;
+      if (count > 1) break;
+    }
+    return count;
+  }
+  return Array.from(value).length;
+}
+
+function normalizeCustomEntityIcon(icon) {
+  if (typeof icon !== 'string') return null;
+  const trimmed = icon.trim();
+  if (!trimmed) return null;
+  return countIconGraphemes(trimmed) === 1 ? trimmed : null;
+}
+
+function stripEmojiVariationSelectors(value) {
+  return String(value || '').replace(/\uFE0F/g, '');
+}
+
+function getIconCodepointTerms(icon) {
+  const codepoints = Array.from(String(icon || '')).map(char => char.codePointAt(0).toString(16));
+  if (!codepoints.length) return [];
+  const perCodepoint = codepoints.flatMap(cp => [cp, `u+${cp}`]);
+  return [...perCodepoint, codepoints.join('-')];
+}
+
+function normalizeEmojiSearchToken(term) {
+  return String(term || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9+#_-]+/g, '');
+}
+
+function stemEmojiSearchToken(term) {
+  if (term.length < 4) return term;
+  if (term.endsWith('ies') && term.length > 4) return `${term.slice(0, -3)}y`;
+  if (term.endsWith('ing') && term.length > 5) return term.slice(0, -3);
+  if (term.endsWith('ed') && term.length > 4) return term.slice(0, -2);
+  if (term.endsWith('es') && term.length > 4) return term.slice(0, -2);
+  if (term.endsWith('s') && term.length > 3) return term.slice(0, -1);
+  return term;
+}
+
+function tokenizeEmojiSearchInput(value) {
+  return String(value || '')
+    .toLowerCase()
+    .split(/[\s,./\\|:;()[\]{}"'`~!?@%^&*+=<>]+/)
+    .map(normalizeEmojiSearchToken)
+    .filter(Boolean)
+    .map(token => {
+      const stemmed = stemEmojiSearchToken(token);
+      return stemmed || token;
+    });
+}
+
+function expandEmojiSearchToken(token) {
+  const normalized = normalizeEmojiSearchToken(token);
+  if (!normalized) return [];
+
+  const expanded = new Set([normalized]);
+  const stemmed = stemEmojiSearchToken(normalized);
+  if (stemmed) expanded.add(stemmed);
+
+  const mapped = CUSTOM_ENTITY_ICON_TERM_SYNONYMS[normalized] || CUSTOM_ENTITY_ICON_TERM_SYNONYMS[stemmed] || [];
+  mapped.forEach(term => {
+    const normalizedTerm = normalizeEmojiSearchToken(term);
+    if (!normalizedTerm) return;
+    expanded.add(normalizedTerm);
+    const stemmedTerm = stemEmojiSearchToken(normalizedTerm);
+    if (stemmedTerm) expanded.add(stemmedTerm);
+  });
+
+  return Array.from(expanded);
+}
+
+function buildEmojiSearchAlternativeGroups(filterValue) {
+  return tokenizeEmojiSearchInput(filterValue)
+    .map(token => expandEmojiSearchToken(token))
+    .filter(group => group.length > 0);
+}
+
+function isNearMatchByEditDistance(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  if (!a || !b) return false;
+
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const maxDistance = a.length <= 4 || b.length <= 4 ? 1 : 2;
+  if (Math.abs(a.length - b.length) > maxDistance) return false;
+
+  const prev = new Array(b.length + 1);
+  const curr = new Array(b.length + 1);
+
+  for (let j = 0; j <= b.length; j += 1) prev[j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    let minInRow = curr[0];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost,
+      );
+      curr[j] = value;
+      if (value < minInRow) minInRow = value;
+    }
+    if (minInRow > maxDistance) return false;
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j];
+  }
+
+  return prev[b.length] <= maxDistance;
+}
+
+function choiceMatchesAlternativeGroup(choice, alternatives, allowFuzzy = false) {
+  if (!choice || !Array.isArray(choice.searchTerms) || !alternatives.length) return false;
+  return alternatives.some(term => (
+    choice.searchTerms.some(choiceTerm => {
+      if (choiceTerm.includes(term)) return true;
+      return allowFuzzy ? isNearMatchByEditDistance(choiceTerm, term) : false;
+    })
+  ));
+}
+
+function buildCustomEntityIconGroupAliases() {
+  return Object.entries(CUSTOM_ENTITY_ICON_KEYWORD_GROUPS).reduce((acc, [keyword, icons]) => {
+    if (!Array.isArray(icons)) return acc;
+    const normalizedKeyword = normalizeEmojiSearchToken(keyword);
+    if (!normalizedKeyword) return acc;
+
+    icons.forEach(icon => {
+      const normalizedIcon = normalizeCustomEntityIcon(icon);
+      if (!normalizedIcon) return;
+      if (!acc[normalizedIcon]) acc[normalizedIcon] = new Set();
+      acc[normalizedIcon].add(normalizedKeyword);
+      const stemmed = stemEmojiSearchToken(normalizedKeyword);
+      if (stemmed && stemmed !== normalizedKeyword) {
+        acc[normalizedIcon].add(stemmed);
+      }
+    });
+
+    return acc;
+  }, {});
+}
+
+function getCustomEntityIconSearchAliases(icon) {
+  const stripped = stripEmojiVariationSelectors(icon);
+  const directAliases = CUSTOM_ENTITY_ICON_SEARCH_ALIASES[icon]
+    || CUSTOM_ENTITY_ICON_SEARCH_ALIASES[stripped]
+    || [];
+  const groupedAliases = Array.from(CUSTOM_ENTITY_ICON_GROUP_ALIASES[icon] || CUSTOM_ENTITY_ICON_GROUP_ALIASES[stripped] || []);
+  return Array.from(new Set([...directAliases, ...groupedAliases]));
+}
+
+function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
+  const searchTerms = new Set([String(icon || '').toLowerCase()]);
+  const stripped = stripEmojiVariationSelectors(icon);
+  if (stripped) searchTerms.add(stripped.toLowerCase());
+
+  [...aliases, ...codepointTerms].forEach(term => {
+    const rawTerm = String(term || '').toLowerCase();
+    if (!rawTerm) return;
+    searchTerms.add(rawTerm);
+    tokenizeEmojiSearchInput(rawTerm).forEach(token => {
+      if (token.length < 2) return;
+      searchTerms.add(token);
+      const stemmed = stemEmojiSearchToken(token);
+      if (stemmed) searchTerms.add(stemmed);
+    });
+  });
+
+  return Array.from(searchTerms);
+}
+
+function buildCustomEntityIconChoices() {
+  const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
+  const rgiEmojiData = rgiEmojiDataModule?.default || rgiEmojiDataModule;
+
+  if (Array.isArray(rgiEmojiData?.strings)) {
+    rgiEmojiData.strings.forEach(icon => {
+      const normalized = normalizeCustomEntityIcon(icon);
+      if (normalized) iconSet.add(normalized);
+    });
+  }
+
+  if (rgiEmojiData?.characters && typeof rgiEmojiData.characters.toArray === 'function') {
+    rgiEmojiData.characters.toArray().forEach(codepoint => {
+      if (!Number.isInteger(codepoint)) return;
+      const normalized = normalizeCustomEntityIcon(String.fromCodePoint(codepoint));
+      if (normalized) iconSet.add(normalized);
+    });
+  }
+
+  return Array.from(iconSet)
+    .map(icon => {
+      const stripped = stripEmojiVariationSelectors(icon);
+      const aliases = getCustomEntityIconSearchAliases(icon);
+      const codepointTerms = getIconCodepointTerms(icon);
+      const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
+      const searchText = [
+        icon,
+        stripped,
+        ...aliases,
+        ...codepointTerms,
+        ...searchTerms,
+      ].join(' ').toLowerCase();
+
+      return {
+        icon,
+        aliases,
+        codepointTerms,
+        searchTerms,
+        searchText,
+      };
+    })
+    .sort((a, b) => a.icon.localeCompare(b.icon));
+}
+
+function getFilteredCustomEntityIconChoices(filterValue = '') {
+  const rawFilter = String(filterValue || '').trim().toLowerCase();
+  if (!rawFilter) return CUSTOM_ENTITY_ICON_CHOICES;
+
+  const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
+  if (!alternativeGroups.length) return CUSTOM_ENTITY_ICON_CHOICES;
+
+  const strictMatches = CUSTOM_ENTITY_ICON_CHOICES.filter(choice => {
+    if (choice.searchText.includes(rawFilter)) return true;
+    return alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, false));
+  });
+  if (strictMatches.length) return strictMatches;
+
+  // Fallback: fuzzy category search when exact tokens miss.
+  return CUSTOM_ENTITY_ICON_CHOICES.filter(choice => (
+    alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, true))
+  ));
+}
+
+function getCustomEntityIconPickerQuery(entityId) {
+  if (!entityId) return '';
+  return customEntityIconPickerQueryByEntityId[entityId] || '';
+}
+
+function setCustomEntityIconPickerQuery(entityId, queryValue) {
+  if (!entityId) return;
+  const next = String(queryValue || '').trim();
+  if (!next) {
+    delete customEntityIconPickerQueryByEntityId[entityId];
+    return;
+  }
+  customEntityIconPickerQueryByEntityId[entityId] = next;
+}
+
+function syncCustomEntityIconPickerQueryFromInput(entityId, rawInputValue) {
+  const nextValue = String(rawInputValue || '').trim();
+  const pendingIcon = getPendingCustomIcon(entityId) || '';
+  if (!nextValue || nextValue === pendingIcon) {
+    setCustomEntityIconPickerQuery(entityId, '');
+    return;
+  }
+  setCustomEntityIconPickerQuery(entityId, nextValue);
+}
+
+function refocusCustomEntityIconInput(section, entityId) {
+  if (!section || !entityId) return;
+  const refreshedInput = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
+  if (!refreshedInput) return;
+  const cursorPosition = refreshedInput.value.length;
+  refreshedInput.focus();
+  if (typeof refreshedInput.setSelectionRange === 'function') {
+    refreshedInput.setSelectionRange(cursorPosition, cursorPosition);
+  }
+}
+
+function normalizeCustomEntityIconMap(customEntityIcons) {
+  if (!customEntityIcons || typeof customEntityIcons !== 'object' || Array.isArray(customEntityIcons)) {
+    return {};
+  }
+
+  return Object.entries(customEntityIcons).reduce((acc, [entityId, icon]) => {
+    if (typeof entityId !== 'string') return acc;
+    const trimmedEntityId = entityId.trim();
+    const normalizedIcon = normalizeCustomEntityIcon(icon);
+    if (!trimmedEntityId || !normalizedIcon) return acc;
+    acc[trimmedEntityId] = normalizedIcon;
+    return acc;
+  }, {});
+}
+
+function getSavedCustomEntityIcons() {
+  return normalizeCustomEntityIconMap(state.CONFIG?.customEntityIcons);
+}
+
+function setPendingCustomEntityIcons(customEntityIcons) {
+  pendingCustomEntityIcons = normalizeCustomEntityIconMap(customEntityIcons);
+}
+
+function getPendingCustomEntityIconsForSave() {
+  return { ...pendingCustomEntityIcons };
 }
 
 function persistCustomColorsImmediately() {
@@ -1155,6 +1566,368 @@ function initPrimaryCardsUI() {
   section.dataset.initialized = 'true';
 }
 
+function getPendingCustomIcon(entityId) {
+  if (!entityId) return null;
+  return pendingCustomEntityIcons[entityId] || null;
+}
+
+function updateCustomEntityIconSummary() {
+  const summaryEl = document.getElementById('custom-entity-icons-summary');
+  if (!summaryEl) return;
+  const count = Object.keys(pendingCustomEntityIcons).length;
+  if (count === 0) {
+    summaryEl.textContent = 'No custom icons configured.';
+    return;
+  }
+  summaryEl.textContent = `${count} custom icon${count === 1 ? '' : 's'} configured.`;
+}
+
+function getCustomEntityIconChoiceLabel(choice) {
+  if (choice.aliases.length) {
+    const visibleAliases = choice.aliases.slice(0, 4).join(', ');
+    return choice.aliases.length > 4 ? `${visibleAliases}, ...` : visibleAliases;
+  }
+  const codepointLabel = choice.codepointTerms.find(term => term.startsWith('u+'));
+  return codepointLabel ? codepointLabel.toUpperCase() : 'Emoji';
+}
+
+function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
+  if (!pickerEl) return;
+
+  const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
+  pickerEl.innerHTML = '';
+
+  const summary = document.createElement('div');
+  summary.className = 'custom-entity-icon-picker-meta';
+  if (filterValue) {
+    summary.textContent = `Showing ${filteredChoices.length} of ${CUSTOM_ENTITY_ICON_CHOICES.length} icons for "${filterValue}".`;
+  } else {
+    summary.textContent = `Showing all ${CUSTOM_ENTITY_ICON_CHOICES.length} icons.`;
+  }
+  pickerEl.appendChild(summary);
+
+  if (!filteredChoices.length) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'custom-entity-icon-picker-empty';
+    emptyState.textContent = 'No matching icons found.';
+    pickerEl.appendChild(emptyState);
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'custom-entity-icon-picker-grid';
+  grid.setAttribute('role', 'listbox');
+  grid.setAttribute('aria-label', `Choose icon for ${entityId}`);
+
+  filteredChoices.forEach(choice => {
+    const choiceBtn = document.createElement('button');
+    choiceBtn.type = 'button';
+    choiceBtn.className = 'custom-entity-icon-choice';
+    choiceBtn.textContent = choice.icon;
+    const choiceLabel = getCustomEntityIconChoiceLabel(choice);
+    choiceBtn.title = choiceLabel;
+    choiceBtn.dataset.customIconChoice = choice.icon;
+    choiceBtn.dataset.customIconChoiceEntity = entityId;
+    choiceBtn.setAttribute('aria-label', `${choiceLabel} (${choice.icon})`);
+    grid.appendChild(choiceBtn);
+  });
+
+  pickerEl.appendChild(grid);
+}
+
+function renderCustomEntityIconsList() {
+  const list = document.getElementById('custom-entity-icons-list');
+  const searchInput = document.getElementById('custom-entity-icons-search');
+  if (!list || !searchInput) return;
+  list.classList.toggle('custom-entity-icons-list-expanded', !!activeCustomEntityIconPickerEntityId);
+
+  const filter = searchInput.value || '';
+  const scoredEntities = getPrimaryCardEntityOptions(filter);
+  list.innerHTML = '';
+
+  if (!scoredEntities.length) {
+    list.innerHTML = '<div class="no-entities-message">No matching entities found.</div>';
+    updateCustomEntityIconSummary();
+    syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
+    return;
+  }
+
+  scoredEntities.forEach(({ entity }) => {
+    const entityId = entity.entity_id;
+    const pendingIcon = getPendingCustomIcon(entityId);
+    const pickerQuery = getCustomEntityIconPickerQuery(entityId);
+    const fallbackIcon = utils.getEntityIcon(entity, { ignoreCustomIcon: true });
+    const previewIcon = pendingIcon || fallbackIcon;
+    const hasCustomIcon = !!pendingIcon;
+    const isPickerOpen = activeCustomEntityIconPickerEntityId === entityId;
+    const showAppliedIndicator = !!lastCustomEntityIconAction
+      && lastCustomEntityIconAction.entityId === entityId;
+
+    const item = document.createElement('div');
+    item.className = 'entity-item custom-entity-icon-item';
+
+    const itemMain = document.createElement('div');
+    itemMain.className = 'entity-item-main';
+
+    const icon = document.createElement('span');
+    icon.className = 'entity-icon custom-entity-icon-preview';
+    icon.textContent = previewIcon;
+    itemMain.appendChild(icon);
+
+    const info = document.createElement('div');
+    info.className = 'entity-item-info';
+
+    const name = document.createElement('span');
+    name.className = 'entity-name';
+    name.textContent = utils.getEntityDisplayName(entity);
+    info.appendChild(name);
+
+    const entityIdLabel = document.createElement('span');
+    entityIdLabel.className = 'entity-id';
+    entityIdLabel.title = entityId;
+    entityIdLabel.textContent = entityId;
+    info.appendChild(entityIdLabel);
+
+    if (hasCustomIcon) {
+      const customBadge = document.createElement('span');
+      customBadge.className = 'custom-entity-icon-badge';
+      customBadge.textContent = 'Custom';
+      info.appendChild(customBadge);
+    }
+
+    if (showAppliedIndicator) {
+      const actionBadge = document.createElement('span');
+      actionBadge.className = 'custom-entity-icon-action-badge';
+      actionBadge.textContent = lastCustomEntityIconAction.action === 'reset'
+        ? 'Reset (unsaved)'
+        : 'Applied (unsaved)';
+      info.appendChild(actionBadge);
+    }
+
+    itemMain.appendChild(info);
+    item.appendChild(itemMain);
+
+    const controls = document.createElement('div');
+    controls.className = 'custom-entity-icon-controls';
+
+    const actions = document.createElement('div');
+    actions.className = 'custom-entity-icon-actions';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'custom-entity-icon-input';
+    input.placeholder = 'Search icons or paste icon';
+    input.maxLength = 64;
+    input.value = pickerQuery || pendingIcon || '';
+    input.autocomplete = 'off';
+    input.setAttribute('aria-label', `Custom icon for ${entityId}`);
+    input.dataset.customIconInput = entityId;
+    actions.appendChild(input);
+
+    const chooseBtn = document.createElement('button');
+    chooseBtn.type = 'button';
+    chooseBtn.className = 'btn btn-secondary btn-sm';
+    chooseBtn.textContent = 'Search';
+    chooseBtn.dataset.customIconPickerToggle = entityId;
+    chooseBtn.setAttribute('aria-expanded', isPickerOpen ? 'true' : 'false');
+    actions.appendChild(chooseBtn);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'btn btn-secondary btn-sm';
+    applyBtn.textContent = 'Apply';
+    applyBtn.dataset.customIconApply = entityId;
+    actions.appendChild(applyBtn);
+
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'btn btn-secondary btn-sm';
+    resetBtn.textContent = 'Reset';
+    resetBtn.disabled = !hasCustomIcon;
+    resetBtn.dataset.customIconReset = entityId;
+    actions.appendChild(resetBtn);
+
+    controls.appendChild(actions);
+
+    if (isPickerOpen) {
+      const picker = document.createElement('div');
+      picker.className = 'custom-entity-icon-picker';
+      picker.dataset.customIconPicker = entityId;
+      renderCustomEntityIconPickerChoices(picker, entityId, pickerQuery);
+
+      controls.appendChild(picker);
+    }
+
+    item.appendChild(controls);
+    list.appendChild(item);
+  });
+
+  updateCustomEntityIconSummary();
+  syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
+}
+
+function applyCustomEntityIconFromInput(entityId, rawIcon) {
+  if (!entityId) return;
+
+  const trimmed = typeof rawIcon === 'string' ? rawIcon.trim() : '';
+  const normalized = normalizeCustomEntityIcon(rawIcon);
+  if (trimmed && !normalized) {
+    showToast('Custom icon must be a single emoji or glyph.', 'error', 3000);
+    return;
+  }
+
+  const next = { ...pendingCustomEntityIcons };
+  if (normalized) {
+    next[entityId] = normalized;
+    lastCustomEntityIconAction = { entityId, action: 'apply' };
+    showToast('Icon applied. Click Save to persist changes.', 'success', 2200);
+  } else {
+    delete next[entityId];
+    lastCustomEntityIconAction = { entityId, action: 'reset' };
+    showToast('Custom icon cleared. Click Save to persist changes.', 'info', 2200);
+  }
+  pendingCustomEntityIcons = next;
+  setCustomEntityIconPickerQuery(entityId, '');
+  activeCustomEntityIconPickerEntityId = null;
+  renderCustomEntityIconsList();
+}
+
+function resetCustomEntityIcon(entityId) {
+  if (!entityId) return;
+  if (!Object.prototype.hasOwnProperty.call(pendingCustomEntityIcons, entityId)) return;
+  const next = { ...pendingCustomEntityIcons };
+  delete next[entityId];
+  lastCustomEntityIconAction = { entityId, action: 'reset' };
+  showToast('Custom icon reset. Click Save to persist changes.', 'info', 2200);
+  pendingCustomEntityIcons = next;
+  setCustomEntityIconPickerQuery(entityId, '');
+  activeCustomEntityIconPickerEntityId = null;
+  renderCustomEntityIconsList();
+}
+
+function resetAllCustomEntityIcons() {
+  pendingCustomEntityIcons = {};
+  customEntityIconPickerQueryByEntityId = {};
+  activeCustomEntityIconPickerEntityId = null;
+  lastCustomEntityIconAction = null;
+  showToast('All custom icons cleared. Click Save to persist changes.', 'info', 2400);
+  renderCustomEntityIconsList();
+}
+
+function initCustomEntityIconsUI() {
+  const section = document.getElementById('custom-entity-icons-section');
+  if (!section || section.dataset.initialized) return;
+
+  section.addEventListener('click', (event) => {
+    const resetAllBtn = event.target.closest('#custom-entity-icons-reset-all');
+    if (resetAllBtn) {
+      resetAllCustomEntityIcons();
+      return;
+    }
+
+    const pickerToggleBtn = event.target.closest('[data-custom-icon-picker-toggle]');
+    if (pickerToggleBtn) {
+      const entityId = pickerToggleBtn.dataset.customIconPickerToggle;
+      const iconInput = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
+      syncCustomEntityIconPickerQueryFromInput(entityId, iconInput?.value || '');
+      activeCustomEntityIconPickerEntityId =
+        activeCustomEntityIconPickerEntityId === entityId ? null : entityId;
+      renderCustomEntityIconsList();
+      return;
+    }
+
+    const choiceBtn = event.target.closest('[data-custom-icon-choice][data-custom-icon-choice-entity]');
+    if (choiceBtn) {
+      const entityId = choiceBtn.dataset.customIconChoiceEntity;
+      const icon = choiceBtn.dataset.customIconChoice;
+      applyCustomEntityIconFromInput(entityId, icon || '');
+      return;
+    }
+
+    const applyBtn = event.target.closest('[data-custom-icon-apply]');
+    if (applyBtn) {
+      const entityId = applyBtn.dataset.customIconApply;
+      const input = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
+      applyCustomEntityIconFromInput(entityId, input?.value || '');
+      return;
+    }
+
+    const resetBtn = event.target.closest('[data-custom-icon-reset]');
+    if (resetBtn) {
+      resetCustomEntityIcon(resetBtn.dataset.customIconReset);
+    }
+  });
+
+  section.addEventListener('input', (event) => {
+    const input = event.target.closest('[data-custom-icon-input]');
+    if (!input) return;
+    const entityId = input.dataset.customIconInput;
+    syncCustomEntityIconPickerQueryFromInput(entityId, input.value);
+    if (activeCustomEntityIconPickerEntityId !== entityId) {
+      if (!getCustomEntityIconPickerQuery(entityId)) return;
+      activeCustomEntityIconPickerEntityId = entityId;
+      renderCustomEntityIconsList();
+      refocusCustomEntityIconInput(section, entityId);
+      return;
+    }
+
+    const pickerEl = section.querySelector(`[data-custom-icon-picker="${entityId}"]`);
+    if (!pickerEl) return;
+    const query = getCustomEntityIconPickerQuery(entityId);
+    renderCustomEntityIconPickerChoices(pickerEl, entityId, query);
+    syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
+  });
+
+  section.addEventListener('focusin', (event) => {
+    const input = event.target.closest('[data-custom-icon-input]');
+    if (!input) return;
+    const entityId = input.dataset.customIconInput;
+    if (!entityId || activeCustomEntityIconPickerEntityId === entityId) return;
+    syncCustomEntityIconPickerQueryFromInput(entityId, input.value);
+    activeCustomEntityIconPickerEntityId = entityId;
+    renderCustomEntityIconsList();
+    refocusCustomEntityIconInput(section, entityId);
+  });
+
+  section.addEventListener('focusout', (event) => {
+    const input = event.target.closest('[data-custom-icon-input]');
+    if (!input) return;
+    const entityId = input.dataset.customIconInput;
+    if (!entityId || activeCustomEntityIconPickerEntityId !== entityId) return;
+    const capturedEntityId = entityId;
+
+    // Allow focus to settle before deciding whether the picker should close.
+    setTimeout(() => {
+      if (activeCustomEntityIconPickerEntityId !== capturedEntityId) return;
+
+      const controls = section.querySelector(`[data-custom-icon-input="${capturedEntityId}"]`)?.closest('.custom-entity-icon-controls');
+      const activeElement = document.activeElement;
+      const shouldKeepOpen = !!(controls && activeElement && controls.contains(activeElement));
+      if (shouldKeepOpen) return;
+      activeCustomEntityIconPickerEntityId = null;
+      renderCustomEntityIconsList();
+    }, 0);
+  });
+
+  section.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const input = event.target.closest('[data-custom-icon-input]');
+    if (!input) return;
+    event.preventDefault();
+    applyCustomEntityIconFromInput(input.dataset.customIconInput, input.value || '');
+  });
+
+  const searchInput = document.getElementById('custom-entity-icons-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      activeCustomEntityIconPickerEntityId = null;
+      renderCustomEntityIconsList();
+    });
+  }
+
+  section.dataset.initialized = 'true';
+}
+
 /**
  * Read preview controls from the DOM and derive window effect values.
  *
@@ -1304,9 +2077,14 @@ function validateHomeAssistantUrl(url) {
  * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
  * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
  * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ * @param {Function} [uiHooks.renderActiveTab] - Called after save to fully re-render the active UI tab when available.
+ * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
+ * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
  */
 async function openSettings(uiHooks) {
   try {
+    settingsUiHooks = uiHooks || null;
+
     // Exit reorganize mode if active to prevent state conflicts
     if (uiHooks && uiHooks.exitReorganizeMode) {
       uiHooks.exitReorganizeMode();
@@ -1418,6 +2196,14 @@ async function openSettings(uiHooks) {
     const primarySearch = document.getElementById('primary-cards-search');
     if (primarySearch) primarySearch.value = '';
     setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS);
+    setPendingCustomEntityIcons(getSavedCustomEntityIcons());
+    activeCustomEntityIconPickerEntityId = null;
+    customEntityIconPickerQueryByEntityId = {};
+    lastCustomEntityIconAction = null;
+    initCustomEntityIconsUI();
+    const customIconSearch = document.getElementById('custom-entity-icons-search');
+    if (customIconSearch) customIconSearch.value = '';
+    renderCustomEntityIconsList();
 
     // Initialize popup hotkey UI
     initializePopupHotkey();
@@ -1458,6 +2244,10 @@ function closeSettings() {
     previewBackground = null;
     pendingBackground = null;
     pendingPrimaryCards = null;
+    pendingCustomEntityIcons = {};
+    activeCustomEntityIconPickerEntityId = null;
+    customEntityIconPickerQueryByEntityId = {};
+    lastCustomEntityIconAction = null;
     pendingCustomColors = [];
     activeCustomManagementThemeId = null;
     hasDraftColorPreview = false;
@@ -1569,7 +2359,11 @@ async function saveSettings() {
     state.CONFIG.primaryMediaPlayer = selectedValue || null;
 
     state.CONFIG.primaryCards = getPendingPrimaryCards();
+    state.CONFIG.customEntityIcons = getPendingCustomEntityIconsForSave();
 
+    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
+      showToast('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.', 'success', 2600);
+    }
 
     await window.electronAPI.updateConfig(state.CONFIG);
 
@@ -1607,14 +2401,12 @@ async function saveSettings() {
     applyUiPreferences(state.CONFIG.ui || {});
     applyWindowEffects(state.CONFIG || {});
 
-    // Update media tile to reflect new selection
-    // Dynamic import to avoid circular dependency
-    const ui = await import('./ui.js');
-    if (ui.updateMediaTile) {
-      ui.updateMediaTile();
-    }
-    if (ui.renderPrimaryCards) {
-      ui.renderPrimaryCards();
+    // Update UI to reflect the newly saved settings selection.
+    if (settingsUiHooks?.renderActiveTab) {
+      settingsUiHooks.renderActiveTab();
+    } else {
+      settingsUiHooks?.updateMediaTile?.();
+      settingsUiHooks?.renderPrimaryCards?.();
     }
 
     // Only reconnect WebSocket if HA connection settings actually changed
@@ -2416,4 +3208,3 @@ export {
   saveAlert,
   initializePopupHotkey,
 };
-

@@ -55,6 +55,7 @@ const sampleConfig = {
     'light.living_room': 'Main Light',
     'sensor.temperature': 'Room Temp'
   },
+  customEntityIcons: {},
   selectedWeatherEntity: 'weather.home',
   primaryMediaPlayer: 'media_player.spotify',
   ui: {

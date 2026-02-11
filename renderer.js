@@ -271,6 +271,9 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
 window.electronAPI.onOpenSettings(() => {
   settings.openSettings({
     initUpdateUI: ui.initUpdateUI,
+    renderActiveTab: ui.renderActiveTab,
+    updateMediaTile: ui.updateMediaTile,
+    renderPrimaryCards: ui.renderPrimaryCards,
     exitReorganizeMode: () => {
       // Exit reorganize mode if active
       const container = document.getElementById('quick-controls');
@@ -459,6 +462,9 @@ function wireUI() {
       settingsBtn.onclick = () => {
         settings.openSettings({
           initUpdateUI: ui.initUpdateUI,
+          renderActiveTab: ui.renderActiveTab,
+          updateMediaTile: ui.updateMediaTile,
+          renderPrimaryCards: ui.renderPrimaryCards,
           exitReorganizeMode: () => {
             // Exit reorganize mode if active
             const container = document.getElementById('quick-controls');
