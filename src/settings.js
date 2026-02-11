@@ -1785,6 +1785,23 @@ function initCustomEntityIconsUI() {
     refocusCustomEntityIconInput(section, entityId);
   });
 
+  section.addEventListener('focusout', (event) => {
+    const input = event.target.closest('[data-custom-icon-input]');
+    if (!input) return;
+    const entityId = input.dataset.customIconInput;
+    if (!entityId || activeCustomEntityIconPickerEntityId !== entityId) return;
+
+    // Allow focus to settle before deciding whether the picker should close.
+    setTimeout(() => {
+      const controls = section.querySelector(`[data-custom-icon-input="${entityId}"]`)?.closest('.custom-entity-icon-controls');
+      const activeElement = document.activeElement;
+      const shouldKeepOpen = !!(controls && activeElement && controls.contains(activeElement));
+      if (shouldKeepOpen) return;
+      activeCustomEntityIconPickerEntityId = null;
+      renderCustomEntityIconsList();
+    }, 0);
+  });
+
   section.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     const input = event.target.closest('[data-custom-icon-input]');

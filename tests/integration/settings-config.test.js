@@ -528,6 +528,24 @@ describe('Settings + Config Integration', () => {
       expect(list.classList.contains('custom-entity-icons-list-expanded')).toBe(true);
     });
 
+    test('closes picker when focus leaves the icon input row', async () => {
+      await settings.openSettings();
+
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      const saveBtn = document.getElementById('save-settings');
+      expect(iconInput).toBeTruthy();
+      expect(saveBtn).toBeTruthy();
+
+      iconInput.dispatchEvent(new Event('focusin', { bubbles: true }));
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+
+      iconInput.dispatchEvent(new Event('focusout', { bubbles: true }));
+      saveBtn.focus();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeFalsy();
+    });
+
     test('uses row input as icon search for picker selection', async () => {
       await settings.openSettings();
 
