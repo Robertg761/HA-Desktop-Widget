@@ -3363,7 +3363,9 @@ body {
 #settings-modal .modal-content {
   max-width: 85vw;
   width: 85%;
+  height: 85vh;
   max-height: 85vh;
+  min-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: visible;
@@ -3590,19 +3592,17 @@ body {
 
 .section-body {
   margin-top: var(--space-4);
+  max-height: var(--section-body-height, 2000px);
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 140ms ease, transform 180ms ease, margin-top 180ms ease;
+  transition: max-height 180ms ease, opacity 140ms ease, transform 180ms ease, margin-top 180ms ease;
   overflow: hidden;
   contain: layout paint;
-  will-change: opacity, transform;
-}
-
-.personalization-section .section-body[hidden] {
-  display: none;
+  will-change: max-height, opacity, transform;
 }
 
 .personalization-section.collapsed .section-body {
+  max-height: 0;
   opacity: 0;
   transform: translateY(-4px);
   margin-top: 0;

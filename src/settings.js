@@ -52,7 +52,6 @@ let isCustomEditorActive = false;
 let settingsUiHooks = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
-const PERSONALIZATION_SECTION_COLLAPSE_ANIMATION_MS = 180;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'custom-entity-icons-section']);
 const personalizationSectionPersistTimers = new Map();
 const hydratedPersonalizationSections = new Set();
@@ -1343,28 +1342,6 @@ function getSavedPersonalizationSectionStates() {
   return savedStates;
 }
 
-function prefersReducedMotion() {
-  try {
-    return typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-}
-
-function clearSectionCollapseTransition(body) {
-  if (!body) return;
-  if (body._collapseHideTimer) {
-    clearTimeout(body._collapseHideTimer);
-    body._collapseHideTimer = null;
-  }
-  if (typeof body._collapseTransitionHandler === 'function') {
-    body.removeEventListener('transitionend', body._collapseTransitionHandler);
-    body._collapseTransitionHandler = null;
-  }
-}
-
 function hydratePersonalizationSectionIfNeeded(section) {
   if (!section || !section.id) return;
   if (!PERSONALIZATION_LAZY_SECTION_IDS.has(section.id)) return;
@@ -1390,35 +1367,26 @@ function applyPersonalizationSectionState(section, toggle, isCollapsed, options 
     return;
   }
 
-  clearSectionCollapseTransition(body);
+  body.hidden = false;
 
   if (!isCollapsed) {
-    body.hidden = false;
-    section.classList.remove('collapsed');
     hydratePersonalizationSectionIfNeeded(section);
-    if (!immediate) {
-      requestAnimationFrame(() => syncPersonalizationSectionHeight(section));
-    }
+  }
+
+  syncPersonalizationSectionHeight(section);
+
+  if (immediate) {
+    const previousTransition = body.style.transition;
+    body.style.transition = 'none';
+    section.classList.toggle('collapsed', isCollapsed);
+    // Force layout so the no-transition state is applied before restoring transitions.
+    void body.offsetHeight;
+    body.style.transition = previousTransition;
     return;
   }
 
-  section.classList.add('collapsed');
-  if (immediate || prefersReducedMotion()) {
-    body.hidden = true;
-    return;
-  }
-
-  const finalizeCollapse = (event) => {
-    if (event && event.target !== body) return;
-    if (section.classList.contains('collapsed')) {
-      body.hidden = true;
-    }
-    clearSectionCollapseTransition(body);
-  };
-
-  body._collapseTransitionHandler = finalizeCollapse;
-  body.addEventListener('transitionend', finalizeCollapse);
-  body._collapseHideTimer = setTimeout(finalizeCollapse, PERSONALIZATION_SECTION_COLLAPSE_ANIMATION_MS);
+  section.classList.toggle('collapsed', isCollapsed);
+  requestAnimationFrame(() => syncPersonalizationSectionHeight(section));
 }
 
 function persistPersonalizationSectionState(sectionId, isCollapsed) {
@@ -1467,6 +1435,7 @@ function initColorThemeSectionToggle() {
   sections.forEach(section => {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
+    syncPersonalizationSectionHeight(section);
 
     const hasSavedState = Object.prototype.hasOwnProperty.call(savedSectionStates, section.id);
     const isCollapsed = hasSavedState ? !!savedSectionStates[section.id] : section.classList.contains('collapsed');
@@ -1481,7 +1450,15 @@ function initColorThemeSectionToggle() {
 }
 
 function syncPersonalizationSectionHeight(section) {
-  if (!section || section.classList.contains('collapsed')) return;
+  if (!section) return;
+  const body = section.querySelector('.section-body');
+  if (!body) return;
+
+  const height = Math.max(0, body.scrollHeight);
+  const nextValue = `${height}px`;
+  if (section.style.getPropertyValue('--section-body-height') !== nextValue) {
+    section.style.setProperty('--section-body-height', nextValue);
+  }
 }
 
 function schedulePersonalizationSectionHeightSync(sourceEl) {
