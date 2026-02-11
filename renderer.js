@@ -13,6 +13,7 @@ import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants
 
 function emitRendererDebug(event, details = {}) {
   try {
+    if (!state.CONFIG?.ui?.enableInteractionDebugLogs) return;
     if (!window?.electronAPI?.debugLog) return;
     window.electronAPI.debugLog({
       scope: 'renderer',
@@ -102,7 +103,7 @@ websocket.on('message', (msg) => {
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
-        state.setStates({ ...state.STATES, [entity.entity_id]: entity });
+        state.setEntityState(entity);
         ui.updateEntityInUI(entity);
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
       }

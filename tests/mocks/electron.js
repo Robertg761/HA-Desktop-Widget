@@ -37,7 +37,8 @@ let mockConfig = {
     opaquePanels: false,
     density: 'comfortable',
     customColors: [],
-    personalizationSectionsCollapsed: {}
+    personalizationSectionsCollapsed: {},
+    enableInteractionDebugLogs: false
   },
   customTabs: []
 };
@@ -180,7 +181,8 @@ function resetMockElectronAPI() {
       opaquePanels: false,
       density: 'comfortable',
       customColors: [],
-      personalizationSectionsCollapsed: {}
+      personalizationSectionsCollapsed: {},
+      enableInteractionDebugLogs: false
     },
     customTabs: []
   };

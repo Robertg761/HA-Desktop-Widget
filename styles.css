@@ -3590,17 +3590,21 @@ body {
 
 .section-body {
   margin-top: var(--space-4);
-  max-height: var(--section-body-height, 2000px);
   opacity: 1;
-  transition: max-height var(--transition-slow), opacity var(--transition-base), margin-top var(--transition-base);
+  transform: translateY(0);
+  transition: opacity 140ms ease, transform 180ms ease, margin-top 180ms ease;
   overflow: hidden;
-  contain: paint;
-  will-change: max-height, opacity;
+  contain: layout paint;
+  will-change: opacity, transform;
+}
+
+.personalization-section .section-body[hidden] {
+  display: none;
 }
 
 .personalization-section.collapsed .section-body {
-  max-height: 0;
   opacity: 0;
+  transform: translateY(-4px);
   margin-top: 0;
   pointer-events: none;
 }

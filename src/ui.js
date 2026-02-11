@@ -10,10 +10,18 @@ import Sortable from 'sortablejs';
 let isReorganizeMode = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
-const DEBUG_INTERACTION_LOGS = true;
+const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
+const desiredStateByEntity = new Map();
+const inFlightByEntity = new Map();
+const lastRequestedStateByEntity = new Map();
+const optimisticStateByEntity = new Map();
+
+function isInteractionDebugEnabled() {
+  return !!state.CONFIG?.ui?.enableInteractionDebugLogs;
+}
 
 function emitUiDebug(event, details = {}) {
-  if (!DEBUG_INTERACTION_LOGS) return;
+  if (!isInteractionDebugEnabled()) return;
 
   try {
     const payload = {
@@ -32,6 +40,45 @@ function emitUiDebug(event, details = {}) {
   } catch {
     // no-op: debug logging must never break UI execution
   }
+}
+
+function isOnOffToggleDomain(domain) {
+  return ON_OFF_TOGGLE_DOMAINS.has(domain);
+}
+
+function getEntityDomain(entityId) {
+  if (typeof entityId !== 'string' || !entityId.includes('.')) return '';
+  return entityId.split('.')[0];
+}
+
+function isOnOffStateValue(value) {
+  return value === 'on' || value === 'off';
+}
+
+function getEffectiveOnOffState(entityId, fallbackState = 'off') {
+  const optimisticState = optimisticStateByEntity.get(entityId);
+  if (isOnOffStateValue(optimisticState)) return optimisticState;
+
+  const liveState = state.STATES?.[entityId]?.state;
+  if (isOnOffStateValue(liveState)) return liveState;
+
+  return isOnOffStateValue(fallbackState) ? fallbackState : 'off';
+}
+
+function clearPendingOnOffToggle(entityId) {
+  desiredStateByEntity.delete(entityId);
+  optimisticStateByEntity.delete(entityId);
+}
+
+function getEntityForDisplay(entity) {
+  if (!entity || typeof entity !== 'object' || !entity.entity_id) return entity;
+  const domain = getEntityDomain(entity.entity_id);
+  if (!isOnOffToggleDomain(domain)) return entity;
+
+  const optimisticState = optimisticStateByEntity.get(entity.entity_id);
+  if (!isOnOffStateValue(optimisticState)) return entity;
+  if (entity.state === optimisticState) return entity;
+  return { ...entity, state: optimisticState };
 }
 
 /**
@@ -516,24 +563,53 @@ function renderActiveTab() {
   }
 }
 
-function updateEntityInUI(entity) {
+function updateEntityInUI(entity, options = {}) {
   try {
     if (!entity) return;
+    const entityId = entity.entity_id;
+    const domain = getEntityDomain(entityId);
+    const skipQueueReconcile = options.skipQueueReconcile === true;
+    let renderEntity = entity;
+
+    if (!skipQueueReconcile && isOnOffToggleDomain(domain)) {
+      const desiredState = desiredStateByEntity.get(entityId);
+      if (isOnOffStateValue(desiredState)) {
+        if (entity.state === desiredState) {
+          clearPendingOnOffToggle(entityId);
+          emitUiDebug('entity.toggle_finalized', {
+            entityId,
+            domain,
+            state: entity.state,
+          });
+        } else {
+          optimisticStateByEntity.set(entityId, desiredState);
+          renderEntity = { ...entity, state: desiredState };
+          emitUiDebug('entity.toggle_reconcile_pending', {
+            entityId,
+            domain,
+            receivedState: entity.state,
+            desiredState,
+          });
+        }
+      } else if (optimisticStateByEntity.has(entityId)) {
+        optimisticStateByEntity.delete(entityId);
+      }
+    }
 
     // Update weather card if this is a weather entity
-    if (entity.entity_id.startsWith('weather.')) {
+    if (renderEntity.entity_id.startsWith('weather.')) {
       updateWeatherFromHA();
     }
 
     // Update media tile if this is the primary media player
-    if (entity.entity_id === state.CONFIG.primaryMediaPlayer) {
+    if (renderEntity.entity_id === state.CONFIG.primaryMediaPlayer) {
       updateMediaTile();
     }
 
-    const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
+    const items = document.querySelectorAll(`.control-item[data-entity-id="${renderEntity.entity_id}"]`);
     items.forEach(item => {
       const isPrimary = item.dataset.primaryCard === 'true';
-      const newControl = createControlElement(entity);
+      const newControl = createControlElement(renderEntity);
       if (isPrimary) {
         newControl.dataset.primaryCard = 'true';
       }
@@ -605,6 +681,11 @@ function renderQuickControls() {
 
 function createControlElement(entity) {
   try {
+    entity = getEntityForDisplay(entity);
+    if (!entity) {
+      return document.createElement('div');
+    }
+
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
@@ -1423,22 +1504,150 @@ function callMediaPlayerService(entityId, action) {
   }
 }
 
+function getEntityNameFromId(entityId) {
+  const entity = state.STATES?.[entityId];
+  if (entity) return utils.getEntityDisplayName(entity);
+  return entityId || 'entity';
+}
+
+function processPendingOnOffToggle(entityId, domain) {
+  if (!entityId || !isOnOffToggleDomain(domain)) return;
+  if (inFlightByEntity.get(entityId)) return;
+
+  const desiredState = desiredStateByEntity.get(entityId);
+  if (!isOnOffStateValue(desiredState)) return;
+
+  const service = desiredState === 'on' ? 'turn_on' : 'turn_off';
+  const serviceData = { entity_id: entityId };
+  inFlightByEntity.set(entityId, true);
+  lastRequestedStateByEntity.set(entityId, desiredState);
+
+  emitUiDebug('entity.toggle_attempt', {
+    entityId,
+    domain,
+    service,
+    desiredState,
+    serviceData,
+  });
+
+  websocket.callService(domain, service, serviceData)
+    .then((response) => {
+      emitUiDebug('entity.toggle_success', {
+        entityId,
+        domain,
+        service,
+        desiredState,
+        responseSuccess: response?.success !== false,
+        responseId: response?.id || null,
+      });
+
+      const latestDesiredState = desiredStateByEntity.get(entityId);
+      if (latestDesiredState === desiredState) {
+        const currentEntity = state.STATES?.[entityId];
+        if (currentEntity) {
+          const committedEntity = currentEntity.state === desiredState
+            ? currentEntity
+            : { ...currentEntity, state: desiredState };
+          state.setEntityState(committedEntity);
+          clearPendingOnOffToggle(entityId);
+          updateEntityInUI(committedEntity, { skipQueueReconcile: true });
+        } else {
+          clearPendingOnOffToggle(entityId);
+        }
+      }
+
+      return response;
+    })
+    .catch((error) => {
+      const requestedState = lastRequestedStateByEntity.get(entityId);
+      const latestDesiredState = desiredStateByEntity.get(entityId);
+
+      emitUiDebug('entity.toggle_primary_error', {
+        entityId,
+        domain,
+        service,
+        requestedState: requestedState || null,
+        latestDesiredState: latestDesiredState || null,
+        error: error?.message || String(error),
+        code: error?.code || null,
+      });
+
+      if (latestDesiredState && latestDesiredState !== requestedState) {
+        emitUiDebug('entity.toggle_error_ignored_stale_request', {
+          entityId,
+          domain,
+          requestedState: requestedState || null,
+          latestDesiredState,
+        });
+        return;
+      }
+
+      clearPendingOnOffToggle(entityId);
+
+      const serverEntity = state.STATES?.[entityId];
+      if (serverEntity) {
+        updateEntityInUI(serverEntity, { skipQueueReconcile: true });
+      }
+
+      handleServiceError(error, getEntityNameFromId(entityId));
+    })
+    .finally(() => {
+      inFlightByEntity.delete(entityId);
+      const requestedState = lastRequestedStateByEntity.get(entityId);
+      const latestDesiredState = desiredStateByEntity.get(entityId);
+
+      if (!latestDesiredState) {
+        lastRequestedStateByEntity.delete(entityId);
+        return;
+      }
+
+      if (latestDesiredState !== requestedState) {
+        processPendingOnOffToggle(entityId, domain);
+      }
+    });
+}
+
+function queueOnOffToggle(entity) {
+  if (!entity || !entity.entity_id) return;
+  const entityId = entity.entity_id;
+  const domain = getEntityDomain(entityId);
+  if (!isOnOffToggleDomain(domain)) return;
+
+  const effectiveState = getEffectiveOnOffState(entityId, entity.state);
+  const desiredState = effectiveState === 'on' ? 'off' : 'on';
+  desiredStateByEntity.set(entityId, desiredState);
+  optimisticStateByEntity.set(entityId, desiredState);
+
+  const sourceEntity = state.STATES?.[entityId] || entity;
+  if (sourceEntity) {
+    updateEntityInUI({ ...sourceEntity, state: desiredState }, { skipQueueReconcile: true });
+  }
+
+  emitUiDebug('entity.toggle_queued', {
+    entityId,
+    domain,
+    previousState: effectiveState,
+    desiredState,
+    inFlight: !!inFlightByEntity.get(entityId),
+  });
+
+  processPendingOnOffToggle(entityId, domain);
+}
+
 
 function toggleEntity(entity) {
   try {
     const domain = entity.entity_id.split('.')[0];
     let service;
-    let service_data = { entity_id: entity.entity_id };
-    const supportsExplicitFallback = ['light', 'switch', 'fan', 'input_boolean'].includes(domain);
-    const explicitFallbackService = entity.state === 'on' ? 'turn_off' : 'turn_on';
+    const service_data = { entity_id: entity.entity_id };
 
     switch (domain) {
       case 'light':
       case 'switch':
       case 'fan':
       case 'input_boolean':
-        service = 'toggle';
-        break;
+        queueOnOffToggle(entity);
+        return;
       case 'lock':
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
@@ -1464,7 +1673,6 @@ function toggleEntity(entity) {
       entityId: entity.entity_id,
       domain,
       service,
-      fallbackService: supportsExplicitFallback ? explicitFallbackService : null,
       state: entity.state,
       serviceData: service_data,
     });
@@ -1477,46 +1685,6 @@ function toggleEntity(entity) {
           responseSuccess: response?.success !== false,
           responseId: response?.id || null,
         });
-        return response;
-      })
-      .catch((error) => {
-        emitUiDebug('entity.toggle_primary_error', {
-          entityId: entity.entity_id,
-          domain,
-          service,
-          error: error?.message || String(error),
-          code: error?.code || null,
-        });
-        if (!supportsExplicitFallback || service !== 'toggle') {
-          throw error;
-        }
-        emitUiDebug('entity.toggle_fallback_attempt', {
-          entityId: entity.entity_id,
-          domain,
-          fallbackService: explicitFallbackService,
-          state: entity.state,
-        });
-        return websocket.callService(domain, explicitFallbackService, service_data)
-          .catch((fallbackError) => {
-            emitUiDebug('entity.toggle_fallback_error', {
-              entityId: entity.entity_id,
-              domain,
-              fallbackService: explicitFallbackService,
-              error: fallbackError?.message || String(fallbackError),
-              code: fallbackError?.code || null,
-            });
-            throw fallbackError;
-          });
-      })
-      .then((response) => {
-        if (supportsExplicitFallback && service === 'toggle') {
-          emitUiDebug('entity.toggle_finalized', {
-            entityId: entity.entity_id,
-            domain,
-            responseSuccess: response?.success !== false,
-            responseId: response?.id || null,
-          });
-        }
         return response;
       })
       .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));

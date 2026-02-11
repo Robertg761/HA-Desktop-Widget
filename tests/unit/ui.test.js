@@ -103,6 +103,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // ==============================================================================
 
   describe('executeHotkeyAction', () => {
+    const flushAsync = () => new Promise(resolve => setTimeout(resolve, 0));
+
     it('should execute toggle action', () => {
       const entity = {
         entity_id: 'light.bedroom',
@@ -113,7 +115,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(mockCallService).toHaveBeenCalledWith(
         'light',
-        'toggle',
+        'turn_off',
         { entity_id: 'light.bedroom' }
       );
     });
@@ -326,8 +328,171 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(mockCallService).toHaveBeenCalledWith(
         'light',
-        'toggle',
+        'turn_off',
         { entity_id: 'light.bedroom' }
+      );
+    });
+
+    it('coalesces rapid toggles while a request is in-flight and applies final state', async () => {
+      let resolveFirstCall;
+      mockCallService
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
+        .mockResolvedValue({});
+
+      const entity = {
+        entity_id: 'light.bedroom',
+        state: 'on',
+        attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
+      };
+
+      ui.executeHotkeyAction(entity, 'toggle'); // on -> off (in-flight)
+      ui.executeHotkeyAction(entity, 'toggle'); // off -> on (queued)
+
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
+
+      resolveFirstCall({});
+      await flushAsync();
+      await flushAsync();
+
+      expect(mockCallService).toHaveBeenCalledTimes(2);
+      expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', { entity_id: 'light.bedroom' });
+    });
+
+    it('keeps second toggle queued when state_changed arrives before first call settles', async () => {
+      let resolveFirstCall;
+      mockCallService
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
+        .mockResolvedValue({});
+
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
+        }
+      });
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // on -> off (in-flight)
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
+
+      // Mirror renderer flow: first commit websocket event into state, then update UI.
+      const serverOffState = {
+        entity_id: 'light.bedroom',
+        state: 'off',
+        attributes: { friendly_name: 'Bedroom Light', brightness: 0 }
+      };
+      state.setEntityState(serverOffState);
+      ui.updateEntityInUI(serverOffState);
+
+      // Second toggle should queue while the first request is still unresolved.
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // off -> on (queued)
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+
+      resolveFirstCall({});
+      await flushAsync();
+      await flushAsync();
+
+      expect(mockCallService).toHaveBeenCalledTimes(2);
+      expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', { entity_id: 'light.bedroom' });
+    });
+
+    it('sends only the final intent when rapid taps end on original state', async () => {
+      let resolveFirstCall;
+      mockCallService
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
+        .mockResolvedValue({});
+
+      const entity = {
+        entity_id: 'light.bedroom',
+        state: 'on',
+        attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
+      };
+
+      ui.executeHotkeyAction(entity, 'toggle'); // on -> off
+      ui.executeHotkeyAction(entity, 'toggle'); // off -> on
+      ui.executeHotkeyAction(entity, 'toggle'); // on -> off (final)
+
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
+
+      resolveFirstCall({});
+      await flushAsync();
+      await flushAsync();
+
+      // Final desired state equals first request, so no extra call is needed.
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies optimistic UI immediately and keeps desired state during conflicting server updates', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['light.bedroom'];
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
+        }
+      });
+      ui.renderActiveTab();
+
+      let resolveFirstCall;
+      mockCallService.mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }));
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+
+      const optimisticTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(optimisticTile).toBeTruthy();
+      expect(optimisticTile.textContent).toBe('Off');
+
+      ui.updateEntityInUI({
+        entity_id: 'light.bedroom',
+        state: 'on',
+        attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
+      });
+      const stillOptimisticTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(stillOptimisticTile.textContent).toBe('Off');
+
+      ui.updateEntityInUI({
+        entity_id: 'light.bedroom',
+        state: 'off',
+        attributes: { friendly_name: 'Bedroom Light', brightness: 0 }
+      });
+      const reconciledTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(reconciledTile.textContent).toBe('Off');
+
+      resolveFirstCall({});
+      await flushAsync();
+    });
+
+    it('reverts optimistic state when service call fails', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['light.bedroom'];
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
+        }
+      });
+      ui.renderActiveTab();
+
+      mockCallService.mockRejectedValueOnce(new Error('network timeout'));
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      await flushAsync();
+      await flushAsync();
+
+      const tileState = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(tileState).toBeTruthy();
+      expect(tileState.textContent).toContain('%');
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to control'),
+        'error',
+        4000
       );
     });
   });

@@ -51,6 +51,11 @@ let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
+const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
+const PERSONALIZATION_SECTION_COLLAPSE_ANIMATION_MS = 180;
+const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'custom-entity-icons-section']);
+const personalizationSectionPersistTimers = new Map();
+const hydratedPersonalizationSections = new Set();
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const CUSTOM_EDITOR_SCOPE_SELECTOR = [
   '#custom-color-picker',
@@ -1338,9 +1343,82 @@ function getSavedPersonalizationSectionStates() {
   return savedStates;
 }
 
-function applyPersonalizationSectionState(section, toggle, isCollapsed) {
-  section.classList.toggle('collapsed', isCollapsed);
+function prefersReducedMotion() {
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function clearSectionCollapseTransition(body) {
+  if (!body) return;
+  if (body._collapseHideTimer) {
+    clearTimeout(body._collapseHideTimer);
+    body._collapseHideTimer = null;
+  }
+  if (typeof body._collapseTransitionHandler === 'function') {
+    body.removeEventListener('transitionend', body._collapseTransitionHandler);
+    body._collapseTransitionHandler = null;
+  }
+}
+
+function hydratePersonalizationSectionIfNeeded(section) {
+  if (!section || !section.id) return;
+  if (!PERSONALIZATION_LAZY_SECTION_IDS.has(section.id)) return;
+  if (hydratedPersonalizationSections.has(section.id)) return;
+
+  if (section.id === 'primary-cards-section') {
+    renderPrimaryCardsEntityList();
+  } else if (section.id === 'custom-entity-icons-section') {
+    renderCustomEntityIconsList();
+  }
+
+  hydratedPersonalizationSections.add(section.id);
+}
+
+function applyPersonalizationSectionState(section, toggle, isCollapsed, options = {}) {
+  if (!section || !toggle) return;
+  const body = section.querySelector('.section-body');
+  const immediate = options.immediate === true;
+
   toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+  if (!body) {
+    section.classList.toggle('collapsed', isCollapsed);
+    return;
+  }
+
+  clearSectionCollapseTransition(body);
+
+  if (!isCollapsed) {
+    body.hidden = false;
+    section.classList.remove('collapsed');
+    hydratePersonalizationSectionIfNeeded(section);
+    if (!immediate) {
+      requestAnimationFrame(() => syncPersonalizationSectionHeight(section));
+    }
+    return;
+  }
+
+  section.classList.add('collapsed');
+  if (immediate || prefersReducedMotion()) {
+    body.hidden = true;
+    return;
+  }
+
+  const finalizeCollapse = (event) => {
+    if (event && event.target !== body) return;
+    if (section.classList.contains('collapsed')) {
+      body.hidden = true;
+    }
+    clearSectionCollapseTransition(body);
+  };
+
+  body._collapseTransitionHandler = finalizeCollapse;
+  body.addEventListener('transitionend', finalizeCollapse);
+  body._collapseHideTimer = setTimeout(finalizeCollapse, PERSONALIZATION_SECTION_COLLAPSE_ANIMATION_MS);
 }
 
 function persistPersonalizationSectionState(sectionId, isCollapsed) {
@@ -1357,15 +1435,23 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
 
   state.CONFIG.ui[PERSONALIZATION_SECTION_STATE_KEY] = nextStates;
 
+  if (personalizationSectionPersistTimers.has(sectionId)) {
+    clearTimeout(personalizationSectionPersistTimers.get(sectionId));
+  }
+
   if (!window?.electronAPI?.updateConfig) return;
-  window.electronAPI.updateConfig({
-    ui: {
-      ...state.CONFIG.ui,
-      [PERSONALIZATION_SECTION_STATE_KEY]: nextStates,
-    },
-  }).catch(error => {
-    log.error('Failed to persist personalization section state:', error);
-  });
+  const persistTimer = setTimeout(() => {
+    personalizationSectionPersistTimers.delete(sectionId);
+    window.electronAPI.updateConfig({
+      ui: {
+        ...state.CONFIG.ui,
+        [PERSONALIZATION_SECTION_STATE_KEY]: nextStates,
+      },
+    }).catch(error => {
+      log.error('Failed to persist personalization section state:', error);
+    });
+  }, PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS);
+  personalizationSectionPersistTimers.set(sectionId, persistTimer);
 }
 
 /**
@@ -1384,28 +1470,18 @@ function initColorThemeSectionToggle() {
 
     const hasSavedState = Object.prototype.hasOwnProperty.call(savedSectionStates, section.id);
     const isCollapsed = hasSavedState ? !!savedSectionStates[section.id] : section.classList.contains('collapsed');
-    applyPersonalizationSectionState(section, toggle, isCollapsed);
-    syncPersonalizationSectionHeight(section);
+    applyPersonalizationSectionState(section, toggle, isCollapsed, { immediate: true });
 
     toggle.onclick = () => {
-      syncPersonalizationSectionHeight(section);
       const nextCollapsed = !section.classList.contains('collapsed');
-      applyPersonalizationSectionState(section, toggle, nextCollapsed);
+      applyPersonalizationSectionState(section, toggle, nextCollapsed, { immediate: false });
       persistPersonalizationSectionState(section.id, nextCollapsed);
     };
   });
 }
 
 function syncPersonalizationSectionHeight(section) {
-  if (!section) return;
-  const body = section.querySelector('.section-body');
-  if (!body) return;
-  const height = body.scrollHeight;
-  if (!height) return;
-  const nextValue = `${height}px`;
-  if (section.style.getPropertyValue('--section-body-height') !== nextValue) {
-    section.style.setProperty('--section-body-height', nextValue);
-  }
+  if (!section || section.classList.contains('collapsed')) return;
 }
 
 function schedulePersonalizationSectionHeightSync(sourceEl) {
@@ -1519,11 +1595,15 @@ function renderPrimaryCardsEntityList() {
   syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
 
-function setPendingPrimaryCards(value) {
+function setPendingPrimaryCards(value, options = {}) {
   pendingPrimaryCards = normalizePrimaryCards(value);
   updatePrimaryCardSummary();
   updatePrimaryCardActionButtons();
-  renderPrimaryCardsEntityList();
+  const shouldRenderList = options.renderList !== false;
+  if (shouldRenderList) {
+    renderPrimaryCardsEntityList();
+    hydratedPersonalizationSections.add('primary-cards-section');
+  }
 }
 
 function initPrimaryCardsUI() {
@@ -2084,6 +2164,7 @@ function validateHomeAssistantUrl(url) {
 async function openSettings(uiHooks) {
   try {
     settingsUiHooks = uiHooks || null;
+    hydratedPersonalizationSections.clear();
 
     // Exit reorganize mode if active to prevent state conflicts
     if (uiHooks && uiHooks.exitReorganizeMode) {
@@ -2100,6 +2181,7 @@ async function openSettings(uiHooks) {
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
+    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
@@ -2146,6 +2228,9 @@ async function openSettings(uiHooks) {
     hasDraftColorPreview = false;
 
     state.CONFIG.ui = state.CONFIG.ui || {};
+    if (enableInteractionDebugLogs) {
+      enableInteractionDebugLogs.checked = !!state.CONFIG.ui.enableInteractionDebugLogs;
+    }
     setPendingCustomColorList(state.CONFIG.ui.customColors || []);
 
     const currentAccent = getCurrentAccentTheme();
@@ -2193,9 +2278,24 @@ async function openSettings(uiHooks) {
     // Populate media player dropdown after UI hooks (when states are loaded)
     populateMediaPlayerDropdown();
     initPrimaryCardsUI();
+    const primarySection = document.getElementById('primary-cards-section');
+    const primaryCardsList = document.getElementById('primary-cards-list');
+    if (primaryCardsList) primaryCardsList.innerHTML = '';
+    const shouldRenderPrimaryCardsList = !(primarySection?.classList.contains('collapsed'));
     const primarySearch = document.getElementById('primary-cards-search');
     if (primarySearch) primarySearch.value = '';
-    setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS);
+    setPendingPrimaryCards(
+      state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS,
+      { renderList: shouldRenderPrimaryCardsList }
+    );
+
+    const customIconsSection = document.getElementById('custom-entity-icons-section');
+    const customIconsList = document.getElementById('custom-entity-icons-list');
+    if (customIconsList) {
+      customIconsList.innerHTML = '';
+      customIconsList.classList.remove('custom-entity-icons-list-expanded');
+    }
+    const shouldRenderCustomIconsList = !(customIconsSection?.classList.contains('collapsed'));
     setPendingCustomEntityIcons(getSavedCustomEntityIcons());
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -2203,7 +2303,12 @@ async function openSettings(uiHooks) {
     initCustomEntityIconsUI();
     const customIconSearch = document.getElementById('custom-entity-icons-search');
     if (customIconSearch) customIconSearch.value = '';
-    renderCustomEntityIconsList();
+    if (shouldRenderCustomIconsList) {
+      renderCustomEntityIconsList();
+      hydratedPersonalizationSections.add('custom-entity-icons-section');
+    } else {
+      updateCustomEntityIconSummary();
+    }
 
     // Initialize popup hotkey UI
     initializePopupHotkey();
@@ -2290,6 +2395,7 @@ async function saveSettings() {
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
+    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
 
@@ -2321,6 +2427,9 @@ async function saveSettings() {
     delete state.CONFIG.frostedGlassStrength;
     delete state.CONFIG.frostedGlassTint;
     state.CONFIG.ui = state.CONFIG.ui || {};
+    if (enableInteractionDebugLogs) {
+      state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
+    }
     state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
     state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
     state.CONFIG.ui.customColors = getCustomColorsForSave();

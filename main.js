@@ -225,7 +225,8 @@ function loadConfig() {
       accent: 'original',
       background: 'original',
       customColors: [],
-      personalizationSectionsCollapsed: {}
+      personalizationSectionsCollapsed: {},
+      enableInteractionDebugLogs: false
     },
     primaryCards: ['weather', 'time'],
     customEntityIcons: {},

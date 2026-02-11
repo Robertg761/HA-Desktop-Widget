@@ -32,6 +32,14 @@ export function setStates(newStates) {
   try { STATES = newStates; }
   catch (error) { console.error('Error setting states:', error); }
 }
+export function setEntityState(entity) {
+  try {
+    if (!entity || typeof entity !== 'object' || !entity.entity_id) return;
+    STATES[entity.entity_id] = entity;
+  } catch (error) {
+    console.error('Error setting entity state:', error);
+  }
+}
 export function setServices(newServices) {
   try { SERVICES = newServices; }
   catch (error) { console.error('Error setting services:', error); }
@@ -58,6 +66,7 @@ const state = {
   setConfig,
   setWs,
   setStates,
+  setEntityState,
   setServices,
   setAreas,
   setUnitSystem,
