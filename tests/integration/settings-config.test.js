@@ -513,6 +513,21 @@ describe('Settings + Config Integration', () => {
       expect(allChoices.length).toBeGreaterThan(1000);
     });
 
+    test('opens picker with all icons when icon input is focused', async () => {
+      await settings.openSettings();
+
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      expect(iconInput).toBeTruthy();
+      iconInput.dispatchEvent(new Event('focusin', { bubbles: true }));
+
+      const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
+      const pickerMeta = picker.querySelector('.custom-entity-icon-picker-meta');
+      const list = document.getElementById('custom-entity-icons-list');
+      expect(picker).toBeTruthy();
+      expect(pickerMeta.textContent).toContain('Showing all');
+      expect(list.classList.contains('custom-entity-icons-list-expanded')).toBe(true);
+    });
+
     test('uses row input as icon search for picker selection', async () => {
       await settings.openSettings();
 

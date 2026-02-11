@@ -427,6 +427,17 @@ function syncCustomEntityIconPickerQueryFromInput(entityId, rawInputValue) {
   setCustomEntityIconPickerQuery(entityId, nextValue);
 }
 
+function refocusCustomEntityIconInput(section, entityId) {
+  if (!section || !entityId) return;
+  const refreshedInput = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
+  if (!refreshedInput) return;
+  const cursorPosition = refreshedInput.value.length;
+  refreshedInput.focus();
+  if (typeof refreshedInput.setSelectionRange === 'function') {
+    refreshedInput.setSelectionRange(cursorPosition, cursorPosition);
+  }
+}
+
 function normalizeCustomEntityIconMap(customEntityIcons) {
   if (!customEntityIcons || typeof customEntityIcons !== 'object' || Array.isArray(customEntityIcons)) {
     return {};
@@ -1524,6 +1535,7 @@ function renderCustomEntityIconsList() {
   const list = document.getElementById('custom-entity-icons-list');
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (!list || !searchInput) return;
+  list.classList.toggle('custom-entity-icons-list-expanded', !!activeCustomEntityIconPickerEntityId);
 
   const filter = searchInput.value || '';
   const scoredEntities = getPrimaryCardEntityOptions(filter);
@@ -1751,14 +1763,7 @@ function initCustomEntityIconsUI() {
       if (!getCustomEntityIconPickerQuery(entityId)) return;
       activeCustomEntityIconPickerEntityId = entityId;
       renderCustomEntityIconsList();
-      const refreshedInput = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
-      if (refreshedInput) {
-        const cursorPosition = refreshedInput.value.length;
-        refreshedInput.focus();
-        if (typeof refreshedInput.setSelectionRange === 'function') {
-          refreshedInput.setSelectionRange(cursorPosition, cursorPosition);
-        }
-      }
+      refocusCustomEntityIconInput(section, entityId);
       return;
     }
 
@@ -1767,6 +1772,17 @@ function initCustomEntityIconsUI() {
     const query = getCustomEntityIconPickerQuery(entityId);
     renderCustomEntityIconPickerChoices(pickerEl, entityId, query);
     syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
+  });
+
+  section.addEventListener('focusin', (event) => {
+    const input = event.target.closest('[data-custom-icon-input]');
+    if (!input) return;
+    const entityId = input.dataset.customIconInput;
+    if (!entityId || activeCustomEntityIconPickerEntityId === entityId) return;
+    syncCustomEntityIconPickerQueryFromInput(entityId, input.value);
+    activeCustomEntityIconPickerEntityId = entityId;
+    renderCustomEntityIconsList();
+    refocusCustomEntityIconInput(section, entityId);
   });
 
   section.addEventListener('keydown', (event) => {

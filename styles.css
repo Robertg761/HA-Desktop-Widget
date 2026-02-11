@@ -1892,6 +1892,11 @@ body {
   align-items: flex-start;
 }
 
+#custom-entity-icons-list.custom-entity-icons-list-expanded {
+  max-height: none;
+  overflow: visible;
+}
+
 .custom-entity-icon-preview {
   font-size: 22px;
 }
@@ -1959,14 +1964,16 @@ body {
 }
 
 .custom-entity-icon-picker {
-  width: min(420px, 100%);
+  width: min(620px, 100%);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  padding: 10px;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--surface-2);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: var(--surface-1);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  z-index: 2;
 }
 
 .custom-entity-icon-picker-meta {
@@ -1981,20 +1988,20 @@ body {
 
 .custom-entity-icon-picker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
-  gap: 6px;
-  max-height: 220px;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 8px;
+  max-height: min(52vh, 380px);
   overflow-y: auto;
   padding-right: 2px;
 }
 
 .custom-entity-icon-choice {
-  min-height: 32px;
+  min-height: 36px;
   border-radius: 6px;
   border: 1px solid var(--border-color);
   background: var(--surface-1);
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
 }
