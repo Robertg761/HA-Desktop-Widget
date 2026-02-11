@@ -132,6 +132,32 @@ const CUSTOM_ENTITY_ICON_KEYWORD_GROUPS = {
   timer: ['⏲️', '⏰', '⌚', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛'],
   favorite: ['⭐', '🌟', '✨', '💖', '💛'],
   travel: ['✈️', '🚗', '🚙', '🚌', '🚆', '🛳️'],
+  animal: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦉', '🦄', '🐝', '🦋', '🐞', '🐢', '🐍', '🐙', '🦑', '🦀', '🐠', '🐟', '🐡', '🐬', '🦈', '🐳', '🐋'],
+  pet: ['🐶', '🐱', '🐭', '🐹', '🐰', '🐦', '🐠', '🐢'],
+  rodent: ['🐀', '🐁', '🐭', '🐹', '🐿️', '🦫'],
+  rat: ['🐀', '🐁', '🐭'],
+  mouse: ['🐁', '🐭', '🐀'],
+  mammal: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐵', '🦄', '🐘', '🦒', '🦛', '🦏', '🐪', '🐫', '🦘', '🦥', '🦦', '🦨', '🦡', '🦫'],
+  bird: ['🐔', '🐤', '🐣', '🐥', '🐦', '🦅', '🦆', '🦉', '🦇', '🦜', '🦢', '🦩', '🕊️'],
+  fish: ['🐟', '🐠', '🐡', '🦈', '🐬', '🐳', '🐋', '🦭', '🐙', '🦑', '🦀', '🦞', '🦐'],
+  insect: ['🐝', '🪲', '🪳', '🦋', '🐛', '🐜', '🐞', '🕷️', '🦂', '🪰', '🪱'],
+};
+const CUSTOM_ENTITY_ICON_TERM_SYNONYMS = {
+  mice: ['mouse', 'rodent', 'rat', 'animal'],
+  mouse: ['rodent', 'rat', 'mice', 'animal', 'pet'],
+  rat: ['rodent', 'mouse', 'mice', 'animal'],
+  rodent: ['mouse', 'rat', 'hamster', 'animal'],
+  hamster: ['rodent', 'mouse', 'animal', 'pet'],
+  squirrel: ['rodent', 'animal'],
+  beaver: ['rodent', 'animal'],
+  pet: ['animal'],
+  creature: ['animal'],
+  fauna: ['animal'],
+  wildlife: ['animal', 'wild'],
+  birds: ['bird', 'animal'],
+  fishes: ['fish', 'animal'],
+  bugs: ['insect', 'animal'],
+  insects: ['insect', 'animal'],
 };
 const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
 const CUSTOM_ENTITY_ICON_CHOICES = buildCustomEntityIconChoices();
@@ -295,6 +321,78 @@ function tokenizeEmojiSearchInput(value) {
     });
 }
 
+function expandEmojiSearchToken(token) {
+  const normalized = normalizeEmojiSearchToken(token);
+  if (!normalized) return [];
+
+  const expanded = new Set([normalized]);
+  const stemmed = stemEmojiSearchToken(normalized);
+  if (stemmed) expanded.add(stemmed);
+
+  const mapped = CUSTOM_ENTITY_ICON_TERM_SYNONYMS[normalized] || CUSTOM_ENTITY_ICON_TERM_SYNONYMS[stemmed] || [];
+  mapped.forEach(term => {
+    const normalizedTerm = normalizeEmojiSearchToken(term);
+    if (!normalizedTerm) return;
+    expanded.add(normalizedTerm);
+    const stemmedTerm = stemEmojiSearchToken(normalizedTerm);
+    if (stemmedTerm) expanded.add(stemmedTerm);
+  });
+
+  return Array.from(expanded);
+}
+
+function buildEmojiSearchAlternativeGroups(filterValue) {
+  return tokenizeEmojiSearchInput(filterValue)
+    .map(token => expandEmojiSearchToken(token))
+    .filter(group => group.length > 0);
+}
+
+function isNearMatchByEditDistance(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  if (!a || !b) return false;
+
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const maxDistance = a.length <= 4 || b.length <= 4 ? 1 : 2;
+  if (Math.abs(a.length - b.length) > maxDistance) return false;
+
+  const prev = new Array(b.length + 1);
+  const curr = new Array(b.length + 1);
+
+  for (let j = 0; j <= b.length; j += 1) prev[j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    let minInRow = curr[0];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost,
+      );
+      curr[j] = value;
+      if (value < minInRow) minInRow = value;
+    }
+    if (minInRow > maxDistance) return false;
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j];
+  }
+
+  return prev[b.length] <= maxDistance;
+}
+
+function choiceMatchesAlternativeGroup(choice, alternatives, allowFuzzy = false) {
+  if (!choice || !Array.isArray(choice.searchTerms) || !alternatives.length) return false;
+  return alternatives.some(term => (
+    choice.searchTerms.some(choiceTerm => {
+      if (choiceTerm.includes(term)) return true;
+      return allowFuzzy ? isNearMatchByEditDistance(choiceTerm, term) : false;
+    })
+  ));
+}
+
 function buildCustomEntityIconGroupAliases() {
   return Object.entries(CUSTOM_ENTITY_ICON_KEYWORD_GROUPS).reduce((acc, [keyword, icons]) => {
     if (!Array.isArray(icons)) return acc;
@@ -335,6 +433,7 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
     if (!rawTerm) return;
     searchTerms.add(rawTerm);
     tokenizeEmojiSearchInput(rawTerm).forEach(token => {
+      if (token.length < 2) return;
       searchTerms.add(token);
       const stemmed = stemEmojiSearchToken(token);
       if (stemmed) searchTerms.add(stemmed);
@@ -392,14 +491,19 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
   const rawFilter = String(filterValue || '').trim().toLowerCase();
   if (!rawFilter) return CUSTOM_ENTITY_ICON_CHOICES;
 
-  const tokenFilters = tokenizeEmojiSearchInput(rawFilter);
-  return CUSTOM_ENTITY_ICON_CHOICES.filter(choice => {
+  const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
+  if (!alternativeGroups.length) return CUSTOM_ENTITY_ICON_CHOICES;
+
+  const strictMatches = CUSTOM_ENTITY_ICON_CHOICES.filter(choice => {
     if (choice.searchText.includes(rawFilter)) return true;
-    if (!tokenFilters.length) return false;
-    return tokenFilters.every(term => choice.searchTerms.some(choiceTerm => (
-      choiceTerm.includes(term) || term.includes(choiceTerm)
-    )));
+    return alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, false));
   });
+  if (strictMatches.length) return strictMatches;
+
+  // Fallback: fuzzy category search when exact tokens miss.
+  return CUSTOM_ENTITY_ICON_CHOICES.filter(choice => (
+    alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, true))
+  ));
 }
 
 function getCustomEntityIconPickerQuery(entityId) {

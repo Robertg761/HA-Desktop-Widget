@@ -582,6 +582,40 @@ describe('Settings + Config Integration', () => {
       expect(treeChoice).toBeTruthy();
     });
 
+    test('matches animal keywords like rat and mouse', async () => {
+      await settings.openSettings();
+
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      expect(iconInput).toBeTruthy();
+
+      iconInput.value = 'rat';
+      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const ratChoice = document.querySelector('[data-custom-icon-choice="🐀"][data-custom-icon-choice-entity="light.living_room"]');
+      expect(ratChoice).toBeTruthy();
+      const ratSummary = document.querySelector('[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta');
+      expect(ratSummary).toBeTruthy();
+      expect(ratSummary.textContent).toMatch(/Showing \d+ of \d+ icons for "rat"\./);
+      const [, ratShown, ratTotal] = ratSummary.textContent.match(/Showing (\d+) of (\d+) icons for "rat"\./) || [];
+      expect(Number(ratShown)).toBeLessThan(Number(ratTotal));
+
+      iconInput.value = 'mouse';
+      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const mouseChoice = document.querySelector('[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]');
+      expect(mouseChoice).toBeTruthy();
+    });
+
+    test('matches related category terms like mice -> mouse icons', async () => {
+      await settings.openSettings();
+
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      expect(iconInput).toBeTruthy();
+
+      iconInput.value = 'mice';
+      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const mouseChoice = document.querySelector('[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]');
+      expect(mouseChoice).toBeTruthy();
+    });
+
     test('allows choosing icons from picker instead of manual typing', async () => {
       await settings.openSettings();
 
