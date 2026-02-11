@@ -715,9 +715,10 @@ function createControlElement(entity) {
       stateDisplay = '';
     }
 
-    // Special layout for timer entities (no icon, larger timer display)
+    // Special layout for timer entities
     if (isTimer) {
       div.innerHTML = `
+        <div class="control-icon timer-icon">${icon}</div>
         <div class="control-info timer-layout">
           <div class="control-name">${name}</div>
           ${stateDisplay}

@@ -898,6 +898,32 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         ui.renderActiveTab();
       }).not.toThrow();
     });
+
+    it('should render an icon for timer entities in quick access', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['timer.kitchen'];
+      config.customEntityIcons = { 'timer.kitchen': '🔥' };
+      state.setConfig(config);
+
+      state.setStates({
+        'timer.kitchen': {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          attributes: {
+            friendly_name: 'Kitchen Timer',
+            remaining: '0:10:00'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const timerTile = document.querySelector('.control-item.timer-entity[data-entity-id="timer.kitchen"]');
+      expect(timerTile).toBeTruthy();
+      const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
+      expect(timerIcon).toBeTruthy();
+      expect(timerIcon.textContent).toContain('🔥');
+    });
   });
 
   // ==============================================================================

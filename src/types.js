@@ -83,6 +83,7 @@
  * @property {string} [selectedWeatherEntity] - Selected weather entity ID
  * @property {string[]} [favoriteEntities] - List of favorited entity IDs
  * @property {Object.<string, string>} [customEntityNames] - Custom display names
+ * @property {Object.<string, string>} [customEntityIcons] - Custom icon glyphs per entity ID
  * @property {Object} [customTabs] - Custom tab configurations
  * @property {Object} [ui] - UI preferences (theme, accent, background, section collapse states, etc.)
  */

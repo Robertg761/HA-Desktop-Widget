@@ -28,6 +28,7 @@ let mockConfig = {
   popupHotkey: '',
   favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
   customEntityNames: {},
+  customEntityIcons: {},
   selectedWeatherEntity: null,
   primaryMediaPlayer: null,
   ui: {
@@ -170,6 +171,7 @@ function resetMockElectronAPI() {
     popupHotkey: '',
     favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
     customEntityNames: {},
+    customEntityIcons: {},
     selectedWeatherEntity: null,
     primaryMediaPlayer: null,
     ui: {

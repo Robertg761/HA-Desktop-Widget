@@ -1,4 +1,27 @@
 import state from './state.js';
+const graphemeSegmenter = (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function')
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
+
+function countGraphemes(value) {
+    if (!value || typeof value !== 'string') return 0;
+    if (graphemeSegmenter) {
+        let count = 0;
+        for (const _segment of graphemeSegmenter.segment(value)) {
+            count += 1;
+            if (count > 1) break;
+        }
+        return count;
+    }
+    return Array.from(value).length;
+}
+
+function normalizeEntityIconGlyph(icon) {
+    if (typeof icon !== 'string') return null;
+    const trimmed = icon.trim();
+    if (!trimmed) return null;
+    return countGraphemes(trimmed) === 1 ? trimmed : null;
+}
 
 function getEntityDisplayName(entity) {
     try {
@@ -27,17 +50,23 @@ function getEntityTypeDescription(entity) {
     }
 }
 
-function getEntityIcon(entity) {
+function getEntityIcon(entity, options = {}) {
     try {
         if (!entity) return '❓';
+        const ignoreCustomIcon = !!options.ignoreCustomIcon;
+        if (!ignoreCustomIcon) {
+            const customIcon = normalizeEntityIconGlyph(state.CONFIG?.customEntityIcons?.[entity.entity_id]);
+            if (customIcon) return customIcon;
+        }
+
         const domain = entity.entity_id.split('.')[0];
-        const state = entity.state;
+        const entityState = entity.state;
         const attributes = entity.attributes || {};
 
         switch (domain) {
             case 'light': return '💡';
-            case 'switch': return state === 'on' ? '🔌' : '➖';
-            case 'fan': return state === 'on' ? '💨' : '➖';
+            case 'switch': return entityState === 'on' ? '🔌' : '➖';
+            case 'fan': return entityState === 'on' ? '💨' : '➖';
             case 'sensor':
                 if (attributes.device_class === 'temperature') return '🌡️';
                 if (attributes.device_class === 'humidity') return '💧';
@@ -53,19 +82,19 @@ function getEntityIcon(entity) {
                 if (entity.entity_id.includes('temperature') || entity.entity_id.includes('temp')) return '🌡️';
                 return '📈';
             case 'binary_sensor':
-                if (attributes.device_class === 'motion') return state === 'on' ? '🏃' : '🧍';
-                if (attributes.device_class === 'door') return state === 'on' ? '🚪' : '닫';
-                if (attributes.device_class === 'window') return state === 'on' ? '🪟' : '닫';
-                return state === 'on' ? '✔️' : '❌';
+                if (attributes.device_class === 'motion') return entityState === 'on' ? '🏃' : '🧍';
+                if (attributes.device_class === 'door') return entityState === 'on' ? '🚪' : '닫';
+                if (attributes.device_class === 'window') return entityState === 'on' ? '🪟' : '닫';
+                return entityState === 'on' ? '✔️' : '❌';
             case 'climate': return '🌡️';
             case 'media_player': return '🎵';
             case 'scene': return '✨';
             case 'automation': return '🤖';
             case 'camera': return '📷';
-            case 'lock': return state === 'locked' ? '🔒' : '🔓';
+            case 'lock': return entityState === 'locked' ? '🔒' : '🔓';
             case 'cover': return '🪟';
-            case 'person': return state === 'home' ? '🏠' : '✈️';
-            case 'device_tracker': return state === 'home' ? '🏠' : '✈️';
+            case 'person': return entityState === 'home' ? '🏠' : '✈️';
+            case 'device_tracker': return entityState === 'home' ? '🏠' : '✈️';
             case 'alarm_control_panel': return '🛡️';
             case 'vacuum': return '🧹';
             case 'timer': return '⏲️';
@@ -512,6 +541,13 @@ function reconcileConfigEntityIds(config, states = state.STATES) {
     if (customNamesResult.changed) {
         ensureConfigClone();
         nextConfig.customEntityNames = customNamesResult.value;
+        changed = true;
+    }
+
+    const customIconsResult = remapObjectKeys(config.customEntityIcons);
+    if (customIconsResult.changed) {
+        ensureConfigClone();
+        nextConfig.customEntityIcons = customIconsResult.value;
         changed = true;
     }
 
