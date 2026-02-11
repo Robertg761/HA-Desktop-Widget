@@ -62,6 +62,7 @@ const sampleConfig = {
     highContrast: false,
     opaquePanels: false,
     density: 'comfortable',
+    customColors: [],
     personalizationSectionsCollapsed: {}
   },
   customTabs: [

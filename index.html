@@ -187,6 +187,54 @@
                                 <div class="form-help" id="theme-current-selection"></div>
                                 <div class="form-help">Selections preview instantly and save when you click Save.</div>
                             </div>
+                            <div class="form-group custom-color-editor">
+                                <label for="custom-color-picker">Custom Color</label>
+                                <div class="custom-color-editor-grid">
+                                    <div class="custom-color-field">
+                                        <label for="custom-color-picker" class="custom-color-field-label">Picker</label>
+                                        <input id="custom-color-picker" type="color" value="#64B5F6" aria-label="Color picker">
+                                    </div>
+                                    <div class="custom-color-field">
+                                        <label for="custom-color-r" class="custom-color-field-label">Red (R)</label>
+                                        <input id="custom-color-r" type="number" min="0" max="255" step="1" placeholder="0-255"
+                                            inputmode="numeric" aria-label="Red channel">
+                                    </div>
+                                    <div class="custom-color-field">
+                                        <label for="custom-color-g" class="custom-color-field-label">Green (G)</label>
+                                        <input id="custom-color-g" type="number" min="0" max="255" step="1" placeholder="0-255"
+                                            inputmode="numeric" aria-label="Green channel">
+                                    </div>
+                                    <div class="custom-color-field">
+                                        <label for="custom-color-b" class="custom-color-field-label">Blue (B)</label>
+                                        <input id="custom-color-b" type="number" min="0" max="255" step="1" placeholder="0-255"
+                                            inputmode="numeric" aria-label="Blue channel">
+                                    </div>
+                                    <div class="custom-color-field">
+                                        <label for="custom-color-hex" class="custom-color-field-label">Hex</label>
+                                        <input id="custom-color-hex" type="text" maxlength="7" placeholder="#RRGGBB"
+                                            aria-label="Hex color">
+                                    </div>
+                                    <div class="custom-color-action">
+                                        <span class="custom-color-field-label" aria-hidden="true">Action</span>
+                                        <button type="button" id="save-custom-color-btn" class="btn btn-primary">Save Custom Color</button>
+                                    </div>
+                                </div>
+                                <div id="custom-editor-save-lock-hint" class="form-help custom-editor-save-lock-hint hidden">
+                                    Main Save is temporarily disabled while editing custom color. Click outside these fields to continue.
+                                </div>
+                                <div class="form-help">RGB values use a 0-255 range for each channel.</div>
+                                <div class="form-help">Hex format uses <code>#RRGGBB</code> (example: <code>#34A1FF</code>).</div>
+                                <div class="form-help">Edit color freely, preview live, then save it to your reusable palette.</div>
+                            </div>
+                            <div class="form-group custom-theme-management hidden" id="custom-theme-management">
+                                <label for="custom-color-name-input">Selected Custom Color</label>
+                                <div class="custom-theme-management-row">
+                                    <input id="custom-color-name-input" type="text" maxlength="48"
+                                        placeholder="Custom color name" aria-label="Custom color name">
+                                    <button type="button" id="rename-custom-color-btn" class="btn btn-secondary">Rename</button>
+                                    <button type="button" id="remove-custom-color-btn" class="btn btn-danger">Remove</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="personalization-section collapsed" id="window-effects-section">

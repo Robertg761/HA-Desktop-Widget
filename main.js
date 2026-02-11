@@ -224,6 +224,7 @@ function loadConfig() {
       theme: 'auto',
       accent: 'original',
       background: 'original',
+      customColors: [],
       personalizationSectionsCollapsed: {}
     },
     primaryCards: ['weather', 'time'],

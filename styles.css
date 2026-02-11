@@ -3552,10 +3552,12 @@ body {
 .theme-tooltip-name {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   letter-spacing: 0.01em;
+  text-align: center;
 }
 
 .theme-tooltip-name::before {
@@ -3572,6 +3574,100 @@ body {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+.custom-color-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(84px, 0.9fr) repeat(3, minmax(78px, 0.8fr)) minmax(120px, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+  margin-top: var(--space-3);
+}
+
+.custom-color-field,
+.custom-color-action {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-color-field-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.custom-editor-save-lock-hint {
+  border-left: 3px solid rgba(var(--accent-rgb), 0.6);
+  padding-left: var(--space-3);
+  color: var(--accent);
+}
+
+#custom-color-picker {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 2px;
+  cursor: pointer;
+}
+
+#custom-color-r,
+#custom-color-g,
+#custom-color-b,
+#custom-color-hex,
+#custom-color-name-input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--glass-surface);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  transition: var(--transition-base);
+}
+
+#custom-color-r:focus,
+#custom-color-g:focus,
+#custom-color-b:focus,
+#custom-color-hex:focus,
+#custom-color-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--glow-focus);
+}
+
+#custom-color-r::-webkit-outer-spin-button,
+#custom-color-r::-webkit-inner-spin-button,
+#custom-color-g::-webkit-outer-spin-button,
+#custom-color-g::-webkit-inner-spin-button,
+#custom-color-b::-webkit-outer-spin-button,
+#custom-color-b::-webkit-inner-spin-button {
+  margin: 0;
+}
+
+.custom-theme-management-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 880px) {
+  .custom-color-editor-grid {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+
+  .custom-color-action {
+    grid-column: 1 / -1;
+  }
+
+  .custom-theme-management-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Custom Dropdown */
@@ -3761,31 +3857,74 @@ body {
 .btn-primary {
   background: var(--accent);
   color: #000;
-  border-color: var(--accent);
+  border-color: transparent;
   font-weight: var(--font-weight-semibold);
-  box-shadow: var(--shadow-md),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2),
-              0 0 0 0 rgba(var(--accent-rgb), 0);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: all 0.2s ease;
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: var(--shadow-lg),
-              inset 0 1px 0 rgba(255, 255, 255, 0.3),
-              var(--glow-accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
 }
 
 .btn-secondary {
-  background: transparent;
-  color: var(--text-secondary);
-  border-color: var(--border-color);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  box-shadow: none;
 }
 
 .btn-secondary:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.btn-secondary:not([id*="cancel"]):not([id*="close"]):not([id*="reset"]) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:not([id*="cancel"]):not([id*="close"]):not([id*="reset"]):active {
+  transform: scale(0.98);
+}
+
+/* Explicitly keep key accent actions on the same visual recipe. */
+#save-settings.btn-primary,
+#save-custom-color-btn.btn-primary {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition: all 0.2s ease;
+}
+
+/* Neutral actions keep lower emphasis even with accent-forward button styling */
+.btn-secondary[id*="cancel"],
+.btn-secondary[id*="close"],
+.btn-secondary[id*="reset"] {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.btn-secondary[id*="cancel"]:hover,
+.btn-secondary[id*="close"]:hover,
+.btn-secondary[id*="reset"]:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Update section styles (from previous implementation) */
@@ -4323,11 +4462,11 @@ body {
 
 .rename-modal .btn-primary {
   background: var(--accent);
-    color: white;
+  color: #000;
 }
 
 .rename-modal .btn-primary:hover {
-  background: #1565c0;
+  background: var(--accent-hover);
   transform: translateY(-1px);
 }
 
@@ -5152,9 +5291,9 @@ body {
     width: 24px;
     height: 24px;
     flex-shrink: 0;
-    border: none;
-    background: transparent;
-    color: var(--muted-text);
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--accent);
     border-radius: 4px;
     cursor: pointer;
     font-size: 16px;
@@ -5166,8 +5305,9 @@ body {
 }
 
 .btn-clear-hotkey:hover {
-    background: var(--surface-3);
-    color: var(--danger);
+    background: rgba(var(--accent-rgb), 0.18);
+    color: var(--accent-hover);
+    border-color: var(--accent);
     transform: scale(1.1);
 }
 

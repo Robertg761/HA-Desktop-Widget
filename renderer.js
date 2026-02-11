@@ -400,6 +400,7 @@ async function init() {
 
     // Apply theme and UI preferences from saved config
     uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
     uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
     uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});

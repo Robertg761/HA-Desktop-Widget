@@ -10,35 +10,64 @@ const mockWebsocket = {
   connect: jest.fn()
 };
 
+const BASE_THEMES = [
+  {
+    id: 'original',
+    name: 'Original',
+    color: '#64b5f6',
+    description: 'Mock theme',
+    rgb: '100, 181, 246'
+  },
+  {
+    id: 'slate',
+    name: 'Slate',
+    color: '#94a3b8',
+    description: 'Mock theme',
+    rgb: '148, 163, 184'
+  },
+  {
+    id: 'rose',
+    name: 'Rose',
+    color: '#f43f5e',
+    description: 'Mock theme',
+    rgb: '244, 63, 94'
+  },
+];
+let mockCustomThemes = [];
+
+function normalizeHex(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const raw = hex.trim().replace('#', '');
+  if (![3, 6].includes(raw.length) || !/^[0-9a-fA-F]+$/.test(raw)) return null;
+  const value = raw.length === 3 ? raw.split('').map(ch => ch + ch).join('') : raw;
+  return `#${value.toUpperCase()}`;
+}
+
+function hexToRgbString(hex) {
+  const normalized = normalizeHex(hex);
+  if (!normalized) return null;
+  const value = normalized.slice(1);
+  return `${Number.parseInt(value.slice(0, 2), 16)}, ${Number.parseInt(value.slice(2, 4), 16)}, ${Number.parseInt(value.slice(4, 6), 16)}`;
+}
+
 const mockUiUtils = {
   applyTheme: jest.fn(),
   applyAccentTheme: jest.fn(),
+  applyAccentThemeFromColor: jest.fn(),
   applyBackgroundTheme: jest.fn(),
+  applyBackgroundThemeFromColor: jest.fn(),
   applyUiPreferences: jest.fn(),
   applyWindowEffects: jest.fn(),
-  getAccentThemes: jest.fn(() => ([
-    {
-      id: 'original',
-      name: 'Original',
-      color: '#64b5f6',
-      description: 'Mock theme',
-      rgb: '100, 181, 246'
-    },
-    {
-      id: 'slate',
-      name: 'Slate',
-      color: '#94a3b8',
-      description: 'Mock theme',
-      rgb: '148, 163, 184'
-    },
-    {
-      id: 'rose',
-      name: 'Rose',
-      color: '#f43f5e',
-      description: 'Mock theme',
-      rgb: '244, 63, 94'
-    },
-  ])),
+  setCustomThemes: jest.fn((customColors = []) => {
+    mockCustomThemes = (Array.isArray(customColors) ? customColors : []).map(entry => ({
+      ...entry,
+      color: normalizeHex(entry.color),
+      description: 'Saved custom color',
+      rgb: hexToRgbString(entry.color),
+      isCustom: true,
+    })).filter(entry => entry.color && entry.rgb);
+  }),
+  getAccentThemes: jest.fn(() => ([...BASE_THEMES, ...mockCustomThemes])),
   trapFocus: jest.fn(),
   releaseFocusTrap: jest.fn(),
   showToast: jest.fn(),
@@ -73,6 +102,7 @@ beforeAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   resetMockElectronAPI();
+  mockCustomThemes = [];
 
   // Clear any existing DOM
   document.body.innerHTML = '';
@@ -97,6 +127,7 @@ beforeEach(() => {
     highContrast: false,
     opaquePanels: false,
     density: 'comfortable',
+    customColors: [],
     personalizationSectionsCollapsed: {}
   };
   state.setConfig(testConfig);
@@ -171,7 +202,25 @@ function createSettingsModalDOM() {
             Color Themes
           </button>
           <div class="section-body">
+            <select id="color-target-select">
+              <option value="accent">Accent Color</option>
+              <option value="background">Background Color</option>
+            </select>
+            <label id="theme-options-label">Color Options</label>
             <div id="theme-options"></div>
+            <div id="theme-current-selection"></div>
+            <input id="custom-color-picker" type="color" value="#64B5F6" />
+            <input id="custom-color-r" type="number" min="0" max="255" step="1" />
+            <input id="custom-color-g" type="number" min="0" max="255" step="1" />
+            <input id="custom-color-b" type="number" min="0" max="255" step="1" />
+            <input id="custom-color-hex" type="text" />
+            <button type="button" id="save-custom-color-btn">Save Custom Color</button>
+            <div id="custom-editor-save-lock-hint" class="hidden"></div>
+            <div id="custom-theme-management" class="hidden">
+              <input id="custom-color-name-input" type="text" />
+              <button type="button" id="rename-custom-color-btn">Rename</button>
+              <button type="button" id="remove-custom-color-btn">Remove</button>
+            </div>
           </div>
         </div>
         <div id="window-effects-section" class="personalization-section collapsed">
@@ -198,8 +247,8 @@ function createSettingsModalDOM() {
         <button id="popup-hotkey-clear-btn" style="display: none;">Clear</button>
       </div>
 
-      <button id="save-settings-btn">Save</button>
-      <button id="close-settings-btn">Cancel</button>
+      <button id="save-settings">Save</button>
+      <button id="cancel-settings">Cancel</button>
     </div>
   `;
 
@@ -429,6 +478,250 @@ describe('Settings + Config Integration', () => {
 
       // Verify websocket.connect() was NOT called
       expect(mockWebsocket.connect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Custom Color Palette', () => {
+    test('opens with saved custom colors appended after built-ins', async () => {
+      state.CONFIG.ui.customColors = [
+        {
+          id: 'custom-ocean',
+          name: 'Ocean',
+          color: '#336699',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        }
+      ];
+
+      await settings.openSettings();
+
+      const options = Array.from(document.querySelectorAll('.color-theme-option'));
+      expect(options).toHaveLength(4);
+      expect(options[0].dataset.theme).toBe('original');
+      expect(options[3].dataset.theme).toBe('custom-ocean');
+    });
+
+    test('custom editor previews accent and background live', async () => {
+      await settings.openSettings();
+
+      const hexInput = document.getElementById('custom-color-hex');
+      const targetSelect = document.getElementById('color-target-select');
+
+      hexInput.value = '#123456';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(mockUiUtils.applyAccentThemeFromColor).toHaveBeenCalledWith('#123456');
+
+      targetSelect.value = 'background';
+      targetSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      hexInput.value = '#ABCDEF';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(mockUiUtils.applyBackgroundThemeFromColor).toHaveBeenCalledWith('#ABCDEF');
+    });
+
+    test('main settings save is disabled while custom editor is active', async () => {
+      await settings.openSettings();
+
+      const mainSave = document.getElementById('save-settings');
+      const lockHint = document.getElementById('custom-editor-save-lock-hint');
+      const hexInput = document.getElementById('custom-color-hex');
+
+      expect(mainSave.disabled).toBe(false);
+      expect(lockHint.classList.contains('hidden')).toBe(true);
+
+      hexInput.focus();
+
+      expect(mainSave.disabled).toBe(true);
+      expect(lockHint.classList.contains('hidden')).toBe(false);
+    });
+
+    test('main settings save unlocks when focus moves outside custom editor', async () => {
+      await settings.openSettings();
+
+      const mainSave = document.getElementById('save-settings');
+      const lockHint = document.getElementById('custom-editor-save-lock-hint');
+      const hexInput = document.getElementById('custom-color-hex');
+      const haUrl = document.getElementById('ha-url');
+
+      hexInput.focus();
+      expect(mainSave.disabled).toBe(true);
+
+      haUrl.focus();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mainSave.disabled).toBe(false);
+      expect(lockHint.classList.contains('hidden')).toBe(true);
+    });
+
+    test('clicking Save Custom Color unlocks main settings save', async () => {
+      await settings.openSettings();
+
+      const mainSave = document.getElementById('save-settings');
+      const hexInput = document.getElementById('custom-color-hex');
+      const saveCustomBtn = document.getElementById('save-custom-color-btn');
+
+      hexInput.focus();
+      expect(mainSave.disabled).toBe(true);
+
+      hexInput.value = '#88AA11';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      saveCustomBtn.click();
+
+      expect(mainSave.disabled).toBe(false);
+    });
+
+    test('rename and remove actions unlock main settings save', async () => {
+      await settings.openSettings();
+
+      const mainSave = document.getElementById('save-settings');
+      const hexInput = document.getElementById('custom-color-hex');
+      const saveCustomBtn = document.getElementById('save-custom-color-btn');
+      const renameInput = document.getElementById('custom-color-name-input');
+      const renameBtn = document.getElementById('rename-custom-color-btn');
+      const removeBtn = document.getElementById('remove-custom-color-btn');
+
+      hexInput.value = '#9A7722';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      saveCustomBtn.click();
+
+      renameInput.focus();
+      expect(mainSave.disabled).toBe(true);
+      renameInput.value = 'Renamed Custom';
+      renameBtn.click();
+      expect(mainSave.disabled).toBe(false);
+
+      removeBtn.focus();
+      expect(mainSave.disabled).toBe(true);
+      removeBtn.click();
+      expect(mainSave.disabled).toBe(false);
+    });
+
+    test('closing settings resets main save lock state', async () => {
+      await settings.openSettings();
+
+      const mainSave = document.getElementById('save-settings');
+      const hexInput = document.getElementById('custom-color-hex');
+      const lockHint = document.getElementById('custom-editor-save-lock-hint');
+
+      hexInput.focus();
+      expect(mainSave.disabled).toBe(true);
+
+      settings.closeSettings();
+      expect(mainSave.disabled).toBe(false);
+      expect(lockHint.classList.contains('hidden')).toBe(true);
+
+      await settings.openSettings();
+      expect(mainSave.disabled).toBe(false);
+      expect(lockHint.classList.contains('hidden')).toBe(true);
+    });
+
+    test('saving a custom color persists it in config', async () => {
+      await settings.openSettings();
+
+      const hexInput = document.getElementById('custom-color-hex');
+      const saveCustomBtn = document.getElementById('save-custom-color-btn');
+
+      hexInput.value = '#112233';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      saveCustomBtn.click();
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.ui.customColors).toHaveLength(1);
+      expect(state.CONFIG.ui.customColors[0]).toEqual(expect.objectContaining({
+        color: '#112233',
+        name: 'Custom #112233'
+      }));
+    });
+
+    test('main save prompts for unsaved custom color draft and saves when confirmed', async () => {
+      mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+
+      await settings.openSettings();
+
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.value = '#13579B';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        expect.stringContaining('Unsaved Custom Color Changes'),
+        expect.stringContaining('unsaved custom color edits'),
+        expect.objectContaining({
+          confirmText: 'Save and Continue',
+          cancelText: 'Continue Without Saving'
+        })
+      );
+      expect(state.CONFIG.ui.customColors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ color: '#13579B' })
+        ])
+      );
+    });
+
+    test('main save prompts for unsaved custom color draft and can continue without saving', async () => {
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      await settings.openSettings();
+
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.value = '#2468AC';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showConfirm).toHaveBeenCalled();
+      expect(state.CONFIG.ui.customColors).toHaveLength(0);
+    });
+
+    test('duplicate custom color save selects existing without creating extra entries', async () => {
+      await settings.openSettings();
+
+      const hexInput = document.getElementById('custom-color-hex');
+      const saveCustomBtn = document.getElementById('save-custom-color-btn');
+
+      hexInput.value = '#445566';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      saveCustomBtn.click();
+      saveCustomBtn.click();
+
+      const customOptions = document.querySelectorAll('.color-theme-option[data-custom-theme="true"]');
+      expect(customOptions).toHaveLength(1);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('already saved'),
+        'info',
+        expect.any(Number)
+      );
+    });
+
+    test('rename and remove custom colors update pending state and fallback selection', async () => {
+      await settings.openSettings();
+
+      const hexInput = document.getElementById('custom-color-hex');
+      const saveCustomBtn = document.getElementById('save-custom-color-btn');
+      const renameInput = document.getElementById('custom-color-name-input');
+      const renameBtn = document.getElementById('rename-custom-color-btn');
+
+      hexInput.value = '#778899';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      saveCustomBtn.click();
+
+      renameInput.value = 'My Slate';
+      renameBtn.click();
+
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.customColors[0].name).toBe('My Slate');
+
+      await settings.openSettings();
+      const removeButton = document.getElementById('remove-custom-color-btn');
+      removeButton.click();
+
+      const customOptions = document.querySelectorAll('.color-theme-option[data-custom-theme="true"]');
+      expect(customOptions).toHaveLength(0);
+
+      const selected = document.querySelector('.color-theme-option.selected');
+      expect(selected?.dataset.theme).toBe('original');
     });
   });
 
