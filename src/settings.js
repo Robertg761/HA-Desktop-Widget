@@ -1,4 +1,5 @@
 import state from './state.js';
+import log from './logger.js';
 import websocket from './websocket.js';
 import {
   applyTheme,
@@ -172,7 +173,7 @@ function persistCustomColorsImmediately() {
       customColors,
     },
   }).catch((error) => {
-    console.error('Failed to persist custom colors:', error);
+    log.error('Failed to persist custom colors:', error);
     showToast('Could not persist custom colors. Try Save in settings.', 'warning', 3000);
   });
 }
@@ -952,7 +953,7 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
       [PERSONALIZATION_SECTION_STATE_KEY]: nextStates,
     },
   }).catch(error => {
-    console.error('Failed to persist personalization section state:', error);
+    log.error('Failed to persist personalization section state:', error);
   });
 }
 
@@ -1194,11 +1195,11 @@ function previewWindowEffectsNow() {
         opacity: values.opacity,
         frostedGlass: values.frostedGlass,
       }).catch(err => {
-        console.error('Failed to preview window effects:', err);
+        log.error('Failed to preview window effects:', err);
       });
     }
   } catch (error) {
-    console.error('Error applying preview window effects:', error);
+    log.error('Error applying preview window effects:', error);
   }
 }
 
@@ -1251,11 +1252,11 @@ function restorePreviewWindowEffects() {
         opacity: previewState.opacity,
         frostedGlass: previewState.frostedGlass,
       }).catch(err => {
-        console.error('Failed to restore preview window effects:', err);
+        log.error('Failed to restore preview window effects:', err);
       });
     }
   } catch (error) {
-    console.error('Error restoring preview window effects:', error);
+    log.error('Error restoring preview window effects:', error);
   }
 }
 
@@ -1348,7 +1349,7 @@ async function openSettings(uiHooks) {
         const loginSettings = await window.electronAPI.getLoginItemSettings();
         startWithWindows.checked = loginSettings.openAtLogin || false;
       } catch (error) {
-        console.error('Failed to get login item settings:', error);
+        log.error('Failed to get login item settings:', error);
         startWithWindows.checked = false;
       }
     }
@@ -1425,7 +1426,7 @@ async function openSettings(uiHooks) {
     modal.style.display = 'flex';
     trapFocus(modal);
   } catch (error) {
-    console.error('Error opening settings:', error);
+    log.error('Error opening settings:', error);
   }
 }
 
@@ -1473,7 +1474,7 @@ function closeSettings() {
       releaseFocusTrap(modal);
     }
   } catch (error) {
-    console.error('Error closing settings:', error);
+    log.error('Error closing settings:', error);
   }
 }
 
@@ -1541,11 +1542,11 @@ async function saveSettings() {
       try {
         const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
         if (!result.success) {
-          console.error('Failed to set login item settings:', result.error);
+          log.error('Failed to set login item settings:', result.error);
           showToast('Failed to update Start with Windows setting', 'warning', 3000);
         }
       } catch (error) {
-        console.error('Failed to set login item settings:', error);
+        log.error('Failed to set login item settings:', error);
       }
     }
 
@@ -1583,12 +1584,12 @@ async function saveSettings() {
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
           // Force window to regain focus after confirm dialog (Windows focus bug workaround)
-          await window.electronAPI.focusWindow().catch(err => console.error('Failed to refocus window:', err));
+          await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
           await window.electronAPI.restartApp();
           return;
         }
         // Force window to regain focus even if user cancelled (Windows focus bug workaround)
-        await window.electronAPI.focusWindow().catch(err => console.error('Failed to refocus window:', err));
+        await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
       }
     }
 
@@ -1625,7 +1626,7 @@ async function saveSettings() {
       websocket.connect();
     }
   } catch (error) {
-    console.error('Failed to save config:', error);
+    log.error('Failed to save config:', error);
   }
 }
 
@@ -1699,7 +1700,7 @@ function renderAlertsListInline() {
       btn.onclick = () => removeAlert(btn.dataset.entity);
     });
   } catch (error) {
-    console.error('Error rendering alerts list inline:', error);
+    log.error('Error rendering alerts list inline:', error);
   }
 }
 
@@ -1713,7 +1714,7 @@ function openAlertEntityPicker() {
       trapFocus(modal);
     }
   } catch (error) {
-    console.error('Error opening alert entity picker:', error);
+    log.error('Error opening alert entity picker:', error);
   }
 }
 
@@ -1726,7 +1727,7 @@ function closeAlertEntityPicker() {
       releaseFocusTrap(modal);
     }
   } catch (error) {
-    console.error('Error closing alert entity picker:', error);
+    log.error('Error closing alert entity picker:', error);
   }
 }
 
@@ -1825,7 +1826,7 @@ function populateAlertEntityPicker() {
       };
     }
   } catch (error) {
-    console.error('Error populating alert entity picker:', error);
+    log.error('Error populating alert entity picker:', error);
   }
 }
 
@@ -1834,7 +1835,7 @@ let currentAlertEntity = null;
 function openAlertConfigModal(entityId) {
   try {
     if (!entityId) {
-      console.error('openAlertConfigModal requires entityId');
+      log.error('openAlertConfigModal requires entityId');
       return;
     }
 
@@ -1889,7 +1890,7 @@ function openAlertConfigModal(entityId) {
     modal.style.display = 'flex';
     trapFocus(modal);
   } catch (error) {
-    console.error('Error opening alert config modal:', error);
+    log.error('Error opening alert config modal:', error);
   }
 }
 
@@ -1903,7 +1904,7 @@ function closeAlertConfigModal() {
       currentAlertEntity = null;
     }
   } catch (error) {
-    console.error('Error closing alert config modal:', error);
+    log.error('Error closing alert config modal:', error);
   }
 }
 
@@ -1934,7 +1935,7 @@ async function saveAlert() {
     // showToast already imported at top
     showToast('Alert saved successfully', 'success', 2000);
   } catch (error) {
-    console.error('Error saving alert:', error);
+    log.error('Error saving alert:', error);
     // showToast already imported at top
     showToast('Error saving alert', 'error', 2000);
   }
@@ -1963,7 +1964,7 @@ async function removeAlert(entityId) {
       showToast('Alert removed', 'success', 2000);
     }
   } catch (error) {
-    console.error('Error removing alert:', error);
+    log.error('Error removing alert:', error);
     // showToast already imported at top
     showToast('Error removing alert', 'error', 2000);
   }
@@ -2016,7 +2017,7 @@ function initCustomDropdown() {
 
     // Option selection handled in populateMediaPlayerDropdown
   } catch (error) {
-    console.error('Error initializing custom dropdown:', error);
+    log.error('Error initializing custom dropdown:', error);
   }
 }
 
@@ -2114,7 +2115,7 @@ function populateMediaPlayerDropdown() {
       menu.dataset.initialized = 'true';
     }
   } catch (error) {
-    console.error('Error populating media player dropdown:', error);
+    log.error('Error populating media player dropdown:', error);
   }
 }
 
@@ -2208,7 +2209,7 @@ async function initializePopupHotkey() {
             2000
           );
         } catch (error) {
-          console.error('Failed to save popup hotkey toggle mode setting:', error);
+          log.error('Failed to save popup hotkey toggle mode setting:', error);
         }
       };
     }
@@ -2231,7 +2232,7 @@ async function initializePopupHotkey() {
             2000
           );
         } catch (error) {
-          console.error('Failed to save popup hotkey setting:', error);
+          log.error('Failed to save popup hotkey setting:', error);
         }
       };
     }
@@ -2261,7 +2262,7 @@ async function initializePopupHotkey() {
           showToast('Popup hotkey cleared', 'success');
         }
       } catch (error) {
-        console.error('Failed to clear popup hotkey:', error);
+        log.error('Failed to clear popup hotkey:', error);
         // showToast already imported at top
         showToast('Failed to clear popup hotkey', 'error');
       }
@@ -2286,14 +2287,14 @@ async function initializePopupHotkey() {
             showToast(result.error || 'Failed to set popup hotkey', 'error');
           }
         } catch (error) {
-          console.error('Failed to set preset hotkey:', error);
+          log.error('Failed to set preset hotkey:', error);
           // showToast already imported at top
           showToast('Failed to set popup hotkey', 'error');
         }
       };
     });
   } catch (error) {
-    console.error('Error initializing popup hotkey:', error);
+    log.error('Error initializing popup hotkey:', error);
   }
 }
 
@@ -2364,7 +2365,7 @@ function startCapturingPopupHotkey() {
           if (input) input.value = state.CONFIG.popupHotkey || '';
         }
       } catch (error) {
-        console.error('Failed to register popup hotkey:', error);
+        log.error('Failed to register popup hotkey:', error);
         // showToast already imported at top
         showToast('Failed to register popup hotkey', 'error');
         if (input) input.value = state.CONFIG.popupHotkey || '';
@@ -2415,3 +2416,4 @@ export {
   saveAlert,
   initializePopupHotkey,
 };
+
