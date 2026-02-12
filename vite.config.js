@@ -16,8 +16,14 @@ export default defineConfig(({ mode }) => {
                 input: resolve(__dirname, 'renderer.js'),
                 output: {
                     entryFileNames: 'renderer.bundle.js',
-                    format: 'iife', // Immediately Invoked Function Expression for browser
-                    inlineDynamicImports: true, // Bundle dynamic imports inline
+                    chunkFileNames: 'chunks/[name]-[hash].js',
+                    manualChunks: (id) => {
+                        if (!id.includes('node_modules')) return null;
+                        if (id.includes('hls.js')) return 'vendor-hls';
+                        if (id.includes('sortablejs')) return 'vendor-sortable';
+                        if (id.includes('regenerate-unicode-properties')) return 'vendor-emoji';
+                        return 'vendor';
+                    },
                 },
             },
             target: 'chrome114', // Electron's Chromium version
@@ -33,6 +39,8 @@ export default defineConfig(({ mode }) => {
                 '@': resolve(__dirname, 'src'),
                 // Node.js polyfills for browser
                 'events': 'events',
+                // Use the lighter HLS build in renderer bundles.
+                'hls.js': 'hls.js/dist/hls.light.mjs',
             },
         },
     };
