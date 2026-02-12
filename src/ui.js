@@ -201,12 +201,15 @@ function refreshVisibleEntityCache() {
   try {
     const nextVisibleIds = new Set();
     const favorites = (state.CONFIG?.favoriteEntities || []).slice(0, 12);
-    favorites.forEach((entityId) => addVisibleEntityCandidate(nextVisibleIds, entityId));
+    favorites.forEach((entityId) => {
+      addVisibleEntityCandidate(nextVisibleIds, entityId);
+    });
 
     const [slotOne, slotTwo] = getPrimaryCardSelections();
     [slotOne, slotTwo].forEach((selection) => {
-      if (!selection || selection === PRIMARY_CARD_NONE || selection === 'weather' || selection === 'time') return;
-      addVisibleEntityCandidate(nextVisibleIds, selection);
+      if (selection && selection !== PRIMARY_CARD_NONE && selection !== 'weather' && selection !== 'time') {
+        addVisibleEntityCandidate(nextVisibleIds, selection);
+      }
     });
     isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
 
@@ -216,7 +219,9 @@ function refreshVisibleEntityCache() {
     addVisibleEntityCandidate(nextVisibleIds, state.CONFIG?.primaryMediaPlayer);
 
     visibleEntityIds.clear();
-    nextVisibleIds.forEach((entityId) => visibleEntityIds.add(entityId));
+    nextVisibleIds.forEach((entityId) => {
+      visibleEntityIds.add(entityId);
+    });
 
     refreshVisibleTimerEntityFlag();
   } catch (error) {
@@ -1713,7 +1718,7 @@ function getEntityNameFromId(entityId) {
   return entityId || 'entity';
 }
 
-function processPendingOnOffToggle(entityId, domain) {
+async function processPendingOnOffToggle(entityId, domain) {
   if (!entityId || !isOnOffToggleDomain(domain)) return;
   if (inFlightByEntity.get(entityId)) return;
 
@@ -1733,81 +1738,77 @@ function processPendingOnOffToggle(entityId, domain) {
     serviceData,
   });
 
-  websocket.callService(domain, service, serviceData)
-    .then((response) => {
-      emitUiDebug('entity.toggle_success', {
-        entityId,
-        domain,
-        service,
-        desiredState,
-        responseSuccess: response?.success !== false,
-        responseId: response?.id || null,
-      });
+  try {
+    const response = await websocket.callService(domain, service, serviceData);
 
-      const latestDesiredState = desiredStateByEntity.get(entityId);
-      if (latestDesiredState === desiredState) {
-        const currentEntity = state.STATES?.[entityId];
-        if (currentEntity) {
-          const committedEntity = currentEntity.state === desiredState
-            ? currentEntity
-            : { ...currentEntity, state: desiredState };
-          state.setEntityState(committedEntity);
-          clearPendingOnOffToggle(entityId);
-          updateEntityInUI(committedEntity, { skipQueueReconcile: true });
-        } else {
-          clearPendingOnOffToggle(entityId);
-        }
-      }
-
-      return response;
-    })
-    .catch((error) => {
-      const requestedState = lastRequestedStateByEntity.get(entityId);
-      const latestDesiredState = desiredStateByEntity.get(entityId);
-
-      emitUiDebug('entity.toggle_primary_error', {
-        entityId,
-        domain,
-        service,
-        requestedState: requestedState || null,
-        latestDesiredState: latestDesiredState || null,
-        error: error?.message || String(error),
-        code: error?.code || null,
-      });
-
-      if (latestDesiredState && latestDesiredState !== requestedState) {
-        emitUiDebug('entity.toggle_error_ignored_stale_request', {
-          entityId,
-          domain,
-          requestedState: requestedState || null,
-          latestDesiredState,
-        });
-        return;
-      }
-
-      clearPendingOnOffToggle(entityId);
-
-      const serverEntity = state.STATES?.[entityId];
-      if (serverEntity) {
-        updateEntityInUI(serverEntity, { skipQueueReconcile: true });
-      }
-
-      handleServiceError(error, getEntityNameFromId(entityId));
-    })
-    .finally(() => {
-      inFlightByEntity.delete(entityId);
-      const requestedState = lastRequestedStateByEntity.get(entityId);
-      const latestDesiredState = desiredStateByEntity.get(entityId);
-
-      if (!latestDesiredState) {
-        lastRequestedStateByEntity.delete(entityId);
-        return;
-      }
-
-      if (latestDesiredState !== requestedState) {
-        processPendingOnOffToggle(entityId, domain);
-      }
+    emitUiDebug('entity.toggle_success', {
+      entityId,
+      domain,
+      service,
+      desiredState,
+      responseSuccess: response?.success !== false,
+      responseId: response?.id || null,
     });
+
+    const latestDesiredState = desiredStateByEntity.get(entityId);
+    if (latestDesiredState === desiredState) {
+      const currentEntity = state.STATES?.[entityId];
+      if (currentEntity) {
+        const committedEntity = currentEntity.state === desiredState
+          ? currentEntity
+          : { ...currentEntity, state: desiredState };
+        state.setEntityState(committedEntity);
+        clearPendingOnOffToggle(entityId);
+        updateEntityInUI(committedEntity, { skipQueueReconcile: true });
+      } else {
+        clearPendingOnOffToggle(entityId);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    const requestedState = lastRequestedStateByEntity.get(entityId);
+    const latestDesiredState = desiredStateByEntity.get(entityId);
+
+    emitUiDebug('entity.toggle_primary_error', {
+      entityId,
+      domain,
+      service,
+      requestedState: requestedState || null,
+      latestDesiredState: latestDesiredState || null,
+      error: error?.message || String(error),
+      code: error?.code || null,
+    });
+
+    if (latestDesiredState && latestDesiredState !== requestedState) {
+      emitUiDebug('entity.toggle_error_ignored_stale_request', {
+        entityId,
+        domain,
+        requestedState: requestedState || null,
+        latestDesiredState,
+      });
+      return;
+    }
+
+    clearPendingOnOffToggle(entityId);
+
+    const serverEntity = state.STATES?.[entityId];
+    if (serverEntity) {
+      updateEntityInUI(serverEntity, { skipQueueReconcile: true });
+    }
+
+    handleServiceError(error, getEntityNameFromId(entityId));
+  } finally {
+    inFlightByEntity.delete(entityId);
+    const requestedState = lastRequestedStateByEntity.get(entityId);
+    const latestDesiredState = desiredStateByEntity.get(entityId);
+
+    if (!latestDesiredState) {
+      lastRequestedStateByEntity.delete(entityId);
+    } else if (latestDesiredState !== requestedState) {
+      processPendingOnOffToggle(entityId, domain);
+    }
+  }
 }
 
 function queueOnOffToggle(entity) {

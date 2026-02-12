@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     return {
         build: {
             outDir: 'dist-renderer',
-            emptyDirBeforeBuild: true,
+            emptyOutDir: true,
             rollupOptions: {
                 input: resolve(__dirname, 'renderer.js'),
                 output: {

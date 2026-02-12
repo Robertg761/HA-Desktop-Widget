@@ -43,7 +43,14 @@ jest.mock('../../src/websocket.js', () => ({
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
-const { sampleConfig, sampleStates } = require('../fixtures/ha-data.js');
+const {
+  sampleConfig,
+  sampleStates,
+  sampleServices,
+  sampleAreas,
+  sampleUnitSystemMetric: sampleUnitSystem,
+  sampleWebSocketMessages: wsMessages
+} = require('../fixtures/ha-data.js');
 
 describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   beforeEach(() => {
@@ -52,7 +59,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
     // Reset WebSocket mock
     mockCallService.mockClear();
-    mockCallService.mockResolvedValue({});
+    mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -87,14 +94,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     `;
 
     // Reset state
-    const config = getMockConfig();
+    const config = {
+      ...getMockConfig(),
+      ...sampleConfig,
+      ui: { ...sampleConfig.ui }
+    };
     config.favoriteEntities = [];
     config.selectedWeatherEntity = null;
-    config.primaryMediaPlayer = 'media_player.spotify';
+    config.primaryMediaPlayer = sampleConfig.primaryMediaPlayer || 'media_player.spotify';
     state.setConfig(config);
     state.setStates({});
-    state.setServices({});
-    state.setAreas({});
+    state.setServices({ ...sampleServices });
+    state.setAreas({ ...sampleAreas });
+    state.setUnitSystem({ ...sampleUnitSystem });
   });
 
   // ==============================================================================
@@ -104,6 +116,24 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
   describe('executeHotkeyAction', () => {
     const flushAsync = () => new Promise(resolve => setTimeout(resolve, 0));
+    const getBedroomLightOnState = () => ({
+      ...sampleStates['light.bedroom'],
+      state: 'on',
+      attributes: {
+        ...sampleStates['light.bedroom'].attributes,
+        friendly_name: 'Bedroom Light',
+        brightness: 200
+      }
+    });
+    const getBedroomLightOffState = () => ({
+      ...sampleStates['light.bedroom'],
+      state: 'off',
+      attributes: {
+        ...sampleStates['light.bedroom'].attributes,
+        friendly_name: 'Bedroom Light',
+        brightness: 0
+      }
+    });
 
     it('should execute toggle action', () => {
       const entity = {
@@ -333,17 +363,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
-    it('coalesces rapid toggles while a request is in-flight and applies final state', async () => {
+    it('should coalesce rapid toggles while a request is in-flight and apply final state', async () => {
       let resolveFirstCall;
       mockCallService
         .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
-        .mockResolvedValue({});
+        .mockResolvedValue({ ...wsMessages.callServiceResponse });
 
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
-      };
+      const entity = getBedroomLightOnState();
 
       ui.executeHotkeyAction(entity, 'toggle'); // on -> off (in-flight)
       ui.executeHotkeyAction(entity, 'toggle'); // off -> on (queued)
@@ -359,18 +385,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', { entity_id: 'light.bedroom' });
     });
 
-    it('keeps second toggle queued when state_changed arrives before first call settles', async () => {
+    it('should keep second toggle queued when state_changed arrives before first call settles', async () => {
       let resolveFirstCall;
       mockCallService
         .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
-        .mockResolvedValue({});
+        .mockResolvedValue({ ...wsMessages.callServiceResponse });
 
       state.setStates({
-        'light.bedroom': {
-          entity_id: 'light.bedroom',
-          state: 'on',
-          attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
-        }
+        'light.bedroom': getBedroomLightOnState()
       });
 
       ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // on -> off (in-flight)
@@ -378,11 +400,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
 
       // Mirror renderer flow: first commit websocket event into state, then update UI.
-      const serverOffState = {
-        entity_id: 'light.bedroom',
-        state: 'off',
-        attributes: { friendly_name: 'Bedroom Light', brightness: 0 }
-      };
+      const serverOffState = getBedroomLightOffState();
       state.setEntityState(serverOffState);
       ui.updateEntityInUI(serverOffState);
 
@@ -398,17 +416,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', { entity_id: 'light.bedroom' });
     });
 
-    it('sends only the final intent when rapid taps end on original state', async () => {
+    it('should send only the final intent when rapid taps end on original state', async () => {
       let resolveFirstCall;
       mockCallService
         .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
-        .mockResolvedValue({});
+        .mockResolvedValue({ ...wsMessages.callServiceResponse });
 
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
-      };
+      const entity = getBedroomLightOnState();
 
       ui.executeHotkeyAction(entity, 'toggle'); // on -> off
       ui.executeHotkeyAction(entity, 'toggle'); // off -> on
@@ -425,16 +439,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledTimes(1);
     });
 
-    it('applies optimistic UI immediately and keeps desired state during conflicting server updates', async () => {
-      const config = state.CONFIG;
-      config.favoriteEntities = ['light.bedroom'];
-      state.setConfig(config);
+    it('should apply optimistic UI immediately and keep desired state during conflicting server updates', async () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom']
+      });
       state.setStates({
-        'light.bedroom': {
-          entity_id: 'light.bedroom',
-          state: 'on',
-          attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
-        }
+        'light.bedroom': getBedroomLightOnState()
       });
       ui.renderActiveTab();
 
@@ -447,19 +459,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(optimisticTile).toBeTruthy();
       expect(optimisticTile.textContent).toBe('Off');
 
-      ui.updateEntityInUI({
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
-      });
+      ui.updateEntityInUI(getBedroomLightOnState());
       const stillOptimisticTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
       expect(stillOptimisticTile.textContent).toBe('Off');
 
-      ui.updateEntityInUI({
-        entity_id: 'light.bedroom',
-        state: 'off',
-        attributes: { friendly_name: 'Bedroom Light', brightness: 0 }
-      });
+      ui.updateEntityInUI(getBedroomLightOffState());
       const reconciledTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
       expect(reconciledTile.textContent).toBe('Off');
 
@@ -467,16 +471,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flushAsync();
     });
 
-    it('reverts optimistic state when service call fails', async () => {
-      const config = state.CONFIG;
-      config.favoriteEntities = ['light.bedroom'];
-      state.setConfig(config);
+    it('should revert optimistic state when service call fails', async () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom']
+      });
       state.setStates({
-        'light.bedroom': {
-          entity_id: 'light.bedroom',
-          state: 'on',
-          attributes: { friendly_name: 'Bedroom Light', brightness: 200 }
-        }
+        'light.bedroom': getBedroomLightOnState()
       });
       ui.renderActiveTab();
 

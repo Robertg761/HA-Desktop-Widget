@@ -138,6 +138,7 @@ let configWriteInFlight = false;
 let pendingConfigSnapshot = null;
 let configSnapshotVersion = 0;
 let configWriteEpoch = 0;
+let configShutdownPending = false;
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -532,7 +533,7 @@ function buildConfigSnapshotForSave() {
 async function writeConfigSnapshotAsync(snapshot) {
   await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
   await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
-  if (snapshot.epoch !== configWriteEpoch) {
+  if (configShutdownPending || snapshot.epoch !== configWriteEpoch) {
     await fs.promises.unlink(snapshot.tempPath).catch(() => { });
     return;
   }
@@ -560,6 +561,7 @@ function flushConfigWriteQueue() {
 }
 
 function flushPendingConfigWriteSync() {
+  configShutdownPending = true;
   // Invalidate any older in-flight async write attempts before flushing latest config.
   configWriteEpoch += 1;
 

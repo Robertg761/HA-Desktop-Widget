@@ -3,6 +3,7 @@
  */
 
 const state = require('../../src/state').default;
+const { sampleStates } = require('../fixtures/ha-data.js');
 
 describe('State Module', () => {
   describe('Initial State', () => {
@@ -89,32 +90,33 @@ describe('State Module', () => {
 
     describe('setEntityState', () => {
       test('should insert a new entity into STATES without replacing existing entities', () => {
-        state.setStates({ 'light.kitchen': { entity_id: 'light.kitchen', state: 'off' } });
-        state.setEntityState({ entity_id: 'light.living_room', state: 'on' });
-
-        expect(state.STATES['light.kitchen']).toBeDefined();
-        expect(state.STATES['light.living_room']).toEqual({
-          entity_id: 'light.living_room',
-          state: 'on'
+        state.setStates({
+          'light.living_room': { ...sampleStates['light.living_room'] }
         });
+        state.setEntityState({ ...sampleStates['light.bedroom'] });
+
+        expect(state.STATES['light.living_room']).toBeDefined();
+        expect(state.STATES['light.bedroom']).toEqual(sampleStates['light.bedroom']);
       });
 
       test('should update an existing entity in place', () => {
         state.setStates({
-          'light.living_room': { entity_id: 'light.living_room', state: 'off' }
+          'light.living_room': { ...sampleStates['light.living_room'], state: 'off' }
         });
-        state.setEntityState({ entity_id: 'light.living_room', state: 'on' });
+        state.setEntityState({ ...sampleStates['light.living_room'], state: 'on' });
 
         expect(state.STATES['light.living_room'].state).toBe('on');
       });
 
       test('should ignore invalid entity payloads', () => {
-        state.setStates({ 'light.kitchen': { entity_id: 'light.kitchen', state: 'off' } });
+        state.setStates({ 'light.living_room': { ...sampleStates['light.living_room'] } });
         state.setEntityState(null);
         state.setEntityState({});
+        state.setEntityState({ entity_id: undefined, state: 'on' });
+        state.setEntityState({ entity_id: '', state: 'on' });
 
         expect(state.STATES).toEqual({
-          'light.kitchen': { entity_id: 'light.kitchen', state: 'off' }
+          'light.living_room': sampleStates['light.living_room']
         });
       });
     });
