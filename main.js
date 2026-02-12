@@ -132,6 +132,10 @@ let tray;
 let config;
 let isQuitting = false;
 let windowStateSaveTimer = null;
+const CONFIG_SAVE_DEBOUNCE_MS = 120;
+let configWriteTimer = null;
+let configWriteInFlight = false;
+let pendingConfigSnapshot = null;
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -479,43 +483,113 @@ function backupConfig() {
  * `false`. The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during
  * the save process are logged; the function does not throw.
  */
-function saveConfig() {
-  log.debug('Saving configuration');
+function buildConfigSnapshotForSave() {
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
-  try {
-    fs.mkdirSync(userDataDir, { recursive: true });
+  const tempPath = `${configPath}.tmp`;
 
-    // Create a copy for saving with encrypted token
-    const configToSave = JSON.parse(JSON.stringify(config));
-    pruneConfig(configToSave);
+  // Create a copy for saving with encrypted token
+  const configToSave = JSON.parse(JSON.stringify(config));
+  pruneConfig(configToSave);
 
-    // Encrypt token before saving
-    // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
-    if (configToSave.homeAssistant?.token &&
-      configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          const plainToken = configToSave.homeAssistant.token;
-          const encryptedBuffer = safeStorage.encryptString(plainToken);
-          configToSave.homeAssistant.token = encryptedBuffer.toString('base64');
-          configToSave.homeAssistant.tokenEncrypted = true;
-          log.debug('Token encrypted for storage');
-        } catch (error) {
-          log.warn('Failed to encrypt token, saving as plaintext:', error);
-          configToSave.homeAssistant.tokenEncrypted = false;
-          // Keep plaintext token if encryption fails
-        }
-      } else {
-        log.debug('Encryption not available, saving token as plaintext');
+  // Encrypt token before saving
+  // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
+  if (configToSave.homeAssistant?.token &&
+    configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const plainToken = configToSave.homeAssistant.token;
+        const encryptedBuffer = safeStorage.encryptString(plainToken);
+        configToSave.homeAssistant.token = encryptedBuffer.toString('base64');
+        configToSave.homeAssistant.tokenEncrypted = true;
+        log.debug('Token encrypted for storage');
+      } catch (error) {
+        log.warn('Failed to encrypt token, saving as plaintext:', error);
         configToSave.homeAssistant.tokenEncrypted = false;
-        // Token stays plaintext
+        // Keep plaintext token if encryption fails
       }
+    } else {
+      log.debug('Encryption not available, saving token as plaintext');
+      configToSave.homeAssistant.tokenEncrypted = false;
+      // Token stays plaintext
     }
+  }
 
-    fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
+  return {
+    userDataDir,
+    configPath,
+    tempPath,
+    configToSave,
+    serializedConfig: JSON.stringify(configToSave, null, 2),
+  };
+}
+
+async function writeConfigSnapshotAsync(snapshot) {
+  await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
+  await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
+  await fs.promises.rename(snapshot.tempPath, snapshot.configPath);
+}
+
+function flushConfigWriteQueue() {
+  if (configWriteInFlight) return;
+  if (!pendingConfigSnapshot) return;
+
+  const snapshot = pendingConfigSnapshot;
+  pendingConfigSnapshot = null;
+  configWriteInFlight = true;
+
+  writeConfigSnapshotAsync(snapshot)
+    .catch((error) => {
+      log.error('Failed to save config asynchronously:', error);
+    })
+    .finally(() => {
+      configWriteInFlight = false;
+      if (pendingConfigSnapshot) {
+        flushConfigWriteQueue();
+      }
+    });
+}
+
+function flushPendingConfigWriteSync() {
+  if (configWriteTimer) {
+    clearTimeout(configWriteTimer);
+    configWriteTimer = null;
+  }
+
+  let snapshot = pendingConfigSnapshot;
+  pendingConfigSnapshot = null;
+
+  if (!snapshot) {
+    try {
+      snapshot = buildConfigSnapshotForSave();
+    } catch (error) {
+      log.error('Failed to build config snapshot for sync flush:', error);
+      return;
+    }
+  }
+
+  try {
+    fs.mkdirSync(snapshot.userDataDir, { recursive: true });
+    fs.writeFileSync(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
+    fs.renameSync(snapshot.tempPath, snapshot.configPath);
   } catch (error) {
-    log.error('Failed to save config:', error);
+    log.error('Failed to flush config synchronously:', error);
+  }
+}
+
+function saveConfig() {
+  log.debug('Scheduling configuration save');
+  try {
+    pendingConfigSnapshot = buildConfigSnapshotForSave();
+    if (configWriteTimer) {
+      clearTimeout(configWriteTimer);
+    }
+    configWriteTimer = setTimeout(() => {
+      configWriteTimer = null;
+      flushConfigWriteQueue();
+    }, CONFIG_SAVE_DEBOUNCE_MS);
+  } catch (error) {
+    log.error('Failed to schedule config save:', error);
   }
 }
 
@@ -1660,8 +1734,8 @@ app.on('before-quit', () => {
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer);
     windowStateSaveTimer = null;
-    saveConfig();
   }
+  flushPendingConfigWriteSync();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
 });

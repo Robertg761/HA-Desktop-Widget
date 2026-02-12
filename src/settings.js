@@ -23,7 +23,6 @@ import {
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-import * as rgiEmojiDataModule from 'regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js';
 
 let previewState = null;
 let previewRaf = null;
@@ -164,7 +163,9 @@ const CUSTOM_ENTITY_ICON_TERM_SYNONYMS = {
   insects: ['insect', 'animal'],
 };
 const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
-const CUSTOM_ENTITY_ICON_CHOICES = buildCustomEntityIconChoices();
+let customEntityIconChoices = null;
+let customEntityIconChoicesPromise = null;
+let rgiEmojiDataCache = null;
 
 function normalizeHexColor(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -447,9 +448,8 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
   return Array.from(searchTerms);
 }
 
-function buildCustomEntityIconChoices() {
+function buildCustomEntityIconChoices(rgiEmojiData) {
   const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
-  const rgiEmojiData = rgiEmojiDataModule?.default || rgiEmojiDataModule;
 
   if (Array.isArray(rgiEmojiData?.strings)) {
     rgiEmojiData.strings.forEach(icon => {
@@ -491,21 +491,49 @@ function buildCustomEntityIconChoices() {
     .sort((a, b) => a.icon.localeCompare(b.icon));
 }
 
+async function ensureCustomEntityIconChoicesLoaded() {
+  if (Array.isArray(customEntityIconChoices)) {
+    return customEntityIconChoices;
+  }
+  if (customEntityIconChoicesPromise) {
+    return customEntityIconChoicesPromise;
+  }
+
+  customEntityIconChoicesPromise = (async () => {
+    if (!rgiEmojiDataCache) {
+      const rgiEmojiDataModule = await import('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
+      rgiEmojiDataCache = rgiEmojiDataModule?.default || rgiEmojiDataModule;
+    }
+
+    customEntityIconChoices = buildCustomEntityIconChoices(rgiEmojiDataCache);
+    return customEntityIconChoices;
+  })();
+
+  try {
+    return await customEntityIconChoicesPromise;
+  } finally {
+    customEntityIconChoicesPromise = null;
+  }
+}
+
 function getFilteredCustomEntityIconChoices(filterValue = '') {
+  const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
+  if (!choices.length) return [];
+
   const rawFilter = String(filterValue || '').trim().toLowerCase();
-  if (!rawFilter) return CUSTOM_ENTITY_ICON_CHOICES;
+  if (!rawFilter) return choices;
 
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
-  if (!alternativeGroups.length) return CUSTOM_ENTITY_ICON_CHOICES;
+  if (!alternativeGroups.length) return choices;
 
-  const strictMatches = CUSTOM_ENTITY_ICON_CHOICES.filter(choice => {
+  const strictMatches = choices.filter(choice => {
     if (choice.searchText.includes(rawFilter)) return true;
     return alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, false));
   });
   if (strictMatches.length) return strictMatches;
 
   // Fallback: fuzzy category search when exact tokens miss.
-  return CUSTOM_ENTITY_ICON_CHOICES.filter(choice => (
+  return choices.filter(choice => (
     alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, true))
   ));
 }
@@ -1354,6 +1382,10 @@ function hydratePersonalizationSectionIfNeeded(section) {
   if (section.id === 'primary-cards-section') {
     renderPrimaryCardsEntityList();
   } else if (section.id === 'custom-entity-icons-section') {
+    // Prime the icon catalog the first time the section opens.
+    void ensureCustomEntityIconChoicesLoaded().catch((error) => {
+      log.error('Failed to warm custom icon catalog:', error);
+    });
     renderCustomEntityIconsList();
   }
 
@@ -1672,6 +1704,30 @@ function getCustomEntityIconChoiceLabel(choice) {
 
 function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
   if (!pickerEl) return;
+  const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
+
+  if (!choices.length) {
+    pickerEl.innerHTML = '';
+    const loadingState = document.createElement('div');
+    loadingState.className = 'custom-entity-icon-picker-meta';
+    loadingState.textContent = 'Loading icon catalog...';
+    pickerEl.appendChild(loadingState);
+    ensureCustomEntityIconChoicesLoaded()
+      .then(() => {
+        if (!pickerEl.isConnected) return;
+        renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue);
+      })
+      .catch((error) => {
+        log.error('Failed to load custom icon catalog:', error);
+        if (!pickerEl.isConnected) return;
+        pickerEl.innerHTML = '';
+        const errorState = document.createElement('div');
+        errorState.className = 'custom-entity-icon-picker-empty';
+        errorState.textContent = 'Failed to load icon catalog.';
+        pickerEl.appendChild(errorState);
+      });
+    return;
+  }
 
   const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
   pickerEl.innerHTML = '';
@@ -1679,9 +1735,9 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   const summary = document.createElement('div');
   summary.className = 'custom-entity-icon-picker-meta';
   if (filterValue) {
-    summary.textContent = `Showing ${filteredChoices.length} of ${CUSTOM_ENTITY_ICON_CHOICES.length} icons for "${filterValue}".`;
+    summary.textContent = `Showing ${filteredChoices.length} of ${choices.length} icons for "${filterValue}".`;
   } else {
-    summary.textContent = `Showing all ${CUSTOM_ENTITY_ICON_CHOICES.length} icons.`;
+    summary.textContent = `Showing all ${choices.length} icons.`;
   }
   pickerEl.appendChild(summary);
 
@@ -2303,6 +2359,7 @@ async function openSettings(uiHooks) {
     const customIconSearch = document.getElementById('custom-entity-icons-search');
     if (customIconSearch) customIconSearch.value = '';
     if (shouldRenderCustomIconsList) {
+      await ensureCustomEntityIconChoicesLoaded();
       renderCustomEntityIconsList();
       hydratedPersonalizationSections.add('custom-entity-icons-section');
     } else {

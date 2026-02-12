@@ -134,6 +134,12 @@ let sortableInstance = null; // SortableJS instance for reorganize mode
 const mediaFitElements = new Set();
 let mediaFitScheduled = false;
 let mediaFitResizeBound = false;
+const visibleEntityIds = new Set();
+let isTimeCardVisible = false;
+let hasVisibleTimerEntities = false;
+let isMediaTileVisible = false;
+let lastMediaTileRenderSignature = '';
+let lastMediaTileArtworkSrc = '';
 
 let weatherCardTemplate = null;
 let timeCardTemplate = null;
@@ -151,6 +157,79 @@ function cachePrimaryCardTemplates() {
 
 function getPrimaryCardSelections() {
   return normalizePrimaryCards(state.CONFIG?.primaryCards);
+}
+
+function addVisibleEntityCandidate(target, entityId) {
+  if (!entityId || typeof entityId !== 'string') return;
+  target.add(entityId);
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  target.add(resolvedEntityId);
+}
+
+function isTimerEntityForLiveUpdates(entity) {
+  if (!entity || !entity.entity_id) return false;
+  if (entity.entity_id.startsWith('timer.')) return true;
+  if (!entity.entity_id.startsWith('sensor.')) return false;
+
+  const attributes = entity.attributes || {};
+  if (attributes.finishes_at || attributes.end_time || attributes.finish_time || attributes.duration) {
+    return true;
+  }
+
+  return entity.entity_id.toLowerCase().includes('timer');
+}
+
+function getDefaultWeatherEntityId() {
+  const weatherIds = Object.keys(state.STATES || {}).filter((entityId) => entityId.startsWith('weather.'));
+  return weatherIds.length ? weatherIds[0] : null;
+}
+
+function refreshVisibleEntityCache() {
+  try {
+    const nextVisibleIds = new Set();
+    const favorites = (state.CONFIG?.favoriteEntities || []).slice(0, 12);
+    favorites.forEach((entityId) => addVisibleEntityCandidate(nextVisibleIds, entityId));
+
+    const [slotOne, slotTwo] = getPrimaryCardSelections();
+    [slotOne, slotTwo].forEach((selection) => {
+      if (!selection || selection === PRIMARY_CARD_NONE || selection === 'weather' || selection === 'time') return;
+      addVisibleEntityCandidate(nextVisibleIds, selection);
+    });
+    isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
+
+    const selectedWeatherEntity = state.CONFIG?.selectedWeatherEntity || getDefaultWeatherEntityId();
+    addVisibleEntityCandidate(nextVisibleIds, selectedWeatherEntity);
+
+    addVisibleEntityCandidate(nextVisibleIds, state.CONFIG?.primaryMediaPlayer);
+
+    visibleEntityIds.clear();
+    nextVisibleIds.forEach((entityId) => visibleEntityIds.add(entityId));
+
+    hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) => (
+      isTimerEntityForLiveUpdates(state.STATES?.[entityId])
+    ));
+  } catch (error) {
+    console.error('Error refreshing visible entity cache:', error);
+  }
+}
+
+function isEntityVisible(entityId) {
+  if (!entityId || typeof entityId !== 'string') return false;
+  if (visibleEntityIds.size === 0) return true;
+  if (visibleEntityIds.has(entityId)) return true;
+
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  return visibleEntityIds.has(resolvedEntityId);
+}
+
+function getTickTargets() {
+  const primaryPlayer = state.CONFIG?.primaryMediaPlayer;
+  const mediaEntity = primaryPlayer ? state.STATES?.[primaryPlayer] : null;
+  return {
+    timeVisible: isTimeCardVisible,
+    hasVisibleTimers: hasVisibleTimerEntities,
+    mediaEntity: (isMediaTileVisible && mediaEntity?.state === 'playing') ? mediaEntity : null,
+  };
 }
 
 function renderPrimaryEntityCard(cardEl, entityId) {
@@ -238,11 +317,15 @@ function renderPrimaryCards() {
     if (slotOne === 'weather' || slotTwo === 'weather') {
       updateWeatherFromHA();
     }
-    if (slotOne === 'time' || slotTwo === 'time') {
-      startTimeTicker();
+    isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
+    if (isTimeCardVisible) {
+      // Keep time current without relying on a dedicated long-lived interval.
+      stopTimeTicker();
+      updateTimeDisplay();
     } else {
       stopTimeTicker();
     }
+    refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering primary cards:', error);
   }
@@ -565,6 +648,7 @@ function renderActiveTab() {
     renderQuickControls();
     updateWeatherFromHA();
     updateMediaTile();
+    refreshVisibleEntityCache();
     if (Object.keys(state.STATES).length === 0) {
       showNoConnectionMessage();
     }
@@ -758,6 +842,7 @@ function renderQuickControls() {
       container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering quick controls:', error, error.stack);
   }
@@ -2083,6 +2168,7 @@ async function selectWeatherEntity(entityId) {
 
     // Update local state
     state.setConfig(updatedConfig);
+    refreshVisibleEntityCache();
 
     // Refresh weather display
     updateWeatherFromHA();
@@ -2101,6 +2187,24 @@ async function selectWeatherEntity(entityId) {
   }
 }
 
+function buildMediaArtworkProxyUrl(artworkUrl) {
+  if (!artworkUrl || typeof artworkUrl !== 'string') return null;
+  const baseUrl = state.CONFIG?.homeAssistant?.url?.replace(/\/$/, '');
+  if (!baseUrl) return null;
+
+  let urlToEncode;
+  if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
+    urlToEncode = artworkUrl;
+  } else {
+    const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : `/${artworkUrl}`;
+    urlToEncode = baseUrl + imgUrl;
+  }
+
+  const encodedUrl = utils.base64Encode(urlToEncode);
+  const cacheBuster = Math.floor(Date.now() / 30000);
+  return `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+}
+
 // --- Media Player Tile ---
 function updateMediaTile() {
   try {
@@ -2111,6 +2215,10 @@ function updateMediaTile() {
     const primaryPlayer = state.CONFIG.primaryMediaPlayer;
     if (!primaryPlayer) {
       tile.style.display = 'none';
+      isMediaTileVisible = false;
+      lastMediaTileRenderSignature = '';
+      lastMediaTileArtworkSrc = '';
+      refreshVisibleEntityCache();
       return;
     }
 
@@ -2118,14 +2226,17 @@ function updateMediaTile() {
     const entity = state.STATES[primaryPlayer];
     if (!entity) {
       tile.style.display = 'none';
+      isMediaTileVisible = false;
+      lastMediaTileRenderSignature = '';
+      lastMediaTileArtworkSrc = '';
+      refreshVisibleEntityCache();
       return;
     }
 
     // Show the tile
     tile.style.display = 'grid';
+    isMediaTileVisible = true;
 
-    // Update artwork
-    const artworkContainer = document.getElementById('media-tile-artwork');
     // Try multiple artwork sources (smart speakers might use different attributes)
     let artworkUrl = entity.attributes?.entity_picture ||
       entity.attributes?.media_image_url ||
@@ -2137,63 +2248,62 @@ function updateMediaTile() {
       artworkUrl = entity.attributes?.entity_picture;
     }
 
-    if (artworkUrl && artworkContainer) {
-      // Use the ha:// protocol to proxy artwork (handles both external CDN URLs and HA-relative paths)
-      // This bypasses CSP restrictions and adds authentication when needed
-      const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
-
-      // Determine the full URL to encode
-      let urlToEncode;
-      if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
-        // Already a full URL (external CDN like Spotify, YouTube)
-        urlToEncode = artworkUrl;
-      } else {
-        // Relative path - construct full HA URL
-        const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
-        urlToEncode = baseUrl + imgUrl;
-      }
-
-      // Encode URL in base64 for the ha:// protocol
-      const encodedUrl = utils.base64Encode(urlToEncode);
-
-      // Add cache buster for better updates (rounded to 30 seconds to allow caching)
-      const cacheBuster = Math.floor(Date.now() / 30000);
-      const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
-
-      // Create img element safely without inline event handler
-      const img = document.createElement('img');
-      img.src = proxyUrl;
-      img.alt = 'Album art';
-      img.onerror = function () {
-        this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
-      };
-      artworkContainer.innerHTML = '';
-      artworkContainer.appendChild(img);
-    } else if (artworkContainer) {
-      artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
-    }
-
     // Update media info
     const titleEl = document.getElementById('media-tile-title');
     const artistEl = document.getElementById('media-tile-artist');
     const mediaTitle = entity.attributes?.media_title || 'No media playing';
     const mediaArtist = entity.attributes?.media_artist || '';
+    const isPlaying = entity.state === 'playing';
+    const proxyUrl = buildMediaArtworkProxyUrl(artworkUrl);
+    const nextSignature = JSON.stringify({
+      entityId: entity.entity_id,
+      state: entity.state || '',
+      title: mediaTitle,
+      artist: mediaArtist,
+      artwork: proxyUrl || '',
+    });
 
-    if (titleEl) titleEl.textContent = mediaTitle;
-    if (artistEl) artistEl.textContent = mediaArtist;
+    if (nextSignature !== lastMediaTileRenderSignature) {
+      lastMediaTileRenderSignature = nextSignature;
 
-    // Update seek bar
-    updateMediaSeekBar(entity);
+      if (titleEl && titleEl.textContent !== mediaTitle) titleEl.textContent = mediaTitle;
+      if (artistEl && artistEl.textContent !== mediaArtist) artistEl.textContent = mediaArtist;
 
-    // Update play/pause button
-    const playBtn = document.getElementById('media-tile-play');
-    if (playBtn) {
-      const isPlaying = entity.state === 'playing';
-      // Update icon using the icon system
-      // setIconContent already imported at top
-      setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
-      playBtn.classList.toggle('playing', isPlaying);
+      // Update play/pause button
+      const playBtn = document.getElementById('media-tile-play');
+      if (playBtn) {
+        setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
+        playBtn.classList.toggle('playing', isPlaying);
+      }
+
+      // Update artwork only when the source actually changes.
+      const artworkContainer = document.getElementById('media-tile-artwork');
+      if (artworkContainer) {
+        if (proxyUrl) {
+          const existingImg = artworkContainer.querySelector('img');
+          const existingSrc = existingImg?.getAttribute('src') || '';
+          if (!existingImg || existingSrc !== proxyUrl || lastMediaTileArtworkSrc !== proxyUrl) {
+            const img = document.createElement('img');
+            img.src = proxyUrl;
+            img.alt = 'Album art';
+            img.onerror = function () {
+              this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+              lastMediaTileArtworkSrc = '';
+            };
+            artworkContainer.innerHTML = '';
+            artworkContainer.appendChild(img);
+            lastMediaTileArtworkSrc = proxyUrl;
+          }
+        } else if (lastMediaTileArtworkSrc !== '') {
+          artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+          lastMediaTileArtworkSrc = '';
+        }
+      }
     }
+
+    // Keep seek bar updates separate from metadata/artwork render signature.
+    updateMediaSeekBar(entity);
+    refreshVisibleEntityCache();
   } catch (error) {
     console.error('Error updating media tile:', error);
   }
@@ -2343,6 +2453,8 @@ function stopTimeTicker() {
 
 function updateTimerDisplays() {
   try {
+    if (!hasVisibleTimerEntities) return;
+
     // Find all timer entities AND sensor entities with timer attributes in Quick Access
     const timerElements = document.querySelectorAll('.control-item.timer-entity');
 
@@ -3337,6 +3449,9 @@ export {
   renderPrimaryCards,
   toggleReorganizeMode,
   populateQuickControlsList,
+  isEntityVisible,
+  getTickTargets,
+  refreshVisibleEntityCache,
   executeHotkeyAction,
   updateMediaTile,
   updateMediaSeekBar,
