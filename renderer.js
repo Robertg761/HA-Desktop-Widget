@@ -718,6 +718,11 @@ function wireUI() {
         button.classList.add('active');
         document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
         document.getElementById(`${tab}-tab`).classList.add('active');
+        if (tab === 'personalization') {
+          requestAnimationFrame(() => {
+            settings.refreshPersonalizationSectionHeights();
+          });
+        }
         if (tab === 'hotkeys') {
           hotkeys.renderHotkeysTab();
         }

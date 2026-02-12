@@ -1339,7 +1339,11 @@ function initColorTargetSelect() {
 function getSavedPersonalizationSectionStates() {
   const savedStates = state.CONFIG?.ui?.[PERSONALIZATION_SECTION_STATE_KEY];
   if (!savedStates || typeof savedStates !== 'object') return {};
-  return savedStates;
+  return Object.entries(savedStates).reduce((acc, [sectionId, isCollapsed]) => {
+    if (!sectionId || isCollapsed !== true) return acc;
+    acc[sectionId] = true;
+    return acc;
+  }, {});
 }
 
 function hydratePersonalizationSectionIfNeeded(section) {
@@ -1379,6 +1383,7 @@ function applyPersonalizationSectionState(section, toggle, isCollapsed, options 
     const previousTransition = body.style.transition;
     body.style.transition = 'none';
     section.classList.toggle('collapsed', isCollapsed);
+    syncPersonalizationSectionHeight(section);
     // Force layout so the no-transition state is applied before restoring transitions.
     void body.offsetHeight;
     body.style.transition = previousTransition;
@@ -1394,12 +1399,15 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
 
   state.CONFIG.ui = state.CONFIG.ui || {};
   const currentStates = getSavedPersonalizationSectionStates();
-  if (currentStates[sectionId] === isCollapsed) return;
+  const currentlyCollapsed = currentStates[sectionId] === true;
+  if (currentlyCollapsed === isCollapsed) return;
 
-  const nextStates = {
-    ...currentStates,
-    [sectionId]: isCollapsed,
-  };
+  const nextStates = { ...currentStates };
+  if (isCollapsed) {
+    nextStates[sectionId] = true;
+  } else {
+    delete nextStates[sectionId];
+  }
 
   state.CONFIG.ui[PERSONALIZATION_SECTION_STATE_KEY] = nextStates;
 
@@ -1435,10 +1443,10 @@ function initColorThemeSectionToggle() {
   sections.forEach(section => {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
-    syncPersonalizationSectionHeight(section);
 
-    const hasSavedState = Object.prototype.hasOwnProperty.call(savedSectionStates, section.id);
-    const isCollapsed = hasSavedState ? !!savedSectionStates[section.id] : section.classList.contains('collapsed');
+    const isCollapsed = savedSectionStates[section.id] === true
+      ? true
+      : section.classList.contains('collapsed');
     applyPersonalizationSectionState(section, toggle, isCollapsed, { immediate: true });
 
     toggle.onclick = () => {
@@ -1454,7 +1462,12 @@ function syncPersonalizationSectionHeight(section) {
   const body = section.querySelector('.section-body');
   if (!body) return;
 
+  // Measure natural content height even when section is collapsed.
+  const previousInlineMaxHeight = body.style.maxHeight;
+  body.style.maxHeight = 'none';
   const height = Math.max(0, body.scrollHeight);
+  body.style.maxHeight = previousInlineMaxHeight;
+
   const nextValue = `${height}px`;
   if (section.style.getPropertyValue('--section-body-height') !== nextValue) {
     section.style.setProperty('--section-body-height', nextValue);
@@ -1465,6 +1478,14 @@ function schedulePersonalizationSectionHeightSync(sourceEl) {
   const section = sourceEl?.closest?.('.personalization-section');
   if (!section) return;
   requestAnimationFrame(() => {
+    syncPersonalizationSectionHeight(section);
+  });
+}
+
+function refreshPersonalizationSectionHeights() {
+  const sections = document.querySelectorAll('.personalization-section');
+  if (!sections.length) return;
+  sections.forEach((section) => {
     syncPersonalizationSectionHeight(section);
   });
 }
@@ -2292,6 +2313,12 @@ async function openSettings(uiHooks) {
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    requestAnimationFrame(() => {
+      refreshPersonalizationSectionHeights();
+      requestAnimationFrame(() => {
+        refreshPersonalizationSectionHeights();
+      });
+    });
     trapFocus(modal);
   } catch (error) {
     log.error('Error opening settings:', error);
@@ -3293,4 +3320,5 @@ export {
   closeAlertConfigModal,
   saveAlert,
   initializePopupHotkey,
+  refreshPersonalizationSectionHeights,
 };

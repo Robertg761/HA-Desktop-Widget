@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -23,6 +23,73 @@ const httpsKeepAliveAgent = new https.Agent({
   maxFreeSockets: 10,
   timeout: 60000
 });
+
+function getHeaderValue(headers, name) {
+  if (!headers || !name) return undefined;
+  const value = headers[String(name).toLowerCase()];
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    const chunks = [];
+
+    const request = net.request({
+      method: 'GET',
+      url,
+      redirect: 'follow',
+    });
+
+    Object.entries(headers || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      request.setHeader(key, String(value));
+    });
+    request.setHeader('Accept', 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8');
+
+    const timeoutId = setTimeout(() => {
+      if (completed) return;
+      completed = true;
+      try { request.abort(); } catch { /* noop */ }
+      reject(new Error(`Artwork request timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    request.on('response', (response) => {
+      response.on('data', (chunk) => {
+        if (completed) return;
+        chunks.push(Buffer.from(chunk));
+      });
+
+      response.on('end', () => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timeoutId);
+        resolve({
+          status: response.statusCode || 0,
+          headers: response.headers || {},
+          data: Buffer.concat(chunks),
+        });
+      });
+
+      response.on('error', (error) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+    });
+
+    request.on('error', (error) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    request.end();
+  });
+}
 
 // Try to load uiohook-napi (optional dependency for popup hotkey feature)
 let uIOhook, UiohookKey;
@@ -1706,17 +1773,12 @@ app.whenReady().then(() => {
             headers = { Authorization: `Bearer ${token}` };
           }
 
-          const res = await axios.get(upstream, {
-            headers: headers,
-            responseType: 'arraybuffer',
-            validateStatus: () => true,
-            timeout: 10000
-          });
+          const res = await fetchBinaryWithElectronNet(upstream, headers, 10000);
 
           if (res.status >= 200 && res.status < 300) {
-            const buf = Buffer.from(res.data);
+            const buf = Buffer.isBuffer(res.data) ? res.data : Buffer.from(res.data);
             const stream = Readable.from(buf);
-            const contentType = res.headers['content-type'] || 'image/jpeg';
+            const contentType = getHeaderValue(res.headers, 'content-type') || 'image/jpeg';
             respond({
               data: stream,
               statusCode: 200,

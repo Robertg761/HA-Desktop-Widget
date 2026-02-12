@@ -359,7 +359,7 @@ describe('Settings + Config Integration', () => {
       expect(mockUiHooks.exitReorganizeMode).toHaveBeenCalled();
     });
 
-    test('opening settings restores personalization section collapse states from config', async () => {
+    test('opening settings restores collapsed states and ignores expanded persisted values', async () => {
       state.CONFIG.ui.personalizationSectionsCollapsed = {
         'color-themes-section': true,
         'window-effects-section': false,
@@ -377,8 +377,8 @@ describe('Settings + Config Integration', () => {
 
       expect(colorThemesSection.classList.contains('collapsed')).toBe(true);
       expect(colorThemesToggle.getAttribute('aria-expanded')).toBe('false');
-      expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
-      expect(windowEffectsToggle.getAttribute('aria-expanded')).toBe('true');
+      expect(windowEffectsSection.classList.contains('collapsed')).toBe(true);
+      expect(windowEffectsToggle.getAttribute('aria-expanded')).toBe('false');
       expect(customIconsSection.classList.contains('collapsed')).toBe(true);
       expect(customIconsToggle.getAttribute('aria-expanded')).toBe('false');
     });
@@ -391,11 +391,17 @@ describe('Settings + Config Integration', () => {
         const windowEffectsSection = document.getElementById('window-effects-section');
         const windowEffectsToggle = document.getElementById('window-effects-toggle');
 
+        // Expanding from default state should not persist (expanded is not stored).
         windowEffectsToggle.click();
 
         expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
-        expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(false);
+        expect(state.CONFIG.ui.personalizationSectionsCollapsed).not.toHaveProperty('window-effects-section');
         expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+
+        // Collapse should persist as an explicit saved state.
+        windowEffectsToggle.click();
+        expect(windowEffectsSection.classList.contains('collapsed')).toBe(true);
+        expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(true);
 
         jest.advanceTimersByTime(260);
         await Promise.resolve();
@@ -404,7 +410,7 @@ describe('Settings + Config Integration', () => {
           expect.objectContaining({
             ui: expect.objectContaining({
               personalizationSectionsCollapsed: expect.objectContaining({
-                'window-effects-section': false
+                'window-effects-section': true
               })
             })
           })

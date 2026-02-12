@@ -15,6 +15,8 @@ const desiredStateByEntity = new Map();
 const inFlightByEntity = new Map();
 const lastRequestedStateByEntity = new Map();
 const optimisticStateByEntity = new Map();
+const failedMediaArtworkRetryAtByUrl = new Map();
+const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 
 function isInteractionDebugEnabled() {
   return !!state.CONFIG?.ui?.enableInteractionDebugLogs;
@@ -608,6 +610,9 @@ function updateEntityInUI(entity, options = {}) {
 
     const items = document.querySelectorAll(`.control-item[data-entity-id="${renderEntity.entity_id}"]`);
     items.forEach(item => {
+      if (updateExistingMediaPlayerControl(item, renderEntity)) {
+        return;
+      }
       const isPrimary = item.dataset.primaryCard === 'true';
       const newControl = createControlElement(renderEntity);
       if (isPrimary) {
@@ -630,6 +635,45 @@ function updateEntityInUI(entity, options = {}) {
   }
 }
 
+function getControlRenderSignature(entity) {
+  if (!entity || !entity.entity_id) return '';
+  const attrs = entity.attributes || {};
+  return JSON.stringify({
+    entityId: entity.entity_id,
+    state: entity.state || '',
+    name: utils.getEntityDisplayName(entity),
+    icon: utils.getEntityIcon(entity),
+    brightness: attrs.brightness ?? null,
+    percentage: attrs.percentage ?? null,
+    timerEndsAt: attrs.finishes_at || attrs.end_time || attrs.finish_time || null,
+    timerDuration: attrs.duration || attrs.remaining || null,
+    mediaTitle: attrs.media_title || null,
+    mediaArtist: attrs.media_artist || null,
+    mediaAlbum: attrs.media_album_name || null,
+    mediaImage: attrs.entity_picture || attrs.media_image_url || attrs.media_content_id || null,
+  });
+}
+
+function getUnavailableControlSignature(entityId) {
+  const customName = state.CONFIG?.customEntityNames?.[entityId] || null;
+  return JSON.stringify({
+    entityId: entityId || '',
+    unavailable: true,
+    customName,
+  });
+}
+
+function updateExistingMediaPlayerControl(item, entity) {
+  if (!item || !entity || !entity.entity_id || !entity.entity_id.startsWith('media_player.')) return false;
+  if (!item.classList.contains('media-player-entity')) return false;
+  if (!item.querySelector('.control-icon') || !item.querySelector('.control-info')) return false;
+
+  item.dataset.entityId = entity.entity_id;
+  item.title = 'Click to play/pause, hold for controls';
+  setupMediaPlayerControls(item, entity);
+  return true;
+}
+
 // --- Quick Controls ---
 function renderQuickControls() {
   try {
@@ -639,10 +683,16 @@ function renderQuickControls() {
       return;
     }
 
-    container.innerHTML = '';
-
     // Get favorite entities for quick access
     const favorites = state.CONFIG.favoriteEntities || [];
+    const desiredNodes = [];
+    const existingNodesById = new Map();
+    container.querySelectorAll('.control-item[data-entity-id]').forEach((node) => {
+      if (!node || !node.dataset?.entityId) return;
+      if (!existingNodesById.has(node.dataset.entityId)) {
+        existingNodesById.set(node.dataset.entityId, node);
+      }
+    });
 
     // Iterate through ALL favorited entity IDs (not just those in STATES)
     // This ensures unavailable entities are still shown with an error state
@@ -659,16 +709,41 @@ function renderQuickControls() {
           domain: resolvedEntityId.includes('.') ? resolvedEntityId.split('.')[0] : null,
         });
 
+        const renderedEntityId = entity ? resolvedEntityId : entityId;
+        const existingNode = existingNodesById.get(renderedEntityId);
+        const nextSignature = entity
+          ? getControlRenderSignature(entity)
+          : getUnavailableControlSignature(entityId);
+
+        if (existingNode && existingNode.dataset.renderSignature === nextSignature) {
+          desiredNodes.push(existingNode);
+          existingNodesById.delete(renderedEntityId);
+          return;
+        }
+
         if (entity) {
           // Entity exists in STATES - render normally
           const control = createControlElement(entity);
-          container.appendChild(control);
+          control.dataset.renderSignature = nextSignature;
+          desiredNodes.push(control);
         } else {
           // Entity does not exist in STATES - render unavailable state
           const control = createUnavailableElement(entityId);
-          container.appendChild(control);
+          control.dataset.renderSignature = nextSignature;
+          desiredNodes.push(control);
         }
       });
+
+    desiredNodes.forEach((node, index) => {
+      const currentAtIndex = container.children[index];
+      if (currentAtIndex !== node) {
+        container.insertBefore(node, currentAtIndex || null);
+      }
+    });
+
+    while (container.children.length > desiredNodes.length) {
+      container.removeChild(container.lastElementChild);
+    }
 
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
@@ -1058,10 +1133,13 @@ function setupMediaPlayerControls(div, entity) {
     // Update the control info section (no inline controls; whole tile toggles)
     const controlInfo = div.querySelector('.control-info');
     if (controlInfo) {
-      controlInfo.innerHTML = `
+      const nextInfoMarkup = `
         <div class="control-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
         ${mediaInfo}
       `;
+      if (controlInfo.innerHTML !== nextInfoMarkup) {
+        controlInfo.innerHTML = nextInfoMarkup;
+      }
     }
 
     // Update album art in the icon - show when media info is present
@@ -1100,29 +1178,43 @@ function setupMediaPlayerControls(div, entity) {
         // Add cache buster for better updates (rounded to 30 seconds to allow caching)
         const cacheBuster = Math.floor(Date.now() / 30000);
         const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+        const retryAt = failedMediaArtworkRetryAtByUrl.get(proxyUrl) || 0;
+        const skipForRecentFailure = retryAt > Date.now();
 
-        // Replace icon with album art image
-        const img = document.createElement('img');
-        img.src = proxyUrl;
-        img.alt = 'Album art';
-        img.className = 'media-player-artwork';
-        img.onerror = function () {
-          // Restore original icon on error
-          const icon = this.parentElement;
-          if (icon && icon.dataset.defaultIcon) {
-            icon.innerHTML = icon.dataset.defaultIcon;
-            icon.classList.remove('has-artwork');
-          }
-        };
-        controlIcon.innerHTML = '';
-        controlIcon.appendChild(img);
-        controlIcon.classList.add('has-artwork');
+        const existingImg = controlIcon.querySelector('.media-player-artwork');
+        const existingSrc = existingImg ? existingImg.getAttribute('src') : null;
+        if (!skipForRecentFailure && (existingSrc !== proxyUrl || !controlIcon.classList.contains('has-artwork'))) {
+          // Replace icon with album art image only when the source changed.
+          const img = document.createElement('img');
+          img.src = proxyUrl;
+          img.alt = 'Album art';
+          img.className = 'media-player-artwork';
+          img.onload = function () {
+            failedMediaArtworkRetryAtByUrl.delete(proxyUrl);
+          };
+          img.onerror = function () {
+            // Restore original icon on error
+            failedMediaArtworkRetryAtByUrl.set(proxyUrl, Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS);
+            const icon = this.parentElement;
+            if (icon && icon.dataset.defaultIcon) {
+              icon.innerHTML = icon.dataset.defaultIcon;
+              icon.classList.remove('has-artwork');
+            }
+          };
+          controlIcon.innerHTML = '';
+          controlIcon.appendChild(img);
+          controlIcon.classList.add('has-artwork');
+        } else if (skipForRecentFailure && controlIcon.classList.contains('has-artwork') && existingSrc !== proxyUrl && controlIcon.dataset.defaultIcon) {
+          // Avoid rapid fallback/restore churn while an artwork URL is failing repeatedly.
+          controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
+          controlIcon.classList.remove('has-artwork');
+        }
       } else {
         // No media info or no artwork - show original icon
-        if (controlIcon.dataset.defaultIcon) {
+        if (controlIcon.classList.contains('has-artwork') && controlIcon.dataset.defaultIcon) {
           controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
+          controlIcon.classList.remove('has-artwork');
         }
-        controlIcon.classList.remove('has-artwork');
       }
     }
 
