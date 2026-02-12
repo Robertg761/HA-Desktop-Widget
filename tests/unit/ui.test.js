@@ -115,7 +115,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // ==============================================================================
 
   describe('executeHotkeyAction', () => {
-    const flushAsync = () => new Promise(resolve => setTimeout(resolve, 0));
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const flushAsync = async () => {
+      await Promise.resolve();
+      jest.advanceTimersByTime(0);
+      await Promise.resolve();
+    };
     const getBedroomLightOnState = () => ({
       ...sampleStates['light.bedroom'],
       state: 'on',

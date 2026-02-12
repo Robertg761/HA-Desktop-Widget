@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
                     },
                 },
             },
-            target: 'chrome114', // Electron's Chromium version
+            target: 'chrome138', // Electron 37 Chromium version
             minify: isProduction,
             sourcemap: !isProduction,
         },

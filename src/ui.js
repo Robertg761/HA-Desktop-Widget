@@ -191,6 +191,14 @@ function getDefaultWeatherEntityId() {
   return getDefaultWeatherEntity()?.entity_id || null;
 }
 
+function resolveSelectedWeatherEntityId() {
+  const selectedWeatherEntity = state.CONFIG?.selectedWeatherEntity;
+  if (selectedWeatherEntity && state.STATES?.[selectedWeatherEntity]) {
+    return selectedWeatherEntity;
+  }
+  return getDefaultWeatherEntityId();
+}
+
 function refreshVisibleTimerEntityFlag() {
   hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) => (
     isTimerEntityForLiveUpdates(state.STATES?.[entityId])
@@ -213,7 +221,7 @@ function refreshVisibleEntityCache() {
     });
     isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
 
-    const selectedWeatherEntity = state.CONFIG?.selectedWeatherEntity || getDefaultWeatherEntityId();
+    const selectedWeatherEntity = resolveSelectedWeatherEntityId();
     addVisibleEntityCandidate(nextVisibleIds, selectedWeatherEntity);
 
     addVisibleEntityCandidate(nextVisibleIds, state.CONFIG?.primaryMediaPlayer);
@@ -2002,8 +2010,8 @@ function executeHotkeyAction(entity, action) {
 // --- Weather ---
 function updateWeatherFromHA() {
   try {
-    const selectedWeatherEntityId = state.CONFIG?.selectedWeatherEntity;
-    const weatherEntity = (selectedWeatherEntityId && state.STATES[selectedWeatherEntityId]) || getDefaultWeatherEntity();
+    const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
+    const weatherEntity = selectedWeatherEntityId ? state.STATES?.[selectedWeatherEntityId] : null;
     if (!weatherEntity) return;
 
     const tempEl = document.getElementById('weather-temp');
