@@ -760,6 +760,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(conditionEl.textContent).toBe('cloudy');
     });
 
+    it('keeps weather visibility target aligned with displayed fallback entity', () => {
+      const config = state.CONFIG;
+      config.selectedWeatherEntity = null;
+      config.primaryCards = ['weather', 'time'];
+      state.setConfig(config);
+
+      // Insert weather entities in reverse display-name order.
+      state.setStates({
+        'weather.zeta': {
+          entity_id: 'weather.zeta',
+          state: 'sunny',
+          attributes: { friendly_name: 'Zeta Weather', temperature: 28, humidity: 45, wind_speed: 2 }
+        },
+        'weather.alpha': {
+          entity_id: 'weather.alpha',
+          state: 'cloudy',
+          attributes: { friendly_name: 'Alpha Weather', temperature: 19, humidity: 60, wind_speed: 4 }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const conditionEl = document.getElementById('weather-condition');
+      expect(conditionEl.textContent).toBe('cloudy');
+      expect(ui.isEntityVisible('weather.alpha')).toBe(true);
+      expect(ui.isEntityVisible('weather.zeta')).toBe(false);
+    });
+
     it('should handle missing weather entity gracefully', () => {
       state.setStates({});
 
@@ -1130,6 +1158,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       climateState = document.querySelector('.control-item[data-entity-id="climate.living_room"] .control-state');
       expect(climateState).toBeTruthy();
       expect(climateState.textContent).toContain('71');
+    });
+
+    it('updates timer tick targets when a visible sensor becomes timer-like', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.kitchen_status'];
+      state.setConfig(config);
+
+      state.setStates({
+        'sensor.kitchen_status': {
+          entity_id: 'sensor.kitchen_status',
+          state: 'idle',
+          attributes: {
+            friendly_name: 'Kitchen Status'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+      expect(ui.getTickTargets().hasVisibleTimers).toBe(false);
+
+      const finishesAt = new Date(Date.now() + 60_000).toISOString();
+      const timerLikeEntity = {
+        entity_id: 'sensor.kitchen_status',
+        state: 'active',
+        attributes: {
+          friendly_name: 'Kitchen Status',
+          finishes_at: finishesAt
+        }
+      };
+
+      state.setEntityState(timerLikeEntity);
+      ui.updateEntityInUI(timerLikeEntity);
+
+      expect(ui.getTickTargets().hasVisibleTimers).toBe(true);
     });
   });
 

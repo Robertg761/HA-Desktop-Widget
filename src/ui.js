@@ -179,9 +179,22 @@ function isTimerEntityForLiveUpdates(entity) {
   return entity.entity_id.toLowerCase().includes('timer');
 }
 
+function getDefaultWeatherEntity() {
+  const weatherEntities = Object.values(state.STATES || {})
+    .filter((entity) => entity?.entity_id?.startsWith('weather.'));
+  if (!weatherEntities.length) return null;
+  weatherEntities.sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+  return weatherEntities[0];
+}
+
 function getDefaultWeatherEntityId() {
-  const weatherIds = Object.keys(state.STATES || {}).filter((entityId) => entityId.startsWith('weather.'));
-  return weatherIds.length ? weatherIds[0] : null;
+  return getDefaultWeatherEntity()?.entity_id || null;
+}
+
+function refreshVisibleTimerEntityFlag() {
+  hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) => (
+    isTimerEntityForLiveUpdates(state.STATES?.[entityId])
+  ));
 }
 
 function refreshVisibleEntityCache() {
@@ -205,9 +218,7 @@ function refreshVisibleEntityCache() {
     visibleEntityIds.clear();
     nextVisibleIds.forEach((entityId) => visibleEntityIds.add(entityId));
 
-    hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) => (
-      isTimerEntityForLiveUpdates(state.STATES?.[entityId])
-    ));
+    refreshVisibleTimerEntityFlag();
   } catch (error) {
     console.error('Error refreshing visible entity cache:', error);
   }
@@ -689,6 +700,9 @@ function updateEntityInUI(entity, options = {}) {
         optimisticStateByEntity.delete(entityId);
       }
     }
+
+    // Keep timer tick eligibility current as visible entity attributes change live.
+    refreshVisibleTimerEntityFlag();
 
     // Update weather card if this is a weather entity
     if (renderEntity.entity_id.startsWith('weather.')) {
@@ -1987,10 +2001,8 @@ function executeHotkeyAction(entity, action) {
 // --- Weather ---
 function updateWeatherFromHA() {
   try {
-    const weatherEntity = state.STATES[state.CONFIG.selectedWeatherEntity] ||
-      Object.values(state.STATES)
-        .filter(e => e.entity_id.startsWith('weather.'))
-        .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
+    const selectedWeatherEntityId = state.CONFIG?.selectedWeatherEntity;
+    const weatherEntity = (selectedWeatherEntityId && state.STATES[selectedWeatherEntityId]) || getDefaultWeatherEntity();
     if (!weatherEntity) return;
 
     const tempEl = document.getElementById('weather-temp');

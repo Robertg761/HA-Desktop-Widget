@@ -136,6 +136,8 @@ const CONFIG_SAVE_DEBOUNCE_MS = 120;
 let configWriteTimer = null;
 let configWriteInFlight = false;
 let pendingConfigSnapshot = null;
+let configSnapshotVersion = 0;
+let configWriteEpoch = 0;
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -486,7 +488,8 @@ function backupConfig() {
 function buildConfigSnapshotForSave() {
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
-  const tempPath = `${configPath}.tmp`;
+  const snapshotVersion = ++configSnapshotVersion;
+  const tempPath = `${configPath}.${snapshotVersion}.tmp`;
 
   // Create a copy for saving with encrypted token
   const configToSave = JSON.parse(JSON.stringify(config));
@@ -519,6 +522,8 @@ function buildConfigSnapshotForSave() {
     userDataDir,
     configPath,
     tempPath,
+    snapshotVersion,
+    epoch: configWriteEpoch,
     configToSave,
     serializedConfig: JSON.stringify(configToSave, null, 2),
   };
@@ -527,6 +532,10 @@ function buildConfigSnapshotForSave() {
 async function writeConfigSnapshotAsync(snapshot) {
   await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
   await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
+  if (snapshot.epoch !== configWriteEpoch) {
+    await fs.promises.unlink(snapshot.tempPath).catch(() => { });
+    return;
+  }
   await fs.promises.rename(snapshot.tempPath, snapshot.configPath);
 }
 
@@ -551,6 +560,9 @@ function flushConfigWriteQueue() {
 }
 
 function flushPendingConfigWriteSync() {
+  // Invalidate any older in-flight async write attempts before flushing latest config.
+  configWriteEpoch += 1;
+
   if (configWriteTimer) {
     clearTimeout(configWriteTimer);
     configWriteTimer = null;
@@ -574,6 +586,13 @@ function flushPendingConfigWriteSync() {
     fs.renameSync(snapshot.tempPath, snapshot.configPath);
   } catch (error) {
     log.error('Failed to flush config synchronously:', error);
+    try {
+      if (snapshot?.tempPath && fs.existsSync(snapshot.tempPath)) {
+        fs.unlinkSync(snapshot.tempPath);
+      }
+    } catch {
+      // best effort cleanup
+    }
   }
 }
 
