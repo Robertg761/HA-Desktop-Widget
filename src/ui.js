@@ -18,6 +18,14 @@ const optimisticStateByEntity = new Map();
 const failedMediaArtworkRetryAtByUrl = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 
+function pruneExpiredArtworkRetryEntries(now = Date.now()) {
+  failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
+    if (!retryAt || retryAt <= now) {
+      failedMediaArtworkRetryAtByUrl.delete(key);
+    }
+  });
+}
+
 function isInteractionDebugEnabled() {
   return !!state.CONFIG?.ui?.enableInteractionDebugLogs;
 }
@@ -641,6 +649,7 @@ function getControlRenderSignature(entity) {
   return JSON.stringify({
     entityId: entity.entity_id,
     state: entity.state || '',
+    displayState: utils.getEntityDisplayState(entity),
     name: utils.getEntityDisplayName(entity),
     icon: utils.getEntityIcon(entity),
     brightness: attrs.brightness ?? null,
@@ -1174,12 +1183,15 @@ function setupMediaPlayerControls(div, entity) {
 
         // Encode URL in base64 for the ha:// protocol
         const encodedUrl = utils.base64Encode(urlToEncode);
+        const retryKey = encodedUrl;
 
         // Add cache buster for better updates (rounded to 30 seconds to allow caching)
-        const cacheBuster = Math.floor(Date.now() / 30000);
+        const now = Date.now();
+        pruneExpiredArtworkRetryEntries(now);
+        const cacheBuster = Math.floor(now / 30000);
         const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
-        const retryAt = failedMediaArtworkRetryAtByUrl.get(proxyUrl) || 0;
-        const skipForRecentFailure = retryAt > Date.now();
+        const retryAt = failedMediaArtworkRetryAtByUrl.get(retryKey) || 0;
+        const skipForRecentFailure = retryAt > now;
 
         const existingImg = controlIcon.querySelector('.media-player-artwork');
         const existingSrc = existingImg ? existingImg.getAttribute('src') : null;
@@ -1190,11 +1202,11 @@ function setupMediaPlayerControls(div, entity) {
           img.alt = 'Album art';
           img.className = 'media-player-artwork';
           img.onload = function () {
-            failedMediaArtworkRetryAtByUrl.delete(proxyUrl);
+            failedMediaArtworkRetryAtByUrl.delete(retryKey);
           };
           img.onerror = function () {
             // Restore original icon on error
-            failedMediaArtworkRetryAtByUrl.set(proxyUrl, Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS);
+            failedMediaArtworkRetryAtByUrl.set(retryKey, Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS);
             const icon = this.parentElement;
             if (icon && icon.dataset.defaultIcon) {
               icon.innerHTML = icon.dataset.defaultIcon;

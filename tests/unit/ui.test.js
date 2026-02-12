@@ -1089,6 +1089,48 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
     });
+
+    it('re-renders climate tiles when temperature attributes change', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['climate.living_room'];
+      state.setConfig(config);
+
+      state.setStates({
+        'climate.living_room': {
+          entity_id: 'climate.living_room',
+          state: 'heat',
+          attributes: {
+            friendly_name: 'Living Room',
+            current_temperature: 70,
+            temperature: 72
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      let climateState = document.querySelector('.control-item[data-entity-id="climate.living_room"] .control-state');
+      expect(climateState).toBeTruthy();
+      expect(climateState.textContent).toContain('70');
+
+      state.setStates({
+        'climate.living_room': {
+          entity_id: 'climate.living_room',
+          state: 'heat',
+          attributes: {
+            friendly_name: 'Living Room',
+            current_temperature: 71,
+            temperature: 72
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      climateState = document.querySelector('.control-item[data-entity-id="climate.living_room"] .control-state');
+      expect(climateState).toBeTruthy();
+      expect(climateState.textContent).toContain('71');
+    });
   });
 
   // ==============================================================================

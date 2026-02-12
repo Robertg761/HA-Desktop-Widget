@@ -420,6 +420,44 @@ describe('Settings + Config Integration', () => {
       }
     });
 
+    test('debounced persistence writes latest section snapshot across different sections', async () => {
+      jest.useFakeTimers();
+      try {
+        await settings.openSettings();
+        window.electronAPI.updateConfig.mockClear();
+
+        const windowEffectsToggle = document.getElementById('window-effects-toggle');
+        const colorThemesToggle = document.getElementById('color-themes-toggle');
+
+        // Collapse window effects at t=0 (first timer scheduled for t=250ms).
+        windowEffectsToggle.click();
+        windowEffectsToggle.click();
+
+        // Collapse color themes before the first timer fires.
+        jest.advanceTimersByTime(150);
+        colorThemesToggle.click();
+        colorThemesToggle.click();
+
+        // First timer should persist the latest combined snapshot.
+        jest.advanceTimersByTime(110);
+        await Promise.resolve();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ui: expect.objectContaining({
+              personalizationSectionsCollapsed: expect.objectContaining({
+                'window-effects-section': true,
+                'color-themes-section': true
+              })
+            })
+          })
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     test('lazy-hydrates heavy personalization lists when sections are expanded', async () => {
       await settings.openSettings();
 

@@ -1418,10 +1418,11 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
   if (!window?.electronAPI?.updateConfig) return;
   const persistTimer = setTimeout(() => {
     personalizationSectionPersistTimers.delete(sectionId);
+    const latestStates = getSavedPersonalizationSectionStates();
     window.electronAPI.updateConfig({
       ui: {
         ...state.CONFIG.ui,
-        [PERSONALIZATION_SECTION_STATE_KEY]: nextStates,
+        [PERSONALIZATION_SECTION_STATE_KEY]: latestStates,
       },
     }).catch(error => {
       log.error('Failed to persist personalization section state:', error);
