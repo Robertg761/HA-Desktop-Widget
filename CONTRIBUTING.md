@@ -197,6 +197,33 @@ HA-Desktop-Widget/
 - **Discussions**: For general questions and community chat
 - **Email**: For security issues or private matters
 
+## 📦 Release Process
+
+Releases are created manually to ensure quality and intentionality. There are two ways to trigger a release:
+
+### Method 1: Manual Workflow (Recommended)
+1. Go to the **Actions** tab on GitHub
+2. Select the **Release (Windows)** workflow
+3. Click **Run workflow** and select the main branch
+4. The workflow will build and publish the release
+
+### Method 2: Git Tag (Semver)
+1. Update the version in `package.json` following [semantic versioning](https://semver.org/)
+2. Create and push a git tag:
+   ```bash
+   git tag v3.2.4
+   git push origin v3.2.4
+   ```
+3. The workflow will automatically build and publish the release
+
+### Release Checklist
+- [ ] Update version in `package.json`
+- [ ] Update `CHANGELOG.md` with release notes
+- [ ] Test the build locally with `npm run dist`
+- [ ] Trigger the release workflow
+- [ ] Verify the release appears on GitHub
+- [ ] Test the installer/portable build
+
 ## 🎉 Recognition
 
 Contributors will be recognized in:
