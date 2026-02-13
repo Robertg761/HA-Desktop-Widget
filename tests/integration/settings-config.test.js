@@ -131,7 +131,8 @@ beforeEach(() => {
     opaquePanels: false,
     density: 'comfortable',
     customColors: [],
-    personalizationSectionsCollapsed: {}
+    personalizationSectionsCollapsed: {},
+    enableInteractionDebugLogs: false
   };
   state.setConfig(testConfig);
 
@@ -198,6 +199,10 @@ function createSettingsModalDOM() {
       <div id="alerts-section" style="display: none;">
         <div id="inline-alerts-list"></div>
       </div>
+      <label for="enable-interaction-debug-logs">
+        <input type="checkbox" id="enable-interaction-debug-logs" />
+        Enable interaction diagnostics logs
+      </label>
 
       <div id="personalization-tab" class="tab-content">
         <div id="color-themes-section" class="personalization-section collapsed">
@@ -232,6 +237,18 @@ function createSettingsModalDOM() {
           </button>
           <div class="section-body">
             <input type="checkbox" id="frosted-glass" />
+          </div>
+        </div>
+        <div id="primary-cards-section" class="personalization-section collapsed">
+          <button type="button" id="primary-cards-toggle" class="section-toggle" aria-expanded="false">
+            Primary Cards
+          </button>
+          <div class="section-body">
+            <div id="primary-card-1-current"></div>
+            <div id="primary-card-2-current"></div>
+            <button type="button" id="primary-cards-reset">Reset</button>
+            <input type="text" id="primary-cards-search" />
+            <div id="primary-cards-list"></div>
           </div>
         </div>
         <div id="custom-entity-icons-section" class="personalization-section collapsed">
@@ -272,6 +289,21 @@ function createSettingsModalDOM() {
 describe('Settings + Config Integration', () => {
   const settings = require('../../src/settings.js');
   const state = require('../../src/state.js').default;
+  const openSettingsWithCustomIconsExpanded = async (uiHooks = undefined) => {
+    const config = state.CONFIG;
+    config.ui = config.ui || {};
+    config.ui.personalizationSectionsCollapsed = {
+      ...(config.ui.personalizationSectionsCollapsed || {}),
+      'custom-entity-icons-section': false
+    };
+    state.setConfig(config);
+
+    await settings.openSettings(uiHooks);
+    const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
+    if (customIconsToggle && customIconsToggle.getAttribute('aria-expanded') !== 'true') {
+      customIconsToggle.click();
+    }
+  };
 
   describe('Settings Open/Close Flow', () => {
     test('opening settings populates fields from config', async () => {
@@ -327,7 +359,7 @@ describe('Settings + Config Integration', () => {
       expect(mockUiHooks.exitReorganizeMode).toHaveBeenCalled();
     });
 
-    test('opening settings restores personalization section collapse states from config', async () => {
+    test('opening settings restores collapsed states and ignores expanded persisted values', async () => {
       state.CONFIG.ui.personalizationSectionsCollapsed = {
         'color-themes-section': true,
         'window-effects-section': false,
@@ -345,31 +377,101 @@ describe('Settings + Config Integration', () => {
 
       expect(colorThemesSection.classList.contains('collapsed')).toBe(true);
       expect(colorThemesToggle.getAttribute('aria-expanded')).toBe('false');
-      expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
-      expect(windowEffectsToggle.getAttribute('aria-expanded')).toBe('true');
+      expect(windowEffectsSection.classList.contains('collapsed')).toBe(true);
+      expect(windowEffectsToggle.getAttribute('aria-expanded')).toBe('false');
       expect(customIconsSection.classList.contains('collapsed')).toBe(true);
       expect(customIconsToggle.getAttribute('aria-expanded')).toBe('false');
     });
 
     test('toggling personalization sections persists collapse state', async () => {
-      await settings.openSettings();
+      jest.useFakeTimers();
+      try {
+        await settings.openSettings();
 
-      const windowEffectsSection = document.getElementById('window-effects-section');
-      const windowEffectsToggle = document.getElementById('window-effects-toggle');
+        const windowEffectsSection = document.getElementById('window-effects-section');
+        const windowEffectsToggle = document.getElementById('window-effects-toggle');
 
-      windowEffectsToggle.click();
+        // Expanding from default state should not persist (expanded is not stored).
+        windowEffectsToggle.click();
 
-      expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
-      expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(false);
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ui: expect.objectContaining({
-            personalizationSectionsCollapsed: expect.objectContaining({
-              'window-effects-section': false
+        expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
+        expect(state.CONFIG.ui.personalizationSectionsCollapsed).not.toHaveProperty('window-effects-section');
+        expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+
+        // Collapse should persist as an explicit saved state.
+        windowEffectsToggle.click();
+        expect(windowEffectsSection.classList.contains('collapsed')).toBe(true);
+        expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(true);
+
+        jest.advanceTimersByTime(260);
+        await Promise.resolve();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ui: expect.objectContaining({
+              personalizationSectionsCollapsed: expect.objectContaining({
+                'window-effects-section': true
+              })
             })
           })
-        })
-      );
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('debounced persistence writes latest section snapshot across different sections', async () => {
+      jest.useFakeTimers();
+      try {
+        await settings.openSettings();
+        window.electronAPI.updateConfig.mockClear();
+
+        const windowEffectsToggle = document.getElementById('window-effects-toggle');
+        const colorThemesToggle = document.getElementById('color-themes-toggle');
+
+        // Collapse window effects at t=0 (first timer scheduled for t=250ms).
+        windowEffectsToggle.click();
+        windowEffectsToggle.click();
+
+        // Collapse color themes before the first timer fires.
+        jest.advanceTimersByTime(150);
+        colorThemesToggle.click();
+        colorThemesToggle.click();
+
+        // First timer should persist the latest combined snapshot.
+        jest.advanceTimersByTime(110);
+        await Promise.resolve();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ui: expect.objectContaining({
+              personalizationSectionsCollapsed: expect.objectContaining({
+                'window-effects-section': true,
+                'color-themes-section': true
+              })
+            })
+          })
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('lazy-hydrates heavy personalization lists when sections are expanded', async () => {
+      await settings.openSettings();
+
+      // Collapsed sections should not eagerly render heavy lists.
+      expect(document.querySelector('[data-primary-assign]')).toBeNull();
+      expect(document.querySelector('[data-custom-icon-input]')).toBeNull();
+
+      const primaryCardsToggle = document.getElementById('primary-cards-toggle');
+      const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
+      primaryCardsToggle.click();
+      customIconsToggle.click();
+
+      expect(document.querySelector('[data-primary-assign]')).toBeTruthy();
+      expect(document.querySelector('[data-custom-icon-input]')).toBeTruthy();
     });
   });
 
@@ -406,6 +508,27 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyUiPreferences).toHaveBeenCalled();
     });
 
+    test('loads and saves interaction diagnostics flag from advanced settings', async () => {
+      state.CONFIG.ui.enableInteractionDebugLogs = true;
+      await settings.openSettings();
+
+      const debugToggle = document.getElementById('enable-interaction-debug-logs');
+      expect(debugToggle).toBeTruthy();
+      expect(debugToggle.checked).toBe(true);
+
+      debugToggle.checked = false;
+      await settings.saveSettings();
+
+      expect(state.CONFIG.ui.enableInteractionDebugLogs).toBe(false);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            enableInteractionDebugLogs: false
+          })
+        })
+      );
+    });
+
     test('URL validation prevents invalid save', async () => {
       await settings.openSettings();
 
@@ -431,7 +554,7 @@ describe('Settings + Config Integration', () => {
     });
 
     test('empty URL validation', async () => {
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
 
       // Clear URL field
       document.getElementById('ha-url').value = '   ';
@@ -450,7 +573,7 @@ describe('Settings + Config Integration', () => {
     });
 
     test('opacity conversion and application', async () => {
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
 
       // Set opacity slider to specific values and verify conversion
       const testCases = [
@@ -477,7 +600,7 @@ describe('Settings + Config Integration', () => {
   describe('Custom Entity Icons', () => {
     test('should apply icon changes as draft state until main Save', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const applyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
       expect(iconInput).toBeTruthy();
@@ -505,7 +628,7 @@ describe('Settings + Config Integration', () => {
 
     test('should show the full emoji catalog in the picker', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const chooseBtn = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
       expect(chooseBtn).toBeTruthy();
 
@@ -519,7 +642,7 @@ describe('Settings + Config Integration', () => {
 
     test('should open picker with all icons when icon input is focused', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
@@ -537,7 +660,7 @@ describe('Settings + Config Integration', () => {
 
     test('should close picker when focus leaves the icon input row', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const saveBtn = document.getElementById('save-settings');
       expect(iconInput).toBeTruthy();
@@ -561,7 +684,7 @@ describe('Settings + Config Integration', () => {
 
     test('should use row input as icon search for picker selection', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
@@ -584,7 +707,7 @@ describe('Settings + Config Integration', () => {
 
     test('should match natural language keywords like tree', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
@@ -599,7 +722,7 @@ describe('Settings + Config Integration', () => {
 
     test('should match animal keywords like rat and mouse', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
@@ -627,7 +750,7 @@ describe('Settings + Config Integration', () => {
 
     test('should match related category terms like mice to mouse icons', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
@@ -642,7 +765,7 @@ describe('Settings + Config Integration', () => {
 
     test('should allow choosing icons from picker instead of manual typing', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const chooseBtn = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
       expect(chooseBtn).toBeTruthy();
 
@@ -662,7 +785,7 @@ describe('Settings + Config Integration', () => {
 
     test('should reject invalid icon values that are not a single grapheme', async () => {
       // Arrange
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       const applyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
       expect(iconInput).toBeTruthy();
@@ -686,7 +809,7 @@ describe('Settings + Config Integration', () => {
 
     test('should persist custom entity icons on main Save and re-render active tab', async () => {
       // Arrange
-      await settings.openSettings({
+      await openSettingsWithCustomIconsExpanded({
         initUpdateUI: jest.fn(),
         renderActiveTab: mockUI.renderActiveTab,
         updateMediaTile: mockUI.updateMediaTile,
@@ -724,7 +847,7 @@ describe('Settings + Config Integration', () => {
         'light.living_room': '🔥',
         'switch.bedroom': '⚡'
       };
-      await settings.openSettings();
+      await openSettingsWithCustomIconsExpanded();
       const resetSingleBtn = document.querySelector('[data-custom-icon-reset="light.living_room"]');
       const resetAllBtn = document.getElementById('custom-entity-icons-reset-all');
       expect(resetSingleBtn).toBeTruthy();

@@ -13,6 +13,7 @@ class WebSocketManager extends EventEmitter {
 
   connect() {
     log.debug('Attempting to connect to Home Assistant WebSocket');
+    this.emit('connect-attempt');
     if (!state.CONFIG || !state.CONFIG.homeAssistant || !state.CONFIG.homeAssistant.url || !state.CONFIG.homeAssistant.token) {
       log.error('Invalid configuration for WebSocket');
       this.emit('status', false);
@@ -30,32 +31,40 @@ class WebSocketManager extends EventEmitter {
     }
 
     if (this.ws) {
+      // Mark existing socket as intentional close before replacing it.
+      this.ws.__intentionalClose = true;
       this.ws.close();
     }
 
     try {
       const wsUrl = state.CONFIG.homeAssistant.url.replace(/^http/, 'ws') + '/api/websocket';
       log.debug(`Connecting to WebSocket URL: ${wsUrl}`);
-      this.ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
+      ws.__intentionalClose = false;
+      this.ws = ws;
 
-      this.ws.onopen = () => {
+      ws.onopen = () => {
         log.debug('WebSocket connection established');
         this.emit('open');
       };
 
-      this.ws.onmessage = (event) => {
+      ws.onmessage = (event) => {
         this.handleMessage(event);
       };
 
-      this.ws.onerror = (event) => {
+      ws.onerror = (event) => {
         const message = (event && event.message) || (event && event.error && event.error.message) || 'Unknown WebSocket error';
         log.error('WebSocket error:', message);
         this.emit('error', new Error(message));
       };
 
-      this.ws.onclose = (_event) => {
+      ws.onclose = (_event) => {
+        const intentional = ws.__intentionalClose === true;
+        if (this.ws === ws) {
+          this.ws = null;
+        }
         log.debug('WebSocket connection closed');
-        this.emit('close');
+        this.emit('close', { intentional });
       };
     } catch (error) {
       log.error('Failed to create WebSocket connection:', error);
@@ -122,6 +131,7 @@ class WebSocketManager extends EventEmitter {
   close() {
     try {
       if (this.ws) {
+        this.ws.__intentionalClose = true;
         this.ws.close();
         this.ws = null;
       }

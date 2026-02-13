@@ -3,9 +3,10 @@
   "version": "3.2.3",
   "main": "main.js",
   "scripts": {
-    "build:renderer": "vite build",
+    "build:renderer": "vite build --mode production",
+    "build:renderer:dev": "vite build --mode development",
     "start": "npm run build:renderer && electron .",
-    "dev": "npm run build:renderer && electron . --dev",
+    "dev": "npm run build:renderer:dev && electron . --dev",
     "dist": "npm run build:renderer && electron-builder --win nsis portable",
     "dist:win": "npm run build:renderer && electron-builder --win nsis",
     "dist:mac": "npm run build:renderer && electron-builder --mac dmg zip",

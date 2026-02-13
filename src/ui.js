@@ -10,10 +10,28 @@ import Sortable from 'sortablejs';
 let isReorganizeMode = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
-const DEBUG_INTERACTION_LOGS = true;
+const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
+const desiredStateByEntity = new Map();
+const inFlightByEntity = new Map();
+const lastRequestedStateByEntity = new Map();
+const optimisticStateByEntity = new Map();
+const failedMediaArtworkRetryAtByUrl = new Map();
+const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
+
+function pruneExpiredArtworkRetryEntries(now = Date.now()) {
+  failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
+    if (!retryAt || retryAt <= now) {
+      failedMediaArtworkRetryAtByUrl.delete(key);
+    }
+  });
+}
+
+function isInteractionDebugEnabled() {
+  return !!state.CONFIG?.ui?.enableInteractionDebugLogs;
+}
 
 function emitUiDebug(event, details = {}) {
-  if (!DEBUG_INTERACTION_LOGS) return;
+  if (!isInteractionDebugEnabled()) return;
 
   try {
     const payload = {
@@ -32,6 +50,45 @@ function emitUiDebug(event, details = {}) {
   } catch {
     // no-op: debug logging must never break UI execution
   }
+}
+
+function isOnOffToggleDomain(domain) {
+  return ON_OFF_TOGGLE_DOMAINS.has(domain);
+}
+
+function getEntityDomain(entityId) {
+  if (typeof entityId !== 'string' || !entityId.includes('.')) return '';
+  return entityId.split('.')[0];
+}
+
+function isOnOffStateValue(value) {
+  return value === 'on' || value === 'off';
+}
+
+function getEffectiveOnOffState(entityId, fallbackState = 'off') {
+  const optimisticState = optimisticStateByEntity.get(entityId);
+  if (isOnOffStateValue(optimisticState)) return optimisticState;
+
+  const liveState = state.STATES?.[entityId]?.state;
+  if (isOnOffStateValue(liveState)) return liveState;
+
+  return isOnOffStateValue(fallbackState) ? fallbackState : 'off';
+}
+
+function clearPendingOnOffToggle(entityId) {
+  desiredStateByEntity.delete(entityId);
+  optimisticStateByEntity.delete(entityId);
+}
+
+function getEntityForDisplay(entity) {
+  if (!entity || typeof entity !== 'object' || !entity.entity_id) return entity;
+  const domain = getEntityDomain(entity.entity_id);
+  if (!isOnOffToggleDomain(domain)) return entity;
+
+  const optimisticState = optimisticStateByEntity.get(entity.entity_id);
+  if (!isOnOffStateValue(optimisticState)) return entity;
+  if (entity.state === optimisticState) return entity;
+  return { ...entity, state: optimisticState };
 }
 
 /**
@@ -77,6 +134,12 @@ let sortableInstance = null; // SortableJS instance for reorganize mode
 const mediaFitElements = new Set();
 let mediaFitScheduled = false;
 let mediaFitResizeBound = false;
+const visibleEntityIds = new Set();
+let isTimeCardVisible = false;
+let hasVisibleTimerEntities = false;
+let isMediaTileVisible = false;
+let lastMediaTileRenderSignature = '';
+let lastMediaTileArtworkSrc = '';
 
 let weatherCardTemplate = null;
 let timeCardTemplate = null;
@@ -94,6 +157,103 @@ function cachePrimaryCardTemplates() {
 
 function getPrimaryCardSelections() {
   return normalizePrimaryCards(state.CONFIG?.primaryCards);
+}
+
+function addVisibleEntityCandidate(target, entityId) {
+  if (!entityId || typeof entityId !== 'string') return;
+  target.add(entityId);
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  target.add(resolvedEntityId);
+}
+
+function isTimerEntityForLiveUpdates(entity) {
+  if (!entity || !entity.entity_id) return false;
+  if (entity.entity_id.startsWith('timer.')) return true;
+  if (!entity.entity_id.startsWith('sensor.')) return false;
+
+  const attributes = entity.attributes || {};
+  if (attributes.finishes_at || attributes.end_time || attributes.finish_time || attributes.duration) {
+    return true;
+  }
+
+  return entity.entity_id.toLowerCase().includes('timer');
+}
+
+function getDefaultWeatherEntity() {
+  const weatherEntities = Object.values(state.STATES || {})
+    .filter((entity) => entity?.entity_id?.startsWith('weather.'));
+  if (!weatherEntities.length) return null;
+  weatherEntities.sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+  return weatherEntities[0];
+}
+
+function getDefaultWeatherEntityId() {
+  return getDefaultWeatherEntity()?.entity_id || null;
+}
+
+function resolveSelectedWeatherEntityId() {
+  const selectedWeatherEntity = state.CONFIG?.selectedWeatherEntity;
+  if (selectedWeatherEntity && state.STATES?.[selectedWeatherEntity]) {
+    return selectedWeatherEntity;
+  }
+  return getDefaultWeatherEntityId();
+}
+
+function refreshVisibleTimerEntityFlag() {
+  hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) => (
+    isTimerEntityForLiveUpdates(state.STATES?.[entityId])
+  ));
+}
+
+function refreshVisibleEntityCache() {
+  try {
+    const nextVisibleIds = new Set();
+    const favorites = (state.CONFIG?.favoriteEntities || []).slice(0, 12);
+    favorites.forEach((entityId) => {
+      addVisibleEntityCandidate(nextVisibleIds, entityId);
+    });
+
+    const [slotOne, slotTwo] = getPrimaryCardSelections();
+    [slotOne, slotTwo].forEach((selection) => {
+      if (selection && selection !== PRIMARY_CARD_NONE && selection !== 'weather' && selection !== 'time') {
+        addVisibleEntityCandidate(nextVisibleIds, selection);
+      }
+    });
+    isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
+
+    const selectedWeatherEntity = resolveSelectedWeatherEntityId();
+    addVisibleEntityCandidate(nextVisibleIds, selectedWeatherEntity);
+
+    addVisibleEntityCandidate(nextVisibleIds, state.CONFIG?.primaryMediaPlayer);
+
+    visibleEntityIds.clear();
+    nextVisibleIds.forEach((entityId) => {
+      visibleEntityIds.add(entityId);
+    });
+
+    refreshVisibleTimerEntityFlag();
+  } catch (error) {
+    console.error('Error refreshing visible entity cache:', error);
+  }
+}
+
+function isEntityVisible(entityId) {
+  if (!entityId || typeof entityId !== 'string') return false;
+  if (visibleEntityIds.size === 0) return true;
+  if (visibleEntityIds.has(entityId)) return true;
+
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  return visibleEntityIds.has(resolvedEntityId);
+}
+
+function getTickTargets() {
+  const primaryPlayer = state.CONFIG?.primaryMediaPlayer;
+  const mediaEntity = primaryPlayer ? state.STATES?.[primaryPlayer] : null;
+  return {
+    timeVisible: isTimeCardVisible,
+    hasVisibleTimers: hasVisibleTimerEntities,
+    mediaEntity: (isMediaTileVisible && mediaEntity?.state === 'playing') ? mediaEntity : null,
+  };
 }
 
 function renderPrimaryEntityCard(cardEl, entityId) {
@@ -181,11 +341,15 @@ function renderPrimaryCards() {
     if (slotOne === 'weather' || slotTwo === 'weather') {
       updateWeatherFromHA();
     }
-    if (slotOne === 'time' || slotTwo === 'time') {
-      startTimeTicker();
+    isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
+    if (isTimeCardVisible) {
+      // Keep time current without relying on a dedicated long-lived interval.
+      stopTimeTicker();
+      updateTimeDisplay();
     } else {
       stopTimeTicker();
     }
+    refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering primary cards:', error);
   }
@@ -508,6 +672,7 @@ function renderActiveTab() {
     renderQuickControls();
     updateWeatherFromHA();
     updateMediaTile();
+    refreshVisibleEntityCache();
     if (Object.keys(state.STATES).length === 0) {
       showNoConnectionMessage();
     }
@@ -516,24 +681,59 @@ function renderActiveTab() {
   }
 }
 
-function updateEntityInUI(entity) {
+function updateEntityInUI(entity, options = {}) {
   try {
     if (!entity) return;
+    const entityId = entity.entity_id;
+    const domain = getEntityDomain(entityId);
+    const skipQueueReconcile = options.skipQueueReconcile === true;
+    let renderEntity = entity;
+
+    if (!skipQueueReconcile && isOnOffToggleDomain(domain)) {
+      const desiredState = desiredStateByEntity.get(entityId);
+      if (isOnOffStateValue(desiredState)) {
+        if (entity.state === desiredState) {
+          clearPendingOnOffToggle(entityId);
+          emitUiDebug('entity.toggle_finalized', {
+            entityId,
+            domain,
+            state: entity.state,
+          });
+        } else {
+          optimisticStateByEntity.set(entityId, desiredState);
+          renderEntity = { ...entity, state: desiredState };
+          emitUiDebug('entity.toggle_reconcile_pending', {
+            entityId,
+            domain,
+            receivedState: entity.state,
+            desiredState,
+          });
+        }
+      } else if (optimisticStateByEntity.has(entityId)) {
+        optimisticStateByEntity.delete(entityId);
+      }
+    }
+
+    // Keep timer tick eligibility current as visible entity attributes change live.
+    refreshVisibleTimerEntityFlag();
 
     // Update weather card if this is a weather entity
-    if (entity.entity_id.startsWith('weather.')) {
+    if (renderEntity.entity_id.startsWith('weather.')) {
       updateWeatherFromHA();
     }
 
     // Update media tile if this is the primary media player
-    if (entity.entity_id === state.CONFIG.primaryMediaPlayer) {
+    if (renderEntity.entity_id === state.CONFIG.primaryMediaPlayer) {
       updateMediaTile();
     }
 
-    const items = document.querySelectorAll(`.control-item[data-entity-id="${entity.entity_id}"]`);
+    const items = document.querySelectorAll(`.control-item[data-entity-id="${renderEntity.entity_id}"]`);
     items.forEach(item => {
+      if (updateExistingMediaPlayerControl(item, renderEntity)) {
+        return;
+      }
       const isPrimary = item.dataset.primaryCard === 'true';
-      const newControl = createControlElement(entity);
+      const newControl = createControlElement(renderEntity);
       if (isPrimary) {
         newControl.dataset.primaryCard = 'true';
       }
@@ -554,6 +754,46 @@ function updateEntityInUI(entity) {
   }
 }
 
+function getControlRenderSignature(entity) {
+  if (!entity || !entity.entity_id) return '';
+  const attrs = entity.attributes || {};
+  return JSON.stringify({
+    entityId: entity.entity_id,
+    state: entity.state || '',
+    displayState: utils.getEntityDisplayState(entity),
+    name: utils.getEntityDisplayName(entity),
+    icon: utils.getEntityIcon(entity),
+    brightness: attrs.brightness ?? null,
+    percentage: attrs.percentage ?? null,
+    timerEndsAt: attrs.finishes_at || attrs.end_time || attrs.finish_time || null,
+    timerDuration: attrs.duration || attrs.remaining || null,
+    mediaTitle: attrs.media_title || null,
+    mediaArtist: attrs.media_artist || null,
+    mediaAlbum: attrs.media_album_name || null,
+    mediaImage: attrs.entity_picture || attrs.media_image_url || attrs.media_content_id || null,
+  });
+}
+
+function getUnavailableControlSignature(entityId) {
+  const customName = state.CONFIG?.customEntityNames?.[entityId] || null;
+  return JSON.stringify({
+    entityId: entityId || '',
+    unavailable: true,
+    customName,
+  });
+}
+
+function updateExistingMediaPlayerControl(item, entity) {
+  if (!item || !entity || !entity.entity_id || !entity.entity_id.startsWith('media_player.')) return false;
+  if (!item.classList.contains('media-player-entity')) return false;
+  if (!item.querySelector('.control-icon') || !item.querySelector('.control-info')) return false;
+
+  item.dataset.entityId = entity.entity_id;
+  item.title = 'Click to play/pause, hold for controls';
+  setupMediaPlayerControls(item, entity);
+  return true;
+}
+
 // --- Quick Controls ---
 function renderQuickControls() {
   try {
@@ -563,10 +803,16 @@ function renderQuickControls() {
       return;
     }
 
-    container.innerHTML = '';
-
     // Get favorite entities for quick access
     const favorites = state.CONFIG.favoriteEntities || [];
+    const desiredNodes = [];
+    const existingNodesById = new Map();
+    container.querySelectorAll('.control-item[data-entity-id]').forEach((node) => {
+      if (!node || !node.dataset?.entityId) return;
+      if (!existingNodesById.has(node.dataset.entityId)) {
+        existingNodesById.set(node.dataset.entityId, node);
+      }
+    });
 
     // Iterate through ALL favorited entity IDs (not just those in STATES)
     // This ensures unavailable entities are still shown with an error state
@@ -583,21 +829,47 @@ function renderQuickControls() {
           domain: resolvedEntityId.includes('.') ? resolvedEntityId.split('.')[0] : null,
         });
 
+        const renderedEntityId = entity ? resolvedEntityId : entityId;
+        const existingNode = existingNodesById.get(renderedEntityId);
+        const nextSignature = entity
+          ? getControlRenderSignature(entity)
+          : getUnavailableControlSignature(entityId);
+
+        if (existingNode && existingNode.dataset.renderSignature === nextSignature) {
+          desiredNodes.push(existingNode);
+          existingNodesById.delete(renderedEntityId);
+          return;
+        }
+
         if (entity) {
           // Entity exists in STATES - render normally
           const control = createControlElement(entity);
-          container.appendChild(control);
+          control.dataset.renderSignature = nextSignature;
+          desiredNodes.push(control);
         } else {
           // Entity does not exist in STATES - render unavailable state
           const control = createUnavailableElement(entityId);
-          container.appendChild(control);
+          control.dataset.renderSignature = nextSignature;
+          desiredNodes.push(control);
         }
       });
+
+    desiredNodes.forEach((node, index) => {
+      const currentAtIndex = container.children[index];
+      if (currentAtIndex !== node) {
+        container.insertBefore(node, currentAtIndex || null);
+      }
+    });
+
+    while (container.children.length > desiredNodes.length) {
+      container.removeChild(container.lastElementChild);
+    }
 
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering quick controls:', error, error.stack);
   }
@@ -605,6 +877,11 @@ function renderQuickControls() {
 
 function createControlElement(entity) {
   try {
+    entity = getEntityForDisplay(entity);
+    if (!entity) {
+      return document.createElement('div');
+    }
+
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
@@ -977,10 +1254,13 @@ function setupMediaPlayerControls(div, entity) {
     // Update the control info section (no inline controls; whole tile toggles)
     const controlInfo = div.querySelector('.control-info');
     if (controlInfo) {
-      controlInfo.innerHTML = `
+      const nextInfoMarkup = `
         <div class="control-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
         ${mediaInfo}
       `;
+      if (controlInfo.innerHTML !== nextInfoMarkup) {
+        controlInfo.innerHTML = nextInfoMarkup;
+      }
     }
 
     // Update album art in the icon - show when media info is present
@@ -1015,33 +1295,50 @@ function setupMediaPlayerControls(div, entity) {
 
         // Encode URL in base64 for the ha:// protocol
         const encodedUrl = utils.base64Encode(urlToEncode);
+        const retryKey = encodedUrl;
 
         // Add cache buster for better updates (rounded to 30 seconds to allow caching)
-        const cacheBuster = Math.floor(Date.now() / 30000);
+        const now = Date.now();
+        pruneExpiredArtworkRetryEntries(now);
+        const cacheBuster = Math.floor(now / 30000);
         const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+        const retryAt = failedMediaArtworkRetryAtByUrl.get(retryKey) || 0;
+        const skipForRecentFailure = retryAt > now;
 
-        // Replace icon with album art image
-        const img = document.createElement('img');
-        img.src = proxyUrl;
-        img.alt = 'Album art';
-        img.className = 'media-player-artwork';
-        img.onerror = function () {
-          // Restore original icon on error
-          const icon = this.parentElement;
-          if (icon && icon.dataset.defaultIcon) {
-            icon.innerHTML = icon.dataset.defaultIcon;
-            icon.classList.remove('has-artwork');
-          }
-        };
-        controlIcon.innerHTML = '';
-        controlIcon.appendChild(img);
-        controlIcon.classList.add('has-artwork');
+        const existingImg = controlIcon.querySelector('.media-player-artwork');
+        const existingSrc = existingImg ? existingImg.getAttribute('src') : null;
+        if (!skipForRecentFailure && (existingSrc !== proxyUrl || !controlIcon.classList.contains('has-artwork'))) {
+          // Replace icon with album art image only when the source changed.
+          const img = document.createElement('img');
+          img.src = proxyUrl;
+          img.alt = 'Album art';
+          img.className = 'media-player-artwork';
+          img.onload = function () {
+            failedMediaArtworkRetryAtByUrl.delete(retryKey);
+          };
+          img.onerror = function () {
+            // Restore original icon on error
+            failedMediaArtworkRetryAtByUrl.set(retryKey, Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS);
+            const icon = this.parentElement;
+            if (icon && icon.dataset.defaultIcon) {
+              icon.innerHTML = icon.dataset.defaultIcon;
+              icon.classList.remove('has-artwork');
+            }
+          };
+          controlIcon.innerHTML = '';
+          controlIcon.appendChild(img);
+          controlIcon.classList.add('has-artwork');
+        } else if (skipForRecentFailure && controlIcon.classList.contains('has-artwork') && existingSrc !== proxyUrl && controlIcon.dataset.defaultIcon) {
+          // Avoid rapid fallback/restore churn while an artwork URL is failing repeatedly.
+          controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
+          controlIcon.classList.remove('has-artwork');
+        }
       } else {
         // No media info or no artwork - show original icon
-        if (controlIcon.dataset.defaultIcon) {
+        if (controlIcon.classList.contains('has-artwork') && controlIcon.dataset.defaultIcon) {
           controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
+          controlIcon.classList.remove('has-artwork');
         }
-        controlIcon.classList.remove('has-artwork');
       }
     }
 
@@ -1423,22 +1720,146 @@ function callMediaPlayerService(entityId, action) {
   }
 }
 
+function getEntityNameFromId(entityId) {
+  const entity = state.STATES?.[entityId];
+  if (entity) return utils.getEntityDisplayName(entity);
+  return entityId || 'entity';
+}
+
+async function processPendingOnOffToggle(entityId, domain) {
+  if (!entityId || !isOnOffToggleDomain(domain)) return;
+  if (inFlightByEntity.get(entityId)) return;
+
+  const desiredState = desiredStateByEntity.get(entityId);
+  if (!isOnOffStateValue(desiredState)) return;
+
+  const service = desiredState === 'on' ? 'turn_on' : 'turn_off';
+  const serviceData = { entity_id: entityId };
+  inFlightByEntity.set(entityId, true);
+  lastRequestedStateByEntity.set(entityId, desiredState);
+
+  emitUiDebug('entity.toggle_attempt', {
+    entityId,
+    domain,
+    service,
+    desiredState,
+    serviceData,
+  });
+
+  try {
+    const response = await websocket.callService(domain, service, serviceData);
+
+    emitUiDebug('entity.toggle_success', {
+      entityId,
+      domain,
+      service,
+      desiredState,
+      responseSuccess: response?.success !== false,
+      responseId: response?.id || null,
+    });
+
+    const latestDesiredState = desiredStateByEntity.get(entityId);
+    if (latestDesiredState === desiredState) {
+      const currentEntity = state.STATES?.[entityId];
+      if (currentEntity) {
+        const committedEntity = currentEntity.state === desiredState
+          ? currentEntity
+          : { ...currentEntity, state: desiredState };
+        state.setEntityState(committedEntity);
+        clearPendingOnOffToggle(entityId);
+        updateEntityInUI(committedEntity, { skipQueueReconcile: true });
+      } else {
+        clearPendingOnOffToggle(entityId);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    const requestedState = lastRequestedStateByEntity.get(entityId);
+    const latestDesiredState = desiredStateByEntity.get(entityId);
+
+    emitUiDebug('entity.toggle_primary_error', {
+      entityId,
+      domain,
+      service,
+      requestedState: requestedState || null,
+      latestDesiredState: latestDesiredState || null,
+      error: error?.message || String(error),
+      code: error?.code || null,
+    });
+
+    if (latestDesiredState && latestDesiredState !== requestedState) {
+      emitUiDebug('entity.toggle_error_ignored_stale_request', {
+        entityId,
+        domain,
+        requestedState: requestedState || null,
+        latestDesiredState,
+      });
+      return;
+    }
+
+    clearPendingOnOffToggle(entityId);
+
+    const serverEntity = state.STATES?.[entityId];
+    if (serverEntity) {
+      updateEntityInUI(serverEntity, { skipQueueReconcile: true });
+    }
+
+    handleServiceError(error, getEntityNameFromId(entityId));
+  } finally {
+    inFlightByEntity.delete(entityId);
+    const requestedState = lastRequestedStateByEntity.get(entityId);
+    const latestDesiredState = desiredStateByEntity.get(entityId);
+
+    if (!latestDesiredState) {
+      lastRequestedStateByEntity.delete(entityId);
+    } else if (latestDesiredState !== requestedState) {
+      processPendingOnOffToggle(entityId, domain);
+    }
+  }
+}
+
+function queueOnOffToggle(entity) {
+  if (!entity || !entity.entity_id) return;
+  const entityId = entity.entity_id;
+  const domain = getEntityDomain(entityId);
+  if (!isOnOffToggleDomain(domain)) return;
+
+  const effectiveState = getEffectiveOnOffState(entityId, entity.state);
+  const desiredState = effectiveState === 'on' ? 'off' : 'on';
+  desiredStateByEntity.set(entityId, desiredState);
+  optimisticStateByEntity.set(entityId, desiredState);
+
+  const sourceEntity = state.STATES?.[entityId] || entity;
+  if (sourceEntity) {
+    updateEntityInUI({ ...sourceEntity, state: desiredState }, { skipQueueReconcile: true });
+  }
+
+  emitUiDebug('entity.toggle_queued', {
+    entityId,
+    domain,
+    previousState: effectiveState,
+    desiredState,
+    inFlight: !!inFlightByEntity.get(entityId),
+  });
+
+  processPendingOnOffToggle(entityId, domain);
+}
+
 
 function toggleEntity(entity) {
   try {
     const domain = entity.entity_id.split('.')[0];
     let service;
-    let service_data = { entity_id: entity.entity_id };
-    const supportsExplicitFallback = ['light', 'switch', 'fan', 'input_boolean'].includes(domain);
-    const explicitFallbackService = entity.state === 'on' ? 'turn_off' : 'turn_on';
+    const service_data = { entity_id: entity.entity_id };
 
     switch (domain) {
       case 'light':
       case 'switch':
       case 'fan':
       case 'input_boolean':
-        service = 'toggle';
-        break;
+        queueOnOffToggle(entity);
+        return;
       case 'lock':
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
@@ -1464,7 +1885,6 @@ function toggleEntity(entity) {
       entityId: entity.entity_id,
       domain,
       service,
-      fallbackService: supportsExplicitFallback ? explicitFallbackService : null,
       state: entity.state,
       serviceData: service_data,
     });
@@ -1477,46 +1897,6 @@ function toggleEntity(entity) {
           responseSuccess: response?.success !== false,
           responseId: response?.id || null,
         });
-        return response;
-      })
-      .catch((error) => {
-        emitUiDebug('entity.toggle_primary_error', {
-          entityId: entity.entity_id,
-          domain,
-          service,
-          error: error?.message || String(error),
-          code: error?.code || null,
-        });
-        if (!supportsExplicitFallback || service !== 'toggle') {
-          throw error;
-        }
-        emitUiDebug('entity.toggle_fallback_attempt', {
-          entityId: entity.entity_id,
-          domain,
-          fallbackService: explicitFallbackService,
-          state: entity.state,
-        });
-        return websocket.callService(domain, explicitFallbackService, service_data)
-          .catch((fallbackError) => {
-            emitUiDebug('entity.toggle_fallback_error', {
-              entityId: entity.entity_id,
-              domain,
-              fallbackService: explicitFallbackService,
-              error: fallbackError?.message || String(fallbackError),
-              code: fallbackError?.code || null,
-            });
-            throw fallbackError;
-          });
-      })
-      .then((response) => {
-        if (supportsExplicitFallback && service === 'toggle') {
-          emitUiDebug('entity.toggle_finalized', {
-            entityId: entity.entity_id,
-            domain,
-            responseSuccess: response?.success !== false,
-            responseId: response?.id || null,
-          });
-        }
         return response;
       })
       .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
@@ -1630,10 +2010,8 @@ function executeHotkeyAction(entity, action) {
 // --- Weather ---
 function updateWeatherFromHA() {
   try {
-    const weatherEntity = state.STATES[state.CONFIG.selectedWeatherEntity] ||
-      Object.values(state.STATES)
-        .filter(e => e.entity_id.startsWith('weather.'))
-        .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
+    const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
+    const weatherEntity = selectedWeatherEntityId ? state.STATES?.[selectedWeatherEntityId] : null;
     if (!weatherEntity) return;
 
     const tempEl = document.getElementById('weather-temp');
@@ -1811,6 +2189,7 @@ async function selectWeatherEntity(entityId) {
 
     // Update local state
     state.setConfig(updatedConfig);
+    refreshVisibleEntityCache();
 
     // Refresh weather display
     updateWeatherFromHA();
@@ -1829,6 +2208,24 @@ async function selectWeatherEntity(entityId) {
   }
 }
 
+function buildMediaArtworkProxyUrl(artworkUrl) {
+  if (!artworkUrl || typeof artworkUrl !== 'string') return null;
+  const baseUrl = state.CONFIG?.homeAssistant?.url?.replace(/\/$/, '');
+  if (!baseUrl) return null;
+
+  let urlToEncode;
+  if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
+    urlToEncode = artworkUrl;
+  } else {
+    const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : `/${artworkUrl}`;
+    urlToEncode = baseUrl + imgUrl;
+  }
+
+  const encodedUrl = utils.base64Encode(urlToEncode);
+  const cacheBuster = Math.floor(Date.now() / 30000);
+  return `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+}
+
 // --- Media Player Tile ---
 function updateMediaTile() {
   try {
@@ -1839,6 +2236,10 @@ function updateMediaTile() {
     const primaryPlayer = state.CONFIG.primaryMediaPlayer;
     if (!primaryPlayer) {
       tile.style.display = 'none';
+      isMediaTileVisible = false;
+      lastMediaTileRenderSignature = '';
+      lastMediaTileArtworkSrc = '';
+      refreshVisibleEntityCache();
       return;
     }
 
@@ -1846,14 +2247,17 @@ function updateMediaTile() {
     const entity = state.STATES[primaryPlayer];
     if (!entity) {
       tile.style.display = 'none';
+      isMediaTileVisible = false;
+      lastMediaTileRenderSignature = '';
+      lastMediaTileArtworkSrc = '';
+      refreshVisibleEntityCache();
       return;
     }
 
     // Show the tile
     tile.style.display = 'grid';
+    isMediaTileVisible = true;
 
-    // Update artwork
-    const artworkContainer = document.getElementById('media-tile-artwork');
     // Try multiple artwork sources (smart speakers might use different attributes)
     let artworkUrl = entity.attributes?.entity_picture ||
       entity.attributes?.media_image_url ||
@@ -1865,63 +2269,62 @@ function updateMediaTile() {
       artworkUrl = entity.attributes?.entity_picture;
     }
 
-    if (artworkUrl && artworkContainer) {
-      // Use the ha:// protocol to proxy artwork (handles both external CDN URLs and HA-relative paths)
-      // This bypasses CSP restrictions and adds authentication when needed
-      const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
-
-      // Determine the full URL to encode
-      let urlToEncode;
-      if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
-        // Already a full URL (external CDN like Spotify, YouTube)
-        urlToEncode = artworkUrl;
-      } else {
-        // Relative path - construct full HA URL
-        const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
-        urlToEncode = baseUrl + imgUrl;
-      }
-
-      // Encode URL in base64 for the ha:// protocol
-      const encodedUrl = utils.base64Encode(urlToEncode);
-
-      // Add cache buster for better updates (rounded to 30 seconds to allow caching)
-      const cacheBuster = Math.floor(Date.now() / 30000);
-      const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
-
-      // Create img element safely without inline event handler
-      const img = document.createElement('img');
-      img.src = proxyUrl;
-      img.alt = 'Album art';
-      img.onerror = function () {
-        this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
-      };
-      artworkContainer.innerHTML = '';
-      artworkContainer.appendChild(img);
-    } else if (artworkContainer) {
-      artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
-    }
-
     // Update media info
     const titleEl = document.getElementById('media-tile-title');
     const artistEl = document.getElementById('media-tile-artist');
     const mediaTitle = entity.attributes?.media_title || 'No media playing';
     const mediaArtist = entity.attributes?.media_artist || '';
+    const isPlaying = entity.state === 'playing';
+    const proxyUrl = buildMediaArtworkProxyUrl(artworkUrl);
+    const nextSignature = JSON.stringify({
+      entityId: entity.entity_id,
+      state: entity.state || '',
+      title: mediaTitle,
+      artist: mediaArtist,
+      artwork: proxyUrl || '',
+    });
 
-    if (titleEl) titleEl.textContent = mediaTitle;
-    if (artistEl) artistEl.textContent = mediaArtist;
+    if (nextSignature !== lastMediaTileRenderSignature) {
+      lastMediaTileRenderSignature = nextSignature;
 
-    // Update seek bar
-    updateMediaSeekBar(entity);
+      if (titleEl && titleEl.textContent !== mediaTitle) titleEl.textContent = mediaTitle;
+      if (artistEl && artistEl.textContent !== mediaArtist) artistEl.textContent = mediaArtist;
 
-    // Update play/pause button
-    const playBtn = document.getElementById('media-tile-play');
-    if (playBtn) {
-      const isPlaying = entity.state === 'playing';
-      // Update icon using the icon system
-      // setIconContent already imported at top
-      setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
-      playBtn.classList.toggle('playing', isPlaying);
+      // Update play/pause button
+      const playBtn = document.getElementById('media-tile-play');
+      if (playBtn) {
+        setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
+        playBtn.classList.toggle('playing', isPlaying);
+      }
+
+      // Update artwork only when the source actually changes.
+      const artworkContainer = document.getElementById('media-tile-artwork');
+      if (artworkContainer) {
+        if (proxyUrl) {
+          const existingImg = artworkContainer.querySelector('img');
+          const existingSrc = existingImg?.getAttribute('src') || '';
+          if (!existingImg || existingSrc !== proxyUrl || lastMediaTileArtworkSrc !== proxyUrl) {
+            const img = document.createElement('img');
+            img.src = proxyUrl;
+            img.alt = 'Album art';
+            img.onerror = function () {
+              this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+              lastMediaTileArtworkSrc = '';
+            };
+            artworkContainer.innerHTML = '';
+            artworkContainer.appendChild(img);
+            lastMediaTileArtworkSrc = proxyUrl;
+          }
+        } else if (lastMediaTileArtworkSrc !== '') {
+          artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+          lastMediaTileArtworkSrc = '';
+        }
+      }
     }
+
+    // Keep seek bar updates separate from metadata/artwork render signature.
+    updateMediaSeekBar(entity);
+    refreshVisibleEntityCache();
   } catch (error) {
     console.error('Error updating media tile:', error);
   }
@@ -2071,6 +2474,8 @@ function stopTimeTicker() {
 
 function updateTimerDisplays() {
   try {
+    if (!hasVisibleTimerEntities) return;
+
     // Find all timer entities AND sensor entities with timer attributes in Quick Access
     const timerElements = document.querySelectorAll('.control-item.timer-entity');
 
@@ -3065,6 +3470,9 @@ export {
   renderPrimaryCards,
   toggleReorganizeMode,
   populateQuickControlsList,
+  isEntityVisible,
+  getTickTargets,
+  refreshVisibleEntityCache,
   executeHotkeyAction,
   updateMediaTile,
   updateMediaSeekBar,

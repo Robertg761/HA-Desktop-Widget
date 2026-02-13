@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -23,6 +23,73 @@ const httpsKeepAliveAgent = new https.Agent({
   maxFreeSockets: 10,
   timeout: 60000
 });
+
+function getHeaderValue(headers, name) {
+  if (!headers || !name) return undefined;
+  const value = headers[String(name).toLowerCase()];
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    const chunks = [];
+
+    const request = net.request({
+      method: 'GET',
+      url,
+      redirect: 'follow',
+    });
+
+    Object.entries(headers || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      request.setHeader(key, String(value));
+    });
+    request.setHeader('Accept', 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8');
+
+    const timeoutId = setTimeout(() => {
+      if (completed) return;
+      completed = true;
+      try { request.abort(); } catch { /* noop */ }
+      reject(new Error(`Artwork request timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    request.on('response', (response) => {
+      response.on('data', (chunk) => {
+        if (completed) return;
+        chunks.push(Buffer.from(chunk));
+      });
+
+      response.on('end', () => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timeoutId);
+        resolve({
+          status: response.statusCode || 0,
+          headers: response.headers || {},
+          data: Buffer.concat(chunks),
+        });
+      });
+
+      response.on('error', (error) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+    });
+
+    request.on('error', (error) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    request.end();
+  });
+}
 
 // Try to load uiohook-napi (optional dependency for popup hotkey feature)
 let uIOhook, UiohookKey;
@@ -65,6 +132,13 @@ let tray;
 let config;
 let isQuitting = false;
 let windowStateSaveTimer = null;
+const CONFIG_SAVE_DEBOUNCE_MS = 120;
+let configWriteTimer = null;
+let configWriteInFlight = false;
+let pendingConfigSnapshot = null;
+let configSnapshotVersion = 0;
+let configWriteEpoch = 0;
+let configShutdownPending = false;
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -225,7 +299,8 @@ function loadConfig() {
       accent: 'original',
       background: 'original',
       customColors: [],
-      personalizationSectionsCollapsed: {}
+      personalizationSectionsCollapsed: {},
+      enableInteractionDebugLogs: false
     },
     primaryCards: ['weather', 'time'],
     customEntityIcons: {},
@@ -411,43 +486,131 @@ function backupConfig() {
  * `false`. The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during
  * the save process are logged; the function does not throw.
  */
-function saveConfig() {
-  log.debug('Saving configuration');
+function buildConfigSnapshotForSave() {
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
-  try {
-    fs.mkdirSync(userDataDir, { recursive: true });
+  const snapshotVersion = ++configSnapshotVersion;
+  const tempPath = `${configPath}.${snapshotVersion}.tmp`;
 
-    // Create a copy for saving with encrypted token
-    const configToSave = JSON.parse(JSON.stringify(config));
-    pruneConfig(configToSave);
+  // Create a copy for saving with encrypted token
+  const configToSave = JSON.parse(JSON.stringify(config));
+  pruneConfig(configToSave);
 
-    // Encrypt token before saving
-    // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
-    if (configToSave.homeAssistant?.token &&
-      configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          const plainToken = configToSave.homeAssistant.token;
-          const encryptedBuffer = safeStorage.encryptString(plainToken);
-          configToSave.homeAssistant.token = encryptedBuffer.toString('base64');
-          configToSave.homeAssistant.tokenEncrypted = true;
-          log.debug('Token encrypted for storage');
-        } catch (error) {
-          log.warn('Failed to encrypt token, saving as plaintext:', error);
-          configToSave.homeAssistant.tokenEncrypted = false;
-          // Keep plaintext token if encryption fails
-        }
-      } else {
-        log.debug('Encryption not available, saving token as plaintext');
+  // Encrypt token before saving
+  // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
+  if (configToSave.homeAssistant?.token &&
+    configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const plainToken = configToSave.homeAssistant.token;
+        const encryptedBuffer = safeStorage.encryptString(plainToken);
+        configToSave.homeAssistant.token = encryptedBuffer.toString('base64');
+        configToSave.homeAssistant.tokenEncrypted = true;
+        log.debug('Token encrypted for storage');
+      } catch (error) {
+        log.warn('Failed to encrypt token, saving as plaintext:', error);
         configToSave.homeAssistant.tokenEncrypted = false;
-        // Token stays plaintext
+        // Keep plaintext token if encryption fails
       }
+    } else {
+      log.debug('Encryption not available, saving token as plaintext');
+      configToSave.homeAssistant.tokenEncrypted = false;
+      // Token stays plaintext
     }
+  }
 
-    fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
+  return {
+    userDataDir,
+    configPath,
+    tempPath,
+    snapshotVersion,
+    epoch: configWriteEpoch,
+    configToSave,
+    serializedConfig: JSON.stringify(configToSave, null, 2),
+  };
+}
+
+async function writeConfigSnapshotAsync(snapshot) {
+  await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
+  await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
+  if (configShutdownPending || snapshot.epoch !== configWriteEpoch) {
+    await fs.promises.unlink(snapshot.tempPath).catch(() => { });
+    return;
+  }
+  await fs.promises.rename(snapshot.tempPath, snapshot.configPath);
+}
+
+function flushConfigWriteQueue() {
+  if (configWriteInFlight) return;
+  if (!pendingConfigSnapshot) return;
+
+  const snapshot = pendingConfigSnapshot;
+  pendingConfigSnapshot = null;
+  configWriteInFlight = true;
+
+  writeConfigSnapshotAsync(snapshot)
+    .catch((error) => {
+      log.error('Failed to save config asynchronously:', error);
+    })
+    .finally(() => {
+      configWriteInFlight = false;
+      if (pendingConfigSnapshot) {
+        flushConfigWriteQueue();
+      }
+    });
+}
+
+function flushPendingConfigWriteSync() {
+  configShutdownPending = true;
+  // Invalidate any older in-flight async write attempts before flushing latest config.
+  configWriteEpoch += 1;
+
+  if (configWriteTimer) {
+    clearTimeout(configWriteTimer);
+    configWriteTimer = null;
+  }
+
+  let snapshot = pendingConfigSnapshot;
+  pendingConfigSnapshot = null;
+
+  if (!snapshot) {
+    try {
+      snapshot = buildConfigSnapshotForSave();
+    } catch (error) {
+      log.error('Failed to build config snapshot for sync flush:', error);
+      return;
+    }
+  }
+
+  try {
+    fs.mkdirSync(snapshot.userDataDir, { recursive: true });
+    fs.writeFileSync(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
+    fs.renameSync(snapshot.tempPath, snapshot.configPath);
   } catch (error) {
-    log.error('Failed to save config:', error);
+    log.error('Failed to flush config synchronously:', error);
+    try {
+      if (snapshot?.tempPath && fs.existsSync(snapshot.tempPath)) {
+        fs.unlinkSync(snapshot.tempPath);
+      }
+    } catch {
+      // best effort cleanup
+    }
+  }
+}
+
+function saveConfig() {
+  log.debug('Scheduling configuration save');
+  try {
+    pendingConfigSnapshot = buildConfigSnapshotForSave();
+    if (configWriteTimer) {
+      clearTimeout(configWriteTimer);
+    }
+    configWriteTimer = setTimeout(() => {
+      configWriteTimer = null;
+      flushConfigWriteQueue();
+    }, CONFIG_SAVE_DEBOUNCE_MS);
+  } catch (error) {
+    log.error('Failed to schedule config save:', error);
   }
 }
 
@@ -1592,8 +1755,8 @@ app.on('before-quit', () => {
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer);
     windowStateSaveTimer = null;
-    saveConfig();
   }
+  flushPendingConfigWriteSync();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
 });
@@ -1705,17 +1868,12 @@ app.whenReady().then(() => {
             headers = { Authorization: `Bearer ${token}` };
           }
 
-          const res = await axios.get(upstream, {
-            headers: headers,
-            responseType: 'arraybuffer',
-            validateStatus: () => true,
-            timeout: 10000
-          });
+          const res = await fetchBinaryWithElectronNet(upstream, headers, 10000);
 
           if (res.status >= 200 && res.status < 300) {
-            const buf = Buffer.from(res.data);
+            const buf = Buffer.isBuffer(res.data) ? res.data : Buffer.from(res.data);
             const stream = Readable.from(buf);
-            const contentType = res.headers['content-type'] || 'image/jpeg';
+            const contentType = getHeaderValue(res.headers, 'content-type') || 'image/jpeg';
             respond({
               data: stream,
               statusCode: 200,

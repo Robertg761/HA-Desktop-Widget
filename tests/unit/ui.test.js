@@ -43,7 +43,14 @@ jest.mock('../../src/websocket.js', () => ({
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
-const { sampleConfig, sampleStates } = require('../fixtures/ha-data.js');
+const {
+  sampleConfig,
+  sampleStates,
+  sampleServices,
+  sampleAreas,
+  sampleUnitSystemMetric: sampleUnitSystem,
+  sampleWebSocketMessages: wsMessages
+} = require('../fixtures/ha-data.js');
 
 describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   beforeEach(() => {
@@ -52,7 +59,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
     // Reset WebSocket mock
     mockCallService.mockClear();
-    mockCallService.mockResolvedValue({});
+    mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -87,14 +94,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     `;
 
     // Reset state
-    const config = getMockConfig();
+    const config = {
+      ...getMockConfig(),
+      ...sampleConfig,
+      ui: { ...sampleConfig.ui }
+    };
     config.favoriteEntities = [];
     config.selectedWeatherEntity = null;
-    config.primaryMediaPlayer = 'media_player.spotify';
+    config.primaryMediaPlayer = sampleConfig.primaryMediaPlayer || 'media_player.spotify';
     state.setConfig(config);
     state.setStates({});
-    state.setServices({});
-    state.setAreas({});
+    state.setServices({ ...sampleServices });
+    state.setAreas({ ...sampleAreas });
+    state.setUnitSystem({ ...sampleUnitSystem });
   });
 
   // ==============================================================================
@@ -103,6 +115,38 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // ==============================================================================
 
   describe('executeHotkeyAction', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const flushAsync = async () => {
+      await Promise.resolve();
+      jest.advanceTimersByTime(0);
+      await Promise.resolve();
+    };
+    const getBedroomLightOnState = () => ({
+      ...sampleStates['light.bedroom'],
+      state: 'on',
+      attributes: {
+        ...sampleStates['light.bedroom'].attributes,
+        friendly_name: 'Bedroom Light',
+        brightness: 200
+      }
+    });
+    const getBedroomLightOffState = () => ({
+      ...sampleStates['light.bedroom'],
+      state: 'off',
+      attributes: {
+        ...sampleStates['light.bedroom'].attributes,
+        friendly_name: 'Bedroom Light',
+        brightness: 0
+      }
+    });
+
     it('should execute toggle action', () => {
       const entity = {
         entity_id: 'light.bedroom',
@@ -113,7 +157,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(mockCallService).toHaveBeenCalledWith(
         'light',
-        'toggle',
+        'turn_off',
         { entity_id: 'light.bedroom' }
       );
     });
@@ -326,8 +370,143 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(mockCallService).toHaveBeenCalledWith(
         'light',
-        'toggle',
+        'turn_off',
         { entity_id: 'light.bedroom' }
+      );
+    });
+
+    it('should coalesce rapid toggles while a request is in-flight and apply final state', async () => {
+      let resolveFirstCall;
+      mockCallService
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
+        .mockResolvedValue({ ...wsMessages.callServiceResponse });
+
+      const entity = getBedroomLightOnState();
+
+      ui.executeHotkeyAction(entity, 'toggle'); // on -> off (in-flight)
+      ui.executeHotkeyAction(entity, 'toggle'); // off -> on (queued)
+
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
+
+      resolveFirstCall({});
+      await flushAsync();
+      await flushAsync();
+
+      expect(mockCallService).toHaveBeenCalledTimes(2);
+      expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', { entity_id: 'light.bedroom' });
+    });
+
+    it('should keep second toggle queued when state_changed arrives before first call settles', async () => {
+      let resolveFirstCall;
+      mockCallService
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
+        .mockResolvedValue({ ...wsMessages.callServiceResponse });
+
+      state.setStates({
+        'light.bedroom': getBedroomLightOnState()
+      });
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // on -> off (in-flight)
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
+
+      // Mirror renderer flow: first commit websocket event into state, then update UI.
+      const serverOffState = getBedroomLightOffState();
+      state.setEntityState(serverOffState);
+      ui.updateEntityInUI(serverOffState);
+
+      // Second toggle should queue while the first request is still unresolved.
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // off -> on (queued)
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+
+      resolveFirstCall({});
+      await flushAsync();
+      await flushAsync();
+
+      expect(mockCallService).toHaveBeenCalledTimes(2);
+      expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', { entity_id: 'light.bedroom' });
+    });
+
+    it('should send only the final intent when rapid taps end on original state', async () => {
+      let resolveFirstCall;
+      mockCallService
+        .mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }))
+        .mockResolvedValue({ ...wsMessages.callServiceResponse });
+
+      const entity = getBedroomLightOnState();
+
+      ui.executeHotkeyAction(entity, 'toggle'); // on -> off
+      ui.executeHotkeyAction(entity, 'toggle'); // off -> on
+      ui.executeHotkeyAction(entity, 'toggle'); // on -> off (final)
+
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', { entity_id: 'light.bedroom' });
+
+      resolveFirstCall({});
+      await flushAsync();
+      await flushAsync();
+
+      // Final desired state equals first request, so no extra call is needed.
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+    });
+
+    it('should apply optimistic UI immediately and keep desired state during conflicting server updates', async () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom']
+      });
+      state.setStates({
+        'light.bedroom': getBedroomLightOnState()
+      });
+      ui.renderActiveTab();
+
+      let resolveFirstCall;
+      mockCallService.mockImplementationOnce(() => new Promise(resolve => { resolveFirstCall = resolve; }));
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+
+      const optimisticTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(optimisticTile).toBeTruthy();
+      expect(optimisticTile.textContent).toBe('Off');
+
+      ui.updateEntityInUI(getBedroomLightOnState());
+      const stillOptimisticTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(stillOptimisticTile.textContent).toBe('Off');
+
+      ui.updateEntityInUI(getBedroomLightOffState());
+      const reconciledTile = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(reconciledTile.textContent).toBe('Off');
+
+      resolveFirstCall({});
+      await flushAsync();
+    });
+
+    it('should revert optimistic state when service call fails', async () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom']
+      });
+      state.setStates({
+        'light.bedroom': getBedroomLightOnState()
+      });
+      ui.renderActiveTab();
+
+      mockCallService.mockRejectedValueOnce(new Error('network timeout'));
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      await flushAsync();
+      await flushAsync();
+
+      const tileState = document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state');
+      expect(tileState).toBeTruthy();
+      expect(tileState.textContent).toContain('%');
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to control'),
+        'error',
+        4000
       );
     });
   });
@@ -593,6 +772,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       // Should use weather.forecast (alphabetically first)
       const conditionEl = document.getElementById('weather-condition');
       expect(conditionEl.textContent).toBe('cloudy');
+    });
+
+    it('keeps weather visibility target aligned with displayed fallback entity', () => {
+      const config = state.CONFIG;
+      config.selectedWeatherEntity = null;
+      config.primaryCards = ['weather', 'time'];
+      state.setConfig(config);
+
+      // Insert weather entities in reverse display-name order.
+      state.setStates({
+        'weather.zeta': {
+          entity_id: 'weather.zeta',
+          state: 'sunny',
+          attributes: { friendly_name: 'Zeta Weather', temperature: 28, humidity: 45, wind_speed: 2 }
+        },
+        'weather.alpha': {
+          entity_id: 'weather.alpha',
+          state: 'cloudy',
+          attributes: { friendly_name: 'Alpha Weather', temperature: 19, humidity: 60, wind_speed: 4 }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const conditionEl = document.getElementById('weather-condition');
+      expect(conditionEl.textContent).toBe('cloudy');
+      expect(ui.isEntityVisible('weather.alpha')).toBe(true);
+      expect(ui.isEntityVisible('weather.zeta')).toBe(false);
     });
 
     it('should handle missing weather entity gracefully', () => {
@@ -923,6 +1130,82 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('re-renders climate tiles when temperature attributes change', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['climate.living_room'];
+      state.setConfig(config);
+
+      state.setStates({
+        'climate.living_room': {
+          entity_id: 'climate.living_room',
+          state: 'heat',
+          attributes: {
+            friendly_name: 'Living Room',
+            current_temperature: 70,
+            temperature: 72
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      let climateState = document.querySelector('.control-item[data-entity-id="climate.living_room"] .control-state');
+      expect(climateState).toBeTruthy();
+      expect(climateState.textContent).toContain('70');
+
+      state.setStates({
+        'climate.living_room': {
+          entity_id: 'climate.living_room',
+          state: 'heat',
+          attributes: {
+            friendly_name: 'Living Room',
+            current_temperature: 71,
+            temperature: 72
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      climateState = document.querySelector('.control-item[data-entity-id="climate.living_room"] .control-state');
+      expect(climateState).toBeTruthy();
+      expect(climateState.textContent).toContain('71');
+    });
+
+    it('updates timer tick targets when a visible sensor becomes timer-like', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.kitchen_status'];
+      state.setConfig(config);
+
+      state.setStates({
+        'sensor.kitchen_status': {
+          entity_id: 'sensor.kitchen_status',
+          state: 'idle',
+          attributes: {
+            friendly_name: 'Kitchen Status'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+      expect(ui.getTickTargets().hasVisibleTimers).toBe(false);
+
+      const finishesAt = new Date(Date.now() + 60_000).toISOString();
+      const timerLikeEntity = {
+        entity_id: 'sensor.kitchen_status',
+        state: 'active',
+        attributes: {
+          friendly_name: 'Kitchen Status',
+          finishes_at: finishesAt
+        }
+      };
+
+      state.setEntityState(timerLikeEntity);
+      ui.updateEntityInUI(timerLikeEntity);
+
+      expect(ui.getTickTargets().hasVisibleTimers).toBe(true);
     });
   });
 

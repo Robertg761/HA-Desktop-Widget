@@ -361,6 +361,13 @@
                 </div>
                 <div id="advanced-tab" class="tab-content">
                     <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="enable-interaction-debug-logs">
+                            Enable interaction diagnostics logs
+                        </label>
+                        <p class="help-text">Writes detailed UI interaction debug events to logs. Keep off for normal use.</p>
+                    </div>
+                    <div class="form-group">
                         <button id="view-logs-btn" class="btn btn-secondary"
                             title="Opens the log file location in your file explorer">📋 View Logs</button>
                     </div>
@@ -674,7 +681,7 @@
     <!-- Toast notifications -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="dist-renderer/renderer.bundle.js"></script>
+    <script type="module" src="dist-renderer/renderer.bundle.js"></script>
 </body>
 
 </html>

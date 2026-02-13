@@ -23,7 +23,6 @@ import {
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-import * as rgiEmojiDataModule from 'regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js';
 
 let previewState = null;
 let previewRaf = null;
@@ -51,6 +50,10 @@ let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
+const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
+const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'custom-entity-icons-section']);
+const personalizationSectionPersistTimers = new Map();
+const hydratedPersonalizationSections = new Set();
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const CUSTOM_EDITOR_SCOPE_SELECTOR = [
   '#custom-color-picker',
@@ -160,7 +163,9 @@ const CUSTOM_ENTITY_ICON_TERM_SYNONYMS = {
   insects: ['insect', 'animal'],
 };
 const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
-const CUSTOM_ENTITY_ICON_CHOICES = buildCustomEntityIconChoices();
+let customEntityIconChoices = null;
+let customEntityIconChoicesPromise = null;
+let rgiEmojiDataCache = null;
 
 function normalizeHexColor(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -443,9 +448,8 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
   return Array.from(searchTerms);
 }
 
-function buildCustomEntityIconChoices() {
+function buildCustomEntityIconChoices(rgiEmojiData) {
   const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
-  const rgiEmojiData = rgiEmojiDataModule?.default || rgiEmojiDataModule;
 
   if (Array.isArray(rgiEmojiData?.strings)) {
     rgiEmojiData.strings.forEach(icon => {
@@ -487,21 +491,49 @@ function buildCustomEntityIconChoices() {
     .sort((a, b) => a.icon.localeCompare(b.icon));
 }
 
+async function ensureCustomEntityIconChoicesLoaded() {
+  if (Array.isArray(customEntityIconChoices)) {
+    return customEntityIconChoices;
+  }
+  if (customEntityIconChoicesPromise) {
+    return customEntityIconChoicesPromise;
+  }
+
+  customEntityIconChoicesPromise = (async () => {
+    if (!rgiEmojiDataCache) {
+      const rgiEmojiDataModule = await import('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
+      rgiEmojiDataCache = rgiEmojiDataModule?.default || rgiEmojiDataModule;
+    }
+
+    customEntityIconChoices = buildCustomEntityIconChoices(rgiEmojiDataCache);
+    return customEntityIconChoices;
+  })();
+
+  try {
+    return await customEntityIconChoicesPromise;
+  } finally {
+    customEntityIconChoicesPromise = null;
+  }
+}
+
 function getFilteredCustomEntityIconChoices(filterValue = '') {
+  const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
+  if (!choices.length) return [];
+
   const rawFilter = String(filterValue || '').trim().toLowerCase();
-  if (!rawFilter) return CUSTOM_ENTITY_ICON_CHOICES;
+  if (!rawFilter) return choices;
 
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
-  if (!alternativeGroups.length) return CUSTOM_ENTITY_ICON_CHOICES;
+  if (!alternativeGroups.length) return choices;
 
-  const strictMatches = CUSTOM_ENTITY_ICON_CHOICES.filter(choice => {
+  const strictMatches = choices.filter(choice => {
     if (choice.searchText.includes(rawFilter)) return true;
     return alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, false));
   });
   if (strictMatches.length) return strictMatches;
 
   // Fallback: fuzzy category search when exact tokens miss.
-  return CUSTOM_ENTITY_ICON_CHOICES.filter(choice => (
+  return choices.filter(choice => (
     alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, true))
   ));
 }
@@ -1335,12 +1367,63 @@ function initColorTargetSelect() {
 function getSavedPersonalizationSectionStates() {
   const savedStates = state.CONFIG?.ui?.[PERSONALIZATION_SECTION_STATE_KEY];
   if (!savedStates || typeof savedStates !== 'object') return {};
-  return savedStates;
+  return Object.entries(savedStates).reduce((acc, [sectionId, isCollapsed]) => {
+    if (!sectionId || isCollapsed !== true) return acc;
+    acc[sectionId] = true;
+    return acc;
+  }, {});
 }
 
-function applyPersonalizationSectionState(section, toggle, isCollapsed) {
-  section.classList.toggle('collapsed', isCollapsed);
+function hydratePersonalizationSectionIfNeeded(section) {
+  if (!section || !section.id) return;
+  if (!PERSONALIZATION_LAZY_SECTION_IDS.has(section.id)) return;
+  if (hydratedPersonalizationSections.has(section.id)) return;
+
+  if (section.id === 'primary-cards-section') {
+    renderPrimaryCardsEntityList();
+  } else if (section.id === 'custom-entity-icons-section') {
+    // Prime the icon catalog the first time the section opens.
+    void ensureCustomEntityIconChoicesLoaded().catch((error) => {
+      log.error('Failed to warm custom icon catalog:', error);
+    });
+    renderCustomEntityIconsList();
+  }
+
+  hydratedPersonalizationSections.add(section.id);
+}
+
+function applyPersonalizationSectionState(section, toggle, isCollapsed, options = {}) {
+  if (!section || !toggle) return;
+  const body = section.querySelector('.section-body');
+  const immediate = options.immediate === true;
+
   toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+  if (!body) {
+    section.classList.toggle('collapsed', isCollapsed);
+    return;
+  }
+
+  body.hidden = false;
+
+  if (!isCollapsed) {
+    hydratePersonalizationSectionIfNeeded(section);
+  }
+
+  syncPersonalizationSectionHeight(section);
+
+  if (immediate) {
+    const previousTransition = body.style.transition;
+    body.style.transition = 'none';
+    section.classList.toggle('collapsed', isCollapsed);
+    syncPersonalizationSectionHeight(section);
+    // Force layout so the no-transition state is applied before restoring transitions.
+    void body.offsetHeight;
+    body.style.transition = previousTransition;
+    return;
+  }
+
+  section.classList.toggle('collapsed', isCollapsed);
+  requestAnimationFrame(() => syncPersonalizationSectionHeight(section));
 }
 
 function persistPersonalizationSectionState(sectionId, isCollapsed) {
@@ -1348,24 +1431,36 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
 
   state.CONFIG.ui = state.CONFIG.ui || {};
   const currentStates = getSavedPersonalizationSectionStates();
-  if (currentStates[sectionId] === isCollapsed) return;
+  const currentlyCollapsed = currentStates[sectionId] === true;
+  if (currentlyCollapsed === isCollapsed) return;
 
-  const nextStates = {
-    ...currentStates,
-    [sectionId]: isCollapsed,
-  };
+  const nextStates = { ...currentStates };
+  if (isCollapsed) {
+    nextStates[sectionId] = true;
+  } else {
+    delete nextStates[sectionId];
+  }
 
   state.CONFIG.ui[PERSONALIZATION_SECTION_STATE_KEY] = nextStates;
 
+  if (personalizationSectionPersistTimers.has(sectionId)) {
+    clearTimeout(personalizationSectionPersistTimers.get(sectionId));
+  }
+
   if (!window?.electronAPI?.updateConfig) return;
-  window.electronAPI.updateConfig({
-    ui: {
-      ...state.CONFIG.ui,
-      [PERSONALIZATION_SECTION_STATE_KEY]: nextStates,
-    },
-  }).catch(error => {
-    log.error('Failed to persist personalization section state:', error);
-  });
+  const persistTimer = setTimeout(() => {
+    personalizationSectionPersistTimers.delete(sectionId);
+    const latestStates = getSavedPersonalizationSectionStates();
+    window.electronAPI.updateConfig({
+      ui: {
+        ...state.CONFIG.ui,
+        [PERSONALIZATION_SECTION_STATE_KEY]: latestStates,
+      },
+    }).catch(error => {
+      log.error('Failed to persist personalization section state:', error);
+    });
+  }, PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS);
+  personalizationSectionPersistTimers.set(sectionId, persistTimer);
 }
 
 /**
@@ -1382,15 +1477,14 @@ function initColorThemeSectionToggle() {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
 
-    const hasSavedState = Object.prototype.hasOwnProperty.call(savedSectionStates, section.id);
-    const isCollapsed = hasSavedState ? !!savedSectionStates[section.id] : section.classList.contains('collapsed');
-    applyPersonalizationSectionState(section, toggle, isCollapsed);
-    syncPersonalizationSectionHeight(section);
+    const isCollapsed = savedSectionStates[section.id] === true
+      ? true
+      : section.classList.contains('collapsed');
+    applyPersonalizationSectionState(section, toggle, isCollapsed, { immediate: true });
 
     toggle.onclick = () => {
-      syncPersonalizationSectionHeight(section);
       const nextCollapsed = !section.classList.contains('collapsed');
-      applyPersonalizationSectionState(section, toggle, nextCollapsed);
+      applyPersonalizationSectionState(section, toggle, nextCollapsed, { immediate: false });
       persistPersonalizationSectionState(section.id, nextCollapsed);
     };
   });
@@ -1400,8 +1494,13 @@ function syncPersonalizationSectionHeight(section) {
   if (!section) return;
   const body = section.querySelector('.section-body');
   if (!body) return;
-  const height = body.scrollHeight;
-  if (!height) return;
+
+  // Measure natural content height even when section is collapsed.
+  const previousInlineMaxHeight = body.style.maxHeight;
+  body.style.maxHeight = 'none';
+  const height = Math.max(0, body.scrollHeight);
+  body.style.maxHeight = previousInlineMaxHeight;
+
   const nextValue = `${height}px`;
   if (section.style.getPropertyValue('--section-body-height') !== nextValue) {
     section.style.setProperty('--section-body-height', nextValue);
@@ -1412,6 +1511,14 @@ function schedulePersonalizationSectionHeightSync(sourceEl) {
   const section = sourceEl?.closest?.('.personalization-section');
   if (!section) return;
   requestAnimationFrame(() => {
+    syncPersonalizationSectionHeight(section);
+  });
+}
+
+function refreshPersonalizationSectionHeights() {
+  const sections = document.querySelectorAll('.personalization-section');
+  if (!sections.length) return;
+  sections.forEach((section) => {
     syncPersonalizationSectionHeight(section);
   });
 }
@@ -1519,11 +1626,15 @@ function renderPrimaryCardsEntityList() {
   syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
 
-function setPendingPrimaryCards(value) {
+function setPendingPrimaryCards(value, options = {}) {
   pendingPrimaryCards = normalizePrimaryCards(value);
   updatePrimaryCardSummary();
   updatePrimaryCardActionButtons();
-  renderPrimaryCardsEntityList();
+  const shouldRenderList = options.renderList !== false;
+  if (shouldRenderList) {
+    renderPrimaryCardsEntityList();
+    hydratedPersonalizationSections.add('primary-cards-section');
+  }
 }
 
 function initPrimaryCardsUI() {
@@ -1593,6 +1704,30 @@ function getCustomEntityIconChoiceLabel(choice) {
 
 function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
   if (!pickerEl) return;
+  const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
+
+  if (!choices.length) {
+    pickerEl.innerHTML = '';
+    const loadingState = document.createElement('div');
+    loadingState.className = 'custom-entity-icon-picker-meta';
+    loadingState.textContent = 'Loading icon catalog...';
+    pickerEl.appendChild(loadingState);
+    ensureCustomEntityIconChoicesLoaded()
+      .then(() => {
+        if (!pickerEl.isConnected) return;
+        renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue);
+      })
+      .catch((error) => {
+        log.error('Failed to load custom icon catalog:', error);
+        if (!pickerEl.isConnected) return;
+        pickerEl.innerHTML = '';
+        const errorState = document.createElement('div');
+        errorState.className = 'custom-entity-icon-picker-empty';
+        errorState.textContent = 'Failed to load icon catalog.';
+        pickerEl.appendChild(errorState);
+      });
+    return;
+  }
 
   const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
   pickerEl.innerHTML = '';
@@ -1600,9 +1735,9 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   const summary = document.createElement('div');
   summary.className = 'custom-entity-icon-picker-meta';
   if (filterValue) {
-    summary.textContent = `Showing ${filteredChoices.length} of ${CUSTOM_ENTITY_ICON_CHOICES.length} icons for "${filterValue}".`;
+    summary.textContent = `Showing ${filteredChoices.length} of ${choices.length} icons for "${filterValue}".`;
   } else {
-    summary.textContent = `Showing all ${CUSTOM_ENTITY_ICON_CHOICES.length} icons.`;
+    summary.textContent = `Showing all ${choices.length} icons.`;
   }
   pickerEl.appendChild(summary);
 
@@ -2084,6 +2219,7 @@ function validateHomeAssistantUrl(url) {
 async function openSettings(uiHooks) {
   try {
     settingsUiHooks = uiHooks || null;
+    hydratedPersonalizationSections.clear();
 
     // Exit reorganize mode if active to prevent state conflicts
     if (uiHooks && uiHooks.exitReorganizeMode) {
@@ -2100,6 +2236,7 @@ async function openSettings(uiHooks) {
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
+    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
@@ -2146,6 +2283,9 @@ async function openSettings(uiHooks) {
     hasDraftColorPreview = false;
 
     state.CONFIG.ui = state.CONFIG.ui || {};
+    if (enableInteractionDebugLogs) {
+      enableInteractionDebugLogs.checked = !!state.CONFIG.ui.enableInteractionDebugLogs;
+    }
     setPendingCustomColorList(state.CONFIG.ui.customColors || []);
 
     const currentAccent = getCurrentAccentTheme();
@@ -2193,9 +2333,24 @@ async function openSettings(uiHooks) {
     // Populate media player dropdown after UI hooks (when states are loaded)
     populateMediaPlayerDropdown();
     initPrimaryCardsUI();
+    const primarySection = document.getElementById('primary-cards-section');
+    const primaryCardsList = document.getElementById('primary-cards-list');
+    if (primaryCardsList) primaryCardsList.innerHTML = '';
+    const shouldRenderPrimaryCardsList = !(primarySection?.classList.contains('collapsed'));
     const primarySearch = document.getElementById('primary-cards-search');
     if (primarySearch) primarySearch.value = '';
-    setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS);
+    setPendingPrimaryCards(
+      state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS,
+      { renderList: shouldRenderPrimaryCardsList }
+    );
+
+    const customIconsSection = document.getElementById('custom-entity-icons-section');
+    const customIconsList = document.getElementById('custom-entity-icons-list');
+    if (customIconsList) {
+      customIconsList.innerHTML = '';
+      customIconsList.classList.remove('custom-entity-icons-list-expanded');
+    }
+    const shouldRenderCustomIconsList = !(customIconsSection?.classList.contains('collapsed'));
     setPendingCustomEntityIcons(getSavedCustomEntityIcons());
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -2203,13 +2358,25 @@ async function openSettings(uiHooks) {
     initCustomEntityIconsUI();
     const customIconSearch = document.getElementById('custom-entity-icons-search');
     if (customIconSearch) customIconSearch.value = '';
-    renderCustomEntityIconsList();
+    if (shouldRenderCustomIconsList) {
+      await ensureCustomEntityIconChoicesLoaded();
+      renderCustomEntityIconsList();
+      hydratedPersonalizationSections.add('custom-entity-icons-section');
+    } else {
+      updateCustomEntityIconSummary();
+    }
 
     // Initialize popup hotkey UI
     initializePopupHotkey();
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    requestAnimationFrame(() => {
+      refreshPersonalizationSectionHeights();
+      requestAnimationFrame(() => {
+        refreshPersonalizationSectionHeights();
+      });
+    });
     trapFocus(modal);
   } catch (error) {
     log.error('Error opening settings:', error);
@@ -2290,6 +2457,7 @@ async function saveSettings() {
     const alwaysOnTop = document.getElementById('always-on-top');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
+    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
 
@@ -2321,6 +2489,9 @@ async function saveSettings() {
     delete state.CONFIG.frostedGlassStrength;
     delete state.CONFIG.frostedGlassTint;
     state.CONFIG.ui = state.CONFIG.ui || {};
+    if (enableInteractionDebugLogs) {
+      state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
+    }
     state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
     state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
     state.CONFIG.ui.customColors = getCustomColorsForSave();
@@ -3207,4 +3378,5 @@ export {
   closeAlertConfigModal,
   saveAlert,
   initializePopupHotkey,
+  refreshPersonalizationSectionHeights,
 };

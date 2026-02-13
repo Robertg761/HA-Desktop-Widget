@@ -13,6 +13,7 @@ import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants
 
 function emitRendererDebug(event, details = {}) {
   try {
+    if (!state.CONFIG?.ui?.enableInteractionDebugLogs) return;
     if (!window?.electronAPI?.debugLog) return;
     window.electronAPI.debugLog({
       scope: 'renderer',
@@ -57,12 +58,77 @@ let getStatesId, getServicesId, getAreasId, getConfigId;
 
 // WebSocket reconnection state
 let reconnectAttempts = 0;
+let reconnectTimerId = null;
+let uiTickIntervalId = null;
+
+function clearReconnectTimer() {
+  if (!reconnectTimerId) return;
+  clearTimeout(reconnectTimerId);
+  reconnectTimerId = null;
+}
+
+function connectWebSocket() {
+  clearReconnectTimer();
+  websocket.connect();
+}
+
+function scheduleReconnect() {
+  if (reconnectTimerId) return;
+  const delay = Math.min(
+    BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts),
+    MAX_RECONNECT_DELAY_MS
+  );
+  const jitter = Math.random() * 1000;
+  reconnectAttempts++;
+
+  log.debug(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
+  reconnectTimerId = setTimeout(() => {
+    reconnectTimerId = null;
+    connectWebSocket();
+  }, delay + jitter);
+}
+
+function shouldPauseUiTick() {
+  const hidden = typeof document?.hidden === 'boolean' ? document.hidden : false;
+  const unfocused = typeof document?.hasFocus === 'function' ? !document.hasFocus() : false;
+  return hidden || unfocused;
+}
+
+function runUiTick() {
+  if (shouldPauseUiTick()) return;
+
+  const tickTargets = ui.getTickTargets?.();
+  if (!tickTargets) return;
+
+  if (tickTargets.timeVisible) {
+    ui.updateTimeDisplay();
+  }
+
+  if (tickTargets.hasVisibleTimers) {
+    ui.updateTimerDisplays();
+  }
+
+  if (tickTargets.mediaEntity) {
+    ui.updateMediaSeekBar(tickTargets.mediaEntity);
+  }
+}
+
+function startUiTickScheduler() {
+  if (uiTickIntervalId) return;
+
+  uiTickIntervalId = setInterval(runUiTick, 1000);
+  runUiTick();
+
+  document.addEventListener('visibilitychange', runUiTick);
+  window.addEventListener('focus', runUiTick);
+}
 
 websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
+      clearReconnectTimer();
       uiUtils.setStatus(true);
       const statesReq = websocket.request({ type: 'get_states' });
       const servicesReq = websocket.request({ type: 'get_services' });
@@ -102,8 +168,10 @@ websocket.on('message', (msg) => {
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
-        state.setStates({ ...state.STATES, [entity.entity_id]: entity });
-        ui.updateEntityInUI(entity);
+        state.setEntityState(entity);
+        if (ui.isEntityVisible(entity.entity_id)) {
+          ui.updateEntityInUI(entity);
+        }
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
       }
     } else if (msg.type === 'result') {
@@ -198,21 +266,17 @@ websocket.on('message', (msg) => {
   }
 });
 
-websocket.on('close', () => {
+websocket.on('close', (closeInfo = {}) => {
   try {
+    if (closeInfo?.intentional) {
+      log.debug('WebSocket closed intentionally; skipping reconnect schedule');
+      return;
+    }
+
     uiUtils.setStatus(false);
     uiUtils.showLoading(false);
 
-    // Implement exponential backoff with jitter
-    const delay = Math.min(
-      BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts),
-      MAX_RECONNECT_DELAY_MS
-    );
-    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-    reconnectAttempts++;
-
-    log.debug(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
-    setTimeout(() => websocket.connect(), delay + jitter);
+    scheduleReconnect();
   } catch (error) {
     log.error('Error handling WebSocket close:', error);
   }
@@ -247,6 +311,10 @@ websocket.on('showLoading', (show) => {
   } catch (err) {
     log.error('Error handling showLoading event:', err);
   }
+});
+
+websocket.on('connect-attempt', () => {
+  clearReconnectTimer();
 });
 
 
@@ -409,22 +477,8 @@ async function init() {
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
     uiUtils.applyWindowEffects(state.CONFIG || {});
 
-    // Initialize time display
-    ui.startTimeTicker();
-
-    // Initialize timer updates (every second)
-    setInterval(() => ui.updateTimerDisplays(), 1000);
-
-    // Initialize media tile seek bar updates (every second)
-    setInterval(() => {
-      const primaryPlayer = state.CONFIG.primaryMediaPlayer;
-      if (primaryPlayer && state.STATES[primaryPlayer]) {
-        const entity = state.STATES[primaryPlayer];
-        if (entity.state === 'playing') {
-          ui.updateMediaSeekBar(entity);
-        }
-      }
-    }, 1000);
+    // Start consolidated UI tick scheduler for time/timer/media updates.
+    startUiTickScheduler();
 
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
@@ -436,7 +490,7 @@ async function init() {
 
     // Connect to WebSocket in background
     log.info('Connecting to Home Assistant WebSocket');
-    websocket.connect();
+    connectWebSocket();
 
     // Backup timeout to ensure loading is hidden
     setTimeout(() => {
@@ -717,6 +771,11 @@ function wireUI() {
         button.classList.add('active');
         document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
         document.getElementById(`${tab}-tab`).classList.add('active');
+        if (tab === 'personalization') {
+          requestAnimationFrame(() => {
+            settings.refreshPersonalizationSectionHeights();
+          });
+        }
         if (tab === 'hotkeys') {
           hotkeys.renderHotkeysTab();
         }
