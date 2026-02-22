@@ -11,6 +11,11 @@ import * as utils from './src/utils.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 
+const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
+const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
+const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
+const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
+
 function emitRendererDebug(event, details = {}) {
   try {
     if (!state.CONFIG?.ui?.enableInteractionDebugLogs) return;
@@ -60,6 +65,10 @@ let getStatesId, getServicesId, getAreasId, getConfigId;
 let reconnectAttempts = 0;
 let reconnectTimerId = null;
 let uiTickIntervalId = null;
+let offlineConnectionToastShown = false;
+let lastConnectionToast = { key: null, shownAt: 0 };
+let browserReportedOffline = false;
+let lastDisconnectReason = DEFAULT_DISCONNECTED_STATUS_DETAIL;
 
 function clearReconnectTimer() {
   if (!reconnectTimerId) return;
@@ -70,6 +79,91 @@ function clearReconnectTimer() {
 function connectWebSocket() {
   clearReconnectTimer();
   websocket.connect();
+}
+
+function setDisconnectedStatus(detailMessage = '') {
+  const normalizedDetail = typeof detailMessage === 'string' ? detailMessage.trim() : '';
+  if (normalizedDetail) {
+    lastDisconnectReason = normalizedDetail;
+  }
+  uiUtils.setStatus(false, lastDisconnectReason || DEFAULT_DISCONNECTED_STATUS_DETAIL);
+}
+
+function setConnectedStatus(detailMessage = DEFAULT_CONNECTED_STATUS_DETAIL) {
+  lastDisconnectReason = '';
+  uiUtils.setStatus(true, detailMessage);
+}
+
+function classifyConnectionError(error) {
+  const errorMessage = error?.message || 'WebSocket connection failed';
+  const normalizedMessage = String(errorMessage).trim() || 'WebSocket connection failed';
+  const lowerMessage = normalizedMessage.toLowerCase();
+  const browserOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+  if (browserOffline) {
+    return {
+      key: OFFLINE_CONNECTION_ERROR_KEY,
+      message: 'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.',
+      persistUntilOnline: true,
+    };
+  }
+
+  if (
+    lowerMessage.includes('unknown websocket error') ||
+    lowerMessage.includes('websocket connection failed') ||
+    lowerMessage.includes('could not establish websocket connection')
+  ) {
+    return {
+      key: 'ha-connection-unreachable',
+      message: 'Unable to reach Home Assistant. Check your network or Home Assistant URL.',
+      persistUntilOnline: false,
+    };
+  }
+
+  return {
+    key: normalizedMessage,
+    message: `Connection error: ${normalizedMessage}`,
+    persistUntilOnline: false,
+  };
+}
+
+function shouldShowConnectionToast(toastInfo) {
+  if (!toastInfo) return false;
+
+  if (toastInfo.persistUntilOnline && offlineConnectionToastShown) {
+    return false;
+  }
+
+  const now = Date.now();
+  const recentlyShown =
+    lastConnectionToast.key === toastInfo.key &&
+    now - lastConnectionToast.shownAt < CONNECTION_ERROR_TOAST_COOLDOWN_MS;
+
+  if (recentlyShown) return false;
+
+  lastConnectionToast = {
+    key: toastInfo.key,
+    shownAt: now,
+  };
+
+  if (toastInfo.persistUntilOnline) {
+    offlineConnectionToastShown = true;
+  }
+
+  return true;
+}
+
+function resetConnectionToastTracking() {
+  offlineConnectionToastShown = false;
+  lastConnectionToast = { key: null, shownAt: 0 };
+}
+
+function showClassifiedConnectionToast(error) {
+  const toastInfo = classifyConnectionError(error);
+  if (shouldShowConnectionToast(toastInfo)) {
+    uiUtils.showToast(toastInfo.message, 'error', 15000);
+  }
+  return toastInfo;
 }
 
 function scheduleReconnect() {
@@ -123,13 +217,45 @@ function startUiTickScheduler() {
   window.addEventListener('focus', runUiTick);
 }
 
+window.addEventListener('online', () => {
+  resetConnectionToastTracking();
+  const shouldForceReconnect = browserReportedOffline;
+  browserReportedOffline = false;
+  setDisconnectedStatus('Network restored. Reconnecting to Home Assistant...');
+  if (shouldForceReconnect || !websocket.ws || websocket.ws.readyState !== WebSocket.OPEN) {
+    connectWebSocket();
+  }
+});
+
+window.addEventListener('offline', () => {
+  browserReportedOffline = true;
+  clearReconnectTimer();
+  setDisconnectedStatus('No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.');
+  uiUtils.showLoading(false);
+  ui.renderActiveTab();
+  showClassifiedConnectionToast(new Error('Browser reported offline'));
+
+  // Proactively close stale sockets so reconnect can start fresh once online.
+  if (websocket.ws) {
+    try {
+      websocket.ws.__intentionalClose = true;
+      websocket.ws.close();
+      websocket.ws = null;
+    } catch (error) {
+      log.warn('Error closing WebSocket after offline event:', error);
+    }
+  }
+});
+
 websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
+      browserReportedOffline = false;
+      resetConnectionToastTracking();
       clearReconnectTimer();
-      uiUtils.setStatus(true);
+      setConnectedStatus();
       const statesReq = websocket.request({ type: 'get_states' });
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
@@ -159,7 +285,7 @@ websocket.on('message', (msg) => {
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
-      uiUtils.setStatus(false);
+      setDisconnectedStatus('Authentication failed. Please check your Home Assistant token in Settings.');
       uiUtils.showLoading(false);
       // Show clear error message to user
       uiUtils.showToast('Authentication failed. Please check your Home Assistant token in Settings.', 'error', 15000);
@@ -273,7 +399,7 @@ websocket.on('close', (closeInfo = {}) => {
       return;
     }
 
-    uiUtils.setStatus(false);
+    setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
     uiUtils.showLoading(false);
 
     scheduleReconnect();
@@ -285,20 +411,25 @@ websocket.on('close', (closeInfo = {}) => {
 websocket.on('error', (error) => {
   try {
     log.error('WebSocket error:', error);
-    uiUtils.setStatus(false);
+    const classifiedIssue = classifyConnectionError(error);
+    setDisconnectedStatus(classifiedIssue.message);
     uiUtils.showLoading(false); // Hide loading on failure
 
     // Show the UI with setup message
     ui.renderActiveTab();
 
     // Show user-friendly error message
-    if (error.message.includes('default token')) {
+    const errorMessage = String(error?.message || '');
+    if (errorMessage.includes('default token')) {
+      setDisconnectedStatus('Please configure your Home Assistant token in Settings (gear icon).');
       uiUtils.showToast('Please configure your Home Assistant token in Settings (gear icon).', 'error', 20000);
-    } else if (error.message.includes('Invalid configuration')) {
+    } else if (errorMessage.includes('Invalid configuration')) {
+      setDisconnectedStatus('Please configure connection settings (gear icon).');
       uiUtils.showToast('Please configure connection settings (gear icon).', 'error', 20000);
-    } else if (!error.message.includes('auth_invalid')) {
+    } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
-      uiUtils.showToast(`Connection error: ${error.message}`, 'error', 15000);
+      const toastInfo = showClassifiedConnectionToast(error);
+      setDisconnectedStatus(toastInfo?.message || classifiedIssue.message);
     }
   } catch (err) {
     log.error('Error handling WebSocket error:', err);
@@ -410,10 +541,13 @@ async function init() {
   try {
     log.info('Initializing application');
     uiUtils.showLoading(true);
+    uiUtils.initializeConnectionStatusTooltip();
+    setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
 
     const config = await window.electronAPI.getConfig();
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
+      setDisconnectedStatus('Please configure connection settings (gear icon).');
       state.setConfig({
         homeAssistant: {
           url: '',
@@ -464,6 +598,7 @@ async function init() {
 
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       log.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
+      setDisconnectedStatus('Please configure your Home Assistant token in Settings (gear icon).');
       uiUtils.showLoading(false);
       ui.renderActiveTab();
       return;

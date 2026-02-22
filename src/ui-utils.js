@@ -4,6 +4,10 @@ let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
+const CONNECTED_STATUS_SUMMARY = 'Connected to Home Assistant';
+const DISCONNECTED_STATUS_SUMMARY = 'Disconnected from Home Assistant';
+const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
+const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
   { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
@@ -21,6 +25,12 @@ const BUILTIN_ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
   return acc;
 }, {});
 let CUSTOM_THEMES = [];
+let connectionStatusTooltip = null;
+let connectionStatusTooltipTarget = null;
+let connectionStatusTooltipPinned = false;
+let connectionStatusTooltipHandlers = null;
+let connectionStatusDocumentHandlersBound = false;
+let connectionStatusBoundElement = null;
 
 const BACKGROUND_BASES = {
   dark: {
@@ -615,13 +625,205 @@ function showLoading(show) {
   }
 }
 
-function setStatus(connected) {
+function ensureConnectionStatusTooltip() {
+  if (connectionStatusTooltip && document.body?.contains(connectionStatusTooltip)) {
+    return connectionStatusTooltip;
+  }
+
+  if (connectionStatusTooltip && !document.body?.contains(connectionStatusTooltip)) {
+    connectionStatusTooltip = null;
+    connectionStatusTooltipTarget = null;
+    connectionStatusTooltipPinned = false;
+  }
+
+  const tooltip = document.createElement('div');
+  tooltip.id = 'connection-status-tooltip';
+  tooltip.className = 'connection-status-tooltip';
+  tooltip.setAttribute('role', 'tooltip');
+  tooltip.setAttribute('aria-hidden', 'true');
+  tooltip.innerHTML = `
+    <span class="connection-status-tooltip-title"></span>
+    <span class="connection-status-tooltip-detail"></span>
+  `;
+  document.body.appendChild(tooltip);
+  connectionStatusTooltip = tooltip;
+  return tooltip;
+}
+
+function getConnectionStatusSummary(connected) {
+  return connected ? CONNECTED_STATUS_SUMMARY : DISCONNECTED_STATUS_SUMMARY;
+}
+
+function getConnectionStatusDetail(statusElement) {
+  const explicitDetail = statusElement?.dataset?.statusDetail?.trim();
+  if (explicitDetail) return explicitDetail;
+  const summary = statusElement?.dataset?.statusSummary || '';
+  if (summary === CONNECTED_STATUS_SUMMARY) return DEFAULT_CONNECTED_STATUS_DETAIL;
+  return DEFAULT_DISCONNECTED_STATUS_DETAIL;
+}
+
+function positionConnectionStatusTooltip(target) {
+  if (!connectionStatusTooltip || !target) return;
+  const rect = target.getBoundingClientRect();
+  const tooltipRect = connectionStatusTooltip.getBoundingClientRect();
+  const padding = 12;
+  const preferredTop = rect.top - tooltipRect.height - 10;
+  const placeBelow = preferredTop < padding;
+  const top = placeBelow ? rect.bottom + 10 : preferredTop;
+  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding));
+  connectionStatusTooltip.style.top = `${top}px`;
+  connectionStatusTooltip.style.left = `${left}px`;
+  connectionStatusTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+}
+
+function showConnectionStatusTooltip(target, { pinned = false } = {}) {
+  if (!target) return;
+  const tooltip = ensureConnectionStatusTooltip();
+  const titleEl = tooltip.querySelector('.connection-status-tooltip-title');
+  const detailEl = tooltip.querySelector('.connection-status-tooltip-detail');
+  const summary = target.dataset.statusSummary || target.title || DISCONNECTED_STATUS_SUMMARY;
+  const detail = getConnectionStatusDetail(target);
+  if (titleEl) titleEl.textContent = summary;
+  if (detailEl) detailEl.textContent = detail;
+  connectionStatusTooltipTarget = target;
+  if (pinned) connectionStatusTooltipPinned = true;
+  target.setAttribute('aria-describedby', tooltip.id);
+  target.setAttribute('aria-expanded', 'true');
+  tooltip.classList.add('visible');
+  tooltip.setAttribute('aria-hidden', 'false');
+  positionConnectionStatusTooltip(target);
+}
+
+function hideConnectionStatusTooltip({ force = false } = {}) {
+  if (!connectionStatusTooltip) return;
+  if (connectionStatusTooltipPinned && !force) return;
+  if (connectionStatusTooltipTarget) {
+    connectionStatusTooltipTarget.removeAttribute('aria-describedby');
+    connectionStatusTooltipTarget.setAttribute('aria-expanded', 'false');
+  }
+  connectionStatusTooltipTarget = null;
+  connectionStatusTooltipPinned = false;
+  connectionStatusTooltip.classList.remove('visible');
+  connectionStatusTooltip.setAttribute('aria-hidden', 'true');
+}
+
+function bindConnectionStatusHandlers(status) {
+  if (!status) return;
+  if (connectionStatusBoundElement === status) return;
+
+  if (connectionStatusBoundElement && connectionStatusTooltipHandlers) {
+    connectionStatusBoundElement.removeEventListener('mouseenter', connectionStatusTooltipHandlers.onMouseEnter);
+    connectionStatusBoundElement.removeEventListener('mouseleave', connectionStatusTooltipHandlers.onMouseLeave);
+    connectionStatusBoundElement.removeEventListener('focus', connectionStatusTooltipHandlers.onFocus);
+    connectionStatusBoundElement.removeEventListener('blur', connectionStatusTooltipHandlers.onBlur);
+    connectionStatusBoundElement.removeEventListener('click', connectionStatusTooltipHandlers.onClick);
+    connectionStatusBoundElement.removeEventListener('keydown', connectionStatusTooltipHandlers.onKeyDown);
+  }
+
+  const onMouseEnter = () => showConnectionStatusTooltip(status);
+  const onMouseLeave = () => hideConnectionStatusTooltip();
+  const onFocus = () => showConnectionStatusTooltip(status);
+  const onBlur = () => hideConnectionStatusTooltip();
+  const onClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (connectionStatusTooltipTarget === status && connectionStatusTooltipPinned) {
+      hideConnectionStatusTooltip({ force: true });
+      return;
+    }
+    showConnectionStatusTooltip(status, { pinned: true });
+  };
+  const onKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (connectionStatusTooltipTarget === status && connectionStatusTooltipPinned) {
+        hideConnectionStatusTooltip({ force: true });
+      } else {
+        showConnectionStatusTooltip(status, { pinned: true });
+      }
+    } else if (event.key === 'Escape') {
+      hideConnectionStatusTooltip({ force: true });
+    }
+  };
+
+  connectionStatusTooltipHandlers = {
+    onMouseEnter,
+    onMouseLeave,
+    onFocus,
+    onBlur,
+    onClick,
+    onKeyDown,
+  };
+  connectionStatusBoundElement = status;
+
+  status.addEventListener('mouseenter', onMouseEnter);
+  status.addEventListener('mouseleave', onMouseLeave);
+  status.addEventListener('focus', onFocus);
+  status.addEventListener('blur', onBlur);
+  status.addEventListener('click', onClick);
+  status.addEventListener('keydown', onKeyDown);
+
+  if (!connectionStatusDocumentHandlersBound) {
+    document.addEventListener('click', (event) => {
+      if (!connectionStatusTooltip || !connectionStatusTooltip.classList.contains('visible')) return;
+      const clickedInsideStatus = connectionStatusBoundElement && connectionStatusBoundElement.contains(event.target);
+      const clickedInsideTooltip = connectionStatusTooltip.contains(event.target);
+      if (clickedInsideStatus || clickedInsideTooltip) return;
+      hideConnectionStatusTooltip({ force: true });
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        hideConnectionStatusTooltip({ force: true });
+      }
+    });
+    window.addEventListener('resize', () => {
+      if (!connectionStatusTooltipTarget) return;
+      positionConnectionStatusTooltip(connectionStatusTooltipTarget);
+    });
+    connectionStatusDocumentHandlersBound = true;
+  }
+}
+
+function initializeConnectionStatusTooltip() {
+  try {
+    const status = document.getElementById('connection-status');
+    if (!status) return;
+    ensureConnectionStatusTooltip();
+    status.setAttribute('tabindex', '0');
+    status.setAttribute('role', 'button');
+    status.setAttribute('aria-haspopup', 'true');
+    if (!status.hasAttribute('aria-expanded')) {
+      status.setAttribute('aria-expanded', 'false');
+    }
+    bindConnectionStatusHandlers(status);
+  } catch (error) {
+    console.error('Error initializing connection status tooltip:', error);
+  }
+}
+
+function setStatus(connected, detailMessage = '') {
   try {
     const status = document.getElementById('connection-status');
     if (status) {
       status.className = connected ? 'connection-indicator connected' : 'connection-indicator';
       status.innerHTML = '';
-      status.title = connected ? 'Connected to Home Assistant' : 'Disconnected from Home Assistant';
+      const summary = getConnectionStatusSummary(connected);
+      const normalizedDetail = typeof detailMessage === 'string' ? detailMessage.trim() : '';
+      status.dataset.statusSummary = summary;
+      status.dataset.statusDetail = normalizedDetail;
+
+      if (normalizedDetail) {
+        status.title = `${summary}: ${normalizedDetail}`;
+        status.setAttribute('aria-label', `${summary}. ${normalizedDetail}`);
+      } else {
+        status.title = summary;
+        status.setAttribute('aria-label', summary);
+      }
+
+      if (connectionStatusTooltipTarget === status && connectionStatusTooltip?.classList?.contains('visible')) {
+        showConnectionStatusTooltip(status, { pinned: connectionStatusTooltipPinned });
+      }
     }
   } catch (error) {
     console.error('Error setting status:', error);
@@ -723,6 +925,7 @@ export {
   trapFocus,
   releaseFocusTrap,
   showLoading,
+  initializeConnectionStatusTooltip,
   setStatus,
   showConfirm,
 };
