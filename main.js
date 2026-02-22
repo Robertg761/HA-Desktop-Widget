@@ -156,6 +156,36 @@ function isPortableBuild() {
   return Boolean(env.PORTABLE_EXECUTABLE_DIR || env.PORTABLE_EXECUTABLE_FILE || env.PORTABLE_EXECUTABLE_APP_FILENAME);
 }
 
+/**
+ * Resolve the executable path/options used for Windows startup registration.
+ *
+ * Portable builds run from a temporary extracted executable, so we must use
+ * PORTABLE_EXECUTABLE_FILE to register the launcher that actually exists
+ * across reboots.
+ * @returns {{path: string, args: string[]}}
+ */
+function getWindowsStartupRegistrationTarget() {
+  const env = process.env || {};
+  const portableExecutable = env.PORTABLE_EXECUTABLE_FILE;
+  const portableBuild = isPortableBuild();
+
+  if (portableBuild && portableExecutable) {
+    return {
+      path: portableExecutable,
+      args: []
+    };
+  }
+
+  if (portableBuild && !portableExecutable) {
+    log.warn('Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath(\'exe\') which may be an ephemeral path.');
+  }
+
+  return {
+    path: app.getPath('exe'),
+    args: []
+  };
+}
+
 function normalizeVersion(value) {
   if (!value) return '';
   return String(value).trim().replace(/^v/i, '');
@@ -940,9 +970,15 @@ ipcMain.handle('get-window-state', () => {
 // Start with Windows IPC handlers
 ipcMain.handle('get-login-item-settings', () => {
   try {
-    const settings = app.getLoginItemSettings();
+    const lookupOptions = process.platform === 'win32'
+      ? getWindowsStartupRegistrationTarget()
+      : undefined;
+    const settings = app.getLoginItemSettings(lookupOptions);
+    const openAtLogin = lookupOptions
+      ? Boolean(settings.executableWillLaunchAtLogin ?? settings.openAtLogin)
+      : Boolean(settings.openAtLogin);
     log.debug('Login item settings:', settings);
-    return { openAtLogin: settings.openAtLogin };
+    return { openAtLogin };
   } catch (error) {
     log.error('Failed to get login item settings:', error);
     return { openAtLogin: false };
@@ -951,13 +987,24 @@ ipcMain.handle('get-login-item-settings', () => {
 
 ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   try {
-    log.info(`Setting app to ${openAtLogin ? 'start' : 'not start'} with Windows`);
-    app.setLoginItemSettings({
-      openAtLogin: openAtLogin,
-      path: app.getPath('exe'),
-      args: []
-    });
-    return { success: true, openAtLogin };
+    const normalizedOpenAtLogin = !!openAtLogin;
+    const startupTarget = process.platform === 'win32'
+      ? getWindowsStartupRegistrationTarget()
+      : {};
+    const loginItemSettings = {
+      openAtLogin: normalizedOpenAtLogin,
+      ...startupTarget
+    };
+
+    if (process.platform === 'win32') {
+      // Keep Windows startup approval in sync with the toggle state.
+      loginItemSettings.enabled = normalizedOpenAtLogin;
+    }
+
+    const withWindowsSuffix = process.platform === 'win32' ? ' with Windows' : '';
+    log.info(`Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`, loginItemSettings);
+    app.setLoginItemSettings(loginItemSettings);
+    return { success: true, openAtLogin: normalizedOpenAtLogin };
   } catch (error) {
     log.error('Failed to set login item settings:', error);
     return { success: false, error: error.message };
