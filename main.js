@@ -167,12 +167,17 @@ function isPortableBuild() {
 function getWindowsStartupRegistrationTarget() {
   const env = process.env || {};
   const portableExecutable = env.PORTABLE_EXECUTABLE_FILE;
+  const portableBuild = isPortableBuild();
 
-  if (isPortableBuild() && portableExecutable) {
+  if (portableBuild && portableExecutable) {
     return {
       path: portableExecutable,
       args: []
     };
+  }
+
+  if (portableBuild && !portableExecutable) {
+    log.warn('Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath(\'exe\') which may be an ephemeral path.');
   }
 
   return {
@@ -968,10 +973,8 @@ ipcMain.handle('get-login-item-settings', () => {
     const lookupOptions = process.platform === 'win32'
       ? getWindowsStartupRegistrationTarget()
       : undefined;
-    const settings = lookupOptions
-      ? app.getLoginItemSettings(lookupOptions)
-      : app.getLoginItemSettings();
-    const openAtLogin = process.platform === 'win32'
+    const settings = app.getLoginItemSettings(lookupOptions);
+    const openAtLogin = lookupOptions
       ? Boolean(settings.executableWillLaunchAtLogin ?? settings.openAtLogin)
       : Boolean(settings.openAtLogin);
     log.debug('Login item settings:', settings);
@@ -998,7 +1001,8 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
       loginItemSettings.enabled = normalizedOpenAtLogin;
     }
 
-    log.info(`Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'} with Windows`, loginItemSettings);
+    const withWindowsSuffix = process.platform === 'win32' ? ' with Windows' : '';
+    log.info(`Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`, loginItemSettings);
     app.setLoginItemSettings(loginItemSettings);
     return { success: true, openAtLogin: normalizedOpenAtLogin };
   } catch (error) {
