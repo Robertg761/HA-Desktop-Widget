@@ -203,6 +203,43 @@ function createSettingsModalDOM() {
         <input type="checkbox" id="enable-interaction-debug-logs" />
         Enable interaction diagnostics logs
       </label>
+      <label for="profile-sync-enabled">
+        <input type="checkbox" id="profile-sync-enabled" />
+        Enable Profile Sync
+      </label>
+      <div id="profile-sync-settings" class="hidden">
+        <select id="profile-sync-provider">
+          <option value="cloudFile">Cloud Folder File</option>
+        </select>
+        <input type="text" id="profile-sync-file-path" />
+        <button type="button" id="profile-sync-choose-file">Choose</button>
+        <select id="profile-sync-interval">
+          <option value="1">1</option>
+          <option value="5" selected>5</option>
+          <option value="15">15</option>
+        </select>
+        <label for="profile-sync-encryption-enabled">
+          <input type="checkbox" id="profile-sync-encryption-enabled" />
+          Encrypt
+        </label>
+        <div id="profile-sync-passphrase-group" class="hidden">
+          <input type="password" id="profile-sync-passphrase" />
+          <label for="profile-sync-remember-passphrase">
+            <input type="checkbox" id="profile-sync-remember-passphrase" />
+            Remember
+          </label>
+          <button type="button" id="profile-sync-clear-passphrase">Clear Saved Passphrase</button>
+        </div>
+        <button type="button" id="profile-sync-pull-now">Sync Down</button>
+        <button type="button" id="profile-sync-push-now">Sync Up</button>
+        <div id="profile-sync-resolution" class="hidden">
+          <button type="button" id="profile-sync-resolve-upload">Keep Local</button>
+          <button type="button" id="profile-sync-resolve-remote">Use Remote</button>
+          <button type="button" id="profile-sync-resolve-cancel">Cancel</button>
+        </div>
+        <div id="profile-sync-status"></div>
+        <div id="profile-sync-error" class="hidden"></div>
+      </div>
 
       <div id="personalization-tab" class="tab-content">
         <div id="color-themes-section" class="personalization-section collapsed">
@@ -1206,6 +1243,69 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
         expect.objectContaining({ highContrast: true })
       );
+    });
+  });
+
+  describe('Profile Sync Settings', () => {
+    test('openSettings hydrates profile sync controls and status', async () => {
+      const config = state.CONFIG;
+      config.profileSync = {
+        enabled: true,
+        provider: 'cloudFile',
+        cloudFilePath: '/tmp/shared-profile.json',
+        intervalMinutes: 15,
+        encryptionEnabled: true,
+        rememberPassphrase: true
+      };
+      state.setConfig(config);
+
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce({
+        enabled: true,
+        provider: 'cloudFile',
+        cloudFilePath: '/tmp/shared-profile.json',
+        intervalMinutes: 15,
+        encryptionEnabled: true,
+        rememberPassphrase: true,
+        passphraseEncrypted: true,
+        passphraseStored: true,
+        lastSyncAt: '2026-02-23T10:00:00.000Z',
+        lastSyncStatus: 'success',
+        lastSyncError: '',
+        needsResolution: false,
+        inFlight: false
+      });
+
+      await settings.openSettings();
+
+      expect(document.getElementById('profile-sync-enabled').checked).toBe(true);
+      expect(document.getElementById('profile-sync-file-path').value).toBe('/tmp/shared-profile.json');
+      expect(document.getElementById('profile-sync-interval').value).toBe('15');
+      expect(document.getElementById('profile-sync-settings').classList.contains('hidden')).toBe(false);
+      expect(document.getElementById('profile-sync-status').textContent).toContain('Status: success');
+    });
+
+    test('saveSettings persists profile sync config and passphrase', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-provider').value = 'cloudFile';
+      document.getElementById('profile-sync-file-path').value = '/tmp/shared-profile.json';
+      document.getElementById('profile-sync-interval').value = '5';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'abcd1234';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        enabled: true,
+        provider: 'cloudFile',
+        cloudFilePath: '/tmp/shared-profile.json',
+        intervalMinutes: 5,
+        encryptionEnabled: true,
+        rememberPassphrase: true
+      }));
+      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
     });
   });
 });

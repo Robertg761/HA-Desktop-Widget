@@ -40,7 +40,20 @@ let mockConfig = {
     personalizationSectionsCollapsed: {},
     enableInteractionDebugLogs: false
   },
-  customTabs: []
+  customTabs: [],
+  profileSync: {
+    enabled: false,
+    provider: 'cloudFile',
+    cloudFilePath: '',
+    intervalMinutes: 5,
+    encryptionEnabled: false,
+    rememberPassphrase: false,
+    passphraseEncrypted: false,
+    lastSyncAt: null,
+    lastSyncStatus: 'idle',
+    lastSyncError: '',
+    deviceId: 'test-device-1'
+  }
 };
 
 // Event listeners storage
@@ -48,7 +61,9 @@ const eventListeners = {
   hotkeyTriggered: [],
   hotkeyRegistrationFailed: [],
   autoUpdate: [],
-  openSettings: []
+  openSettings: [],
+  profileSyncStatus: [],
+  configUpdated: []
 };
 
 /**
@@ -66,10 +81,33 @@ function createMockElectronAPI() {
       mockConfig = { ...mockConfig, ...config };
       return Promise.resolve();
     }),
+    chooseProfileSyncFile: jest.fn(() => Promise.resolve({ canceled: false, filePath: '/tmp/profile-sync.json' })),
+    getProfileSyncStatus: jest.fn(() => Promise.resolve({
+      enabled: !!mockConfig.profileSync?.enabled,
+      provider: mockConfig.profileSync?.provider || 'cloudFile',
+      cloudFilePath: mockConfig.profileSync?.cloudFilePath || '',
+      intervalMinutes: mockConfig.profileSync?.intervalMinutes || 5,
+      encryptionEnabled: !!mockConfig.profileSync?.encryptionEnabled,
+      rememberPassphrase: !!mockConfig.profileSync?.rememberPassphrase,
+      passphraseEncrypted: !!mockConfig.profileSync?.passphraseEncrypted,
+      passphraseStored: false,
+      passphraseWarning: '',
+      lastSyncAt: mockConfig.profileSync?.lastSyncAt || null,
+      lastSyncStatus: mockConfig.profileSync?.lastSyncStatus || 'idle',
+      lastSyncError: mockConfig.profileSync?.lastSyncError || '',
+      inFlight: false,
+      needsResolution: false
+    })),
+    runProfileSync: jest.fn((_direction) => Promise.resolve({ ok: true, action: 'none' })),
+    setProfileSyncPassphrase: jest.fn((_passphrase, _remember) => Promise.resolve({ success: true })),
+    clearProfileSyncPassphrase: jest.fn(() => Promise.resolve({ success: true })),
+    resolveProfileSyncFirstEnable: jest.fn((_choice) => Promise.resolve({ success: true })),
 
     // Window Operations
     setOpacity: jest.fn((_opacity) => Promise.resolve()),
     setAlwaysOnTop: jest.fn((_value) => Promise.resolve()),
+    getLoginItemSettings: jest.fn(() => Promise.resolve({ openAtLogin: false })),
+    setLoginItemSettings: jest.fn((openAtLogin) => Promise.resolve({ success: true, openAtLogin: !!openAtLogin })),
     getWindowState: jest.fn(() => Promise.resolve({
       isAlwaysOnTop: mockConfig.alwaysOnTop,
       opacity: mockConfig.opacity,
@@ -104,6 +142,8 @@ function createMockElectronAPI() {
     // Utility Operations
     getAppVersion: jest.fn(() => Promise.resolve('1.0.0-test')),
     openLogs: jest.fn(() => Promise.resolve()),
+    openExternal: jest.fn(() => Promise.resolve({ success: true })),
+    debugLog: jest.fn(() => Promise.resolve({ success: true })),
 
     // Event Listeners (Main → Renderer)
     onHotkeyTriggered: jest.fn((callback) => {
@@ -132,6 +172,20 @@ function createMockElectronAPI() {
       return () => {
         const index = eventListeners.openSettings.indexOf(callback);
         if (index > -1) eventListeners.openSettings.splice(index, 1);
+      };
+    }),
+    onProfileSyncStatus: jest.fn((callback) => {
+      eventListeners.profileSyncStatus.push(callback);
+      return () => {
+        const index = eventListeners.profileSyncStatus.indexOf(callback);
+        if (index > -1) eventListeners.profileSyncStatus.splice(index, 1);
+      };
+    }),
+    onConfigUpdated: jest.fn((callback) => {
+      eventListeners.configUpdated.push(callback);
+      return () => {
+        const index = eventListeners.configUpdated.indexOf(callback);
+        if (index > -1) eventListeners.configUpdated.splice(index, 1);
       };
     })
   };
@@ -184,7 +238,20 @@ function resetMockElectronAPI() {
       personalizationSectionsCollapsed: {},
       enableInteractionDebugLogs: false
     },
-    customTabs: []
+    customTabs: [],
+    profileSync: {
+      enabled: false,
+      provider: 'cloudFile',
+      cloudFilePath: '',
+      intervalMinutes: 5,
+      encryptionEnabled: false,
+      rememberPassphrase: false,
+      passphraseEncrypted: false,
+      lastSyncAt: null,
+      lastSyncStatus: 'idle',
+      lastSyncError: '',
+      deviceId: 'test-device-1'
+    }
   };
 
   // Clear event listeners
@@ -192,6 +259,8 @@ function resetMockElectronAPI() {
   eventListeners.hotkeyRegistrationFailed = [];
   eventListeners.autoUpdate = [];
   eventListeners.openSettings = [];
+  eventListeners.profileSyncStatus = [];
+  eventListeners.configUpdated = [];
 }
 
 /**

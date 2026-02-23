@@ -49,6 +49,7 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+let profileSyncStatusCache = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'custom-entity-icons-section']);
@@ -2203,6 +2204,247 @@ function validateHomeAssistantUrl(url) {
   }
 }
 
+function getDefaultProfileSyncConfig() {
+  return {
+    enabled: false,
+    provider: 'cloudFile',
+    cloudFilePath: '',
+    intervalMinutes: 5,
+    encryptionEnabled: false,
+    rememberPassphrase: false,
+    passphraseEncrypted: false,
+    lastSyncAt: null,
+    lastSyncStatus: 'idle',
+    lastSyncError: '',
+  };
+}
+
+function ensureProfileSyncConfig() {
+  state.CONFIG.profileSync = {
+    ...getDefaultProfileSyncConfig(),
+    ...(state.CONFIG.profileSync || {}),
+  };
+  return state.CONFIG.profileSync;
+}
+
+function formatProfileSyncTimestamp(isoString) {
+  if (!isoString) return 'never';
+  const value = Date.parse(isoString);
+  if (Number.isNaN(value)) return 'never';
+  return new Date(value).toLocaleString();
+}
+
+function setProfileSyncSettingsVisibility() {
+  const enabledCheckbox = document.getElementById('profile-sync-enabled');
+  const settingsContainer = document.getElementById('profile-sync-settings');
+  if (!enabledCheckbox || !settingsContainer) return;
+  settingsContainer.classList.toggle('hidden', !enabledCheckbox.checked);
+}
+
+function updateProfileSyncStatusUi(status) {
+  if (!status || typeof status !== 'object') return;
+  profileSyncStatusCache = status;
+
+  const statusEl = document.getElementById('profile-sync-status');
+  const errorEl = document.getElementById('profile-sync-error');
+  const resolutionEl = document.getElementById('profile-sync-resolution');
+  const enabledCheckbox = document.getElementById('profile-sync-enabled');
+  const settingsContainer = document.getElementById('profile-sync-settings');
+  const passphraseHint = document.getElementById('profile-sync-passphrase-group');
+
+  if (enabledCheckbox) {
+    enabledCheckbox.checked = !!status.enabled;
+  }
+  if (settingsContainer) {
+    settingsContainer.classList.toggle('hidden', !status.enabled);
+  }
+
+  if (statusEl) {
+    const stateLabel = status.inFlight
+      ? 'Sync in progress...'
+      : (status.lastSyncStatus || 'idle');
+    statusEl.textContent = `Status: ${stateLabel} | Last sync: ${formatProfileSyncTimestamp(status.lastSyncAt)}`;
+  }
+
+  if (errorEl) {
+    const warning = status.passphraseWarning || '';
+    const errorText = status.lastSyncError || '';
+    const composed = [warning, errorText].filter(Boolean).join(' ');
+    errorEl.textContent = composed;
+    errorEl.classList.toggle('hidden', !composed);
+  }
+
+  if (resolutionEl) {
+    resolutionEl.classList.toggle('hidden', !status.needsResolution);
+  }
+
+  if (passphraseHint) {
+    passphraseHint.classList.toggle('hidden', !status.enabled || !ensureProfileSyncConfig().encryptionEnabled);
+  }
+}
+
+async function refreshProfileSyncStatusUi() {
+  if (!window.electronAPI?.getProfileSyncStatus) return;
+  try {
+    const status = await window.electronAPI.getProfileSyncStatus();
+    updateProfileSyncStatusUi(status);
+  } catch (error) {
+    log.error('Failed to refresh profile sync status:', error);
+  }
+}
+
+function applyProfileSyncConfigToForm() {
+  const profileSync = ensureProfileSyncConfig();
+  const enabled = document.getElementById('profile-sync-enabled');
+  const provider = document.getElementById('profile-sync-provider');
+  const filePath = document.getElementById('profile-sync-file-path');
+  const interval = document.getElementById('profile-sync-interval');
+  const encryption = document.getElementById('profile-sync-encryption-enabled');
+  const remember = document.getElementById('profile-sync-remember-passphrase');
+  const passphraseGroup = document.getElementById('profile-sync-passphrase-group');
+  const passphraseInput = document.getElementById('profile-sync-passphrase');
+
+  if (enabled) enabled.checked = !!profileSync.enabled;
+  if (provider) provider.value = profileSync.provider || 'cloudFile';
+  if (filePath) filePath.value = profileSync.cloudFilePath || '';
+  if (interval) interval.value = String(profileSync.intervalMinutes || 5);
+  if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
+  if (remember) remember.checked = !!profileSync.rememberPassphrase;
+  if (passphraseGroup) passphraseGroup.classList.toggle('hidden', !profileSync.enabled || !profileSync.encryptionEnabled);
+  if (passphraseInput) passphraseInput.value = '';
+
+  setProfileSyncSettingsVisibility();
+}
+
+async function runManualProfileSync(direction) {
+  try {
+    const result = await window.electronAPI.runProfileSync(direction);
+    if (!result?.ok) {
+      if (result?.reason === 'needs_resolution') {
+        showToast('Resolve first-time sync conflict before syncing.', 'warning', 3500);
+      } else {
+        showToast(result?.error || 'Profile sync failed.', 'error', 3500);
+      }
+      if (result?.status) updateProfileSyncStatusUi(result.status);
+      return;
+    }
+
+    if (result?.config) {
+      state.setConfig(result.config);
+      applyTheme(state.CONFIG.ui?.theme || 'auto');
+      applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+      applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
+      applyUiPreferences(state.CONFIG.ui || {});
+      applyWindowEffects(state.CONFIG || {});
+    }
+
+    if (result?.status) {
+      updateProfileSyncStatusUi(result.status);
+    } else {
+      await refreshProfileSyncStatusUi();
+    }
+    showToast(`Profile sync ${direction === 'push' ? 'upload' : 'download'} complete.`, 'success', 2200);
+  } catch (error) {
+    log.error('Manual profile sync failed:', error);
+    showToast(error?.message || 'Profile sync failed.', 'error', 3500);
+    await refreshProfileSyncStatusUi();
+  }
+}
+
+async function resolveProfileSyncFirstEnable(choice) {
+  try {
+    const result = await window.electronAPI.resolveProfileSyncFirstEnable(choice);
+    if (!result?.success) {
+      showToast(result?.error || 'Failed to resolve sync conflict.', 'error', 3500);
+      if (result?.status) updateProfileSyncStatusUi(result.status);
+      return;
+    }
+    if (result?.config) {
+      state.setConfig(result.config);
+      applyProfileSyncConfigToForm();
+    }
+    if (result?.status) updateProfileSyncStatusUi(result.status);
+    showToast('Profile sync conflict resolved.', 'success', 2500);
+  } catch (error) {
+    log.error('Failed to resolve profile sync conflict:', error);
+    showToast(error?.message || 'Failed to resolve sync conflict.', 'error', 3500);
+  }
+}
+
+function bindProfileSyncSettingsUi() {
+  const enabled = document.getElementById('profile-sync-enabled');
+  if (enabled) {
+    enabled.onchange = () => {
+      setProfileSyncSettingsVisibility();
+      const passphraseGroup = document.getElementById('profile-sync-passphrase-group');
+      const encryptionEnabled = document.getElementById('profile-sync-encryption-enabled');
+      if (passphraseGroup && encryptionEnabled) {
+        passphraseGroup.classList.toggle('hidden', !enabled.checked || !encryptionEnabled.checked);
+      }
+    };
+  }
+
+  const chooseFileBtn = document.getElementById('profile-sync-choose-file');
+  if (chooseFileBtn) {
+    chooseFileBtn.onclick = async () => {
+      try {
+        const response = await window.electronAPI.chooseProfileSyncFile();
+        if (response?.canceled || !response?.filePath) return;
+        const input = document.getElementById('profile-sync-file-path');
+        if (input) input.value = response.filePath;
+      } catch (error) {
+        log.error('Failed to choose profile sync file:', error);
+        showToast('Failed to choose sync file.', 'error', 3000);
+      }
+    };
+  }
+
+  const encryption = document.getElementById('profile-sync-encryption-enabled');
+  if (encryption) {
+    encryption.onchange = () => {
+      const enabledCheckbox = document.getElementById('profile-sync-enabled');
+      const passphraseGroup = document.getElementById('profile-sync-passphrase-group');
+      if (passphraseGroup) {
+        passphraseGroup.classList.toggle('hidden', !(enabledCheckbox?.checked) || !encryption.checked);
+      }
+    };
+  }
+
+  const pullNow = document.getElementById('profile-sync-pull-now');
+  if (pullNow) pullNow.onclick = () => runManualProfileSync('pull');
+
+  const pushNow = document.getElementById('profile-sync-push-now');
+  if (pushNow) pushNow.onclick = () => runManualProfileSync('push');
+
+  const clearPassphrase = document.getElementById('profile-sync-clear-passphrase');
+  if (clearPassphrase) {
+    clearPassphrase.onclick = async () => {
+      const confirmed = await showConfirm(
+        'Clear Saved Passphrase',
+        'Remove the saved sync passphrase from this device?',
+        { confirmText: 'Clear', confirmClass: 'btn-danger' }
+      );
+      if (!confirmed) return;
+      await window.electronAPI.clearProfileSyncPassphrase();
+      const passphraseInput = document.getElementById('profile-sync-passphrase');
+      const remember = document.getElementById('profile-sync-remember-passphrase');
+      if (passphraseInput) passphraseInput.value = '';
+      if (remember) remember.checked = false;
+      await refreshProfileSyncStatusUi();
+      showToast('Saved passphrase cleared.', 'success', 2000);
+    };
+  }
+
+  const resolveUpload = document.getElementById('profile-sync-resolve-upload');
+  if (resolveUpload) resolveUpload.onclick = () => resolveProfileSyncFirstEnable('upload_local');
+
+  const resolveRemote = document.getElementById('profile-sync-resolve-remote');
+  if (resolveRemote) resolveRemote.onclick = () => resolveProfileSyncFirstEnable('use_remote');
+
+  const resolveCancel = document.getElementById('profile-sync-resolve-cancel');
+  if (resolveCancel) resolveCancel.onclick = () => resolveProfileSyncFirstEnable('cancel');
+}
+
 /**
  * Open and initialize the settings modal, populate controls from persisted config, initialize theme and preview state, and trap focus.
  *
@@ -2268,6 +2510,10 @@ async function openSettings(uiHooks) {
         startWithWindows.checked = false;
       }
     }
+
+    applyProfileSyncConfigToForm();
+    bindProfileSyncSettingsUi();
+    await refreshProfileSyncStatusUi();
 
     // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
@@ -2447,6 +2693,7 @@ function closeSettings() {
 async function saveSettings() {
   try {
     const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
+    const prevProfileSync = { ...(state.CONFIG.profileSync || {}) };
 
     // Store previous HA connection settings to detect if reconnect is needed
     const prevHaUrl = state.CONFIG.homeAssistant?.url;
@@ -2460,6 +2707,13 @@ async function saveSettings() {
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
+    const profileSyncEnabled = document.getElementById('profile-sync-enabled');
+    const profileSyncProvider = document.getElementById('profile-sync-provider');
+    const profileSyncFilePath = document.getElementById('profile-sync-file-path');
+    const profileSyncInterval = document.getElementById('profile-sync-interval');
+    const profileSyncEncryptionEnabled = document.getElementById('profile-sync-encryption-enabled');
+    const profileSyncPassphrase = document.getElementById('profile-sync-passphrase');
+    const profileSyncRememberPassphrase = document.getElementById('profile-sync-remember-passphrase');
 
     const canProceedWithSave = await handlePendingCustomEditorChangesBeforeSave();
     if (!canProceedWithSave) return;
@@ -2532,11 +2786,58 @@ async function saveSettings() {
     state.CONFIG.primaryCards = getPendingPrimaryCards();
     state.CONFIG.customEntityIcons = getPendingCustomEntityIconsForSave();
 
+    const nextProfileSync = ensureProfileSyncConfig();
+    nextProfileSync.enabled = !!profileSyncEnabled?.checked;
+    nextProfileSync.provider = profileSyncProvider?.value || 'cloudFile';
+    nextProfileSync.cloudFilePath = (profileSyncFilePath?.value || '').trim();
+    nextProfileSync.intervalMinutes = Number.parseInt(profileSyncInterval?.value || '5', 10) || 5;
+    nextProfileSync.encryptionEnabled = !!profileSyncEncryptionEnabled?.checked;
+    nextProfileSync.rememberPassphrase = !!profileSyncRememberPassphrase?.checked;
+
+    if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
+      showToast('Choose a sync file before enabling profile sync.', 'error', 3200);
+      return;
+    }
+
+    if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
+      const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
+      const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
+      if (!typedPassphrase && !hasSavedPassphrase && !prevProfileSync.rememberPassphrase) {
+        showToast('Enter a passphrase or remember one before enabling encrypted sync.', 'error', 3400);
+        return;
+      }
+    }
+
     if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
       showToast('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.', 'success', 2600);
     }
 
-    await window.electronAPI.updateConfig(state.CONFIG);
+    const updatedConfig = await window.electronAPI.updateConfig(state.CONFIG);
+    if (updatedConfig) {
+      state.setConfig(updatedConfig);
+    }
+
+    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
+    if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled && typedPassphrase && window.electronAPI?.setProfileSyncPassphrase) {
+      const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
+        typedPassphrase,
+        !!nextProfileSync.rememberPassphrase
+      );
+      if (!passphraseResult?.success) {
+        showToast(passphraseResult?.error || 'Failed to save sync passphrase.', 'error', 3600);
+      }
+    } else if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
+      await window.electronAPI.clearProfileSyncPassphrase();
+    } else if (
+      nextProfileSync.encryptionEnabled &&
+      !nextProfileSync.rememberPassphrase &&
+      prevProfileSync.rememberPassphrase &&
+      window.electronAPI?.clearProfileSyncPassphrase
+    ) {
+      await window.electronAPI.clearProfileSyncPassphrase();
+    }
+
+    await refreshProfileSyncStatusUi();
 
     // Apply opacity immediately
     if (opacitySlider) {
@@ -3366,6 +3667,10 @@ function stopCapturingPopupHotkey() {
   }
 }
 
+function handleProfileSyncStatusUpdate(status) {
+  updateProfileSyncStatusUi(status);
+}
+
 export {
   openSettings,
   closeSettings,
@@ -3379,4 +3684,5 @@ export {
   saveAlert,
   initializePopupHotkey,
   refreshPersonalizationSectionHeights,
+  handleProfileSyncStatusUpdate,
 };

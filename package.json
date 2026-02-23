@@ -49,6 +49,7 @@
     "files": [
       "index.html",
       "main.js",
+      "profile-sync-core.js",
       "preload.js",
       "dist-renderer/**/*",
       "styles.css",

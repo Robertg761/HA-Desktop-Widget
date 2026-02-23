@@ -55,6 +55,7 @@ The Personalization tab covers themes, window effects, primary cards, and media 
 - **Alerts**: Desktop notifications for entity state changes
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
 - **Media Tile**: Choose a primary media player or hide the tile
+- **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
 
 ## Quick Start
 
@@ -124,8 +125,15 @@ npm run dist  # Build for distribution
   `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,
   `windowPosition`, `windowSize`, `opacity`, `ui` (theme, highContrast, opaquePanels, density, accent, background),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
-  `popupHotkeyHideOnRelease`, and `popupHotkeyToggleMode`.
+  `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, and `profileSync`.
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
+
+### Profile Sync (Opt-in)
+- **Provider (v1)**: Cloud-folder JSON file (`cloudFile`) that you can place in iCloud Drive, Dropbox, OneDrive, etc.
+- **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
+- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
+- **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation).
+- **Local-only data**: Home Assistant token, window position/size, startup setting, and profile-sync internals remain local.
 
 ## Troubleshooting
 
