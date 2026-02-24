@@ -3,6 +3,22 @@ import log from './logger.js';
 import state from './state.js';
 import { WS_REQUEST_TIMEOUT_MS, WS_INITIAL_ID } from './constants.js';
 
+function getWebSocketErrorMessage(event) {
+  const explicitMessage =
+    (typeof event?.message === 'string' && event.message.trim()) ||
+    (typeof event?.error?.message === 'string' && event.error.message.trim()) ||
+    (typeof event?.reason === 'string' && event.reason.trim());
+
+  if (explicitMessage) return explicitMessage;
+
+  const readyState = event?.target?.readyState;
+  if (readyState === WebSocket.CONNECTING) {
+    return 'Could not establish WebSocket connection';
+  }
+
+  return 'WebSocket connection failed';
+}
+
 class WebSocketManager extends EventEmitter {
   constructor() {
     super();
@@ -53,7 +69,7 @@ class WebSocketManager extends EventEmitter {
       };
 
       ws.onerror = (event) => {
-        const message = (event && event.message) || (event && event.error && event.error.message) || 'Unknown WebSocket error';
+        const message = getWebSocketErrorMessage(event);
         log.error('WebSocket error:', message);
         this.emit('error', new Error(message));
       };

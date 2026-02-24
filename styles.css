@@ -428,11 +428,77 @@ body {
   flex-shrink: 0;
   margin-left: 8px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  -webkit-app-region: no-drag;
+  cursor: help;
 }
 
 .connection-indicator.connected {
   background: var(--success);
   box-shadow: 0 0 0 1px rgba(129, 199, 132, 0.3);
+}
+
+.connection-indicator:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.connection-status-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: translateY(6px);
+  background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.18), var(--glass-elevated));
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(var(--blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(160%);
+  opacity: 0;
+  pointer-events: none;
+  transition: var(--transition-fast);
+  z-index: var(--z-tooltip);
+  min-width: 180px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.connection-status-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border-width: 8px 8px 0 8px;
+  border-style: solid;
+  border-color: rgba(var(--accent-rgb), 0.6) transparent transparent transparent;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+}
+
+.connection-status-tooltip[data-placement="bottom"]::after {
+  top: -8px;
+  bottom: auto;
+  transform: translateX(-50%) rotate(180deg);
+}
+
+.connection-status-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.connection-status-tooltip-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.01em;
+}
+
+.connection-status-tooltip-detail {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .header-controls {

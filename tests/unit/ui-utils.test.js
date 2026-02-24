@@ -672,6 +672,15 @@ describe('UI Utilities', () => {
       expect(statusIndicator.classList.contains('connected')).toBe(true);
     });
 
+    it('should store detailed status metadata when detail message is provided', () => {
+      uiUtils.setStatus(false, 'No network connection detected.');
+
+      expect(statusIndicator.dataset.statusSummary).toBe('Disconnected from Home Assistant');
+      expect(statusIndicator.dataset.statusDetail).toBe('No network connection detected.');
+      expect(statusIndicator.title).toBe('Disconnected from Home Assistant: No network connection detected.');
+      expect(statusIndicator.getAttribute('aria-label')).toBe('Disconnected from Home Assistant. No network connection detected.');
+    });
+
     it('should handle missing status indicator gracefully', () => {
       document.body.removeChild(statusIndicator);
 
@@ -707,6 +716,81 @@ describe('UI Utilities', () => {
       }
 
       consoleError.mockRestore();
+    });
+  });
+
+  describe('initializeConnectionStatusTooltip', () => {
+    let statusIndicator;
+
+    beforeEach(() => {
+      statusIndicator = document.createElement('div');
+      statusIndicator.id = 'connection-status';
+      statusIndicator.className = 'connection-indicator';
+      document.body.appendChild(statusIndicator);
+      uiUtils.setStatus(false, 'Disconnected from Home Assistant. Retrying automatically.');
+    });
+
+    it('should create tooltip once and be idempotent', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      uiUtils.initializeConnectionStatusTooltip();
+
+      const tooltips = document.querySelectorAll('#connection-status-tooltip');
+      expect(tooltips.length).toBe(1);
+    });
+
+    it('should show tooltip on mouseenter and hide on mouseleave', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(tooltip.classList.contains('visible')).toBe(true);
+      expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe('Disconnected from Home Assistant');
+      expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe('Disconnected from Home Assistant. Retrying automatically.');
+
+      statusIndicator.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+      expect(tooltip.classList.contains('visible')).toBe(false);
+    });
+
+    it('should show tooltip on focus and hide on blur', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      statusIndicator.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(tooltip.classList.contains('visible')).toBe(true);
+
+      statusIndicator.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+      expect(tooltip.classList.contains('visible')).toBe(false);
+    });
+
+    it('should toggle pinned tooltip on click and hide on outside click', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      statusIndicator.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(tooltip.classList.contains('visible')).toBe(true);
+
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(tooltip.classList.contains('visible')).toBe(false);
+    });
+
+    it('should toggle tooltip on keyboard and hide on escape', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+      const preventDefaultSpy = jest.spyOn(enterEvent, 'preventDefault');
+      statusIndicator.dispatchEvent(enterEvent);
+
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(tooltip.classList.contains('visible')).toBe(true);
+      expect(preventDefaultSpy).toHaveBeenCalled();
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(tooltip.classList.contains('visible')).toBe(false);
+      preventDefaultSpy.mockRestore();
+    });
+
+    it('should not throw when status indicator is missing', () => {
+      document.body.removeChild(statusIndicator);
+      expect(() => uiUtils.initializeConnectionStatusTooltip()).not.toThrow();
     });
   });
 

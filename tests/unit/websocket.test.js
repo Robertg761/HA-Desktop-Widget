@@ -250,6 +250,26 @@ describe('WebSocket Manager', () => {
         })
       );
     });
+
+    test('should emit friendly error when browser does not provide details', async () => {
+      state.setConfig(sampleConfig);
+
+      const errorHandler = jest.fn();
+      wsManager.on('error', errorHandler);
+
+      wsManager.connect();
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      if (wsManager.ws.onerror) {
+        wsManager.ws.onerror({ target: { readyState: MockWebSocket.CONNECTING } });
+      }
+
+      expect(errorHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Could not establish WebSocket connection'
+        })
+      );
+    });
   });
 
   describe('Message Handling', () => {
