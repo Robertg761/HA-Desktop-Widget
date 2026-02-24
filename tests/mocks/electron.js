@@ -81,7 +81,11 @@ function createMockElectronAPI() {
       mockConfig = { ...mockConfig, ...config };
       return Promise.resolve();
     }),
-    chooseProfileSyncFile: jest.fn(() => Promise.resolve({ canceled: false, filePath: '/tmp/profile-sync.json' })),
+    chooseProfileSyncFile: jest.fn((provider = 'cloudFile') => Promise.resolve({
+      canceled: false,
+      filePath: '/tmp/profile-sync.json',
+      provider
+    })),
     getProfileSyncStatus: jest.fn(() => Promise.resolve({
       enabled: !!mockConfig.profileSync?.enabled,
       provider: mockConfig.profileSync?.provider || 'cloudFile',

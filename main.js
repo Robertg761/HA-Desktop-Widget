@@ -145,6 +145,8 @@ const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
+const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set(['cloudFile', 'googleDrive', 'icloudDrive', 'syncthing']);
+const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 
 const profileSyncRuntime = {
   inFlight: false,
@@ -169,6 +171,109 @@ let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
+
+function isProfileSyncProviderSupported(provider) {
+  if (typeof provider !== 'string') return false;
+  return PROFILE_SYNC_SUPPORTED_PROVIDERS.has(provider.trim());
+}
+
+function normalizeProfileSyncProvider(provider) {
+  if (!isProfileSyncProviderSupported(provider)) return 'cloudFile';
+  return provider.trim();
+}
+
+function findFirstExistingDirectory(candidates) {
+  if (!Array.isArray(candidates)) return null;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      // Ignore unreadable/inaccessible candidate paths.
+    }
+  }
+  return null;
+}
+
+function getGoogleDriveRootCandidate(homeDir) {
+  if (!homeDir) return null;
+  if (process.platform === 'darwin') {
+    const cloudStoragePath = path.join(homeDir, 'Library', 'CloudStorage');
+    try {
+      if (fs.existsSync(cloudStoragePath) && fs.statSync(cloudStoragePath).isDirectory()) {
+        const entries = fs.readdirSync(cloudStoragePath, { withFileTypes: true });
+        const accountDir = entries.find((entry) => entry.isDirectory() && entry.name.startsWith('GoogleDrive'));
+        if (accountDir) {
+          const myDrivePath = path.join(cloudStoragePath, accountDir.name, 'My Drive');
+          if (fs.existsSync(myDrivePath) && fs.statSync(myDrivePath).isDirectory()) {
+            return myDrivePath;
+          }
+          return path.join(cloudStoragePath, accountDir.name);
+        }
+      }
+    } catch {
+      // Ignore and continue to generic fallbacks.
+    }
+  }
+
+  const fallbackCandidates = process.platform === 'win32'
+    ? [
+      path.join(homeDir, 'Google Drive', 'My Drive'),
+      path.join(homeDir, 'My Drive'),
+      path.join(homeDir, 'Google Drive'),
+    ]
+    : [
+      path.join(homeDir, 'Google Drive', 'My Drive'),
+      path.join(homeDir, 'Google Drive'),
+      path.join(homeDir, 'My Drive'),
+    ];
+
+  return findFirstExistingDirectory(fallbackCandidates);
+}
+
+function getICloudDriveRootCandidate(homeDir) {
+  if (!homeDir) return null;
+  const candidates = process.platform === 'darwin'
+    ? [path.join(homeDir, 'Library', 'Mobile Documents', 'com~apple~CloudDocs')]
+    : [path.join(homeDir, 'iCloudDrive')];
+  return findFirstExistingDirectory(candidates);
+}
+
+function getSyncthingRootCandidate(homeDir) {
+  if (!homeDir) return null;
+  const candidates = process.platform === 'win32'
+    ? [
+      path.join(homeDir, 'Sync'),
+      path.join(homeDir, 'Syncthing'),
+      path.join(homeDir, 'Documents', 'Sync'),
+    ]
+    : [
+      path.join(homeDir, 'Sync'),
+      path.join(homeDir, 'syncthing'),
+      path.join(homeDir, 'Syncthing'),
+    ];
+  return findFirstExistingDirectory(candidates);
+}
+
+function getDefaultProfileSyncFilePath(provider, existingPath = '') {
+  if (existingPath) return existingPath;
+
+  const normalizedProvider = normalizeProfileSyncProvider(provider);
+  const homeDir = app.getPath('home');
+  const documentsDir = app.getPath('documents');
+  let providerRoot = null;
+  if (normalizedProvider === 'googleDrive') {
+    providerRoot = getGoogleDriveRootCandidate(homeDir);
+  } else if (normalizedProvider === 'icloudDrive') {
+    providerRoot = getICloudDriveRootCandidate(homeDir);
+  } else if (normalizedProvider === 'syncthing') {
+    providerRoot = getSyncthingRootCandidate(homeDir);
+  }
+
+  return path.join(providerRoot || documentsDir, PROFILE_SYNC_DEFAULT_FILE_NAME);
+}
 
 function isPortableBuild() {
   if (!app.isPackaged) return false;
@@ -241,7 +346,7 @@ function ensureProfileSyncConfigDefaults(target) {
   target.profileSync.intervalMinutes = Number.isFinite(Number(target.profileSync.intervalMinutes))
     ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
     : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
-  target.profileSync.provider = target.profileSync.provider || 'cloudFile';
+  target.profileSync.provider = normalizeProfileSyncProvider(target.profileSync.provider);
   if (!target.profileSync.deviceId || typeof target.profileSync.deviceId !== 'string') {
     target.profileSync.deviceId = generateProfileSyncDeviceId();
   }
@@ -299,7 +404,7 @@ function buildProfileSyncStatus(extra = {}) {
   const profileSync = getProfileSyncConfig();
   const status = {
     enabled: !!profileSync.enabled,
-    provider: profileSync.provider || 'cloudFile',
+    provider: normalizeProfileSyncProvider(profileSync.provider),
     cloudFilePath: profileSync.cloudFilePath || '',
     intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: !!profileSync.encryptionEnabled,
@@ -435,7 +540,7 @@ async function writeCloudFileEnvelope(filePath, envelope) {
 
 async function readConfiguredSyncEnvelope() {
   const profileSync = getProfileSyncConfig();
-  if (profileSync.provider !== 'cloudFile') {
+  if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error('Unsupported profile sync provider');
   }
   return readCloudFileEnvelope(profileSync.cloudFilePath);
@@ -443,7 +548,7 @@ async function readConfiguredSyncEnvelope() {
 
 async function writeConfiguredSyncEnvelope(envelope) {
   const profileSync = getProfileSyncConfig();
-  if (profileSync.provider !== 'cloudFile') {
+  if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error('Unsupported profile sync provider');
   }
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
@@ -1046,7 +1151,7 @@ async function prepareProfileSyncFirstEnableResolution() {
 function scheduleDebouncedProfileSyncPush(source = 'config_change') {
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || profileSyncRuntime.needsResolution) return;
-  if (!profileSync.cloudFilePath || profileSync.provider !== 'cloudFile') return;
+  if (!profileSync.cloudFilePath || !isProfileSyncProviderSupported(profileSync.provider)) return;
 
   if (profileSyncRuntime.pushDebounceTimer) {
     clearTimeout(profileSyncRuntime.pushDebounceTimer);
@@ -1065,7 +1170,7 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
   if (!profileSync.enabled) {
     return { ok: false, reason: 'disabled', status: buildProfileSyncStatus() };
   }
-  if (profileSync.provider !== 'cloudFile') {
+  if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error('Unsupported profile sync provider');
   }
   if (!profileSync.cloudFilePath) {
@@ -1518,8 +1623,10 @@ ipcMain.handle('get-window-state', () => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
-ipcMain.handle('choose-profile-sync-file', async () => {
-  const defaultPath = getProfileSyncConfig().cloudFilePath || path.join(app.getPath('documents'), 'ha-widget-profile-sync.json');
+ipcMain.handle('choose-profile-sync-file', async (_event, provider) => {
+  const profileSync = getProfileSyncConfig();
+  const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
+  const defaultPath = getDefaultProfileSyncFilePath(providerToUse, profileSync.cloudFilePath);
   const result = await dialog.showSaveDialog({
     title: 'Choose Profile Sync File',
     defaultPath,
@@ -1530,7 +1637,7 @@ ipcMain.handle('choose-profile-sync-file', async () => {
     return { canceled: true };
   }
 
-  return { canceled: false, filePath: result.filePath };
+  return { canceled: false, filePath: result.filePath, provider: providerToUse };
 });
 
 ipcMain.handle('get-profile-sync-status', () => {

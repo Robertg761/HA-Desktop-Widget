@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
-  chooseProfileSyncFile: () => ipcRenderer.invoke('choose-profile-sync-file'),
+  chooseProfileSyncFile: (provider) => ipcRenderer.invoke('choose-profile-sync-file', provider),
   getProfileSyncStatus: () => ipcRenderer.invoke('get-profile-sync-status'),
   runProfileSync: (direction) => ipcRenderer.invoke('run-profile-sync', direction),
   setProfileSyncPassphrase: (passphrase, remember) => ipcRenderer.invoke('set-profile-sync-passphrase', passphrase, remember),

@@ -210,6 +210,9 @@ function createSettingsModalDOM() {
       <div id="profile-sync-settings" class="hidden">
         <select id="profile-sync-provider">
           <option value="cloudFile">Cloud Folder File</option>
+          <option value="googleDrive">Google Drive</option>
+          <option value="icloudDrive">iCloud Drive</option>
+          <option value="syncthing">Syncthing</option>
         </select>
         <input type="text" id="profile-sync-file-path" />
         <button type="button" id="profile-sync-choose-file">Choose</button>
@@ -1251,7 +1254,7 @@ describe('Settings + Config Integration', () => {
       const config = state.CONFIG;
       config.profileSync = {
         enabled: true,
-        provider: 'cloudFile',
+        provider: 'googleDrive',
         cloudFilePath: '/tmp/shared-profile.json',
         intervalMinutes: 15,
         encryptionEnabled: true,
@@ -1261,7 +1264,7 @@ describe('Settings + Config Integration', () => {
 
       mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce({
         enabled: true,
-        provider: 'cloudFile',
+        provider: 'googleDrive',
         cloudFilePath: '/tmp/shared-profile.json',
         intervalMinutes: 15,
         encryptionEnabled: true,
@@ -1278,6 +1281,7 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings();
 
       expect(document.getElementById('profile-sync-enabled').checked).toBe(true);
+      expect(document.getElementById('profile-sync-provider').value).toBe('googleDrive');
       expect(document.getElementById('profile-sync-file-path').value).toBe('/tmp/shared-profile.json');
       expect(document.getElementById('profile-sync-interval').value).toBe('15');
       expect(document.getElementById('profile-sync-settings').classList.contains('hidden')).toBe(false);
@@ -1288,7 +1292,7 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings();
 
       document.getElementById('profile-sync-enabled').checked = true;
-      document.getElementById('profile-sync-provider').value = 'cloudFile';
+      document.getElementById('profile-sync-provider').value = 'icloudDrive';
       document.getElementById('profile-sync-file-path').value = '/tmp/shared-profile.json';
       document.getElementById('profile-sync-interval').value = '5';
       document.getElementById('profile-sync-encryption-enabled').checked = true;
@@ -1299,13 +1303,43 @@ describe('Settings + Config Integration', () => {
 
       expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
         enabled: true,
-        provider: 'cloudFile',
+        provider: 'icloudDrive',
         cloudFilePath: '/tmp/shared-profile.json',
         intervalMinutes: 5,
         encryptionEnabled: true,
         rememberPassphrase: true
       }));
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
+    });
+
+    test('choose sync file forwards selected provider', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-provider').value = 'syncthing';
+      document.getElementById('profile-sync-choose-file').click();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.chooseProfileSyncFile).toHaveBeenCalledWith('syncthing');
+    });
+
+    test('saveSettings persists syncthing provider selection', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-provider').value = 'syncthing';
+      document.getElementById('profile-sync-file-path').value = '/tmp/syncthing-profile.json';
+      document.getElementById('profile-sync-interval').value = '5';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        enabled: true,
+        provider: 'syncthing',
+        cloudFilePath: '/tmp/syncthing-profile.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false
+      }));
     });
   });
 });

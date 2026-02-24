@@ -129,7 +129,7 @@ npm run dist  # Build for distribution
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
 
 ### Profile Sync (Opt-in)
-- **Provider (v1)**: Cloud-folder JSON file (`cloudFile`) that you can place in iCloud Drive, Dropbox, OneDrive, etc.
+- **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
 - **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
 - **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
 - **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation).

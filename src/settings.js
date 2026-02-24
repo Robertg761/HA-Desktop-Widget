@@ -2305,7 +2305,13 @@ function applyProfileSyncConfigToForm() {
   const passphraseInput = document.getElementById('profile-sync-passphrase');
 
   if (enabled) enabled.checked = !!profileSync.enabled;
-  if (provider) provider.value = profileSync.provider || 'cloudFile';
+  if (provider) {
+    const providerValue = profileSync.provider || 'cloudFile';
+    provider.value = providerValue;
+    if (provider.value !== providerValue) {
+      provider.value = 'cloudFile';
+    }
+  }
   if (filePath) filePath.value = profileSync.cloudFilePath || '';
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
   if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
@@ -2388,7 +2394,9 @@ function bindProfileSyncSettingsUi() {
   if (chooseFileBtn) {
     chooseFileBtn.onclick = async () => {
       try {
-        const response = await window.electronAPI.chooseProfileSyncFile();
+        const provider = document.getElementById('profile-sync-provider');
+        const selectedProvider = provider?.value || 'cloudFile';
+        const response = await window.electronAPI.chooseProfileSyncFile(selectedProvider);
         if (response?.canceled || !response?.filePath) return;
         const input = document.getElementById('profile-sync-file-path');
         if (input) input.value = response.filePath;
