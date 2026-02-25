@@ -4184,10 +4184,12 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .profile-sync-file-row input {
   flex: 1;
+  min-width: 200px;
 }
 
 .profile-sync-remember {

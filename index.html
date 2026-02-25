@@ -155,11 +155,15 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="profile-sync-file-path">Sync File</label>
+                                <label for="profile-sync-folder-path">Sync Folder</label>
                                 <div class="profile-sync-file-row">
-                                    <input type="text" id="profile-sync-file-path" class="form-control" placeholder="Choose a sync JSON file..." readonly>
-                                    <button type="button" id="profile-sync-choose-file" class="btn btn-secondary btn-small">Choose...</button>
+                                    <input type="text" id="profile-sync-folder-path" class="form-control" placeholder="Choose a synced folder..." readonly>
+                                    <button type="button" id="profile-sync-choose-folder" class="btn btn-secondary btn-small">Choose Folder...</button>
                                 </div>
+                            </div>
+                            <div class="form-group">
+                                <button type="button" id="profile-sync-help-btn" class="btn btn-secondary btn-small">Need Help?</button>
+                                <p class="help-text">Open setup instructions for profile sync.</p>
                             </div>
                             <div class="form-group">
                                 <label for="profile-sync-interval">Background Sync Interval</label>

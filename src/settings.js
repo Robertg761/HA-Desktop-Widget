@@ -110,6 +110,9 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '🍳': ['kitchen', 'cook', 'food'],
   '🚿': ['bathroom', 'shower'],
 };
+const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
+// Replace this with your hosted docs URL when your help site is live.
+const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in';
 const CUSTOM_ENTITY_ICON_KEYWORD_GROUPS = {
   tree: ['🌲', '🌳', '🌴', '🎄', '🌵', '🎋', '🪾'],
   forest: ['🌲', '🌳', '🌴', '🏕️'],
@@ -2219,6 +2222,29 @@ function getDefaultProfileSyncConfig() {
   };
 }
 
+function trimTrailingPathSeparators(value) {
+  return String(value || '').replace(/[\\/]+$/, '');
+}
+
+function deriveProfileSyncFolderPath(filePath) {
+  if (!filePath || typeof filePath !== 'string') return '';
+  const trimmed = filePath.trim();
+  if (!trimmed) return '';
+  const normalized = trimTrailingPathSeparators(trimmed);
+  const separatorIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
+  if (separatorIndex < 0) return normalized;
+  if (separatorIndex === 0) return normalized.charAt(0);
+  if (separatorIndex === 2 && /^[A-Za-z]:\\/.test(normalized)) return normalized.slice(0, 3);
+  return normalized.slice(0, separatorIndex);
+}
+
+function buildProfileSyncFilePathFromFolder(folderPath) {
+  const normalizedFolder = trimTrailingPathSeparators(String(folderPath || '').trim());
+  if (!normalizedFolder) return '';
+  const separator = normalizedFolder.includes('\\') ? '\\' : '/';
+  return `${normalizedFolder}${separator}${PROFILE_SYNC_DEFAULT_FILE_NAME}`;
+}
+
 function ensureProfileSyncConfig() {
   state.CONFIG.profileSync = {
     ...getDefaultProfileSyncConfig(),
@@ -2297,7 +2323,7 @@ function applyProfileSyncConfigToForm() {
   const profileSync = ensureProfileSyncConfig();
   const enabled = document.getElementById('profile-sync-enabled');
   const provider = document.getElementById('profile-sync-provider');
-  const filePath = document.getElementById('profile-sync-file-path');
+  const folderPath = document.getElementById('profile-sync-folder-path');
   const interval = document.getElementById('profile-sync-interval');
   const encryption = document.getElementById('profile-sync-encryption-enabled');
   const remember = document.getElementById('profile-sync-remember-passphrase');
@@ -2312,7 +2338,10 @@ function applyProfileSyncConfigToForm() {
       provider.value = 'cloudFile';
     }
   }
-  if (filePath) filePath.value = profileSync.cloudFilePath || '';
+  if (folderPath) {
+    const derivedFolder = deriveProfileSyncFolderPath(profileSync.cloudFilePath || '');
+    folderPath.value = derivedFolder || profileSync.cloudFilePath || '';
+  }
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
   if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
   if (remember) remember.checked = !!profileSync.rememberPassphrase;
@@ -2390,19 +2419,38 @@ function bindProfileSyncSettingsUi() {
     };
   }
 
-  const chooseFileBtn = document.getElementById('profile-sync-choose-file');
-  if (chooseFileBtn) {
-    chooseFileBtn.onclick = async () => {
+  const chooseProfileSyncFolder = async () => {
+    try {
+      const provider = document.getElementById('profile-sync-provider');
+      const selectedProvider = provider?.value || 'cloudFile';
+      const response = await window.electronAPI.chooseProfileSyncFolder(selectedProvider);
+      if (response?.canceled) return;
+      const folderPath = response?.folderPath || deriveProfileSyncFolderPath(response?.filePath || '');
+      if (!folderPath) return;
+      const input = document.getElementById('profile-sync-folder-path');
+      if (input) input.value = folderPath;
+    } catch (error) {
+      log.error('Failed to choose profile sync folder:', error);
+      showToast('Failed to choose sync folder.', 'error', 3000);
+    }
+  };
+
+  const chooseFolderBtn = document.getElementById('profile-sync-choose-folder');
+  if (chooseFolderBtn) {
+    chooseFolderBtn.onclick = () => chooseProfileSyncFolder();
+  }
+
+  const profileSyncHelpBtn = document.getElementById('profile-sync-help-btn');
+  if (profileSyncHelpBtn) {
+    profileSyncHelpBtn.onclick = async () => {
       try {
-        const provider = document.getElementById('profile-sync-provider');
-        const selectedProvider = provider?.value || 'cloudFile';
-        const response = await window.electronAPI.chooseProfileSyncFile(selectedProvider);
-        if (response?.canceled || !response?.filePath) return;
-        const input = document.getElementById('profile-sync-file-path');
-        if (input) input.value = response.filePath;
+        const result = await window.electronAPI.openExternal(PROFILE_SYNC_HELP_URL);
+        if (result?.success === false) {
+          throw new Error(result.error || 'Failed to open help link');
+        }
       } catch (error) {
-        log.error('Failed to choose profile sync file:', error);
-        showToast('Failed to choose sync file.', 'error', 3000);
+        log.error('Failed to open profile sync help link:', error);
+        showToast('Could not open help instructions.', 'error', 3000);
       }
     };
   }
@@ -2717,7 +2765,7 @@ async function saveSettings() {
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
     const profileSyncProvider = document.getElementById('profile-sync-provider');
-    const profileSyncFilePath = document.getElementById('profile-sync-file-path');
+    const profileSyncFolderPath = document.getElementById('profile-sync-folder-path');
     const profileSyncInterval = document.getElementById('profile-sync-interval');
     const profileSyncEncryptionEnabled = document.getElementById('profile-sync-encryption-enabled');
     const profileSyncPassphrase = document.getElementById('profile-sync-passphrase');
@@ -2797,13 +2845,14 @@ async function saveSettings() {
     const nextProfileSync = ensureProfileSyncConfig();
     nextProfileSync.enabled = !!profileSyncEnabled?.checked;
     nextProfileSync.provider = profileSyncProvider?.value || 'cloudFile';
-    nextProfileSync.cloudFilePath = (profileSyncFilePath?.value || '').trim();
+    const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
+    nextProfileSync.cloudFilePath = buildProfileSyncFilePathFromFolder(syncFolderPath);
     nextProfileSync.intervalMinutes = Number.parseInt(profileSyncInterval?.value || '5', 10) || 5;
     nextProfileSync.encryptionEnabled = !!profileSyncEncryptionEnabled?.checked;
     nextProfileSync.rememberPassphrase = !!profileSyncRememberPassphrase?.checked;
 
-    if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
-      showToast('Choose a sync file before enabling profile sync.', 'error', 3200);
+    if (nextProfileSync.enabled && !syncFolderPath) {
+      showToast('Choose a sync folder before enabling profile sync.', 'error', 3200);
       return;
     }
 

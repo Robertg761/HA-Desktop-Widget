@@ -70,6 +70,13 @@ const eventListeners = {
  * Creates a mock window.electronAPI object
  */
 function createMockElectronAPI() {
+  const chooseProfileSyncFolder = jest.fn((provider = 'cloudFile') => Promise.resolve({
+    canceled: false,
+    folderPath: '/tmp/profile-sync',
+    filePath: '/tmp/profile-sync/ha-widget-profile-sync.json',
+    provider
+  }));
+
   return {
     // Config Operations
     getConfig: jest.fn(() => Promise.resolve({ ...mockConfig })),
@@ -81,11 +88,8 @@ function createMockElectronAPI() {
       mockConfig = { ...mockConfig, ...config };
       return Promise.resolve();
     }),
-    chooseProfileSyncFile: jest.fn((provider = 'cloudFile') => Promise.resolve({
-      canceled: false,
-      filePath: '/tmp/profile-sync.json',
-      provider
-    })),
+    chooseProfileSyncFolder,
+    chooseProfileSyncFile: chooseProfileSyncFolder,
     getProfileSyncStatus: jest.fn(() => Promise.resolve({
       enabled: !!mockConfig.profileSync?.enabled,
       provider: mockConfig.profileSync?.provider || 'cloudFile',

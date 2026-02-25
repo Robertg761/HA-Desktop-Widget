@@ -130,6 +130,8 @@ npm run dist  # Build for distribution
 
 ### Profile Sync (Opt-in)
 - **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
+- **Folder selection**: Choose a synced folder once; the app stores profile data in `ha-widget-profile-sync.json` inside that folder.
+- **Need help button**: Opens profile sync setup instructions in your browser.
 - **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
 - **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
 - **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation).

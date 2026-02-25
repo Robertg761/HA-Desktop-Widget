@@ -257,12 +257,15 @@ function getSyncthingRootCandidate(homeDir) {
   return findFirstExistingDirectory(candidates);
 }
 
-function getDefaultProfileSyncFilePath(provider, existingPath = '') {
-  if (existingPath) return existingPath;
-
+function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
+  if (existingPath) {
+    const existingFolder = path.dirname(existingPath);
+    if (existingFolder && existingFolder !== '.') {
+      return existingFolder;
+    }
+  }
   const normalizedProvider = normalizeProfileSyncProvider(provider);
   const homeDir = app.getPath('home');
-  const documentsDir = app.getPath('documents');
   let providerRoot = null;
   if (normalizedProvider === 'googleDrive') {
     providerRoot = getGoogleDriveRootCandidate(homeDir);
@@ -272,7 +275,7 @@ function getDefaultProfileSyncFilePath(provider, existingPath = '') {
     providerRoot = getSyncthingRootCandidate(homeDir);
   }
 
-  return path.join(providerRoot || documentsDir, PROFILE_SYNC_DEFAULT_FILE_NAME);
+  return providerRoot || app.getPath('documents');
 }
 
 function isPortableBuild() {
@@ -1623,21 +1626,23 @@ ipcMain.handle('get-window-state', () => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
-ipcMain.handle('choose-profile-sync-file', async (_event, provider) => {
+ipcMain.handle('choose-profile-sync-folder', async (_event, provider) => {
   const profileSync = getProfileSyncConfig();
   const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
-  const defaultPath = getDefaultProfileSyncFilePath(providerToUse, profileSync.cloudFilePath);
-  const result = await dialog.showSaveDialog({
-    title: 'Choose Profile Sync File',
+  const defaultPath = getDefaultProfileSyncFolderPath(providerToUse, profileSync.cloudFilePath);
+  const result = await dialog.showOpenDialog({
+    title: 'Choose Profile Sync Folder',
     defaultPath,
-    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openDirectory', 'createDirectory'],
   });
 
-  if (result.canceled || !result.filePath) {
+  const folderPath = Array.isArray(result.filePaths) ? result.filePaths[0] : '';
+  if (result.canceled || !folderPath) {
     return { canceled: true };
   }
 
-  return { canceled: false, filePath: result.filePath, provider: providerToUse };
+  const filePath = path.join(folderPath, PROFILE_SYNC_DEFAULT_FILE_NAME);
+  return { canceled: false, folderPath, filePath, provider: providerToUse };
 });
 
 ipcMain.handle('get-profile-sync-status', () => {
