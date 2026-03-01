@@ -143,6 +143,10 @@
                             Enable Profile Sync (Opt-in)
                         </label>
                         <p class="help-text">Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar.</p>
+                        <p class="help-text profile-sync-warning">
+                            <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please
+                            report bugs in the <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener noreferrer">Issues section</a>.
+                        </p>
 
                         <div id="profile-sync-settings" class="profile-sync-settings hidden">
                             <div class="form-group">
@@ -159,6 +163,34 @@
                                 <div class="profile-sync-file-row">
                                     <input type="text" id="profile-sync-folder-path" class="form-control" placeholder="Choose a synced folder..." readonly>
                                     <button type="button" id="profile-sync-choose-folder" class="btn btn-secondary btn-small">Choose Folder...</button>
+                                </div>
+                                <p class="help-text">Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync.</p>
+                            </div>
+                            <div class="form-group profile-sync-scope-group">
+                                <label for="profile-sync-scope-preset">Sync Scope</label>
+                                <select id="profile-sync-scope-preset">
+                                    <option value="all">All Syncable Settings</option>
+                                    <option value="visual">Visual Personalization Only</option>
+                                    <option value="quick_access">Quick Access/Layout Only</option>
+                                    <option value="custom">Custom (Advanced)</option>
+                                </select>
+                                <div id="profile-sync-scope-advanced" class="profile-sync-scope-advanced hidden">
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-quick-access-layout">
+                                        Quick Access/Layout (favorites, custom names/icons, tabs, primary cards)
+                                    </label>
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-visual-personalization">
+                                        Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)
+                                    </label>
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-automation-alerts">
+                                        Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)
+                                    </label>
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-connection-media-preferences">
+                                        Connection/Media Preferences (weather entity and primary media player)
+                                    </label>
                                 </div>
                             </div>
                             <div class="form-group">

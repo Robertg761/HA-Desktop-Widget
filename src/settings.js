@@ -113,6 +113,19 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 // Replace this with your hosted docs URL when your help site is live.
 const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in';
+const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
+const PROFILE_SYNC_SCOPE_SECTION_KEYS = [
+  'quickAccessLayout',
+  'visualPersonalization',
+  'automationAlerts',
+  'connectionMediaPreferences',
+];
+const PROFILE_SYNC_SCOPE_SECTION_INPUT_IDS = {
+  quickAccessLayout: 'profile-sync-scope-quick-access-layout',
+  visualPersonalization: 'profile-sync-scope-visual-personalization',
+  automationAlerts: 'profile-sync-scope-automation-alerts',
+  connectionMediaPreferences: 'profile-sync-scope-connection-media-preferences',
+};
 const CUSTOM_ENTITY_ICON_KEYWORD_GROUPS = {
   tree: ['🌲', '🌳', '🌴', '🎄', '🌵', '🎋', '🪾'],
   forest: ['🌲', '🌳', '🌴', '🏕️'],
@@ -2212,6 +2225,15 @@ function getDefaultProfileSyncConfig() {
     enabled: false,
     provider: 'cloudFile',
     cloudFilePath: '',
+    syncScope: {
+      preset: 'all',
+      sections: {
+        quickAccessLayout: true,
+        visualPersonalization: true,
+        automationAlerts: true,
+        connectionMediaPreferences: true,
+      },
+    },
     intervalMinutes: 5,
     encryptionEnabled: false,
     rememberPassphrase: false,
@@ -2220,6 +2242,61 @@ function getDefaultProfileSyncConfig() {
     lastSyncStatus: 'idle',
     lastSyncError: '',
   };
+}
+
+function normalizeProfileSyncScopePreset(value) {
+  if (typeof value !== 'string') return 'all';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'quickaccess') return 'quick_access';
+  if (!PROFILE_SYNC_SCOPE_PRESETS.has(normalized)) return 'all';
+  return normalized;
+}
+
+function resolveProfileSyncScopeSections(preset, sectionsInput = {}) {
+  if (preset === 'all') {
+    return {
+      quickAccessLayout: true,
+      visualPersonalization: true,
+      automationAlerts: true,
+      connectionMediaPreferences: true,
+    };
+  }
+
+  if (preset === 'visual') {
+    return {
+      quickAccessLayout: false,
+      visualPersonalization: true,
+      automationAlerts: false,
+      connectionMediaPreferences: false,
+    };
+  }
+
+  if (preset === 'quick_access') {
+    return {
+      quickAccessLayout: true,
+      visualPersonalization: false,
+      automationAlerts: false,
+      connectionMediaPreferences: false,
+    };
+  }
+
+  return {
+    quickAccessLayout: !!sectionsInput.quickAccessLayout,
+    visualPersonalization: !!sectionsInput.visualPersonalization,
+    automationAlerts: !!sectionsInput.automationAlerts,
+    connectionMediaPreferences: !!sectionsInput.connectionMediaPreferences,
+  };
+}
+
+function normalizeProfileSyncScope(input) {
+  const defaultScope = getDefaultProfileSyncConfig().syncScope;
+  if (!input || typeof input !== 'object') return defaultScope;
+  const preset = normalizeProfileSyncScopePreset(input.preset);
+  const sections = resolveProfileSyncScopeSections(
+    preset,
+    input.sections && typeof input.sections === 'object' ? input.sections : {}
+  );
+  return { preset, sections };
 }
 
 function trimTrailingPathSeparators(value) {
@@ -2250,6 +2327,7 @@ function ensureProfileSyncConfig() {
     ...getDefaultProfileSyncConfig(),
     ...(state.CONFIG.profileSync || {}),
   };
+  state.CONFIG.profileSync.syncScope = normalizeProfileSyncScope(state.CONFIG.profileSync.syncScope);
   return state.CONFIG.profileSync;
 }
 
@@ -2277,6 +2355,7 @@ function updateProfileSyncStatusUi(status) {
   const enabledCheckbox = document.getElementById('profile-sync-enabled');
   const settingsContainer = document.getElementById('profile-sync-settings');
   const passphraseHint = document.getElementById('profile-sync-passphrase-group');
+  const folderInput = document.getElementById('profile-sync-folder-path');
 
   if (enabledCheckbox) {
     enabledCheckbox.checked = !!status.enabled;
@@ -2307,6 +2386,11 @@ function updateProfileSyncStatusUi(status) {
   if (passphraseHint) {
     passphraseHint.classList.toggle('hidden', !status.enabled || !ensureProfileSyncConfig().encryptionEnabled);
   }
+
+  if (folderInput && !folderInput.value.trim() && typeof status.cloudFilePath === 'string' && status.cloudFilePath.trim()) {
+    const derivedFolder = deriveProfileSyncFolderPath(status.cloudFilePath);
+    folderInput.value = derivedFolder || status.cloudFilePath;
+  }
 }
 
 async function refreshProfileSyncStatusUi() {
@@ -2317,6 +2401,46 @@ async function refreshProfileSyncStatusUi() {
   } catch (error) {
     log.error('Failed to refresh profile sync status:', error);
   }
+}
+
+function setProfileSyncScopeAdvancedVisibility() {
+  const presetSelect = document.getElementById('profile-sync-scope-preset');
+  const advanced = document.getElementById('profile-sync-scope-advanced');
+  if (!presetSelect || !advanced) return;
+  const preset = normalizeProfileSyncScopePreset(presetSelect.value);
+  advanced.classList.toggle('hidden', preset !== 'custom');
+}
+
+function applyProfileSyncScopeToForm(syncScopeInput) {
+  const scope = normalizeProfileSyncScope(syncScopeInput);
+  const presetSelect = document.getElementById('profile-sync-scope-preset');
+  if (presetSelect) {
+    presetSelect.value = scope.preset;
+    if (presetSelect.value !== scope.preset) {
+      presetSelect.value = 'all';
+    }
+  }
+
+  PROFILE_SYNC_SCOPE_SECTION_KEYS.forEach((sectionKey) => {
+    const inputId = PROFILE_SYNC_SCOPE_SECTION_INPUT_IDS[sectionKey];
+    const checkbox = document.getElementById(inputId);
+    if (!checkbox) return;
+    checkbox.checked = !!scope.sections[sectionKey];
+  });
+
+  setProfileSyncScopeAdvancedVisibility();
+}
+
+function readProfileSyncScopeFromForm() {
+  const presetSelect = document.getElementById('profile-sync-scope-preset');
+  const preset = normalizeProfileSyncScopePreset(presetSelect?.value || 'all');
+  const sections = {};
+  PROFILE_SYNC_SCOPE_SECTION_KEYS.forEach((sectionKey) => {
+    const inputId = PROFILE_SYNC_SCOPE_SECTION_INPUT_IDS[sectionKey];
+    const checkbox = document.getElementById(inputId);
+    sections[sectionKey] = !!checkbox?.checked;
+  });
+  return normalizeProfileSyncScope({ preset, sections });
 }
 
 function applyProfileSyncConfigToForm() {
@@ -2345,6 +2469,7 @@ function applyProfileSyncConfigToForm() {
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
   if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
   if (remember) remember.checked = !!profileSync.rememberPassphrase;
+  applyProfileSyncScopeToForm(profileSync.syncScope);
   if (passphraseGroup) passphraseGroup.classList.toggle('hidden', !profileSync.enabled || !profileSync.encryptionEnabled);
   if (passphraseInput) passphraseInput.value = '';
 
@@ -2366,6 +2491,7 @@ async function runManualProfileSync(direction) {
 
     if (result?.config) {
       state.setConfig(result.config);
+      applyProfileSyncConfigToForm();
       applyTheme(state.CONFIG.ui?.theme || 'auto');
       applyAccentTheme(state.CONFIG.ui?.accent || 'original');
       applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
@@ -2418,6 +2544,30 @@ function bindProfileSyncSettingsUi() {
       }
     };
   }
+
+  const scopePreset = document.getElementById('profile-sync-scope-preset');
+  if (scopePreset) {
+    scopePreset.onchange = () => {
+      const preset = normalizeProfileSyncScopePreset(scopePreset.value);
+      if (preset !== 'custom') {
+        applyProfileSyncScopeToForm({ preset });
+      } else {
+        setProfileSyncScopeAdvancedVisibility();
+      }
+    };
+  }
+
+  PROFILE_SYNC_SCOPE_SECTION_KEYS.forEach((sectionKey) => {
+    const checkbox = document.getElementById(PROFILE_SYNC_SCOPE_SECTION_INPUT_IDS[sectionKey]);
+    if (!checkbox) return;
+    checkbox.onchange = () => {
+      const presetSelect = document.getElementById('profile-sync-scope-preset');
+      if (presetSelect) {
+        presetSelect.value = 'custom';
+      }
+      setProfileSyncScopeAdvancedVisibility();
+    };
+  });
 
   const chooseProfileSyncFolder = async () => {
     try {
@@ -2847,13 +2997,70 @@ async function saveSettings() {
     nextProfileSync.provider = profileSyncProvider?.value || 'cloudFile';
     const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
     nextProfileSync.cloudFilePath = buildProfileSyncFilePathFromFolder(syncFolderPath);
+    nextProfileSync.syncScope = readProfileSyncScopeFromForm();
     nextProfileSync.intervalMinutes = Number.parseInt(profileSyncInterval?.value || '5', 10) || 5;
     nextProfileSync.encryptionEnabled = !!profileSyncEncryptionEnabled?.checked;
     nextProfileSync.rememberPassphrase = !!profileSyncRememberPassphrase?.checked;
 
-    if (nextProfileSync.enabled && !syncFolderPath) {
+    if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
       showToast('Choose a sync folder before enabling profile sync.', 'error', 3200);
       return;
+    }
+
+    const previousSyncFilePath = (prevProfileSync.cloudFilePath || '').trim();
+    const nextSyncFilePath = (nextProfileSync.cloudFilePath || '').trim();
+    const syncPathChanged = nextProfileSync.enabled
+      && !!previousSyncFilePath
+      && !!nextSyncFilePath
+      && previousSyncFilePath !== nextSyncFilePath;
+    if (syncPathChanged) {
+      const copyAndSwitch = await showConfirm(
+        'Sync Folder Changed',
+        'Copy the existing sync data file into the new folder and switch sync there?',
+        { confirmText: 'Copy & Switch', cancelText: 'Keep Current', confirmClass: 'btn-primary' }
+      );
+
+      const revertToPreviousSyncPath = () => {
+        nextProfileSync.cloudFilePath = previousSyncFilePath;
+        const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
+        if (profileSyncFolderPath) {
+          profileSyncFolderPath.value = previousFolder;
+        }
+      };
+
+      if (!copyAndSwitch) {
+        revertToPreviousSyncPath();
+        showToast('Kept current sync folder.', 'warning', 2200);
+      } else if (!window.electronAPI?.copyProfileSyncFile) {
+        revertToPreviousSyncPath();
+        showToast('Copy is unavailable on this build. Kept current sync folder.', 'warning', 3200);
+      } else {
+        let copyResult = await window.electronAPI.copyProfileSyncFile(previousSyncFilePath, nextSyncFilePath, false);
+        if (copyResult?.status === 'destination_exists') {
+          const overwrite = await showConfirm(
+            'Sync File Already Exists',
+            'A sync file already exists in the new folder. Overwrite it with your current synced data?',
+            { confirmText: 'Overwrite & Switch', cancelText: 'Keep Current', confirmClass: 'btn-danger' }
+          );
+          if (!overwrite) {
+            revertToPreviousSyncPath();
+            showToast('Kept current sync folder.', 'warning', 2200);
+          } else {
+            copyResult = await window.electronAPI.copyProfileSyncFile(previousSyncFilePath, nextSyncFilePath, true);
+          }
+        }
+
+        if (nextProfileSync.cloudFilePath !== previousSyncFilePath) {
+          if (copyResult?.status === 'source_missing') {
+            showToast('No existing sync file found. Switched to the new folder.', 'warning', 3200);
+          } else if (!copyResult?.ok) {
+            revertToPreviousSyncPath();
+            showToast(copyResult?.error || 'Failed to copy sync file. Kept current sync folder.', 'error', 3400);
+          } else if (copyResult?.copied) {
+            showToast('Copied sync file and switched folders.', 'success', 2200);
+          }
+        }
+      }
     }
 
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {

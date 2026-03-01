@@ -130,12 +130,15 @@ npm run dist  # Build for distribution
 
 ### Profile Sync (Opt-in)
 - **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
-- **Folder selection**: Choose a synced folder once; the app stores profile data in `ha-widget-profile-sync.json` inside that folder.
+- **Default sync folder**: Starts in the app's local data folder (`userData`) and stores profile data in `ha-widget-profile-sync.json`.
+- **Folder changes**: When switching folders, the app can copy the existing sync file to the new location or keep the current folder.
+- **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections.
 - **Need help button**: Opens profile sync setup instructions in your browser.
 - **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
 - **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
 - **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation).
-- **Local-only data**: Home Assistant token, window position/size, startup setting, and profile-sync internals remain local.
+- **Schema compatibility**: Sync writes use profile sync schema v2; older app versions must update to participate in sync.
+- **Local-only data**: Home Assistant URL/token, window position/size, startup setting, and profile-sync internals remain local.
 
 ## Troubleshooting
 

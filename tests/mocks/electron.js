@@ -45,6 +45,15 @@ let mockConfig = {
     enabled: false,
     provider: 'cloudFile',
     cloudFilePath: '',
+    syncScope: {
+      preset: 'all',
+      sections: {
+        quickAccessLayout: true,
+        visualPersonalization: true,
+        automationAlerts: true,
+        connectionMediaPreferences: true
+      }
+    },
     intervalMinutes: 5,
     encryptionEnabled: false,
     rememberPassphrase: false,
@@ -76,6 +85,12 @@ function createMockElectronAPI() {
     filePath: '/tmp/profile-sync/ha-widget-profile-sync.json',
     provider
   }));
+  const copyProfileSyncFile = jest.fn((_fromPath, _toPath, _overwrite = false) => Promise.resolve({
+    ok: true,
+    status: 'copied',
+    copied: true,
+    overwritten: false
+  }));
 
   return {
     // Config Operations
@@ -89,11 +104,21 @@ function createMockElectronAPI() {
       return Promise.resolve();
     }),
     chooseProfileSyncFolder,
+    copyProfileSyncFile,
     chooseProfileSyncFile: chooseProfileSyncFolder,
     getProfileSyncStatus: jest.fn(() => Promise.resolve({
       enabled: !!mockConfig.profileSync?.enabled,
       provider: mockConfig.profileSync?.provider || 'cloudFile',
       cloudFilePath: mockConfig.profileSync?.cloudFilePath || '',
+      syncScope: mockConfig.profileSync?.syncScope || {
+        preset: 'all',
+        sections: {
+          quickAccessLayout: true,
+          visualPersonalization: true,
+          automationAlerts: true,
+          connectionMediaPreferences: true
+        }
+      },
       intervalMinutes: mockConfig.profileSync?.intervalMinutes || 5,
       encryptionEnabled: !!mockConfig.profileSync?.encryptionEnabled,
       rememberPassphrase: !!mockConfig.profileSync?.rememberPassphrase,
@@ -251,6 +276,15 @@ function resetMockElectronAPI() {
       enabled: false,
       provider: 'cloudFile',
       cloudFilePath: '',
+      syncScope: {
+        preset: 'all',
+        sections: {
+          quickAccessLayout: true,
+          visualPersonalization: true,
+          automationAlerts: true,
+          connectionMediaPreferences: true
+        }
+      },
       intervalMinutes: 5,
       encryptionEnabled: false,
       rememberPassphrase: false,

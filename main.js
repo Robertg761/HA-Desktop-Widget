@@ -182,100 +182,15 @@ function normalizeProfileSyncProvider(provider) {
   return provider.trim();
 }
 
-function findFirstExistingDirectory(candidates) {
-  if (!Array.isArray(candidates)) return null;
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    try {
-      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-        return candidate;
-      }
-    } catch {
-      // Ignore unreadable/inaccessible candidate paths.
-    }
-  }
-  return null;
-}
-
-function getGoogleDriveRootCandidate(homeDir) {
-  if (!homeDir) return null;
-  if (process.platform === 'darwin') {
-    const cloudStoragePath = path.join(homeDir, 'Library', 'CloudStorage');
-    try {
-      if (fs.existsSync(cloudStoragePath) && fs.statSync(cloudStoragePath).isDirectory()) {
-        const entries = fs.readdirSync(cloudStoragePath, { withFileTypes: true });
-        const accountDir = entries.find((entry) => entry.isDirectory() && entry.name.startsWith('GoogleDrive'));
-        if (accountDir) {
-          const myDrivePath = path.join(cloudStoragePath, accountDir.name, 'My Drive');
-          if (fs.existsSync(myDrivePath) && fs.statSync(myDrivePath).isDirectory()) {
-            return myDrivePath;
-          }
-          return path.join(cloudStoragePath, accountDir.name);
-        }
-      }
-    } catch {
-      // Ignore and continue to generic fallbacks.
-    }
-  }
-
-  const fallbackCandidates = process.platform === 'win32'
-    ? [
-      path.join(homeDir, 'Google Drive', 'My Drive'),
-      path.join(homeDir, 'My Drive'),
-      path.join(homeDir, 'Google Drive'),
-    ]
-    : [
-      path.join(homeDir, 'Google Drive', 'My Drive'),
-      path.join(homeDir, 'Google Drive'),
-      path.join(homeDir, 'My Drive'),
-    ];
-
-  return findFirstExistingDirectory(fallbackCandidates);
-}
-
-function getICloudDriveRootCandidate(homeDir) {
-  if (!homeDir) return null;
-  const candidates = process.platform === 'darwin'
-    ? [path.join(homeDir, 'Library', 'Mobile Documents', 'com~apple~CloudDocs')]
-    : [path.join(homeDir, 'iCloudDrive')];
-  return findFirstExistingDirectory(candidates);
-}
-
-function getSyncthingRootCandidate(homeDir) {
-  if (!homeDir) return null;
-  const candidates = process.platform === 'win32'
-    ? [
-      path.join(homeDir, 'Sync'),
-      path.join(homeDir, 'Syncthing'),
-      path.join(homeDir, 'Documents', 'Sync'),
-    ]
-    : [
-      path.join(homeDir, 'Sync'),
-      path.join(homeDir, 'syncthing'),
-      path.join(homeDir, 'Syncthing'),
-    ];
-  return findFirstExistingDirectory(candidates);
-}
-
 function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
+  void provider;
   if (existingPath) {
     const existingFolder = path.dirname(existingPath);
     if (existingFolder && existingFolder !== '.') {
       return existingFolder;
     }
   }
-  const normalizedProvider = normalizeProfileSyncProvider(provider);
-  const homeDir = app.getPath('home');
-  let providerRoot = null;
-  if (normalizedProvider === 'googleDrive') {
-    providerRoot = getGoogleDriveRootCandidate(homeDir);
-  } else if (normalizedProvider === 'icloudDrive') {
-    providerRoot = getICloudDriveRootCandidate(homeDir);
-  } else if (normalizedProvider === 'syncthing') {
-    providerRoot = getSyncthingRootCandidate(homeDir);
-  }
-
-  return providerRoot || app.getPath('documents');
+  return app.getPath('userData');
 }
 
 function isPortableBuild() {
@@ -325,11 +240,20 @@ function generateProfileSyncDeviceId() {
   return Buffer.from(raw).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'device';
 }
 
+function getDefaultProfileSyncFilePath() {
+  return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME);
+}
+
+function getNormalizedProfileSyncScopeValue(value) {
+  return profileSyncCore.normalizeSyncScope(value);
+}
+
 function getDefaultProfileSyncConfig() {
   return {
     enabled: false,
     provider: 'cloudFile',
-    cloudFilePath: '',
+    cloudFilePath: getDefaultProfileSyncFilePath(),
+    syncScope: getNormalizedProfileSyncScopeValue(profileSyncCore.getDefaultSyncScope()),
     intervalMinutes: PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: false,
     rememberPassphrase: false,
@@ -350,6 +274,10 @@ function ensureProfileSyncConfigDefaults(target) {
     ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
     : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
   target.profileSync.provider = normalizeProfileSyncProvider(target.profileSync.provider);
+  target.profileSync.cloudFilePath = (typeof target.profileSync.cloudFilePath === 'string' && target.profileSync.cloudFilePath.trim())
+    ? target.profileSync.cloudFilePath.trim()
+    : getDefaultProfileSyncFilePath();
+  target.profileSync.syncScope = getNormalizedProfileSyncScopeValue(target.profileSync.syncScope);
   if (!target.profileSync.deviceId || typeof target.profileSync.deviceId !== 'string') {
     target.profileSync.deviceId = generateProfileSyncDeviceId();
   }
@@ -409,6 +337,7 @@ function buildProfileSyncStatus(extra = {}) {
     enabled: !!profileSync.enabled,
     provider: normalizeProfileSyncProvider(profileSync.provider),
     cloudFilePath: profileSync.cloudFilePath || '',
+    syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
     intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: !!profileSync.encryptionEnabled,
     rememberPassphrase: !!profileSync.rememberPassphrase,
@@ -541,6 +470,47 @@ async function writeCloudFileEnvelope(filePath, envelope) {
   await fs.promises.rename(tempPath, filePath);
 }
 
+async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
+  try {
+    const sourcePath = String(fromPath || '').trim();
+    const destinationPath = String(toPath || '').trim();
+    if (!sourcePath || !destinationPath) {
+      return { ok: false, status: 'error', error: 'Source and destination file paths are required' };
+    }
+
+    if (sourcePath === destinationPath) {
+      return { ok: true, status: 'copied', copied: false, reason: 'same_path' };
+    }
+
+    let sourceStats;
+    try {
+      sourceStats = await fs.promises.stat(sourcePath);
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return { ok: false, status: 'source_missing' };
+      }
+      throw error;
+    }
+
+    if (!sourceStats.isFile()) {
+      return { ok: false, status: 'error', error: 'Source sync file is not a file' };
+    }
+
+    const destinationDir = path.dirname(destinationPath);
+    await fs.promises.mkdir(destinationDir, { recursive: true });
+
+    const destinationExists = fs.existsSync(destinationPath);
+    if (destinationExists && !overwrite) {
+      return { ok: false, status: 'destination_exists' };
+    }
+
+    await fs.promises.copyFile(sourcePath, destinationPath);
+    return { ok: true, status: 'copied', copied: true, overwritten: destinationExists };
+  } catch (error) {
+    return { ok: false, status: 'error', error: error?.message || String(error) };
+  }
+}
+
 async function readConfiguredSyncEnvelope() {
   const profileSync = getProfileSyncConfig();
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
@@ -557,9 +527,24 @@ async function writeConfiguredSyncEnvelope(envelope) {
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
 }
 
+function getActiveProfileSyncScope() {
+  const profileSync = getProfileSyncConfig();
+  const normalizedScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+  profileSync.syncScope = normalizedScope;
+  return normalizedScope;
+}
+
+function computeScopedProfileHash(profile, syncScope) {
+  return profileSyncCore.computeProfileHash({
+    syncScope: getNormalizedProfileSyncScopeValue(syncScope),
+    profile: profile || {},
+  });
+}
+
 function buildLocalProfileEnvelope(updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()) {
   const profileSync = getProfileSyncConfig();
-  const profile = profileSyncCore.projectSyncProfile(config);
+  const syncScope = getActiveProfileSyncScope();
+  const profile = profileSyncCore.projectSyncProfile(config, syncScope);
   const encrypt = !!profileSync.encryptionEnabled;
   const passphrase = getActiveProfileSyncPassphrase();
   if (encrypt && !passphrase) {
@@ -569,6 +554,7 @@ function buildLocalProfileEnvelope(updatedAt = profileSyncRuntime.localProfileUp
     profile,
     updatedAt,
     updatedByDeviceId: profileSync.deviceId,
+    syncScope,
     encrypt,
     passphrase,
   });
@@ -576,20 +562,27 @@ function buildLocalProfileEnvelope(updatedAt = profileSyncRuntime.localProfileUp
 
 function decodeEnvelopeProfile(envelope) {
   const passphrase = getActiveProfileSyncPassphrase();
-  return profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
+  const profile = profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
+  const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(envelope);
+  return { profile, syncScope };
 }
 
-function applySyncedProfileToConfig(syncedProfile, updatedAt) {
+function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
   const previous = config;
-  const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile);
+  const nextScope = getNormalizedProfileSyncScopeValue(syncScopeValue || previous?.profileSync?.syncScope);
+  const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
   ensureProfileSyncConfigDefaults(merged);
-  merged.profileSync = { ...previous.profileSync };
+  merged.profileSync = {
+    ...previous.profileSync,
+    syncScope: nextScope,
+  };
   config = merged;
   pruneConfig(config);
+  ensureProfileSyncConfigDefaults(config);
   applyMainWindowSettingSideEffects(previous, config);
 
-  const projected = profileSyncCore.projectSyncProfile(config);
-  profileSyncRuntime.localProfileHash = profileSyncCore.computeProfileHash(projected);
+  const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, getActiveProfileSyncScope());
   profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
   profileSyncRuntime.suppressNextAutoPush = true;
 
@@ -609,8 +602,8 @@ function clearProfileSyncTimers() {
 }
 
 function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
-  const profile = profileSyncCore.projectSyncProfile(config);
-  const nextHash = profileSyncCore.computeProfileHash(profile);
+  const profile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
+  const nextHash = computeScopedProfileHash(profile, getActiveProfileSyncScope());
   if (profileSyncRuntime.localProfileHash === null) {
     profileSyncRuntime.localProfileHash = nextHash;
     profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
@@ -936,8 +929,8 @@ function loadConfig() {
   }
 
   profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
-  const initialProfile = profileSyncCore.projectSyncProfile(config);
-  profileSyncRuntime.localProfileHash = profileSyncCore.computeProfileHash(initialProfile);
+  const initialProfile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, getActiveProfileSyncScope());
   profileSyncRuntime.localProfileUpdatedAt = config?.profileSync?.lastSyncAt || new Date().toISOString();
 }
 
@@ -1131,15 +1124,15 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const localProfile = profileSyncCore.projectSyncProfile(config);
-  const localHash = profileSyncCore.computeProfileHash(localProfile);
   const readResult = await readConfiguredSyncEnvelope();
   if (!readResult.exists || !readResult.envelope) {
     return { needsResolution: false };
   }
 
-  const remoteProfile = decodeEnvelopeProfile(readResult.envelope);
-  const remoteHash = profileSyncCore.computeProfileHash(remoteProfile);
+  const { profile: remoteProfile, syncScope } = decodeEnvelopeProfile(readResult.envelope);
+  const localProfile = profileSyncCore.projectSyncProfile(config, syncScope);
+  const localHash = computeScopedProfileHash(localProfile, syncScope);
+  const remoteHash = computeScopedProfileHash(remoteProfile, syncScope);
   if (remoteHash === localHash) {
     return { needsResolution: false };
   }
@@ -1193,8 +1186,6 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
 
   try {
     const localEnvelope = buildLocalProfileEnvelope(profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString());
-    const localProfile = profileSyncCore.projectSyncProfile(config);
-    const localHash = profileSyncCore.computeProfileHash(localProfile);
     const remoteResult = await readConfiguredSyncEnvelope();
     let finalDirection = direction;
 
@@ -1221,10 +1212,12 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
         return { ok: true, action: 'none', status };
       }
 
-      const remoteProfile = decodeEnvelopeProfile(remoteResult.envelope);
-      const remoteHash = profileSyncCore.computeProfileHash(remoteProfile);
+      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(remoteResult.envelope);
+      const localProfile = profileSyncCore.projectSyncProfile(config, remoteSyncScope);
+      const localHash = computeScopedProfileHash(localProfile, remoteSyncScope);
+      const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
       if (remoteHash !== localHash || source === 'first_enable_resolution') {
-        applySyncedProfileToConfig(remoteProfile, remoteResult.envelope.updatedAt);
+        applySyncedProfileToConfig(remoteProfile, remoteResult.envelope.updatedAt, remoteSyncScope);
       }
       profileSyncRuntime.localProfileUpdatedAt = remoteResult.envelope.updatedAt;
       updateProfileSyncStatus('success', '');
@@ -1645,6 +1638,10 @@ ipcMain.handle('choose-profile-sync-folder', async (_event, provider) => {
   return { canceled: false, folderPath, filePath, provider: providerToUse };
 });
 
+ipcMain.handle('copy-profile-sync-file', async (_event, fromPath, toPath, overwrite = false) => {
+  return copyProfileSyncFile(fromPath, toPath, overwrite);
+});
+
 ipcMain.handle('get-profile-sync-status', () => {
   return buildProfileSyncStatus();
 });
@@ -1717,10 +1714,10 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (_event, choice) => {
       if (!envelope) {
         throw new Error('Remote profile is no longer available');
       }
-      const remoteProfile = decodeEnvelopeProfile(envelope);
+      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(envelope);
       profileSyncRuntime.needsResolution = false;
       profileSyncRuntime.pendingRemoteEnvelope = null;
-      applySyncedProfileToConfig(remoteProfile, envelope.updatedAt);
+      applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
       updateProfileSyncStatus('success', '');
       setupProfileSyncInterval();
       emitProfileSyncStatus();

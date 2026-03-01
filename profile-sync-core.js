@@ -1,27 +1,36 @@
 /* eslint-env node */
 const nodeCrypto = require('crypto');
 
-const SYNC_SCHEMA_VERSION = 1;
-
-const SYNCED_TOP_LEVEL_FIELDS = [
-  'alwaysOnTop',
-  'opacity',
-  'frostedGlass',
-  'ui',
-  'favoriteEntities',
-  'customEntityNames',
-  'customEntityIcons',
-  'tileSpans',
-  'primaryCards',
-  'selectedWeatherEntity',
-  'primaryMediaPlayer',
-  'globalHotkeys',
-  'entityAlerts',
-  'popupHotkey',
-  'popupHotkeyHideOnRelease',
-  'popupHotkeyToggleMode',
-  'customTabs',
-];
+const SYNC_SCHEMA_VERSION = 2;
+const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
+const SYNC_SCOPE_SECTION_FIELDS = {
+  quickAccessLayout: [
+    'favoriteEntities',
+    'customEntityNames',
+    'customEntityIcons',
+    'tileSpans',
+    'primaryCards',
+    'customTabs',
+  ],
+  visualPersonalization: [
+    'alwaysOnTop',
+    'opacity',
+    'frostedGlass',
+    'ui',
+  ],
+  automationAlerts: [
+    'globalHotkeys',
+    'entityAlerts',
+    'popupHotkey',
+    'popupHotkeyHideOnRelease',
+    'popupHotkeyToggleMode',
+  ],
+  connectionMediaPreferences: [
+    'selectedWeatherEntity',
+    'primaryMediaPlayer',
+  ],
+};
+const SYNC_SCOPE_SECTION_KEYS = Object.keys(SYNC_SCOPE_SECTION_FIELDS);
 
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -45,17 +54,88 @@ function stableStringify(value) {
   return JSON.stringify(value);
 }
 
-function projectSyncProfile(config) {
-  const source = isObject(config) ? config : {};
-  const profile = {};
+function normalizeScopePreset(value) {
+  if (typeof value !== 'string') return 'all';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'quickaccess') return 'quick_access';
+  if (!PROFILE_SYNC_SCOPE_PRESETS.has(normalized)) return 'all';
+  return normalized;
+}
 
-  if (isObject(source.homeAssistant)) {
-    profile.homeAssistant = {
-      url: source.homeAssistant.url || '',
+function buildAllScopeSections() {
+  return SYNC_SCOPE_SECTION_KEYS.reduce((acc, key) => {
+    acc[key] = true;
+    return acc;
+  }, {});
+}
+
+function resolveSectionsForPreset(preset, inputSections = {}) {
+  if (preset === 'all') {
+    return buildAllScopeSections();
+  }
+
+  if (preset === 'visual') {
+    return {
+      quickAccessLayout: false,
+      visualPersonalization: true,
+      automationAlerts: false,
+      connectionMediaPreferences: false,
     };
   }
 
-  SYNCED_TOP_LEVEL_FIELDS.forEach((field) => {
+  if (preset === 'quick_access') {
+    return {
+      quickAccessLayout: true,
+      visualPersonalization: false,
+      automationAlerts: false,
+      connectionMediaPreferences: false,
+    };
+  }
+
+  const sections = {};
+  SYNC_SCOPE_SECTION_KEYS.forEach((key) => {
+    sections[key] = !!inputSections[key];
+  });
+  return sections;
+}
+
+function getDefaultSyncScope() {
+  return {
+    preset: 'all',
+    sections: buildAllScopeSections(),
+  };
+}
+
+function normalizeSyncScope(inputScope) {
+  if (!isObject(inputScope)) {
+    return getDefaultSyncScope();
+  }
+
+  const preset = normalizeScopePreset(inputScope.preset);
+  const providedSections = isObject(inputScope.sections) ? inputScope.sections : {};
+
+  return {
+    preset,
+    sections: resolveSectionsForPreset(preset, providedSections),
+  };
+}
+
+function getSyncedFieldsForScope(scope) {
+  const normalizedScope = normalizeSyncScope(scope);
+  const fields = [];
+  SYNC_SCOPE_SECTION_KEYS.forEach((sectionKey) => {
+    if (!normalizedScope.sections[sectionKey]) return;
+    fields.push(...SYNC_SCOPE_SECTION_FIELDS[sectionKey]);
+  });
+  return fields;
+}
+
+function projectSyncProfile(config, syncScope = getDefaultSyncScope()) {
+  const source = isObject(config) ? config : {};
+  const normalizedScope = normalizeSyncScope(syncScope);
+  const profile = {};
+
+  getSyncedFieldsForScope(normalizedScope).forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(source, field)) {
       profile[field] = deepClone(source[field]);
     }
@@ -64,18 +144,11 @@ function projectSyncProfile(config) {
   return profile;
 }
 
-function mergeSyncedProfileIntoConfig(baseConfig, syncedProfile) {
+function mergeSyncedProfileIntoConfig(baseConfig, syncedProfile, syncScope = getDefaultSyncScope()) {
   const target = isObject(baseConfig) ? deepClone(baseConfig) : {};
   const incoming = isObject(syncedProfile) ? syncedProfile : {};
-
-  if (isObject(incoming.homeAssistant)) {
-    target.homeAssistant = target.homeAssistant || {};
-    if (typeof incoming.homeAssistant.url === 'string') {
-      target.homeAssistant.url = incoming.homeAssistant.url;
-    }
-  }
-
-  SYNCED_TOP_LEVEL_FIELDS.forEach((field) => {
+  const normalizedScope = normalizeSyncScope(syncScope);
+  getSyncedFieldsForScope(normalizedScope).forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(incoming, field)) {
       target[field] = deepClone(incoming[field]);
     }
@@ -157,17 +230,26 @@ function decryptProfilePayload(payload, passphrase) {
   return parsed;
 }
 
-function buildSyncEnvelope({ profile, updatedAt, updatedByDeviceId, encrypt = false, passphrase = '' }) {
+function buildSyncEnvelope({
+  profile,
+  updatedAt,
+  updatedByDeviceId,
+  syncScope = getDefaultSyncScope(),
+  encrypt = false,
+  passphrase = '',
+}) {
   if (!isObject(profile)) {
     throw new Error('Profile payload must be an object');
   }
 
   const normalizedUpdatedAt = updatedAt || new Date().toISOString();
+  const normalizedScope = normalizeSyncScope(syncScope);
 
   return {
     schemaVersion: SYNC_SCHEMA_VERSION,
     updatedAt: normalizedUpdatedAt,
     updatedByDeviceId: updatedByDeviceId || 'unknown-device',
+    syncScope: normalizedScope,
     payload: encrypt
       ? encryptProfilePayload(profile, passphrase)
       : deepClone(profile),
@@ -185,6 +267,12 @@ function validateEnvelopeShape(envelope) {
 
   if (envelope.schemaVersion > SYNC_SCHEMA_VERSION) {
     throw new Error(`Unsupported sync schemaVersion ${envelope.schemaVersion}`);
+  }
+  if (envelope.schemaVersion >= 2) {
+    if (!isObject(envelope.syncScope)) {
+      throw new Error('Sync envelope is missing syncScope');
+    }
+    normalizeSyncScope(envelope.syncScope);
   }
 
   if (typeof envelope.updatedAt !== 'string' || Number.isNaN(Date.parse(envelope.updatedAt))) {
@@ -233,6 +321,14 @@ function decodeEnvelopeProfile(envelope, passphrase) {
   return deepClone(envelope.payload);
 }
 
+function extractSyncScopeFromEnvelope(envelope) {
+  validateEnvelopeShape(envelope);
+  if (envelope.schemaVersion >= 2 && isObject(envelope.syncScope)) {
+    return normalizeSyncScope(envelope.syncScope);
+  }
+  return getDefaultSyncScope();
+}
+
 function chooseSyncDirection({ localUpdatedAt, remoteUpdatedAt, remoteExists }) {
   if (!remoteExists) {
     return 'push';
@@ -248,6 +344,9 @@ function chooseSyncDirection({ localUpdatedAt, remoteUpdatedAt, remoteExists }) 
 
 module.exports = {
   SYNC_SCHEMA_VERSION,
+  SYNC_SCOPE_SECTION_FIELDS,
+  getDefaultSyncScope,
+  normalizeSyncScope,
   projectSyncProfile,
   mergeSyncedProfileIntoConfig,
   computeProfileHash,
@@ -258,5 +357,6 @@ module.exports = {
   parseSyncEnvelope,
   serializeSyncEnvelope,
   decodeEnvelopeProfile,
+  extractSyncScopeFromEnvelope,
   chooseSyncDirection,
 };

@@ -86,7 +86,7 @@
  * @property {Object.<string, string>} [customEntityIcons] - Custom icon glyphs per entity ID
  * @property {Object} [customTabs] - Custom tab configurations
  * @property {Object} [ui] - UI preferences (theme, accent, background, section collapse states, etc.)
- * @property {Object} [profileSync] - Profile sync preferences/state (provider, file path, encryption, last status)
+ * @property {Object} [profileSync] - Profile sync preferences/state (provider, file path, scope, encryption, last status)
  */
 
 /**

@@ -79,6 +79,15 @@ const sampleConfig = {
     enabled: false,
     provider: 'cloudFile',
     cloudFilePath: '',
+    syncScope: {
+      preset: 'all',
+      sections: {
+        quickAccessLayout: true,
+        visualPersonalization: true,
+        automationAlerts: true,
+        connectionMediaPreferences: true
+      }
+    },
     intervalMinutes: 5,
     encryptionEnabled: false,
     rememberPassphrase: false,
