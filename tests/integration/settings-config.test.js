@@ -1263,7 +1263,7 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Profile Sync Settings', () => {
-    test('openSettings hydrates profile sync controls and status', async () => {
+    test('should hydrate profile sync controls and status', async () => {
       const config = state.CONFIG;
       config.profileSync = {
         enabled: true,
@@ -1320,7 +1320,7 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('profile-sync-status').textContent).toContain('Status: success');
     });
 
-    test('saveSettings persists profile sync config and passphrase', async () => {
+    test('should persist profile sync config and passphrase', async () => {
       await settings.openSettings();
 
       document.getElementById('profile-sync-enabled').checked = true;
@@ -1359,7 +1359,7 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
     });
 
-    test('choose sync folder forwards selected provider', async () => {
+    test('should forward selected provider when choosing sync folder', async () => {
       await settings.openSettings();
 
       document.getElementById('profile-sync-provider').value = 'syncthing';
@@ -1369,7 +1369,7 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith('syncthing');
     });
 
-    test('need help button opens profile sync instructions', async () => {
+    test('should open profile sync instructions from need help button', async () => {
       await settings.openSettings();
 
       document.getElementById('profile-sync-help-btn').click();
@@ -1380,7 +1380,7 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('saveSettings persists syncthing provider selection', async () => {
+    test('should persist syncthing provider selection', async () => {
       await settings.openSettings();
 
       document.getElementById('profile-sync-enabled').checked = true;
@@ -1400,7 +1400,7 @@ describe('Settings + Config Integration', () => {
       }));
     });
 
-    test('openSettings uses status cloud file path when config path is empty', async () => {
+    test('should use status cloud file path when config path is empty', async () => {
       const config = state.CONFIG;
       config.profileSync = {
         enabled: true,
@@ -1432,7 +1432,7 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('profile-sync-folder-path').value).toBe('/tmp/default-sync');
     });
 
-    test('folder change can keep current path without copying', async () => {
+    test('should keep current path without copying when folder change is canceled', async () => {
       const config = state.CONFIG;
       config.profileSync = {
         ...config.profileSync,
@@ -1454,7 +1454,7 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.copyProfileSyncFile).not.toHaveBeenCalled();
     });
 
-    test('folder change copies sync file when user confirms', async () => {
+    test('should copy sync file when user confirms folder change', async () => {
       const config = state.CONFIG;
       config.profileSync = {
         ...config.profileSync,
@@ -1486,7 +1486,7 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/new-sync/ha-widget-profile-sync.json');
     });
 
-    test('folder change prompts overwrite when destination exists', async () => {
+    test('should prompt overwrite when destination exists on folder change', async () => {
       const config = state.CONFIG;
       config.profileSync = {
         ...config.profileSync,

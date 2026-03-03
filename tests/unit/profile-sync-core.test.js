@@ -17,7 +17,7 @@ const {
 } = require('../../profile-sync-core.js');
 
 describe('profile-sync-core', () => {
-  test('projectSyncProfile excludes local-only fields while syncing all sections by default', () => {
+  test('should exclude local-only fields while syncing all sections by default', () => {
     const projected = projectSyncProfile({
       homeAssistant: { url: 'http://ha.local:8123', token: 'secret' },
       windowPosition: { x: 10, y: 12 },
@@ -36,7 +36,7 @@ describe('profile-sync-core', () => {
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
   });
 
-  test('projectSyncProfile respects custom sync scope filtering', () => {
+  test('should respect custom sync scope filtering', () => {
     const projected = projectSyncProfile(
       {
         favoriteEntities: ['light.kitchen'],
@@ -61,7 +61,7 @@ describe('profile-sync-core', () => {
     expect(projected.globalHotkeys).toBeUndefined();
   });
 
-  test('mergeSyncedProfileIntoConfig preserves local-only fields and scope exclusions', () => {
+  test('should preserve local-only fields and scope exclusions when merging synced profile', () => {
     const merged = mergeSyncedProfileIntoConfig(
       {
         homeAssistant: { url: 'http://old', token: 'keep-me' },
@@ -94,13 +94,78 @@ describe('profile-sync-core', () => {
     expect(merged.favoriteEntities).toEqual(['light.remote']);
   });
 
-  test('computeProfileHash is stable for semantically identical objects', () => {
+  test('should handle nullish and missing profile fields in projection and merge helpers', () => {
+    expect(projectSyncProfile(null)).toEqual({});
+    expect(projectSyncProfile(undefined)).toEqual({});
+
+    const mergedFromNullProfile = mergeSyncedProfileIntoConfig(
+      {
+        homeAssistant: { url: 'http://local', token: 'local-token' },
+        windowPosition: { x: 2, y: 3 },
+        favoriteEntities: ['light.local'],
+      },
+      null
+    );
+    expect(mergedFromNullProfile.homeAssistant).toEqual({ url: 'http://local', token: 'local-token' });
+    expect(mergedFromNullProfile.windowPosition).toEqual({ x: 2, y: 3 });
+    expect(mergedFromNullProfile.favoriteEntities).toEqual(['light.local']);
+
+    const mergedWithMissingSyncedFields = mergeSyncedProfileIntoConfig(
+      {
+        homeAssistant: { url: 'http://local' },
+        favoriteEntities: ['light.local'],
+        alwaysOnTop: true,
+      },
+      {
+        favoriteEntities: ['light.remote'],
+      }
+    );
+    expect(mergedWithMissingSyncedFields.homeAssistant).toEqual({ url: 'http://local' });
+    expect(mergedWithMissingSyncedFields.favoriteEntities).toEqual(['light.remote']);
+    expect(mergedWithMissingSyncedFields.alwaysOnTop).toBe(true);
+  });
+
+  test('should normalize scope defaults and extraction for undefined, missing, and empty sections', () => {
+    expect(normalizeSyncScope(undefined)).toEqual(getDefaultSyncScope());
+    expect(normalizeSyncScope({})).toEqual(getDefaultSyncScope());
+
+    const customWithoutSections = normalizeSyncScope({ preset: 'custom' });
+    expect(customWithoutSections).toEqual({
+      preset: 'custom',
+      sections: {
+        quickAccessLayout: false,
+        visualPersonalization: false,
+        automationAlerts: false,
+        connectionMediaPreferences: false,
+      },
+    });
+
+    const envelopeWithEmptyScope = {
+      schemaVersion: 2,
+      updatedAt: '2026-02-23T08:00:00.000Z',
+      updatedByDeviceId: 'device-a',
+      syncScope: {},
+      payload: {},
+    };
+    expect(extractSyncScopeFromEnvelope(envelopeWithEmptyScope)).toEqual(getDefaultSyncScope());
+
+    const envelopeWithMissingCustomSections = {
+      schemaVersion: 2,
+      updatedAt: '2026-02-23T08:00:00.000Z',
+      updatedByDeviceId: 'device-a',
+      syncScope: { preset: 'custom' },
+      payload: {},
+    };
+    expect(extractSyncScopeFromEnvelope(envelopeWithMissingCustomSections)).toEqual(customWithoutSections);
+  });
+
+  test('should produce a stable hash for semantically identical objects', () => {
     const hashA = computeProfileHash({ a: 1, b: { c: 2, d: 3 } });
     const hashB = computeProfileHash({ b: { d: 3, c: 2 }, a: 1 });
     expect(hashA).toBe(hashB);
   });
 
-  test('encrypted envelope can be round-tripped with passphrase', () => {
+  test('should round-trip encrypted envelope with passphrase', () => {
     const profile = {
       favoriteEntities: ['light.office'],
     };
@@ -132,7 +197,7 @@ describe('profile-sync-core', () => {
     expect(decodedScope).toEqual(scope);
   });
 
-  test('encrypted envelope decode fails with wrong passphrase', () => {
+  test('should fail to decode encrypted envelope with wrong passphrase', () => {
     const envelope = buildSyncEnvelope({
       profile: { alwaysOnTop: true },
       updatedByDeviceId: 'device-a',
@@ -143,7 +208,50 @@ describe('profile-sync-core', () => {
     expect(() => decodeEnvelopeProfile(envelope, 'wrong-passphrase')).toThrow('Failed to decrypt synced profile payload');
   });
 
-  test('compareIsoTimestamps and direction chooser prefer newer side', () => {
+  test('should fail gracefully when parsing malformed JSON and invalid v1 envelopes', () => {
+    expect(() => parseSyncEnvelope('{not-json')).toThrow('Sync file is not valid JSON');
+
+    const missingUpdatedAt = JSON.stringify({
+      schemaVersion: 1,
+      updatedByDeviceId: 'legacy-device',
+      payload: { alwaysOnTop: true },
+    });
+    expect(() => parseSyncEnvelope(missingUpdatedAt)).toThrow('Sync envelope has invalid updatedAt');
+
+    const missingUpdatedByDeviceId = JSON.stringify({
+      schemaVersion: 1,
+      updatedAt: '2026-02-23T08:00:00.000Z',
+      payload: { alwaysOnTop: true },
+    });
+    expect(() => parseSyncEnvelope(missingUpdatedByDeviceId)).toThrow('Sync envelope has invalid updatedByDeviceId');
+  });
+
+  test('should validate decode behavior for missing passphrase and invalid payload fields', () => {
+    const encryptedEnvelope = buildSyncEnvelope({
+      profile: { alwaysOnTop: true },
+      updatedByDeviceId: 'device-a',
+      encrypt: true,
+      passphrase: 'correct-passphrase',
+    });
+
+    expect(() => decodeEnvelopeProfile(encryptedEnvelope)).toThrow('Passphrase is required to decrypt profile payload');
+    expect(() => decodeEnvelopeProfile(encryptedEnvelope, '')).toThrow('Passphrase is required to decrypt profile payload');
+
+    const envelopeWithEmptyPayload = {
+      schemaVersion: 2,
+      updatedAt: '2026-02-23T08:00:00.000Z',
+      updatedByDeviceId: 'device-a',
+      syncScope: getDefaultSyncScope(),
+      payload: '',
+    };
+    expect(() => decodeEnvelopeProfile(envelopeWithEmptyPayload)).toThrow('Sync payload must be an object');
+
+    const encryptedEnvelopeMissingCiphertext = JSON.parse(JSON.stringify(encryptedEnvelope));
+    encryptedEnvelopeMissingCiphertext.payload.ciphertext = '';
+    expect(() => decodeEnvelopeProfile(encryptedEnvelopeMissingCiphertext, 'correct-passphrase')).toThrow('Failed to decrypt synced profile payload');
+  });
+
+  test('should prefer newer side in timestamp comparison and choose direction', () => {
     expect(compareIsoTimestamps('2026-02-23T10:00:00.000Z', '2026-02-23T09:00:00.000Z')).toBe(1);
     expect(compareIsoTimestamps('2026-02-23T09:00:00.000Z', '2026-02-23T10:00:00.000Z')).toBe(-1);
     expect(compareIsoTimestamps('2026-02-23T10:00:00.000Z', '2026-02-23T10:00:00.000Z')).toBe(0);
@@ -153,7 +261,19 @@ describe('profile-sync-core', () => {
     expect(chooseSyncDirection({ localUpdatedAt: '2026-02-23T09:00:00.000Z', remoteUpdatedAt: null, remoteExists: false })).toBe('push');
   });
 
-  test('v1 envelopes parse and default to all sync scope', () => {
+  test('should handle null, invalid, and empty timestamp inputs consistently', () => {
+    expect(compareIsoTimestamps(null, null)).toBe(0);
+    expect(compareIsoTimestamps('', '')).toBe(0);
+    expect(compareIsoTimestamps('invalid', '2026-02-23T10:00:00.000Z')).toBe(-1);
+    expect(compareIsoTimestamps('2026-02-23T10:00:00.000Z', 'invalid')).toBe(1);
+
+    expect(chooseSyncDirection({ localUpdatedAt: 'invalid', remoteUpdatedAt: '2026-02-23T10:00:00.000Z', remoteExists: true })).toBe('pull');
+    expect(chooseSyncDirection({ localUpdatedAt: '2026-02-23T10:00:00.000Z', remoteUpdatedAt: 'invalid', remoteExists: true })).toBe('push');
+    expect(chooseSyncDirection({ localUpdatedAt: '', remoteUpdatedAt: null, remoteExists: true })).toBe('none');
+    expect(chooseSyncDirection({ localUpdatedAt: null, remoteUpdatedAt: 'invalid', remoteExists: false })).toBe('push');
+  });
+
+  test('should parse v1 envelopes and default to all sync scope', () => {
     const legacyEnvelope = {
       schemaVersion: 1,
       updatedAt: '2026-02-23T08:00:00.000Z',

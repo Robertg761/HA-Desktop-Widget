@@ -2345,7 +2345,7 @@ function setProfileSyncSettingsVisibility() {
   settingsContainer.classList.toggle('hidden', !enabledCheckbox.checked);
 }
 
-function updateProfileSyncStatusUi(status) {
+function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   if (!status || typeof status !== 'object') return;
   profileSyncStatusCache = status;
 
@@ -2357,10 +2357,10 @@ function updateProfileSyncStatusUi(status) {
   const passphraseHint = document.getElementById('profile-sync-passphrase-group');
   const folderInput = document.getElementById('profile-sync-folder-path');
 
-  if (enabledCheckbox) {
+  if (syncFormState && enabledCheckbox) {
     enabledCheckbox.checked = !!status.enabled;
   }
-  if (settingsContainer) {
+  if (syncFormState && settingsContainer) {
     settingsContainer.classList.toggle('hidden', !status.enabled);
   }
 
@@ -2393,11 +2393,11 @@ function updateProfileSyncStatusUi(status) {
   }
 }
 
-async function refreshProfileSyncStatusUi() {
+async function refreshProfileSyncStatusUi(options = {}) {
   if (!window.electronAPI?.getProfileSyncStatus) return;
   try {
     const status = await window.electronAPI.getProfileSyncStatus();
-    updateProfileSyncStatusUi(status);
+    updateProfileSyncStatusUi(status, options);
   } catch (error) {
     log.error('Failed to refresh profile sync status:', error);
   }
@@ -2631,7 +2631,14 @@ function bindProfileSyncSettingsUi() {
         { confirmText: 'Clear', confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
-      await window.electronAPI.clearProfileSyncPassphrase();
+      try {
+        await window.electronAPI.clearProfileSyncPassphrase();
+      } catch (error) {
+        log.error('Failed to clear saved profile sync passphrase:', error);
+        showToast(`Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`, 'error', 3400);
+        return;
+      }
+
       const passphraseInput = document.getElementById('profile-sync-passphrase');
       const remember = document.getElementById('profile-sync-remember-passphrase');
       if (passphraseInput) passphraseInput.value = '';
@@ -2719,7 +2726,7 @@ async function openSettings(uiHooks) {
 
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
-    await refreshProfileSyncStatusUi();
+    await refreshProfileSyncStatusUi({ syncFormState: true });
 
     // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
@@ -3066,7 +3073,7 @@ async function saveSettings() {
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
       const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
       const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
-      if (!typedPassphrase && !hasSavedPassphrase && !prevProfileSync.rememberPassphrase) {
+      if (!typedPassphrase && !hasSavedPassphrase && !nextProfileSync.rememberPassphrase) {
         showToast('Enter a passphrase or remember one before enabling encrypted sync.', 'error', 3400);
         return;
       }
@@ -3101,7 +3108,7 @@ async function saveSettings() {
       await window.electronAPI.clearProfileSyncPassphrase();
     }
 
-    await refreshProfileSyncStatusUi();
+    await refreshProfileSyncStatusUi({ syncFormState: true });
 
     // Apply opacity immediately
     if (opacitySlider) {

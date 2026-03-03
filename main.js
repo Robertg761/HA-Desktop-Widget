@@ -182,8 +182,7 @@ function normalizeProfileSyncProvider(provider) {
   return provider.trim();
 }
 
-function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
-  void provider;
+function getDefaultProfileSyncFolderPath(_provider, existingPath = '') {
   if (existingPath) {
     const existingFolder = path.dirname(existingPath);
     if (existingFolder && existingFolder !== '.') {
@@ -315,7 +314,6 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
     if (typeof nextConfig?.opacity === 'number' && previousConfig?.opacity !== nextConfig.opacity) {
       const safeOpacity = Math.max(0.5, Math.min(1, nextConfig.opacity));
       mainWindow.setOpacity(safeOpacity);
-      nextConfig.opacity = safeOpacity;
     }
   } catch (error) {
     log.warn('Failed to apply opacity update from sync:', error.message);
