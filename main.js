@@ -1263,6 +1263,7 @@ async function initializeProfileSyncOnStartup() {
   setupProfileSyncInterval();
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
 
   try {
     await runProfileSync('pull', 'startup');
@@ -1554,7 +1555,6 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   const prevConfig = config;
   const prevSyncEnabled = !!config?.profileSync?.enabled;
   pruneConfig(newConfig);
-  ensureProfileSyncConfigDefaults(newConfig);
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
   config = { ...config, ...newConfig, customTabs, profileSync };
@@ -1569,7 +1569,10 @@ ipcMain.handle('update-config', async (event, newConfig) => {
     clearProfileSyncTimers();
   } else if (!prevSyncEnabled && syncEnabled) {
     try {
-      await prepareProfileSyncFirstEnableResolution();
+      const resolution = await prepareProfileSyncFirstEnableResolution();
+      if (!resolution?.needsResolution) {
+        setupProfileSyncInterval();
+      }
     } catch (error) {
       updateProfileSyncStatus('error', error.message);
     }
