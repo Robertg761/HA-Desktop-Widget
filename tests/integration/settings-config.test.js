@@ -3,7 +3,7 @@
  */
 
 const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
-const { sampleStates, sampleConfig: _sampleConfig } = require('../fixtures/ha-data.js');
+const { sampleStates, sampleConfig } = require('../fixtures/ha-data.js');
 
 // Mock dependencies that settings.js requires
 const mockWebsocket = {
@@ -34,6 +34,13 @@ const BASE_THEMES = [
   },
 ];
 let mockCustomThemes = [];
+
+function buildProfileSyncConfig(overrides = {}) {
+  return {
+    ...(sampleConfig.profileSync || {}),
+    ...overrides,
+  };
+}
 
 function normalizeHex(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -1321,6 +1328,12 @@ describe('Settings + Config Integration', () => {
     });
 
     test('should persist profile sync config and passphrase', async () => {
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: true,
+        encrypted: true
+      });
+
       await settings.openSettings();
 
       document.getElementById('profile-sync-enabled').checked = true;
@@ -1357,6 +1370,54 @@ describe('Settings + Config Integration', () => {
         rememberPassphrase: true
       }));
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
+    });
+
+    test('should persist the passphrase before saving encrypted sync config', async () => {
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: true,
+        encrypted: true
+      });
+
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'persist-first';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+
+      await settings.saveSettings();
+
+      expect(mockElectronAPI.setProfileSyncPassphrase.mock.invocationCallOrder[0])
+        .toBeLessThan(mockElectronAPI.updateConfig.mock.invocationCallOrder[0]);
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        rememberPassphrase: true,
+        passphraseEncrypted: true
+      }));
+    });
+
+    test('should fall back to session-only passphrase storage when remember is unavailable', async () => {
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: false,
+        encrypted: false
+      });
+
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'session-only';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        rememberPassphrase: false,
+        passphraseEncrypted: false
+      }));
     });
 
     test('should forward selected provider when choosing sync folder', async () => {
@@ -1400,16 +1461,29 @@ describe('Settings + Config Integration', () => {
       }));
     });
 
+    test('should coerce invalid sync intervals back to the default', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-interval').value = '-10';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync.intervalMinutes).toBe(5);
+    });
+
     test('should use status cloud file path when config path is empty', async () => {
       const config = state.CONFIG;
-      config.profileSync = {
+      config.profileSync = buildProfileSyncConfig({
         enabled: true,
         provider: 'cloudFile',
         cloudFilePath: '',
         intervalMinutes: 5,
         encryptionEnabled: false,
         rememberPassphrase: false
-      };
+      });
       state.setConfig(config);
       mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce({
         enabled: true,
@@ -1430,6 +1504,18 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings();
 
       expect(document.getElementById('profile-sync-folder-path').value).toBe('/tmp/default-sync');
+    });
+
+    test('should preserve root folders when building the sync file path', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/ha-widget-profile-sync.json');
     });
 
     test('should keep current path without copying when folder change is canceled', async () => {

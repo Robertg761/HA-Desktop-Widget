@@ -398,6 +398,7 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
     return { remembered: false, encrypted: false };
   }
 
+  const hadPersistedPassphrase = !!profileSync.storedPassphrase || profileSync.rememberPassphrase || profileSync.passphraseEncrypted;
   profileSync.rememberPassphrase = true;
   profileSyncRuntime.passphraseSession = passphrase || '';
   profileSyncRuntime.passphraseWarning = '';
@@ -414,11 +415,14 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
     }
   }
 
-  profileSync.storedPassphrase = passphrase || '';
+  profileSync.rememberPassphrase = false;
   profileSync.passphraseEncrypted = false;
-  profileSyncRuntime.passphraseWarning = 'Passphrase is saved locally without OS encryption support.';
-  saveConfig();
-  return { remembered: true, encrypted: false };
+  profileSync.storedPassphrase = '';
+  profileSyncRuntime.passphraseWarning = 'Passphrase will only be kept for this session because OS encryption is unavailable.';
+  if (hadPersistedPassphrase) {
+    saveConfig();
+  }
+  return { remembered: false, encrypted: false };
 }
 
 function getActiveProfileSyncPassphrase() {
@@ -496,14 +500,16 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
 
     const destinationDir = path.dirname(destinationPath);
     await fs.promises.mkdir(destinationDir, { recursive: true });
-
-    const destinationExists = fs.existsSync(destinationPath);
-    if (destinationExists && !overwrite) {
-      return { ok: false, status: 'destination_exists' };
+    try {
+      const copyFlags = overwrite ? 0 : fs.constants.COPYFILE_EXCL;
+      await fs.promises.copyFile(sourcePath, destinationPath, copyFlags);
+      return { ok: true, status: 'copied', copied: true, overwritten: overwrite };
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        return { ok: false, status: 'destination_exists' };
+      }
+      throw error;
     }
-
-    await fs.promises.copyFile(sourcePath, destinationPath);
-    return { ok: true, status: 'copied', copied: true, overwritten: destinationExists };
   } catch (error) {
     return { ok: false, status: 'error', error: error?.message || String(error) };
   }
@@ -1546,7 +1552,6 @@ ipcMain.handle('get-config', () => {
 ipcMain.handle('update-config', async (event, newConfig) => {
   log.debug('Updating configuration');
   const prevConfig = config;
-  const prevFrostedGlass = config?.frostedGlass;
   const prevSyncEnabled = !!config?.profileSync?.enabled;
   pruneConfig(newConfig);
   ensureProfileSyncConfigDefaults(newConfig);
@@ -1555,10 +1560,6 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   config = { ...config, ...newConfig, customTabs, profileSync };
   ensureProfileSyncConfigDefaults(config);
   pruneConfig(config);
-  if (prevFrostedGlass !== config.frostedGlass) {
-    applyFrostedGlass();
-  }
-
   applyMainWindowSettingSideEffects(prevConfig, config);
 
   const syncEnabled = !!config.profileSync?.enabled;
@@ -2586,7 +2587,6 @@ app.whenReady().then(async () => {
   }
 
   loadConfig();
-  await initializeProfileSyncOnStartup();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
   try {
@@ -2717,6 +2717,9 @@ app.whenReady().then(async () => {
   registerGlobalHotkeys();
   setupEntityAlerts();
   registerPopupHotkey();
+  void initializeProfileSyncOnStartup().catch((error) => {
+    log.warn('Profile sync startup initialization failed:', error.message);
+  });
 });
 
 app.on('window-all-closed', () => {

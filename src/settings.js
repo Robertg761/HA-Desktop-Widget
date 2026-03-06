@@ -2300,7 +2300,12 @@ function normalizeProfileSyncScope(input) {
 }
 
 function trimTrailingPathSeparators(value) {
-  return String(value || '').replace(/[\\/]+$/, '');
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\/+$/.test(raw)) return '/';
+  if (/^\\+$/.test(raw)) return '\\';
+  if (/^[A-Za-z]:[\\/]+$/.test(raw)) return `${raw.slice(0, 2)}\\`;
+  return raw.replace(/[\\/]+$/, '');
 }
 
 function deriveProfileSyncFolderPath(filePath) {
@@ -2316,9 +2321,11 @@ function deriveProfileSyncFolderPath(filePath) {
 }
 
 function buildProfileSyncFilePathFromFolder(folderPath) {
-  const normalizedFolder = trimTrailingPathSeparators(String(folderPath || '').trim());
+  const normalizedFolder = trimTrailingPathSeparators(folderPath);
   if (!normalizedFolder) return '';
-  const separator = normalizedFolder.includes('\\') ? '\\' : '/';
+  const separator = /[\\/]$/.test(normalizedFolder)
+    ? ''
+    : (normalizedFolder.includes('\\') ? '\\' : '/');
   return `${normalizedFolder}${separator}${PROFILE_SYNC_DEFAULT_FILE_NAME}`;
 }
 
@@ -3005,9 +3012,11 @@ async function saveSettings() {
     const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
     nextProfileSync.cloudFilePath = buildProfileSyncFilePathFromFolder(syncFolderPath);
     nextProfileSync.syncScope = readProfileSyncScopeFromForm();
-    nextProfileSync.intervalMinutes = Number.parseInt(profileSyncInterval?.value || '5', 10) || 5;
+    const parsedIntervalMinutes = Number.parseInt(profileSyncInterval?.value || '5', 10);
+    nextProfileSync.intervalMinutes = parsedIntervalMinutes > 0 ? parsedIntervalMinutes : 5;
     nextProfileSync.encryptionEnabled = !!profileSyncEncryptionEnabled?.checked;
-    nextProfileSync.rememberPassphrase = !!profileSyncRememberPassphrase?.checked;
+    nextProfileSync.rememberPassphrase = nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
+    nextProfileSync.passphraseEncrypted = false;
 
     if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
       showToast('Choose a sync folder before enabling profile sync.', 'error', 3200);
@@ -3070,12 +3079,36 @@ async function saveSettings() {
       }
     }
 
+    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
+    const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
-      const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
-      const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
-      if (!typedPassphrase && !hasSavedPassphrase && !nextProfileSync.rememberPassphrase) {
-        showToast('Enter a passphrase or remember one before enabling encrypted sync.', 'error', 3400);
+      const canReuseSavedPassphrase = hasSavedPassphrase && nextProfileSync.rememberPassphrase;
+      if (!typedPassphrase && !canReuseSavedPassphrase) {
+        showToast('Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.', 'error', 3400);
         return;
+      }
+
+      if (typedPassphrase) {
+        if (!window.electronAPI?.setProfileSyncPassphrase) {
+          showToast('This build cannot save a sync passphrase.', 'error', 3400);
+          return;
+        }
+
+        const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
+          typedPassphrase,
+          !!nextProfileSync.rememberPassphrase
+        );
+        if (!passphraseResult?.success) {
+          showToast(passphraseResult?.error || 'Failed to save sync passphrase.', 'error', 3600);
+          return;
+        }
+
+        if (typeof passphraseResult.remembered === 'boolean') {
+          nextProfileSync.rememberPassphrase = passphraseResult.remembered;
+        }
+        nextProfileSync.passphraseEncrypted = !!passphraseResult.encrypted;
+      } else {
+        nextProfileSync.passphraseEncrypted = !!profileSyncStatusCache?.passphraseEncrypted;
       }
     }
 
@@ -3088,23 +3121,7 @@ async function saveSettings() {
       state.setConfig(updatedConfig);
     }
 
-    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
-    if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled && typedPassphrase && window.electronAPI?.setProfileSyncPassphrase) {
-      const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
-        typedPassphrase,
-        !!nextProfileSync.rememberPassphrase
-      );
-      if (!passphraseResult?.success) {
-        showToast(passphraseResult?.error || 'Failed to save sync passphrase.', 'error', 3600);
-      }
-    } else if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
-      await window.electronAPI.clearProfileSyncPassphrase();
-    } else if (
-      nextProfileSync.encryptionEnabled &&
-      !nextProfileSync.rememberPassphrase &&
-      prevProfileSync.rememberPassphrase &&
-      window.electronAPI?.clearProfileSyncPassphrase
-    ) {
+    if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
       await window.electronAPI.clearProfileSyncPassphrase();
     }
 
