@@ -137,6 +137,105 @@
                             Start with Windows
                         </label>
                     </div>
+                    <div class="form-group profile-sync-group">
+                        <label>
+                            <input type="checkbox" id="profile-sync-enabled">
+                            Enable Profile Sync (Opt-in)
+                        </label>
+                        <p class="help-text">Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar.</p>
+                        <p class="help-text profile-sync-warning">
+                            <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please
+                            report bugs in the <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener noreferrer">Issues section</a>.
+                        </p>
+
+                        <div id="profile-sync-settings" class="profile-sync-settings hidden">
+                            <div class="form-group">
+                                <label for="profile-sync-provider">Sync Provider</label>
+                                <select id="profile-sync-provider">
+                                    <option value="cloudFile">Cloud Folder File (Free)</option>
+                                    <option value="googleDrive">Google Drive</option>
+                                    <option value="icloudDrive">iCloud Drive</option>
+                                    <option value="syncthing">Syncthing</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="profile-sync-folder-path">Sync Folder</label>
+                                <div class="profile-sync-file-row">
+                                    <input type="text" id="profile-sync-folder-path" class="form-control" placeholder="Choose a synced folder..." readonly>
+                                    <button type="button" id="profile-sync-choose-folder" class="btn btn-secondary btn-small">Choose Folder...</button>
+                                </div>
+                                <p class="help-text">Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync.</p>
+                            </div>
+                            <div class="form-group profile-sync-scope-group">
+                                <label for="profile-sync-scope-preset">Sync Scope</label>
+                                <select id="profile-sync-scope-preset">
+                                    <option value="all">All Syncable Settings</option>
+                                    <option value="visual">Visual Personalization Only</option>
+                                    <option value="quick_access">Quick Access/Layout Only</option>
+                                    <option value="custom">Custom (Advanced)</option>
+                                </select>
+                                <div id="profile-sync-scope-advanced" class="profile-sync-scope-advanced hidden">
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-quick-access-layout">
+                                        Quick Access/Layout (favorites, custom names/icons, tabs, primary cards)
+                                    </label>
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-visual-personalization">
+                                        Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)
+                                    </label>
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-automation-alerts">
+                                        Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)
+                                    </label>
+                                    <label class="profile-sync-scope-option">
+                                        <input type="checkbox" id="profile-sync-scope-connection-media-preferences">
+                                        Connection/Media Preferences (weather entity and primary media player)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <button type="button" id="profile-sync-help-btn" class="btn btn-secondary btn-small">Need Help?</button>
+                                <p class="help-text">Open setup instructions for profile sync.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="profile-sync-interval">Background Sync Interval</label>
+                                <select id="profile-sync-interval">
+                                    <option value="1">Every 1 minute</option>
+                                    <option value="5">Every 5 minutes</option>
+                                    <option value="15">Every 15 minutes</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="profile-sync-encryption-enabled">
+                                    Encrypt synced profile with passphrase
+                                </label>
+                            </div>
+                            <div class="form-group" id="profile-sync-passphrase-group">
+                                <label for="profile-sync-passphrase">Sync Passphrase</label>
+                                <input type="password" id="profile-sync-passphrase" placeholder="Enter passphrase (min 4 chars)">
+                                <label class="profile-sync-remember">
+                                    <input type="checkbox" id="profile-sync-remember-passphrase">
+                                    Remember passphrase on this device
+                                </label>
+                                <button type="button" id="profile-sync-clear-passphrase" class="btn btn-secondary btn-small">Clear Saved Passphrase</button>
+                            </div>
+                            <div class="form-group profile-sync-actions">
+                                <button type="button" id="profile-sync-pull-now" class="btn btn-secondary btn-small">Sync Down</button>
+                                <button type="button" id="profile-sync-push-now" class="btn btn-secondary btn-small">Sync Up</button>
+                            </div>
+                            <div class="form-group profile-sync-resolution hidden" id="profile-sync-resolution">
+                                <p class="help-text"><strong>First-time conflict:</strong> Both local and remote profiles have data.</p>
+                                <div class="profile-sync-resolution-actions">
+                                    <button type="button" id="profile-sync-resolve-upload" class="btn btn-primary btn-small">Keep Local (Upload)</button>
+                                    <button type="button" id="profile-sync-resolve-remote" class="btn btn-secondary btn-small">Use Remote (Download)</button>
+                                    <button type="button" id="profile-sync-resolve-cancel" class="btn btn-danger btn-small">Cancel Setup</button>
+                                </div>
+                            </div>
+                            <div id="profile-sync-status" class="help-text profile-sync-status">Status: Disabled</div>
+                            <div id="profile-sync-error" class="help-text profile-sync-error hidden"></div>
+                        </div>
+                    </div>
                     <div class="form-group update-section">
                         <label>Application Updates</label>
                         <div class="update-info">

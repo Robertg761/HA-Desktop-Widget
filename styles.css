@@ -4162,6 +4162,117 @@ body {
   box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
+.profile-sync-group {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.profile-sync-settings {
+  margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  padding: 12px;
+}
+
+.profile-sync-settings.hidden {
+  display: none;
+}
+
+.profile-sync-warning {
+  color: var(--warning);
+}
+
+.profile-sync-warning a {
+  color: var(--warning-hover);
+  text-decoration: underline;
+}
+
+.profile-sync-warning a:hover {
+  color: var(--warning);
+}
+
+.profile-sync-file-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.profile-sync-file-row input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.profile-sync-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.profile-sync-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-sync-scope-group {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: var(--surface-2);
+}
+
+.profile-sync-scope-advanced {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.profile-sync-scope-advanced.hidden {
+  display: none;
+}
+
+.profile-sync-scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.profile-sync-resolution {
+  border: 1px dashed rgba(var(--accent-rgb), 0.35);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.profile-sync-resolution.hidden {
+  display: none;
+}
+
+.profile-sync-resolution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-sync-status {
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.profile-sync-error {
+  color: var(--danger);
+}
+
+.profile-sync-error.hidden {
+  display: none;
+}
+
 /* Update section styles (from previous implementation) */
 .update-section {
   border-top: 1px solid var(--border-color);

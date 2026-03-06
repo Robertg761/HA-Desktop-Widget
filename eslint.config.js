@@ -26,7 +26,7 @@ module.exports = [
   },
   // Main process files (CommonJS)
   {
-    files: ['main.js', 'preload.js'],
+    files: ['main.js', 'preload.js', 'profile-sync-core.js'],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'script',

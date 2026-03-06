@@ -8,6 +8,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+  chooseProfileSyncFolder: (provider) => ipcRenderer.invoke('choose-profile-sync-folder', provider),
+  copyProfileSyncFile: (fromPath, toPath, overwrite = false) => ipcRenderer.invoke('copy-profile-sync-file', fromPath, toPath, overwrite),
+  getProfileSyncStatus: () => ipcRenderer.invoke('get-profile-sync-status'),
+  runProfileSync: (direction) => ipcRenderer.invoke('run-profile-sync', direction),
+  setProfileSyncPassphrase: (passphrase, remember) => ipcRenderer.invoke('set-profile-sync-passphrase', passphrase, remember),
+  clearProfileSyncPassphrase: () => ipcRenderer.invoke('clear-profile-sync-passphrase'),
+  resolveProfileSyncFirstEnable: (choice) => ipcRenderer.invoke('resolve-profile-sync-first-enable', choice),
 
   // Window operations
   setOpacity: (opacity) => ipcRenderer.invoke('set-opacity', opacity),
@@ -68,5 +75,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = () => callback();
     ipcRenderer.on('open-settings', handler);
     return () => ipcRenderer.removeListener('open-settings', handler);
+  },
+  onProfileSyncStatus: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('profile-sync-status', handler);
+    return () => ipcRenderer.removeListener('profile-sync-status', handler);
+  },
+  onConfigUpdated: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('config-updated', handler);
+    return () => ipcRenderer.removeListener('config-updated', handler);
   }
 });

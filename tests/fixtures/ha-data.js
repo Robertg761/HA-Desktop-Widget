@@ -74,7 +74,29 @@ const sampleConfig = {
       icon: '💡',
       entities: ['light.living_room', 'light.bedroom']
     }
-  ]
+  ],
+  profileSync: {
+    enabled: false,
+    provider: 'cloudFile',
+    cloudFilePath: '',
+    syncScope: {
+      preset: 'all',
+      sections: {
+        quickAccessLayout: true,
+        visualPersonalization: true,
+        automationAlerts: true,
+        connectionMediaPreferences: true
+      }
+    },
+    intervalMinutes: 5,
+    encryptionEnabled: false,
+    rememberPassphrase: false,
+    passphraseEncrypted: false,
+    lastSyncAt: null,
+    lastSyncStatus: 'idle',
+    lastSyncError: '',
+    deviceId: 'fixture-device-1'
+  }
 };
 
 /**

@@ -55,6 +55,7 @@ The Personalization tab covers themes, window effects, primary cards, and media 
 - **Alerts**: Desktop notifications for entity state changes
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
 - **Media Tile**: Choose a primary media player or hide the tile
+- **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
 
 ## Quick Start
 
@@ -124,8 +125,20 @@ npm run dist  # Build for distribution
   `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,
   `windowPosition`, `windowSize`, `opacity`, `ui` (theme, highContrast, opaquePanels, density, accent, background),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
-  `popupHotkeyHideOnRelease`, and `popupHotkeyToggleMode`.
+  `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, and `profileSync`.
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
+
+### Profile Sync (Opt-in)
+- **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
+- **Default sync folder**: Starts in the app's local data folder (`userData`) and stores profile data in `ha-widget-profile-sync.json`.
+- **Folder changes**: When switching folders, the app can copy the existing sync file to the new location or keep the current folder.
+- **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections.
+- **Need help button**: Opens profile sync setup instructions in your browser.
+- **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
+- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
+- **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation).
+- **Schema compatibility**: Sync writes use profile sync schema v2; older app versions must update to participate in sync.
+- **Local-only data**: Home Assistant URL/token, window position/size, startup setting, and profile-sync internals remain local.
 
 ## Troubleshooting
 

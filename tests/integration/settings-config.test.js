@@ -3,7 +3,7 @@
  */
 
 const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
-const { sampleStates, sampleConfig: _sampleConfig } = require('../fixtures/ha-data.js');
+const { sampleStates, sampleConfig } = require('../fixtures/ha-data.js');
 
 // Mock dependencies that settings.js requires
 const mockWebsocket = {
@@ -34,6 +34,13 @@ const BASE_THEMES = [
   },
 ];
 let mockCustomThemes = [];
+
+function buildProfileSyncConfig(overrides = {}) {
+  return {
+    ...(sampleConfig.profileSync || {}),
+    ...overrides,
+  };
+}
 
 function normalizeHex(hex) {
   if (!hex || typeof hex !== 'string') return null;
@@ -203,6 +210,59 @@ function createSettingsModalDOM() {
         <input type="checkbox" id="enable-interaction-debug-logs" />
         Enable interaction diagnostics logs
       </label>
+      <label for="profile-sync-enabled">
+        <input type="checkbox" id="profile-sync-enabled" />
+        Enable Profile Sync
+      </label>
+      <div id="profile-sync-settings" class="hidden">
+        <select id="profile-sync-provider">
+          <option value="cloudFile">Cloud Folder File</option>
+          <option value="googleDrive">Google Drive</option>
+          <option value="icloudDrive">iCloud Drive</option>
+          <option value="syncthing">Syncthing</option>
+        </select>
+        <input type="text" id="profile-sync-folder-path" />
+        <button type="button" id="profile-sync-choose-folder">Choose Folder</button>
+        <select id="profile-sync-scope-preset">
+          <option value="all">All Syncable Settings</option>
+          <option value="visual">Visual</option>
+          <option value="quick_access">Quick Access</option>
+          <option value="custom">Custom</option>
+        </select>
+        <div id="profile-sync-scope-advanced" class="hidden">
+          <label><input type="checkbox" id="profile-sync-scope-quick-access-layout" /></label>
+          <label><input type="checkbox" id="profile-sync-scope-visual-personalization" /></label>
+          <label><input type="checkbox" id="profile-sync-scope-automation-alerts" /></label>
+          <label><input type="checkbox" id="profile-sync-scope-connection-media-preferences" /></label>
+        </div>
+        <button type="button" id="profile-sync-help-btn">Need Help?</button>
+        <select id="profile-sync-interval">
+          <option value="1">1</option>
+          <option value="5" selected>5</option>
+          <option value="15">15</option>
+        </select>
+        <label for="profile-sync-encryption-enabled">
+          <input type="checkbox" id="profile-sync-encryption-enabled" />
+          Encrypt
+        </label>
+        <div id="profile-sync-passphrase-group" class="hidden">
+          <input type="password" id="profile-sync-passphrase" />
+          <label for="profile-sync-remember-passphrase">
+            <input type="checkbox" id="profile-sync-remember-passphrase" />
+            Remember
+          </label>
+          <button type="button" id="profile-sync-clear-passphrase">Clear Saved Passphrase</button>
+        </div>
+        <button type="button" id="profile-sync-pull-now">Sync Down</button>
+        <button type="button" id="profile-sync-push-now">Sync Up</button>
+        <div id="profile-sync-resolution" class="hidden">
+          <button type="button" id="profile-sync-resolve-upload">Keep Local</button>
+          <button type="button" id="profile-sync-resolve-remote">Use Remote</button>
+          <button type="button" id="profile-sync-resolve-cancel">Cancel</button>
+        </div>
+        <div id="profile-sync-status"></div>
+        <div id="profile-sync-error" class="hidden"></div>
+      </div>
 
       <div id="personalization-tab" class="tab-content">
         <div id="color-themes-section" class="personalization-section collapsed">
@@ -1206,6 +1266,348 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
         expect.objectContaining({ highContrast: true })
       );
+    });
+  });
+
+  describe('Profile Sync Settings', () => {
+    test('should hydrate profile sync controls and status', async () => {
+      const config = state.CONFIG;
+      config.profileSync = {
+        enabled: true,
+        provider: 'googleDrive',
+        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+        syncScope: {
+          preset: 'visual',
+          sections: {
+            quickAccessLayout: false,
+            visualPersonalization: true,
+            automationAlerts: false,
+            connectionMediaPreferences: false
+          }
+        },
+        intervalMinutes: 15,
+        encryptionEnabled: true,
+        rememberPassphrase: true
+      };
+      state.setConfig(config);
+
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce({
+        enabled: true,
+        provider: 'googleDrive',
+        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+        syncScope: {
+          preset: 'visual',
+          sections: {
+            quickAccessLayout: false,
+            visualPersonalization: true,
+            automationAlerts: false,
+            connectionMediaPreferences: false
+          }
+        },
+        intervalMinutes: 15,
+        encryptionEnabled: true,
+        rememberPassphrase: true,
+        passphraseEncrypted: true,
+        passphraseStored: true,
+        lastSyncAt: '2026-02-23T10:00:00.000Z',
+        lastSyncStatus: 'success',
+        lastSyncError: '',
+        needsResolution: false,
+        inFlight: false
+      });
+
+      await settings.openSettings();
+
+      expect(document.getElementById('profile-sync-enabled').checked).toBe(true);
+      expect(document.getElementById('profile-sync-provider').value).toBe('googleDrive');
+      expect(document.getElementById('profile-sync-folder-path').value).toBe('/tmp/shared-folder');
+      expect(document.getElementById('profile-sync-scope-preset').value).toBe('visual');
+      expect(document.getElementById('profile-sync-interval').value).toBe('15');
+      expect(document.getElementById('profile-sync-settings').classList.contains('hidden')).toBe(false);
+      expect(document.getElementById('profile-sync-status').textContent).toContain('Status: success');
+    });
+
+    test('should persist profile sync config and passphrase', async () => {
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: true,
+        encrypted: true
+      });
+
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-provider').value = 'icloudDrive';
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-interval').value = '5';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'abcd1234';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+      document.getElementById('profile-sync-scope-preset').value = 'custom';
+      document.getElementById('profile-sync-scope-preset').dispatchEvent(new Event('change'));
+      document.getElementById('profile-sync-scope-quick-access-layout').checked = true;
+      document.getElementById('profile-sync-scope-visual-personalization').checked = false;
+      document.getElementById('profile-sync-scope-automation-alerts').checked = false;
+      document.getElementById('profile-sync-scope-connection-media-preferences').checked = true;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        enabled: true,
+        provider: 'icloudDrive',
+        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+        syncScope: {
+          preset: 'custom',
+          sections: {
+            quickAccessLayout: true,
+            visualPersonalization: false,
+            automationAlerts: false,
+            connectionMediaPreferences: true
+          }
+        },
+        intervalMinutes: 5,
+        encryptionEnabled: true,
+        rememberPassphrase: true
+      }));
+      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
+    });
+
+    test('should persist the passphrase before saving encrypted sync config', async () => {
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: true,
+        encrypted: true
+      });
+
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'persist-first';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+
+      await settings.saveSettings();
+
+      expect(mockElectronAPI.setProfileSyncPassphrase.mock.invocationCallOrder[0])
+        .toBeLessThan(mockElectronAPI.updateConfig.mock.invocationCallOrder[0]);
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        rememberPassphrase: true,
+        passphraseEncrypted: true
+      }));
+    });
+
+    test('should fall back to session-only passphrase storage when remember is unavailable', async () => {
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: false,
+        encrypted: false
+      });
+
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'session-only';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        rememberPassphrase: false,
+        passphraseEncrypted: false
+      }));
+    });
+
+    test('should forward selected provider when choosing sync folder', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-provider').value = 'syncthing';
+      document.getElementById('profile-sync-choose-folder').click();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith('syncthing');
+    });
+
+    test('should open profile sync instructions from need help button', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-help-btn').click();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
+        'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in'
+      );
+    });
+
+    test('should persist syncthing provider selection', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-provider').value = 'syncthing';
+      document.getElementById('profile-sync-folder-path').value = '/tmp/syncthing-folder';
+      document.getElementById('profile-sync-interval').value = '5';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
+        enabled: true,
+        provider: 'syncthing',
+        cloudFilePath: '/tmp/syncthing-folder/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false
+      }));
+    });
+
+    test('should coerce invalid sync intervals back to the default', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-interval').value = '-10';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync.intervalMinutes).toBe(5);
+    });
+
+    test('should use status cloud file path when config path is empty', async () => {
+      const config = state.CONFIG;
+      config.profileSync = buildProfileSyncConfig({
+        enabled: true,
+        provider: 'cloudFile',
+        cloudFilePath: '',
+        intervalMinutes: 5,
+        encryptionEnabled: false,
+        rememberPassphrase: false
+      });
+      state.setConfig(config);
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce({
+        enabled: true,
+        provider: 'cloudFile',
+        cloudFilePath: '/tmp/default-sync/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false,
+        rememberPassphrase: false,
+        passphraseEncrypted: false,
+        passphraseStored: false,
+        lastSyncAt: null,
+        lastSyncStatus: 'idle',
+        lastSyncError: '',
+        needsResolution: false,
+        inFlight: false
+      });
+
+      await settings.openSettings();
+
+      expect(document.getElementById('profile-sync-folder-path').value).toBe('/tmp/default-sync');
+    });
+
+    test('should preserve root folders when building the sync file path', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/ha-widget-profile-sync.json');
+    });
+
+    test('should keep current path without copying when folder change is canceled', async () => {
+      const config = state.CONFIG;
+      config.profileSync = {
+        ...config.profileSync,
+        enabled: true,
+        cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false
+      };
+      state.setConfig(config);
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/new-sync';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/old-sync/ha-widget-profile-sync.json');
+      expect(mockElectronAPI.copyProfileSyncFile).not.toHaveBeenCalled();
+    });
+
+    test('should copy sync file when user confirms folder change', async () => {
+      const config = state.CONFIG;
+      config.profileSync = {
+        ...config.profileSync,
+        enabled: true,
+        cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false
+      };
+      state.setConfig(config);
+      mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+      mockElectronAPI.copyProfileSyncFile.mockResolvedValueOnce({
+        ok: true,
+        status: 'copied',
+        copied: true,
+        overwritten: false
+      });
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/new-sync';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledWith(
+        '/tmp/old-sync/ha-widget-profile-sync.json',
+        '/tmp/new-sync/ha-widget-profile-sync.json',
+        false
+      );
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/new-sync/ha-widget-profile-sync.json');
+    });
+
+    test('should prompt overwrite when destination exists on folder change', async () => {
+      const config = state.CONFIG;
+      config.profileSync = {
+        ...config.profileSync,
+        enabled: true,
+        cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false
+      };
+      state.setConfig(config);
+      mockUiUtils.showConfirm
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true);
+      mockElectronAPI.copyProfileSyncFile
+        .mockResolvedValueOnce({ ok: false, status: 'destination_exists' })
+        .mockResolvedValueOnce({ ok: true, status: 'copied', copied: true, overwritten: true });
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/new-sync';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenNthCalledWith(
+        1,
+        '/tmp/old-sync/ha-widget-profile-sync.json',
+        '/tmp/new-sync/ha-widget-profile-sync.json',
+        false
+      );
+      expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenNthCalledWith(
+        2,
+        '/tmp/old-sync/ha-widget-profile-sync.json',
+        '/tmp/new-sync/ha-widget-profile-sync.json',
+        true
+      );
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/new-sync/ha-widget-profile-sync.json');
     });
   });
 });

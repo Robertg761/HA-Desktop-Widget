@@ -1,11 +1,13 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage, net } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage, net, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
+const profileSyncCore = require('./profile-sync-core.js');
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -139,6 +141,26 @@ let pendingConfigSnapshot = null;
 let configSnapshotVersion = 0;
 let configWriteEpoch = 0;
 let configShutdownPending = false;
+const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
+const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
+const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
+const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
+const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set(['cloudFile', 'googleDrive', 'icloudDrive', 'syncthing']);
+const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
+
+const profileSyncRuntime = {
+  inFlight: false,
+  rerun: null,
+  pushDebounceTimer: null,
+  intervalTimer: null,
+  suppressNextAutoPush: false,
+  needsResolution: false,
+  pendingRemoteEnvelope: null,
+  localProfileHash: null,
+  localProfileUpdatedAt: null,
+  passphraseSession: '',
+  passphraseWarning: '',
+};
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -149,6 +171,26 @@ let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
+
+function isProfileSyncProviderSupported(provider) {
+  if (typeof provider !== 'string') return false;
+  return PROFILE_SYNC_SUPPORTED_PROVIDERS.has(provider.trim());
+}
+
+function normalizeProfileSyncProvider(provider) {
+  if (!isProfileSyncProviderSupported(provider)) return 'cloudFile';
+  return provider.trim();
+}
+
+function getDefaultProfileSyncFolderPath(_provider, existingPath = '') {
+  if (existingPath) {
+    const existingFolder = path.dirname(existingPath);
+    if (existingFolder && existingFolder !== '.') {
+      return existingFolder;
+    }
+  }
+  return app.getPath('userData');
+}
 
 function isPortableBuild() {
   if (!app.isPackaged) return false;
@@ -189,6 +231,403 @@ function getWindowsStartupRegistrationTarget() {
 function normalizeVersion(value) {
   if (!value) return '';
   return String(value).trim().replace(/^v/i, '');
+}
+
+function generateProfileSyncDeviceId() {
+  const host = (os.hostname && os.hostname()) || 'unknown-host';
+  const raw = `${host}-${process.platform}-${process.arch}-${Date.now()}-${Math.random()}`;
+  return Buffer.from(raw).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'device';
+}
+
+function getDefaultProfileSyncFilePath() {
+  return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME);
+}
+
+function getNormalizedProfileSyncScopeValue(value) {
+  return profileSyncCore.normalizeSyncScope(value);
+}
+
+function getDefaultProfileSyncConfig() {
+  return {
+    enabled: false,
+    provider: 'cloudFile',
+    cloudFilePath: getDefaultProfileSyncFilePath(),
+    syncScope: getNormalizedProfileSyncScopeValue(profileSyncCore.getDefaultSyncScope()),
+    intervalMinutes: PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
+    encryptionEnabled: false,
+    rememberPassphrase: false,
+    passphraseEncrypted: false,
+    storedPassphrase: '',
+    lastSyncAt: null,
+    lastSyncStatus: 'idle',
+    lastSyncError: '',
+    deviceId: generateProfileSyncDeviceId(),
+  };
+}
+
+function ensureProfileSyncConfigDefaults(target) {
+  if (!target || typeof target !== 'object') return target;
+  const defaults = getDefaultProfileSyncConfig();
+  target.profileSync = { ...defaults, ...(target.profileSync || {}) };
+  target.profileSync.intervalMinutes = Number.isFinite(Number(target.profileSync.intervalMinutes))
+    ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
+    : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
+  target.profileSync.provider = normalizeProfileSyncProvider(target.profileSync.provider);
+  target.profileSync.cloudFilePath = (typeof target.profileSync.cloudFilePath === 'string' && target.profileSync.cloudFilePath.trim())
+    ? target.profileSync.cloudFilePath.trim()
+    : getDefaultProfileSyncFilePath();
+  target.profileSync.syncScope = getNormalizedProfileSyncScopeValue(target.profileSync.syncScope);
+  if (!target.profileSync.deviceId || typeof target.profileSync.deviceId !== 'string') {
+    target.profileSync.deviceId = generateProfileSyncDeviceId();
+  }
+  if (typeof target.profileSync.lastSyncError !== 'string') {
+    target.profileSync.lastSyncError = '';
+  }
+  return target;
+}
+
+function getProfileSyncConfig() {
+  ensureProfileSyncConfigDefaults(config);
+  return config.profileSync;
+}
+
+function sanitizeConfigForRenderer(inputConfig) {
+  const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
+  if (cloned.profileSync) {
+    delete cloned.profileSync.storedPassphrase;
+  }
+  return cloned;
+}
+
+function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  try {
+    if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
+      mainWindow.setAlwaysOnTop(!!nextConfig?.alwaysOnTop);
+    }
+  } catch (error) {
+    log.warn('Failed to apply always-on-top update from sync:', error.message);
+  }
+
+  try {
+    if (typeof nextConfig?.opacity === 'number' && previousConfig?.opacity !== nextConfig.opacity) {
+      const safeOpacity = Math.max(0.5, Math.min(1, nextConfig.opacity));
+      mainWindow.setOpacity(safeOpacity);
+    }
+  } catch (error) {
+    log.warn('Failed to apply opacity update from sync:', error.message);
+  }
+
+  if (previousConfig?.frostedGlass !== nextConfig?.frostedGlass) {
+    applyFrostedGlass();
+  }
+}
+
+function pushConfigToRenderer() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('config-updated', sanitizeConfigForRenderer(config));
+}
+
+function buildProfileSyncStatus(extra = {}) {
+  const profileSync = getProfileSyncConfig();
+  const status = {
+    enabled: !!profileSync.enabled,
+    provider: normalizeProfileSyncProvider(profileSync.provider),
+    cloudFilePath: profileSync.cloudFilePath || '',
+    syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
+    intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
+    encryptionEnabled: !!profileSync.encryptionEnabled,
+    rememberPassphrase: !!profileSync.rememberPassphrase,
+    passphraseEncrypted: !!profileSync.passphraseEncrypted,
+    passphraseStored: !!profileSync.storedPassphrase,
+    passphraseWarning: profileSyncRuntime.passphraseWarning || '',
+    lastSyncAt: profileSync.lastSyncAt || null,
+    lastSyncStatus: profileSync.lastSyncStatus || 'idle',
+    lastSyncError: profileSync.lastSyncError || '',
+    inFlight: !!profileSyncRuntime.inFlight,
+    needsResolution: !!profileSyncRuntime.needsResolution,
+    deviceId: profileSync.deviceId,
+    ...extra,
+  };
+  return status;
+}
+
+function updateProfileSyncStatus(status, errorMessage = '') {
+  const profileSync = getProfileSyncConfig();
+  profileSync.lastSyncAt = new Date().toISOString();
+  profileSync.lastSyncStatus = status;
+  profileSync.lastSyncError = errorMessage || '';
+  saveConfig();
+}
+
+function decodeStoredProfileSyncPassphrase() {
+  const profileSync = getProfileSyncConfig();
+  profileSyncRuntime.passphraseWarning = '';
+  if (!profileSync.rememberPassphrase || !profileSync.storedPassphrase) {
+    return '';
+  }
+
+  if (profileSync.passphraseEncrypted) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      profileSyncRuntime.passphraseWarning = 'Stored passphrase could not be decrypted on this system.';
+      return '';
+    }
+    try {
+      const encryptedBuffer = Buffer.from(profileSync.storedPassphrase, 'base64');
+      return safeStorage.decryptString(encryptedBuffer);
+    } catch (error) {
+      log.warn('Failed to decrypt remembered profile sync passphrase:', error.message);
+      profileSyncRuntime.passphraseWarning = 'Stored passphrase could not be decrypted.';
+      return '';
+    }
+  }
+
+  return profileSync.storedPassphrase;
+}
+
+function persistRememberedProfileSyncPassphrase(passphrase, remember) {
+  const profileSync = getProfileSyncConfig();
+
+  if (!remember) {
+    profileSync.rememberPassphrase = false;
+    profileSync.passphraseEncrypted = false;
+    profileSync.storedPassphrase = '';
+    profileSyncRuntime.passphraseSession = passphrase || '';
+    saveConfig();
+    return { remembered: false, encrypted: false };
+  }
+
+  const hadPersistedPassphrase = !!profileSync.storedPassphrase || profileSync.rememberPassphrase || profileSync.passphraseEncrypted;
+  profileSync.rememberPassphrase = true;
+  profileSyncRuntime.passphraseSession = passphrase || '';
+  profileSyncRuntime.passphraseWarning = '';
+
+  if (safeStorage.isEncryptionAvailable()) {
+    try {
+      const encrypted = safeStorage.encryptString(passphrase || '');
+      profileSync.storedPassphrase = encrypted.toString('base64');
+      profileSync.passphraseEncrypted = true;
+      saveConfig();
+      return { remembered: true, encrypted: true };
+    } catch (error) {
+      log.warn('Failed to encrypt remembered profile sync passphrase:', error.message);
+    }
+  }
+
+  profileSync.rememberPassphrase = false;
+  profileSync.passphraseEncrypted = false;
+  profileSync.storedPassphrase = '';
+  profileSyncRuntime.passphraseWarning = 'Passphrase will only be kept for this session because OS encryption is unavailable.';
+  if (hadPersistedPassphrase) {
+    saveConfig();
+  }
+  return { remembered: false, encrypted: false };
+}
+
+function getActiveProfileSyncPassphrase() {
+  if (profileSyncRuntime.passphraseSession) {
+    return profileSyncRuntime.passphraseSession;
+  }
+  const remembered = decodeStoredProfileSyncPassphrase();
+  if (remembered) {
+    profileSyncRuntime.passphraseSession = remembered;
+  }
+  return remembered;
+}
+
+async function readCloudFileEnvelope(filePath) {
+  if (!filePath) {
+    return { exists: false, envelope: null };
+  }
+
+  try {
+    const stats = await fs.promises.stat(filePath);
+    if (!stats.isFile()) {
+      throw new Error('Selected sync path is not a file');
+    }
+    if (stats.size > PROFILE_SYNC_MAX_FILE_BYTES) {
+      throw new Error('Sync file exceeds size limit (512 KB)');
+    }
+    const raw = await fs.promises.readFile(filePath, 'utf8');
+    const envelope = profileSyncCore.parseSyncEnvelope(raw);
+    return { exists: true, envelope };
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return { exists: false, envelope: null };
+    }
+    throw error;
+  }
+}
+
+async function writeCloudFileEnvelope(filePath, envelope) {
+  if (!filePath) {
+    throw new Error('Sync file path is not configured');
+  }
+  const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
+  const dirPath = path.dirname(filePath);
+  const tempPath = `${filePath}.tmp-${Date.now()}`;
+  await fs.promises.mkdir(dirPath, { recursive: true });
+  await fs.promises.writeFile(tempPath, serialized, 'utf8');
+  await fs.promises.rename(tempPath, filePath);
+}
+
+async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
+  try {
+    const sourcePath = String(fromPath || '').trim();
+    const destinationPath = String(toPath || '').trim();
+    if (!sourcePath || !destinationPath) {
+      return { ok: false, status: 'error', error: 'Source and destination file paths are required' };
+    }
+
+    if (sourcePath === destinationPath) {
+      return { ok: true, status: 'copied', copied: false, reason: 'same_path' };
+    }
+
+    let sourceStats;
+    try {
+      sourceStats = await fs.promises.stat(sourcePath);
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return { ok: false, status: 'source_missing' };
+      }
+      throw error;
+    }
+
+    if (!sourceStats.isFile()) {
+      return { ok: false, status: 'error', error: 'Source sync file is not a file' };
+    }
+
+    const destinationDir = path.dirname(destinationPath);
+    await fs.promises.mkdir(destinationDir, { recursive: true });
+    try {
+      const copyFlags = overwrite ? 0 : fs.constants.COPYFILE_EXCL;
+      await fs.promises.copyFile(sourcePath, destinationPath, copyFlags);
+      return { ok: true, status: 'copied', copied: true, overwritten: overwrite };
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        return { ok: false, status: 'destination_exists' };
+      }
+      throw error;
+    }
+  } catch (error) {
+    return { ok: false, status: 'error', error: error?.message || String(error) };
+  }
+}
+
+async function readConfiguredSyncEnvelope() {
+  const profileSync = getProfileSyncConfig();
+  if (!isProfileSyncProviderSupported(profileSync.provider)) {
+    throw new Error('Unsupported profile sync provider');
+  }
+  return readCloudFileEnvelope(profileSync.cloudFilePath);
+}
+
+async function writeConfiguredSyncEnvelope(envelope) {
+  const profileSync = getProfileSyncConfig();
+  if (!isProfileSyncProviderSupported(profileSync.provider)) {
+    throw new Error('Unsupported profile sync provider');
+  }
+  return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
+}
+
+function getActiveProfileSyncScope() {
+  const profileSync = getProfileSyncConfig();
+  const normalizedScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+  profileSync.syncScope = normalizedScope;
+  return normalizedScope;
+}
+
+function computeScopedProfileHash(profile, syncScope) {
+  return profileSyncCore.computeProfileHash({
+    syncScope: getNormalizedProfileSyncScopeValue(syncScope),
+    profile: profile || {},
+  });
+}
+
+function buildLocalProfileEnvelope(updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()) {
+  const profileSync = getProfileSyncConfig();
+  const syncScope = getActiveProfileSyncScope();
+  const profile = profileSyncCore.projectSyncProfile(config, syncScope);
+  const encrypt = !!profileSync.encryptionEnabled;
+  const passphrase = getActiveProfileSyncPassphrase();
+  if (encrypt && !passphrase) {
+    throw new Error('A passphrase is required to sync encrypted profiles');
+  }
+  return profileSyncCore.buildSyncEnvelope({
+    profile,
+    updatedAt,
+    updatedByDeviceId: profileSync.deviceId,
+    syncScope,
+    encrypt,
+    passphrase,
+  });
+}
+
+function decodeEnvelopeProfile(envelope) {
+  const passphrase = getActiveProfileSyncPassphrase();
+  const profile = profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
+  const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(envelope);
+  return { profile, syncScope };
+}
+
+function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
+  const previous = config;
+  const nextScope = getNormalizedProfileSyncScopeValue(syncScopeValue || previous?.profileSync?.syncScope);
+  const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
+  ensureProfileSyncConfigDefaults(merged);
+  merged.profileSync = {
+    ...previous.profileSync,
+    syncScope: nextScope,
+  };
+  config = merged;
+  pruneConfig(config);
+  ensureProfileSyncConfigDefaults(config);
+  applyMainWindowSettingSideEffects(previous, config);
+
+  const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
+  profileSyncRuntime.suppressNextAutoPush = true;
+
+  saveConfig();
+  pushConfigToRenderer();
+}
+
+function clearProfileSyncTimers() {
+  if (profileSyncRuntime.pushDebounceTimer) {
+    clearTimeout(profileSyncRuntime.pushDebounceTimer);
+    profileSyncRuntime.pushDebounceTimer = null;
+  }
+  if (profileSyncRuntime.intervalTimer) {
+    clearInterval(profileSyncRuntime.intervalTimer);
+    profileSyncRuntime.intervalTimer = null;
+  }
+}
+
+function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
+  const profile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
+  const nextHash = computeScopedProfileHash(profile, getActiveProfileSyncScope());
+  if (profileSyncRuntime.localProfileHash === null) {
+    profileSyncRuntime.localProfileHash = nextHash;
+    profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
+    return;
+  }
+  if (profileSyncRuntime.localProfileHash === nextHash) {
+    return;
+  }
+
+  profileSyncRuntime.localProfileHash = nextHash;
+  profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
+
+  if (profileSyncRuntime.suppressNextAutoPush) {
+    profileSyncRuntime.suppressNextAutoPush = false;
+    return;
+  }
+
+  if (allowDebouncedPush) {
+    scheduleDebouncedProfileSyncPush('config_change');
+  }
 }
 
 /**
@@ -336,7 +775,8 @@ function loadConfig() {
     customEntityIcons: {},
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
-    popupHotkeyToggleMode: false // Press once to show, press again to hide (instead of hold)
+    popupHotkeyToggleMode: false, // Press once to show, press again to hide (instead of hold)
+    profileSync: getDefaultProfileSyncConfig(),
   };
 
   try {
@@ -346,9 +786,11 @@ function loadConfig() {
         ...defaultConfig, ...userConfig,
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
-        ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) }
+        ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) },
+        profileSync: { ...defaultConfig.profileSync, ...(userConfig.profileSync || {}) },
       };
       pruneConfig(config);
+      ensureProfileSyncConfigDefaults(config);
 
       // Handle token encryption/decryption
       if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
@@ -466,6 +908,7 @@ function loadConfig() {
           const legacyConfig = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
           config = { ...defaultConfig, ...legacyConfig };
           pruneConfig(config);
+          ensureProfileSyncConfigDefaults(config);
           migrated = true;
         } catch (error) {
           log.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
@@ -474,6 +917,7 @@ function loadConfig() {
       } else {
         config = defaultConfig;
       }
+      ensureProfileSyncConfigDefaults(config);
       // Ensure directory exists and persist
       fs.mkdirSync(userDataDir, { recursive: true });
       saveConfig();
@@ -485,7 +929,13 @@ function loadConfig() {
     log.error('Error loading config:', error);
     config = defaultConfig;
     pruneConfig(config);
+    ensureProfileSyncConfigDefaults(config);
   }
+
+  profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
+  const initialProfile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileUpdatedAt = config?.profileSync?.lastSyncAt || new Date().toISOString();
 }
 
 // Backup configuration before migration
@@ -639,8 +1089,186 @@ function saveConfig() {
       configWriteTimer = null;
       flushConfigWriteQueue();
     }, CONFIG_SAVE_DEBOUNCE_MS);
+    updateLocalProfileSyncTracking();
   } catch (error) {
     log.error('Failed to schedule config save:', error);
+  }
+}
+
+function emitProfileSyncStatus(extra = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('profile-sync-status', buildProfileSyncStatus(extra));
+}
+
+function setupProfileSyncInterval() {
+  if (profileSyncRuntime.intervalTimer) {
+    clearInterval(profileSyncRuntime.intervalTimer);
+    profileSyncRuntime.intervalTimer = null;
+  }
+
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || profileSyncRuntime.needsResolution || !profileSync.cloudFilePath) {
+    return;
+  }
+
+  const intervalMs = Math.max(1, Number(profileSync.intervalMinutes) || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES) * 60 * 1000;
+  profileSyncRuntime.intervalTimer = setInterval(() => {
+    runProfileSync('auto', 'interval').catch((error) => {
+      log.warn('Profile sync interval run failed:', error.message);
+    });
+  }, intervalMs);
+}
+
+async function prepareProfileSyncFirstEnableResolution() {
+  const profileSync = getProfileSyncConfig();
+  profileSyncRuntime.needsResolution = false;
+  profileSyncRuntime.pendingRemoteEnvelope = null;
+
+  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+    return { needsResolution: false };
+  }
+
+  const readResult = await readConfiguredSyncEnvelope();
+  if (!readResult.exists || !readResult.envelope) {
+    return { needsResolution: false };
+  }
+
+  const { profile: remoteProfile, syncScope } = decodeEnvelopeProfile(readResult.envelope);
+  const localProfile = profileSyncCore.projectSyncProfile(config, syncScope);
+  const localHash = computeScopedProfileHash(localProfile, syncScope);
+  const remoteHash = computeScopedProfileHash(remoteProfile, syncScope);
+  if (remoteHash === localHash) {
+    return { needsResolution: false };
+  }
+
+  profileSyncRuntime.needsResolution = true;
+  profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
+  updateProfileSyncStatus('needs_resolution', 'Choose how to resolve initial profile sync conflict.');
+  emitProfileSyncStatus();
+  return { needsResolution: true };
+}
+
+function scheduleDebouncedProfileSyncPush(source = 'config_change') {
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || profileSyncRuntime.needsResolution) return;
+  if (!profileSync.cloudFilePath || !isProfileSyncProviderSupported(profileSync.provider)) return;
+
+  if (profileSyncRuntime.pushDebounceTimer) {
+    clearTimeout(profileSyncRuntime.pushDebounceTimer);
+  }
+  profileSyncRuntime.pushDebounceTimer = setTimeout(() => {
+    profileSyncRuntime.pushDebounceTimer = null;
+    runProfileSync('push', source).catch((error) => {
+      log.warn('Debounced profile sync push failed:', error.message);
+    });
+  }, PROFILE_SYNC_PUSH_DEBOUNCE_MS);
+}
+
+async function runProfileSync(direction = 'auto', source = 'manual') {
+  const profileSync = getProfileSyncConfig();
+
+  if (!profileSync.enabled) {
+    return { ok: false, reason: 'disabled', status: buildProfileSyncStatus() };
+  }
+  if (!isProfileSyncProviderSupported(profileSync.provider)) {
+    throw new Error('Unsupported profile sync provider');
+  }
+  if (!profileSync.cloudFilePath) {
+    throw new Error('Profile sync file is not configured');
+  }
+  if (profileSyncRuntime.needsResolution && source !== 'first_enable_resolution') {
+    return { ok: false, reason: 'needs_resolution', status: buildProfileSyncStatus() };
+  }
+
+  if (profileSyncRuntime.inFlight) {
+    profileSyncRuntime.rerun = { direction, source };
+    return { ok: false, reason: 'in_flight', queued: true, status: buildProfileSyncStatus() };
+  }
+
+  profileSyncRuntime.inFlight = true;
+  emitProfileSyncStatus();
+
+  try {
+    const localEnvelope = buildLocalProfileEnvelope(profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString());
+    const remoteResult = await readConfiguredSyncEnvelope();
+    let finalDirection = direction;
+
+    if (direction === 'auto') {
+      finalDirection = profileSyncCore.chooseSyncDirection({
+        localUpdatedAt: localEnvelope.updatedAt,
+        remoteUpdatedAt: remoteResult.envelope?.updatedAt || null,
+        remoteExists: remoteResult.exists,
+      });
+    }
+
+    if (finalDirection === 'none') {
+      updateProfileSyncStatus('idle', '');
+      const status = buildProfileSyncStatus();
+      emitProfileSyncStatus();
+      return { ok: true, action: 'none', status };
+    }
+
+    if (finalDirection === 'pull') {
+      if (!remoteResult.exists || !remoteResult.envelope) {
+        updateProfileSyncStatus('idle', '');
+        const status = buildProfileSyncStatus();
+        emitProfileSyncStatus();
+        return { ok: true, action: 'none', status };
+      }
+
+      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(remoteResult.envelope);
+      const localProfile = profileSyncCore.projectSyncProfile(config, remoteSyncScope);
+      const localHash = computeScopedProfileHash(localProfile, remoteSyncScope);
+      const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
+      if (remoteHash !== localHash || source === 'first_enable_resolution') {
+        applySyncedProfileToConfig(remoteProfile, remoteResult.envelope.updatedAt, remoteSyncScope);
+      }
+      profileSyncRuntime.localProfileUpdatedAt = remoteResult.envelope.updatedAt;
+      updateProfileSyncStatus('success', '');
+      setupProfileSyncInterval();
+      const status = buildProfileSyncStatus();
+      emitProfileSyncStatus();
+      return { ok: true, action: 'pull', status, config: sanitizeConfigForRenderer(config) };
+    }
+
+    if (finalDirection === 'push') {
+      const envelopeToWrite = buildLocalProfileEnvelope(new Date().toISOString());
+      await writeConfiguredSyncEnvelope(envelopeToWrite);
+      profileSyncRuntime.localProfileUpdatedAt = envelopeToWrite.updatedAt;
+      updateProfileSyncStatus('success', '');
+      setupProfileSyncInterval();
+      const status = buildProfileSyncStatus();
+      emitProfileSyncStatus();
+      return { ok: true, action: 'push', status };
+    }
+
+    throw new Error(`Unknown profile sync direction: ${finalDirection}`);
+  } catch (error) {
+    updateProfileSyncStatus('error', error.message);
+    emitProfileSyncStatus();
+    throw error;
+  } finally {
+    profileSyncRuntime.inFlight = false;
+    if (profileSyncRuntime.rerun) {
+      const rerun = profileSyncRuntime.rerun;
+      profileSyncRuntime.rerun = null;
+      runProfileSync(rerun.direction, rerun.source).catch((error) => {
+        log.warn('Queued profile sync rerun failed:', error.message);
+      });
+    }
+  }
+}
+
+async function initializeProfileSyncOnStartup() {
+  setupProfileSyncInterval();
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
+
+  try {
+    await runProfileSync('pull', 'startup');
+  } catch (error) {
+    log.warn('Profile sync startup pull failed:', error.message);
   }
 }
 
@@ -749,6 +1377,10 @@ function createWindow() {
 
   // Load the index.html file
   mainWindow.loadFile('index.html');
+  mainWindow.webContents.on('did-finish-load', () => {
+    emitProfileSyncStatus();
+    pushConfigToRenderer();
+  });
 
   const changeWin = () => {
     const bounds = mainWindow.getBounds();
@@ -915,21 +1547,43 @@ function createTray() {
 
 // IPC handlers for configuration
 ipcMain.handle('get-config', () => {
-  return config;
+  return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('update-config', (event, newConfig) => {
+ipcMain.handle('update-config', async (event, newConfig) => {
   log.debug('Updating configuration');
-  const prevFrostedGlass = config?.frostedGlass;
+  const prevConfig = config;
+  const prevSyncEnabled = !!config?.profileSync?.enabled;
   pruneConfig(newConfig);
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
-  config = { ...config, ...newConfig, customTabs };
+  const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
+  config = { ...config, ...newConfig, customTabs, profileSync };
+  ensureProfileSyncConfigDefaults(config);
   pruneConfig(config);
-  if (prevFrostedGlass !== config.frostedGlass) {
-    applyFrostedGlass();
+  applyMainWindowSettingSideEffects(prevConfig, config);
+
+  const syncEnabled = !!config.profileSync?.enabled;
+  if (!syncEnabled) {
+    profileSyncRuntime.needsResolution = false;
+    profileSyncRuntime.pendingRemoteEnvelope = null;
+    clearProfileSyncTimers();
+  } else if (!prevSyncEnabled && syncEnabled) {
+    try {
+      const resolution = await prepareProfileSyncFirstEnableResolution();
+      if (!resolution?.needsResolution) {
+        setupProfileSyncInterval();
+      }
+    } catch (error) {
+      updateProfileSyncStatus('error', error.message);
+    }
+  } else {
+    setupProfileSyncInterval();
   }
+
   saveConfig();
-  return config;
+  pushConfigToRenderer();
+  emitProfileSyncStatus();
+  return sanitizeConfigForRenderer(config);
 });
 
 ipcMain.handle('set-opacity', (event, opacity) => {
@@ -965,6 +1619,117 @@ ipcMain.handle('set-always-on-top', (event, value) => {
 
 ipcMain.handle('get-window-state', () => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
+});
+
+ipcMain.handle('choose-profile-sync-folder', async (_event, provider) => {
+  const profileSync = getProfileSyncConfig();
+  const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
+  const defaultPath = getDefaultProfileSyncFolderPath(providerToUse, profileSync.cloudFilePath);
+  const result = await dialog.showOpenDialog({
+    title: 'Choose Profile Sync Folder',
+    defaultPath,
+    properties: ['openDirectory', 'createDirectory'],
+  });
+
+  const folderPath = Array.isArray(result.filePaths) ? result.filePaths[0] : '';
+  if (result.canceled || !folderPath) {
+    return { canceled: true };
+  }
+
+  const filePath = path.join(folderPath, PROFILE_SYNC_DEFAULT_FILE_NAME);
+  return { canceled: false, folderPath, filePath, provider: providerToUse };
+});
+
+ipcMain.handle('copy-profile-sync-file', async (_event, fromPath, toPath, overwrite = false) => {
+  return copyProfileSyncFile(fromPath, toPath, overwrite);
+});
+
+ipcMain.handle('get-profile-sync-status', () => {
+  return buildProfileSyncStatus();
+});
+
+ipcMain.handle('run-profile-sync', async (_event, direction = 'auto') => {
+  try {
+    const allowedDirections = new Set(['auto', 'pull', 'push']);
+    const normalizedDirection = allowedDirections.has(direction) ? direction : 'auto';
+    return await runProfileSync(normalizedDirection, 'manual');
+  } catch (error) {
+    return { ok: false, error: error.message, status: buildProfileSyncStatus() };
+  }
+});
+
+ipcMain.handle('set-profile-sync-passphrase', async (_event, passphrase, remember = false) => {
+  try {
+    if (typeof passphrase !== 'string' || passphrase.trim().length < 4) {
+      return { success: false, error: 'Passphrase must be at least 4 characters long' };
+    }
+    const persisted = persistRememberedProfileSyncPassphrase(passphrase.trim(), !!remember);
+    emitProfileSyncStatus();
+    return { success: true, ...persisted, status: buildProfileSyncStatus() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('clear-profile-sync-passphrase', async () => {
+  profileSyncRuntime.passphraseSession = '';
+  const profileSync = getProfileSyncConfig();
+  profileSync.rememberPassphrase = false;
+  profileSync.passphraseEncrypted = false;
+  profileSync.storedPassphrase = '';
+  profileSyncRuntime.passphraseWarning = '';
+  saveConfig();
+  emitProfileSyncStatus();
+  return { success: true, status: buildProfileSyncStatus() };
+});
+
+ipcMain.handle('resolve-profile-sync-first-enable', async (_event, choice) => {
+  if (!PROFILE_SYNC_RESOLUTION_CHOICES.has(choice)) {
+    return { success: false, error: 'Invalid resolution choice', status: buildProfileSyncStatus() };
+  }
+
+  if (!profileSyncRuntime.needsResolution) {
+    return { success: true, status: buildProfileSyncStatus() };
+  }
+
+  try {
+    if (choice === 'cancel') {
+      getProfileSyncConfig().enabled = false;
+      profileSyncRuntime.needsResolution = false;
+      profileSyncRuntime.pendingRemoteEnvelope = null;
+      clearProfileSyncTimers();
+      saveConfig();
+      emitProfileSyncStatus();
+      return { success: true, status: buildProfileSyncStatus(), config: sanitizeConfigForRenderer(config) };
+    }
+
+    if (choice === 'upload_local') {
+      profileSyncRuntime.needsResolution = false;
+      profileSyncRuntime.pendingRemoteEnvelope = null;
+      const result = await runProfileSync('push', 'first_enable_resolution');
+      setupProfileSyncInterval();
+      return { success: true, ...result, status: buildProfileSyncStatus(), config: sanitizeConfigForRenderer(config) };
+    }
+
+    if (choice === 'use_remote') {
+      const envelope = profileSyncRuntime.pendingRemoteEnvelope || (await readConfiguredSyncEnvelope()).envelope;
+      if (!envelope) {
+        throw new Error('Remote profile is no longer available');
+      }
+      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(envelope);
+      profileSyncRuntime.needsResolution = false;
+      profileSyncRuntime.pendingRemoteEnvelope = null;
+      applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
+      updateProfileSyncStatus('success', '');
+      setupProfileSyncInterval();
+      emitProfileSyncStatus();
+      return { success: true, status: buildProfileSyncStatus(), config: sanitizeConfigForRenderer(config) };
+    }
+  } catch (error) {
+    updateProfileSyncStatus('error', error.message);
+    emitProfileSyncStatus();
+    return { success: false, error: error.message, status: buildProfileSyncStatus() };
+  }
 });
 
 // Start with Windows IPC handlers
@@ -1241,10 +2006,14 @@ ipcMain.handle('save-config', (event, newConfig) => {
   log.warn('save-config handler is deprecated, use update-config instead');
   // Update the config with the new values
   pruneConfig(newConfig);
+  ensureProfileSyncConfigDefaults(newConfig);
   config = newConfig;
+  ensureProfileSyncConfigDefaults(config);
   pruneConfig(config);
   saveConfig();
-  return { success: true };
+  pushConfigToRenderer();
+  emitProfileSyncStatus();
+  return { success: true, config: sanitizeConfigForRenderer(config) };
 });
 
 ipcMain.handle('toggle-hotkeys', (event, enabled) => {
@@ -1803,6 +2572,7 @@ app.on('before-quit', () => {
     clearTimeout(windowStateSaveTimer);
     windowStateSaveTimer = null;
   }
+  clearProfileSyncTimers();
   flushPendingConfigWriteSync();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
@@ -1813,7 +2583,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'ha', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app ID for Windows (helps with icon caching and taskbar behavior)
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
@@ -1950,6 +2720,9 @@ app.whenReady().then(() => {
   registerGlobalHotkeys();
   setupEntityAlerts();
   registerPopupHotkey();
+  void initializeProfileSyncOnStartup().catch((error) => {
+    log.warn('Profile sync startup initialization failed:', error.message);
+  });
 });
 
 app.on('window-all-closed', () => {

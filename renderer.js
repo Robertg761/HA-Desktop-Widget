@@ -483,6 +483,28 @@ window.electronAPI.onOpenSettings(() => {
   });
 });
 
+window.electronAPI.onProfileSyncStatus((status) => {
+  if (settings.handleProfileSyncStatusUpdate) {
+    settings.handleProfileSyncStatusUpdate(status);
+  }
+});
+
+window.electronAPI.onConfigUpdated((nextConfig) => {
+  try {
+    if (!nextConfig || !nextConfig.homeAssistant) return;
+    state.setConfig(nextConfig);
+    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
+    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
+    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+    uiUtils.applyWindowEffects(state.CONFIG || {});
+    ui.renderActiveTab();
+  } catch (error) {
+    log.error('Failed to apply config-updated event:', error);
+  }
+});
+
 /**
  * Replace all emoji icons with SVG icons
  * This runs once on initialization to modernize the UI
