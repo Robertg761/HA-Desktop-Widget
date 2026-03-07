@@ -13,7 +13,126 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify release version bump
+        shell: pwsh
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          $baseRef = $env:PUSH_BEFORE
+          if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
+            $baseRef = (git rev-parse HEAD^).Trim()
+          }
+
+          if ([string]::IsNullOrWhiteSpace($baseRef)) {
+            throw 'Unable to determine the previous commit for version comparison.'
+          }
+
+          $changedFiles = git diff --name-only $baseRef HEAD
+          if (-not $changedFiles) {
+            throw "No changed files detected between $baseRef and HEAD."
+          }
+
+          if (-not ($changedFiles -contains 'package.json')) {
+            throw 'Releases require a package.json change.'
+          }
+
+          if (-not ($changedFiles -contains 'package-lock.json')) {
+            throw 'Releases require a package-lock.json change.'
+          }
+
+          $env:BASE_REF = $baseRef
+
+          @'
+          const fs = require('fs');
+          const { execFileSync } = require('child_process');
+
+          function fail(message) {
+            console.error(message);
+            process.exit(1);
+          }
+
+          function parseVersion(version, label) {
+            const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version || '');
+            if (!match) fail(`Invalid ${label} version: ${version || '(empty)'}`);
+            return match.slice(1, 4).map(Number);
+          }
+
+          function compareVersions(left, right) {
+            const a = parseVersion(left, 'current');
+            const b = parseVersion(right, 'previous');
+            for (let index = 0; index < 3; index += 1) {
+              if (a[index] > b[index]) return 1;
+              if (a[index] < b[index]) return -1;
+            }
+            return 0;
+          }
+
+          function readJsonAtRef(ref, file) {
+            return JSON.parse(execFileSync('git', ['show', `${ref}:${file}`], { encoding: 'utf8' }));
+          }
+
+          const baseRef = process.env.BASE_REF;
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const previousPkg = readJsonAtRef(baseRef, 'package.json');
+          const previousLock = readJsonAtRef(baseRef, 'package-lock.json');
+
+          const currentPackageVersion = pkg.version;
+          const currentLockVersion = lock.version;
+          const currentRootLockVersion = lock.packages?.['']?.version;
+
+          if (!currentPackageVersion || !currentLockVersion || !currentRootLockVersion) {
+            fail('package.json and package-lock.json must define matching non-empty versions.');
+          }
+
+          if (currentPackageVersion !== currentLockVersion || currentPackageVersion !== currentRootLockVersion) {
+            fail(`Version mismatch detected. package.json=${currentPackageVersion}, package-lock.json=${currentLockVersion}, package-lock root=${currentRootLockVersion}`);
+          }
+
+          const previousPackageVersion = previousPkg.version;
+          const previousLockVersion = previousLock.version;
+          const previousRootLockVersion = previousLock.packages?.['']?.version;
+
+          if (!previousPackageVersion || !previousLockVersion || !previousRootLockVersion) {
+            fail('Previous commit is missing version metadata required for comparison.');
+          }
+
+          if (previousPackageVersion !== previousLockVersion || previousPackageVersion !== previousRootLockVersion) {
+            fail(`Previous commit has inconsistent versions. package.json=${previousPackageVersion}, package-lock.json=${previousLockVersion}, package-lock root=${previousRootLockVersion}`);
+          }
+
+          if (compareVersions(currentPackageVersion, previousPackageVersion) <= 0) {
+            fail(`Release version must be greater than the previous commit. Current=${currentPackageVersion}, Previous=${previousPackageVersion}`);
+          }
+
+          console.log(`Validated version bump ${previousPackageVersion} -> ${currentPackageVersion}`);
+          '@ | node -
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
   build:
+    needs: validate
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -42,6 +161,7 @@ jobs:
           path: dist/*
 
   build-mac:
+    needs: validate
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -69,4 +189,3 @@ jobs:
         with:
           name: dist-mac
           path: dist/*
-
