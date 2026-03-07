@@ -2304,7 +2304,11 @@ function trimTrailingPathSeparators(value) {
   if (!raw) return '';
   if (/^\/+$/.test(raw)) return '/';
   if (/^\\+$/.test(raw)) return '\\';
-  if (/^[A-Za-z]:[\\/]+$/.test(raw)) return `${raw.slice(0, 2)}\\`;
+  const windowsRootMatch = raw.match(/^([A-Za-z]:)[\\/]+$/);
+  if (windowsRootMatch) {
+    const separator = raw.includes('\\') ? '\\' : '/';
+    return `${windowsRootMatch[1]}${separator}`;
+  }
   return raw.replace(/[\\/]+$/, '');
 }
 
@@ -2313,10 +2317,11 @@ function deriveProfileSyncFolderPath(filePath) {
   const trimmed = filePath.trim();
   if (!trimmed) return '';
   const normalized = trimTrailingPathSeparators(trimmed);
+  if (!normalized) return '';
   const separatorIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
   if (separatorIndex < 0) return normalized;
   if (separatorIndex === 0) return normalized.charAt(0);
-  if (separatorIndex === 2 && /^[A-Za-z]:\\/.test(normalized)) return normalized.slice(0, 3);
+  if (separatorIndex === 2 && /^[A-Za-z]:[\\/]/.test(normalized)) return normalized.slice(0, 3);
   return normalized.slice(0, separatorIndex);
 }
 
@@ -3012,8 +3017,10 @@ async function saveSettings() {
     const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
     nextProfileSync.cloudFilePath = buildProfileSyncFilePathFromFolder(syncFolderPath);
     nextProfileSync.syncScope = readProfileSyncScopeFromForm();
-    const parsedIntervalMinutes = Number.parseInt(profileSyncInterval?.value || '5', 10);
-    nextProfileSync.intervalMinutes = parsedIntervalMinutes > 0 ? parsedIntervalMinutes : 5;
+    const parsedIntervalMinutes = Number.parseInt(profileSyncInterval?.value || '', 10);
+    nextProfileSync.intervalMinutes = Number.isFinite(parsedIntervalMinutes) && parsedIntervalMinutes > 0
+      ? parsedIntervalMinutes
+      : 5;
     nextProfileSync.encryptionEnabled = !!profileSyncEncryptionEnabled?.checked;
     nextProfileSync.rememberPassphrase = nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
     nextProfileSync.passphraseEncrypted = false;
@@ -3081,8 +3088,14 @@ async function saveSettings() {
 
     const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
     const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
+    const removingRememberedPassphrase = nextProfileSync.enabled
+      && nextProfileSync.encryptionEnabled
+      && !nextProfileSync.rememberPassphrase
+      && !!prevProfileSync.rememberPassphrase;
+    let passphraseUpdatedThisSave = false;
+
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
-      const canReuseSavedPassphrase = hasSavedPassphrase && nextProfileSync.rememberPassphrase;
+      const canReuseSavedPassphrase = hasSavedPassphrase && !removingRememberedPassphrase;
       if (!typedPassphrase && !canReuseSavedPassphrase) {
         showToast('Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.', 'error', 3400);
         return;
@@ -3093,7 +3106,6 @@ async function saveSettings() {
           showToast('This build cannot save a sync passphrase.', 'error', 3400);
           return;
         }
-
         const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
           typedPassphrase,
           !!nextProfileSync.rememberPassphrase
@@ -3102,11 +3114,11 @@ async function saveSettings() {
           showToast(passphraseResult?.error || 'Failed to save sync passphrase.', 'error', 3600);
           return;
         }
-
         if (typeof passphraseResult.remembered === 'boolean') {
           nextProfileSync.rememberPassphrase = passphraseResult.remembered;
         }
         nextProfileSync.passphraseEncrypted = !!passphraseResult.encrypted;
+        passphraseUpdatedThisSave = true;
       } else {
         nextProfileSync.passphraseEncrypted = !!profileSyncStatusCache?.passphraseEncrypted;
       }
@@ -3122,6 +3134,14 @@ async function saveSettings() {
     }
 
     if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
+      await window.electronAPI.clearProfileSyncPassphrase();
+    } else if (
+      nextProfileSync.encryptionEnabled &&
+      !nextProfileSync.rememberPassphrase &&
+      prevProfileSync.rememberPassphrase &&
+      !passphraseUpdatedThisSave &&
+      window.electronAPI?.clearProfileSyncPassphrase
+    ) {
       await window.electronAPI.clearProfileSyncPassphrase();
     }
 

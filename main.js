@@ -2583,7 +2583,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'ha', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   // Set app ID for Windows (helps with icon caching and taskbar behavior)
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
