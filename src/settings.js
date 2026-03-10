@@ -1723,7 +1723,13 @@ function setPendingDesktopPins(desktopPins) {
 }
 
 function getPendingDesktopPinsForSave() {
-  return { ...pendingDesktopPins };
+  const liveDesktopPins = normalizeDesktopPinMap(state.CONFIG?.desktopPins);
+  return Object.keys(pendingDesktopPins).reduce((acc, entityId) => {
+    acc[entityId] = liveDesktopPins[entityId]
+      ? { ...liveDesktopPins[entityId] }
+      : {};
+    return acc;
+  }, {});
 }
 
 function getDesktopPinEntityOptions(filter = '') {

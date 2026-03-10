@@ -981,7 +981,6 @@ function handleDesktopPinActionRequest({ entityId, action }) {
         toggleEntity(entity);
         break;
       case 'open-details':
-      case 'focus-main':
         if (resolvedEntityId.startsWith('camera.')) {
           camera.openCamera(resolvedEntityId);
         } else if (resolvedEntityId.startsWith('sensor.') && !resolvedEntityId.startsWith('sensor.timer')) {
@@ -996,9 +995,10 @@ function handleDesktopPinActionRequest({ entityId, action }) {
           showCoverControls(entity);
         } else if (resolvedEntityId.startsWith('media_player.')) {
           showMediaDetail(entity);
-        } else {
-          toggleEntity(entity);
         }
+        break;
+      case 'focus-main':
+        // Focusing is handled by the main process before this event reaches the renderer.
         break;
       default:
         break;

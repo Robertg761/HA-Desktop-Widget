@@ -659,6 +659,35 @@ describe('Settings + Config Integration', () => {
         })
       );
     });
+
+    test('desktop pins save preserves live bounds updates that happen while settings is open', async () => {
+      state.CONFIG.favoriteEntities = ['light.living_room'];
+      state.CONFIG.desktopPins = {
+        'light.living_room': { x: 10, y: 20, width: 176, height: 176 }
+      };
+
+      await openSettingsWithDesktopPinsExpanded();
+
+      state.setConfig({
+        ...state.CONFIG,
+        desktopPins: {
+          'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+        }
+      });
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.desktopPins).toEqual({
+        'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+      });
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          desktopPins: {
+            'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+          }
+        })
+      );
+    });
   });
 
   describe('Config Save Flow', () => {

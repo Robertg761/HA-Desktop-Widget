@@ -43,6 +43,7 @@ jest.mock('../../src/websocket.js', () => ({
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
+const camera = require('../../src/camera.js');
 const {
   sampleConfig,
   sampleStates,
@@ -1206,6 +1207,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateEntityInUI(timerLikeEntity);
 
       expect(ui.getTickTargets().hasVisibleTimers).toBe(true);
+    });
+  });
+
+  describe('handleDesktopPinActionRequest', () => {
+    it('does not toggle unsupported entities for open-details requests', () => {
+      state.setStates({
+        'lock.front_door': {
+          entity_id: 'lock.front_door',
+          state: 'locked',
+          attributes: {
+            friendly_name: 'Front Door'
+          }
+        }
+      });
+
+      ui.handleDesktopPinActionRequest({
+        entityId: 'lock.front_door',
+        action: 'open-details'
+      });
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(camera.openCamera).not.toHaveBeenCalled();
     });
   });
 
