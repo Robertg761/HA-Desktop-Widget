@@ -82,6 +82,7 @@
  * @property {string[]} [primaryCards] - Primary status cards (e.g., ["weather", "time"] or entity IDs)
  * @property {string} [selectedWeatherEntity] - Selected weather entity ID
  * @property {string[]} [favoriteEntities] - List of favorited entity IDs
+ * @property {Object.<string, {x:number, y:number, width:number, height:number}>} [desktopPins] - Persisted desktop mini-widget bounds keyed by entity ID
  * @property {Object.<string, string>} [customEntityNames] - Custom display names
  * @property {Object.<string, string>} [customEntityIcons] - Custom icon glyphs per entity ID
  * @property {Object} [customTabs] - Custom tab configurations

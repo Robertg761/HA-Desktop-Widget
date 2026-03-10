@@ -529,6 +529,13 @@ function reconcileConfigEntityIds(config, states = state.STATES) {
         changed = true;
     }
 
+    const desktopPinsResult = remapObjectKeys(config.desktopPins);
+    if (desktopPinsResult.changed) {
+        ensureConfigClone();
+        nextConfig.desktopPins = desktopPinsResult.value;
+        changed = true;
+    }
+
     const primaryCardSpecial = new Set(['weather', 'time', 'none']);
     const primaryCardsResult = remapArray(config.primaryCards, { specialValues: primaryCardSpecial });
     if (primaryCardsResult.changed) {

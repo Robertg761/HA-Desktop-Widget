@@ -567,6 +567,9 @@ describe('Utils Module', () => {
         primaryMediaPlayer: 'media_player.living room',
         selectedWeatherEntity: 'weather.home',
         primaryCards: ['weather', 'light.closet light'],
+        desktopPins: {
+          'light.closet light': { x: 12, y: 24, width: 176, height: 176 }
+        },
         customEntityNames: { 'light.closet light': 'Closet Light' },
         customEntityIcons: { 'light.closet light': '🧰' },
         tileSpans: { 'light.closet light': 2 },
@@ -590,6 +593,7 @@ describe('Utils Module', () => {
       expect(result.config.favoriteEntities).toEqual(['light.closet_light', 'switch.kettle']);
       expect(result.config.primaryMediaPlayer).toBe('media_player.living_room');
       expect(result.config.primaryCards).toEqual(['weather', 'light.closet_light']);
+      expect(result.config.desktopPins['light.closet_light']).toEqual({ x: 12, y: 24, width: 176, height: 176 });
       expect(result.config.customEntityNames['light.closet_light']).toBe('Closet Light');
       expect(result.config.customEntityIcons['light.closet_light']).toBe('🧰');
       expect(result.config.tileSpans['light.closet_light']).toBe(2);
@@ -616,6 +620,9 @@ describe('Utils Module', () => {
         selectedWeatherEntity: '',
         favoriteEntities: [null, undefined, ''],
         primaryCards: ['weather', null, ''],
+        desktopPins: {
+          '': { x: 0, y: 0, width: 100, height: 100 }
+        },
         customEntityNames: {
           '': 'Empty key'
         },
@@ -657,6 +664,9 @@ describe('Utils Module', () => {
         primaryMediaPlayer: 'media_player.missing room',
         selectedWeatherEntity: 'weather.missing city',
         primaryCards: ['weather', 'light.missing room'],
+        desktopPins: {
+          'light.missing room': { x: 30, y: 40, width: 180, height: 180 }
+        },
         customEntityNames: { 'light.missing room': 'Missing Light', '': 'Empty key' },
         customEntityIcons: { 'light.missing room': '🔥' },
         tileSpans: { 'light.missing room': 2 },

@@ -15,6 +15,9 @@ const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
 const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
+const WINDOW_QUERY = new URLSearchParams(window.location.search);
+const IS_DESKTOP_PIN_MODE = WINDOW_QUERY.get('mode') === 'desktop-pin';
+const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -92,6 +95,72 @@ function setDisconnectedStatus(detailMessage = '') {
 function setConnectedStatus(detailMessage = DEFAULT_CONNECTED_STATUS_DETAIL) {
   lastDisconnectReason = '';
   uiUtils.setStatus(true, detailMessage);
+}
+
+function getSettingsUiHooks() {
+  return {
+    initUpdateUI: ui.initUpdateUI,
+    renderActiveTab: ui.renderActiveTab,
+    updateMediaTile: ui.updateMediaTile,
+    renderPrimaryCards: ui.renderPrimaryCards,
+    exitReorganizeMode: () => {
+      const container = document.getElementById('quick-controls');
+      if (container && container.classList.contains('reorganize-mode')) {
+        ui.toggleReorganizeMode();
+      }
+    },
+  };
+}
+
+function openSettingsModal() {
+  settings.openSettings(getSettingsUiHooks());
+}
+
+function applyRendererConfig(nextConfig) {
+  if (!nextConfig || !nextConfig.homeAssistant) return;
+  state.setConfig(nextConfig);
+  uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+  uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
+  uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+  uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
+  uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+  uiUtils.applyWindowEffects(state.CONFIG || {});
+}
+
+function renderCurrentMode() {
+  if (IS_DESKTOP_PIN_MODE) {
+    const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
+    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity);
+    return;
+  }
+  ui.renderActiveTab();
+}
+
+async function handleDesktopPinUpdate(message = {}) {
+  try {
+    if (!IS_DESKTOP_PIN_MODE) return;
+    if (message.config?.homeAssistant) {
+      applyRendererConfig(message.config);
+    }
+
+    if (message.entityId && message.entityId !== DESKTOP_PIN_ENTITY_ID) {
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
+      if (message.entity) {
+        state.setEntityState(message.entity);
+      } else {
+        const nextStates = { ...(state.STATES || {}) };
+        delete nextStates[DESKTOP_PIN_ENTITY_ID];
+        state.setStates(nextStates);
+      }
+    }
+
+    renderCurrentMode();
+  } catch (error) {
+    log.error('Failed to handle desktop pin update:', error);
+  }
 }
 
 function classifyConnectionError(error) {
@@ -295,6 +364,9 @@ websocket.on('message', (msg) => {
       const entity = msg.event.data.new_state;
       if (entity) {
         state.setEntityState(entity);
+        window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
+          log.warn('Failed to publish HA entity update to main process:', error);
+        });
         if (ui.isEntityVisible(entity.entity_id)) {
           ui.updateEntityInUI(entity);
         }
@@ -328,6 +400,9 @@ websocket.on('message', (msg) => {
               favoriteCount: Array.isArray(state.CONFIG?.favoriteEntities) ? state.CONFIG.favoriteEntities.length : 0,
             });
             state.setStates(mergedStates);
+            window.electronAPI.publishHaSnapshot(mergedStates).catch((error) => {
+              log.warn('Failed to publish HA snapshot to main process:', error);
+            });
 
             const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
             if (reconciliation.changed) {
@@ -468,19 +543,8 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
 
 // Listen for open-settings event from tray menu
 window.electronAPI.onOpenSettings(() => {
-  settings.openSettings({
-    initUpdateUI: ui.initUpdateUI,
-    renderActiveTab: ui.renderActiveTab,
-    updateMediaTile: ui.updateMediaTile,
-    renderPrimaryCards: ui.renderPrimaryCards,
-    exitReorganizeMode: () => {
-      // Exit reorganize mode if active
-      const container = document.getElementById('quick-controls');
-      if (container && container.classList.contains('reorganize-mode')) {
-        ui.toggleReorganizeMode();
-      }
-    },
-  });
+  if (IS_DESKTOP_PIN_MODE) return;
+  openSettingsModal();
 });
 
 window.electronAPI.onProfileSyncStatus((status) => {
@@ -492,17 +556,20 @@ window.electronAPI.onProfileSyncStatus((status) => {
 window.electronAPI.onConfigUpdated((nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
-    state.setConfig(nextConfig);
-    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
-    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
-    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
-    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
-    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
-    ui.renderActiveTab();
+    applyRendererConfig(nextConfig);
+    renderCurrentMode();
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }
+});
+
+window.electronAPI.onDesktopPinActionRequested((payload) => {
+  if (IS_DESKTOP_PIN_MODE) return;
+  ui.handleDesktopPinActionRequest(payload);
+});
+
+window.electronAPI.onDesktopPinUpdate((payload) => {
+  void handleDesktopPinUpdate(payload);
 });
 
 /**
@@ -559,10 +626,48 @@ function replaceEmojiIcons() {
  *
  * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
  */
+async function initializeDesktopPinMode() {
+  try {
+    log.info('Initializing desktop pin renderer');
+    const bootstrap = await window.electronAPI.getDesktopPinBootstrap(DESKTOP_PIN_ENTITY_ID);
+    const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
+
+    if (nextConfig?.homeAssistant) {
+      applyRendererConfig(nextConfig);
+    } else {
+      state.setConfig({
+        homeAssistant: { url: '', token: 'YOUR_LONG_LIVED_ACCESS_TOKEN' },
+        ui: {},
+      });
+    }
+
+    if (bootstrap?.entity) {
+      state.setStates({ [DESKTOP_PIN_ENTITY_ID]: bootstrap.entity });
+    } else {
+      state.setStates({});
+    }
+
+    wireDesktopPinUI();
+    replaceEmojiIcons();
+    uiUtils.showLoading(false);
+    renderCurrentMode();
+  } catch (error) {
+    log.error('Desktop pin initialization error:', error);
+    uiUtils.showLoading(false);
+    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, null);
+  }
+}
+
 async function init() {
   try {
     log.info('Initializing application');
+    document.body.classList.toggle('desktop-pin-mode', IS_DESKTOP_PIN_MODE);
     uiUtils.showLoading(true);
+    if (IS_DESKTOP_PIN_MODE) {
+      await initializeDesktopPinMode();
+      return;
+    }
+
     uiUtils.initializeConnectionStatusTooltip();
     setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
 
@@ -591,7 +696,7 @@ async function init() {
       return;
     }
 
-    state.setConfig(config);
+    applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
 
@@ -626,14 +731,6 @@ async function init() {
       return;
     }
 
-    // Apply theme and UI preferences from saved config
-    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
-    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
-    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
-    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
-    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
-
     // Start consolidated UI tick scheduler for time/timer/media updates.
     startUiTickScheduler();
 
@@ -643,7 +740,7 @@ async function init() {
 
     // Always hide loading and show UI
     uiUtils.showLoading(false);
-    ui.renderActiveTab();
+    renderCurrentMode();
 
     // Connect to WebSocket in background
     log.info('Connecting to Home Assistant WebSocket');
@@ -670,21 +767,7 @@ function wireUI() {
   try {
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
-      settingsBtn.onclick = () => {
-        settings.openSettings({
-          initUpdateUI: ui.initUpdateUI,
-          renderActiveTab: ui.renderActiveTab,
-          updateMediaTile: ui.updateMediaTile,
-          renderPrimaryCards: ui.renderPrimaryCards,
-          exitReorganizeMode: () => {
-            // Exit reorganize mode if active
-            const container = document.getElementById('quick-controls');
-            if (container && container.classList.contains('reorganize-mode')) {
-              ui.toggleReorganizeMode();
-            }
-          },
-        });
-      };
+      settingsBtn.onclick = openSettingsModal;
     }
 
     const closeSettingsBtn = document.getElementById('close-settings');
@@ -995,6 +1078,32 @@ function wireUI() {
     }
   } catch (error) {
     log.error('Error wiring UI:', error);
+  }
+}
+
+function wireDesktopPinUI() {
+  try {
+    const openBtn = document.getElementById('desktop-pin-open-btn');
+    if (openBtn) {
+      openBtn.onclick = () => {
+        window.electronAPI.requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'open-details').catch((error) => {
+          log.error('Failed to open desktop pin details:', error);
+        });
+      };
+    }
+
+    const unpinBtn = document.getElementById('desktop-pin-unpin-btn');
+    if (unpinBtn) {
+      unpinBtn.onclick = async () => {
+        try {
+          await window.electronAPI.unpinEntityFromDesktop(DESKTOP_PIN_ENTITY_ID);
+        } catch (error) {
+          log.error('Failed to unpin desktop tile:', error);
+        }
+      };
+    }
+  } catch (error) {
+    log.error('Error wiring desktop pin UI:', error);
   }
 }
 

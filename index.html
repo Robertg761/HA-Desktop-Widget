@@ -11,6 +11,21 @@
 </head>
 
 <body>
+    <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
+        <div class="desktop-pin-header">
+            <div class="desktop-pin-drag-region">
+                <span class="desktop-pin-kicker">Desktop Tile</span>
+                <span class="desktop-pin-title" id="desktop-pin-entity-label">Pinned Tile</span>
+            </div>
+            <div class="desktop-pin-actions">
+                <button id="desktop-pin-open-btn" class="control-btn desktop-pin-action" title="Open in main widget">Open</button>
+                <button id="desktop-pin-unpin-btn" class="control-btn desktop-pin-action" title="Unpin from desktop">×</button>
+            </div>
+        </div>
+        <div id="desktop-pin-content" class="desktop-pin-content"></div>
+        <div id="desktop-pin-empty" class="desktop-pin-empty">Waiting for live Home Assistant data...</div>
+    </div>
+
     <!-- Minimal header with just drag area and essential controls -->
     <div class="widget-header">
         <div class="drag-area">
@@ -175,10 +190,10 @@
                                     <option value="custom">Custom (Advanced)</option>
                                 </select>
                                 <div id="profile-sync-scope-advanced" class="profile-sync-scope-advanced hidden">
-                                    <label class="profile-sync-scope-option">
-                                        <input type="checkbox" id="profile-sync-scope-quick-access-layout">
-                                        Quick Access/Layout (favorites, custom names/icons, tabs, primary cards)
-                                    </label>
+                                     <label class="profile-sync-scope-option">
+                                         <input type="checkbox" id="profile-sync-scope-quick-access-layout">
+                                         Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs, primary cards)
+                                     </label>
                                     <label class="profile-sync-scope-option">
                                         <input type="checkbox" id="profile-sync-scope-visual-personalization">
                                         Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)
@@ -404,6 +419,33 @@
                                 <div id="primary-cards-list" class="entity-selector-list"></div>
                             </div>
                             <div class="form-help">Weather and Time are the defaults. Choose an entity below to pin it to a card.</div>
+                        </div>
+                    </div>
+                    <div class="personalization-section collapsed" id="desktop-pins-section">
+                        <button type="button" class="section-toggle" id="desktop-pins-toggle" aria-expanded="false"
+                            aria-controls="desktop-pins-body">
+                            <span>Desktop Pins</span>
+                            <span class="section-toggle-icon">▾</span>
+                        </button>
+                        <div id="desktop-pins-body" class="section-body">
+                            <div class="desktop-pins-toolbar">
+                                <div class="desktop-pins-summary">
+                                    <div class="primary-card-summary">
+                                        <span class="primary-card-label">Pinned Tiles</span>
+                                        <span class="primary-card-value" id="desktop-pins-current">None</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="desktop-pins-search">Search Quick Access entities</label>
+                                <input type="text" id="desktop-pins-search" placeholder="Search favorited entities...">
+                            </div>
+                            <div class="form-group">
+                                <label>Manage Desktop Pins</label>
+                                <div id="desktop-pins-list" class="entity-selector-list"></div>
+                            </div>
+                            <div class="form-help" id="desktop-pins-summary">Pin any Quick Access tile to create a small desktop mini-widget.</div>
+                            <div class="form-help">Pinned tiles sync as part of Quick Access/Layout preferences, but their positions are clamped to each device's visible desktop.</div>
                         </div>
                     </div>
                     <div class="personalization-section collapsed" id="custom-entity-icons-section">

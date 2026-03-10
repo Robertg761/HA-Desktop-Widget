@@ -11,6 +11,7 @@ let isReorganizeMode = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
 const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
+const DESKTOP_PIN_DIRECT_ACTION_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean', 'lock', 'cover', 'scene', 'script', 'timer']);
 const desiredStateByEntity = new Map();
 const inFlightByEntity = new Map();
 const lastRequestedStateByEntity = new Map();
@@ -729,11 +730,14 @@ function updateEntityInUI(entity, options = {}) {
 
     const items = document.querySelectorAll(`.control-item[data-entity-id="${renderEntity.entity_id}"]`);
     items.forEach(item => {
+      const isDesktopPin = item.dataset.desktopPin === 'true';
       if (updateExistingMediaPlayerControl(item, renderEntity)) {
         return;
       }
       const isPrimary = item.dataset.primaryCard === 'true';
-      const newControl = createControlElement(renderEntity);
+      const newControl = isDesktopPin
+        ? createDesktopPinControlElement(renderEntity)
+        : createControlElement(renderEntity);
       if (isPrimary) {
         newControl.dataset.primaryCard = 'true';
       }
@@ -785,6 +789,7 @@ function getUnavailableControlSignature(entityId) {
 
 function updateExistingMediaPlayerControl(item, entity) {
   if (!item || !entity || !entity.entity_id || !entity.entity_id.startsWith('media_player.')) return false;
+  if (item.dataset.desktopPin === 'true') return false;
   if (!item.classList.contains('media-player-entity')) return false;
   if (!item.querySelector('.control-icon') || !item.querySelector('.control-info')) return false;
 
@@ -875,6 +880,134 @@ function renderQuickControls() {
   }
 }
 
+function createDesktopPinControlElement(entity) {
+  try {
+    const baseControl = createControlElement(entity);
+    const div = baseControl.cloneNode(true);
+    const domain = entity?.entity_id?.split('.')?.[0] || '';
+
+    div.dataset.desktopPin = 'true';
+    div.classList.add('desktop-pin-control');
+    div.style.gridColumn = 'span 1';
+
+    const attachAction = (action, payload = {}) => {
+      div.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          await window.electronAPI.requestDesktopPinAction(entity.entity_id, action, payload);
+        } catch (error) {
+          console.error('Error forwarding desktop pin action:', error);
+          uiUtils.showToast('Could not reach the main widget', 'error', 2600);
+        }
+      });
+    };
+
+    if (entity.entity_id.startsWith('camera.') || entity.entity_id.startsWith('media_player.') || entity.entity_id.startsWith('climate.')) {
+      attachAction('open-details');
+    } else if (entity.entity_id.startsWith('sensor.')) {
+      attachAction('open-details');
+    } else if (domain === 'light') {
+      attachAction('toggle');
+    } else if (DESKTOP_PIN_DIRECT_ACTION_DOMAINS.has(domain)) {
+      attachAction('toggle');
+    } else {
+      attachAction('open-details');
+    }
+
+    return div;
+  } catch (error) {
+    console.error('Error creating desktop pin control element:', error);
+    return document.createElement('div');
+  }
+}
+
+function createDesktopPinUnavailableElement(entityId) {
+  const baseControl = createUnavailableElement(entityId);
+  const div = baseControl.cloneNode(true);
+  div.dataset.desktopPin = 'true';
+  div.classList.add('desktop-pin-control', 'desktop-pin-unavailable');
+  div.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await window.electronAPI.requestDesktopPinAction(entityId, 'focus-main');
+    } catch (error) {
+      console.error('Error focusing main widget for unavailable desktop pin:', error);
+    }
+  });
+  return div;
+}
+
+function renderDesktopPinnedTile(entityId, entity = null) {
+  const container = document.getElementById('desktop-pin-content');
+  const emptyState = document.getElementById('desktop-pin-empty');
+  const label = document.getElementById('desktop-pin-entity-label');
+  if (!container || !emptyState) return;
+
+  container.innerHTML = '';
+  if (label) {
+    const liveEntity = entity || state.STATES?.[entityId];
+    label.textContent = liveEntity
+      ? utils.getEntityDisplayName(liveEntity)
+      : (entityId || 'Pinned Tile');
+  }
+
+  if (!entityId) {
+    emptyState.textContent = 'No entity selected for this desktop pin.';
+    emptyState.classList.remove('hidden');
+    return;
+  }
+
+  if (!entity) {
+    emptyState.textContent = 'Waiting for live Home Assistant data...';
+    emptyState.classList.remove('hidden');
+    container.appendChild(createDesktopPinUnavailableElement(entityId));
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  container.appendChild(createDesktopPinControlElement(entity));
+}
+
+function handleDesktopPinActionRequest({ entityId, action }) {
+  try {
+    const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+    const entity = state.STATES?.[resolvedEntityId];
+    if (!entity) return;
+
+    switch (action) {
+      case 'toggle':
+        toggleEntity(entity);
+        break;
+      case 'open-details':
+      case 'focus-main':
+        if (resolvedEntityId.startsWith('camera.')) {
+          camera.openCamera(resolvedEntityId);
+        } else if (resolvedEntityId.startsWith('sensor.') && !resolvedEntityId.startsWith('sensor.timer')) {
+          showSensorDetails(entity);
+        } else if (resolvedEntityId.startsWith('light.')) {
+          showBrightnessSlider(entity);
+        } else if (resolvedEntityId.startsWith('climate.')) {
+          showClimateControls(entity);
+        } else if (resolvedEntityId.startsWith('fan.')) {
+          showFanControls(entity);
+        } else if (resolvedEntityId.startsWith('cover.')) {
+          showCoverControls(entity);
+        } else if (resolvedEntityId.startsWith('media_player.')) {
+          showMediaDetail(entity);
+        } else {
+          toggleEntity(entity);
+        }
+        break;
+      default:
+        break;
+    }
+  } catch (error) {
+    console.error('Error handling desktop pin action request:', error);
+  }
+}
+
 function createControlElement(entity) {
   try {
     entity = getEntityForDisplay(entity);
@@ -885,6 +1018,14 @@ function createControlElement(entity) {
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
+    div.addEventListener('contextmenu', (event) => {
+      if (div.dataset.desktopPin === 'true') return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.electronAPI.showEntityTileMenu(entity.entity_id).catch((error) => {
+        console.error('Error opening entity tile menu:', error);
+      });
+    });
     emitUiDebug('quick_access.create_control', {
       entityId: entity.entity_id,
       state: entity.state,
@@ -3474,6 +3615,8 @@ export {
   getTickTargets,
   refreshVisibleEntityCache,
   executeHotkeyAction,
+  handleDesktopPinActionRequest,
+  renderDesktopPinnedTile,
   updateMediaTile,
   updateMediaSeekBar,
   callMediaTileService,

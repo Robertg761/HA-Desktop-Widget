@@ -38,6 +38,7 @@ let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
+let pendingDesktopPins = {};
 let pendingCustomEntityIcons = {};
 let activeCustomEntityIconPickerEntityId = null;
 let customEntityIconPickerQueryByEntityId = {};
@@ -52,7 +53,7 @@ let settingsUiHooks = null;
 let profileSyncStatusCache = null;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
-const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'custom-entity-icons-section']);
+const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'desktop-pins-section', 'custom-entity-icons-section']);
 const personalizationSectionPersistTimers = new Map();
 const hydratedPersonalizationSections = new Set();
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
@@ -1398,6 +1399,8 @@ function hydratePersonalizationSectionIfNeeded(section) {
 
   if (section.id === 'primary-cards-section') {
     renderPrimaryCardsEntityList();
+  } else if (section.id === 'desktop-pins-section') {
+    renderDesktopPinsList();
   } else if (section.id === 'custom-entity-icons-section') {
     // Prime the icon catalog the first time the section opens.
     void ensureCustomEntityIconChoicesLoaded().catch((error) => {
@@ -1689,6 +1692,160 @@ function initPrimaryCardsUI() {
   const searchInput = document.getElementById('primary-cards-search');
   if (searchInput) {
     searchInput.addEventListener('input', renderPrimaryCardsEntityList);
+  }
+
+  section.dataset.initialized = 'true';
+}
+
+function normalizeDesktopPinMap(desktopPins) {
+  if (!desktopPins || typeof desktopPins !== 'object' || Array.isArray(desktopPins)) {
+    return {};
+  }
+
+  const favorites = new Set((state.CONFIG?.favoriteEntities || []).filter(entityId => typeof entityId === 'string' && entityId.trim()));
+  return Object.entries(desktopPins).reduce((acc, [entityId, bounds]) => {
+    if (typeof entityId !== 'string') return acc;
+    const trimmedEntityId = entityId.trim();
+    if (!trimmedEntityId || !favorites.has(trimmedEntityId) || !bounds || typeof bounds !== 'object') {
+      return acc;
+    }
+    acc[trimmedEntityId] = { ...bounds };
+    return acc;
+  }, {});
+}
+
+function getSavedDesktopPins() {
+  return normalizeDesktopPinMap(state.CONFIG?.desktopPins);
+}
+
+function setPendingDesktopPins(desktopPins) {
+  pendingDesktopPins = normalizeDesktopPinMap(desktopPins);
+}
+
+function getPendingDesktopPinsForSave() {
+  return { ...pendingDesktopPins };
+}
+
+function getDesktopPinEntityOptions(filter = '') {
+  const normalizedFilter = filter.toLowerCase();
+  return (state.CONFIG?.favoriteEntities || [])
+    .map((favoriteId) => {
+      const resolvedEntityId = utils.resolveEntityId(favoriteId, state.STATES) || favoriteId;
+      const entity = state.STATES?.[resolvedEntityId] || null;
+      const displayName = entity ? utils.getEntityDisplayName(entity) : favoriteId;
+      const haystackId = entity?.entity_id || favoriteId;
+      const score = normalizedFilter
+        ? utils.getSearchScore(displayName, normalizedFilter) + utils.getSearchScore(haystackId, normalizedFilter)
+        : 1;
+      return {
+        entityId: favoriteId,
+        entity,
+        displayName,
+        score,
+      };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.displayName.localeCompare(b.displayName);
+    });
+}
+
+function updateDesktopPinsSummary() {
+  const currentEl = document.getElementById('desktop-pins-current');
+  const summaryEl = document.getElementById('desktop-pins-summary');
+  const count = Object.keys(pendingDesktopPins).length;
+  if (currentEl) {
+    currentEl.textContent = count === 0 ? 'None' : `${count} pinned tile${count === 1 ? '' : 's'}`;
+  }
+  if (summaryEl) {
+    summaryEl.textContent = count === 0
+      ? 'Pin any Quick Access tile to create a small desktop mini-widget.'
+      : `${count} tile${count === 1 ? '' : 's'} will be persisted when you save settings.`;
+  }
+}
+
+function renderDesktopPinsList() {
+  const list = document.getElementById('desktop-pins-list');
+  const searchInput = document.getElementById('desktop-pins-search');
+  if (!list || !searchInput) return;
+
+  const filter = searchInput.value || '';
+  const options = getDesktopPinEntityOptions(filter);
+  list.innerHTML = '';
+
+  if (!options.length) {
+    list.innerHTML = '<div class="no-entities-message">Add entities to Quick Access to pin them to the desktop.</div>';
+    updateDesktopPinsSummary();
+    syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
+    return;
+  }
+
+  options.forEach(({ entityId, entity, displayName }) => {
+    const isPinned = !!pendingDesktopPins[entityId];
+    const isSavedPinned = !!state.CONFIG?.desktopPins?.[entityId];
+    const iconValue = entity ? utils.getEntityIcon(entity) : '•';
+    const currentEntityId = entity?.entity_id || entityId;
+
+    const item = document.createElement('div');
+    item.className = 'entity-item';
+    item.innerHTML = `
+      <div class="entity-item-main">
+        <span class="entity-icon">${utils.escapeHtml(iconValue)}</span>
+        <div class="entity-item-info">
+          <span class="entity-name">${utils.escapeHtml(displayName)}</span>
+          <span class="entity-id" title="${utils.escapeHtml(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
+          ${isPinned ? '<span class="desktop-pin-status-badge">Pinned</span>' : ''}
+        </div>
+      </div>
+      <div class="desktop-pins-list-actions">
+        ${isSavedPinned ? `<button class="btn btn-secondary btn-sm" type="button" data-desktop-pin-focus="${utils.escapeHtml(entityId)}">Focus</button>` : ''}
+        <button class="btn ${isPinned ? 'btn-primary' : 'btn-secondary'} btn-sm" type="button" data-desktop-pin-toggle="${utils.escapeHtml(entityId)}">${isPinned ? 'Unpin' : 'Pin'}</button>
+      </div>
+    `;
+
+    list.appendChild(item);
+  });
+
+  updateDesktopPinsSummary();
+  syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
+}
+
+function initDesktopPinsUI() {
+  const section = document.getElementById('desktop-pins-section');
+  if (!section || section.dataset.initialized) return;
+
+  section.addEventListener('click', async (event) => {
+    const toggleBtn = event.target.closest('[data-desktop-pin-toggle]');
+    if (toggleBtn) {
+      const entityId = toggleBtn.dataset.desktopPinToggle;
+      if (!entityId) return;
+      if (pendingDesktopPins[entityId]) {
+        delete pendingDesktopPins[entityId];
+      } else {
+        pendingDesktopPins[entityId] = {};
+      }
+      renderDesktopPinsList();
+      hydratedPersonalizationSections.add('desktop-pins-section');
+      return;
+    }
+
+    const focusBtn = event.target.closest('[data-desktop-pin-focus]');
+    if (focusBtn) {
+      const entityId = focusBtn.dataset.desktopPinFocus;
+      if (!entityId) return;
+      try {
+        await window.electronAPI.focusDesktopPin(entityId);
+      } catch (error) {
+        log.error('Failed to focus desktop pin window:', error);
+        showToast('Could not focus the pinned tile.', 'error', 2500);
+      }
+    }
+  });
+
+  const searchInput = document.getElementById('desktop-pins-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', renderDesktopPinsList);
   }
 
   section.dataset.initialized = 'true';
@@ -2815,6 +2972,21 @@ async function openSettings(uiHooks) {
       { renderList: shouldRenderPrimaryCardsList }
     );
 
+    const desktopPinsSection = document.getElementById('desktop-pins-section');
+    const desktopPinsList = document.getElementById('desktop-pins-list');
+    if (desktopPinsList) desktopPinsList.innerHTML = '';
+    const shouldRenderDesktopPinsList = !(desktopPinsSection?.classList.contains('collapsed'));
+    setPendingDesktopPins(getSavedDesktopPins());
+    initDesktopPinsUI();
+    const desktopPinsSearch = document.getElementById('desktop-pins-search');
+    if (desktopPinsSearch) desktopPinsSearch.value = '';
+    if (shouldRenderDesktopPinsList) {
+      renderDesktopPinsList();
+      hydratedPersonalizationSections.add('desktop-pins-section');
+    } else {
+      updateDesktopPinsSummary();
+    }
+
     const customIconsSection = document.getElementById('custom-entity-icons-section');
     const customIconsList = document.getElementById('custom-entity-icons-list');
     if (customIconsList) {
@@ -2882,6 +3054,7 @@ function closeSettings() {
     previewBackground = null;
     pendingBackground = null;
     pendingPrimaryCards = null;
+    pendingDesktopPins = {};
     pendingCustomEntityIcons = {};
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -3009,6 +3182,7 @@ async function saveSettings() {
     state.CONFIG.primaryMediaPlayer = selectedValue || null;
 
     state.CONFIG.primaryCards = getPendingPrimaryCards();
+    state.CONFIG.desktopPins = getPendingDesktopPinsForSave();
     state.CONFIG.customEntityIcons = getPendingCustomEntityIconsForSave();
 
     const nextProfileSync = ensureProfileSyncConfig();

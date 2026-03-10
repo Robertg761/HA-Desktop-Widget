@@ -51,6 +51,7 @@ const sampleConfig = {
     'weather.home',
     'media_player.spotify'
   ],
+  desktopPins: {},
   customEntityNames: {
     'light.living_room': 'Main Light',
     'sensor.temperature': 'Room Temp'
