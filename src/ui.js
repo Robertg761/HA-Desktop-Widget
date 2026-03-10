@@ -430,6 +430,7 @@ function removeRemoveButtons() {
   try {
     document.querySelectorAll('#quick-controls .remove-btn').forEach(btn => btn.remove());
     document.querySelectorAll('#quick-controls .rename-btn').forEach(btn => btn.remove());
+    document.querySelectorAll('#quick-controls .desktop-pin-quick-toggle').forEach(btn => btn.remove());
   } catch (error) {
     console.error('Error removing remove buttons:', error);
   }
@@ -497,6 +498,8 @@ function addButtonsToElement(item) {
       }, true);
       item.appendChild(removeBtn);
     }
+
+    syncQuickAccessControlButton(item, item.dataset.entityId);
   } catch (error) {
     console.error('Error adding buttons to element:', error);
   }
@@ -763,6 +766,7 @@ function getControlRenderSignature(entity) {
   const attrs = entity.attributes || {};
   return JSON.stringify({
     entityId: entity.entity_id,
+    desktopPinned: !!state.CONFIG?.desktopPins?.[entity.entity_id],
     state: entity.state || '',
     displayState: utils.getEntityDisplayState(entity),
     name: utils.getEntityDisplayName(entity),
@@ -782,9 +786,91 @@ function getUnavailableControlSignature(entityId) {
   const customName = state.CONFIG?.customEntityNames?.[entityId] || null;
   return JSON.stringify({
     entityId: entityId || '',
+    desktopPinned: !!state.CONFIG?.desktopPins?.[entityId],
     unavailable: true,
     customName,
   });
+}
+
+function isEntityDesktopPinned(entityId) {
+  return !!state.CONFIG?.desktopPins?.[entityId];
+}
+
+function syncQuickAccessControlButton(control, entityId) {
+  if (!control || !entityId) return;
+
+  let button = control.querySelector('.desktop-pin-quick-toggle');
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'desktop-pin-quick-toggle';
+    button.dataset.desktopPinQuickToggle = entityId;
+    button.setAttribute('draggable', 'false');
+
+    ['pointerdown', 'mousedown', 'dblclick', 'contextmenu'].forEach((eventName) => {
+      button.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }, true);
+    });
+
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await toggleDesktopPinFromQuickAccess(entityId);
+    });
+
+    control.appendChild(button);
+  }
+
+  const isPinned = isEntityDesktopPinned(entityId);
+  control.dataset.desktopPinned = isPinned ? 'true' : 'false';
+  button.dataset.active = isPinned ? 'true' : 'false';
+  button.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
+  button.title = isPinned ? 'Unpin from desktop' : 'Pin to desktop';
+  button.textContent = isPinned ? 'Pinned' : 'Pin';
+}
+
+async function toggleDesktopPinFromQuickAccess(entityId) {
+  if (!entityId) return { success: false, error: 'Missing entity ID' };
+
+  const isPinned = isEntityDesktopPinned(entityId);
+  const nextDesktopPins = { ...(state.CONFIG?.desktopPins || {}) };
+
+  try {
+    let result;
+    if (isPinned) {
+      result = await window.electronAPI.unpinEntityFromDesktop(entityId);
+      delete nextDesktopPins[entityId];
+      uiUtils.showToast('Removed desktop pin', 'info', 1800);
+    } else {
+      result = await window.electronAPI.pinEntityToDesktop(entityId);
+      nextDesktopPins[entityId] = result?.pinBounds || nextDesktopPins[entityId] || {};
+      uiUtils.showToast('Pinned to desktop', 'success', 1800);
+    }
+
+    state.setConfig({
+      ...state.CONFIG,
+      desktopPins: nextDesktopPins,
+    });
+
+    renderQuickControls();
+    if (isReorganizeMode) {
+      const container = document.getElementById('quick-controls');
+      if (container) container.classList.add('reorganize-mode');
+      addRemoveButtons();
+    }
+
+    return { success: true, pinned: !isPinned, result };
+  } catch (error) {
+    console.error('Error toggling desktop pin from quick access:', error);
+    uiUtils.showToast(
+      isPinned ? 'Could not remove desktop pin' : 'Could not pin tile to desktop',
+      'error',
+      2600
+    );
+    return { success: false, error };
+  }
 }
 
 function updateExistingMediaPlayerControl(item, entity) {

@@ -26,9 +26,11 @@ jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn()
 }));
 
-jest.mock('sortablejs', () => jest.fn().mockImplementation(() => ({
-  destroy: jest.fn()
-})));
+jest.mock('sortablejs', () => ({
+  create: jest.fn(() => ({
+    destroy: jest.fn()
+  }))
+}));
 
 // Mock WebSocket callService method
 const mockCallService = jest.fn().mockResolvedValue({});
@@ -114,6 +116,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // GROUP 1: Service Routing & Entity Controls (14 tests)
   // Note: toggleEntity is not exported, tested indirectly through executeHotkeyAction
   // ==============================================================================
+
+  afterEach(() => {
+    const quickControls = document.getElementById('quick-controls');
+    if (quickControls?.classList.contains('reorganize-mode')) {
+      ui.toggleReorganizeMode();
+    }
+  });
 
   describe('executeHotkeyAction', () => {
     beforeEach(() => {
@@ -1207,6 +1216,81 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateEntityInUI(timerLikeEntity);
 
       expect(ui.getTickTargets().hasVisibleTimers).toBe(true);
+    });
+
+    it('shows the pin button only in reorganize mode and pins directly from the tile', async () => {
+      const config = {
+        ...state.CONFIG,
+        favoriteEntities: ['light.bedroom'],
+        desktopPins: {}
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'off',
+          attributes: {
+            friendly_name: 'Bedroom Light'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      expect(document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle')).toBeNull();
+
+      ui.toggleReorganizeMode();
+
+      const pinButton = document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle');
+      expect(pinButton).toBeTruthy();
+      expect(pinButton.textContent).toBe('Pin');
+
+      pinButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.pinEntityToDesktop).toHaveBeenCalledWith('light.bedroom');
+      expect(state.CONFIG.desktopPins).toEqual(expect.objectContaining({
+        'light.bedroom': expect.any(Object)
+      }));
+    });
+
+    it('shows pinned state in reorganize mode and allows unpinning directly', async () => {
+      const config = {
+        ...state.CONFIG,
+        favoriteEntities: ['light.bedroom'],
+        desktopPins: {
+          'light.bedroom': { x: 10, y: 20, width: 168, height: 148 }
+        }
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+            brightness: 180
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      expect(document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle')).toBeNull();
+
+      ui.toggleReorganizeMode();
+
+      const pinButton = document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle');
+      expect(pinButton).toBeTruthy();
+      expect(pinButton.textContent).toBe('Pinned');
+
+      pinButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.unpinEntityFromDesktop).toHaveBeenCalledWith('light.bedroom');
+      expect(state.CONFIG.desktopPins?.['light.bedroom']).toBeUndefined();
     });
   });
 

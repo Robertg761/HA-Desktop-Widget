@@ -1075,6 +1075,14 @@ body.desktop-pin-mode .desktop-pin-shell {
   overflow: hidden;
 }
 
+.control-item[data-desktop-pinned="true"] {
+  border-color: rgba(var(--accent-rgb), 0.36);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(var(--accent-rgb), 0.12);
+}
+
 .control-item::before {
   content: '';
   position: absolute;
@@ -4645,7 +4653,8 @@ body.desktop-pin-mode .desktop-pin-shell {
 }
 
 .reorganize-mode .control-item .remove-btn,
-.reorganize-mode .control-item .rename-btn {
+.reorganize-mode .control-item .rename-btn,
+.reorganize-mode .control-item .desktop-pin-quick-toggle {
   pointer-events: auto;
 }
 
@@ -4715,8 +4724,8 @@ body.desktop-pin-mode .desktop-pin-shell {
 /* Remove button in reorganize mode - with glassmorphism */
 .reorganize-mode .control-item .remove-btn {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: 8px;
+  right: 8px;
   width: 24px;
   height: 24px;
   background: rgba(211, 47, 47, 0.95);
@@ -4817,8 +4826,8 @@ body.desktop-pin-mode .desktop-pin-shell {
 /* Rename button in reorganize mode - with glassmorphism */
 .reorganize-mode .control-item .rename-btn {
   position: absolute;
-  top: -8px;
-  right: 26px;
+  top: 8px;
+  right: 38px;
   width: 24px;
   height: 24px;
   background: rgba(25, 118, 210, 0.95);
@@ -4855,9 +4864,52 @@ body.desktop-pin-mode .desktop-pin-shell {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
+.reorganize-mode .control-item .desktop-pin-quick-toggle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(12, 18, 32, 0.92);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle:hover,
+.reorganize-mode .control-item .desktop-pin-quick-toggle:focus-visible {
+  color: var(--text-primary);
+  border-color: rgba(var(--accent-rgb), 0.42);
+  background: rgba(14, 22, 40, 0.98);
+  transform: scale(1.06);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.36),
+    0 0 0 2px rgba(var(--accent-rgb), 0.16);
+  outline: none;
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle[data-active="true"] {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.38);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.24), rgba(var(--accent-rgb), 0.08));
+}
+
 .reorganize-mode .control-item {
   position: relative;
-  overflow: visible; /* allow overlay buttons to hover outside edges */
+  overflow: hidden;
+  padding-top: calc(var(--space-3) + 24px);
 }
 
 /* Rename modal styles */
