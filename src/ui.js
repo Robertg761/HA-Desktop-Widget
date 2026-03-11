@@ -17,6 +17,7 @@ const lastRequestedStateByEntity = new Map();
 const optimisticStateByEntity = new Map();
 const failedMediaArtworkRetryAtByUrl = new Map();
 const desktopPinLightBrightnessTimers = new Map();
+const desktopPinLightInteractionState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
@@ -820,6 +821,45 @@ function getDesktopPinLightLayout() {
   return 'compact';
 }
 
+function clearDesktopPinLightInteraction(entityId) {
+  const interaction = desktopPinLightInteractionState.get(entityId);
+  if (!interaction) return;
+  if (interaction.releaseTimer) {
+    clearTimeout(interaction.releaseTimer);
+  }
+  desktopPinLightInteractionState.delete(entityId);
+}
+
+function getDesktopPinLightInteraction(entityId) {
+  if (!entityId) return null;
+  return desktopPinLightInteractionState.get(entityId) || null;
+}
+
+function setDesktopPinLightInteraction(entityId, nextState = {}) {
+  if (!entityId) return null;
+  const current = desktopPinLightInteractionState.get(entityId) || {};
+  const merged = { ...current, ...nextState };
+  desktopPinLightInteractionState.set(entityId, merged);
+  return merged;
+}
+
+function scheduleDesktopPinLightInteractionRelease(entityId, delayMs = 260) {
+  if (!entityId) return;
+  const current = desktopPinLightInteractionState.get(entityId);
+  if (!current) return;
+  if (current.releaseTimer) {
+    clearTimeout(current.releaseTimer);
+  }
+  const releaseTimer = setTimeout(() => {
+    clearDesktopPinLightInteraction(entityId);
+  }, delayMs);
+  desktopPinLightInteractionState.set(entityId, {
+    ...current,
+    active: false,
+    releaseTimer,
+  });
+}
+
 function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (!root) return;
 
@@ -853,6 +893,33 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   }
 }
 
+function updateExistingDesktopPinLightControl(root, entity) {
+  if (!root || !entity?.entity_id || !root.classList.contains('desktop-pin-light-control')) {
+    return false;
+  }
+
+  const interaction = getDesktopPinLightInteraction(entity.entity_id);
+  const layout = getDesktopPinLightLayout();
+  const interactionBrightness = Number(interaction?.brightnessPct);
+  const brightnessPct = Number.isFinite(interactionBrightness)
+    ? Math.max(0, Math.min(100, Math.round(interactionBrightness)))
+    : getLightBrightnessPercent(entity);
+  const isOn = interaction?.active
+    ? brightnessPct > 0
+    : entity.state === 'on' || brightnessPct > 0;
+
+  root.dataset.layout = layout;
+  root.dataset.entityId = entity.entity_id;
+
+  const name = root.querySelector('.desktop-pin-light-name');
+  if (name) {
+    name.textContent = utils.getEntityDisplayName(entity);
+  }
+
+  applyDesktopPinLightVisualState(root, { isOn, brightnessPct });
+  return true;
+}
+
 function queueDesktopPinLightBrightness(entity, brightnessPct) {
   const entityId = entity?.entity_id;
   if (!entityId) return;
@@ -883,8 +950,14 @@ function queueDesktopPinLightBrightness(entity, brightnessPct) {
 function createDesktopPinLightControlElement(entity) {
   const div = document.createElement('div');
   const layout = getDesktopPinLightLayout();
-  const isOn = entity?.state === 'on';
-  const brightnessPct = getLightBrightnessPercent(entity);
+  const interaction = getDesktopPinLightInteraction(entity?.entity_id);
+  const interactionBrightness = Number(interaction?.brightnessPct);
+  const brightnessPct = Number.isFinite(interactionBrightness)
+    ? Math.max(0, Math.min(100, Math.round(interactionBrightness)))
+    : getLightBrightnessPercent(entity);
+  const isOn = interaction?.active
+    ? brightnessPct > 0
+    : entity?.state === 'on' || brightnessPct > 0;
   const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
 
   div.className = 'control-item desktop-pin-control desktop-pin-light-control';
@@ -940,6 +1013,14 @@ function createDesktopPinLightControlElement(entity) {
 
   const slider = div.querySelector('.desktop-pin-light-slider');
   if (slider) {
+    slider.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+      setDesktopPinLightInteraction(entity.entity_id, {
+        active: true,
+        brightnessPct: Number(slider.value),
+      });
+    }, true);
+
     ['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
       slider.addEventListener(eventName, (event) => {
         event.stopPropagation();
@@ -949,8 +1030,18 @@ function createDesktopPinLightControlElement(entity) {
     slider.addEventListener('input', (event) => {
       event.stopPropagation();
       const nextPct = Math.max(0, Math.min(100, Math.round(Number(event.target.value) || 0)));
+      setDesktopPinLightInteraction(entity.entity_id, {
+        active: true,
+        brightnessPct: nextPct,
+      });
       applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
       queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
+    });
+
+    ['change', 'pointerup', 'pointercancel'].forEach((eventName) => {
+      slider.addEventListener(eventName, () => {
+        scheduleDesktopPinLightInteractionRelease(entity.entity_id);
+      }, true);
     });
   }
 
@@ -961,6 +1052,11 @@ function createDesktopPinLightControlElement(entity) {
     button.addEventListener('click', (event) => {
       stopEvent(event);
       const nextPct = Number(button.dataset.brightness || 0);
+      setDesktopPinLightInteraction(entity.entity_id, {
+        active: false,
+        brightnessPct: nextPct,
+      });
+      scheduleDesktopPinLightInteractionRelease(entity.entity_id);
       applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
       queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
     }, true);
@@ -1200,7 +1296,10 @@ function renderDesktopPinTileInto({
   const label = labelId ? document.getElementById(labelId) : null;
   if (!container || !emptyState) return;
 
-  container.innerHTML = '';
+  const existingControl = entity?.entity_id
+    ? container.querySelector(`.control-item[data-entity-id="${entity.entity_id}"]`)
+    : null;
+
   if (label) {
     const liveEntity = entity || state.STATES?.[entityId];
     label.textContent = liveEntity
@@ -1215,6 +1314,7 @@ function renderDesktopPinTileInto({
   }
 
   if (!entity) {
+    container.innerHTML = '';
     emptyState.textContent = emptyMessage;
     emptyState.classList.remove('hidden');
     const unavailable = createDesktopPinUnavailableElement(entityId);
@@ -1224,6 +1324,10 @@ function renderDesktopPinTileInto({
   }
 
   emptyState.classList.add('hidden');
+  if (existingControl && existingControl.classList.contains('desktop-pin-light-control') && updateExistingDesktopPinLightControl(existingControl, entity)) {
+    return;
+  }
+  container.innerHTML = '';
   const control = createDesktopPinControlElement(entity);
   if (!interactive) control.style.pointerEvents = 'none';
   container.appendChild(control);

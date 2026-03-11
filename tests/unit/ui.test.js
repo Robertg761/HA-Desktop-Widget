@@ -1333,6 +1333,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       jest.useRealTimers();
     });
+
+    it('keeps desktop light slider value stable during rerenders while dragging', () => {
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+            brightness: 128
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom']);
+
+      const slider = document.querySelector('#desktop-pin-content .desktop-pin-light-slider');
+      expect(slider).toBeTruthy();
+
+      slider.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      slider.value = '82';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+
+      ui.renderDesktopPinnedTile('light.bedroom', {
+        entity_id: 'light.bedroom',
+        state: 'on',
+        attributes: {
+          friendly_name: 'Bedroom Light',
+          brightness: 128
+        }
+      });
+
+      const rerenderedSlider = document.querySelector('#desktop-pin-content .desktop-pin-light-slider');
+      expect(rerenderedSlider.value).toBe('82');
+    });
   });
 
   describe('handleDesktopPinActionRequest', () => {
