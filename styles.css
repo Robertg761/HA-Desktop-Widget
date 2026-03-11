@@ -438,6 +438,45 @@ body.desktop-pin-mode .desktop-pin-header {
   display: none;
 }
 
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-header {
+  display: none;
+}
+
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-shell,
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content,
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty,
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item {
+  -webkit-app-region: drag;
+  cursor: move;
+}
+
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-actions {
+  display: none;
+}
+
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item,
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-unavailable,
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty {
+  pointer-events: none;
+}
+
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
+  content: 'Drag to move';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.78);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
 .desktop-pin-header {
   display: flex;
   align-items: center;
@@ -491,6 +530,7 @@ body.desktop-pin-mode .desktop-pin-header {
   flex: 1;
   display: flex;
   align-items: stretch;
+  position: relative;
 }
 
 .desktop-pin-content .control-item {

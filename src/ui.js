@@ -390,6 +390,9 @@ function toggleReorganizeMode() {
 
       addRemoveButtons();
       addEscapeKeyListener();
+      window.electronAPI.setDesktopPinEditMode(true).catch((error) => {
+        console.error('Failed to enable desktop pin edit mode:', error);
+      });
       uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit', 'info', 3000);
     } else {
       // Destroy Sortable instance
@@ -407,6 +410,9 @@ function toggleReorganizeMode() {
       saveQuickAccessOrder();
       removeRemoveButtons();
       removeEscapeKeyListener();
+      window.electronAPI.setDesktopPinEditMode(false).catch((error) => {
+        console.error('Failed to disable desktop pin edit mode:', error);
+      });
       uiUtils.showToast('Quick Access order saved', 'success', 2000);
     }
   } catch (error) {

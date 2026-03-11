@@ -20,6 +20,7 @@ const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
+let desktopPinEditMode = false;
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -132,6 +133,7 @@ function applyRendererConfig(nextConfig) {
 function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
+    document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
     ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity);
     return;
   }
@@ -147,6 +149,10 @@ async function handleDesktopPinUpdate(message = {}) {
 
     if (message.entityId && message.entityId !== DESKTOP_PIN_ENTITY_ID) {
       return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'editMode')) {
+      desktopPinEditMode = !!message.editMode;
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
@@ -641,6 +647,7 @@ async function initializeDesktopPinMode() {
     log.info('Initializing desktop pin renderer');
     const bootstrap = await window.electronAPI.getDesktopPinBootstrap(DESKTOP_PIN_ENTITY_ID);
     const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
+    desktopPinEditMode = !!bootstrap?.editMode;
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);

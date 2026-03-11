@@ -1240,6 +1240,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle')).toBeNull();
 
       ui.toggleReorganizeMode();
+      expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenCalledWith(true);
 
       const pinButton = document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle');
       expect(pinButton).toBeTruthy();
@@ -1280,6 +1281,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle')).toBeNull();
 
       ui.toggleReorganizeMode();
+      expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenCalledWith(true);
 
       const pinButton = document.querySelector('.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle');
       expect(pinButton).toBeTruthy();
@@ -1291,6 +1293,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(mockElectronAPI.unpinEntityFromDesktop).toHaveBeenCalledWith('light.bedroom');
       expect(state.CONFIG.desktopPins?.['light.bedroom']).toBeUndefined();
+
+      ui.toggleReorganizeMode();
+      expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
     });
   });
 
