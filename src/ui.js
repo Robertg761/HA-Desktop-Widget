@@ -16,6 +16,7 @@ const inFlightByEntity = new Map();
 const lastRequestedStateByEntity = new Map();
 const optimisticStateByEntity = new Map();
 const failedMediaArtworkRetryAtByUrl = new Map();
+const desktopPinLightBrightnessTimers = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
@@ -801,6 +802,173 @@ function isEntityDesktopPinned(entityId) {
   return !!state.CONFIG?.desktopPins?.[entityId];
 }
 
+function getLightBrightnessPercent(entity) {
+  const rawBrightness = Number(entity?.attributes?.brightness);
+  if (!Number.isFinite(rawBrightness) || rawBrightness <= 0) {
+    return entity?.state === 'on' ? 100 : 0;
+  }
+  return Math.max(0, Math.min(100, Math.round((rawBrightness / 255) * 100)));
+}
+
+function getDesktopPinLightLayout() {
+  const width = typeof window !== 'undefined' ? (window.innerWidth || 168) : 168;
+  const height = typeof window !== 'undefined' ? (window.innerHeight || 148) : 148;
+
+  if (width <= 155 || height <= 122) return 'micro';
+  if (width >= 260 || height >= 190) return 'roomy';
+  if (width >= 195 || height >= 160) return 'balanced';
+  return 'compact';
+}
+
+function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
+  if (!root) return;
+
+  const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
+  root.dataset.state = isOn ? 'on' : 'off';
+  root.style.setProperty('--desktop-pin-light-level', String(safePct / 100));
+  root.style.setProperty('--desktop-pin-light-glow-opacity', isOn ? String((0.14 + ((safePct / 100) * 0.28)).toFixed(3)) : '0.06');
+
+  const meterValue = root.querySelector('.desktop-pin-light-meter-value');
+  if (meterValue) {
+    meterValue.textContent = isOn ? `${safePct}%` : 'Off';
+  }
+
+  const status = root.querySelector('.desktop-pin-light-status');
+  if (status) {
+    status.textContent = isOn
+      ? `${safePct}% brightness`
+      : 'Tap power or a preset';
+  }
+
+  const slider = root.querySelector('.desktop-pin-light-slider');
+  if (slider && slider.value !== String(safePct)) {
+    slider.value = String(safePct);
+  }
+
+  const powerBtn = root.querySelector('.desktop-pin-light-power');
+  if (powerBtn) {
+    powerBtn.textContent = isOn ? 'On' : 'Off';
+    powerBtn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+    powerBtn.dataset.active = isOn ? 'true' : 'false';
+  }
+}
+
+function queueDesktopPinLightBrightness(entity, brightnessPct) {
+  const entityId = entity?.entity_id;
+  if (!entityId) return;
+
+  const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
+  const existingTimer = desktopPinLightBrightnessTimers.get(entityId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timer = setTimeout(() => {
+    desktopPinLightBrightnessTimers.delete(entityId);
+
+    const currentEntity = state.STATES?.[entityId] || entity;
+    const entityName = utils.getEntityDisplayName(currentEntity || entity);
+    const serviceData = safePct <= 0
+      ? { entity_id: entityId }
+      : { entity_id: entityId, brightness_pct: safePct };
+    const serviceName = safePct <= 0 ? 'turn_off' : 'turn_on';
+
+    websocket.callService('light', serviceName, serviceData)
+      .catch((error) => handleServiceError(error, entityName));
+  }, 110);
+
+  desktopPinLightBrightnessTimers.set(entityId, timer);
+}
+
+function createDesktopPinLightControlElement(entity) {
+  const div = document.createElement('div');
+  const layout = getDesktopPinLightLayout();
+  const isOn = entity?.state === 'on';
+  const brightnessPct = getLightBrightnessPercent(entity);
+  const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
+
+  div.className = 'control-item desktop-pin-control desktop-pin-light-control';
+  div.dataset.desktopPin = 'true';
+  div.dataset.entityId = entity.entity_id;
+  div.dataset.layout = layout;
+  div.title = 'Compact light controls';
+  div.innerHTML = `
+    <div class="desktop-pin-light-shell">
+      <div class="desktop-pin-light-topline">
+        <div class="desktop-pin-light-meta">
+          <div class="desktop-pin-light-name">${displayName}</div>
+          <div class="desktop-pin-light-status">${isOn ? `${brightnessPct}% brightness` : 'Tap power or a preset'}</div>
+        </div>
+        <button class="desktop-pin-light-power" type="button" aria-label="Toggle light" aria-pressed="${isOn ? 'true' : 'false'}" data-active="${isOn ? 'true' : 'false'}">${isOn ? 'On' : 'Off'}</button>
+      </div>
+      <div class="desktop-pin-light-meter">
+        <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+        <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : 'Off'}</div>
+      </div>
+      <div class="desktop-pin-light-slider-row">
+        <span class="desktop-pin-light-slider-label">Dim</span>
+        <input class="desktop-pin-light-slider" type="range" min="0" max="100" step="1" value="${brightnessPct}" aria-label="Light brightness" />
+        <span class="desktop-pin-light-slider-label">Bright</span>
+      </div>
+      <div class="desktop-pin-light-presets">
+        <button class="desktop-pin-light-preset" type="button" data-brightness="15">15</button>
+        <button class="desktop-pin-light-preset" type="button" data-brightness="40">40</button>
+        <button class="desktop-pin-light-preset" type="button" data-brightness="70">70</button>
+        <button class="desktop-pin-light-preset" type="button" data-brightness="100">100</button>
+      </div>
+    </div>
+  `;
+
+  applyDesktopPinLightVisualState(div, { isOn, brightnessPct });
+
+  const stopEvent = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const powerBtn = div.querySelector('.desktop-pin-light-power');
+  if (powerBtn) {
+    ['pointerdown', 'mousedown'].forEach((eventName) => {
+      powerBtn.addEventListener(eventName, stopEvent, true);
+    });
+    powerBtn.addEventListener('click', (event) => {
+      stopEvent(event);
+      const currentEntity = state.STATES?.[entity.entity_id] || entity;
+      queueOnOffToggle(currentEntity);
+    }, true);
+  }
+
+  const slider = div.querySelector('.desktop-pin-light-slider');
+  if (slider) {
+    ['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
+      slider.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      }, true);
+    });
+
+    slider.addEventListener('input', (event) => {
+      event.stopPropagation();
+      const nextPct = Math.max(0, Math.min(100, Math.round(Number(event.target.value) || 0)));
+      applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
+      queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
+    });
+  }
+
+  div.querySelectorAll('.desktop-pin-light-preset').forEach((button) => {
+    ['pointerdown', 'mousedown'].forEach((eventName) => {
+      button.addEventListener(eventName, stopEvent, true);
+    });
+    button.addEventListener('click', (event) => {
+      stopEvent(event);
+      const nextPct = Number(button.dataset.brightness || 0);
+      applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
+      queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
+    }, true);
+  });
+
+  return div;
+}
+
 function syncQuickAccessControlButton(control, entityId) {
   if (!control || !entityId) return;
 
@@ -989,6 +1157,9 @@ function renderQuickControls() {
 
 function createDesktopPinControlElement(entity) {
   try {
+    if (entity?.entity_id?.startsWith('light.')) {
+      return createDesktopPinLightControlElement(entity);
+    }
     const div = createControlElement(entity);
     div.dataset.desktopPin = 'true';
     div.classList.add('desktop-pin-control');

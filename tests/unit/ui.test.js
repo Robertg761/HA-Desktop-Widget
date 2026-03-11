@@ -67,6 +67,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     // Create comprehensive DOM structure
     document.body.innerHTML = `
       <div id="quick-controls"></div>
+      <div id="desktop-pin-content"></div>
+      <div id="desktop-pin-empty"></div>
+      <div id="desktop-pin-entity-label"></div>
 
       <div id="weather-card">
         <div id="weather-icon"></div>
@@ -1296,6 +1299,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.toggleReorganizeMode();
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
+    });
+
+    it('renders compact desktop light controls with inline presets', async () => {
+      jest.useFakeTimers();
+
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+            brightness: 128
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      expect(control).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-light-slider')).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-light-preset[data-brightness="70"]')).toBeTruthy();
+
+      control.querySelector('.desktop-pin-light-preset[data-brightness="70"]').click();
+      jest.advanceTimersByTime(120);
+      await Promise.resolve();
+
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.bedroom',
+        brightness_pct: 70
+      });
+
+      jest.useRealTimers();
     });
   });
 
