@@ -21,6 +21,7 @@ const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 let desktopPinEditMode = false;
+let desktopPinBounds = null;
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -153,6 +154,10 @@ async function handleDesktopPinUpdate(message = {}) {
 
     if (Object.prototype.hasOwnProperty.call(message, 'editMode')) {
       desktopPinEditMode = !!message.editMode;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'pinBounds')) {
+      desktopPinBounds = message.pinBounds || null;
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
@@ -648,6 +653,7 @@ async function initializeDesktopPinMode() {
     const bootstrap = await window.electronAPI.getDesktopPinBootstrap(DESKTOP_PIN_ENTITY_ID);
     const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
     desktopPinEditMode = !!bootstrap?.editMode;
+    desktopPinBounds = bootstrap?.pinBounds || null;
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);
@@ -1122,6 +1128,121 @@ function wireDesktopPinUI() {
         }
       };
     }
+
+    document.querySelectorAll('.desktop-pin-resize-handle').forEach((resizeHandle) => {
+      if (resizeHandle.dataset.bound) return;
+      resizeHandle.dataset.bound = 'true';
+      resizeHandle.addEventListener('pointerdown', (event) => {
+        if (!desktopPinEditMode) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const startX = event.screenX;
+        const startY = event.screenY;
+        const startBounds = desktopPinBounds || {
+          x: window.screenX || 0,
+          y: window.screenY || 0,
+          width: window.outerWidth || window.innerWidth,
+          height: window.outerHeight || window.innerHeight,
+        };
+        const corner = resizeHandle.dataset.corner || 'bottom-right';
+
+        let pendingBounds = null;
+        let resizeInFlight = false;
+        let frameScheduled = false;
+        const pointerId = event.pointerId;
+
+        try {
+          resizeHandle.setPointerCapture(pointerId);
+        } catch {
+          // Ignore pointer capture failures and continue with window listeners.
+        }
+
+        const flushResize = async () => {
+          frameScheduled = false;
+          if (resizeInFlight || !pendingBounds) return;
+          resizeInFlight = true;
+          const nextBounds = pendingBounds;
+          pendingBounds = null;
+
+          try {
+            const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, nextBounds);
+            if (result?.success && result.pinBounds) {
+              desktopPinBounds = result.pinBounds;
+            }
+          } catch (error) {
+            log.error('Failed to resize desktop tile:', error);
+          } finally {
+            resizeInFlight = false;
+            if (pendingBounds) {
+              requestAnimationFrame(flushResize);
+              frameScheduled = true;
+            }
+          }
+        };
+
+        const scheduleResize = (nextBounds) => {
+          pendingBounds = nextBounds;
+          if (!frameScheduled) {
+            requestAnimationFrame(flushResize);
+            frameScheduled = true;
+          }
+        };
+
+        const handlePointerMove = (moveEvent) => {
+          const deltaX = moveEvent.screenX - startX;
+          const deltaY = moveEvent.screenY - startY;
+          const nextBounds = {
+            x: startBounds.x,
+            y: startBounds.y,
+            width: startBounds.width,
+            height: startBounds.height,
+          };
+
+          switch (corner) {
+            case 'top-left':
+              nextBounds.x = Math.round(startBounds.x + deltaX);
+              nextBounds.y = Math.round(startBounds.y + deltaY);
+              nextBounds.width = Math.round(startBounds.width - deltaX);
+              nextBounds.height = Math.round(startBounds.height - deltaY);
+              break;
+            case 'top-right':
+              nextBounds.y = Math.round(startBounds.y + deltaY);
+              nextBounds.width = Math.round(startBounds.width + deltaX);
+              nextBounds.height = Math.round(startBounds.height - deltaY);
+              break;
+            case 'bottom-left':
+              nextBounds.x = Math.round(startBounds.x + deltaX);
+              nextBounds.width = Math.round(startBounds.width - deltaX);
+              nextBounds.height = Math.round(startBounds.height + deltaY);
+              break;
+            case 'bottom-right':
+            default:
+              nextBounds.width = Math.round(startBounds.width + deltaX);
+              nextBounds.height = Math.round(startBounds.height + deltaY);
+              break;
+          }
+
+          scheduleResize(nextBounds);
+        };
+
+        const finishResize = () => {
+          window.removeEventListener('pointermove', handlePointerMove, true);
+          window.removeEventListener('pointerup', finishResize, true);
+          window.removeEventListener('pointercancel', finishResize, true);
+          try {
+            resizeHandle.releasePointerCapture(pointerId);
+          } catch {
+            // no-op
+          }
+        };
+
+        window.addEventListener('pointermove', handlePointerMove, true);
+        window.addEventListener('pointerup', finishResize, true);
+        window.addEventListener('pointercancel', finishResize, true);
+      }, true);
+    });
   } catch (error) {
     log.error('Error wiring desktop pin UI:', error);
   }

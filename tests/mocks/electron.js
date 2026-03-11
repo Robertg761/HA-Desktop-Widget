@@ -159,6 +159,7 @@ function createMockElectronAPI() {
     })),
     unpinEntityFromDesktop: jest.fn((_entityId) => Promise.resolve({ success: true })),
     setDesktopPinEditMode: jest.fn((_enabled) => Promise.resolve({ success: true, enabled: !!_enabled })),
+    updateDesktopPinBounds: jest.fn((_entityId, bounds) => Promise.resolve({ success: true, pinBounds: bounds })),
     getDesktopPinBootstrap: jest.fn((_entityId) => Promise.resolve(null)),
     publishHaSnapshot: jest.fn((_states) => Promise.resolve()),
     publishHaEntityUpdate: jest.fn((_entity) => Promise.resolve()),

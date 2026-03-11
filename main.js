@@ -519,6 +519,45 @@ function setDesktopPinEditMode(enabled) {
   return { success: true, enabled: desktopPinEditMode };
 }
 
+function updateDesktopPinBounds(entityId, nextBounds = {}) {
+  const normalizedEntityId = normalizeEntityId(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+
+  if (!desktopPinEditMode) {
+    return { success: false, error: 'Desktop pin edit mode is not active' };
+  }
+
+  if (!config?.desktopPins?.[normalizedEntityId]) {
+    return { success: false, error: 'Desktop pin does not exist' };
+  }
+
+  const clampedBounds = clampDesktopPinBounds({
+    ...config.desktopPins[normalizedEntityId],
+    ...(isPlainObject(nextBounds) ? nextBounds : {}),
+  }, normalizedEntityId, 0);
+
+  config.desktopPins[normalizedEntityId] = clampedBounds;
+  saveConfig();
+
+  const window = desktopPinWindows.get(normalizedEntityId);
+  if (window && !window.isDestroyed()) {
+    try {
+      window.__desktopPinApplyingBounds = true;
+      window.setBounds(clampedBounds);
+      window.__desktopPinApplyingBounds = false;
+    } catch (error) {
+      window.__desktopPinApplyingBounds = false;
+      log.warn('Failed to apply desktop pin bounds update:', error.message);
+    }
+  }
+
+  pushConfigToRenderer();
+  sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
+  return { success: true, pinBounds: clampedBounds };
+}
+
 function createDesktopPinWindow(entityId, options = {}) {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) return null;
@@ -1991,6 +2030,10 @@ ipcMain.handle('pin-entity-to-desktop', (_event, entityId) => {
 
 ipcMain.handle('set-desktop-pin-edit-mode', (_event, enabled) => {
   return setDesktopPinEditMode(enabled);
+});
+
+ipcMain.handle('update-desktop-pin-bounds', (_event, entityId, nextBounds = {}) => {
+  return updateDesktopPinBounds(entityId, nextBounds);
 });
 
 ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
