@@ -430,6 +430,12 @@ body.desktop-pin-mode #alert-entity-picker-modal {
 
 body.desktop-pin-mode .desktop-pin-shell {
   display: flex;
+  padding: 0;
+  background: none;
+}
+
+body.desktop-pin-mode .desktop-pin-header {
+  display: none;
 }
 
 .desktop-pin-header {
@@ -489,7 +495,7 @@ body.desktop-pin-mode .desktop-pin-shell {
 
 .desktop-pin-content .control-item {
   width: 100%;
-  min-height: 118px;
+  min-height: 100%;
   margin: 0;
 }
 
@@ -2050,49 +2056,6 @@ body.desktop-pin-mode .desktop-pin-shell {
 .primary-cards-list-actions .btn[disabled] {
   cursor: default;
   opacity: 0.7;
-}
-
-.desktop-pins-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
-
-.desktop-pins-summary {
-  display: flex;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.desktop-pins-list-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.desktop-pins-list-actions .btn {
-  min-height: 28px;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.desktop-pin-status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 /* Custom Entity Icons Settings */

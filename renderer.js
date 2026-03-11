@@ -16,7 +16,9 @@ const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
 const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
-const IS_DESKTOP_PIN_MODE = WINDOW_QUERY.get('mode') === 'desktop-pin';
+const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
+const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
+const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 
 function emitRendererDebug(event, details = {}) {
@@ -359,7 +361,7 @@ websocket.on('message', (msg) => {
       // Show clear error message to user
       uiUtils.showToast('Authentication failed. Please check your Home Assistant token in Settings.', 'error', 15000);
       // Render the UI so user can access settings
-      ui.renderActiveTab();
+      renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
@@ -367,7 +369,9 @@ websocket.on('message', (msg) => {
         window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
           log.warn('Failed to publish HA entity update to main process:', error);
         });
-        if (ui.isEntityVisible(entity.entity_id)) {
+        if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
+          renderCurrentMode();
+        } else if (ui.isEntityVisible(entity.entity_id)) {
           ui.updateEntityInUI(entity);
         }
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
@@ -430,10 +434,16 @@ websocket.on('message', (msg) => {
             }
 
             // This is the correct place to render and hide loading
-            ui.renderActiveTab();
+            if (IS_SPECIAL_PIN_MODE) {
+              renderCurrentMode();
+            } else {
+              ui.renderActiveTab();
+            }
             uiUtils.showLoading(false);
 
-            alerts.initializeEntityAlerts();
+            if (!IS_SPECIAL_PIN_MODE) {
+              alerts.initializeEntityAlerts();
+            }
           }
         } else if (msg.id === getServicesId) { // get_services response
           state.setServices(msg.result);
@@ -543,7 +553,7 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
 
 // Listen for open-settings event from tray menu
 window.electronAPI.onOpenSettings(() => {
-  if (IS_DESKTOP_PIN_MODE) return;
+  if (IS_SPECIAL_PIN_MODE) return;
   openSettingsModal();
 });
 
@@ -651,6 +661,9 @@ async function initializeDesktopPinMode() {
     replaceEmojiIcons();
     uiUtils.showLoading(false);
     renderCurrentMode();
+    if (nextConfig?.homeAssistant?.token && nextConfig.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+      connectWebSocket();
+    }
   } catch (error) {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);

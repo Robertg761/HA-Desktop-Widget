@@ -11,7 +11,6 @@ let isReorganizeMode = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
 const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
-const DESKTOP_PIN_DIRECT_ACTION_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean', 'lock', 'cover', 'scene', 'script', 'timer']);
 const desiredStateByEntity = new Map();
 const inFlightByEntity = new Map();
 const lastRequestedStateByEntity = new Map();
@@ -380,7 +379,7 @@ function toggleReorganizeMode() {
         chosenClass: 'sortable-chosen',
         dragClass: 'sortable-drag',
         handle: '.control-item', // Allow dragging by any part of the item
-        filter: '.remove-btn, .rename-btn', // Ignore these elements
+        filter: '.remove-btn, .rename-btn, .desktop-pin-quick-toggle', // Ignore edit controls
         preventOnFilter: false, // Allow clicks on filtered elements
         onEnd: (evt) => {
           // SortableJS has already reordered the DOM
@@ -835,20 +834,35 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
   if (!entityId) return { success: false, error: 'Missing entity ID' };
 
   const isPinned = isEntityDesktopPinned(entityId);
-  const nextDesktopPins = { ...(state.CONFIG?.desktopPins || {}) };
-
   try {
-    let result;
+    const nextDesktopPins = { ...(state.CONFIG?.desktopPins || {}) };
+
     if (isPinned) {
-      result = await window.electronAPI.unpinEntityFromDesktop(entityId);
+      const result = await window.electronAPI.unpinEntityFromDesktop(entityId);
+      if (!result?.success) {
+        throw new Error(result?.error || 'Could not remove desktop pin');
+      }
       delete nextDesktopPins[entityId];
+      state.setConfig({
+        ...state.CONFIG,
+        desktopPins: nextDesktopPins,
+      });
+      renderQuickControls();
+      if (isReorganizeMode) {
+        const container = document.getElementById('quick-controls');
+        if (container) container.classList.add('reorganize-mode');
+        addRemoveButtons();
+      }
       uiUtils.showToast('Removed desktop pin', 'info', 1800);
-    } else {
-      result = await window.electronAPI.pinEntityToDesktop(entityId);
-      nextDesktopPins[entityId] = result?.pinBounds || nextDesktopPins[entityId] || {};
-      uiUtils.showToast('Pinned to desktop', 'success', 1800);
+      return { success: true, pinned: false, result };
     }
 
+    const result = await window.electronAPI.pinEntityToDesktop(entityId);
+    if (!result?.success) {
+      throw new Error(result?.error || 'Could not pin tile to desktop');
+    }
+
+    nextDesktopPins[entityId] = result?.pinBounds || nextDesktopPins[entityId] || {};
     state.setConfig({
       ...state.CONFIG,
       desktopPins: nextDesktopPins,
@@ -861,7 +875,8 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    return { success: true, pinned: !isPinned, result };
+    uiUtils.showToast('Pinned to desktop', 'success', 1800);
+    return { success: true, pinned: true, result };
   } catch (error) {
     console.error('Error toggling desktop pin from quick access:', error);
     uiUtils.showToast(
@@ -968,39 +983,9 @@ function renderQuickControls() {
 
 function createDesktopPinControlElement(entity) {
   try {
-    const baseControl = createControlElement(entity);
-    const div = baseControl.cloneNode(true);
-    const domain = entity?.entity_id?.split('.')?.[0] || '';
-
+    const div = createControlElement(entity);
     div.dataset.desktopPin = 'true';
     div.classList.add('desktop-pin-control');
-    div.style.gridColumn = 'span 1';
-
-    const attachAction = (action, payload = {}) => {
-      div.addEventListener('click', async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        try {
-          await window.electronAPI.requestDesktopPinAction(entity.entity_id, action, payload);
-        } catch (error) {
-          console.error('Error forwarding desktop pin action:', error);
-          uiUtils.showToast('Could not reach the main widget', 'error', 2600);
-        }
-      });
-    };
-
-    if (entity.entity_id.startsWith('camera.') || entity.entity_id.startsWith('media_player.') || entity.entity_id.startsWith('climate.')) {
-      attachAction('open-details');
-    } else if (entity.entity_id.startsWith('sensor.')) {
-      attachAction('open-details');
-    } else if (domain === 'light') {
-      attachAction('toggle');
-    } else if (DESKTOP_PIN_DIRECT_ACTION_DOMAINS.has(domain)) {
-      attachAction('toggle');
-    } else {
-      attachAction('open-details');
-    }
-
     return div;
   } catch (error) {
     console.error('Error creating desktop pin control element:', error);
@@ -1009,8 +994,7 @@ function createDesktopPinControlElement(entity) {
 }
 
 function createDesktopPinUnavailableElement(entityId) {
-  const baseControl = createUnavailableElement(entityId);
-  const div = baseControl.cloneNode(true);
+  const div = createUnavailableElement(entityId);
   div.dataset.desktopPin = 'true';
   div.classList.add('desktop-pin-control', 'desktop-pin-unavailable');
   div.addEventListener('click', async (event) => {
@@ -1025,10 +1009,18 @@ function createDesktopPinUnavailableElement(entityId) {
   return div;
 }
 
-function renderDesktopPinnedTile(entityId, entity = null) {
-  const container = document.getElementById('desktop-pin-content');
-  const emptyState = document.getElementById('desktop-pin-empty');
-  const label = document.getElementById('desktop-pin-entity-label');
+function renderDesktopPinTileInto({
+  containerId,
+  emptyStateId,
+  labelId,
+  entityId,
+  entity,
+  interactive = true,
+  emptyMessage = 'Waiting for live Home Assistant data...',
+}) {
+  const container = document.getElementById(containerId);
+  const emptyState = document.getElementById(emptyStateId);
+  const label = labelId ? document.getElementById(labelId) : null;
   if (!container || !emptyState) return;
 
   container.innerHTML = '';
@@ -1046,14 +1038,29 @@ function renderDesktopPinnedTile(entityId, entity = null) {
   }
 
   if (!entity) {
-    emptyState.textContent = 'Waiting for live Home Assistant data...';
+    emptyState.textContent = emptyMessage;
     emptyState.classList.remove('hidden');
-    container.appendChild(createDesktopPinUnavailableElement(entityId));
+    const unavailable = createDesktopPinUnavailableElement(entityId);
+    if (!interactive) unavailable.style.pointerEvents = 'none';
+    container.appendChild(unavailable);
     return;
   }
 
   emptyState.classList.add('hidden');
-  container.appendChild(createDesktopPinControlElement(entity));
+  const control = createDesktopPinControlElement(entity);
+  if (!interactive) control.style.pointerEvents = 'none';
+  container.appendChild(control);
+}
+
+function renderDesktopPinnedTile(entityId, entity = null) {
+  renderDesktopPinTileInto({
+    containerId: 'desktop-pin-content',
+    emptyStateId: 'desktop-pin-empty',
+    labelId: 'desktop-pin-entity-label',
+    entityId,
+    entity,
+    interactive: true,
+  });
 }
 
 function handleDesktopPinActionRequest({ entityId, action }) {

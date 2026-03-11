@@ -10,7 +10,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   pinEntityToDesktop: (entityId) => ipcRenderer.invoke('pin-entity-to-desktop', entityId),
   unpinEntityFromDesktop: (entityId) => ipcRenderer.invoke('unpin-entity-from-desktop', entityId),
-  focusDesktopPin: (entityId) => ipcRenderer.invoke('focus-desktop-pin', entityId),
   getDesktopPinBootstrap: (entityId) => ipcRenderer.invoke('get-desktop-pin-bootstrap', entityId),
   publishHaSnapshot: (states) => ipcRenderer.invoke('publish-ha-snapshot', states),
   publishHaEntityUpdate: (entity) => ipcRenderer.invoke('publish-ha-entity-update', entity),

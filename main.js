@@ -420,6 +420,16 @@ function getDesktopPinBounds(entityId, existingBounds = null) {
   return clampDesktopPinBounds(existingBounds || {}, entityId, fallbackIndex);
 }
 
+function applyDesktopPinDesktopBehavior(targetWindow) {
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+
+  try {
+    targetWindow.setAlwaysOnTop(false);
+  } catch (error) {
+    log.warn('Failed to clear always-on-top for desktop pin window:', error.message);
+  }
+}
+
 function sendDesktopPinUpdate(entityId, extra = {}) {
   const window = desktopPinWindows.get(entityId);
   if (!window || window.isDestroyed()) return;
@@ -511,13 +521,13 @@ function createDesktopPinWindow(entityId, options = {}) {
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
-    alwaysOnTop: !!config.alwaysOnTop,
+    alwaysOnTop: false,
     skipTaskbar: true,
     resizable: false,
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
-    movable: true,
+    movable: false,
     icon: iconPath,
     show: false,
     webPreferences: {
@@ -548,46 +558,21 @@ function createDesktopPinWindow(entityId, options = {}) {
   }
   applyWindowEffectsToWindow(pinWindow, config);
 
-  const persistBounds = () => {
-    if (pinWindow.__desktopPinApplyingBounds) return;
-    if (pinWindow.__desktopPinSaveTimer) {
-      clearTimeout(pinWindow.__desktopPinSaveTimer);
-    }
-    pinWindow.__desktopPinSaveTimer = setTimeout(() => {
-      pinWindow.__desktopPinSaveTimer = null;
-      if (!pinWindow || pinWindow.isDestroyed()) return;
-      const nextBounds = getDesktopPinBounds(normalizedEntityId, pinWindow.getBounds());
-      config.desktopPins = config.desktopPins || {};
-      config.desktopPins[normalizedEntityId] = nextBounds;
-      saveConfig();
-      sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
-      pushConfigToRenderer();
-    }, 200);
-  };
-
-  pinWindow.on('moved', persistBounds);
-
-  pinWindow.on('close', () => {
+  pinWindow.on('close', (event) => {
     if (isQuitting || pinWindow.__desktopPinProgrammaticClose) return;
-    if (config?.desktopPins?.[normalizedEntityId]) {
-      delete config.desktopPins[normalizedEntityId];
-      saveConfig();
-      pushConfigToRenderer();
-      broadcastDesktopPinConfigUpdate();
+    if (event && typeof event.preventDefault === 'function') {
+      event.preventDefault();
     }
   });
 
   pinWindow.on('closed', () => {
     desktopPinWindows.delete(normalizedEntityId);
-    if (pinWindow.__desktopPinSaveTimer) {
-      clearTimeout(pinWindow.__desktopPinSaveTimer);
-      pinWindow.__desktopPinSaveTimer = null;
-    }
   });
 
   pinWindow.loadFile('index.html', { query: { mode: 'desktop-pin', entityId: normalizedEntityId } });
   pinWindow.webContents.on('did-finish-load', () => {
     sendDesktopPinUpdate(normalizedEntityId, { type: 'bootstrap' });
+    applyDesktopPinDesktopBehavior(pinWindow);
     if (options.focus) {
       pinWindow.show();
       pinWindow.focus();
@@ -633,7 +618,6 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
     }
 
     try {
-      window.setAlwaysOnTop(!!config.alwaysOnTop);
       window.setOpacity(Math.max(0.5, Math.min(1, config.opacity || 1)));
     } catch (error) {
       log.warn('Failed to refresh desktop pin window state:', error.message);
@@ -669,14 +653,6 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
 
   desktopPinWindows.forEach((window) => {
     if (!window || window.isDestroyed()) return;
-    try {
-      if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
-        window.setAlwaysOnTop(!!nextConfig?.alwaysOnTop);
-      }
-    } catch (error) {
-      log.warn('Failed to update desktop pin always-on-top:', error.message);
-    }
-
     try {
       if (typeof nextConfig?.opacity === 'number' && previousConfig?.opacity !== nextConfig.opacity) {
         const safeOpacity = Math.max(0.5, Math.min(1, nextConfig.opacity));
@@ -1979,24 +1955,6 @@ ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
   return { success: true, pinned: false };
 });
 
-ipcMain.handle('focus-desktop-pin', (_event, entityId) => {
-  const normalizedEntityId = normalizeEntityId(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-
-  if (focusDesktopPinWindow(normalizedEntityId).exists) {
-    return { success: true, focused: true, existed: true };
-  }
-
-  if (!config?.desktopPins?.[normalizedEntityId]) {
-    return { success: false, focused: false, existed: false };
-  }
-
-  createDesktopPinWindow(normalizedEntityId, { focus: true });
-  return { success: true, focused: true, existed: false };
-});
-
 ipcMain.handle('get-desktop-pin-bootstrap', (_event, entityId) => {
   const normalizedEntityId = normalizeEntityId(entityId);
   return {
@@ -2090,8 +2048,6 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId) => {
           pushConfigToRenderer();
           broadcastDesktopPinConfigUpdate();
         } else {
-          const favorites = new Set((config.favoriteEntities || []).map(normalizeEntityId).filter(Boolean));
-          if (!favorites.has(normalizedEntityId)) return;
           config.desktopPins = config.desktopPins || {};
           config.desktopPins[normalizedEntityId] = getDesktopPinBounds(normalizedEntityId, config.desktopPins[normalizedEntityId]);
           normalizeDesktopPinsConfig(config);
@@ -2100,13 +2056,6 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId) => {
           pushConfigToRenderer();
           broadcastDesktopPinConfigUpdate();
         }
-      }
-    },
-    {
-      label: 'Open Pin Settings',
-      click: () => {
-        focusMainWindow();
-        mainWindow?.webContents?.send('open-settings');
       }
     }
   ]);
