@@ -480,6 +480,12 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
   pointer-events: none;
 }
 
+@media (max-width: 120px), (max-height: 90px) {
+  body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
+    display: none;
+  }
+}
+
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   display: flex;
 }
@@ -1149,8 +1155,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   place-items: center;
   width: 100%;
   height: 100%;
-  min-height: clamp(76px, 58vw, 136px);
-  font-size: clamp(44px, 34vw, 80px);
+  min-height: clamp(60px, 44vmin, 120px);
+  font-size: clamp(34px, 28vmin, 72px);
   line-height: 1;
   text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
@@ -1169,7 +1175,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 .desktop-pin-scene-name {
   max-width: 100%;
   color: rgba(255, 255, 255, 0.92);
-  font-size: clamp(16px, 7.2vw, 28px);
+  font-size: clamp(13px, 5.2vmin, 24px);
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -1256,14 +1262,43 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-emoji {
-  min-height: 60px;
-  font-size: 36px;
+  min-height: clamp(44px, 34vmin, 68px);
+  font-size: clamp(24px, 22vmin, 42px);
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-name {
-  font-size: 13px;
+  font-size: clamp(10px, 4.4vmin, 13px);
   line-height: 1.05;
   max-width: 100%;
+}
+
+.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] {
+  --desktop-pin-panel-pad: 2px;
+  --desktop-pin-panel-gap: 2px;
+}
+
+.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-body {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-hero {
+  padding: 0;
+  border-radius: clamp(8px, 22vw, 12px);
+  background:
+    radial-gradient(circle at center, rgba(var(--accent-rgb), 0.22), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-emoji {
+  min-height: 0;
+  font-size: clamp(18px, 52vw, 28px);
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-name {
+  display: none;
 }
 
 .desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-scene-name {
@@ -1292,20 +1327,22 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-resize-handle {
+  --desktop-pin-resize-handle-size: clamp(12px, min(16vw, 16vh), 20px);
+  --desktop-pin-resize-handle-edge-offset: clamp(0px, calc((140px - min(100vw, 100vh)) * 0.06), 5px);
   display: none;
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: var(--desktop-pin-resize-handle-size);
+  height: var(--desktop-pin-resize-handle-size);
   border-radius: 999px;
   align-items: center;
   justify-content: center;
   background: rgba(8, 12, 20, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
   z-index: 3;
   -webkit-app-region: no-drag;
   color: rgba(255, 255, 255, 0.88);
-  font-size: 12px;
+  font-size: clamp(8px, calc(var(--desktop-pin-resize-handle-size) * 0.56), 12px);
   font-weight: 700;
   line-height: 1;
   text-align: center;
@@ -1313,26 +1350,26 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-resize-handle-top-left {
-  top: 8px;
-  left: 8px;
+  top: var(--desktop-pin-resize-handle-edge-offset);
+  left: var(--desktop-pin-resize-handle-edge-offset);
   cursor: nwse-resize;
 }
 
 .desktop-pin-resize-handle-top-right {
-  top: 8px;
-  right: 8px;
+  top: var(--desktop-pin-resize-handle-edge-offset);
+  right: var(--desktop-pin-resize-handle-edge-offset);
   cursor: nesw-resize;
 }
 
 .desktop-pin-resize-handle-bottom-left {
-  bottom: 8px;
-  left: 8px;
+  bottom: var(--desktop-pin-resize-handle-edge-offset);
+  left: var(--desktop-pin-resize-handle-edge-offset);
   cursor: nesw-resize;
 }
 
 .desktop-pin-resize-handle-bottom-right {
-  bottom: 8px;
-  right: 8px;
+  bottom: var(--desktop-pin-resize-handle-edge-offset);
+  right: var(--desktop-pin-resize-handle-edge-offset);
   cursor: nwse-resize;
 }
 

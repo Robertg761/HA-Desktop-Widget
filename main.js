@@ -174,6 +174,7 @@ let popupHotkeyLastShownTime = null;
 const DESKTOP_PIN_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const DESKTOP_PIN_WIDE_BOUNDS = { width: 328, height: 156 };
 const DESKTOP_PIN_MIN_BOUNDS = { width: 140, height: 110 };
+const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 36, height: 56 };
 const desktopPinWindows = new Map();
 const latestEntityStates = new Map();
 let desktopPinEditMode = false;
@@ -320,6 +321,12 @@ function getDesktopPinBaseBounds(entityId = '') {
     : { ...DESKTOP_PIN_DEFAULT_BOUNDS };
 }
 
+function getDesktopPinMinBounds(entityId = '') {
+  return String(entityId).startsWith('scene.')
+    ? { ...DESKTOP_PIN_SCENE_MIN_BOUNDS }
+    : { ...DESKTOP_PIN_MIN_BOUNDS };
+}
+
 function getDesktopPinCascadeOrigin(index = 0) {
   const primaryDisplay = electronScreen.getPrimaryDisplay();
   const workArea = primaryDisplay?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
@@ -331,6 +338,7 @@ function getDesktopPinCascadeOrigin(index = 0) {
 
 function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0) {
   const baseBounds = getDesktopPinBaseBounds(entityId);
+  const minBounds = getDesktopPinMinBounds(entityId);
   const cascadeOrigin = getDesktopPinCascadeOrigin(fallbackIndex);
 
   let width = Number.isFinite(Number(bounds.width))
@@ -349,8 +357,8 @@ function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0) {
   const display = electronScreen.getDisplayMatching({ x, y, width, height });
   const workArea = display?.workArea || electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
 
-  width = Math.max(DESKTOP_PIN_MIN_BOUNDS.width, Math.min(width, workArea.width));
-  height = Math.max(DESKTOP_PIN_MIN_BOUNDS.height, Math.min(height, workArea.height));
+  width = Math.max(minBounds.width, Math.min(width, workArea.width));
+  height = Math.max(minBounds.height, Math.min(height, workArea.height));
 
   const maxX = workArea.x + Math.max(0, workArea.width - width);
   const maxY = workArea.y + Math.max(0, workArea.height - height);

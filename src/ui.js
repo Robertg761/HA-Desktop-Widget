@@ -829,6 +829,22 @@ function getDesktopPinLayoutProfile() {
   };
 }
 
+function getDesktopPinSceneLayoutProfile() {
+  const layoutProfile = getDesktopPinLayoutProfile();
+  if (layoutProfile.width <= 96 || layoutProfile.height <= 82) {
+    return {
+      ...layoutProfile,
+      layout: 'nano',
+      isNano: true,
+    };
+  }
+
+  return {
+    ...layoutProfile,
+    isNano: false,
+  };
+}
+
 function isTimerSensorEntity(entity) {
   if (!entity?.entity_id?.startsWith('sensor.')) return false;
 
@@ -1811,11 +1827,15 @@ function updateExistingDesktopPinMediaControl(root, entity) {
 
 function createDesktopPinSceneControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
+  const layoutProfile = domain === 'scene'
+    ? getDesktopPinSceneLayoutProfile()
+    : getDesktopPinLayoutProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-scene-control'], {
     domain,
     state: entity.state,
     title: 'Compact scene tile',
   });
+  root.dataset.layout = layoutProfile.layout;
 
   root.innerHTML = `
     <div class="desktop-pin-scene-shell">
