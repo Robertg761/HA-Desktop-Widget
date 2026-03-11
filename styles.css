@@ -849,6 +849,437 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   min-width: 52px;
 }
 
+.desktop-pin-panel-control {
+  --desktop-pin-panel-pad: 10px;
+  --desktop-pin-panel-gap: 8px;
+  --desktop-pin-panel-radius: 16px;
+  --desktop-pin-panel-meter-radius: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  min-width: 0;
+  padding: var(--desktop-pin-panel-pad);
+  text-align: left;
+  background:
+    linear-gradient(155deg, rgba(8, 12, 20, 0.92), rgba(22, 28, 40, 0.86)),
+    radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.16), transparent 62%);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(var(--accent-rgb), 0.06);
+}
+
+.desktop-pin-panel-shell,
+.desktop-pin-panel-body {
+  display: grid;
+  gap: var(--desktop-pin-panel-gap);
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+}
+
+.desktop-pin-panel-topline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.desktop-pin-panel-meta {
+  min-width: 0;
+}
+
+.desktop-pin-panel-aside {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.desktop-pin-panel-name,
+.desktop-pin-media-title,
+.desktop-pin-media-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-pin-panel-name {
+  font-size: clamp(10px, 1.9vw, 12px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.96);
+  letter-spacing: 0.01em;
+}
+
+.desktop-pin-panel-status,
+.desktop-pin-panel-stat-label,
+.desktop-pin-panel-slider-label,
+.desktop-pin-panel-caption {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.desktop-pin-panel-status {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-pin-panel-kpi,
+.desktop-pin-panel-value {
+  color: rgba(255, 255, 255, 0.98);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.desktop-pin-panel-kpi {
+  font-size: clamp(14px, 4vw, 18px);
+  line-height: 0.95;
+}
+
+.desktop-pin-panel-value {
+  font-size: clamp(15px, 4.2vw, 22px);
+  line-height: 0.95;
+}
+
+.desktop-pin-panel-meter,
+.desktop-pin-cover-frame {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: var(--desktop-pin-panel-meter-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    radial-gradient(circle at center, rgba(var(--accent-rgb), calc(var(--desktop-pin-progress, 0) * 0.34)), transparent 72%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.desktop-pin-panel-glyph,
+.desktop-pin-fan-glyph {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  font-size: 15px;
+}
+
+.desktop-pin-fan-glyph[data-active="true"] {
+  animation: desktop-pin-fan-spin 1.6s linear infinite;
+}
+
+@keyframes desktop-pin-fan-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.desktop-pin-panel-stat,
+.desktop-pin-climate-summary,
+.desktop-pin-panel-actions,
+.desktop-pin-panel-slider-row {
+  display: grid;
+  gap: 6px;
+}
+
+.desktop-pin-climate-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.desktop-pin-panel-stat {
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-pin-panel-stat-emphasis {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.2);
+}
+
+.desktop-pin-panel-slider-row {
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+
+.desktop-pin-panel-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: ew-resize;
+}
+
+.desktop-pin-panel-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.desktop-pin-panel-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.desktop-pin-panel-button[data-active="true"] {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+.desktop-pin-panel-button:hover,
+.desktop-pin-panel-button:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+.desktop-pin-media-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.desktop-pin-media-title {
+  color: rgba(255, 255, 255, 0.96);
+  font-size: clamp(11px, 2.3vw, 13px);
+  font-weight: 700;
+}
+
+.desktop-pin-media-artist {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+}
+
+.desktop-pin-panel-progress {
+  overflow: hidden;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-pin-panel-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.48), rgba(var(--accent-rgb), 0.94));
+}
+
+.desktop-pin-cover-visual {
+  display: grid;
+  place-items: center;
+}
+
+.desktop-pin-cover-frame {
+  position: relative;
+  width: 32px;
+  min-height: 50px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.desktop-pin-cover-shade {
+  position: absolute;
+  inset: 0;
+  top: auto;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(var(--accent-rgb), 0.28));
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.desktop-pin-camera-preview {
+  min-height: 56px;
+}
+
+.desktop-pin-scene-shell,
+.desktop-pin-scene-body {
+  min-height: 100%;
+  height: 100%;
+}
+
+.desktop-pin-scene-shell {
+  display: grid;
+}
+
+.desktop-pin-scene-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+  justify-items: stretch;
+  gap: clamp(2px, 1.4vh, 6px);
+  padding: clamp(2px, 1.4vw, 6px);
+}
+
+.desktop-pin-scene-hero {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: clamp(4px, 2vw, 10px);
+  border-radius: clamp(18px, 9vw, 28px);
+  background:
+    radial-gradient(circle at center, rgba(var(--accent-rgb), 0.16), transparent 74%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+}
+
+.desktop-pin-scene-emoji {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: clamp(76px, 58vw, 136px);
+  font-size: clamp(44px, 34vw, 80px);
+  line-height: 1;
+  text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.desktop-pin-scene-control {
+  --desktop-pin-panel-pad: 0;
+  --desktop-pin-panel-gap: 0;
+  cursor: pointer;
+}
+
+.desktop-pin-scene-control .desktop-pin-panel-shell,
+.desktop-pin-scene-control .desktop-pin-panel-body {
+  height: 100%;
+}
+
+.desktop-pin-scene-name {
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(16px, 7.2vw, 28px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-align: center;
+  padding: clamp(2px, 1vw, 4px) clamp(8px, 4vw, 14px) clamp(8px, 3vw, 12px);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-wrap: pretty;
+}
+
+.desktop-pin-toggle-body .desktop-pin-panel-actions {
+  grid-template-columns: 1fr;
+}
+
+.desktop-pin-climate-modes {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+
+.desktop-pin-panel-control[data-layout="micro"] {
+  --desktop-pin-panel-pad: 6px;
+  --desktop-pin-panel-gap: 4px;
+  --desktop-pin-panel-meter-radius: 10px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-topline {
+  gap: 4px;
+  align-items: center;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-name {
+  font-size: 9px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-status {
+  display: none;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-meter,
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-cover-frame {
+  min-height: 28px;
+  padding: 5px 6px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-glyph,
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-fan-glyph {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-kpi,
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-value {
+  font-size: 11px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-actions {
+  gap: 3px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-button {
+  min-height: 20px;
+  padding: 3px 5px;
+  font-size: 7px;
+  border-radius: 8px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-climate-summary {
+  gap: 4px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-stat {
+  padding: 4px 5px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-body {
+  padding: 2px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-hero {
+  padding: 2px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-emoji {
+  min-height: 60px;
+  font-size: 36px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-name {
+  font-size: 13px;
+  line-height: 1.05;
+  max-width: 100%;
+}
+
+.desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-scene-name {
+  font-size: clamp(18px, 3.2vw, 30px);
+}
+
+.desktop-pin-panel-control[data-layout="roomy"] {
+  --desktop-pin-panel-pad: 12px;
+  --desktop-pin-panel-gap: 10px;
+}
+
+.desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-panel-button {
+  min-height: 30px;
+  font-size: 10px;
+}
+
 .desktop-pin-empty {
   margin-top: 10px;
   border: 1px dashed rgba(255, 255, 255, 0.12);

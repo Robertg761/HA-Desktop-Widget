@@ -1367,6 +1367,128 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const rerenderedSlider = document.querySelector('#desktop-pin-content .desktop-pin-light-slider');
       expect(rerenderedSlider.value).toBe('82');
     });
+
+    it('renders compact climate controls and sends hvac mode changes', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      expect(control).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-climate-slider')).toBeTruthy();
+
+      control.querySelector('.desktop-pin-climate-mode[data-action="cool"]').click();
+
+      expect(mockCallService).toHaveBeenCalledWith('climate', 'set_hvac_mode', {
+        entity_id: 'climate.thermostat',
+        hvac_mode: 'cool'
+      });
+    });
+
+    it('renders compact fan controls and sends preset percentages', async () => {
+      jest.useFakeTimers();
+
+      state.setStates({
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Office Fan',
+            percentage: 33
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      expect(control).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-fan-slider')).toBeTruthy();
+
+      control.querySelector('.desktop-pin-fan-preset[data-speed="66"]').click();
+      jest.advanceTimersByTime(140);
+      await Promise.resolve();
+
+      expect(mockCallService).toHaveBeenCalledWith('fan', 'set_percentage', {
+        entity_id: 'fan.office',
+        percentage: 66
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('renders compact cover controls and sends cover actions', () => {
+      state.setStates({
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Living Room Blinds',
+            current_position: 55
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-cover-control');
+      expect(control).toBeTruthy();
+
+      control.querySelector('.desktop-pin-cover-action[data-action="close_cover"]').click();
+
+      expect(mockCallService).toHaveBeenCalledWith('cover', 'close_cover', {
+        entity_id: 'cover.blinds'
+      });
+    });
+
+    it('renders compact media controls and routes play pause actions', () => {
+      state.setStates({
+        'media_player.spotify': {
+          ...sampleStates['media_player.spotify']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('media_player.spotify', state.STATES['media_player.spotify']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-media-control');
+      expect(control).toBeTruthy();
+
+      control.querySelector('.desktop-pin-media-play').click();
+
+      expect(mockCallService).toHaveBeenCalledWith('media_player', 'media_pause', {
+        entity_id: 'media_player.spotify'
+      });
+    });
+
+    it('renders scene desktop tiles with a centered name and triggers on tile click', () => {
+      state.setStates({
+        'scene.red_blue': {
+          entity_id: 'scene.red_blue',
+          state: 'scening',
+          attributes: {
+            friendly_name: 'Red & Blue'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('scene.red_blue', state.STATES['scene.red_blue']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
+      expect(control).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-scene-name')?.textContent).toBe('Red & Blue');
+      expect(control.textContent).not.toContain('Ready');
+      expect(control.textContent).not.toContain('Run');
+
+      control.click();
+
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', {
+        entity_id: 'scene.red_blue'
+      });
+    });
   });
 
   describe('handleDesktopPinActionRequest', () => {
