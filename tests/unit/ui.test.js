@@ -1489,6 +1489,31 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         entity_id: 'scene.red_blue'
       });
     });
+
+    it('keeps pinned scene tiles interactive when Home Assistant reports an unknown state', () => {
+      state.setStates({
+        'scene.red_blue': {
+          entity_id: 'scene.red_blue',
+          state: 'unknown',
+          attributes: {
+            friendly_name: 'Red & Blue'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('scene.red_blue', state.STATES['scene.red_blue']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
+      expect(control).toBeTruthy();
+      expect(document.getElementById('desktop-pin-empty')?.classList.contains('hidden')).toBe(true);
+      expect(document.querySelector('#desktop-pin-empty[data-state=\"unavailable\"]')).toBeNull();
+
+      control.click();
+
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', {
+        entity_id: 'scene.red_blue'
+      });
+    });
   });
 
   describe('handleDesktopPinActionRequest', () => {

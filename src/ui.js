@@ -2253,7 +2253,16 @@ function createDesktopPinControlElement(entity) {
 
 function isDesktopPinUnavailableState(entity) {
   const normalizedState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
-  return normalizedState === 'unavailable' || normalizedState === 'unknown';
+  if (normalizedState === 'unavailable') {
+    return true;
+  }
+
+  if (normalizedState !== 'unknown') {
+    return false;
+  }
+
+  const domain = getEntityDomain(entity?.entity_id);
+  return domain !== 'scene' && domain !== 'script';
 }
 
 function getDesktopPinFallbackDescriptor(entityId, entity, {
