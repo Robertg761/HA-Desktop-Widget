@@ -2268,12 +2268,16 @@ function isDesktopPinUnavailableState(entity) {
 function getDesktopPinFallbackDescriptor(entityId, entity, {
   hasSnapshot = false,
   waitingMessage = 'Waiting for live Home Assistant data...',
+  connectionIssue = '',
 } = {}) {
   const customName = entityId ? state.CONFIG?.customEntityNames?.[entityId] : '';
   const fallbackName = customName
     || (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '')
     || 'Pinned Tile';
   const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
+  const normalizedConnectionIssue = typeof connectionIssue === 'string'
+    ? connectionIssue.trim()
+    : '';
 
   if (!entityId) {
     return {
@@ -2282,6 +2286,18 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
       kicker: 'Pin setup',
       title: 'No entity selected',
       detail: 'Choose an entity in the main widget and pin it again.',
+      showFocusMain: true,
+      canOpen: false,
+    };
+  }
+
+  if (normalizedConnectionIssue) {
+    return {
+      state: 'disconnected',
+      label,
+      kicker: 'Connection issue',
+      title: 'Home Assistant unavailable',
+      detail: normalizedConnectionIssue,
       showFocusMain: true,
       canOpen: false,
     };
@@ -2306,7 +2322,7 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
       kicker: 'Connecting',
       title: 'Waiting for first live update',
       detail: waitingMessage,
-      showFocusMain: false,
+      showFocusMain: true,
       canOpen: false,
     };
   }
@@ -2372,6 +2388,7 @@ function renderDesktopPinTileInto({
   interactive = true,
   emptyMessage = 'Waiting for live Home Assistant data...',
   hasSnapshot = false,
+  connectionIssue = '',
 }) {
   const container = document.getElementById(containerId);
   const emptyState = document.getElementById(emptyStateId);
@@ -2381,6 +2398,7 @@ function renderDesktopPinTileInto({
   const fallback = getDesktopPinFallbackDescriptor(entityId, entity, {
     hasSnapshot,
     waitingMessage: emptyMessage,
+    connectionIssue,
   });
 
   const existingControl = entity?.entity_id
@@ -2432,6 +2450,7 @@ function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
     entity,
     interactive: true,
     hasSnapshot: !!options?.hasSnapshot,
+    connectionIssue: options?.connectionIssue || '',
   });
 }
 

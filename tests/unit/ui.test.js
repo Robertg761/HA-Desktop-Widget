@@ -68,8 +68,17 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     document.body.innerHTML = `
       <div id="quick-controls"></div>
       <div id="desktop-pin-content"></div>
-      <div id="desktop-pin-empty"></div>
+      <div id="desktop-pin-empty" class="hidden">
+        <div id="desktop-pin-empty-kicker"></div>
+        <div id="desktop-pin-empty-title"></div>
+        <div id="desktop-pin-empty-copy"></div>
+        <div id="desktop-pin-empty-actions" class="hidden">
+          <button id="desktop-pin-focus-btn" type="button"></button>
+        </div>
+      </div>
       <div id="desktop-pin-entity-label"></div>
+      <button id="desktop-pin-open-btn" type="button"></button>
+      <button id="desktop-pin-unpin-btn" type="button"></button>
 
       <div id="weather-card">
         <div id="weather-icon"></div>
@@ -1299,6 +1308,54 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.toggleReorganizeMode();
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
+    });
+
+    it('keeps Focus Main available while waiting for the first live update', () => {
+      ui.renderDesktopPinnedTile('light.bedroom', null, { hasSnapshot: false });
+
+      const emptyState = document.getElementById('desktop-pin-empty');
+      const openBtn = document.getElementById('desktop-pin-open-btn');
+      const focusBtn = document.getElementById('desktop-pin-focus-btn');
+      const focusActions = document.getElementById('desktop-pin-empty-actions');
+
+      expect(emptyState?.dataset.state).toBe('waiting');
+      expect(emptyState?.classList.contains('hidden')).toBe(false);
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Waiting for first live update');
+      expect(openBtn?.disabled).toBe(true);
+      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
+      expect(openBtn?.title).toBe('Open becomes available when this tile has live data');
+      expect(focusActions?.classList.contains('hidden')).toBe(false);
+      expect(focusBtn?.disabled).toBe(false);
+      expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
+    });
+
+    it('shows a disconnected fallback when a connection issue is present', () => {
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom'], {
+        hasSnapshot: true,
+        connectionIssue: 'Unable to reach Home Assistant. Check your network or Home Assistant URL.'
+      });
+
+      const emptyState = document.getElementById('desktop-pin-empty');
+      const openBtn = document.getElementById('desktop-pin-open-btn');
+      const focusBtn = document.getElementById('desktop-pin-focus-btn');
+      const focusActions = document.getElementById('desktop-pin-empty-actions');
+
+      expect(emptyState?.dataset.state).toBe('disconnected');
+      expect(emptyState?.classList.contains('hidden')).toBe(false);
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Home Assistant unavailable');
+      expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe('Unable to reach Home Assistant. Check your network or Home Assistant URL.');
+      expect(document.getElementById('desktop-pin-content')?.childElementCount).toBe(0);
+      expect(openBtn?.disabled).toBe(true);
+      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
+      expect(focusActions?.classList.contains('hidden')).toBe(false);
+      expect(focusBtn?.disabled).toBe(false);
+      expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
     });
 
     it('renders compact desktop light controls with inline presets', async () => {

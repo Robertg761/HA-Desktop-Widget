@@ -23,6 +23,7 @@ const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 let desktopPinEditMode = false;
 let desktopPinBounds = null;
 let desktopPinHasSnapshot = false;
+let desktopPinConnectionIssue = '';
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -102,6 +103,12 @@ function setConnectedStatus(detailMessage = DEFAULT_CONNECTED_STATUS_DETAIL) {
   uiUtils.setStatus(true, detailMessage);
 }
 
+function setDesktopPinConnectionIssue(detailMessage = '') {
+  desktopPinConnectionIssue = typeof detailMessage === 'string'
+    ? detailMessage.trim()
+    : '';
+}
+
 function getSettingsUiHooks() {
   return {
     initUpdateUI: ui.initUpdateUI,
@@ -136,7 +143,10 @@ function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
-    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, { hasSnapshot: desktopPinHasSnapshot });
+    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, {
+      hasSnapshot: desktopPinHasSnapshot,
+      connectionIssue: desktopPinConnectionIssue,
+    });
     return;
   }
   ui.renderActiveTab();
@@ -317,9 +327,15 @@ window.addEventListener('online', () => {
 window.addEventListener('offline', () => {
   browserReportedOffline = true;
   clearReconnectTimer();
-  setDisconnectedStatus('No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.');
+  const disconnectedMessage = 'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.';
+  setDisconnectedStatus(disconnectedMessage);
+  setDesktopPinConnectionIssue(disconnectedMessage);
   uiUtils.showLoading(false);
-  ui.renderActiveTab();
+  if (IS_SPECIAL_PIN_MODE) {
+    renderCurrentMode();
+  } else {
+    ui.renderActiveTab();
+  }
   showClassifiedConnectionToast(new Error('Browser reported offline'));
 
   // Proactively close stale sockets so reconnect can start fresh once online.
@@ -340,6 +356,7 @@ websocket.on('message', (msg) => {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
       browserReportedOffline = false;
+      setDesktopPinConnectionIssue('');
       resetConnectionToastTracking();
       clearReconnectTimer();
       setConnectedStatus();
@@ -372,10 +389,12 @@ websocket.on('message', (msg) => {
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
-      setDisconnectedStatus('Authentication failed. Please check your Home Assistant token in Settings.');
+      const authFailureMessage = 'Authentication failed. Please check your Home Assistant token in Settings.';
+      setDisconnectedStatus(authFailureMessage);
+      setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
       // Show clear error message to user
-      uiUtils.showToast('Authentication failed. Please check your Home Assistant token in Settings.', 'error', 15000);
+      uiUtils.showToast(authFailureMessage, 'error', 15000);
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
@@ -423,6 +442,7 @@ websocket.on('message', (msg) => {
             if (IS_DESKTOP_PIN_MODE) {
               desktopPinHasSnapshot = true;
             }
+            setDesktopPinConnectionIssue('');
             window.electronAPI.publishHaSnapshot(mergedStates).catch((error) => {
               log.warn('Failed to publish HA snapshot to main process:', error);
             });
@@ -504,7 +524,11 @@ websocket.on('close', (closeInfo = {}) => {
     }
 
     setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
+    setDesktopPinConnectionIssue(DEFAULT_DISCONNECTED_STATUS_DETAIL);
     uiUtils.showLoading(false);
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    }
 
     scheduleReconnect();
   } catch (error) {
@@ -516,24 +540,34 @@ websocket.on('error', (error) => {
   try {
     log.error('WebSocket error:', error);
     const classifiedIssue = classifyConnectionError(error);
+    let desktopPinIssueMessage = classifiedIssue.message;
     setDisconnectedStatus(classifiedIssue.message);
     uiUtils.showLoading(false); // Hide loading on failure
-
-    // Show the UI with setup message
-    ui.renderActiveTab();
 
     // Show user-friendly error message
     const errorMessage = String(error?.message || '');
     if (errorMessage.includes('default token')) {
-      setDisconnectedStatus('Please configure your Home Assistant token in Settings (gear icon).');
-      uiUtils.showToast('Please configure your Home Assistant token in Settings (gear icon).', 'error', 20000);
+      desktopPinIssueMessage = 'Please configure your Home Assistant token in Settings (gear icon).';
+      setDisconnectedStatus(desktopPinIssueMessage);
+      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (errorMessage.includes('Invalid configuration')) {
-      setDisconnectedStatus('Please configure connection settings (gear icon).');
-      uiUtils.showToast('Please configure connection settings (gear icon).', 'error', 20000);
+      desktopPinIssueMessage = 'Please configure connection settings (gear icon).';
+      setDisconnectedStatus(desktopPinIssueMessage);
+      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
       const toastInfo = showClassifiedConnectionToast(error);
-      setDisconnectedStatus(toastInfo?.message || classifiedIssue.message);
+      desktopPinIssueMessage = toastInfo?.message || classifiedIssue.message;
+      setDisconnectedStatus(desktopPinIssueMessage);
+    }
+
+    setDesktopPinConnectionIssue(desktopPinIssueMessage);
+
+    // Show the UI with the current connection state instead of stale live controls.
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    } else {
+      ui.renderActiveTab();
     }
   } catch (err) {
     log.error('Error handling WebSocket error:', err);
@@ -682,14 +716,29 @@ async function initializeDesktopPinMode() {
     wireDesktopPinUI();
     replaceEmojiIcons();
     uiUtils.showLoading(false);
+    const desktopPinUrl = typeof nextConfig?.homeAssistant?.url === 'string'
+      ? nextConfig.homeAssistant.url.trim()
+      : '';
+    const desktopPinToken = typeof nextConfig?.homeAssistant?.token === 'string'
+      ? nextConfig.homeAssistant.token.trim()
+      : '';
+    if (!desktopPinUrl) {
+      setDesktopPinConnectionIssue('Please configure connection settings (gear icon).');
+    } else if (!desktopPinToken || desktopPinToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+      setDesktopPinConnectionIssue('Please configure your Home Assistant token in Settings (gear icon).');
+    } else {
+      setDesktopPinConnectionIssue('');
+    }
     renderCurrentMode();
-    if (nextConfig?.homeAssistant?.token && nextConfig.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+    if (desktopPinUrl && desktopPinToken && desktopPinToken !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       connectWebSocket();
     }
   } catch (error) {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);
-    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, null, { hasSnapshot: desktopPinHasSnapshot });
+    wireDesktopPinUI();
+    setDesktopPinConnectionIssue('Unable to initialize the desktop tile. Focus the main widget to review your settings.');
+    renderCurrentMode();
   }
 }
 
