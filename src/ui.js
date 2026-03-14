@@ -2395,6 +2395,15 @@ function renderDesktopPinTileInto({
   const label = labelId ? document.getElementById(labelId) : null;
   if (!container || !emptyState) return;
 
+  const setContentVisibility = (isHidden) => {
+    container.classList.toggle('hidden', isHidden);
+    if (isHidden) {
+      container.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    container.removeAttribute('aria-hidden');
+  };
+
   const fallback = getDesktopPinFallbackDescriptor(entityId, entity, {
     hasSnapshot,
     waitingMessage: emptyMessage,
@@ -2418,6 +2427,7 @@ function renderDesktopPinTileInto({
 
   if (fallback) {
     container.innerHTML = '';
+    setContentVisibility(true);
     renderDesktopPinFallbackSurface(emptyState, fallback);
     syncDesktopPinChrome({
       canOpen: fallback.canOpen,
@@ -2426,6 +2436,7 @@ function renderDesktopPinTileInto({
     return;
   }
 
+  setContentVisibility(false);
   emptyState.classList.add('hidden');
   delete emptyState.dataset.state;
   syncDesktopPinChrome({

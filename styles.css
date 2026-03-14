@@ -1392,7 +1392,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   justify-content: center;
   gap: 6px;
   text-align: center;
+  min-height: 0;
   -webkit-app-region: no-drag;
+}
+
+.desktop-pin-empty[data-state="waiting"],
+.desktop-pin-empty[data-state="missing"],
+.desktop-pin-empty[data-state="unavailable"],
+.desktop-pin-empty[data-state="disconnected"] {
+  flex: 1 1 auto;
 }
 
 .desktop-pin-empty[data-state="waiting"] {
