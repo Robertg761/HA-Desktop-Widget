@@ -432,15 +432,22 @@ body.desktop-pin-mode #alert-entity-picker-modal {
 body.desktop-pin-mode .desktop-pin-shell {
   display: flex;
   padding: 0;
-  background: none;
+  background:
+    radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.18), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 body.desktop-pin-mode .desktop-pin-header {
-  display: none;
-}
-
-body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-header {
-  display: none;
+  display: flex;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(10, 14, 22, 0.36), rgba(10, 14, 22, 0.08));
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-shell,
@@ -452,6 +459,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item {
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-actions {
+  display: none;
+}
+
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-header {
   display: none;
 }
 
@@ -495,7 +506,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 4px 2px 10px;
+  padding: 6px 8px 8px;
+  flex: 0 0 auto;
 }
 
 .desktop-pin-drag-region {
@@ -529,14 +541,41 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   align-items: center;
   gap: 6px;
   -webkit-app-region: no-drag;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .desktop-pin-action {
-  min-width: 44px;
+  min-width: 48px;
   width: auto;
+  height: 28px;
   padding: 0 10px;
   font-size: 11px;
   font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border-radius: 999px;
+}
+
+.desktop-pin-action:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.desktop-pin-action:disabled,
+.desktop-pin-action[aria-disabled="true"] {
+  opacity: 0.48;
+  cursor: default;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+}
+
+.desktop-pin-action-danger {
+  border-color: rgba(244, 143, 177, 0.26);
+}
+
+.desktop-pin-action-danger:hover {
+  background: rgba(244, 143, 177, 0.12);
 }
 
 .desktop-pin-content {
@@ -544,6 +583,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   display: flex;
   align-items: stretch;
   position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  -webkit-app-region: no-drag;
 }
 
 .desktop-pin-content .control-item {
@@ -1155,8 +1198,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   place-items: center;
   width: 100%;
   height: 100%;
-  min-height: clamp(60px, 44vmin, 120px);
-  font-size: clamp(34px, 28vmin, 72px);
+  min-height: 0;
+  font-size: clamp(16px, 28vmin, 72px);
   line-height: 1;
   text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
@@ -1175,12 +1218,12 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 .desktop-pin-scene-name {
   max-width: 100%;
   color: rgba(255, 255, 255, 0.92);
-  font-size: clamp(13px, 5.2vmin, 24px);
+  font-size: clamp(8px, min(5.2vmin, 14px), 24px);
   font-weight: 800;
-  line-height: 1;
+  line-height: 1.1;
   letter-spacing: -0.02em;
   text-align: center;
-  padding: clamp(2px, 1vw, 4px) clamp(8px, 4vw, 14px) clamp(8px, 3vw, 12px);
+  padding: clamp(1px, 1vw, 4px) clamp(2px, 4vw, 14px);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1262,12 +1305,12 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-emoji {
-  min-height: clamp(44px, 34vmin, 68px);
-  font-size: clamp(24px, 22vmin, 42px);
+  min-height: 0;
+  font-size: clamp(14px, 22vmin, 42px);
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-name {
-  font-size: clamp(10px, 4.4vmin, 13px);
+  font-size: clamp(8px, min(4.4vmin, 12px), 13px);
   line-height: 1.05;
   max-width: 100%;
 }
@@ -1278,13 +1321,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-body {
+  position: relative;
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   padding: 0;
 }
 
 .desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-hero {
-  padding: 0;
+  padding: 0 0 14px;
   border-radius: clamp(8px, 22vw, 12px);
   background:
     radial-gradient(circle at center, rgba(var(--accent-rgb), 0.22), transparent 70%),
@@ -1293,12 +1337,30 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 
 .desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-emoji {
   min-height: 0;
-  font-size: clamp(18px, 52vw, 28px);
+  font-size: clamp(14px, 48vw, 28px);
   text-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
 .desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-name {
-  display: none;
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  z-index: 1;
+  display: block;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.72);
+  color: rgba(255, 255, 255, 0.96);
+  font-size: clamp(7px, 3.6vmin, 10px);
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: initial;
+  text-wrap: nowrap;
 }
 
 .desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-scene-name {
@@ -1316,61 +1378,125 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-empty {
-  margin-top: 10px;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
+  flex: 1;
+  margin: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 14px 12px;
   color: var(--text-secondary);
-  font-size: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.03);
+  -webkit-app-region: no-drag;
+}
+
+.desktop-pin-empty[data-state="waiting"] {
+  border-style: solid;
+}
+
+.desktop-pin-empty-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.desktop-pin-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.desktop-pin-empty-copy {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.desktop-pin-empty-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-pin-empty-action {
+  min-width: 86px;
 }
 
 .desktop-pin-resize-handle {
-  --desktop-pin-resize-handle-size: clamp(12px, min(16vw, 16vh), 20px);
-  --desktop-pin-resize-handle-edge-offset: clamp(0px, calc((140px - min(100vw, 100vh)) * 0.06), 5px);
+  --desktop-pin-resize-handle-size: clamp(14px, min(18vw, 18vh), 24px);
   display: none;
   position: absolute;
   width: var(--desktop-pin-resize-handle-size);
   height: var(--desktop-pin-resize-handle-size);
-  border-radius: 999px;
-  align-items: center;
-  justify-content: center;
-  background: rgba(8, 12, 20, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
   z-index: 3;
   -webkit-app-region: no-drag;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: clamp(8px, calc(var(--desktop-pin-resize-handle-size) * 0.56), 12px);
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
   user-select: none;
+  overflow: visible;
+}
+
+.desktop-pin-resize-handle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(var(--accent-rgb), 0.92);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
 }
 
 .desktop-pin-resize-handle-top-left {
-  top: var(--desktop-pin-resize-handle-edge-offset);
-  left: var(--desktop-pin-resize-handle-edge-offset);
+  top: 0;
+  left: 0;
   cursor: nwse-resize;
+}
+
+.desktop-pin-resize-handle-top-left::before {
+  clip-path: polygon(0 0, 100% 0, 0 100%);
 }
 
 .desktop-pin-resize-handle-top-right {
-  top: var(--desktop-pin-resize-handle-edge-offset);
-  right: var(--desktop-pin-resize-handle-edge-offset);
+  top: 0;
+  right: 0;
   cursor: nesw-resize;
+}
+
+.desktop-pin-resize-handle-top-right::before {
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
 .desktop-pin-resize-handle-bottom-left {
-  bottom: var(--desktop-pin-resize-handle-edge-offset);
-  left: var(--desktop-pin-resize-handle-edge-offset);
+  bottom: 0;
+  left: 0;
   cursor: nesw-resize;
 }
 
+.desktop-pin-resize-handle-bottom-left::before {
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+}
+
 .desktop-pin-resize-handle-bottom-right {
-  bottom: var(--desktop-pin-resize-handle-edge-offset);
-  right: var(--desktop-pin-resize-handle-edge-offset);
+  bottom: 0;
+  right: 0;
   cursor: nwse-resize;
+}
+
+.desktop-pin-resize-handle-bottom-right::before {
+  clip-path: polygon(100% 0, 0 100%, 100% 100%);
 }
 
 .drag-area {

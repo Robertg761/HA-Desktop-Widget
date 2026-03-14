@@ -22,6 +22,7 @@ const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 let desktopPinEditMode = false;
 let desktopPinBounds = null;
+let desktopPinHasSnapshot = false;
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -135,7 +136,7 @@ function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
-    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity);
+    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, { hasSnapshot: desktopPinHasSnapshot });
     return;
   }
   ui.renderActiveTab();
@@ -158,6 +159,10 @@ async function handleDesktopPinUpdate(message = {}) {
 
     if (Object.prototype.hasOwnProperty.call(message, 'pinBounds')) {
       desktopPinBounds = message.pinBounds || null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'hasSnapshot')) {
+      desktopPinHasSnapshot = !!message.hasSnapshot;
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
@@ -415,6 +420,9 @@ websocket.on('message', (msg) => {
               favoriteCount: Array.isArray(state.CONFIG?.favoriteEntities) ? state.CONFIG.favoriteEntities.length : 0,
             });
             state.setStates(mergedStates);
+            if (IS_DESKTOP_PIN_MODE) {
+              desktopPinHasSnapshot = true;
+            }
             window.electronAPI.publishHaSnapshot(mergedStates).catch((error) => {
               log.warn('Failed to publish HA snapshot to main process:', error);
             });
@@ -654,6 +662,7 @@ async function initializeDesktopPinMode() {
     const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
     desktopPinEditMode = !!bootstrap?.editMode;
     desktopPinBounds = bootstrap?.pinBounds || null;
+    desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);
@@ -680,7 +689,7 @@ async function initializeDesktopPinMode() {
   } catch (error) {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);
-    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, null);
+    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, null, { hasSnapshot: desktopPinHasSnapshot });
   }
 }
 
@@ -1112,6 +1121,7 @@ function wireDesktopPinUI() {
     const openBtn = document.getElementById('desktop-pin-open-btn');
     if (openBtn) {
       openBtn.onclick = () => {
+        if (openBtn.disabled) return;
         window.electronAPI.requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'open-details').catch((error) => {
           log.error('Failed to open desktop pin details:', error);
         });
@@ -1126,6 +1136,16 @@ function wireDesktopPinUI() {
         } catch (error) {
           log.error('Failed to unpin desktop tile:', error);
         }
+      };
+    }
+
+    const focusBtn = document.getElementById('desktop-pin-focus-btn');
+    if (focusBtn) {
+      focusBtn.onclick = () => {
+        if (focusBtn.disabled) return;
+        window.electronAPI.requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'focus-main').catch((error) => {
+          log.error('Failed to focus main widget from desktop pin:', error);
+        });
       };
     }
 

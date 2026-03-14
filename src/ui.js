@@ -2251,20 +2251,107 @@ function createDesktopPinControlElement(entity) {
   }
 }
 
-function createDesktopPinUnavailableElement(entityId) {
-  const div = createUnavailableElement(entityId);
-  div.dataset.desktopPin = 'true';
-  div.classList.add('desktop-pin-control', 'desktop-pin-unavailable');
-  div.addEventListener('click', async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    try {
-      await window.electronAPI.requestDesktopPinAction(entityId, 'focus-main');
-    } catch (error) {
-      console.error('Error focusing main widget for unavailable desktop pin:', error);
+function isDesktopPinUnavailableState(entity) {
+  const normalizedState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+  return normalizedState === 'unavailable' || normalizedState === 'unknown';
+}
+
+function getDesktopPinFallbackDescriptor(entityId, entity, {
+  hasSnapshot = false,
+  waitingMessage = 'Waiting for live Home Assistant data...',
+} = {}) {
+  const customName = entityId ? state.CONFIG?.customEntityNames?.[entityId] : '';
+  const fallbackName = customName
+    || (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '')
+    || 'Pinned Tile';
+  const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
+
+  if (!entityId) {
+    return {
+      state: 'no-entity',
+      label: 'Pinned Tile',
+      kicker: 'Pin setup',
+      title: 'No entity selected',
+      detail: 'Choose an entity in the main widget and pin it again.',
+      showFocusMain: true,
+      canOpen: false,
+    };
+  }
+
+  if (!entity) {
+    if (hasSnapshot) {
+      return {
+        state: 'missing',
+        label,
+        kicker: 'Missing entity',
+        title: 'Pinned entity not found',
+        detail: 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
+        showFocusMain: true,
+        canOpen: false,
+      };
     }
-  });
-  return div;
+
+    return {
+      state: 'waiting',
+      label,
+      kicker: 'Connecting',
+      title: 'Waiting for first live update',
+      detail: waitingMessage,
+      showFocusMain: false,
+      canOpen: false,
+    };
+  }
+
+  if (isDesktopPinUnavailableState(entity)) {
+    return {
+      state: 'unavailable',
+      label,
+      kicker: 'Unavailable',
+      title: `${label} is unavailable`,
+      detail: 'Latest Home Assistant data reports this entity as unavailable right now.',
+      showFocusMain: true,
+      canOpen: false,
+    };
+  }
+
+  return null;
+}
+
+function syncDesktopPinChrome({ canOpen = false, showFocusMain = false } = {}) {
+  const openBtn = document.getElementById('desktop-pin-open-btn');
+  if (openBtn) {
+    openBtn.disabled = !canOpen;
+    openBtn.setAttribute('aria-disabled', canOpen ? 'false' : 'true');
+    openBtn.title = canOpen
+      ? 'Open in main widget'
+      : 'Open becomes available when this tile has live data';
+  }
+
+  const focusBtn = document.getElementById('desktop-pin-focus-btn');
+  if (focusBtn) {
+    focusBtn.disabled = !showFocusMain;
+    focusBtn.setAttribute('aria-disabled', showFocusMain ? 'false' : 'true');
+  }
+
+  const focusActions = document.getElementById('desktop-pin-empty-actions');
+  if (focusActions) {
+    focusActions.classList.toggle('hidden', !showFocusMain);
+  }
+}
+
+function renderDesktopPinFallbackSurface(emptyState, fallback) {
+  if (!emptyState || !fallback) return;
+  emptyState.dataset.state = fallback.state;
+
+  const kicker = emptyState.querySelector('#desktop-pin-empty-kicker');
+  const title = emptyState.querySelector('#desktop-pin-empty-title');
+  const copy = emptyState.querySelector('#desktop-pin-empty-copy');
+
+  if (kicker) kicker.textContent = fallback.kicker;
+  if (title) title.textContent = fallback.title;
+  if (copy) copy.textContent = fallback.detail;
+
+  emptyState.classList.remove('hidden');
 }
 
 function renderDesktopPinTileInto({
@@ -2275,40 +2362,49 @@ function renderDesktopPinTileInto({
   entity,
   interactive = true,
   emptyMessage = 'Waiting for live Home Assistant data...',
+  hasSnapshot = false,
 }) {
   const container = document.getElementById(containerId);
   const emptyState = document.getElementById(emptyStateId);
   const label = labelId ? document.getElementById(labelId) : null;
   if (!container || !emptyState) return;
 
+  const fallback = getDesktopPinFallbackDescriptor(entityId, entity, {
+    hasSnapshot,
+    waitingMessage: emptyMessage,
+  });
+
   const existingControl = entity?.entity_id
     ? container.querySelector(`.control-item[data-entity-id="${entity.entity_id}"]`)
     : null;
 
   if (label) {
-    const liveEntity = entity || state.STATES?.[entityId];
-    label.textContent = liveEntity
-      ? utils.getEntityDisplayName(liveEntity)
-      : (entityId || 'Pinned Tile');
+    if (fallback?.label) {
+      label.textContent = fallback.label;
+    } else {
+      const liveEntity = entity || state.STATES?.[entityId];
+      label.textContent = liveEntity
+        ? utils.getEntityDisplayName(liveEntity)
+        : (entityId || 'Pinned Tile');
+    }
   }
 
-  if (!entityId) {
-    emptyState.textContent = 'No entity selected for this desktop pin.';
-    emptyState.classList.remove('hidden');
-    return;
-  }
-
-  if (!entity) {
+  if (fallback) {
     container.innerHTML = '';
-    emptyState.textContent = emptyMessage;
-    emptyState.classList.remove('hidden');
-    const unavailable = createDesktopPinUnavailableElement(entityId);
-    if (!interactive) unavailable.style.pointerEvents = 'none';
-    container.appendChild(unavailable);
+    renderDesktopPinFallbackSurface(emptyState, fallback);
+    syncDesktopPinChrome({
+      canOpen: fallback.canOpen,
+      showFocusMain: fallback.showFocusMain && interactive,
+    });
     return;
   }
 
   emptyState.classList.add('hidden');
+  delete emptyState.dataset.state;
+  syncDesktopPinChrome({
+    canOpen: true,
+    showFocusMain: false,
+  });
   if (existingControl && updateExistingDesktopPinPanelControl(existingControl, entity)) {
     return;
   }
@@ -2318,7 +2414,7 @@ function renderDesktopPinTileInto({
   container.appendChild(control);
 }
 
-function renderDesktopPinnedTile(entityId, entity = null) {
+function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
   renderDesktopPinTileInto({
     containerId: 'desktop-pin-content',
     emptyStateId: 'desktop-pin-empty',
@@ -2326,6 +2422,7 @@ function renderDesktopPinnedTile(entityId, entity = null) {
     entityId,
     entity,
     interactive: true,
+    hasSnapshot: !!options?.hasSnapshot,
   });
 }
 

@@ -177,6 +177,7 @@ const DESKTOP_PIN_MIN_BOUNDS = { width: 140, height: 110 };
 const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 36, height: 56 };
 const desktopPinWindows = new Map();
 const latestEntityStates = new Map();
+let hasPublishedHaSnapshot = false;
 let desktopPinEditMode = false;
 
 function isProfileSyncProviderSupported(provider) {
@@ -445,6 +446,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
   window.webContents.send('desktop-pin-update', {
     entityId,
     entity: latestEntityStates.get(entityId) || null,
+    hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[entityId] || null,
     config: sanitizeConfigForRenderer(config),
     editMode: desktopPinEditMode,
@@ -2066,6 +2068,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (_event, entityId) => {
   return {
     entityId: normalizedEntityId,
     entity: latestEntityStates.get(normalizedEntityId) || null,
+    hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[normalizedEntityId] || null,
     config: sanitizeConfigForRenderer(config),
     isPinned: !!config?.desktopPins?.[normalizedEntityId],
@@ -2074,6 +2077,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (_event, entityId) => {
 });
 
 ipcMain.handle('publish-ha-snapshot', (_event, states) => {
+  hasPublishedHaSnapshot = true;
   latestEntityStates.clear();
   if (isPlainObject(states)) {
     Object.entries(states).forEach(([entityId, entity]) => {
