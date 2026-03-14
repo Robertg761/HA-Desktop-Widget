@@ -35,8 +35,8 @@ Dependencies:
 
 Goal: define what each pinned tile type actually needs before changing breakpoint or clamp behavior.
 
-- [ ] Review desktop pin layouts in `main.js`, `src/ui.js`, and `styles.css`.
-- [ ] List all supported desktop pin types:
+- [x] Review desktop pin layouts in `main.js`, `src/ui.js`, and `styles.css`.
+- [x] List all supported desktop pin types:
   - scene/script,
   - sensor/binary sensor,
   - timer,
@@ -48,19 +48,19 @@ Goal: define what each pinned tile type actually needs before changing breakpoin
   - camera,
   - media,
   - fallback.
-- [ ] Group pin types into size classes:
+- [x] Group pin types into size classes:
   - tiny display tiles,
   - small action tiles,
   - dense control tiles,
   - wide media tiles.
-- [ ] Create a minimum-size matrix for those classes and record it in this file.
-- [ ] Review `getDesktopPinLayoutProfile()` and document how layout promotion should work.
-- [ ] Decide whether layout promotion should be based on:
+- [x] Create a minimum-size matrix for those classes and record it in this file.
+- [x] Review `getDesktopPinLayoutProfile()` and document how layout promotion should work.
+- [x] Decide whether layout promotion should be based on:
   - both width and height,
   - area thresholds,
   - domain-specific overrides,
   - or a combination.
-- [ ] Preserve scene/script nano behavior unless testing shows it should change.
+- [x] Preserve scene/script nano behavior unless testing shows it should change.
 
 Dependencies:
 
@@ -196,9 +196,60 @@ Dependencies:
 - [x] `Unavailable`: show copy that the entity is currently unavailable in Home Assistant and expose `Focus Main`.
 - [x] `Missing entity`: show copy that the pinned entity could not be found in the latest snapshot and expose `Focus Main`.
 
+### Stage 2 Audit Notes
+
+- [x] `main.js` currently opens standard desktop pins at `168x148`, media pins at `328x156`, clamps most pins to `140x110`, and keeps a special `scene.` minimum at `36x56`.
+- [x] `src/ui.js` currently routes supported desktop pins as:
+  - `scene.` and `script.` -> scene tile markup,
+  - `sensor.` / `binary_sensor.` -> sensor display tile,
+  - timer entities and timer-like sensors -> timer tile,
+  - `switch.` / `input_boolean.` / `lock.` -> toggle tile,
+  - `light.` -> light control tile,
+  - `fan.` -> fan control tile,
+  - `climate.` -> climate control tile,
+  - `cover.` -> cover control tile,
+  - `camera.` -> camera action tile,
+  - `media_player.` -> media tile,
+  - anything else -> fallback display tile.
+- [x] `styles.css` uses one shared panel system for climate/fan/cover/media/toggle/camera/sensor/timer/fallback tiles, a dedicated light ruleset, and a scene-specific tiny/nano ruleset.
+- [x] Current shared layout thresholds are:
+  - `micro` when width `<= 155` or height `<= 122`,
+  - `compact` otherwise,
+  - `balanced` when width `>= 195` or height `>= 160`,
+  - `roomy` when width `>= 260` or height `>= 190`,
+  - plus a scene-only `nano` override when width `<= 96` or height `<= 82`.
+- [x] The current width-or-height promotion rule is too aggressive for short-but-wide and tall-but-narrow tiles. Stage 3 should replace that with combined axis checks plus limited domain overrides.
+
+### Stage 2 Size Classes
+
+- [x] `Tiny display tiles`: scene/script, sensor/binary sensor, timer.
+- [x] `Small action tiles`: toggle, camera, fallback.
+- [x] `Dense control tiles`: light, fan, climate, cover.
+- [x] `Wide media tiles`: media.
+
 ### Size Matrix
 
-- [ ] Fill this in during Stage 2.
+| Size class | Tile types | Minimum target | Default/open size | Why this is the floor |
+| --- | --- | --- | --- | --- |
+| Tiny display tiles | scene/script, sensor, binary sensor, timer | `140x110` for value tiles; keep the existing scene nano exception at `36x56` | `168x148` | Sensor/timer tiles only need a header and one large value block. Scene tiles are the only validated exception that can collapse far below the shared floor because they render as an icon-forward trigger. |
+| Small action tiles | toggle, camera, fallback | `156x122` | `168x148` | These tiles need room for a visible CTA after the Stage 1 header/action rail changes. The fallback surface especially needs enough height for title, copy, and optional `Focus Main` without immediately looking cramped. |
+| Dense control tiles | light, fan, climate, cover | `168x148` | `168x148` | These tiles include sliders, KPIs, and multiple actions. They can degrade visually below this range today, but they stop being comfortably usable and are the primary reason Stage 3 needs per-domain minimums. |
+| Wide media tiles | media | `260x148` | `328x156` | Media is intentionally horizontal: title/artist copy, progress row, and three transport buttons need width first, but still need enough height to avoid a fake “roomy” promotion on a shallow tile. |
+
+### Stage 2 Layout Promotion Decision
+
+- [x] Use a combination of both dimensions plus domain-specific overrides.
+- [x] General rule for panel and light tiles:
+  - keep `micro` as the defensive low-size state whenever either axis drops under the micro floor,
+  - do not promote to `balanced` unless both width and height clear the balanced threshold,
+  - do not promote to `roomy` unless both width and height clear the roomy threshold.
+- [x] Allow limited domain-specific overrides instead of pure area math:
+  - media may promote earlier on width once it also clears a minimum short-height floor, because its layout is intentionally wide rather than tall,
+  - scene keeps the current tiny/nano exception,
+  - other domains should not get width-only `roomy` promotion by default.
+- [x] Area can be used only as a secondary sanity check, not the primary promotion trigger, because equal area does not mean equal usability for a slider-heavy tile versus a wide media tile.
+- [x] Preserve the current scene nano behavior during Stage 3.
+  - Both `scene.` and `script.` use the same scene tile component today, but the nano selector is currently scoped to `scene.`. Keep that existing behavior unless later testing shows scripts should share the nano path too.
 
 ### QA Results
 
