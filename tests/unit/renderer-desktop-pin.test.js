@@ -70,24 +70,39 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const openBtn = document.getElementById('desktop-pin-open-btn');
       const hasConnectionIssue = !!options.connectionIssue;
+      const normalizedState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+      const entityDomain = typeof entity?.entity_id === 'string'
+        ? entity.entity_id.split('.')[0]
+        : (typeof _entityId === 'string' ? _entityId.split('.')[0] : '');
       const showWaitingState = !entity && !hasConnectionIssue;
-      const showFallbackState = hasConnectionIssue || showWaitingState;
+      const showMissingState = !entity && !!options.hasSnapshot && !hasConnectionIssue;
+      const showUnavailableState = !!entity && (
+        normalizedState === 'unavailable'
+        || (normalizedState === 'unknown' && entityDomain !== 'scene' && entityDomain !== 'script')
+      );
+      const showFallbackState = hasConnectionIssue || showWaitingState || showUnavailableState;
 
       if (emptyState) {
         emptyState.classList.toggle('hidden', !showFallbackState);
         emptyState.dataset.state = hasConnectionIssue
           ? 'disconnected'
-          : (showWaitingState ? (options.hasSnapshot ? 'missing' : 'waiting') : 'ready');
+          : (showUnavailableState ? 'unavailable' : (showMissingState ? 'missing' : (showWaitingState ? 'waiting' : 'ready')));
       }
       if (title) {
         title.textContent = hasConnectionIssue
           ? 'Home Assistant unavailable'
-          : (showWaitingState ? 'Waiting for first live update' : 'Ready');
+          : (showUnavailableState
+              ? 'Bedroom Light is unavailable'
+              : (showMissingState ? 'Pinned entity not found' : (showWaitingState ? 'Waiting for first live update' : 'Ready')));
       }
       if (copy) {
         copy.textContent = hasConnectionIssue
           ? options.connectionIssue
-          : (showWaitingState ? 'Waiting for live Home Assistant data...' : 'Live data available.');
+          : (showUnavailableState
+              ? 'Latest Home Assistant data reports this entity as unavailable right now.'
+              : (showMissingState
+                  ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+                  : (showWaitingState ? 'Waiting for live Home Assistant data...' : 'Live data available.')));
       }
       if (openBtn) {
         openBtn.disabled = showFallbackState;
@@ -227,6 +242,92 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     focusBtn.click();
 
     expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
+  });
+
+  it('enables Open and hides Focus Main once live entity data is available', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        entity: {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+          },
+        },
+        hasSnapshot: true,
+      },
+    });
+
+    const emptyState = document.getElementById('desktop-pin-empty');
+    const focusActions = document.getElementById('desktop-pin-empty-actions');
+    const focusBtn = document.getElementById('desktop-pin-focus-btn');
+    const openBtn = document.getElementById('desktop-pin-open-btn');
+
+    expect(document.body.dataset.renderedMode).toBe('desktop-pin');
+    expect(emptyState?.classList.contains('hidden')).toBe(true);
+    expect(focusActions?.classList.contains('hidden')).toBe(true);
+    expect(focusBtn?.disabled).toBe(true);
+    expect(openBtn?.disabled).toBe(false);
+
+    openBtn.click();
+
+    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'open-details');
+  });
+
+  it('shows the missing-entity fallback after a snapshot no longer includes the pin target', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        entity: null,
+        hasSnapshot: true,
+      },
+    });
+
+    const emptyState = document.getElementById('desktop-pin-empty');
+    const title = document.getElementById('desktop-pin-empty-title');
+    const copy = document.getElementById('desktop-pin-empty-copy');
+    const focusActions = document.getElementById('desktop-pin-empty-actions');
+    const focusBtn = document.getElementById('desktop-pin-focus-btn');
+    const openBtn = document.getElementById('desktop-pin-open-btn');
+
+    expect(emptyState?.dataset.state).toBe('missing');
+    expect(title?.textContent).toBe('Pinned entity not found');
+    expect(copy?.textContent).toBe('This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.');
+    expect(focusActions?.classList.contains('hidden')).toBe(false);
+    expect(focusBtn?.disabled).toBe(false);
+    expect(openBtn?.disabled).toBe(true);
+
+    focusBtn.click();
+
+    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
+  });
+
+  it('keeps unavailable entities on the fallback surface with Focus Main available', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        entity: {
+          entity_id: 'light.bedroom',
+          state: 'unavailable',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+          },
+        },
+        hasSnapshot: true,
+      },
+    });
+
+    const emptyState = document.getElementById('desktop-pin-empty');
+    const title = document.getElementById('desktop-pin-empty-title');
+    const copy = document.getElementById('desktop-pin-empty-copy');
+    const focusActions = document.getElementById('desktop-pin-empty-actions');
+    const focusBtn = document.getElementById('desktop-pin-focus-btn');
+    const openBtn = document.getElementById('desktop-pin-open-btn');
+
+    expect(emptyState?.dataset.state).toBe('unavailable');
+    expect(title?.textContent).toBe('Bedroom Light is unavailable');
+    expect(copy?.textContent).toBe('Latest Home Assistant data reports this entity as unavailable right now.');
+    expect(focusActions?.classList.contains('hidden')).toBe(false);
+    expect(focusBtn?.disabled).toBe(false);
+    expect(openBtn?.disabled).toBe(true);
   });
 
   it('shows a disconnected fallback after a cold-start connection failure', async () => {

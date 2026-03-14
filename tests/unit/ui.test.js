@@ -1345,6 +1345,90 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
     });
 
+    it('enables Open and removes Focus Main for a live pinned entity', () => {
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom'],
+          state: 'on',
+          attributes: {
+            ...sampleStates['light.bedroom'].attributes,
+            friendly_name: 'Bedroom Light',
+            brightness: 180
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom']);
+
+      const emptyState = document.getElementById('desktop-pin-empty');
+      const content = document.getElementById('desktop-pin-content');
+      const openBtn = document.getElementById('desktop-pin-open-btn');
+      const focusBtn = document.getElementById('desktop-pin-focus-btn');
+      const focusActions = document.getElementById('desktop-pin-empty-actions');
+
+      expect(emptyState?.classList.contains('hidden')).toBe(true);
+      expect(content?.classList.contains('hidden')).toBe(false);
+      expect(content?.getAttribute('aria-hidden')).toBe(null);
+      expect(document.querySelector('#desktop-pin-content .desktop-pin-light-control')).toBeTruthy();
+      expect(openBtn?.disabled).toBe(false);
+      expect(openBtn?.getAttribute('aria-disabled')).toBe('false');
+      expect(openBtn?.title).toBe('Open in main widget');
+      expect(focusActions?.classList.contains('hidden')).toBe(true);
+      expect(focusBtn?.disabled).toBe(true);
+      expect(focusBtn?.getAttribute('aria-disabled')).toBe('true');
+    });
+
+    it('shows the missing-entity fallback after a snapshot with the right copy and disabled Open button', () => {
+      ui.renderDesktopPinnedTile('light.bedroom', null, { hasSnapshot: true });
+
+      const emptyState = document.getElementById('desktop-pin-empty');
+      const openBtn = document.getElementById('desktop-pin-open-btn');
+      const focusBtn = document.getElementById('desktop-pin-focus-btn');
+      const focusActions = document.getElementById('desktop-pin-empty-actions');
+
+      expect(emptyState?.dataset.state).toBe('missing');
+      expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Missing entity');
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Pinned entity not found');
+      expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe('This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.');
+      expect(openBtn?.disabled).toBe(true);
+      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
+      expect(focusActions?.classList.contains('hidden')).toBe(false);
+      expect(focusBtn?.disabled).toBe(false);
+      expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
+    });
+
+    it('shows the unavailable fallback with the same focus/open behavior as other non-live states', () => {
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom'],
+          state: 'unavailable',
+          attributes: {
+            ...sampleStates['light.bedroom'].attributes,
+            friendly_name: 'Bedroom Light'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom'], { hasSnapshot: true });
+
+      const emptyState = document.getElementById('desktop-pin-empty');
+      const content = document.getElementById('desktop-pin-content');
+      const openBtn = document.getElementById('desktop-pin-open-btn');
+      const focusBtn = document.getElementById('desktop-pin-focus-btn');
+      const focusActions = document.getElementById('desktop-pin-empty-actions');
+
+      expect(emptyState?.dataset.state).toBe('unavailable');
+      expect(content?.classList.contains('hidden')).toBe(true);
+      expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Unavailable');
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Bedroom Light is unavailable');
+      expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe('Latest Home Assistant data reports this entity as unavailable right now.');
+      expect(openBtn?.disabled).toBe(true);
+      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
+      expect(focusActions?.classList.contains('hidden')).toBe(false);
+      expect(focusBtn?.disabled).toBe(false);
+      expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
+    });
+
     it.each([
       ['waiting', null, { hasSnapshot: false }],
       ['missing', null, { hasSnapshot: true }],
@@ -1642,6 +1726,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', {
         entity_id: 'scene.red_blue'
+      });
+    });
+
+    it('renders script desktop tiles with the centered action layout and keeps Open available', () => {
+      state.setStates({
+        'script.goodnight': {
+          entity_id: 'script.goodnight',
+          state: 'off',
+          attributes: {
+            friendly_name: 'Goodnight'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('script.goodnight', state.STATES['script.goodnight']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
+      const openBtn = document.getElementById('desktop-pin-open-btn');
+      const focusBtn = document.getElementById('desktop-pin-focus-btn');
+      const focusActions = document.getElementById('desktop-pin-empty-actions');
+
+      expect(control).toBeTruthy();
+      expect(control?.dataset.domain).toBe('script');
+      expect(control?.querySelector('.desktop-pin-scene-name')?.textContent).toBe('Goodnight');
+      expect(document.getElementById('desktop-pin-empty')?.classList.contains('hidden')).toBe(true);
+      expect(openBtn?.disabled).toBe(false);
+      expect(openBtn?.getAttribute('aria-disabled')).toBe('false');
+      expect(focusActions?.classList.contains('hidden')).toBe(true);
+      expect(focusBtn?.disabled).toBe(true);
+
+      control.click();
+
+      expect(mockCallService).toHaveBeenCalledWith('script', 'turn_on', {
+        entity_id: 'script.goodnight'
       });
     });
   });
