@@ -140,12 +140,12 @@ Dependencies:
 
 Goal: ensure live state refreshes do not interrupt active user interaction.
 
-- [ ] Test sliders during live refreshes and confirm active interaction is not stomped.
-- [ ] Test hover and focus states during live updates.
-- [ ] Test normal-mode desktop pin actions during live updates.
-- [ ] Test edit mode during live updates.
-- [ ] Preserve optimistic UI behavior where it already exists.
-- [ ] Prevent unnecessary rerenders from causing visible flicker or focus loss.
+- [x] Test sliders during live refreshes and confirm active interaction is not stomped.
+- [x] Test hover and focus states during live updates.
+- [x] Test normal-mode desktop pin actions during live updates.
+- [x] Test edit mode during live updates.
+- [x] Preserve optimistic UI behavior where it already exists.
+- [x] Prevent unnecessary rerenders from causing visible flicker or focus loss.
 
 Dependencies:
 
@@ -308,6 +308,21 @@ Dependencies:
   - stable-node updates for scene, toggle, camera, sensor, binary sensor, timer, and fallback pins,
   - script layout changes after resize without replacing the root node,
   - live -> unavailable -> live transitions still swap correctly between content and fallback surfaces.
+- [x] Validation run for this stage:
+  - `npm test -- --runTestsByPath tests/unit/ui.test.js`
+  - `npm run lint`
+
+### Stage 6 Implementation Notes
+
+- [x] The shared `updateEntityInUI()` path now routes desktop-pin nodes through `updateExistingDesktopPinPanelControl()` before falling back to root replacement. This closes the remaining Stage 6 gap where optimistic toggle updates could still recreate the tile even after Stage 5 added in-place desktop-pin handlers.
+- [x] Desktop-pin optimistic updates for live controls now keep the existing root node, which prevents avoidable flicker while preserving focused action buttons and hovered button states during rapid refreshes.
+- [x] Active slider interactions remain stable across both render paths:
+  - `renderDesktopPinnedTile()` continues to preserve in-progress slider values through the interaction maps introduced earlier,
+  - `updateEntityInUI()` now respects those same live nodes instead of replacing them mid-drag.
+- [x] Targeted unit coverage in `tests/unit/ui.test.js` now verifies:
+  - optimistic light power toggles update the pinned tile in place without dropping focus,
+  - climate desktop-pin controls keep the same focused button and in-progress slider node during `updateEntityInUI()` refreshes.
+- [x] Edit mode continues to use the same desktop-pin content update path, so the in-place update fix also covers live refreshes while the tile is being edited instead of only normal mode.
 - [x] Validation run for this stage:
   - `npm test -- --runTestsByPath tests/unit/ui.test.js`
   - `npm run lint`

@@ -765,6 +765,9 @@ function updateEntityInUI(entity, options = {}) {
     const items = document.querySelectorAll(`.control-item[data-entity-id="${renderEntity.entity_id}"]`);
     items.forEach(item => {
       const isDesktopPin = item.dataset.desktopPin === 'true';
+      if (isDesktopPin && updateExistingDesktopPinPanelControl(item, renderEntity)) {
+        return;
+      }
       if (updateExistingMediaPlayerControl(item, renderEntity)) {
         return;
       }
@@ -1131,9 +1134,12 @@ function bindDesktopPinSlider(slider, {
 }
 
 function getLightBrightnessPercent(entity) {
+  if (entity?.state !== 'on') {
+    return 0;
+  }
   const rawBrightness = Number(entity?.attributes?.brightness);
   if (!Number.isFinite(rawBrightness) || rawBrightness <= 0) {
-    return entity?.state === 'on' ? 100 : 0;
+    return 100;
   }
   return Math.max(0, Math.min(100, Math.round((rawBrightness / 255) * 100)));
 }

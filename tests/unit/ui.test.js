@@ -1627,6 +1627,46 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(rerenderedSlider.value).toBe('82');
     });
 
+    it('keeps desktop pin optimistic light toggles in place without dropping focus', async () => {
+      state.setStates({
+        'light.office': {
+          entity_id: 'light.office',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Office Light',
+            brightness: 180
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.office', state.STATES['light.office'], { hasSnapshot: true });
+
+      const originalControl = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      const originalPowerButton = originalControl?.querySelector('.desktop-pin-light-power');
+
+      expect(originalControl).toBeTruthy();
+      expect(originalPowerButton).toBeTruthy();
+
+      originalPowerButton.focus();
+      expect(document.activeElement).toBe(originalPowerButton);
+
+      originalPowerButton.click();
+      await Promise.resolve();
+
+      const updatedControl = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      const updatedPowerButton = updatedControl?.querySelector('.desktop-pin-light-power');
+
+      expect(updatedControl).toBe(originalControl);
+      expect(updatedPowerButton).toBe(originalPowerButton);
+      expect(document.activeElement).toBe(updatedPowerButton);
+      expect(updatedControl?.dataset.state).toBe('off');
+      expect(updatedPowerButton?.textContent).toBe('Off');
+      expect(updatedPowerButton?.getAttribute('aria-pressed')).toBe('false');
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
+        entity_id: 'light.office'
+      });
+    });
+
     it('renders compact climate controls and sends hvac mode changes', () => {
       state.setStates({
         'climate.thermostat': {
@@ -2131,6 +2171,57 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const updatedControl = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
       expect(updatedControl).toBe(originalControl);
       expect(updatedControl?.dataset.layout).toBe('compact');
+    });
+
+    it('keeps desktop pin control focus and slider state stable during updateEntityInUI refreshes', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat'], { hasSnapshot: true });
+
+      const originalControl = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      const originalSlider = originalControl?.querySelector('.desktop-pin-climate-slider');
+      const originalCoolButton = originalControl?.querySelector('.desktop-pin-climate-mode[data-action="cool"]');
+
+      expect(originalControl).toBeTruthy();
+      expect(originalSlider).toBeTruthy();
+      expect(originalCoolButton).toBeTruthy();
+
+      originalSlider.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      originalSlider.value = '25.5';
+      originalSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      originalCoolButton.focus();
+      expect(document.activeElement).toBe(originalCoolButton);
+
+      const refreshedEntity = {
+        ...sampleStates['climate.thermostat'],
+        state: 'cool',
+        attributes: {
+          ...sampleStates['climate.thermostat'].attributes,
+          current_temperature: 22,
+          temperature: 23
+        }
+      };
+
+      state.setStates({
+        'climate.thermostat': refreshedEntity
+      });
+      ui.updateEntityInUI(refreshedEntity);
+
+      const updatedControl = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      const updatedSlider = updatedControl?.querySelector('.desktop-pin-climate-slider');
+      const updatedCoolButton = updatedControl?.querySelector('.desktop-pin-climate-mode[data-action="cool"]');
+
+      expect(updatedControl).toBe(originalControl);
+      expect(updatedSlider).toBe(originalSlider);
+      expect(updatedCoolButton).toBe(originalCoolButton);
+      expect(updatedSlider?.value).toBe('25.5');
+      expect(updatedControl?.dataset.state).toBe('cool');
+      expect(updatedCoolButton?.getAttribute('aria-pressed')).toBe('true');
+      expect(document.activeElement).toBe(updatedCoolButton);
     });
 
     it('keeps desktop pin fallback transitions correct when a live tile becomes unavailable and then recovers', () => {
