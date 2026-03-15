@@ -1077,11 +1077,16 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.desktop-pin-panel-slider-row-solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .desktop-pin-panel-button {
   display: inline-flex;
   justify-content: center;
   align-items: center;
   gap: 5px;
+  min-width: 0;
   min-height: 28px;
   padding: 6px 8px;
   border-radius: 10px;
@@ -1093,6 +1098,17 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.desktop-pin-panel-button-icon,
+.desktop-pin-panel-button-label {
+  min-width: 0;
+}
+
+.desktop-pin-panel-button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-pin-panel-button[data-active="true"] {
@@ -1110,6 +1126,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 .desktop-pin-media-copy {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .desktop-pin-media-title {
@@ -1239,6 +1256,57 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 
+.desktop-pin-panel-control[data-dense-variant="tight"] {
+  --desktop-pin-panel-pad: 8px;
+  --desktop-pin-panel-gap: 6px;
+  --desktop-pin-panel-meter-radius: 12px;
+}
+
+.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-topline {
+  gap: 6px;
+}
+
+.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-meter,
+.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-cover-frame {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-button {
+  min-height: 24px;
+  padding: 4px 6px;
+  border-radius: 9px;
+}
+
+.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-actions {
+  gap: 4px;
+}
+
+.desktop-pin-climate-control[data-dense-variant="tight"] .desktop-pin-climate-target-stat {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.desktop-pin-climate-control[data-dense-variant="tight"] .desktop-pin-climate-inline-copy {
+  margin-top: -2px;
+}
+
+.desktop-pin-fan-control[data-dense-variant="tight"] .desktop-pin-panel-actions,
+.desktop-pin-media-control[data-dense-variant="tight"] .desktop-pin-panel-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desktop-pin-cover-control[data-dense-variant="tight"] .desktop-pin-panel-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desktop-pin-media-control[data-dense-variant="tight"] .desktop-pin-media-copy {
+  gap: 1px;
+}
+
+.desktop-pin-media-control[data-dense-variant="tight"] .desktop-pin-panel-progress {
+  height: 6px;
+}
+
 .desktop-pin-panel-control[data-layout="micro"] {
   --desktop-pin-panel-pad: 6px;
   --desktop-pin-panel-gap: 4px;
@@ -1286,6 +1354,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   padding: 3px 5px;
   font-size: 7px;
   border-radius: 8px;
+}
+
+.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-slider-row-solo {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-climate-summary {

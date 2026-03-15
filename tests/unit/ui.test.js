@@ -1648,6 +1648,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('collapses climate desktop pins into the Stage 4 tight variant near the minimum size', () => {
+      setDesktopPinViewport(168, 148);
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.layout).toBe('compact');
+      expect(control?.dataset.denseVariant).toBe('tight');
+      expect(control?.querySelector('.desktop-pin-climate-summary')).toBeNull();
+      expect(control?.querySelector('.desktop-pin-climate-inline-copy')?.textContent).toContain('Now 21');
+      expect(control?.querySelectorAll('.desktop-pin-climate-mode')).toHaveLength(3);
+    });
+
     it('renders compact fan controls and sends preset percentages', async () => {
       jest.useFakeTimers();
 
@@ -1680,6 +1699,29 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    it('collapses fan desktop pins into the Stage 4 tight variant near the minimum size', () => {
+      setDesktopPinViewport(168, 148);
+      state.setStates({
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Office Fan',
+            percentage: 33
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.denseVariant).toBe('tight');
+      expect(control?.querySelector('.desktop-pin-fan-kpi')).toBeNull();
+      expect(control?.querySelectorAll('.desktop-pin-fan-preset')).toHaveLength(3);
+      expect(control?.querySelector('.desktop-pin-fan-preset[data-speed="33"]')).toBeNull();
+    });
+
     it('renders compact cover controls and sends cover actions', () => {
       state.setStates({
         'cover.blinds': {
@@ -1704,6 +1746,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('collapses cover desktop pins into the Stage 4 tight variant near the minimum size', () => {
+      setDesktopPinViewport(168, 148);
+      state.setStates({
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Living Room Blinds',
+            current_position: 55
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-cover-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.denseVariant).toBe('tight');
+      expect(control?.querySelector('.desktop-pin-cover-visual')).toBeNull();
+      expect(control?.querySelector('.desktop-pin-cover-slider')).toBeTruthy();
+    });
+
     it('renders compact media controls and routes play pause actions', () => {
       state.setStates({
         'media_player.spotify': {
@@ -1721,6 +1785,52 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledWith('media_player', 'media_pause', {
         entity_id: 'media_player.spotify'
       });
+    });
+
+    it('collapses media desktop pins into the Stage 4 tight variant at the minimum wide size', () => {
+      setDesktopPinViewport(260, 148);
+      state.setStates({
+        'media_player.spotify': {
+          ...sampleStates['media_player.spotify']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('media_player.spotify', state.STATES['media_player.spotify']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-media-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.layout).toBe('balanced');
+      expect(control?.dataset.denseVariant).toBe('tight');
+      expect(control?.querySelector('.desktop-pin-media-artist')).toBeNull();
+      expect(control?.querySelectorAll('.desktop-pin-media-action')).toHaveLength(3);
+    });
+
+    it('replaces dense desktop pin markup when the viewport crosses the Stage 4 tight threshold', () => {
+      setDesktopPinViewport(195, 160);
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const originalControl = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      expect(originalControl).toBeTruthy();
+      expect(originalControl?.dataset.layout).toBe('balanced');
+      expect(originalControl?.dataset.denseVariant).toBe('standard');
+      expect(originalControl?.querySelector('.desktop-pin-climate-summary')).toBeTruthy();
+
+      setDesktopPinViewport(168, 148);
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const rerenderedControl = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      expect(rerenderedControl).toBeTruthy();
+      expect(rerenderedControl).not.toBe(originalControl);
+      expect(rerenderedControl?.dataset.layout).toBe('compact');
+      expect(rerenderedControl?.dataset.denseVariant).toBe('tight');
+      expect(rerenderedControl?.querySelector('.desktop-pin-climate-summary')).toBeNull();
+      expect(rerenderedControl?.querySelector('.desktop-pin-climate-inline-copy')).toBeTruthy();
     });
 
     it('renders scene desktop tiles with a centered name and triggers on tile click', () => {

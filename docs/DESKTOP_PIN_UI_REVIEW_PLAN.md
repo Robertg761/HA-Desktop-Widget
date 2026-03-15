@@ -90,23 +90,23 @@ Dependencies:
 
 Goal: make dense pinned tiles degrade gracefully instead of clipping controls.
 
-- [ ] Identify dense tile types that need special small-size handling:
+- [x] Identify dense tile types that need special small-size handling:
   - climate,
   - fan,
   - cover,
   - media,
   - and any others discovered in review.
-- [ ] Decide what should degrade first for each dense type:
+- [x] Decide what should degrade first for each dense type:
   - secondary labels,
   - extra presets,
   - extra mode buttons,
   - extra metadata,
   - spacing.
-- [ ] Update CSS so dense tiles simplify at smaller sizes without becoming unusable.
-- [ ] Update markup logic in `src/ui.js` where layout-specific content needs to collapse.
-- [ ] Keep tap targets and interactive controls large enough to remain practical.
-- [ ] Avoid internal scrolling unless it is the only safe fallback.
-- [ ] Re-test minimum-size behavior for each dense tile class.
+- [x] Update CSS so dense tiles simplify at smaller sizes without becoming unusable.
+- [x] Update markup logic in `src/ui.js` where layout-specific content needs to collapse.
+- [x] Keep tap targets and interactive controls large enough to remain practical.
+- [x] Avoid internal scrolling unless it is the only safe fallback.
+- [x] Re-test minimum-size behavior for each dense tile class.
 
 Dependencies:
 
@@ -263,6 +263,32 @@ Dependencies:
   - `media_player.` uses `260x148`.
 - [x] Left and top resize clamps now preserve the opposite anchored edge when minimum bounds are hit, so resize behavior stays stable from every corner.
 - [x] Existing CSS selectors remained compatible because they already key off `data-layout`; Stage 3 only changed which layout values are assigned.
+
+### Stage 4 Implementation Notes
+
+- [x] Stage 4 dense-tile review confirmed special small-size handling is needed for `climate`, `fan`, `cover`, and `media_player` desktop pins. Light already had its own dedicated compact ruleset and did not need the same shared-panel collapse path in this pass.
+- [x] Dense tiles now use a shared Stage 4 `data-dense-variant` pass in `src/ui.js`:
+  - `tight` activates for compact climate/fan/cover tiles near the `168x148` floor,
+  - `tight` activates for media tiles near the `260x148` floor,
+  - `micro` still defers to the existing defensive layout floor when a tile somehow falls below the validated minimum.
+- [x] Climate degradation order now removes the duplicate current/target two-card summary first:
+  - small tiles keep a single emphasized target stat,
+  - current temperature collapses into one compact caption line,
+  - mode buttons shrink from four to three or two while always keeping the active mode visible.
+- [x] Fan degradation now removes duplicate header KPI content before the primary controls:
+  - the power button stays visible,
+  - presets collapse from `Off / Low / Mid / High` to `Off / Mid / High`,
+  - slider edge labels drop before the main slider or value display does.
+- [x] Cover degradation now drops the decorative shade preview before the actual controls:
+  - the live position KPI stays in the header,
+  - the slider and `Close / Stop / Open` controls remain available,
+  - the preview frame only returns once the tile has enough room again.
+- [x] Media degradation now removes secondary metadata before primary transport controls:
+  - artist/album copy is hidden in the tight variant,
+  - title, progress bar, and transport actions remain visible,
+  - header copy shortens slightly to fit the minimum wide-tile height without clipping.
+- [x] Dense tile update handlers now replace the tile when the Stage 4 dense variant changes, so resize-driven markup collapse stays in sync with the current window size even before the Stage 5 in-place update pass.
+- [x] `styles.css` now adds a dedicated `data-dense-variant="tight"` ruleset that reduces spacing while preserving practical button heights and avoiding internal scrollbars for the validated minimum-size floors.
 
 ### QA Results
 

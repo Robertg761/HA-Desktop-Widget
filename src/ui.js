@@ -21,6 +21,28 @@ const desktopPinLightInteractionState = new Map();
 const desktopPinControlTimers = new Map();
 const desktopPinControlInteractionState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
+const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
+const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
+  off: 'Off',
+  heat: 'Heat',
+  cool: 'Cool',
+  auto: 'Auto',
+  heat_cool: 'Auto',
+  fan_only: 'Fan',
+  dry: 'Dry',
+  eco: 'Eco',
+};
+const DESKTOP_PIN_FAN_PRESETS_FULL = [
+  { value: 0, label: 'Off' },
+  { value: 33, label: 'Low' },
+  { value: 66, label: 'Mid' },
+  { value: 100, label: 'High' },
+];
+const DESKTOP_PIN_FAN_PRESETS_TIGHT = [
+  { value: 0, label: 'Off' },
+  { value: 66, label: 'Mid' },
+  { value: 100, label: 'High' },
+];
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -856,6 +878,103 @@ function getDesktopPinSceneLayoutProfile(domain = 'scene') {
   };
 }
 
+function getDesktopPinDenseRenderProfile(domain = '') {
+  const layoutProfile = getDesktopPinLayoutProfile(domain);
+  let denseVariant = 'standard';
+
+  if (layoutProfile.isMicro) {
+    denseVariant = 'micro';
+  } else if (domain === 'climate' || domain === 'fan' || domain === 'cover') {
+    if (!layoutProfile.isBalanced && (layoutProfile.height <= 150 || layoutProfile.width <= 176)) {
+      denseVariant = 'tight';
+    }
+  } else if (domain === 'media_player') {
+    if (layoutProfile.height <= 152 || layoutProfile.width <= 284) {
+      denseVariant = 'tight';
+    }
+  }
+
+  return {
+    ...layoutProfile,
+    denseVariant,
+    isDenseTight: denseVariant === 'tight',
+    isDenseMicro: denseVariant === 'micro',
+  };
+}
+
+function formatDesktopPinClimateModeLabel(mode) {
+  const normalizedMode = typeof mode === 'string' ? mode.trim() : '';
+  if (!normalizedMode) return 'Mode';
+  return DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode] || normalizedMode.replace(/_/g, ' ');
+}
+
+function getDesktopPinClimateModesToShow(modes, activeMode, maxCount) {
+  const availableModes = Array.isArray(modes) ? modes.filter(Boolean) : [];
+  if (!availableModes.length) {
+    return [];
+  }
+
+  const orderedModes = [];
+  const seenModes = new Set();
+  const pushMode = (mode) => {
+    if (!mode || seenModes.has(mode) || !availableModes.includes(mode)) return;
+    seenModes.add(mode);
+    orderedModes.push(mode);
+  };
+
+  pushMode(activeMode);
+  DESKTOP_PIN_CLIMATE_MODE_PRIORITY.forEach(pushMode);
+  availableModes.forEach(pushMode);
+
+  return orderedModes.slice(0, Math.max(1, maxCount));
+}
+
+function getDesktopPinClimateRenderProfile(entity) {
+  const layoutProfile = getDesktopPinDenseRenderProfile('climate');
+  const climateValue = getDesktopPinClimateValue(entity);
+  const maxModes = layoutProfile.isDenseMicro ? 2 : (layoutProfile.isDenseTight ? 3 : 4);
+  return {
+    ...layoutProfile,
+    climateValue,
+    maxModes,
+    showCurrentStat: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    showCompactCurrent: layoutProfile.isDenseTight || layoutProfile.isDenseMicro,
+    showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    modesToShow: getDesktopPinClimateModesToShow(climateValue.modes, climateValue.mode, maxModes),
+  };
+}
+
+function getDesktopPinFanRenderProfile() {
+  const layoutProfile = getDesktopPinDenseRenderProfile('fan');
+  return {
+    ...layoutProfile,
+    showHeaderKpi: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    presets: layoutProfile.isDenseTight || layoutProfile.isDenseMicro
+      ? DESKTOP_PIN_FAN_PRESETS_TIGHT
+      : DESKTOP_PIN_FAN_PRESETS_FULL,
+  };
+}
+
+function getDesktopPinCoverRenderProfile() {
+  const layoutProfile = getDesktopPinDenseRenderProfile('cover');
+  return {
+    ...layoutProfile,
+    showVisual: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+  };
+}
+
+function getDesktopPinMediaRenderProfile() {
+  const layoutProfile = getDesktopPinDenseRenderProfile('media_player');
+  return {
+    ...layoutProfile,
+    showArtist: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    statusText: layoutProfile.isDenseTight ? { playing: 'Playing', paused: 'Paused' } : { playing: 'Playing now', paused: 'Paused' },
+    headerKpi: layoutProfile.isDenseTight ? { playing: 'On', paused: 'Idle' } : { playing: 'Live', paused: 'Idle' },
+  };
+}
+
 function isTimerSensorEntity(entity) {
   if (!entity?.entity_id?.startsWith('sensor.')) return false;
 
@@ -1356,6 +1475,8 @@ function getDesktopPinClimateValue(entity) {
 function applyDesktopPinClimateVisualState(root, climateValue) {
   if (!root || !climateValue) return;
   const { currentTemp, targetTemp, mode, unit } = climateValue;
+  const denseVariant = root.dataset.denseVariant || 'standard';
+  const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = mode || 'off';
   root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, (targetTemp - climateValue.minTemp) / Math.max(1, climateValue.maxTemp - climateValue.minTemp)))));
 
@@ -1365,11 +1486,19 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   const current = root.querySelector('.desktop-pin-climate-current-value');
   if (current) current.textContent = currentTemp == null ? '--' : `${currentTemp}${unit}`;
 
+  const compactCurrent = root.querySelector('.desktop-pin-climate-inline-copy');
+  if (compactCurrent) {
+    compactCurrent.textContent = currentTemp == null ? 'No live room temperature' : `Now ${currentTemp}${unit}`;
+  }
+
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
   if (headerKpi) headerKpi.textContent = `${targetTemp}${unit}`;
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = `${String(mode || 'off').replace(/_/g, ' ')} mode`;
+  if (status) {
+    const modeLabel = formatDesktopPinClimateModeLabel(mode || 'off');
+    status.textContent = compactStatus ? modeLabel : `${modeLabel} mode`;
+  }
 
   const slider = root.querySelector('.desktop-pin-climate-slider');
   if (slider && slider.value !== String(targetTemp)) {
@@ -1384,44 +1513,60 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
 }
 
 function createDesktopPinClimateControlElement(entity) {
-  const climateValue = getDesktopPinClimateValue(entity);
-  const modesToShow = climateValue.modes.slice(0, getDesktopPinLayoutProfile('climate').isMicro ? 3 : 4);
+  const renderProfile = getDesktopPinClimateRenderProfile(entity);
+  const { climateValue } = renderProfile;
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-climate-control'], {
     domain: 'climate',
     state: climateValue.mode,
     title: 'Compact climate controls',
   });
+  const climateStatus = renderProfile.showCompactCurrent
+    ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
+    : `${formatDesktopPinClimateModeLabel(climateValue.mode || 'off')} mode`;
+  const currentSummary = climateValue.currentTemp == null
+    ? 'No live room temperature'
+    : `Now ${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`;
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: `${String(climateValue.mode || 'off').replace(/_/g, ' ')} mode`,
+        statusText: climateStatus,
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</div>`,
       })}
       <div class="desktop-pin-panel-body">
-        <div class="desktop-pin-climate-summary">
-          <div class="desktop-pin-panel-stat">
-            <span class="desktop-pin-panel-stat-label">Current</span>
-            <span class="desktop-pin-climate-current-value">${climateValue.currentTemp == null ? '--' : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+        ${renderProfile.showCurrentStat ? `
+          <div class="desktop-pin-climate-summary">
+            <div class="desktop-pin-panel-stat">
+              <span class="desktop-pin-panel-stat-label">Current</span>
+              <span class="desktop-pin-climate-current-value">${climateValue.currentTemp == null ? '--' : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+            </div>
+            <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis">
+              <span class="desktop-pin-panel-stat-label">Target</span>
+              <span class="desktop-pin-climate-target-value">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</span>
+            </div>
           </div>
-          <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis">
+        ` : `
+          <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis desktop-pin-climate-target-stat">
             <span class="desktop-pin-panel-stat-label">Target</span>
             <span class="desktop-pin-climate-target-value">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</span>
           </div>
-        </div>
-        <div class="desktop-pin-panel-slider-row">
-          <span class="desktop-pin-panel-slider-label">Cool</span>
+        `}
+        ${renderProfile.showCompactCurrent ? `<div class="desktop-pin-panel-caption desktop-pin-climate-inline-copy">${currentSummary}</div>` : ''}
+        <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
+          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Cool</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="0.5" value="${climateValue.targetTemp}" aria-label="Target temperature" />
-          <span class="desktop-pin-panel-slider-label">Warm</span>
+          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Warm</span>' : ''}
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-climate-modes">
-          ${modesToShow.map((mode) => createDesktopPinButtonMarkup({
+          ${renderProfile.modesToShow.map((mode) => createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-climate-mode',
-            label: mode.replace(/_/g, ' '),
+            label: formatDesktopPinClimateModeLabel(mode),
             ariaLabel: `Set mode to ${mode}`,
             action: mode,
             active: mode === climateValue.mode,
-            title: mode,
+            title: formatDesktopPinClimateModeLabel(mode),
           })).join('')}
         </div>
       </div>
@@ -1470,10 +1615,16 @@ function updateExistingDesktopPinClimateControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-climate-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile('climate').layout;
+  const renderProfile = getDesktopPinClimateRenderProfile(entity);
+  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+    root.replaceWith(createDesktopPinClimateControlElement(entity));
+    return true;
+  }
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
-  applyDesktopPinClimateVisualState(root, getDesktopPinClimateValue(entity));
+  applyDesktopPinClimateVisualState(root, renderProfile.climateValue);
   return true;
 }
 
@@ -1491,6 +1642,8 @@ function getDesktopPinFanValue(entity) {
 function applyDesktopPinFanVisualState(root, fanValue) {
   if (!root || !fanValue) return;
   const { percentage, isOn } = fanValue;
+  const denseVariant = root.dataset.denseVariant || 'standard';
+  const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, percentage / 100))));
 
@@ -1504,7 +1657,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = isOn ? `${percentage}% airflow` : 'Ready to start';
+  if (status) status.textContent = isOn ? `${percentage}% airflow` : (compactStatus ? 'Ready' : 'Ready to start');
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -1539,16 +1692,19 @@ function queueDesktopPinFanPercentage(entity, percentage) {
 
 function createDesktopPinFanControlElement(entity) {
   const fanValue = getDesktopPinFanValue(entity);
+  const renderProfile = getDesktopPinFanRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-fan-control'], {
     domain: 'fan',
     state: fanValue.isOn ? 'on' : 'off',
     title: 'Compact fan controls',
   });
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: fanValue.isOn ? `${fanValue.percentage}% airflow` : 'Ready to start',
+        statusText: fanValue.isOn ? `${fanValue.percentage}% airflow` : (renderProfile.isDenseTight || renderProfile.isDenseMicro ? 'Ready' : 'Ready to start'),
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             ${createDesktopPinButtonMarkup({
@@ -1558,7 +1714,7 @@ function createDesktopPinFanControlElement(entity) {
               active: fanValue.isOn,
               title: 'Toggle fan',
             })}
-            <div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${fanValue.isOn ? `${fanValue.percentage}%` : 'Off'}</div>
+            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${fanValue.isOn ? `${fanValue.percentage}%` : 'Off'}</div>` : ''}
           </div>
         `,
       })}
@@ -1567,16 +1723,15 @@ function createDesktopPinFanControlElement(entity) {
           <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
           <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${fanValue.isOn ? `${fanValue.percentage}%` : 'Off'}</div>
         </div>
-        <div class="desktop-pin-panel-slider-row">
-          <span class="desktop-pin-panel-slider-label">Still</span>
+        <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
+          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Still</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-fan-slider" type="range" min="0" max="100" step="1" value="${fanValue.percentage}" aria-label="Fan speed" />
-          <span class="desktop-pin-panel-slider-label">Fast</span>
+          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Fast</span>' : ''}
         </div>
         <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="0">Off</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="33">Low</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="66">Mid</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="100">High</button>
+          ${renderProfile.presets.map(({ value, label }) => `
+            <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="${value}">${label}</button>
+          `).join('')}
         </div>
       </div>
     </div>
@@ -1616,7 +1771,13 @@ function updateExistingDesktopPinFanControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-fan-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile('fan').layout;
+  const renderProfile = getDesktopPinFanRenderProfile();
+  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+    root.replaceWith(createDesktopPinFanControlElement(entity));
+    return true;
+  }
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinFanVisualState(root, getDesktopPinFanValue(entity));
@@ -1670,11 +1831,14 @@ function queueDesktopPinCoverPosition(entity, position) {
 
 function createDesktopPinCoverControlElement(entity) {
   const coverValue = getDesktopPinCoverValue(entity);
+  const renderProfile = getDesktopPinCoverRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-cover-control'], {
     domain: 'cover',
     state: coverValue.state,
     title: 'Compact cover controls',
   });
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
@@ -1683,15 +1847,17 @@ function createDesktopPinCoverControlElement(entity) {
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>`,
       })}
       <div class="desktop-pin-panel-body">
-        <div class="desktop-pin-cover-visual">
-          <div class="desktop-pin-cover-frame">
-            <div class="desktop-pin-cover-shade" style="height: ${100 - coverValue.position}%"></div>
+        ${renderProfile.showVisual ? `
+          <div class="desktop-pin-cover-visual">
+            <div class="desktop-pin-cover-frame">
+              <div class="desktop-pin-cover-shade" style="height: ${100 - coverValue.position}%"></div>
+            </div>
           </div>
-        </div>
-        <div class="desktop-pin-panel-slider-row">
-          <span class="desktop-pin-panel-slider-label">Closed</span>
+        ` : ''}
+        <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
+          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Closed</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-cover-slider" type="range" min="0" max="100" step="1" value="${coverValue.position}" aria-label="Cover position" />
-          <span class="desktop-pin-panel-slider-label">Open</span>
+          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Open</span>' : ''}
         </div>
         <div class="desktop-pin-panel-actions">
           <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="close_cover">Close</button>
@@ -1742,7 +1908,13 @@ function updateExistingDesktopPinCoverControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-cover-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile('cover').layout;
+  const renderProfile = getDesktopPinCoverRenderProfile();
+  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+    root.replaceWith(createDesktopPinCoverControlElement(entity));
+    return true;
+  }
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinCoverVisualState(root, getDesktopPinCoverValue(entity));
@@ -1761,6 +1933,7 @@ function getDesktopPinMediaValue(entity) {
 
 function applyDesktopPinMediaVisualState(root, mediaValue) {
   if (!root || !mediaValue) return;
+  const renderProfile = getDesktopPinMediaRenderProfile();
   root.dataset.state = mediaValue.playing ? 'playing' : 'paused';
   root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, mediaValue.progress / 100))));
 
@@ -1779,7 +1952,12 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
   }
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = mediaValue.playing ? 'Playing now' : 'Paused';
+  if (status) status.textContent = mediaValue.playing ? renderProfile.statusText.playing : renderProfile.statusText.paused;
+
+  const kpi = root.querySelector('.desktop-pin-media-kpi');
+  if (kpi) {
+    kpi.textContent = mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused;
+  }
 
   const bar = root.querySelector('.desktop-pin-panel-progress-fill');
   if (bar) bar.style.width = `${mediaValue.progress}%`;
@@ -1787,22 +1965,25 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
 
 function createDesktopPinMediaControlElement(entity) {
   const mediaValue = getDesktopPinMediaValue(entity);
+  const renderProfile = getDesktopPinMediaRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-media-control'], {
     domain: 'media_player',
     state: mediaValue.playing ? 'playing' : 'paused',
     title: 'Compact media controls',
   });
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: mediaValue.playing ? 'Playing now' : 'Paused',
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${mediaValue.playing ? 'Live' : 'Idle'}</div>`,
+        statusText: mediaValue.playing ? renderProfile.statusText.playing : renderProfile.statusText.paused,
+        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-media-kpi">${mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-media-copy">
           <div class="desktop-pin-media-title">${utils.escapeHtml(mediaValue.title || 'Nothing playing')}</div>
-          <div class="desktop-pin-media-artist">${utils.escapeHtml(mediaValue.artist || 'Ready')}</div>
+          ${renderProfile.showArtist ? `<div class="desktop-pin-media-artist">${utils.escapeHtml(mediaValue.artist || 'Ready')}</div>` : ''}
         </div>
         <div class="desktop-pin-panel-progress">
           <div class="desktop-pin-panel-progress-fill" style="width: ${mediaValue.progress}%"></div>
@@ -1830,7 +2011,13 @@ function updateExistingDesktopPinMediaControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-media-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile('media_player').layout;
+  const renderProfile = getDesktopPinMediaRenderProfile();
+  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+    root.replaceWith(createDesktopPinMediaControlElement(entity));
+    return true;
+  }
+  root.dataset.layout = renderProfile.layout;
+  root.dataset.denseVariant = renderProfile.denseVariant;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinMediaVisualState(root, getDesktopPinMediaValue(entity));
