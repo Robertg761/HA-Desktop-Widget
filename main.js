@@ -8,6 +8,11 @@ const axios = require('axios');
 const http = require('http');
 const https = require('https');
 const profileSyncCore = require('./profile-sync-core.js');
+const {
+  normalizeEntityId,
+  getDesktopPinBaseBounds,
+  clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
+} = require('./src/desktop-pin-bounds.js');
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -171,10 +176,6 @@ let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
-const DESKTOP_PIN_DEFAULT_BOUNDS = { width: 168, height: 148 };
-const DESKTOP_PIN_WIDE_BOUNDS = { width: 328, height: 156 };
-const DESKTOP_PIN_MIN_BOUNDS = { width: 140, height: 110 };
-const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 36, height: 56 };
 const desktopPinWindows = new Map();
 const latestEntityStates = new Map();
 let hasPublishedHaSnapshot = false;
@@ -311,23 +312,6 @@ function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function normalizeEntityId(entityId) {
-  if (typeof entityId !== 'string') return '';
-  return entityId.trim();
-}
-
-function getDesktopPinBaseBounds(entityId = '') {
-  return String(entityId).startsWith('media_player.')
-    ? { ...DESKTOP_PIN_WIDE_BOUNDS }
-    : { ...DESKTOP_PIN_DEFAULT_BOUNDS };
-}
-
-function getDesktopPinMinBounds(entityId = '') {
-  return String(entityId).startsWith('scene.')
-    ? { ...DESKTOP_PIN_SCENE_MIN_BOUNDS }
-    : { ...DESKTOP_PIN_MIN_BOUNDS };
-}
-
 function getDesktopPinCascadeOrigin(index = 0) {
   const primaryDisplay = electronScreen.getPrimaryDisplay();
   const workArea = primaryDisplay?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
@@ -337,36 +321,31 @@ function getDesktopPinCascadeOrigin(index = 0) {
   };
 }
 
-function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0) {
+function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0, previousBounds = null) {
   const baseBounds = getDesktopPinBaseBounds(entityId);
-  const minBounds = getDesktopPinMinBounds(entityId);
   const cascadeOrigin = getDesktopPinCascadeOrigin(fallbackIndex);
 
-  let width = Number.isFinite(Number(bounds.width))
+  const width = Number.isFinite(Number(bounds.width))
     ? Math.round(Number(bounds.width))
     : baseBounds.width;
-  let height = Number.isFinite(Number(bounds.height))
+  const height = Number.isFinite(Number(bounds.height))
     ? Math.round(Number(bounds.height))
     : baseBounds.height;
-  let x = Number.isFinite(Number(bounds.x))
+  const x = Number.isFinite(Number(bounds.x))
     ? Math.round(Number(bounds.x))
     : cascadeOrigin.x;
-  let y = Number.isFinite(Number(bounds.y))
+  const y = Number.isFinite(Number(bounds.y))
     ? Math.round(Number(bounds.y))
     : cascadeOrigin.y;
 
   const display = electronScreen.getDisplayMatching({ x, y, width, height });
   const workArea = display?.workArea || electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
-
-  width = Math.max(minBounds.width, Math.min(width, workArea.width));
-  height = Math.max(minBounds.height, Math.min(height, workArea.height));
-
-  const maxX = workArea.x + Math.max(0, workArea.width - width);
-  const maxY = workArea.y + Math.max(0, workArea.height - height);
-  x = Math.min(Math.max(x, workArea.x), maxX);
-  y = Math.min(Math.max(y, workArea.y), maxY);
-
-  return { x, y, width, height };
+  return clampDesktopPinBoundsWithWorkArea(bounds, {
+    entityId,
+    fallbackOrigin: cascadeOrigin,
+    workArea,
+    previousBounds,
+  });
 }
 
 function normalizeDesktopPinsConfig(targetConfig) {
@@ -546,7 +525,7 @@ function updateDesktopPinBounds(entityId, nextBounds = {}) {
   const clampedBounds = clampDesktopPinBounds({
     ...config.desktopPins[normalizedEntityId],
     ...(isPlainObject(nextBounds) ? nextBounds : {}),
-  }, normalizedEntityId, 0);
+  }, normalizedEntityId, 0, config.desktopPins[normalizedEntityId]);
 
   config.desktopPins[normalizedEntityId] = clampedBounds;
   saveConfig();
@@ -2384,6 +2363,10 @@ ipcMain.handle('minimize-window', () => {
 
 ipcMain.handle('focus-window', () => {
   return focusMainWindow();
+});
+
+ipcMain.handle('focus-desktop-pin', (_event, entityId) => {
+  return focusDesktopPinWindow(normalizeEntityId(entityId));
 });
 
 // Updates IPC

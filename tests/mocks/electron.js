@@ -152,6 +152,7 @@ function createMockElectronAPI() {
     })),
     minimizeWindow: jest.fn(() => Promise.resolve()),
     focusWindow: jest.fn(() => Promise.resolve()),
+    focusDesktopPin: jest.fn((_entityId) => Promise.resolve({ focused: true, exists: true })),
     pinEntityToDesktop: jest.fn((_entityId) => Promise.resolve({
       success: true,
       focused: false,

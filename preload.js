@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setLoginItemSettings: (openAtLogin) => ipcRenderer.invoke('set-login-item-settings', openAtLogin),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   focusWindow: () => ipcRenderer.invoke('focus-window'),
+  focusDesktopPin: (entityId) => ipcRenderer.invoke('focus-desktop-pin', entityId),
   restartApp: () => ipcRenderer.invoke('restart-app'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
 

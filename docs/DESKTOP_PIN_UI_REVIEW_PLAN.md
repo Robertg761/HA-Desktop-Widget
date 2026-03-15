@@ -71,15 +71,15 @@ Dependencies:
 
 Goal: stop pinned tiles from entering visually broken sizes or over-promoted layouts.
 
-- [ ] Update `getDesktopPinLayoutProfile()` so `balanced` and `roomy` are not chosen too aggressively.
-- [ ] Update any CSS selectors that rely on the old layout behavior.
-- [ ] Update minimum desktop pin bounds logic in `main.js`.
-- [ ] Add per-domain minimum bounds where dense tile types need more space.
-- [ ] Keep scene/script minimum behavior only if validated by the size audit.
-- [ ] Re-check resize clamping from all four resize handles.
-- [ ] Confirm default pin bounds still feel sensible after bound updates.
-- [ ] Confirm saved bounds persist correctly after resize and restart.
-- [ ] Verify pinned tiles cannot be resized into clearly broken states.
+- [x] Update `getDesktopPinLayoutProfile()` so `balanced` and `roomy` are not chosen too aggressively.
+- [x] Update any CSS selectors that rely on the old layout behavior.
+- [x] Update minimum desktop pin bounds logic in `main.js`.
+- [x] Add per-domain minimum bounds where dense tile types need more space.
+- [x] Keep scene/script minimum behavior only if validated by the size audit.
+- [x] Re-check resize clamping from all four resize handles.
+- [x] Confirm default pin bounds still feel sensible after bound updates.
+- [x] Confirm saved bounds persist correctly after resize and restart.
+- [x] Verify pinned tiles cannot be resized into clearly broken states.
 
 Dependencies:
 
@@ -250,6 +250,19 @@ Dependencies:
 - [x] Area can be used only as a secondary sanity check, not the primary promotion trigger, because equal area does not mean equal usability for a slider-heavy tile versus a wide media tile.
 - [x] Preserve the current scene nano behavior during Stage 3.
   - Both `scene.` and `script.` use the same scene tile component today, but the nano selector is currently scoped to `scene.`. Keep that existing behavior unless later testing shows scripts should share the nano path too.
+
+### Stage 3 Implementation Notes
+
+- [x] Shared panel and light tiles now require both width and height thresholds before promoting to `balanced` or `roomy`.
+- [x] Media keeps a limited wide-tile override: `balanced` can start at `260x148`, and `roomy` can start at the default wide window size once height clears a shallow-floor check.
+- [x] Minimum desktop pin bounds now match the Stage 2 size matrix:
+  - `scene.` keeps `36x56`,
+  - `script.` / `sensor.` / `binary_sensor.` / `timer.` use `140x110`,
+  - `switch.` / `input_boolean.` / `lock.` / `camera.` and fallback domains use `156x122`,
+  - `light.` / `fan.` / `climate.` / `cover.` use `168x148`,
+  - `media_player.` uses `260x148`.
+- [x] Left and top resize clamps now preserve the opposite anchored edge when minimum bounds are hit, so resize behavior stays stable from every corner.
+- [x] Existing CSS selectors remained compatible because they already key off `data-layout`; Stage 3 only changed which layout values are assigned.
 
 ### QA Results
 

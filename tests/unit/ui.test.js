@@ -1515,6 +1515,51 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
     });
 
+    it('keeps dense tiles in compact mode when only one axis clears the old promotion threshold', () => {
+      setDesktopPinViewport(260, 148);
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.layout).toBe('compact');
+    });
+
+    it('allows wide media tiles to promote once width clears the media override floor', () => {
+      setDesktopPinViewport(260, 148);
+      state.setStates({
+        'media_player.spotify': {
+          ...sampleStates['media_player.spotify']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('media_player.spotify', state.STATES['media_player.spotify']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-media-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.layout).toBe('balanced');
+    });
+
+    it('keeps the default wide media pin in roomy mode without promoting shallow dense tiles the same way', () => {
+      setDesktopPinViewport(328, 156);
+      state.setStates({
+        'media_player.spotify': {
+          ...sampleStates['media_player.spotify']
+        }
+      });
+
+      ui.renderDesktopPinnedTile('media_player.spotify', state.STATES['media_player.spotify']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-media-control');
+      expect(control).toBeTruthy();
+      expect(control?.dataset.layout).toBe('roomy');
+    });
+
     it('renders compact desktop light controls with inline presets', async () => {
       jest.useFakeTimers();
 
@@ -1720,7 +1765,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
       expect(control).toBeTruthy();
       expect(document.getElementById('desktop-pin-empty')?.classList.contains('hidden')).toBe(true);
-      expect(document.querySelector('#desktop-pin-empty[data-state=\"unavailable\"]')).toBeNull();
+      expect(document.querySelector('#desktop-pin-empty[data-state="unavailable"]')).toBeNull();
 
       control.click();
 
@@ -1761,6 +1806,36 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledWith('script', 'turn_on', {
         entity_id: 'script.goodnight'
       });
+    });
+
+    it('preserves the scene-only nano exception without giving script tiles the same nano layout', () => {
+      setDesktopPinViewport(96, 82);
+      state.setStates({
+        'scene.relax': {
+          entity_id: 'scene.relax',
+          state: 'scening',
+          attributes: {
+            friendly_name: 'Relax'
+          }
+        },
+        'script.goodnight': {
+          entity_id: 'script.goodnight',
+          state: 'off',
+          attributes: {
+            friendly_name: 'Goodnight'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('scene.relax', state.STATES['scene.relax']);
+      let control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
+      expect(control?.dataset.domain).toBe('scene');
+      expect(control?.dataset.layout).toBe('nano');
+
+      ui.renderDesktopPinnedTile('script.goodnight', state.STATES['script.goodnight']);
+      control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
+      expect(control?.dataset.domain).toBe('script');
+      expect(control?.dataset.layout).toBe('micro');
     });
   });
 

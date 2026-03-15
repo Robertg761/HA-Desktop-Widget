@@ -805,22 +805,33 @@ function isEntityDesktopPinned(entityId) {
   return !!state.CONFIG?.desktopPins?.[entityId];
 }
 
-function getDesktopPinLayoutProfile() {
+function getDesktopPinLayoutProfile(domain = '') {
   const width = typeof window !== 'undefined' ? (window.innerWidth || 168) : 168;
   const height = typeof window !== 'undefined' ? (window.innerHeight || 148) : 148;
+  const normalizedDomain = typeof domain === 'string' ? domain.trim() : '';
+  const area = width * height;
+  const isMedia = normalizedDomain === 'media_player';
 
   let layout = 'compact';
   if (width <= 155 || height <= 122) {
     layout = 'micro';
-  } else if (width >= 260 || height >= 190) {
+  } else if (
+    (width >= 260 && height >= 190 && area >= (260 * 190))
+    || (isMedia && width >= 320 && height >= 156 && area >= (320 * 156))
+  ) {
     layout = 'roomy';
-  } else if (width >= 195 || height >= 160) {
+  } else if (
+    (width >= 195 && height >= 160 && area >= (195 * 160))
+    || (isMedia && width >= 260 && height >= 148 && area >= (260 * 148))
+  ) {
     layout = 'balanced';
   }
 
   return {
     width,
     height,
+    area,
+    domain: normalizedDomain,
     layout,
     isMicro: layout === 'micro',
     isCompact: layout === 'compact' || layout === 'micro',
@@ -829,9 +840,9 @@ function getDesktopPinLayoutProfile() {
   };
 }
 
-function getDesktopPinSceneLayoutProfile() {
-  const layoutProfile = getDesktopPinLayoutProfile();
-  if (layoutProfile.width <= 96 || layoutProfile.height <= 82) {
+function getDesktopPinSceneLayoutProfile(domain = 'scene') {
+  const layoutProfile = getDesktopPinLayoutProfile(domain);
+  if (domain === 'scene' && (layoutProfile.width <= 96 || layoutProfile.height <= 82)) {
     return {
       ...layoutProfile,
       layout: 'nano',
@@ -1009,7 +1020,7 @@ function getLightBrightnessPercent(entity) {
 }
 
 function getDesktopPinLightLayout() {
-  return getDesktopPinLayoutProfile().layout;
+  return getDesktopPinLayoutProfile('light').layout;
 }
 
 function clearDesktopPinLightInteraction(entityId) {
@@ -1258,7 +1269,8 @@ function createDesktopPinLightControlElement(entity) {
 
 function createDesktopPinPanelRoot(entity, extraClassNames = [], options = {}) {
   const resolvedEntity = getEntityForDisplay(entity);
-  const layout = getDesktopPinLayoutProfile().layout;
+  const domain = options.domain || getEntityDomain(resolvedEntity.entity_id);
+  const layout = getDesktopPinLayoutProfile(domain).layout;
   const classNames = ['control-item', 'desktop-pin-control', 'desktop-pin-panel-control', ...extraClassNames]
     .filter(Boolean)
     .join(' ');
@@ -1267,7 +1279,7 @@ function createDesktopPinPanelRoot(entity, extraClassNames = [], options = {}) {
   div.dataset.desktopPin = 'true';
   div.dataset.entityId = resolvedEntity.entity_id;
   div.dataset.layout = layout;
-  div.dataset.domain = options.domain || getEntityDomain(resolvedEntity.entity_id);
+  div.dataset.domain = domain;
   if (options.state) {
     div.dataset.state = options.state;
   }
@@ -1373,7 +1385,7 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
 
 function createDesktopPinClimateControlElement(entity) {
   const climateValue = getDesktopPinClimateValue(entity);
-  const modesToShow = climateValue.modes.slice(0, getDesktopPinLayoutProfile().isMicro ? 3 : 4);
+  const modesToShow = climateValue.modes.slice(0, getDesktopPinLayoutProfile('climate').isMicro ? 3 : 4);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-climate-control'], {
     domain: 'climate',
     state: climateValue.mode,
@@ -1458,7 +1470,7 @@ function updateExistingDesktopPinClimateControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-climate-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile().layout;
+  root.dataset.layout = getDesktopPinLayoutProfile('climate').layout;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinClimateVisualState(root, getDesktopPinClimateValue(entity));
@@ -1604,7 +1616,7 @@ function updateExistingDesktopPinFanControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-fan-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile().layout;
+  root.dataset.layout = getDesktopPinLayoutProfile('fan').layout;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinFanVisualState(root, getDesktopPinFanValue(entity));
@@ -1730,7 +1742,7 @@ function updateExistingDesktopPinCoverControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-cover-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile().layout;
+  root.dataset.layout = getDesktopPinLayoutProfile('cover').layout;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinCoverVisualState(root, getDesktopPinCoverValue(entity));
@@ -1818,7 +1830,7 @@ function updateExistingDesktopPinMediaControl(root, entity) {
   if (!root || !root.classList.contains('desktop-pin-media-control') || !entity?.entity_id) {
     return false;
   }
-  root.dataset.layout = getDesktopPinLayoutProfile().layout;
+  root.dataset.layout = getDesktopPinLayoutProfile('media_player').layout;
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
   applyDesktopPinMediaVisualState(root, getDesktopPinMediaValue(entity));
@@ -1828,8 +1840,8 @@ function updateExistingDesktopPinMediaControl(root, entity) {
 function createDesktopPinSceneControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
   const layoutProfile = domain === 'scene'
-    ? getDesktopPinSceneLayoutProfile()
-    : getDesktopPinLayoutProfile();
+    ? getDesktopPinSceneLayoutProfile(domain)
+    : getDesktopPinLayoutProfile(domain);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-scene-control'], {
     domain,
     state: entity.state,
