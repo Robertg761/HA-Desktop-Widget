@@ -156,25 +156,25 @@ Dependencies:
 
 Goal: verify the full pinned-tile experience and leave a clean handoff record.
 
-- [ ] Test scene/script pins.
-- [ ] Test sensor pins.
-- [ ] Test timer pins.
-- [ ] Test toggle pins.
-- [ ] Test light pins.
-- [ ] Test fan pins.
-- [ ] Test climate pins.
-- [ ] Test cover pins.
-- [ ] Test camera pins.
-- [ ] Test media pins.
-- [ ] Test unavailable state.
-- [ ] Test waiting-for-data state.
-- [ ] Test normal mode actions.
+- [x] Test scene/script pins.
+- [x] Test sensor pins.
+- [x] Test timer pins.
+- [x] Test toggle pins.
+- [x] Test light pins.
+- [x] Test fan pins.
+- [x] Test climate pins.
+- [x] Test cover pins.
+- [x] Test camera pins.
+- [x] Test media pins.
+- [x] Test unavailable state.
+- [x] Test waiting-for-data state.
+- [x] Test normal mode actions.
 - [ ] Test edit mode drag and resize.
-- [ ] Test minimum-size clamp behavior.
+- [x] Test minimum-size clamp behavior.
 - [ ] Test persistence after app restart.
-- [ ] Run lint/tests for touched code paths if available.
-- [ ] Record QA notes in this file.
-- [ ] Record any remaining follow-up issues in this file.
+- [x] Run lint/tests for touched code paths if available.
+- [x] Record QA notes in this file.
+- [x] Record any remaining follow-up issues in this file.
 
 Dependencies:
 
@@ -329,8 +329,16 @@ Dependencies:
 
 ### QA Results
 
-- [ ] Fill this in during Stage 7.
+- [x] 2026-03-14 targeted desktop-pin verification pass completed with automated coverage across the Stage 1 through Stage 6 behavior that feeds the pinned-tile experience.
+- [x] Domain coverage confirmed in `tests/unit/ui.test.js` for `scene.` / `script.`, `sensor.` / `binary_sensor.`, `timer.`, toggle domains, `light.`, `fan.`, `climate.`, `cover.`, `camera.`, and `media_player.` desktop pins.
+- [x] Fallback-state coverage confirmed in `tests/unit/ui.test.js` and `tests/unit/renderer-desktop-pin.test.js` for waiting, missing, unavailable, and disconnected desktop-pin surfaces, including normal-mode `Open`, `Unpin`, and `Focus Main` affordances.
+- [x] Bounds and minimum-size coverage confirmed in `tests/unit/desktop-pin-bounds.test.js`, including left/top anchored clamp behavior and per-domain minimums from the Stage 2 size matrix.
+- [x] Settings-side persistence coverage confirmed in `tests/integration/settings-config.test.js`, including saved pin hydration and preservation of live bounds updates while Settings is open.
+- [x] Validation run on 2026-03-14:
+  - `npm test -- --runTestsByPath tests/unit/ui.test.js tests/unit/renderer-desktop-pin.test.js tests/unit/desktop-pin-bounds.test.js tests/integration/settings-config.test.js`
+  - `npm run lint`
 
 ### Remaining Follow-Ups
 
-- [ ] Fill this in during Stage 7 if anything remains unresolved.
+- [ ] Run one packaged-app/manual smoke pass for end-to-end desktop pin drag/resize interaction while edit mode is active. Current automated coverage verifies reorganize-mode pin/unpin flows and resize clamp math, but not the full Electron window drag/resize lifecycle.
+- [ ] Run one packaged-app/manual smoke pass for desktop pin persistence after a real app restart. Current automated coverage verifies settings hydration and preserved bounds updates, but not a full close/relaunch window restoration path.

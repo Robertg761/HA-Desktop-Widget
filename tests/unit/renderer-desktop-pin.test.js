@@ -274,6 +274,28 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'open-details');
   });
 
+  it('routes the normal-mode Unpin action through the desktop pin IPC path', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        entity: {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+          },
+        },
+        hasSnapshot: true,
+      },
+    });
+
+    const unpinBtn = document.getElementById('desktop-pin-unpin-btn');
+    expect(unpinBtn).toBeTruthy();
+
+    unpinBtn.click();
+
+    expect(mockElectronAPI.unpinEntityFromDesktop).toHaveBeenCalledWith('light.bedroom');
+  });
+
   it('shows the missing-entity fallback after a snapshot no longer includes the pin target', async () => {
     await loadRenderer({
       bootstrapOverrides: {
