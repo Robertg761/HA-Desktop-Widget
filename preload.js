@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   unpinEntityFromDesktop: (entityId) => ipcRenderer.invoke('unpin-entity-from-desktop', entityId),
   setDesktopPinEditMode: (enabled) => ipcRenderer.invoke('set-desktop-pin-edit-mode', enabled),
   updateDesktopPinBounds: (entityId, bounds) => ipcRenderer.invoke('update-desktop-pin-bounds', entityId, bounds),
+  syncDesktopPinContentMinBounds: (entityId, minBounds) => ipcRenderer.invoke('sync-desktop-pin-content-min-bounds', entityId, minBounds),
   getDesktopPinBootstrap: (entityId) => ipcRenderer.invoke('get-desktop-pin-bootstrap', entityId),
   publishHaSnapshot: (states) => ipcRenderer.invoke('publish-ha-snapshot', states),
   publishHaEntityUpdate: (entity) => ipcRenderer.invoke('publish-ha-entity-update', entity),

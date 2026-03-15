@@ -443,11 +443,20 @@ body.desktop-pin-mode .desktop-pin-shell {
 
 body.desktop-pin-mode .desktop-pin-header {
   display: flex;
-  padding: 8px 10px 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(10, 14, 22, 0.36), rgba(10, 14, 22, 0.08));
-  backdrop-filter: blur(18px) saturate(155%);
-  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: auto;
+  z-index: 4;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+  border-bottom: none;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-shell,
@@ -556,6 +565,17 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
   border-radius: 999px;
+}
+
+body.desktop-pin-mode .desktop-pin-drag-region {
+  width: 30px;
+  min-width: 30px;
+  height: 24px;
+  min-height: 24px;
+  flex: 0 0 auto;
+  gap: 0;
+  border-radius: 10px;
+  pointer-events: auto;
 }
 
 .desktop-pin-action:hover {
@@ -1193,8 +1213,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   grid-template-rows: minmax(0, 1fr) auto;
   align-content: stretch;
   justify-items: stretch;
-  gap: clamp(2px, 1.4vh, 6px);
-  padding: clamp(2px, 1.4vw, 6px);
+  gap: var(--desktop-pin-scene-body-gap, clamp(2px, 1.4vh, 6px));
+  padding: var(--desktop-pin-scene-body-pad, clamp(2px, 1.4vw, 6px));
 }
 
 .desktop-pin-scene-hero {
@@ -1203,8 +1223,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   height: 100%;
   display: grid;
   place-items: center;
-  padding: clamp(4px, 2vw, 10px);
-  border-radius: clamp(18px, 9vw, 28px);
+  padding: var(--desktop-pin-scene-hero-pad, clamp(4px, 2vw, 10px));
+  border-radius: var(--desktop-pin-scene-hero-radius, clamp(18px, 9vw, 28px));
   background:
     radial-gradient(circle at center, rgba(var(--accent-rgb), 0.16), transparent 74%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
@@ -1216,7 +1236,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   width: 100%;
   height: 100%;
   min-height: 0;
-  font-size: clamp(16px, 28vmin, 72px);
+  font-size: var(--desktop-pin-scene-emoji-size, clamp(16px, 28vmin, 72px));
   line-height: 1;
   text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
@@ -1235,16 +1255,16 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 .desktop-pin-scene-name {
   max-width: 100%;
   color: rgba(255, 255, 255, 0.92);
-  font-size: clamp(8px, min(5.2vmin, 14px), 24px);
+  font-size: var(--desktop-pin-scene-name-font-size, clamp(8px, min(5.2vmin, 14px), 24px));
   font-weight: 800;
-  line-height: 1.1;
+  line-height: var(--desktop-pin-scene-name-line-height, 1.1);
   letter-spacing: -0.02em;
   text-align: center;
-  padding: clamp(1px, 1vw, 4px) clamp(2px, 4vw, 14px);
+  padding: var(--desktop-pin-scene-name-pad-y, clamp(1px, 1vw, 4px)) var(--desktop-pin-scene-name-pad-x, clamp(2px, 4vw, 14px));
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
   text-wrap: pretty;
 }
 
@@ -1369,74 +1389,26 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-body {
-  padding: 2px;
+  padding: var(--desktop-pin-scene-body-pad, 2px);
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-hero {
-  padding: 2px;
+  padding: var(--desktop-pin-scene-hero-pad, 2px);
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-emoji {
   min-height: 0;
-  font-size: clamp(14px, 22vmin, 42px);
+  font-size: var(--desktop-pin-scene-emoji-size, clamp(14px, 22vmin, 42px));
 }
 
 .desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-name {
-  font-size: clamp(8px, min(4.4vmin, 12px), 13px);
-  line-height: 1.05;
+  font-size: var(--desktop-pin-scene-name-font-size, clamp(8px, min(4.4vmin, 12px), 13px));
+  line-height: var(--desktop-pin-scene-name-line-height, 1.05);
   max-width: 100%;
 }
 
-.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] {
-  --desktop-pin-panel-pad: 2px;
-  --desktop-pin-panel-gap: 2px;
-}
-
-.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-body {
-  position: relative;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-  padding: 0;
-}
-
-.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-hero {
-  padding: 0 0 14px;
-  border-radius: clamp(8px, 22vw, 12px);
-  background:
-    radial-gradient(circle at center, rgba(var(--accent-rgb), 0.22), transparent 70%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-}
-
-.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-emoji {
-  min-height: 0;
-  font-size: clamp(14px, 48vw, 28px);
-  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-}
-
-.desktop-pin-scene-control[data-domain="scene"][data-layout="nano"] .desktop-pin-scene-name {
-  position: absolute;
-  left: 2px;
-  right: 2px;
-  bottom: 2px;
-  z-index: 1;
-  display: block;
-  padding: 2px 4px;
-  border-radius: 999px;
-  background: rgba(8, 12, 20, 0.72);
-  color: rgba(255, 255, 255, 0.96);
-  font-size: clamp(7px, 3.6vmin, 10px);
-  line-height: 1.05;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: center;
-  -webkit-line-clamp: unset;
-  -webkit-box-orient: initial;
-  text-wrap: nowrap;
-}
-
 .desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-scene-name {
-  font-size: clamp(18px, 3.2vw, 30px);
+  font-size: var(--desktop-pin-scene-name-font-size, clamp(18px, 3.2vw, 30px));
 }
 
 .desktop-pin-panel-control[data-layout="roomy"] {

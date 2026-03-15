@@ -60,6 +60,7 @@ const {
 
 describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   beforeEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
     resetMockElectronAPI();
     document.head.innerHTML = `<style>${desktopPinStyles}</style>`;
@@ -84,9 +85,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           </div>
         </div>
       </div>
-      <div id="desktop-pin-entity-label"></div>
-      <button id="desktop-pin-open-btn" type="button"></button>
-      <button id="desktop-pin-unpin-btn" type="button"></button>
 
       <div id="weather-card">
         <div id="weather-icon"></div>
@@ -1323,12 +1321,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
     };
 
+    const flushDesktopPinSceneMinSync = async () => {
+      await Promise.resolve();
+      jest.advanceTimersByTime(20);
+      await Promise.resolve();
+      jest.advanceTimersByTime(20);
+      await Promise.resolve();
+    };
+
     it('keeps Focus Main available while waiting for the first live update', () => {
       ui.renderDesktopPinnedTile('light.bedroom', null, { hasSnapshot: false });
 
       const emptyState = document.getElementById('desktop-pin-empty');
       const content = document.getElementById('desktop-pin-content');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
 
@@ -1337,15 +1342,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(content?.classList.contains('hidden')).toBe(true);
       expect(content?.getAttribute('aria-hidden')).toBe('true');
       expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Waiting for first live update');
-      expect(openBtn?.disabled).toBe(true);
-      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
-      expect(openBtn?.title).toBe('Open becomes available when this tile has live data');
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
     });
 
-    it('enables Open and removes Focus Main for a live pinned entity', () => {
+    it('removes Focus Main for a live pinned entity', () => {
       state.setStates({
         'light.bedroom': {
           ...sampleStates['light.bedroom'],
@@ -1362,7 +1364,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const emptyState = document.getElementById('desktop-pin-empty');
       const content = document.getElementById('desktop-pin-content');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
 
@@ -1370,19 +1371,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(content?.classList.contains('hidden')).toBe(false);
       expect(content?.getAttribute('aria-hidden')).toBe(null);
       expect(document.querySelector('#desktop-pin-content .desktop-pin-light-control')).toBeTruthy();
-      expect(openBtn?.disabled).toBe(false);
-      expect(openBtn?.getAttribute('aria-disabled')).toBe('false');
-      expect(openBtn?.title).toBe('Open in main widget');
       expect(focusActions?.classList.contains('hidden')).toBe(true);
       expect(focusBtn?.disabled).toBe(true);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('true');
     });
 
-    it('shows the missing-entity fallback after a snapshot with the right copy and disabled Open button', () => {
+    it('shows the missing-entity fallback after a snapshot with the right copy', () => {
       ui.renderDesktopPinnedTile('light.bedroom', null, { hasSnapshot: true });
 
       const emptyState = document.getElementById('desktop-pin-empty');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
 
@@ -1390,14 +1387,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Missing entity');
       expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Pinned entity not found');
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe('This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.');
-      expect(openBtn?.disabled).toBe(true);
-      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
     });
 
-    it('shows the unavailable fallback with the same focus/open behavior as other non-live states', () => {
+    it('shows the unavailable fallback with the same focus behavior as other non-live states', () => {
       state.setStates({
         'light.bedroom': {
           ...sampleStates['light.bedroom'],
@@ -1413,7 +1408,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const emptyState = document.getElementById('desktop-pin-empty');
       const content = document.getElementById('desktop-pin-content');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
 
@@ -1422,8 +1416,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Unavailable');
       expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Bedroom Light is unavailable');
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe('Latest Home Assistant data reports this entity as unavailable right now.');
-      expect(openBtn?.disabled).toBe(true);
-      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
@@ -1497,7 +1489,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const content = document.getElementById('desktop-pin-content');
       const emptyState = document.getElementById('desktop-pin-empty');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
 
@@ -1508,8 +1499,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Home Assistant unavailable');
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe('Unable to reach Home Assistant. Check your network or Home Assistant URL.');
       expect(content?.childElementCount).toBe(0);
-      expect(openBtn?.disabled).toBe(true);
-      expect(openBtn?.getAttribute('aria-disabled')).toBe('true');
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
@@ -1873,7 +1862,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(rerenderedControl?.querySelector('.desktop-pin-climate-inline-copy')).toBeTruthy();
     });
 
-    it('renders scene desktop tiles with a centered name and triggers on tile click', () => {
+    it('renders scene desktop tiles with a centered name, syncs the minimum floor, and triggers on tile click', async () => {
+      jest.useFakeTimers();
       state.setStates({
         'scene.red_blue': {
           entity_id: 'scene.red_blue',
@@ -1885,18 +1875,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       ui.renderDesktopPinnedTile('scene.red_blue', state.STATES['scene.red_blue']);
+      await flushDesktopPinSceneMinSync();
 
       const control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
       expect(control).toBeTruthy();
       expect(control.querySelector('.desktop-pin-scene-name')?.textContent).toBe('Red & Blue');
       expect(control.textContent).not.toContain('Ready');
       expect(control.textContent).not.toContain('Run');
+      expect(control?.dataset.layout).toBe('compact');
+      expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalledWith('scene.red_blue', {
+        width: 97,
+        height: 83,
+      });
 
       control.click();
 
       expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', {
         entity_id: 'scene.red_blue'
       });
+      jest.useRealTimers();
     });
 
     it('keeps pinned scene tiles interactive when Home Assistant reports an unknown state', () => {
@@ -1938,7 +1935,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.renderDesktopPinnedTile('script.goodnight', state.STATES['script.goodnight']);
 
       const control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
 
@@ -1946,8 +1942,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.domain).toBe('script');
       expect(control?.querySelector('.desktop-pin-scene-name')?.textContent).toBe('Goodnight');
       expect(document.getElementById('desktop-pin-empty')?.classList.contains('hidden')).toBe(true);
-      expect(openBtn?.disabled).toBe(false);
-      expect(openBtn?.getAttribute('aria-disabled')).toBe('false');
       expect(focusActions?.classList.contains('hidden')).toBe(true);
       expect(focusBtn?.disabled).toBe(true);
 
@@ -1958,8 +1952,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
-    it('preserves the scene-only nano exception without giving script tiles the same nano layout', () => {
-      setDesktopPinViewport(96, 82);
+    it('keeps scenes and scripts on micro layout at the minimum floor without using nano', async () => {
+      jest.useFakeTimers();
+      setDesktopPinViewport(97, 83);
       state.setStates({
         'scene.relax': {
           entity_id: 'scene.relax',
@@ -1978,14 +1973,85 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       ui.renderDesktopPinnedTile('scene.relax', state.STATES['scene.relax']);
+      await flushDesktopPinSceneMinSync();
       let control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
       expect(control?.dataset.domain).toBe('scene');
-      expect(control?.dataset.layout).toBe('nano');
+      expect(control?.dataset.layout).toBe('micro');
+      expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalledWith('scene.relax', {
+        width: 97,
+        height: 83,
+      });
 
+      mockElectronAPI.syncDesktopPinContentMinBounds.mockClear();
       ui.renderDesktopPinnedTile('script.goodnight', state.STATES['script.goodnight']);
       control = document.querySelector('#desktop-pin-content .desktop-pin-scene-control');
       expect(control?.dataset.domain).toBe('script');
       expect(control?.dataset.layout).toBe('micro');
+      expect(mockElectronAPI.syncDesktopPinContentMinBounds).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+
+    it('grows the synced scene minimum width-first and then height for long names', async () => {
+      jest.useFakeTimers();
+      setDesktopPinViewport(97, 83);
+      state.setStates({
+        'scene.movie_night_everywhere': {
+          entity_id: 'scene.movie_night_everywhere',
+          state: 'scening',
+          attributes: {
+            friendly_name: 'Movie Night In The Living Room And Dining Area'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('scene.movie_night_everywhere', state.STATES['scene.movie_night_everywhere']);
+      await flushDesktopPinSceneMinSync();
+
+      expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalled();
+      const [, minBounds] = mockElectronAPI.syncDesktopPinContentMinBounds.mock.calls.at(-1);
+      expect(minBounds.width).toBeGreaterThanOrEqual(97);
+      expect(minBounds.width).toBeLessThanOrEqual(168);
+      expect(minBounds.height).toBeGreaterThanOrEqual(83);
+      expect(minBounds.width === 168 || minBounds.height === 83).toBe(true);
+      jest.useRealTimers();
+    });
+
+    it('recalculates the synced scene minimum when the friendly name gets longer', async () => {
+      jest.useFakeTimers();
+      setDesktopPinViewport(97, 83);
+      state.setStates({
+        'scene.calm_evening': {
+          entity_id: 'scene.calm_evening',
+          state: 'scening',
+          attributes: {
+            friendly_name: 'Relax'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('scene.calm_evening', state.STATES['scene.calm_evening']);
+      await flushDesktopPinSceneMinSync();
+      const [, initialMinBounds] = mockElectronAPI.syncDesktopPinContentMinBounds.mock.calls.at(-1);
+
+      mockElectronAPI.syncDesktopPinContentMinBounds.mockClear();
+      state.setStates({
+        'scene.calm_evening': {
+          entity_id: 'scene.calm_evening',
+          state: 'scening',
+          attributes: {
+            friendly_name: 'Relax Through The Entire Upstairs Bedroom Hallway And Guest Room Entryway Before Bedtime'
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('scene.calm_evening', state.STATES['scene.calm_evening']);
+      await flushDesktopPinSceneMinSync();
+
+      expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalled();
+      const [, updatedMinBounds] = mockElectronAPI.syncDesktopPinContentMinBounds.mock.calls.at(-1);
+      expect(updatedMinBounds.width >= initialMinBounds.width).toBe(true);
+      expect(updatedMinBounds.height >= initialMinBounds.height).toBe(true);
+      jest.useRealTimers();
     });
 
     it.each([

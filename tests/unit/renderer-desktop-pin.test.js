@@ -24,13 +24,10 @@ describe('Renderer desktop pin waiting escape hatch', () => {
         <div id="desktop-pin-empty-kicker"></div>
         <div id="desktop-pin-empty-title"></div>
         <div id="desktop-pin-empty-copy"></div>
-        <div id="desktop-pin-empty-actions" class="hidden">
+      <div id="desktop-pin-empty-actions" class="hidden">
           <button id="desktop-pin-focus-btn" type="button">Focus Main</button>
         </div>
       </div>
-      <div id="desktop-pin-entity-label"></div>
-      <button id="desktop-pin-open-btn" type="button">Open</button>
-      <button id="desktop-pin-unpin-btn" type="button">Unpin</button>
     `;
   };
 
@@ -68,7 +65,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       const copy = document.getElementById('desktop-pin-empty-copy');
       const focusActions = document.getElementById('desktop-pin-empty-actions');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
-      const openBtn = document.getElementById('desktop-pin-open-btn');
       const hasConnectionIssue = !!options.connectionIssue;
       const normalizedState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
       const entityDomain = typeof entity?.entity_id === 'string'
@@ -103,9 +99,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
               : (showMissingState
                   ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
                   : (showWaitingState ? 'Waiting for live Home Assistant data...' : 'Live data available.')));
-      }
-      if (openBtn) {
-        openBtn.disabled = showFallbackState;
       }
       if (focusActions) {
         focusActions.classList.toggle('hidden', !showFallbackState);
@@ -228,7 +221,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
     const focusActions = document.getElementById('desktop-pin-empty-actions');
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
-    const openBtn = document.getElementById('desktop-pin-open-btn');
 
     expect(mockUi.renderDesktopPinnedTile).toHaveBeenCalledWith('light.bedroom', null, {
       hasSnapshot: false,
@@ -237,14 +229,13 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(document.body.dataset.renderedMode).toBe('desktop-pin');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
-    expect(openBtn?.disabled).toBe(true);
 
     focusBtn.click();
 
     expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
   });
 
-  it('enables Open and hides Focus Main once live entity data is available', async () => {
+  it('hides Focus Main once live entity data is available', async () => {
     await loadRenderer({
       bootstrapOverrides: {
         entity: {
@@ -261,39 +252,11 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const emptyState = document.getElementById('desktop-pin-empty');
     const focusActions = document.getElementById('desktop-pin-empty-actions');
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
-    const openBtn = document.getElementById('desktop-pin-open-btn');
 
     expect(document.body.dataset.renderedMode).toBe('desktop-pin');
     expect(emptyState?.classList.contains('hidden')).toBe(true);
     expect(focusActions?.classList.contains('hidden')).toBe(true);
     expect(focusBtn?.disabled).toBe(true);
-    expect(openBtn?.disabled).toBe(false);
-
-    openBtn.click();
-
-    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'open-details');
-  });
-
-  it('routes the normal-mode Unpin action through the desktop pin IPC path', async () => {
-    await loadRenderer({
-      bootstrapOverrides: {
-        entity: {
-          entity_id: 'light.bedroom',
-          state: 'on',
-          attributes: {
-            friendly_name: 'Bedroom Light',
-          },
-        },
-        hasSnapshot: true,
-      },
-    });
-
-    const unpinBtn = document.getElementById('desktop-pin-unpin-btn');
-    expect(unpinBtn).toBeTruthy();
-
-    unpinBtn.click();
-
-    expect(mockElectronAPI.unpinEntityFromDesktop).toHaveBeenCalledWith('light.bedroom');
   });
 
   it('shows the missing-entity fallback after a snapshot no longer includes the pin target', async () => {
@@ -309,14 +272,12 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const copy = document.getElementById('desktop-pin-empty-copy');
     const focusActions = document.getElementById('desktop-pin-empty-actions');
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
-    const openBtn = document.getElementById('desktop-pin-open-btn');
 
     expect(emptyState?.dataset.state).toBe('missing');
     expect(title?.textContent).toBe('Pinned entity not found');
     expect(copy?.textContent).toBe('This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
-    expect(openBtn?.disabled).toBe(true);
 
     focusBtn.click();
 
@@ -342,14 +303,12 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const copy = document.getElementById('desktop-pin-empty-copy');
     const focusActions = document.getElementById('desktop-pin-empty-actions');
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
-    const openBtn = document.getElementById('desktop-pin-open-btn');
 
     expect(emptyState?.dataset.state).toBe('unavailable');
     expect(title?.textContent).toBe('Bedroom Light is unavailable');
     expect(copy?.textContent).toBe('Latest Home Assistant data reports this entity as unavailable right now.');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
-    expect(openBtn?.disabled).toBe(true);
   });
 
   it('shows a disconnected fallback after a cold-start connection failure', async () => {
@@ -362,7 +321,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
     const emptyState = document.getElementById('desktop-pin-empty');
     const copy = document.getElementById('desktop-pin-empty-copy');
-    const openBtn = document.getElementById('desktop-pin-open-btn');
 
     expect(mockUi.renderDesktopPinnedTile).toHaveBeenCalledTimes(2);
     expect(mockUi.renderActiveTab).not.toHaveBeenCalled();
@@ -371,7 +329,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(copy?.textContent).toBe('Unable to reach Home Assistant. Check your network or Home Assistant URL.');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
-    expect(openBtn?.disabled).toBe(true);
 
     focusBtn.click();
 
@@ -400,7 +357,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const copy = document.getElementById('desktop-pin-empty-copy');
     const focusActions = document.getElementById('desktop-pin-empty-actions');
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
-    const openBtn = document.getElementById('desktop-pin-open-btn');
 
     expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', expect.objectContaining({
       entity_id: 'light.bedroom',
@@ -413,6 +369,5 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(copy?.textContent).toBe('Unable to reach Home Assistant. Check your network or Home Assistant URL.');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
-    expect(openBtn?.disabled).toBe(true);
   });
 });

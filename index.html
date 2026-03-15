@@ -13,14 +13,7 @@
 <body>
     <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
         <div class="desktop-pin-header">
-            <div class="desktop-pin-drag-region">
-                <span class="desktop-pin-kicker">Desktop Tile</span>
-                <span class="desktop-pin-title" id="desktop-pin-entity-label">Pinned Tile</span>
-            </div>
-            <div class="desktop-pin-actions">
-                <button id="desktop-pin-open-btn" class="control-btn desktop-pin-action" title="Open in main widget">Open</button>
-                <button id="desktop-pin-unpin-btn" class="control-btn desktop-pin-action desktop-pin-action-danger" title="Unpin from desktop">Unpin</button>
-            </div>
+            <div class="desktop-pin-drag-region" aria-label="Move desktop tile" title="Move desktop tile"></div>
         </div>
         <div id="desktop-pin-content" class="desktop-pin-content"></div>
         <div id="desktop-pin-empty" class="desktop-pin-empty hidden" data-state="waiting">

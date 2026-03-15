@@ -7,7 +7,7 @@ const DESKTOP_PIN_TINY_MIN_BOUNDS = { width: 140, height: 110 };
 const DESKTOP_PIN_SMALL_ACTION_MIN_BOUNDS = { width: 156, height: 122 };
 const DESKTOP_PIN_DENSE_MIN_BOUNDS = { width: 168, height: 148 };
 const DESKTOP_PIN_MEDIA_MIN_BOUNDS = { width: 260, height: 148 };
-const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 36, height: 56 };
+const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 97, height: 83 };
 
 function normalizeEntityId(entityId) {
   if (typeof entityId !== 'string') return '';
@@ -57,6 +57,28 @@ function roundFinite(value, fallback) {
   return Number.isFinite(number) ? Math.round(number) : fallback;
 }
 
+function normalizeDesktopPinContentMinBounds(bounds = null) {
+  if (!bounds || typeof bounds !== 'object') return null;
+  const width = roundFinite(bounds.width, NaN);
+  const height = roundFinite(bounds.height, NaN);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0) return null;
+  return { width, height };
+}
+
+function resolveDesktopPinMinBounds(entityId = '', contentMinBounds = null) {
+  const baseMinBounds = getDesktopPinMinBounds(entityId);
+  const normalizedContentMinBounds = normalizeDesktopPinContentMinBounds(contentMinBounds);
+  if (!normalizedContentMinBounds) {
+    return { ...baseMinBounds };
+  }
+
+  return {
+    width: Math.max(baseMinBounds.width, normalizedContentMinBounds.width),
+    height: Math.max(baseMinBounds.height, normalizedContentMinBounds.height),
+  };
+}
+
 function inferResizeAnchors(bounds = {}, previousBounds = {}) {
   const nextX = Number(bounds.x);
   const nextY = Number(bounds.y);
@@ -85,12 +107,13 @@ function inferResizeAnchors(bounds = {}, previousBounds = {}) {
 
 function clampDesktopPinBounds(bounds = {}, {
   entityId = '',
+  contentMinBounds = null,
   fallbackOrigin = { x: 0, y: 0 },
   workArea = { x: 0, y: 0, width: 1280, height: 720 },
   previousBounds = null,
 } = {}) {
   const baseBounds = getDesktopPinBaseBounds(entityId);
-  const minBounds = getDesktopPinMinBounds(entityId);
+  const minBounds = resolveDesktopPinMinBounds(entityId, contentMinBounds);
   const safeWorkArea = {
     x: roundFinite(workArea?.x, 0),
     y: roundFinite(workArea?.y, 0),
@@ -138,5 +161,7 @@ module.exports = {
   getDesktopPinDomain,
   getDesktopPinBaseBounds,
   getDesktopPinMinBounds,
+  normalizeDesktopPinContentMinBounds,
+  resolveDesktopPinMinBounds,
   clampDesktopPinBounds,
 };

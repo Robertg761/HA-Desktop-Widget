@@ -1167,27 +1167,6 @@ function wireUI() {
 
 function wireDesktopPinUI() {
   try {
-    const openBtn = document.getElementById('desktop-pin-open-btn');
-    if (openBtn) {
-      openBtn.onclick = () => {
-        if (openBtn.disabled) return;
-        window.electronAPI.requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'open-details').catch((error) => {
-          log.error('Failed to open desktop pin details:', error);
-        });
-      };
-    }
-
-    const unpinBtn = document.getElementById('desktop-pin-unpin-btn');
-    if (unpinBtn) {
-      unpinBtn.onclick = async () => {
-        try {
-          await window.electronAPI.unpinEntityFromDesktop(DESKTOP_PIN_ENTITY_ID);
-        } catch (error) {
-          log.error('Failed to unpin desktop tile:', error);
-        }
-      };
-    }
-
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
     if (focusBtn) {
       focusBtn.onclick = () => {

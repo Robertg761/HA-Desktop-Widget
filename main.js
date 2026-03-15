@@ -11,6 +11,8 @@ const profileSyncCore = require('./profile-sync-core.js');
 const {
   normalizeEntityId,
   getDesktopPinBaseBounds,
+  getDesktopPinDomain,
+  normalizeDesktopPinContentMinBounds,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
 } = require('./src/desktop-pin-bounds.js');
 
@@ -177,6 +179,7 @@ let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
 const desktopPinWindows = new Map();
+const desktopPinContentMinBounds = new Map();
 const latestEntityStates = new Map();
 let hasPublishedHaSnapshot = false;
 let desktopPinEditMode = false;
@@ -342,10 +345,72 @@ function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0, pr
   const workArea = display?.workArea || electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
   return clampDesktopPinBoundsWithWorkArea(bounds, {
     entityId,
+    contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
     fallbackOrigin: cascadeOrigin,
     workArea,
     previousBounds,
   });
+}
+
+function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
+  if (!targetWindow || targetWindow.isDestroyed() || !nextBounds) return;
+  try {
+    targetWindow.__desktopPinApplyingBounds = true;
+    targetWindow.setBounds(nextBounds);
+    targetWindow.__desktopPinApplyingBounds = false;
+  } catch (error) {
+    targetWindow.__desktopPinApplyingBounds = false;
+    log.warn('Failed to apply desktop pin bounds update:', error.message);
+  }
+}
+
+function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
+  const normalizedEntityId = normalizeEntityId(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+
+  if (getDesktopPinDomain(normalizedEntityId) !== 'scene') {
+    return { success: false, error: 'Content-aware minimums only apply to scene desktop pins' };
+  }
+
+  if (!config?.desktopPins?.[normalizedEntityId]) {
+    return { success: false, error: 'Desktop pin does not exist' };
+  }
+
+  const normalizedMinBounds = normalizeDesktopPinContentMinBounds(minBounds);
+  if (!normalizedMinBounds) {
+    return { success: false, error: 'Invalid content minimum bounds' };
+  }
+
+  desktopPinContentMinBounds.set(normalizedEntityId, normalizedMinBounds);
+
+  const currentBounds = config.desktopPins[normalizedEntityId];
+  const clampedBounds = clampDesktopPinBounds(
+    currentBounds,
+    normalizedEntityId,
+    0,
+    currentBounds,
+  );
+  const boundsChanged = clampedBounds.x !== currentBounds.x
+    || clampedBounds.y !== currentBounds.y
+    || clampedBounds.width !== currentBounds.width
+    || clampedBounds.height !== currentBounds.height;
+
+  if (boundsChanged) {
+    config.desktopPins[normalizedEntityId] = clampedBounds;
+    saveConfig();
+    applyDesktopPinBoundsToWindow(desktopPinWindows.get(normalizedEntityId), clampedBounds);
+    pushConfigToRenderer();
+    sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
+  }
+
+  return {
+    success: true,
+    minBounds: normalizedMinBounds,
+    pinBounds: config.desktopPins[normalizedEntityId],
+    resized: boundsChanged,
+  };
 }
 
 function normalizeDesktopPinsConfig(targetConfig) {
@@ -532,14 +597,7 @@ function updateDesktopPinBounds(entityId, nextBounds = {}) {
 
   const window = desktopPinWindows.get(normalizedEntityId);
   if (window && !window.isDestroyed()) {
-    try {
-      window.__desktopPinApplyingBounds = true;
-      window.setBounds(clampedBounds);
-      window.__desktopPinApplyingBounds = false;
-    } catch (error) {
-      window.__desktopPinApplyingBounds = false;
-      log.warn('Failed to apply desktop pin bounds update:', error.message);
-    }
+    applyDesktopPinBoundsToWindow(window, clampedBounds);
   }
 
   pushConfigToRenderer();
@@ -690,9 +748,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
       || currentBounds.height !== bounds.height;
 
     if (boundsChanged) {
-      window.__desktopPinApplyingBounds = true;
-      window.setBounds(bounds);
-      window.__desktopPinApplyingBounds = false;
+      applyDesktopPinBoundsToWindow(window, bounds);
     }
 
     try {
@@ -2025,6 +2081,10 @@ ipcMain.handle('update-desktop-pin-bounds', (_event, entityId, nextBounds = {}) 
   return updateDesktopPinBounds(entityId, nextBounds);
 });
 
+ipcMain.handle('sync-desktop-pin-content-min-bounds', (_event, entityId, minBounds = {}) => {
+  return syncDesktopPinContentMinBounds(entityId, minBounds);
+});
+
 ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
@@ -2034,6 +2094,7 @@ ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
   if (config?.desktopPins?.[normalizedEntityId]) {
     delete config.desktopPins[normalizedEntityId];
   }
+  desktopPinContentMinBounds.delete(normalizedEntityId);
   saveConfig();
   syncDesktopPinWindowsWithConfig();
   pushConfigToRenderer();

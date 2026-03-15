@@ -20,7 +20,10 @@ const desktopPinLightBrightnessTimers = new Map();
 const desktopPinLightInteractionState = new Map();
 const desktopPinControlTimers = new Map();
 const desktopPinControlInteractionState = new Map();
+const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
+const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
+const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   off: 'Off',
@@ -830,9 +833,17 @@ function isEntityDesktopPinned(entityId) {
   return !!state.CONFIG?.desktopPins?.[entityId];
 }
 
-function getDesktopPinLayoutProfile(domain = '') {
-  const width = typeof window !== 'undefined' ? (window.innerWidth || 168) : 168;
-  const height = typeof window !== 'undefined' ? (window.innerHeight || 148) : 148;
+function clampDesktopPinMetric(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getDesktopPinLayoutProfile(domain = '', size = {}) {
+  const width = Number.isFinite(Number(size?.width))
+    ? Math.round(Number(size.width))
+    : (typeof window !== 'undefined' ? (window.innerWidth || 168) : 168);
+  const height = Number.isFinite(Number(size?.height))
+    ? Math.round(Number(size.height))
+    : (typeof window !== 'undefined' ? (window.innerHeight || 148) : 148);
   const normalizedDomain = typeof domain === 'string' ? domain.trim() : '';
   const area = width * height;
   const isMedia = normalizedDomain === 'media_player';
@@ -865,20 +876,60 @@ function getDesktopPinLayoutProfile(domain = '') {
   };
 }
 
-function getDesktopPinSceneLayoutProfile(domain = 'scene') {
-  const layoutProfile = getDesktopPinLayoutProfile(domain);
-  if (domain === 'scene' && (layoutProfile.width <= 96 || layoutProfile.height <= 82)) {
-    return {
-      ...layoutProfile,
-      layout: 'nano',
-      isNano: true,
-    };
-  }
-
+function getDesktopPinSceneLayoutProfile(domain = 'scene', size = {}) {
+  const layoutProfile = getDesktopPinLayoutProfile(domain, size);
   return {
     ...layoutProfile,
     isNano: false,
   };
+}
+
+function getDesktopPinSceneSizingMetrics(width, height, domain = 'scene') {
+  const layoutProfile = domain === 'scene'
+    ? getDesktopPinSceneLayoutProfile(domain, { width, height })
+    : getDesktopPinLayoutProfile(domain, { width, height });
+  const safeWidth = Math.max(1, Number(width) || DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.width);
+  const safeHeight = Math.max(1, Number(height) || DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.height);
+  const vmin = Math.min(safeWidth, safeHeight);
+  const metrics = {
+    ...layoutProfile,
+    bodyGap: clampDesktopPinMetric(safeHeight * 0.014, 2, 6),
+    bodyPad: clampDesktopPinMetric(safeWidth * 0.014, 2, 6),
+    heroPad: clampDesktopPinMetric(safeWidth * 0.02, 4, 10),
+    heroRadius: clampDesktopPinMetric(safeWidth * 0.09, 18, 28),
+    emojiSize: clampDesktopPinMetric(vmin * 0.28, 16, 72),
+    nameFontSize: clampDesktopPinMetric(Math.min(vmin * 0.052, 14), 8, 24),
+    nameLineHeight: 1.1,
+    namePadY: clampDesktopPinMetric(safeWidth * 0.01, 1, 4),
+    namePadX: clampDesktopPinMetric(safeWidth * 0.04, 2, 14),
+  };
+
+  if (layoutProfile.layout === 'micro') {
+    metrics.bodyPad = 2;
+    metrics.heroPad = 2;
+    metrics.emojiSize = clampDesktopPinMetric(vmin * 0.22, 14, 42);
+    metrics.nameFontSize = clampDesktopPinMetric(Math.min(vmin * 0.044, 12), 8, 13);
+    metrics.nameLineHeight = 1.05;
+  } else if (layoutProfile.layout === 'roomy') {
+    metrics.nameFontSize = clampDesktopPinMetric(safeWidth * 0.032, 18, 30);
+  }
+
+  return metrics;
+}
+
+function applyDesktopPinSceneSizing(root, width, height, domain = 'scene') {
+  if (!root) return null;
+  const metrics = getDesktopPinSceneSizingMetrics(width, height, domain);
+  root.style.setProperty('--desktop-pin-scene-body-gap', `${metrics.bodyGap}px`);
+  root.style.setProperty('--desktop-pin-scene-body-pad', `${metrics.bodyPad}px`);
+  root.style.setProperty('--desktop-pin-scene-hero-pad', `${metrics.heroPad}px`);
+  root.style.setProperty('--desktop-pin-scene-hero-radius', `${metrics.heroRadius}px`);
+  root.style.setProperty('--desktop-pin-scene-emoji-size', `${metrics.emojiSize}px`);
+  root.style.setProperty('--desktop-pin-scene-name-font-size', `${metrics.nameFontSize}px`);
+  root.style.setProperty('--desktop-pin-scene-name-line-height', String(metrics.nameLineHeight));
+  root.style.setProperty('--desktop-pin-scene-name-pad-y', `${metrics.namePadY}px`);
+  root.style.setProperty('--desktop-pin-scene-name-pad-x', `${metrics.namePadX}px`);
+  return metrics;
 }
 
 function getDesktopPinDenseRenderProfile(domain = '') {
@@ -2030,6 +2081,267 @@ function updateExistingDesktopPinMediaControl(root, entity) {
   return true;
 }
 
+function estimateDesktopPinSceneTokenWidth(token, fontSize) {
+  if (!token) return fontSize * 0.35;
+  let width = 0;
+  for (const char of token) {
+    if (char === ' ') {
+      width += fontSize * 0.34;
+    } else if ('ilI1|'.includes(char)) {
+      width += fontSize * 0.34;
+    } else if ('mwMW@#%&'.includes(char)) {
+      width += fontSize * 0.92;
+    } else if ('-_.,:;/\\'.includes(char)) {
+      width += fontSize * 0.42;
+    } else {
+      width += fontSize * 0.62;
+    }
+  }
+  return width;
+}
+
+function estimateDesktopPinSceneLineCount(text, availableWidth, fontSize) {
+  const safeWidth = Math.max(1, Number(availableWidth) || 1);
+  const normalizedText = typeof text === 'string' ? text.trim() : '';
+  if (!normalizedText) return 1;
+
+  const words = normalizedText.split(/\s+/).filter(Boolean);
+  if (!words.length) return 1;
+
+  let lines = 1;
+  let currentLineWidth = 0;
+  const spaceWidth = estimateDesktopPinSceneTokenWidth(' ', fontSize);
+
+  words.forEach((word) => {
+    const wordWidth = estimateDesktopPinSceneTokenWidth(word, fontSize);
+    if (wordWidth > safeWidth) {
+      const estimatedChunks = Math.max(1, Math.ceil(wordWidth / safeWidth));
+      lines += estimatedChunks - 1;
+      currentLineWidth = wordWidth / estimatedChunks;
+      return;
+    }
+
+    const nextWidth = currentLineWidth <= 0 ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+    if (nextWidth > safeWidth) {
+      lines += 1;
+      currentLineWidth = wordWidth;
+    } else {
+      currentLineWidth = nextWidth;
+    }
+  });
+
+  return Math.max(1, lines);
+}
+
+function estimateDesktopPinSceneRequiredHeight(width, height, text, domain = 'scene') {
+  const metrics = getDesktopPinSceneSizingMetrics(width, height, domain);
+  const labelWidth = Math.max(1, width - (metrics.bodyPad * 2) - (metrics.namePadX * 2));
+  const lineCount = estimateDesktopPinSceneLineCount(text, labelWidth, metrics.nameFontSize);
+  const nameHeight = (lineCount * metrics.nameFontSize * metrics.nameLineHeight) + (metrics.namePadY * 2);
+  const heroHeight = (metrics.heroPad * 2) + metrics.emojiSize;
+  return Math.ceil((metrics.bodyPad * 2) + metrics.bodyGap + nameHeight + heroHeight);
+}
+
+function doesDesktopPinSceneCandidateFit(root, width, height, domain = 'scene') {
+  const nameText = root?.querySelector('.desktop-pin-scene-name')?.textContent || '';
+  if (!root?.isConnected || !document?.body) {
+    return height >= estimateDesktopPinSceneRequiredHeight(width, height, nameText, domain);
+  }
+
+  const measurementRoot = root.cloneNode(true);
+  measurementRoot.style.position = 'fixed';
+  measurementRoot.style.left = '-10000px';
+  measurementRoot.style.top = '0';
+  measurementRoot.style.visibility = 'hidden';
+  measurementRoot.style.pointerEvents = 'none';
+  measurementRoot.style.width = `${width}px`;
+  measurementRoot.style.height = `${height}px`;
+  measurementRoot.style.minWidth = `${width}px`;
+  measurementRoot.style.minHeight = `${height}px`;
+  measurementRoot.style.maxWidth = `${width}px`;
+  measurementRoot.style.maxHeight = `${height}px`;
+  measurementRoot.dataset.layout = (domain === 'scene'
+    ? getDesktopPinSceneLayoutProfile(domain, { width, height })
+    : getDesktopPinLayoutProfile(domain, { width, height })
+  ).layout;
+  applyDesktopPinSceneSizing(measurementRoot, width, height, domain);
+  document.body.appendChild(measurementRoot);
+
+  const measurementBody = measurementRoot.querySelector('.desktop-pin-scene-body');
+  const name = measurementRoot.querySelector('.desktop-pin-scene-name');
+  const canUseDomMetrics = measurementRoot.clientHeight > 0 && measurementRoot.clientWidth > 0;
+  const fitsDom = canUseDomMetrics
+    ? measurementRoot.scrollHeight <= measurementRoot.clientHeight + 1
+      && measurementRoot.scrollWidth <= measurementRoot.clientWidth + 1
+      && (!measurementBody || measurementBody.scrollHeight <= measurementBody.clientHeight + 1)
+      && (!name || name.scrollWidth <= name.clientWidth + 1)
+    : false;
+  measurementRoot.remove();
+
+  if (canUseDomMetrics) {
+    return fitsDom;
+  }
+
+  return height >= estimateDesktopPinSceneRequiredHeight(width, height, nameText, domain);
+}
+
+function measureDesktopPinSceneMinBounds(root, entity) {
+  const entityId = entity?.entity_id || '';
+  if (!root || !entityId || getEntityDomain(entityId) !== 'scene') {
+    return null;
+  }
+
+  const baseWidth = DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS.width;
+  const baseHeight = DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS.height;
+  const maxWidth = DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.width;
+  const maxHeight = 480;
+
+  if (doesDesktopPinSceneCandidateFit(root, baseWidth, baseHeight, 'scene')) {
+    return { width: baseWidth, height: baseHeight };
+  }
+
+  if (doesDesktopPinSceneCandidateFit(root, maxWidth, baseHeight, 'scene')) {
+    let low = baseWidth;
+    let high = maxWidth;
+    let best = maxWidth;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (doesDesktopPinSceneCandidateFit(root, mid, baseHeight, 'scene')) {
+        best = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return { width: best, height: baseHeight };
+  }
+
+  let low = baseHeight;
+  let high = Math.max(baseHeight, DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.height);
+  while (high < maxHeight && !doesDesktopPinSceneCandidateFit(root, maxWidth, high, 'scene')) {
+    high = Math.min(maxHeight, high + 24);
+  }
+
+  let bestHeight = high;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (doesDesktopPinSceneCandidateFit(root, maxWidth, mid, 'scene')) {
+      bestHeight = mid;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  return {
+    width: maxWidth,
+    height: Math.max(baseHeight, bestHeight),
+  };
+}
+
+function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
+  const entityId = entity?.entity_id || '';
+  if (!root || !entityId || getEntityDomain(entityId) !== 'scene') return;
+  if (root.dataset.desktopPin !== 'true') return;
+  if (!window?.electronAPI?.syncDesktopPinContentMinBounds) return;
+
+  const nextSignature = JSON.stringify({
+    name: utils.getEntityDisplayName(entity),
+    width: window.innerWidth || DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.width,
+    height: window.innerHeight || DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.height,
+    theme: state.CONFIG?.ui?.theme || 'auto',
+    accent: state.CONFIG?.ui?.accent || 'original',
+    background: state.CONFIG?.ui?.background || 'original',
+  });
+  const current = desktopPinSceneMinSyncState.get(entityId) || {};
+  if (current.signature === nextSignature && current.pending) {
+    return;
+  }
+  if (current.signature === nextSignature && current.lastSyncedBounds) {
+    return;
+  }
+  if (current.rafId && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(current.rafId);
+  }
+  if (current.timeoutId) {
+    clearTimeout(current.timeoutId);
+  }
+
+  const runSync = async () => {
+    const latest = desktopPinSceneMinSyncState.get(entityId) || {};
+    if (!root.isConnected || !root.closest('#desktop-pin-content')) {
+      desktopPinSceneMinSyncState.set(entityId, { ...latest, pending: false, rafId: null, timeoutId: null });
+      return;
+    }
+
+    const minBounds = measureDesktopPinSceneMinBounds(root, entity);
+    if (!minBounds) {
+      desktopPinSceneMinSyncState.set(entityId, { ...latest, pending: false, rafId: null, timeoutId: null });
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, minBounds);
+      desktopPinSceneMinSyncState.set(entityId, {
+        ...latest,
+        pending: false,
+        signature: nextSignature,
+        rafId: null,
+        timeoutId: null,
+        lastSyncedBounds: result?.success ? minBounds : latest.lastSyncedBounds,
+      });
+    } catch (error) {
+      console.error('Error syncing scene desktop pin minimum bounds:', error);
+      desktopPinSceneMinSyncState.set(entityId, {
+        ...latest,
+        pending: false,
+        signature: nextSignature,
+        rafId: null,
+        timeoutId: null,
+      });
+    }
+  };
+
+  let rafId = null;
+  let timeoutId = null;
+  const scheduleFrame = () => {
+    if (typeof requestAnimationFrame === 'function') {
+      rafId = requestAnimationFrame(() => {
+        const secondRafId = requestAnimationFrame(() => {
+          runSync();
+        });
+        const latest = desktopPinSceneMinSyncState.get(entityId) || {};
+        desktopPinSceneMinSyncState.set(entityId, {
+          ...latest,
+          rafId: secondRafId,
+          timeoutId: null,
+        });
+      });
+      return;
+    }
+    timeoutId = setTimeout(() => {
+      runSync();
+    }, 0);
+  };
+
+  desktopPinSceneMinSyncState.set(entityId, {
+    ...current,
+    pending: true,
+    signature: nextSignature,
+    rafId,
+    timeoutId,
+  });
+  scheduleFrame();
+  const latest = desktopPinSceneMinSyncState.get(entityId) || {};
+  desktopPinSceneMinSyncState.set(entityId, {
+    ...latest,
+    pending: true,
+    signature: nextSignature,
+    rafId,
+    timeoutId,
+  });
+}
+
 function createDesktopPinSceneControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
   const layoutProfile = domain === 'scene'
@@ -2052,11 +2364,14 @@ function createDesktopPinSceneControlElement(entity) {
       </div>
     </div>
   `;
+  applyDesktopPinSceneSizing(root, layoutProfile.width, layoutProfile.height, domain);
 
   root.addEventListener('click', (event) => {
     stopDesktopPinEvent(event, true);
     toggleEntity(state.STATES?.[entity.entity_id] || entity);
   }, true);
+
+  scheduleDesktopPinSceneMinBoundsSync(root, entity);
 
   return root;
 }
@@ -2090,16 +2405,22 @@ function updateExistingDesktopPinSceneControl(root, entity) {
   }
 
   const domain = getEntityDomain(entity.entity_id);
+  const layoutProfile = domain === 'scene'
+    ? getDesktopPinSceneLayoutProfile(domain)
+    : getDesktopPinLayoutProfile(domain);
   syncDesktopPinPanelRootState(root, entity, {
     domain,
     title: 'Compact scene tile',
   });
+  applyDesktopPinSceneSizing(root, layoutProfile.width, layoutProfile.height, domain);
 
   const emoji = root.querySelector('.desktop-pin-scene-emoji');
   if (emoji) emoji.textContent = utils.getEntityIcon(entity);
 
   const name = root.querySelector('.desktop-pin-scene-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  scheduleDesktopPinSceneMinBoundsSync(root, entity);
 
   return true;
 }
@@ -2749,16 +3070,7 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
   return null;
 }
 
-function syncDesktopPinChrome({ canOpen = false, showFocusMain = false } = {}) {
-  const openBtn = document.getElementById('desktop-pin-open-btn');
-  if (openBtn) {
-    openBtn.disabled = !canOpen;
-    openBtn.setAttribute('aria-disabled', canOpen ? 'false' : 'true');
-    openBtn.title = canOpen
-      ? 'Open in main widget'
-      : 'Open becomes available when this tile has live data';
-  }
-
+function syncDesktopPinFallbackActions({ showFocusMain = false } = {}) {
   const focusBtn = document.getElementById('desktop-pin-focus-btn');
   if (focusBtn) {
     focusBtn.disabled = !showFocusMain;
@@ -2836,8 +3148,7 @@ function renderDesktopPinTileInto({
     container.innerHTML = '';
     setContentVisibility(true);
     renderDesktopPinFallbackSurface(emptyState, fallback);
-    syncDesktopPinChrome({
-      canOpen: fallback.canOpen,
+    syncDesktopPinFallbackActions({
       showFocusMain: fallback.showFocusMain && interactive,
     });
     return;
@@ -2846,8 +3157,7 @@ function renderDesktopPinTileInto({
   setContentVisibility(false);
   emptyState.classList.add('hidden');
   delete emptyState.dataset.state;
-  syncDesktopPinChrome({
-    canOpen: true,
+  syncDesktopPinFallbackActions({
     showFocusMain: false,
   });
   if (existingControl && updateExistingDesktopPinPanelControl(existingControl, entity)) {
@@ -2863,7 +3173,7 @@ function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
   renderDesktopPinTileInto({
     containerId: 'desktop-pin-content',
     emptyStateId: 'desktop-pin-empty',
-    labelId: 'desktop-pin-entity-label',
+    labelId: null,
     entityId,
     entity,
     interactive: true,
