@@ -117,19 +117,19 @@ Dependencies:
 
 Goal: remove unnecessary full re-renders and stabilize live updates across all supported pin types.
 
-- [ ] Audit which desktop pin types already support update-in-place behavior in `src/ui.js`.
-- [ ] Add missing update handlers for:
+- [x] Audit which desktop pin types already support update-in-place behavior in `src/ui.js`.
+- [x] Add missing update handlers for:
   - scene/script,
   - toggle,
   - camera,
   - sensor/binary sensor,
   - timer,
   - fallback.
-- [ ] Extend `updateExistingDesktopPinPanelControl()` to cover all practical pin types.
-- [ ] Keep root nodes stable wherever possible.
-- [ ] Update only changed text, state, aria attributes, button labels, and dataset flags.
-- [ ] Verify layout changes after resize still update correctly.
-- [ ] Verify unavailable-to-live and live-to-unavailable transitions remain correct.
+- [x] Extend `updateExistingDesktopPinPanelControl()` to cover all practical pin types.
+- [x] Keep root nodes stable wherever possible.
+- [x] Update only changed text, state, aria attributes, button labels, and dataset flags.
+- [x] Verify layout changes after resize still update correctly.
+- [x] Verify unavailable-to-live and live-to-unavailable transitions remain correct.
 
 Dependencies:
 
@@ -289,6 +289,28 @@ Dependencies:
   - header copy shortens slightly to fit the minimum wide-tile height without clipping.
 - [x] Dense tile update handlers now replace the tile when the Stage 4 dense variant changes, so resize-driven markup collapse stays in sync with the current window size even before the Stage 5 in-place update pass.
 - [x] `styles.css` now adds a dedicated `data-dense-variant="tight"` ruleset that reduces spacing while preserving practical button heights and avoiding internal scrollbars for the validated minimum-size floors.
+
+### Stage 5 Implementation Notes
+
+- [x] Stage 5 audit confirmed that only `light`, `climate`, `fan`, `cover`, and `media_player` desktop pins already had in-place update handlers before this pass.
+- [x] `src/ui.js` now updates the remaining practical desktop pin types in place:
+  - `scene.` and `script.` refresh icon, name, `data-layout`, and `data-state` without replacing the tile root,
+  - toggle tiles (`switch.`, `input_boolean.`, `lock.`) refresh status copy, KPI text, button label, and `aria-pressed`,
+  - `camera.` tiles refresh header state and glyph while keeping the existing `Open` button binding,
+  - `sensor.` / `binary_sensor.` tiles refresh type copy, KPI text, glyph, and value text,
+  - timer tiles refresh countdown/status text in place,
+  - fallback tiles refresh glyph and display text in place.
+- [x] `updateExistingDesktopPinPanelControl()` now covers every supported desktop pin tile class that does not intentionally require root replacement.
+- [x] Root replacement is now reserved for cases where markup actually changes:
+  - Stage 4 dense-tile variants still replace the node when the tile crosses the tight-variant threshold,
+  - fallback surfaces still clear the content region when the pinned entity is waiting, missing, unavailable, or disconnected.
+- [x] Unit coverage in `tests/unit/ui.test.js` now verifies:
+  - stable-node updates for scene, toggle, camera, sensor, binary sensor, timer, and fallback pins,
+  - script layout changes after resize without replacing the root node,
+  - live -> unavailable -> live transitions still swap correctly between content and fallback surfaces.
+- [x] Validation run for this stage:
+  - `npm test -- --runTestsByPath tests/unit/ui.test.js`
+  - `npm run lint`
 
 ### QA Results
 

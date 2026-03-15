@@ -2055,6 +2055,49 @@ function createDesktopPinSceneControlElement(entity) {
   return root;
 }
 
+function syncDesktopPinPanelRootState(root, entity, { domain, title = '' } = {}) {
+  if (!root || !entity?.entity_id) return;
+
+  const resolvedDomain = domain || getEntityDomain(entity.entity_id);
+  const layout = resolvedDomain === 'scene'
+    ? getDesktopPinSceneLayoutProfile(resolvedDomain).layout
+    : getDesktopPinLayoutProfile(resolvedDomain).layout;
+
+  root.dataset.entityId = entity.entity_id;
+  root.dataset.domain = resolvedDomain;
+  root.dataset.layout = layout;
+
+  if (typeof entity.state === 'string' && entity.state.trim()) {
+    root.dataset.state = entity.state;
+  } else {
+    delete root.dataset.state;
+  }
+
+  if (title) {
+    root.title = title;
+  }
+}
+
+function updateExistingDesktopPinSceneControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-scene-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const domain = getEntityDomain(entity.entity_id);
+  syncDesktopPinPanelRootState(root, entity, {
+    domain,
+    title: 'Compact scene tile',
+  });
+
+  const emoji = root.querySelector('.desktop-pin-scene-emoji');
+  if (emoji) emoji.textContent = utils.getEntityIcon(entity);
+
+  const name = root.querySelector('.desktop-pin-scene-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  return true;
+}
+
 function createDesktopPinToggleEntityControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
   const isSceneLike = domain === 'scene' || domain === 'script';
@@ -2096,6 +2139,48 @@ function createDesktopPinToggleEntityControlElement(entity) {
   return root;
 }
 
+function updateExistingDesktopPinToggleEntityControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-toggle-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const domain = getEntityDomain(entity.entity_id);
+  const isSceneLike = domain === 'scene' || domain === 'script';
+  const isLock = domain === 'lock';
+  const isOn = isLock ? entity.state === 'locked' : (entity.state === 'on');
+  const actionLabel = isSceneLike
+    ? 'Run'
+    : (isLock ? (isOn ? 'Unlock' : 'Lock') : (isOn ? 'On' : 'Off'));
+  const displayState = utils.getEntityDisplayState(entity);
+
+  syncDesktopPinPanelRootState(root, entity, {
+    domain,
+    title: isSceneLike ? 'Compact action tile' : `Compact ${domain.replace(/_/g, ' ')} controls`,
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = isSceneLike ? 'Tap to trigger' : displayState;
+
+  const kpis = root.querySelectorAll('.desktop-pin-panel-kpi');
+  if (kpis[0]) kpis[0].textContent = isSceneLike ? 'Ready' : actionLabel;
+  if (kpis[1]) kpis[1].textContent = isSceneLike ? 'Run' : displayState;
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const action = root.querySelector('.desktop-pin-toggle-action');
+  if (action) {
+    action.textContent = actionLabel;
+    action.dataset.active = isOn ? 'true' : 'false';
+    action.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+  }
+
+  return true;
+}
+
 function createDesktopPinCameraControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-camera-control'], {
     domain: 'camera',
@@ -2128,6 +2213,28 @@ function createDesktopPinCameraControlElement(entity) {
   return root;
 }
 
+function updateExistingDesktopPinCameraControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-camera-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: 'camera',
+    title: 'Compact camera tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityDisplayState(entity);
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  return true;
+}
+
 function createDesktopPinSensorControlElement(entity) {
   const isBinary = entity.entity_id.startsWith('binary_sensor.');
   const value = utils.getEntityDisplayState(entity);
@@ -2153,6 +2260,35 @@ function createDesktopPinSensorControlElement(entity) {
   `;
 
   return root;
+}
+
+function updateExistingDesktopPinSensorControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-sensor-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const isBinary = entity.entity_id.startsWith('binary_sensor.');
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: isBinary ? 'binary_sensor' : 'sensor',
+    title: 'Compact status tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = isBinary ? entity.state : '';
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = utils.getEntityDisplayState(entity);
+
+  return true;
 }
 
 function createDesktopPinTimerControlElement(entity) {
@@ -2181,6 +2317,36 @@ function createDesktopPinTimerControlElement(entity) {
   return root;
 }
 
+function updateExistingDesktopPinTimerControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-timer-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: 'timer',
+    title: 'Compact timer tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = 'Timer';
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = entity.state || 'idle';
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) {
+    value.textContent = utils.getTimerDisplay ? utils.getTimerDisplay(entity) : utils.getEntityDisplayState(entity);
+  }
+
+  return true;
+}
+
 function createDesktopPinFallbackControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-fallback-control'], {
     domain: getEntityDomain(entity.entity_id),
@@ -2206,6 +2372,36 @@ function createDesktopPinFallbackControlElement(entity) {
   return root;
 }
 
+function updateExistingDesktopPinFallbackControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-fallback-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: getEntityDomain(entity.entity_id),
+    title: 'Compact entity tile',
+  });
+
+  const displayState = utils.getEntityDisplayState(entity);
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = displayState;
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = displayState;
+
+  return true;
+}
+
 function updateExistingDesktopPinPanelControl(root, entity) {
   if (!root || !entity?.entity_id) return false;
   if (root.classList.contains('desktop-pin-light-control')) return updateExistingDesktopPinLightControl(root, entity);
@@ -2213,6 +2409,12 @@ function updateExistingDesktopPinPanelControl(root, entity) {
   if (root.classList.contains('desktop-pin-fan-control')) return updateExistingDesktopPinFanControl(root, entity);
   if (root.classList.contains('desktop-pin-cover-control')) return updateExistingDesktopPinCoverControl(root, entity);
   if (root.classList.contains('desktop-pin-media-control')) return updateExistingDesktopPinMediaControl(root, entity);
+  if (root.classList.contains('desktop-pin-scene-control')) return updateExistingDesktopPinSceneControl(root, entity);
+  if (root.classList.contains('desktop-pin-toggle-control')) return updateExistingDesktopPinToggleEntityControl(root, entity);
+  if (root.classList.contains('desktop-pin-camera-control')) return updateExistingDesktopPinCameraControl(root, entity);
+  if (root.classList.contains('desktop-pin-sensor-control')) return updateExistingDesktopPinSensorControl(root, entity);
+  if (root.classList.contains('desktop-pin-timer-control')) return updateExistingDesktopPinTimerControl(root, entity);
+  if (root.classList.contains('desktop-pin-fallback-control')) return updateExistingDesktopPinFallbackControl(root, entity);
   return false;
 }
 
