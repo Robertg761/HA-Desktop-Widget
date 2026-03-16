@@ -432,9 +432,7 @@ body.desktop-pin-mode #alert-entity-picker-modal {
 body.desktop-pin-mode .desktop-pin-shell {
   display: flex;
   padding: 0;
-  background:
-    radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.18), transparent 46%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  background: transparent;
   width: 100vw;
   height: 100vh;
   box-sizing: border-box;
@@ -605,7 +603,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   position: relative;
   min-width: 0;
   min-height: 0;
-  padding: 8px;
+  padding: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -617,23 +615,30 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 .desktop-pin-control {
   cursor: pointer;
+  border: none;
+}
+
+.desktop-pin-control::before {
+  content: none;
 }
 
 .desktop-pin-light-control {
+  --desktop-pin-control-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
   padding: 10px;
   text-align: left;
   background:
     linear-gradient(155deg, rgba(9, 14, 24, 0.92), rgba(20, 26, 38, 0.84)),
     radial-gradient(circle at top left, rgba(var(--accent-rgb), var(--desktop-pin-light-glow-opacity, 0.18)), transparent 62%);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(var(--accent-rgb), 0.08);
+  box-shadow: var(--desktop-pin-control-shadow);
 }
 
 .desktop-pin-light-control::before {
   opacity: 0.32;
+}
+
+.desktop-pin-light-control:hover {
+  border-color: transparent;
+  box-shadow: var(--desktop-pin-control-shadow);
 }
 
 .desktop-pin-light-shell {
@@ -919,6 +924,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .desktop-pin-panel-control {
+  --desktop-pin-control-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
   --desktop-pin-panel-pad: 10px;
   --desktop-pin-panel-gap: 8px;
   --desktop-pin-panel-radius: 16px;
@@ -938,11 +944,12 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   background:
     linear-gradient(155deg, rgba(8, 12, 20, 0.92), rgba(22, 28, 40, 0.86)),
     radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.16), transparent 62%);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(var(--accent-rgb), 0.06);
+  box-shadow: var(--desktop-pin-control-shadow);
+}
+
+.desktop-pin-panel-control:hover {
+  border-color: transparent;
+  box-shadow: var(--desktop-pin-control-shadow);
 }
 
 .desktop-pin-panel-shell,
@@ -2242,6 +2249,12 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   background: linear-gradient(135deg, rgba(158, 158, 158, 0.12), rgba(97, 97, 97, 0.06));
   border-color: rgba(158, 158, 158, 0.35);
   box-shadow: var(--shadow-sm);
+}
+
+.desktop-pin-panel-control[data-state],
+.desktop-pin-panel-control[data-state]:hover {
+  border-color: transparent;
+  box-shadow: var(--desktop-pin-control-shadow);
 }
 
 .control-item.unavailable-entity .unavailable-icon {
