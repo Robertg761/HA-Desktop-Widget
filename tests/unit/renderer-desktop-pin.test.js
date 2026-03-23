@@ -70,35 +70,68 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       const entityDomain = typeof entity?.entity_id === 'string'
         ? entity.entity_id.split('.')[0]
         : (typeof _entityId === 'string' ? _entityId.split('.')[0] : '');
+      const supportedDomains = new Set([
+        'light',
+        'climate',
+        'fan',
+        'cover',
+        'media_player',
+        'camera',
+        'timer',
+        'sensor',
+        'binary_sensor',
+        'scene',
+        'script',
+        'switch',
+        'input_boolean',
+        'lock',
+        'automation',
+        'button',
+        'number',
+        'input_number',
+        'select',
+        'input_select',
+        'person',
+        'device_tracker',
+        'weather',
+        'vacuum',
+      ]);
       const showWaitingState = !entity && !hasConnectionIssue;
       const showMissingState = !entity && !!options.hasSnapshot && !hasConnectionIssue;
+      const showUnsupportedState = !!entityDomain && !supportedDomains.has(entityDomain) && !hasConnectionIssue;
       const showUnavailableState = !!entity && (
         normalizedState === 'unavailable'
         || (normalizedState === 'unknown' && entityDomain !== 'scene' && entityDomain !== 'script')
       );
-      const showFallbackState = hasConnectionIssue || showWaitingState || showUnavailableState;
+      const showFallbackState = hasConnectionIssue || showUnsupportedState || showWaitingState || showUnavailableState;
 
       if (emptyState) {
         emptyState.classList.toggle('hidden', !showFallbackState);
         emptyState.dataset.state = hasConnectionIssue
           ? 'disconnected'
-          : (showUnavailableState ? 'unavailable' : (showMissingState ? 'missing' : (showWaitingState ? 'waiting' : 'ready')));
+          : (showUnsupportedState
+              ? 'unsupported'
+              : (showUnavailableState ? 'unavailable' : (showMissingState ? 'missing' : (showWaitingState ? 'waiting' : 'ready'))));
       }
       if (title) {
         title.textContent = hasConnectionIssue
           ? 'Home Assistant unavailable'
-          : (showUnavailableState
+          : (showUnsupportedState
+              ? 'Desktop pin not supported yet'
+              : (showUnavailableState
               ? 'Bedroom Light is unavailable'
-              : (showMissingState ? 'Pinned entity not found' : (showWaitingState ? 'Waiting for first live update' : 'Ready')));
+              : (showMissingState ? 'Pinned entity not found' : (showWaitingState ? 'Waiting for first live update' : 'Ready'))));
       }
       if (copy) {
         copy.textContent = hasConnectionIssue
           ? options.connectionIssue
-          : (showUnavailableState
+          : (showUnsupportedState
+              ? `The ${entityDomain} domain does not have a desktop-pin profile yet.`
+              : (showUnavailableState
               ? 'Latest Home Assistant data reports this entity as unavailable right now.'
               : (showMissingState
                   ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
-                  : (showWaitingState ? 'Waiting for live Home Assistant data...' : 'Live data available.')));
+                  : (showWaitingState ? 'Waiting for live Home Assistant data...' : 'Live data available.'))));
       }
       if (focusActions) {
         focusActions.classList.toggle('hidden', !showFallbackState);
@@ -307,6 +340,33 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(emptyState?.dataset.state).toBe('unavailable');
     expect(title?.textContent).toBe('Bedroom Light is unavailable');
     expect(copy?.textContent).toBe('Latest Home Assistant data reports this entity as unavailable right now.');
+    expect(focusActions?.classList.contains('hidden')).toBe(false);
+    expect(focusBtn?.disabled).toBe(false);
+  });
+
+  it('shows an explicit unsupported fallback for unsupported desktop-pin domains', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        entity: {
+          entity_id: 'calendar.family',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Family Calendar',
+          },
+        },
+        hasSnapshot: true,
+      },
+    });
+
+    const emptyState = document.getElementById('desktop-pin-empty');
+    const title = document.getElementById('desktop-pin-empty-title');
+    const copy = document.getElementById('desktop-pin-empty-copy');
+    const focusActions = document.getElementById('desktop-pin-empty-actions');
+    const focusBtn = document.getElementById('desktop-pin-focus-btn');
+
+    expect(emptyState?.dataset.state).toBe('unsupported');
+    expect(title?.textContent).toBe('Desktop pin not supported yet');
+    expect(copy?.textContent).toBe('The calendar domain does not have a desktop-pin profile yet.');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
   });

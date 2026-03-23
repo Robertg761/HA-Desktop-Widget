@@ -49,6 +49,7 @@ const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
 const camera = require('../../src/camera.js');
+const desktopPinSupport = require('../../src/desktop-pin-support.cjs');
 const {
   sampleConfig,
   sampleStates,
@@ -1268,7 +1269,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(mockElectronAPI.pinEntityToDesktop).toHaveBeenCalledWith('light.bedroom');
+      expect(mockElectronAPI.pinEntityToDesktop).toHaveBeenCalledWith('light.bedroom', expect.objectContaining({
+        entityId: 'light.bedroom',
+        family: 'light',
+        supported: true,
+      }));
       expect(state.CONFIG.desktopPins).toEqual(expect.objectContaining({
         'light.bedroom': expect.any(Object)
       }));
@@ -1314,6 +1319,52 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.toggleReorganizeMode();
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
+    });
+
+    it('disables the reorganize-mode pin button for unsupported domains', () => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['calendar.family'],
+        desktopPins: {}
+      });
+      state.setStates({
+        'calendar.family': {
+          entity_id: 'calendar.family',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Family Calendar'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      const pinButton = document.querySelector('.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle');
+      expect(pinButton).toBeTruthy();
+      expect(pinButton.textContent).toBe('Unsupported');
+      expect(pinButton.disabled).toBe(true);
+      expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
+    });
+
+    it('resolves desktop-pin support families through the shared profile helper', () => {
+      const cases = [
+        { entity: sampleStates['button.refresh_router'], family: 'action', supported: true },
+        { entity: sampleStates['number.water_heater_target'], family: 'numeric', supported: true },
+        { entity: sampleStates['select.air_purifier_mode'], family: 'enum', supported: true },
+        { entity: sampleStates['person.robert'], family: 'presence', supported: true },
+        { entity: sampleStates['weather.home'], family: 'weather', supported: true },
+        { entity: sampleStates['vacuum.roomba'], family: 'vacuum', supported: true },
+        { entity: { entity_id: 'calendar.family', state: 'on', attributes: { friendly_name: 'Family Calendar' } }, family: 'unsupported', supported: false },
+      ];
+
+      cases.forEach(({ entity, family, supported }) => {
+        expect(desktopPinSupport.resolveDesktopPinProfile(entity)).toEqual(expect.objectContaining({
+          entityId: entity.entity_id,
+          family,
+          supported,
+        }));
+      });
     });
 
     const setDesktopPinViewport = (width, height) => {
@@ -1952,6 +2003,196 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it.each([
+      {
+        entityId: 'automation.morning_routine',
+        entity: {
+          entity_id: 'automation.morning_routine',
+          state: 'on',
+          attributes: { friendly_name: 'Morning Routine' }
+        },
+        expectedLabel: 'Trigger',
+        expectedService: 'trigger',
+      },
+      {
+        entityId: 'button.refresh_router',
+        entity: sampleStates['button.refresh_router'],
+        expectedLabel: 'Press',
+        expectedService: 'press',
+      }
+    ])('renders $entityId desktop action tiles and triggers the primary service', ({ entityId, entity, expectedLabel, expectedService }) => {
+      state.setStates({ [entityId]: entity });
+
+      ui.renderDesktopPinnedTile(entityId, state.STATES[entityId], { hasSnapshot: true });
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-action-control');
+      expect(control).toBeTruthy();
+      expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(expectedLabel);
+
+      control.querySelector('.desktop-pin-action-primary').click();
+
+      expect(mockCallService).toHaveBeenCalledWith(entityId.split('.')[0], expectedService, {
+        entity_id: entityId
+      });
+    });
+
+    it('renders numeric desktop tiles with a slider when bounds are available', async () => {
+      jest.useFakeTimers();
+      const entity = {
+        ...sampleStates['number.water_heater_target'],
+        entity_id: 'number.water_heater_target_slider',
+      };
+      state.setStates({
+        'number.water_heater_target_slider': entity
+      });
+
+      ui.renderDesktopPinnedTile('number.water_heater_target_slider', state.STATES['number.water_heater_target_slider'], { hasSnapshot: true });
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-numeric-control');
+      const slider = control?.querySelector('.desktop-pin-numeric-slider');
+      expect(control).toBeTruthy();
+      expect(slider).toBeTruthy();
+
+      slider.value = '52';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+      jest.advanceTimersByTime(160);
+      await Promise.resolve();
+
+      expect(mockCallService).toHaveBeenCalledWith('number', 'set_value', {
+        entity_id: 'number.water_heater_target_slider',
+        value: 52
+      });
+      jest.useRealTimers();
+    });
+
+    it('renders input_number desktop tiles with +/- controls when bounds are missing', async () => {
+      jest.useFakeTimers();
+      state.setStates({
+        'input_number.night_brightness': sampleStates['input_number.night_brightness']
+      });
+
+      ui.renderDesktopPinnedTile('input_number.night_brightness', state.STATES['input_number.night_brightness'], { hasSnapshot: true });
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-numeric-control');
+      expect(control).toBeTruthy();
+      expect(control?.querySelector('.desktop-pin-numeric-slider')).toBeNull();
+
+      control.querySelector('.desktop-pin-numeric-step[data-action="increase"]').click();
+      jest.advanceTimersByTime(160);
+      await Promise.resolve();
+
+      expect(mockCallService).toHaveBeenCalledWith('input_number', 'set_value', {
+        entity_id: 'input_number.night_brightness',
+        value: 3
+      });
+      jest.useRealTimers();
+    });
+
+    it.each([
+      {
+        entityId: 'select.air_purifier_mode',
+        expectedService: 'select_next',
+        expectedPayload: { entity_id: 'select.air_purifier_mode' },
+      },
+      {
+        entityId: 'input_select.bedtime_scene',
+        expectedService: 'select_option',
+        expectedPayload: { entity_id: 'input_select.bedtime_scene', option: 'Relax' },
+      }
+    ])('renders $entityId desktop enum tiles and advances options', async ({ entityId, expectedService, expectedPayload }) => {
+      jest.useFakeTimers();
+      const baseEntity = sampleStates[entityId];
+      const nextServices = {
+        ...sampleServices,
+        input_select: {
+          ...(sampleServices.input_select || {}),
+        }
+      };
+      if (entityId === 'input_select.bedtime_scene') {
+        delete nextServices.input_select.select_next;
+      }
+
+      state.setServices(nextServices);
+      state.setStates({ [entityId]: baseEntity });
+
+      ui.renderDesktopPinnedTile(entityId, state.STATES[entityId], { hasSnapshot: true });
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-enum-control');
+      expect(control).toBeTruthy();
+
+      control.querySelector('.desktop-pin-enum-step[data-action="next"]').click();
+      jest.advanceTimersByTime(140);
+      await Promise.resolve();
+
+      expect(mockCallService).toHaveBeenCalledWith(entityId.split('.')[0], expectedService, expectedPayload);
+      jest.useRealTimers();
+    });
+
+    it.each([
+      {
+        entityId: 'person.robert',
+        selector: '.desktop-pin-presence-control',
+      },
+      {
+        entityId: 'device_tracker.robert_phone',
+        selector: '.desktop-pin-presence-control',
+      },
+      {
+        entityId: 'weather.home',
+        selector: '.desktop-pin-weather-control',
+      }
+    ])('renders $entityId informational desktop tiles with Focus Main', ({ entityId, selector }) => {
+      state.setStates({ [entityId]: sampleStates[entityId] });
+
+      ui.renderDesktopPinnedTile(entityId, state.STATES[entityId], { hasSnapshot: true });
+
+      const control = document.querySelector(`#desktop-pin-content ${selector}`);
+      const focusButton = control?.querySelector('.desktop-pin-panel-button');
+      expect(control).toBeTruthy();
+      expect(focusButton).toBeTruthy();
+
+      focusButton.click();
+
+      expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith(entityId, 'focus-main');
+    });
+
+    it('renders vacuum desktop tiles with state-driven actions', () => {
+      state.setStates({
+        'vacuum.roomba': sampleStates['vacuum.roomba']
+      });
+
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], { hasSnapshot: true });
+
+      let control = document.querySelector('#desktop-pin-content .desktop-pin-vacuum-control');
+      expect(control).toBeTruthy();
+
+      control.querySelector('.desktop-pin-vacuum-action[data-action="primary"]').click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'start', {
+        entity_id: 'vacuum.roomba'
+      });
+
+      mockCallService.mockClear();
+      state.setStates({
+        'vacuum.roomba': {
+          ...sampleStates['vacuum.roomba'],
+          state: 'cleaning'
+        }
+      });
+
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], { hasSnapshot: true });
+      control = document.querySelector('#desktop-pin-content .desktop-pin-vacuum-control');
+      control.querySelector('.desktop-pin-vacuum-action[data-action="primary"]').click();
+      control.querySelector('.desktop-pin-vacuum-action[data-action="secondary"]').click();
+
+      expect(mockCallService).toHaveBeenNthCalledWith(1, 'vacuum', 'pause', {
+        entity_id: 'vacuum.roomba'
+      });
+      expect(mockCallService).toHaveBeenNthCalledWith(2, 'vacuum', 'return_to_base', {
+        entity_id: 'vacuum.roomba'
+      });
+    });
+
     it('keeps scenes and scripts on micro layout at the minimum floor without using nano', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);
@@ -2170,7 +2411,93 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         }
       },
       {
-        label: 'fallback',
+        label: 'action',
+        entityId: 'button.refresh_router',
+        initial: {
+          ...sampleStates['button.refresh_router']
+        },
+        updated: {
+          ...sampleStates['button.refresh_router'],
+          attributes: {
+            friendly_name: 'Restart Router'
+          }
+        },
+        selector: '.desktop-pin-action-control',
+        assertUpdated: (control) => {
+          expect(control?.querySelector('.desktop-pin-panel-name')?.textContent).toBe('Restart Router');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Press');
+        }
+      },
+      {
+        label: 'numeric',
+        entityId: 'number.pool_target',
+        initial: {
+          ...sampleStates['number.water_heater_target'],
+          entity_id: 'number.pool_target',
+        },
+        updated: {
+          ...sampleStates['number.water_heater_target'],
+          entity_id: 'number.pool_target',
+          state: '50'
+        },
+        selector: '.desktop-pin-numeric-control',
+        assertUpdated: (control) => {
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('50 °C');
+        }
+      },
+      {
+        label: 'enum',
+        entityId: 'select.air_purifier_mode',
+        initial: {
+          ...sampleStates['select.air_purifier_mode']
+        },
+        updated: {
+          ...sampleStates['select.air_purifier_mode'],
+          state: 'boost'
+        },
+        selector: '.desktop-pin-enum-control',
+        assertUpdated: (control) => {
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('boost');
+        }
+      },
+      {
+        label: 'presence',
+        entityId: 'person.robert',
+        initial: {
+          ...sampleStates['person.robert']
+        },
+        updated: {
+          ...sampleStates['person.robert'],
+          state: 'not_home'
+        },
+        selector: '.desktop-pin-presence-control',
+        assertUpdated: (control) => {
+          expect(control?.dataset.state).toBe('not_home');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Not_home');
+        }
+      },
+      {
+        label: 'weather',
+        entityId: 'weather.home',
+        initial: {
+          ...sampleStates['weather.home']
+        },
+        updated: {
+          ...sampleStates['weather.home'],
+          state: 'cloudy',
+          attributes: {
+            ...sampleStates['weather.home'].attributes,
+            temperature: 19
+          }
+        },
+        selector: '.desktop-pin-weather-control',
+        assertUpdated: (control) => {
+          expect(control?.dataset.state).toBe('cloudy');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('19°C');
+        }
+      },
+      {
+        label: 'vacuum',
         entityId: 'vacuum.roomba',
         initial: {
           entity_id: 'vacuum.roomba',
@@ -2186,7 +2513,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
             friendly_name: 'Robot Vacuum'
           }
         },
-        selector: '.desktop-pin-fallback-control',
+        selector: '.desktop-pin-vacuum-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('cleaning');
           expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Cleaning');

@@ -15,6 +15,10 @@ const {
   normalizeDesktopPinContentMinBounds,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
 } = require('./src/desktop-pin-bounds.js');
+const {
+  resolveDesktopPinProfile,
+  sanitizeDesktopPinSupportInfo,
+} = require('./src/desktop-pin-support.cjs');
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -431,6 +435,61 @@ function normalizeDesktopPinsConfig(targetConfig) {
 
   targetConfig.desktopPins = nextPins;
   return targetConfig;
+}
+
+function resolveDesktopPinSupportDecision(entityId, supportInfo = null) {
+  const normalizedEntityId = normalizeEntityId(entityId);
+  const fallbackProfile = resolveDesktopPinProfile(normalizedEntityId);
+  if (!normalizedEntityId) return fallbackProfile;
+  if (!isPlainObject(supportInfo)) return fallbackProfile;
+
+  const sanitizedSupportInfo = sanitizeDesktopPinSupportInfo(supportInfo, normalizedEntityId);
+  if (sanitizedSupportInfo.entityId !== normalizedEntityId) {
+    return fallbackProfile;
+  }
+
+  return {
+    ...fallbackProfile,
+    ...sanitizedSupportInfo,
+  };
+}
+
+function pinEntityToDesktopInternal(entityId, supportInfo = null) {
+  const normalizedEntityId = normalizeEntityId(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+
+  const supportProfile = resolveDesktopPinSupportDecision(normalizedEntityId, supportInfo);
+  if (!supportProfile.supported) {
+    return {
+      success: false,
+      error: supportProfile.reason || 'Desktop pin not supported yet',
+      supportProfile,
+    };
+  }
+
+  const favorites = new Set((config.favoriteEntities || []).map(normalizeEntityId).filter(Boolean));
+  if (!favorites.has(normalizedEntityId)) {
+    return { success: false, error: 'Only Quick Access entities can be pinned in this version', supportProfile };
+  }
+
+  const existed = !!config?.desktopPins?.[normalizedEntityId];
+  config.desktopPins = config.desktopPins || {};
+  config.desktopPins[normalizedEntityId] = getDesktopPinBounds(normalizedEntityId, config.desktopPins[normalizedEntityId]);
+  normalizeDesktopPinsConfig(config);
+  saveConfig();
+  syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId });
+  pushConfigToRenderer();
+  broadcastDesktopPinConfigUpdate();
+
+  return {
+    success: true,
+    pinned: true,
+    existed,
+    supportProfile,
+    pinBounds: config.desktopPins[normalizedEntityId],
+  };
 }
 
 function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass) {
@@ -2045,32 +2104,8 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('pin-entity-to-desktop', (_event, entityId) => {
-  const normalizedEntityId = normalizeEntityId(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-
-  const favorites = new Set((config.favoriteEntities || []).map(normalizeEntityId).filter(Boolean));
-  if (!favorites.has(normalizedEntityId)) {
-    return { success: false, error: 'Only Quick Access entities can be pinned in this version' };
-  }
-
-  const existed = !!config?.desktopPins?.[normalizedEntityId];
-  config.desktopPins = config.desktopPins || {};
-  config.desktopPins[normalizedEntityId] = getDesktopPinBounds(normalizedEntityId, config.desktopPins[normalizedEntityId]);
-  normalizeDesktopPinsConfig(config);
-  saveConfig();
-  syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId });
-  pushConfigToRenderer();
-  broadcastDesktopPinConfigUpdate();
-
-  return {
-    success: true,
-    pinned: true,
-    existed,
-    pinBounds: config.desktopPins[normalizedEntityId],
-  };
+ipcMain.handle('pin-entity-to-desktop', (_event, entityId, supportInfo = null) => {
+  return pinEntityToDesktopInternal(entityId, supportInfo);
 });
 
 ipcMain.handle('set-desktop-pin-edit-mode', (_event, enabled) => {
@@ -2174,7 +2209,7 @@ ipcMain.handle('request-desktop-pin-action', (_event, entityId, action, payload 
   return { success: true, forwarded: true };
 });
 
-ipcMain.handle('show-entity-tile-menu', (event, entityId) => {
+ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -2186,9 +2221,14 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId) => {
   }
 
   const isPinned = !!config?.desktopPins?.[normalizedEntityId];
+  const supportProfile = resolveDesktopPinSupportDecision(normalizedEntityId, supportInfo);
+  const canPinToDesktop = supportProfile.supported;
   const menu = Menu.buildFromTemplate([
     {
-      label: isPinned ? 'Unpin from Desktop' : 'Pin to Desktop',
+      label: isPinned
+        ? 'Unpin from Desktop'
+        : (canPinToDesktop ? 'Pin to Desktop' : 'Desktop Pin Not Supported Yet'),
+      enabled: isPinned || canPinToDesktop,
       click: () => {
         if (isPinned) {
           if (config?.desktopPins?.[normalizedEntityId]) {
@@ -2199,20 +2239,14 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId) => {
           pushConfigToRenderer();
           broadcastDesktopPinConfigUpdate();
         } else {
-          config.desktopPins = config.desktopPins || {};
-          config.desktopPins[normalizedEntityId] = getDesktopPinBounds(normalizedEntityId, config.desktopPins[normalizedEntityId]);
-          normalizeDesktopPinsConfig(config);
-          saveConfig();
-          syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId });
-          pushConfigToRenderer();
-          broadcastDesktopPinConfigUpdate();
+          pinEntityToDesktopInternal(normalizedEntityId, supportProfile);
         }
       }
     }
   ]);
 
   menu.popup({ window: senderWindow });
-  return { success: true, pinned: isPinned };
+  return { success: true, pinned: isPinned, supportProfile };
 });
 
 ipcMain.handle('set-opacity', (event, opacity) => {

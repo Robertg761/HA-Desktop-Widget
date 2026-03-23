@@ -1104,6 +1104,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.desktop-pin-action-actions,
+.desktop-pin-presence-actions,
+.desktop-pin-weather-actions {
+  grid-template-columns: 1fr;
+}
+
+.desktop-pin-enum-actions,
+.desktop-pin-numeric-actions,
+.desktop-pin-vacuum-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.desktop-pin-weather-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .desktop-pin-panel-slider-row-solo {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -1450,6 +1468,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .desktop-pin-empty[data-state="waiting"],
 .desktop-pin-empty[data-state="missing"],
 .desktop-pin-empty[data-state="unavailable"],
+.desktop-pin-empty[data-state="unsupported"],
 .desktop-pin-empty[data-state="disconnected"] {
   flex: 1 1 auto;
 }
@@ -5917,6 +5936,29 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   color: var(--accent);
   border-color: rgba(var(--accent-rgb), 0.38);
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.24), rgba(var(--accent-rgb), 0.08));
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle:disabled,
+.reorganize-mode .control-item .desktop-pin-quick-toggle[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.56);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 24, 0.9);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform: none;
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle:disabled:hover,
+.reorganize-mode .control-item .desktop-pin-quick-toggle[aria-disabled="true"]:hover {
+  color: rgba(255, 255, 255, 0.56);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 24, 0.9);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform: none;
 }
 
 .reorganize-mode .control-item {

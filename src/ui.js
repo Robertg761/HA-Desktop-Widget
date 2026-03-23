@@ -5,6 +5,7 @@ import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import { setIconContent } from './icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
+import desktopPinSupport from './desktop-pin-support.cjs';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -46,6 +47,9 @@ const DESKTOP_PIN_FAN_PRESETS_TIGHT = [
   { value: 66, label: 'Mid' },
   { value: 100, label: 'High' },
 ];
+const {
+  resolveDesktopPinProfile,
+} = desktopPinSupport;
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -833,6 +837,48 @@ function isEntityDesktopPinned(entityId) {
   return !!state.CONFIG?.desktopPins?.[entityId];
 }
 
+function getDesktopPinSupportProfile(entityOrEntityId = null) {
+  return resolveDesktopPinProfile(entityOrEntityId);
+}
+
+function getDesktopPinSupportInfo(entityOrEntityId = null) {
+  const profile = getDesktopPinSupportProfile(entityOrEntityId);
+  return {
+    entityId: profile.entityId || (typeof entityOrEntityId === 'string' ? entityOrEntityId : entityOrEntityId?.entity_id || ''),
+    supported: !!profile.supported,
+    interactive: !!profile.interactive,
+    family: profile.family || 'unsupported',
+    label: profile.label || '',
+    reason: profile.reason || '',
+    primaryAction: profile.primaryAction || '',
+    secondaryAction: profile.secondaryAction || '',
+  };
+}
+
+function requestDesktopPinFocusMain(entityId) {
+  if (!entityId || !window?.electronAPI?.requestDesktopPinAction) return;
+  window.electronAPI.requestDesktopPinAction(entityId, 'focus-main').catch((error) => {
+    console.error('Error focusing main widget from desktop pin:', error);
+  });
+}
+
+function hasEntityService(entity, serviceName) {
+  const domain = getEntityDomain(entity?.entity_id);
+  if (!domain || !serviceName) return false;
+  return !!state.SERVICES?.[domain]?.[serviceName];
+}
+
+function callEntityDomainService(entity, serviceName, serviceData = {}) {
+  const entityId = entity?.entity_id;
+  const domain = getEntityDomain(entityId);
+  if (!entityId || !domain || !serviceName) return Promise.resolve();
+  const currentEntity = state.STATES?.[entityId] || entity;
+  return websocket.callService(domain, serviceName, {
+    entity_id: entityId,
+    ...(serviceData || {}),
+  }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity || entity)));
+}
+
 function clampDesktopPinMetric(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1027,36 +1073,6 @@ function getDesktopPinMediaRenderProfile() {
     statusText: layoutProfile.isDenseTight ? { playing: 'Playing', paused: 'Paused' } : { playing: 'Playing now', paused: 'Paused' },
     headerKpi: layoutProfile.isDenseTight ? { playing: 'On', paused: 'Idle' } : { playing: 'Live', paused: 'Idle' },
   };
-}
-
-function isTimerSensorEntity(entity) {
-  if (!entity?.entity_id?.startsWith('sensor.')) return false;
-
-  const attrs = entity.attributes || {};
-  const hasTimerAttributes = attrs.finishes_at || attrs.end_time || attrs.finish_time || attrs.duration;
-  const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
-
-  if (hasTimerAttributes || hasTimerInName) {
-    return true;
-  }
-
-  const stateValue = typeof entity.state === 'string' ? entity.state : '';
-  if (!stateValue || stateValue === 'unavailable' || stateValue === 'unknown') {
-    return false;
-  }
-
-  const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-  if (!iso8601Pattern.test(stateValue)) {
-    return false;
-  }
-
-  const stateTime = new Date(stateValue).getTime();
-  return !Number.isNaN(stateTime) && stateTime > Date.now();
-}
-
-function isTimerLikeEntity(entity) {
-  if (!entity?.entity_id) return false;
-  return entity.entity_id.startsWith('timer.') || isTimerSensorEntity(entity);
 }
 
 function getDesktopPinControlInteraction(entityId) {
@@ -2674,11 +2690,403 @@ function updateExistingDesktopPinTimerControl(root, entity) {
   return true;
 }
 
-function createDesktopPinFallbackControlElement(entity) {
-  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-fallback-control'], {
+function getDesktopPinActionCtaLabel(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  if (domain === 'automation') return 'Trigger';
+  if (domain === 'button') return 'Press';
+  return 'Run';
+}
+
+function createDesktopPinActionControlElement(entity) {
+  const ctaLabel = getDesktopPinActionCtaLabel(entity);
+  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-action-control'], {
     domain: getEntityDomain(entity.entity_id),
     state: entity.state,
-    title: 'Compact entity tile',
+    title: 'Compact action tile',
+  });
+
+  root.innerHTML = `
+    <div class="desktop-pin-panel-shell">
+      ${getDesktopPinPanelHeaderMarkup(entity, {
+        statusText: utils.getEntityTypeDescription(entity),
+        asideMarkup: '<div class="desktop-pin-panel-kpi">Ready</div>',
+      })}
+      <div class="desktop-pin-panel-body">
+        <div class="desktop-pin-panel-meter">
+          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-value">${utils.escapeHtml(ctaLabel)}</div>
+        </div>
+        <div class="desktop-pin-panel-actions desktop-pin-action-actions">
+          ${createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-action-primary',
+            label: ctaLabel,
+            ariaLabel: `${ctaLabel} ${utils.getEntityDisplayName(entity)}`,
+            active: false,
+          })}
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindDesktopPinButton(root.querySelector('.desktop-pin-action-primary'), () => {
+    triggerActivationFeedback(entity.entity_id);
+    const serviceName = getEntityDomain(entity.entity_id) === 'button' ? 'press' : 'trigger';
+    callEntityDomainService(state.STATES?.[entity.entity_id] || entity, serviceName);
+  });
+
+  return root;
+}
+
+function updateExistingDesktopPinActionControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-action-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const ctaLabel = getDesktopPinActionCtaLabel(entity);
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: getEntityDomain(entity.entity_id),
+    title: 'Compact action tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = 'Ready';
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = ctaLabel;
+
+  const button = root.querySelector('.desktop-pin-action-primary');
+  const buttonLabel = button?.querySelector('.desktop-pin-panel-button-label');
+  if (buttonLabel) buttonLabel.textContent = ctaLabel;
+
+  return true;
+}
+
+function getDesktopPinNumericSpec(entity) {
+  const attrs = entity?.attributes || {};
+  const interaction = getDesktopPinControlInteraction(entity?.entity_id);
+  const rawMin = Number(attrs.min);
+  const rawMax = Number(attrs.max);
+  const rawStep = Number(attrs.step);
+  const hasBounds = Number.isFinite(rawMin) && Number.isFinite(rawMax) && rawMax > rawMin;
+  const fallbackStep = hasBounds
+    ? Math.max((rawMax - rawMin) / 20, 1)
+    : 1;
+  const step = Number.isFinite(rawStep) && rawStep > 0 ? rawStep : fallbackStep;
+  const liveValue = Number(entity?.state);
+  const interactionValue = Number(interaction?.value);
+  let value = Number.isFinite(interactionValue) ? interactionValue : liveValue;
+
+  if (!Number.isFinite(value)) {
+    value = hasBounds ? rawMin : 0;
+  }
+  if (hasBounds) {
+    value = Math.max(rawMin, Math.min(rawMax, value));
+  }
+
+  return {
+    min: rawMin,
+    max: rawMax,
+    step,
+    value,
+    hasBounds,
+    unit: attrs.unit_of_measurement || '',
+  };
+}
+
+function formatDesktopPinNumericValue(value, entity, options = {}) {
+  const spec = options.spec || getDesktopPinNumericSpec(entity);
+  const safeValue = Number(value);
+  if (!Number.isFinite(safeValue)) {
+    return utils.getEntityDisplayState(entity);
+  }
+
+  const hasFraction = Math.abs(spec.step) > 0 && Math.abs(spec.step) < 1;
+  const formatted = hasFraction
+    ? safeValue.toFixed(Math.min(2, String(spec.step).split('.')[1]?.length || 1))
+    : String(Math.round(safeValue));
+  return spec.unit ? `${formatted} ${spec.unit}` : formatted;
+}
+
+function queueDesktopPinNumericValue(entity, nextValue) {
+  const entityId = entity?.entity_id;
+  if (!entityId) return;
+  const spec = getDesktopPinNumericSpec(entity);
+  const safeValue = spec.hasBounds
+    ? Math.max(spec.min, Math.min(spec.max, Number(nextValue)))
+    : Number(nextValue);
+  queueDesktopPinServiceCall(`${entityId}:numeric`, () => {
+    callEntityDomainService(state.STATES?.[entityId] || entity, 'set_value', { value: safeValue });
+  }, 120);
+}
+
+function createDesktopPinNumericControlElement(entity) {
+  const spec = getDesktopPinNumericSpec(entity);
+  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-numeric-control'], {
+    domain: getEntityDomain(entity.entity_id),
+    state: entity.state,
+    title: 'Compact numeric tile',
+  });
+
+  const meterMarkup = `
+    <div class="desktop-pin-panel-meter">
+      <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+      <div class="desktop-pin-panel-value">${utils.escapeHtml(formatDesktopPinNumericValue(spec.value, entity, { spec }))}</div>
+    </div>
+  `;
+  const controlsMarkup = spec.hasBounds
+    ? `
+      <div class="desktop-pin-panel-slider-row">
+        <span class="desktop-pin-panel-slider-label">${utils.escapeHtml(formatDesktopPinNumericValue(spec.min, entity, { spec }))}</span>
+        <input class="desktop-pin-panel-slider desktop-pin-numeric-slider" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.value}" aria-label="${utils.escapeHtml(utils.getEntityDisplayName(entity))} value" />
+        <span class="desktop-pin-panel-slider-label">${utils.escapeHtml(formatDesktopPinNumericValue(spec.max, entity, { spec }))}</span>
+      </div>
+    `
+    : `
+      <div class="desktop-pin-panel-actions desktop-pin-numeric-actions">
+        ${createDesktopPinButtonMarkup({
+          className: 'desktop-pin-panel-button desktop-pin-numeric-step',
+          label: '-',
+          ariaLabel: `Decrease ${utils.getEntityDisplayName(entity)}`,
+          action: 'decrease',
+        })}
+        ${createDesktopPinButtonMarkup({
+          className: 'desktop-pin-panel-button desktop-pin-numeric-step',
+          label: '+',
+          ariaLabel: `Increase ${utils.getEntityDisplayName(entity)}`,
+          action: 'increase',
+        })}
+      </div>
+    `;
+
+  root.innerHTML = `
+    <div class="desktop-pin-panel-shell">
+      ${getDesktopPinPanelHeaderMarkup(entity, {
+        statusText: utils.getEntityTypeDescription(entity),
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(formatDesktopPinNumericValue(spec.value, entity, { spec }))}</div>`,
+      })}
+      <div class="desktop-pin-panel-body">
+        ${meterMarkup}
+        ${controlsMarkup}
+      </div>
+    </div>
+  `;
+
+  const slider = root.querySelector('.desktop-pin-numeric-slider');
+  if (slider) {
+    bindDesktopPinSlider(slider, {
+      entityId: entity.entity_id,
+      getImmediateValue: (target) => Number(target?.value),
+      applyVisualValue: (nextValue) => {
+        const formatted = formatDesktopPinNumericValue(nextValue, entity, { spec });
+        const kpi = root.querySelector('.desktop-pin-panel-kpi');
+        const value = root.querySelector('.desktop-pin-panel-value');
+        if (kpi) kpi.textContent = formatted;
+        if (value) value.textContent = formatted;
+      },
+      queueValue: (nextValue) => queueDesktopPinNumericValue(entity, nextValue),
+      releaseDelayMs: 360,
+    });
+  }
+
+  root.querySelectorAll('.desktop-pin-numeric-step').forEach((button) => {
+    bindDesktopPinButton(button, () => {
+      const delta = button.dataset.action === 'decrease' ? -spec.step : spec.step;
+      const nextValue = spec.value + delta;
+      setDesktopPinControlInteraction(entity.entity_id, { value: nextValue, active: false });
+      scheduleDesktopPinControlInteractionRelease(entity.entity_id, 360);
+      queueDesktopPinNumericValue(entity, nextValue);
+      updateExistingDesktopPinNumericControl(root, {
+        ...entity,
+        state: String(nextValue),
+      });
+    });
+  });
+
+  return root;
+}
+
+function updateExistingDesktopPinNumericControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-numeric-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const spec = getDesktopPinNumericSpec(entity);
+  const hasSlider = !!root.querySelector('.desktop-pin-numeric-slider');
+  if (hasSlider !== spec.hasBounds) {
+    root.replaceWith(createDesktopPinNumericControlElement(entity));
+    return true;
+  }
+  const formattedValue = formatDesktopPinNumericValue(spec.value, entity, { spec });
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: getEntityDomain(entity.entity_id),
+    title: 'Compact numeric tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = formattedValue;
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = formattedValue;
+
+  const slider = root.querySelector('.desktop-pin-numeric-slider');
+  if (slider) {
+    slider.min = String(spec.min);
+    slider.max = String(spec.max);
+    slider.step = String(spec.step);
+    slider.value = String(spec.value);
+  }
+
+  return true;
+}
+
+function getDesktopPinEnumOptions(entity) {
+  return Array.isArray(entity?.attributes?.options)
+    ? entity.attributes.options.filter((option) => typeof option === 'string' && option.trim())
+    : [];
+}
+
+function getDesktopPinEnumState(entity) {
+  const interaction = getDesktopPinControlInteraction(entity?.entity_id);
+  const selectedOption = typeof interaction?.option === 'string' ? interaction.option : entity?.state;
+  const options = getDesktopPinEnumOptions(entity);
+  const currentIndex = Math.max(0, options.indexOf(selectedOption));
+  return {
+    options,
+    currentOption: options[currentIndex] || selectedOption || '',
+    currentIndex,
+  };
+}
+
+function queueDesktopPinEnumSelection(entity, direction) {
+  const entityId = entity?.entity_id;
+  if (!entityId) return;
+  const enumState = getDesktopPinEnumState(entity);
+  if (!enumState.options.length) return;
+
+  const directionOffset = direction === 'previous' ? -1 : 1;
+  const nextIndex = Math.max(0, Math.min(enumState.options.length - 1, enumState.currentIndex + directionOffset));
+  const nextOption = enumState.options[nextIndex];
+  if (!nextOption || nextOption === enumState.currentOption) return;
+
+  setDesktopPinControlInteraction(entityId, { option: nextOption, active: false });
+  scheduleDesktopPinControlInteractionRelease(entityId, 520);
+
+  queueDesktopPinServiceCall(`${entityId}:enum`, () => {
+    const liveEntity = state.STATES?.[entityId] || entity;
+    if (direction === 'previous' && hasEntityService(liveEntity, 'select_previous')) {
+      callEntityDomainService(liveEntity, 'select_previous');
+      return;
+    }
+    if (direction === 'next' && hasEntityService(liveEntity, 'select_next')) {
+      callEntityDomainService(liveEntity, 'select_next');
+      return;
+    }
+    callEntityDomainService(liveEntity, 'select_option', { option: nextOption });
+  }, 100);
+}
+
+function createDesktopPinEnumControlElement(entity) {
+  const enumState = getDesktopPinEnumState(entity);
+  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-enum-control'], {
+    domain: getEntityDomain(entity.entity_id),
+    state: entity.state,
+    title: 'Compact select tile',
+  });
+
+  root.innerHTML = `
+    <div class="desktop-pin-panel-shell">
+      ${getDesktopPinPanelHeaderMarkup(entity, {
+        statusText: utils.getEntityTypeDescription(entity),
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(enumState.currentOption || 'Unknown')}</div>`,
+      })}
+      <div class="desktop-pin-panel-body">
+        <div class="desktop-pin-panel-meter">
+          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-value">${utils.escapeHtml(enumState.currentOption || 'Unknown')}</div>
+        </div>
+        <div class="desktop-pin-panel-actions desktop-pin-enum-actions">
+          ${createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-enum-step',
+            label: 'Prev',
+            ariaLabel: `Previous option for ${utils.getEntityDisplayName(entity)}`,
+            action: 'previous',
+          })}
+          ${createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-enum-step',
+            label: 'Next',
+            ariaLabel: `Next option for ${utils.getEntityDisplayName(entity)}`,
+            action: 'next',
+          })}
+        </div>
+      </div>
+    </div>
+  `;
+
+  root.querySelectorAll('.desktop-pin-enum-step').forEach((button) => {
+    bindDesktopPinButton(button, () => {
+      queueDesktopPinEnumSelection(entity, button.dataset.action);
+      updateExistingDesktopPinEnumControl(root, {
+        ...entity,
+        state: getDesktopPinControlInteraction(entity.entity_id)?.option || entity.state,
+      });
+    });
+  });
+
+  return root;
+}
+
+function updateExistingDesktopPinEnumControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-enum-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const enumState = getDesktopPinEnumState(entity);
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: getEntityDomain(entity.entity_id),
+    title: 'Compact select tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = enumState.currentOption || 'Unknown';
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = enumState.currentOption || 'Unknown';
+
+  return true;
+}
+
+function createDesktopPinPresenceControlElement(entity) {
+  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-presence-control'], {
+    domain: getEntityDomain(entity.entity_id),
+    state: entity.state,
+    title: 'Compact presence tile',
   });
 
   root.innerHTML = `
@@ -2692,11 +3100,305 @@ function createDesktopPinFallbackControlElement(entity) {
           <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
+        <div class="desktop-pin-panel-actions desktop-pin-presence-actions">
+          ${createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-presence-focus',
+            label: 'Focus Main',
+            ariaLabel: `Focus main widget for ${utils.getEntityDisplayName(entity)}`,
+          })}
+        </div>
       </div>
     </div>
   `;
 
+  bindDesktopPinButton(root.querySelector('.desktop-pin-presence-focus'), () => {
+    requestDesktopPinFocusMain(entity.entity_id);
+  });
+
   return root;
+}
+
+function updateExistingDesktopPinPresenceControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-presence-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: getEntityDomain(entity.entity_id),
+    title: 'Compact presence tile',
+  });
+
+  const displayState = utils.getEntityDisplayState(entity);
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = displayState;
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = displayState;
+
+  return true;
+}
+
+function getDesktopPinWeatherStats(entity) {
+  const attrs = entity?.attributes || {};
+  const stats = [];
+  if (attrs.humidity != null) stats.push(`${attrs.humidity}% humidity`);
+  if (attrs.wind_speed != null) {
+    const unit = attrs.wind_speed_unit || state.UNIT_SYSTEM?.wind_speed || '';
+    stats.push(unit ? `${attrs.wind_speed} ${unit}` : String(attrs.wind_speed));
+  }
+  if (attrs.pressure != null && stats.length < 2) {
+    const unit = attrs.pressure_unit || state.UNIT_SYSTEM?.pressure || '';
+    stats.push(unit ? `${attrs.pressure} ${unit}` : String(attrs.pressure));
+  }
+  return stats.slice(0, 2);
+}
+
+function createDesktopPinWeatherControlElement(entity) {
+  const stats = getDesktopPinWeatherStats(entity);
+  const temperature = entity?.attributes?.temperature;
+  const temperatureUnit = entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
+  const temperatureValue = temperature != null
+    ? `${temperature}${temperatureUnit}`
+    : utils.getEntityDisplayState(entity);
+  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-weather-control'], {
+    domain: 'weather',
+    state: entity.state,
+    title: 'Compact weather tile',
+  });
+
+  root.innerHTML = `
+    <div class="desktop-pin-panel-shell">
+      ${getDesktopPinPanelHeaderMarkup(entity, {
+        statusText: utils.getEntityDisplayState(entity),
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(temperatureValue)}</div>`,
+      })}
+      <div class="desktop-pin-panel-body">
+        <div class="desktop-pin-panel-meter">
+          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-value">${utils.escapeHtml(temperatureValue)}</div>
+        </div>
+        <div class="desktop-pin-weather-stats">
+          ${stats.map((stat) => `<div class="desktop-pin-panel-stat"><div class="desktop-pin-panel-stat-label">${utils.escapeHtml(stat)}</div></div>`).join('')}
+        </div>
+        <div class="desktop-pin-panel-actions desktop-pin-weather-actions">
+          ${createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-weather-focus',
+            label: 'Focus Main',
+            ariaLabel: `Focus main widget for ${utils.getEntityDisplayName(entity)}`,
+          })}
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindDesktopPinButton(root.querySelector('.desktop-pin-weather-focus'), () => {
+    requestDesktopPinFocusMain(entity.entity_id);
+  });
+
+  return root;
+}
+
+function updateExistingDesktopPinWeatherControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-weather-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const stats = getDesktopPinWeatherStats(entity);
+  const temperature = entity?.attributes?.temperature;
+  const temperatureUnit = entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
+  const temperatureValue = temperature != null
+    ? `${temperature}${temperatureUnit}`
+    : utils.getEntityDisplayState(entity);
+
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: 'weather',
+    title: 'Compact weather tile',
+  });
+
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityDisplayState(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = temperatureValue;
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = temperatureValue;
+
+  const statsContainer = root.querySelector('.desktop-pin-weather-stats');
+  if (statsContainer) {
+    statsContainer.innerHTML = stats.map((stat) => `<div class="desktop-pin-panel-stat"><div class="desktop-pin-panel-stat-label">${utils.escapeHtml(stat)}</div></div>`).join('');
+  }
+
+  return true;
+}
+
+function getDesktopPinVacuumActionConfig(entity) {
+  const stateValue = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+  const hasStart = hasEntityService(entity, 'start');
+  const hasPause = hasEntityService(entity, 'pause');
+  const hasReturn = hasEntityService(entity, 'return_to_base');
+  const hasStop = hasEntityService(entity, 'stop') || hasEntityService(entity, 'turn_off');
+
+  const makeServiceAction = (label, serviceName) => ({
+    label,
+    type: 'service',
+    serviceName,
+  });
+  const focusAction = {
+    label: 'Focus Main',
+    type: 'focus-main',
+  };
+
+  if (stateValue === 'cleaning') {
+    return {
+      primary: hasPause ? makeServiceAction('Pause', 'pause') : focusAction,
+      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+    };
+  }
+
+  if (stateValue === 'paused') {
+    return {
+      primary: hasStart ? makeServiceAction('Resume', 'start') : focusAction,
+      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+    };
+  }
+
+  if (stateValue === 'returning') {
+    return {
+      primary: hasStop ? makeServiceAction('Stop', hasEntityService(entity, 'stop') ? 'stop' : 'turn_off') : focusAction,
+      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+    };
+  }
+
+  return {
+    primary: hasStart ? makeServiceAction('Start', 'start') : focusAction,
+    secondary: null,
+  };
+}
+
+function runDesktopPinVacuumAction(entity, actionConfig) {
+  if (!entity?.entity_id || !actionConfig) return;
+  if (actionConfig.type === 'focus-main') {
+    requestDesktopPinFocusMain(entity.entity_id);
+    return;
+  }
+  callEntityDomainService(state.STATES?.[entity.entity_id] || entity, actionConfig.serviceName);
+}
+
+function createDesktopPinVacuumControlElement(entity) {
+  const actionConfig = getDesktopPinVacuumActionConfig(entity);
+  const root = createDesktopPinPanelRoot(entity, ['desktop-pin-vacuum-control'], {
+    domain: 'vacuum',
+    state: entity.state,
+    title: 'Compact vacuum tile',
+  });
+
+  root.innerHTML = `
+    <div class="desktop-pin-panel-shell">
+      ${getDesktopPinPanelHeaderMarkup(entity, {
+        statusText: utils.getEntityTypeDescription(entity),
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>`,
+      })}
+      <div class="desktop-pin-panel-body">
+        <div class="desktop-pin-panel-meter">
+          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
+        </div>
+        <div class="desktop-pin-panel-actions desktop-pin-vacuum-actions">
+          ${createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+            label: actionConfig.primary?.label || 'Focus Main',
+            ariaLabel: `${actionConfig.primary?.label || 'Focus Main'} ${utils.getEntityDisplayName(entity)}`,
+            action: 'primary',
+          })}
+          ${actionConfig.secondary ? createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+            label: actionConfig.secondary.label,
+            ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
+            action: 'secondary',
+          }) : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  root.querySelectorAll('.desktop-pin-vacuum-action').forEach((button) => {
+    bindDesktopPinButton(button, () => {
+      const config = button.dataset.action === 'secondary' ? actionConfig.secondary : actionConfig.primary;
+      runDesktopPinVacuumAction(entity, config);
+    });
+  });
+
+  return root;
+}
+
+function updateExistingDesktopPinVacuumControl(root, entity) {
+  if (!root || !root.classList.contains('desktop-pin-vacuum-control') || !entity?.entity_id) {
+    return false;
+  }
+
+  const actionConfig = getDesktopPinVacuumActionConfig(entity);
+  syncDesktopPinPanelRootState(root, entity, {
+    domain: 'vacuum',
+    title: 'Compact vacuum tile',
+  });
+
+  const displayState = utils.getEntityDisplayState(entity);
+  const name = root.querySelector('.desktop-pin-panel-name');
+  if (name) name.textContent = utils.getEntityDisplayName(entity);
+
+  const status = root.querySelector('.desktop-pin-panel-status');
+  if (status) status.textContent = utils.getEntityTypeDescription(entity);
+
+  const kpi = root.querySelector('.desktop-pin-panel-kpi');
+  if (kpi) kpi.textContent = displayState;
+
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+
+  const value = root.querySelector('.desktop-pin-panel-value');
+  if (value) value.textContent = displayState;
+
+  const actions = root.querySelector('.desktop-pin-vacuum-actions');
+  if (actions) {
+    actions.innerHTML = `
+      ${createDesktopPinButtonMarkup({
+        className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+        label: actionConfig.primary?.label || 'Focus Main',
+        ariaLabel: `${actionConfig.primary?.label || 'Focus Main'} ${utils.getEntityDisplayName(entity)}`,
+        action: 'primary',
+      })}
+      ${actionConfig.secondary ? createDesktopPinButtonMarkup({
+        className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+        label: actionConfig.secondary.label,
+        ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
+        action: 'secondary',
+      }) : ''}
+    `;
+    actions.querySelectorAll('.desktop-pin-vacuum-action').forEach((button) => {
+      bindDesktopPinButton(button, () => {
+        const config = button.dataset.action === 'secondary' ? actionConfig.secondary : actionConfig.primary;
+        runDesktopPinVacuumAction(entity, config);
+      });
+    });
+  }
+
+  return true;
 }
 
 function updateExistingDesktopPinFallbackControl(root, entity) {
@@ -2738,6 +3440,12 @@ function updateExistingDesktopPinPanelControl(root, entity) {
   if (root.classList.contains('desktop-pin-media-control')) return updateExistingDesktopPinMediaControl(root, entity);
   if (root.classList.contains('desktop-pin-scene-control')) return updateExistingDesktopPinSceneControl(root, entity);
   if (root.classList.contains('desktop-pin-toggle-control')) return updateExistingDesktopPinToggleEntityControl(root, entity);
+  if (root.classList.contains('desktop-pin-action-control')) return updateExistingDesktopPinActionControl(root, entity);
+  if (root.classList.contains('desktop-pin-numeric-control')) return updateExistingDesktopPinNumericControl(root, entity);
+  if (root.classList.contains('desktop-pin-enum-control')) return updateExistingDesktopPinEnumControl(root, entity);
+  if (root.classList.contains('desktop-pin-presence-control')) return updateExistingDesktopPinPresenceControl(root, entity);
+  if (root.classList.contains('desktop-pin-weather-control')) return updateExistingDesktopPinWeatherControl(root, entity);
+  if (root.classList.contains('desktop-pin-vacuum-control')) return updateExistingDesktopPinVacuumControl(root, entity);
   if (root.classList.contains('desktop-pin-camera-control')) return updateExistingDesktopPinCameraControl(root, entity);
   if (root.classList.contains('desktop-pin-sensor-control')) return updateExistingDesktopPinSensorControl(root, entity);
   if (root.classList.contains('desktop-pin-timer-control')) return updateExistingDesktopPinTimerControl(root, entity);
@@ -2773,17 +3481,30 @@ function syncQuickAccessControlButton(control, entityId) {
   }
 
   const isPinned = isEntityDesktopPinned(entityId);
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  const supportProfile = getDesktopPinSupportProfile(state.STATES?.[resolvedEntityId] || entityId);
   control.dataset.desktopPinned = isPinned ? 'true' : 'false';
+  control.dataset.desktopPinSupported = supportProfile.supported ? 'true' : 'false';
   button.dataset.active = isPinned ? 'true' : 'false';
   button.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
-  button.title = isPinned ? 'Unpin from desktop' : 'Pin to desktop';
-  button.textContent = isPinned ? 'Pinned' : 'Pin';
+  button.disabled = !isPinned && !supportProfile.supported;
+  button.setAttribute('aria-disabled', (!isPinned && !supportProfile.supported) ? 'true' : 'false');
+  button.title = isPinned
+    ? 'Unpin from desktop'
+    : (supportProfile.supported ? 'Pin to desktop' : (supportProfile.reason || 'Desktop pin not supported yet'));
+  button.textContent = isPinned ? 'Pinned' : (supportProfile.supported ? 'Pin' : 'Unsupported');
 }
 
 async function toggleDesktopPinFromQuickAccess(entityId) {
   if (!entityId) return { success: false, error: 'Missing entity ID' };
 
   const isPinned = isEntityDesktopPinned(entityId);
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  const supportInfo = getDesktopPinSupportInfo(state.STATES?.[resolvedEntityId] || entityId);
+  if (!isPinned && !supportInfo.supported) {
+    uiUtils.showToast(supportInfo.reason || 'Desktop pin not supported yet', 'error', 2600);
+    return { success: false, error: supportInfo.reason || 'Desktop pin not supported yet' };
+  }
   try {
     const nextDesktopPins = { ...(state.CONFIG?.desktopPins || {}) };
 
@@ -2807,7 +3528,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
       return { success: true, pinned: false, result };
     }
 
-    const result = await window.electronAPI.pinEntityToDesktop(entityId);
+    const result = await window.electronAPI.pinEntityToDesktop(entityId, supportInfo);
     if (!result?.success) {
       throw new Error(result?.error || 'Could not pin tile to desktop');
     }
@@ -2937,42 +3658,44 @@ function createDesktopPinControlElement(entity) {
     if (!resolvedEntity?.entity_id) {
       return document.createElement('div');
     }
+    const supportProfile = getDesktopPinSupportProfile(resolvedEntity);
 
-    if (resolvedEntity.entity_id.startsWith('light.')) {
-      return createDesktopPinLightControlElement(resolvedEntity);
+    switch (supportProfile.family) {
+      case 'light':
+        return createDesktopPinLightControlElement(resolvedEntity);
+      case 'climate':
+        return createDesktopPinClimateControlElement(resolvedEntity);
+      case 'fan':
+        return createDesktopPinFanControlElement(resolvedEntity);
+      case 'cover':
+        return createDesktopPinCoverControlElement(resolvedEntity);
+      case 'media':
+        return createDesktopPinMediaControlElement(resolvedEntity);
+      case 'camera':
+        return createDesktopPinCameraControlElement(resolvedEntity);
+      case 'timer':
+        return createDesktopPinTimerControlElement(resolvedEntity);
+      case 'sensor':
+        return createDesktopPinSensorControlElement(resolvedEntity);
+      case 'scene':
+        return createDesktopPinSceneControlElement(resolvedEntity);
+      case 'toggle':
+        return createDesktopPinToggleEntityControlElement(resolvedEntity);
+      case 'action':
+        return createDesktopPinActionControlElement(resolvedEntity);
+      case 'numeric':
+        return createDesktopPinNumericControlElement(resolvedEntity);
+      case 'enum':
+        return createDesktopPinEnumControlElement(resolvedEntity);
+      case 'presence':
+        return createDesktopPinPresenceControlElement(resolvedEntity);
+      case 'weather':
+        return createDesktopPinWeatherControlElement(resolvedEntity);
+      case 'vacuum':
+        return createDesktopPinVacuumControlElement(resolvedEntity);
+      default:
+        return document.createElement('div');
     }
-    if (resolvedEntity.entity_id.startsWith('climate.')) {
-      return createDesktopPinClimateControlElement(resolvedEntity);
-    }
-    if (resolvedEntity.entity_id.startsWith('fan.')) {
-      return createDesktopPinFanControlElement(resolvedEntity);
-    }
-    if (resolvedEntity.entity_id.startsWith('cover.')) {
-      return createDesktopPinCoverControlElement(resolvedEntity);
-    }
-    if (resolvedEntity.entity_id.startsWith('media_player.')) {
-      return createDesktopPinMediaControlElement(resolvedEntity);
-    }
-    if (resolvedEntity.entity_id.startsWith('camera.')) {
-      return createDesktopPinCameraControlElement(resolvedEntity);
-    }
-    if (isTimerLikeEntity(resolvedEntity)) {
-      return createDesktopPinTimerControlElement(resolvedEntity);
-    }
-    if (resolvedEntity.entity_id.startsWith('sensor.') || resolvedEntity.entity_id.startsWith('binary_sensor.')) {
-      return createDesktopPinSensorControlElement(resolvedEntity);
-    }
-    if (resolvedEntity.entity_id.startsWith('scene.') || resolvedEntity.entity_id.startsWith('script.')) {
-      return createDesktopPinSceneControlElement(resolvedEntity);
-    }
-    if (
-      resolvedEntity.entity_id.startsWith('switch.')
-      || resolvedEntity.entity_id.startsWith('input_boolean.')
-      || resolvedEntity.entity_id.startsWith('lock.')
-    ) {
-      return createDesktopPinToggleEntityControlElement(resolvedEntity);
-    }
-    return createDesktopPinFallbackControlElement(resolvedEntity);
   } catch (error) {
     console.error('Error creating desktop pin control element:', error);
     return document.createElement('div');
@@ -2990,7 +3713,11 @@ function isDesktopPinUnavailableState(entity) {
   }
 
   const domain = getEntityDomain(entity?.entity_id);
-  return domain !== 'scene' && domain !== 'script';
+  const supportProfile = getDesktopPinSupportProfile(entity || '');
+  return domain !== 'scene'
+    && domain !== 'script'
+    && supportProfile.family !== 'action'
+    && supportProfile.family !== 'presence';
 }
 
 function getDesktopPinFallbackDescriptor(entityId, entity, {
@@ -3006,6 +3733,7 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
   const normalizedConnectionIssue = typeof connectionIssue === 'string'
     ? connectionIssue.trim()
     : '';
+  const supportProfile = getDesktopPinSupportProfile(entity || entityId);
 
   if (!entityId) {
     return {
@@ -3026,6 +3754,18 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
       kicker: 'Connection issue',
       title: 'Home Assistant unavailable',
       detail: normalizedConnectionIssue,
+      showFocusMain: true,
+      canOpen: false,
+    };
+  }
+
+  if (!supportProfile.supported) {
+    return {
+      state: 'unsupported',
+      label,
+      kicker: 'Unsupported',
+      title: 'Desktop pin not supported yet',
+      detail: supportProfile.reason || `The ${supportProfile.domain || 'selected'} entity type does not have a desktop-pin experience yet.`,
       showFocusMain: true,
       canOpen: false,
     };
@@ -3182,30 +3922,65 @@ function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
   });
 }
 
-function handleDesktopPinActionRequest({ entityId, action }) {
+function handleDesktopPinActionRequest({ entityId, action, payload = {} }) {
   try {
     const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
     const entity = state.STATES?.[resolvedEntityId];
     if (!entity) return;
+    const supportProfile = getDesktopPinSupportProfile(entity);
 
     switch (action) {
       case 'toggle':
         toggleEntity(entity);
         break;
+      case 'trigger':
+        if (supportProfile.family === 'action') {
+          const serviceName = getEntityDomain(entity.entity_id) === 'button' ? 'press' : 'trigger';
+          callEntityDomainService(entity, serviceName);
+        }
+        break;
+      case 'set-value':
+        if (supportProfile.family === 'numeric') {
+          const nextValue = Number(payload?.value);
+          if (Number.isFinite(nextValue)) {
+            callEntityDomainService(entity, 'set_value', { value: nextValue });
+          }
+        }
+        break;
+      case 'previous-option':
+        if (supportProfile.family === 'enum') {
+          queueDesktopPinEnumSelection(entity, 'previous');
+        }
+        break;
+      case 'next-option':
+        if (supportProfile.family === 'enum') {
+          queueDesktopPinEnumSelection(entity, 'next');
+        }
+        break;
+      case 'vacuum-primary':
+        if (supportProfile.family === 'vacuum') {
+          runDesktopPinVacuumAction(entity, getDesktopPinVacuumActionConfig(entity).primary);
+        }
+        break;
+      case 'vacuum-secondary':
+        if (supportProfile.family === 'vacuum') {
+          runDesktopPinVacuumAction(entity, getDesktopPinVacuumActionConfig(entity).secondary);
+        }
+        break;
       case 'open-details':
-        if (resolvedEntityId.startsWith('camera.')) {
+        if (supportProfile.family === 'camera') {
           camera.openCamera(resolvedEntityId);
-        } else if (resolvedEntityId.startsWith('sensor.') && !resolvedEntityId.startsWith('sensor.timer')) {
+        } else if (supportProfile.family === 'sensor') {
           showSensorDetails(entity);
-        } else if (resolvedEntityId.startsWith('light.')) {
+        } else if (supportProfile.family === 'light') {
           showBrightnessSlider(entity);
-        } else if (resolvedEntityId.startsWith('climate.')) {
+        } else if (supportProfile.family === 'climate') {
           showClimateControls(entity);
-        } else if (resolvedEntityId.startsWith('fan.')) {
+        } else if (supportProfile.family === 'fan') {
           showFanControls(entity);
-        } else if (resolvedEntityId.startsWith('cover.')) {
+        } else if (supportProfile.family === 'cover') {
           showCoverControls(entity);
-        } else if (resolvedEntityId.startsWith('media_player.')) {
+        } else if (supportProfile.family === 'media') {
           showMediaDetail(entity);
         }
         break;
@@ -3234,7 +4009,7 @@ function createControlElement(entity) {
       if (div.dataset.desktopPin === 'true') return;
       event.preventDefault();
       event.stopPropagation();
-      window.electronAPI.showEntityTileMenu(entity.entity_id).catch((error) => {
+      window.electronAPI.showEntityTileMenu(entity.entity_id, getDesktopPinSupportInfo(entity)).catch((error) => {
         console.error('Error opening entity tile menu:', error);
       });
     });

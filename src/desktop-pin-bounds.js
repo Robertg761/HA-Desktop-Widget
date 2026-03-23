@@ -1,5 +1,5 @@
 /* eslint-env node */
-/* global module */
+/* global module, require */
 
 const DESKTOP_PIN_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const DESKTOP_PIN_WIDE_BOUNDS = { width: 328, height: 156 };
@@ -8,6 +8,9 @@ const DESKTOP_PIN_SMALL_ACTION_MIN_BOUNDS = { width: 156, height: 122 };
 const DESKTOP_PIN_DENSE_MIN_BOUNDS = { width: 168, height: 148 };
 const DESKTOP_PIN_MEDIA_MIN_BOUNDS = { width: 260, height: 148 };
 const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 97, height: 83 };
+const {
+  resolveDesktopPinProfile,
+} = require('./desktop-pin-support.cjs');
 
 function normalizeEntityId(entityId) {
   if (typeof entityId !== 'string') return '';
@@ -28,25 +31,37 @@ function getDesktopPinBaseBounds(entityId = '') {
 }
 
 function getDesktopPinMinBounds(entityId = '') {
-  switch (getDesktopPinDomain(entityId)) {
+  const domain = getDesktopPinDomain(entityId);
+  if (domain === 'scene') {
+    return { ...DESKTOP_PIN_SCENE_MIN_BOUNDS };
+  }
+  if (domain === 'script') {
+    return { ...DESKTOP_PIN_TINY_MIN_BOUNDS };
+  }
+
+  switch (resolveDesktopPinProfile(entityId).family) {
     case 'scene':
       return { ...DESKTOP_PIN_SCENE_MIN_BOUNDS };
-    case 'script':
     case 'sensor':
-    case 'binary_sensor':
     case 'timer':
       return { ...DESKTOP_PIN_TINY_MIN_BOUNDS };
     case 'light':
     case 'fan':
     case 'climate':
     case 'cover':
+    case 'weather':
+    case 'numeric':
+    case 'enum':
       return { ...DESKTOP_PIN_DENSE_MIN_BOUNDS };
-    case 'media_player':
+    case 'vacuum':
+      return { ...DESKTOP_PIN_SMALL_ACTION_MIN_BOUNDS };
+    case 'media':
       return { ...DESKTOP_PIN_MEDIA_MIN_BOUNDS };
-    case 'switch':
-    case 'input_boolean':
-    case 'lock':
+    case 'toggle':
+    case 'action':
     case 'camera':
+    case 'presence':
+    case 'unsupported':
     default:
       return { ...DESKTOP_PIN_SMALL_ACTION_MIN_BOUNDS };
   }
