@@ -1619,15 +1619,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
       expect(control).toBeTruthy();
       expect(control.querySelector('.desktop-pin-light-slider')).toBeTruthy();
-      expect(control.querySelector('.desktop-pin-light-preset[data-brightness="70"]')).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-light-preset[data-brightness="75"]')).toBeTruthy();
 
-      control.querySelector('.desktop-pin-light-preset[data-brightness="70"]').click();
+      control.querySelector('.desktop-pin-light-preset[data-brightness="75"]').click();
       jest.advanceTimersByTime(120);
       await Promise.resolve();
 
       expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
         entity_id: 'light.bedroom',
-        brightness_pct: 70
+        brightness_pct: 75
       });
 
       jest.useRealTimers();

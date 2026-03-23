@@ -1381,9 +1381,9 @@ function createDesktopPinLightControlElement(entity) {
         </div>
       </div>
       <div class="desktop-pin-light-presets">
-        <button class="desktop-pin-light-preset" type="button" data-brightness="15">15</button>
-        <button class="desktop-pin-light-preset" type="button" data-brightness="40">40</button>
-        <button class="desktop-pin-light-preset" type="button" data-brightness="70">70</button>
+        <button class="desktop-pin-light-preset" type="button" data-brightness="25">25</button>
+        <button class="desktop-pin-light-preset" type="button" data-brightness="50">50</button>
+        <button class="desktop-pin-light-preset" type="button" data-brightness="75">75</button>
         <button class="desktop-pin-light-preset" type="button" data-brightness="100">100</button>
       </div>
     </div>
