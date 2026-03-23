@@ -37,6 +37,8 @@ const httpsKeepAliveAgent = new https.Agent({
   timeout: 60000
 });
 
+const DESKTOP_PIN_WINDOW_CORNER_RADIUS = 24;
+
 function getHeaderValue(headers, name) {
   if (!headers || !name) return undefined;
   const value = headers[String(name).toLowerCase()];
@@ -467,6 +469,7 @@ function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
   try {
     targetWindow.__desktopPinApplyingBounds = true;
     targetWindow.setBounds(nextBounds);
+    applyDesktopPinWindowShape(targetWindow, nextBounds);
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
     targetWindow.__desktopPinApplyingBounds = false;
@@ -649,6 +652,51 @@ function applyDesktopPinDesktopBehavior(targetWindow) {
   }
 }
 
+function buildRoundedRectShape(width, height, radius = DESKTOP_PIN_WINDOW_CORNER_RADIUS) {
+  const safeWidth = Math.max(1, Math.floor(Number(width) || 0));
+  const safeHeight = Math.max(1, Math.floor(Number(height) || 0));
+  const safeRadius = Math.max(0, Math.min(Math.floor(radius), Math.floor(safeWidth / 2), Math.floor(safeHeight / 2)));
+
+  if (safeRadius <= 0) {
+    return [{ x: 0, y: 0, width: safeWidth, height: safeHeight }];
+  }
+
+  const rects = [];
+  for (let y = 0; y < safeHeight; y += 1) {
+    const topDistance = y;
+    const bottomDistance = (safeHeight - 1) - y;
+    let inset = 0;
+
+    if (topDistance < safeRadius) {
+      const dy = safeRadius - topDistance - 1;
+      inset = Math.max(inset, Math.ceil(safeRadius - Math.sqrt(Math.max(0, (safeRadius * safeRadius) - (dy * dy)))));
+    }
+
+    if (bottomDistance < safeRadius) {
+      const dy = safeRadius - bottomDistance - 1;
+      inset = Math.max(inset, Math.ceil(safeRadius - Math.sqrt(Math.max(0, (safeRadius * safeRadius) - (dy * dy)))));
+    }
+
+    const rowWidth = Math.max(1, safeWidth - (inset * 2));
+    rects.push({ x: inset, y, width: rowWidth, height: 1 });
+  }
+
+  return rects;
+}
+
+function applyDesktopPinWindowShape(targetWindow, bounds = null) {
+  if (!targetWindow || targetWindow.isDestroyed() || typeof targetWindow.setShape !== 'function') return;
+
+  const nextBounds = bounds || targetWindow.getBounds();
+  const shape = buildRoundedRectShape(nextBounds.width, nextBounds.height, DESKTOP_PIN_WINDOW_CORNER_RADIUS);
+
+  try {
+    targetWindow.setShape(shape);
+  } catch (error) {
+    log.warn('Failed to apply rounded shape to desktop pin window:', error.message);
+  }
+}
+
 function sendDesktopPinUpdate(entityId, extra = {}) {
   const window = desktopPinWindows.get(entityId);
   if (!window || window.isDestroyed()) return;
@@ -796,6 +844,7 @@ function createDesktopPinWindow(entityId, options = {}) {
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
+    hasShadow: false,
     alwaysOnTop: false,
     skipTaskbar: true,
     resizable: false,
@@ -813,7 +862,10 @@ function createDesktopPinWindow(entityId, options = {}) {
     }
   };
 
-  if (config.frostedGlass) {
+  // Desktop pin windows render their own rounded glass surface in CSS.
+  // Keeping native acrylic enabled here leaves a rectangular backdrop behind
+  // the rounded widget, which creates mismatched corners.
+  if (config.frostedGlass && options.useNativeFrostedGlass !== false) {
     if (process.platform === 'win32') {
       windowOptions.backgroundMaterial = 'acrylic';
     } else if (process.platform === 'darwin') {
@@ -827,11 +879,12 @@ function createDesktopPinWindow(entityId, options = {}) {
   desktopPinWindows.set(normalizedEntityId, pinWindow);
 
   try {
-    pinWindow.setOpacity(Math.max(0.5, Math.min(1, config.opacity || 1)));
+    pinWindow.setOpacity(1);
   } catch (error) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
-  applyWindowEffectsToWindow(pinWindow, config);
+  applyDesktopPinWindowShape(pinWindow, pinBounds);
+  applyWindowEffectsToWindow(pinWindow, config, false);
   applyDesktopPinEditModeToWindow(pinWindow);
 
   const persistBounds = () => {
@@ -917,7 +970,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
     }
 
     try {
-      window.setOpacity(Math.max(0.5, Math.min(1, config.opacity || 1)));
+      window.setOpacity(1);
     } catch (error) {
       log.warn('Failed to refresh desktop pin window state:', error.message);
     }
@@ -954,10 +1007,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   desktopPinWindows.forEach((window) => {
     if (!window || window.isDestroyed()) return;
     try {
-      if (typeof nextConfig?.opacity === 'number' && previousConfig?.opacity !== nextConfig.opacity) {
-        const safeOpacity = Math.max(0.5, Math.min(1, nextConfig.opacity));
-        window.setOpacity(safeOpacity);
-      }
+      window.setOpacity(1);
     } catch (error) {
       log.warn('Failed to update desktop pin opacity:', error.message);
     }

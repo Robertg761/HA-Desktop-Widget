@@ -1267,6 +1267,11 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
     meterValue.textContent = isOn ? `${safePct}%` : 'Off';
   }
 
+  const brightnessFill = root.querySelector('.desktop-pin-light-brightness-fill');
+  if (brightnessFill) {
+    brightnessFill.style.width = `${safePct}%`;
+  }
+
   const status = root.querySelector('.desktop-pin-light-status');
   if (status) {
     status.textContent = isOn
@@ -1368,14 +1373,18 @@ function createDesktopPinLightControlElement(entity) {
         </div>
         <button class="desktop-pin-light-power" type="button" aria-label="Toggle light" aria-pressed="${isOn ? 'true' : 'false'}" data-active="${isOn ? 'true' : 'false'}">${isOn ? 'On' : 'Off'}</button>
       </div>
-      <div class="desktop-pin-light-meter">
-        <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
-        <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : 'Off'}</div>
-      </div>
-      <div class="desktop-pin-light-slider-row">
-        <span class="desktop-pin-light-slider-label">Dim</span>
-        <input class="desktop-pin-light-slider" type="range" min="0" max="100" step="1" value="${brightnessPct}" aria-label="Light brightness" />
-        <span class="desktop-pin-light-slider-label">Bright</span>
+      <div class="desktop-pin-light-brightness">
+        <div class="desktop-pin-light-brightness-head">
+          <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-light-brightness-copy">
+            <div class="desktop-pin-light-brightness-label">Brightness</div>
+            <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : 'Off'}</div>
+          </div>
+        </div>
+        <div class="desktop-pin-panel-progress desktop-pin-light-brightness-track">
+          <div class="desktop-pin-panel-progress-fill desktop-pin-light-brightness-fill"></div>
+          <input class="desktop-pin-light-slider" type="range" min="0" max="100" step="1" value="${brightnessPct}" aria-label="Light brightness" />
+        </div>
       </div>
       <div class="desktop-pin-light-presets">
         <button class="desktop-pin-light-preset" type="button" data-brightness="15">15</button>
