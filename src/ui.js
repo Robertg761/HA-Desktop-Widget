@@ -304,6 +304,7 @@ function renderPrimaryEntityCard(cardEl, entityId) {
   control.dataset.primaryCard = 'true';
 
   cardEl.classList.add('primary-entity-card');
+  cardEl.classList.toggle('primary-light-card', resolvedEntityId.startsWith('light.'));
   cardEl.dataset.primaryType = 'entity';
   cardEl.dataset.entityId = resolvedEntityId;
   if (entity?.state) {
@@ -320,7 +321,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (!cardEl) return;
 
   cardEl.dataset.primarySlot = String(slotIndex);
-  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'primary-entity-card', 'unavailable-entity', 'primary-card-hidden');
+  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'primary-entity-card', 'primary-light-card', 'unavailable-entity', 'primary-card-hidden');
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
   cardEl.title = '';
@@ -1276,7 +1277,7 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (status) {
     status.textContent = isOn
       ? `${safePct}% brightness`
-      : 'Tap power or a preset';
+      : 'Use slider or a preset';
   }
 
   const slider = root.querySelector('.desktop-pin-light-slider');
@@ -1284,12 +1285,6 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
     slider.value = String(safePct);
   }
 
-  const powerBtn = root.querySelector('.desktop-pin-light-power');
-  if (powerBtn) {
-    powerBtn.textContent = isOn ? 'On' : 'Off';
-    powerBtn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
-    powerBtn.dataset.active = isOn ? 'true' : 'false';
-  }
 }
 
 function updateExistingDesktopPinLightControl(root, entity) {
@@ -1367,15 +1362,14 @@ function createDesktopPinLightControlElement(entity) {
   div.innerHTML = `
     <div class="desktop-pin-light-shell">
       <div class="desktop-pin-light-topline">
+        <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
-          <div class="desktop-pin-light-status">${isOn ? `${brightnessPct}% brightness` : 'Tap power or a preset'}</div>
+          <div class="desktop-pin-light-status">${isOn ? `${brightnessPct}% brightness` : 'Use slider or a preset'}</div>
         </div>
-        <button class="desktop-pin-light-power" type="button" aria-label="Toggle light" aria-pressed="${isOn ? 'true' : 'false'}" data-active="${isOn ? 'true' : 'false'}">${isOn ? 'On' : 'Off'}</button>
       </div>
       <div class="desktop-pin-light-brightness">
         <div class="desktop-pin-light-brightness-head">
-          <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
           <div class="desktop-pin-light-brightness-copy">
             <div class="desktop-pin-light-brightness-label">Brightness</div>
             <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : 'Off'}</div>
@@ -1401,18 +1395,6 @@ function createDesktopPinLightControlElement(entity) {
     event.preventDefault();
     event.stopPropagation();
   };
-
-  const powerBtn = div.querySelector('.desktop-pin-light-power');
-  if (powerBtn) {
-    ['pointerdown', 'mousedown'].forEach((eventName) => {
-      powerBtn.addEventListener(eventName, stopEvent, true);
-    });
-    powerBtn.addEventListener('click', (event) => {
-      stopEvent(event);
-      const currentEntity = state.STATES?.[entity.entity_id] || entity;
-      queueOnOffToggle(currentEntity);
-    }, true);
-  }
 
   const slider = div.querySelector('.desktop-pin-light-slider');
   if (slider) {
