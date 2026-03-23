@@ -753,7 +753,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-light-control:hover {
-  transform: translateY(-1px);
+  transform: none;
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow:
     0 24px 44px rgba(0, 0, 0, 0.4),
@@ -1235,7 +1235,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-panel-control:hover {
-  transform: translateY(-1px);
+  transform: none;
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.45),
@@ -2717,7 +2717,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .control-item:hover {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
-  transform: translateY(-2px);
+  transform: none;
   box-shadow:
     var(--shadow-md),
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
