@@ -19,6 +19,23 @@ function getWebSocketErrorMessage(event) {
   return 'WebSocket connection failed';
 }
 
+function getDesktopPinServiceProxyContext(serviceData = {}) {
+  if (typeof window === 'undefined') return null;
+  if (!window?.electronAPI?.requestDesktopPinAction) return null;
+
+  const params = new URLSearchParams(window.location?.search || '');
+  if (params.get('mode') !== 'desktop-pin') return null;
+
+  const requestedEntityId = typeof serviceData?.entity_id === 'string'
+    ? serviceData.entity_id.trim()
+    : '';
+  const fallbackEntityId = (params.get('entityId') || '').trim();
+  const entityId = requestedEntityId || fallbackEntityId;
+
+  if (!entityId) return null;
+  return { entityId };
+}
+
 class WebSocketManager extends EventEmitter {
   constructor() {
     super();
@@ -158,6 +175,31 @@ class WebSocketManager extends EventEmitter {
 
   callService(domain, service, serviceData) {
     try {
+      const proxyContext = getDesktopPinServiceProxyContext(serviceData);
+      if ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && proxyContext) {
+        const proxiedPromise = window.electronAPI.requestDesktopPinAction(
+          proxyContext.entityId,
+          'service-call',
+          {
+            domain,
+            service,
+            serviceData: serviceData || {},
+          }
+        ).then((response) => {
+          if (response && response.success === false) {
+            const details = response.error || {};
+            const message = details.message || `${domain}.${service} failed`;
+            const serviceError = new Error(message);
+            if (details.code) serviceError.code = details.code;
+            serviceError.details = details;
+            throw serviceError;
+          }
+          return response;
+        });
+        proxiedPromise.id = null;
+        return proxiedPromise;
+      }
+
       const requestPromise = this.request({
         type: 'call_service',
         domain,

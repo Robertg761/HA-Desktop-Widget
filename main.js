@@ -637,6 +637,12 @@ function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrosted
   }
 }
 
+function applyDesktopPinWindowEffects(targetWindow, currentConfig) {
+  // Desktop pins intentionally keep native acrylic/vibrancy disabled so the
+  // rounded CSS shape does not reveal a square backdrop during refreshes.
+  applyWindowEffectsToWindow(targetWindow, currentConfig, false);
+}
+
 function getDesktopPinBounds(entityId, existingBounds = null) {
   const fallbackIndex = Object.keys(config?.desktopPins || {}).length;
   return clampDesktopPinBounds(existingBounds || {}, entityId, fallbackIndex);
@@ -884,7 +890,7 @@ function createDesktopPinWindow(entityId, options = {}) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
   applyDesktopPinWindowShape(pinWindow, pinBounds);
-  applyWindowEffectsToWindow(pinWindow, config, false);
+  applyDesktopPinWindowEffects(pinWindow, config);
   applyDesktopPinEditModeToWindow(pinWindow);
 
   const persistBounds = () => {
@@ -975,7 +981,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
       log.warn('Failed to refresh desktop pin window state:', error.message);
     }
     applyDesktopPinEditModeToWindow(window);
-    applyWindowEffectsToWindow(window, config);
+    applyDesktopPinWindowEffects(window, config);
     sendDesktopPinUpdate(entityId, { type: 'config' });
   });
 }
@@ -1013,7 +1019,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
     }
 
     if (previousConfig?.frostedGlass !== nextConfig?.frostedGlass) {
-      applyWindowEffectsToWindow(window, nextConfig);
+      applyDesktopPinWindowEffects(window, nextConfig);
     }
   });
 }

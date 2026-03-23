@@ -1280,6 +1280,13 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
       : 'Use slider or a preset';
   }
 
+  const powerButton = root.querySelector('.desktop-pin-light-power');
+  if (powerButton) {
+    powerButton.textContent = isOn ? 'On' : 'Off';
+    powerButton.dataset.active = isOn ? 'true' : 'false';
+    powerButton.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+  }
+
   const slider = root.querySelector('.desktop-pin-light-slider');
   if (slider && slider.value !== String(safePct)) {
     slider.value = String(safePct);
@@ -1367,6 +1374,7 @@ function createDesktopPinLightControlElement(entity) {
           <div class="desktop-pin-light-name">${displayName}</div>
           <div class="desktop-pin-light-status">${isOn ? `${brightnessPct}% brightness` : 'Use slider or a preset'}</div>
         </div>
+        <button class="desktop-pin-light-power" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${isOn ? 'On' : 'Off'}</button>
       </div>
       <div class="desktop-pin-light-brightness">
         <div class="desktop-pin-light-brightness-head">
@@ -1446,6 +1454,26 @@ function createDesktopPinLightControlElement(entity) {
       queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
     }, true);
   });
+
+  bindDesktopPinButton(div.querySelector('.desktop-pin-light-power'), () => {
+    toggleEntity(state.STATES?.[entity.entity_id] || entity);
+  });
+
+  div.addEventListener('click', (event) => {
+    if (typeof event.button === 'number' && event.button !== 0) return;
+    if (shouldBlockInteraction(div)) {
+      stopDesktopPinEvent(event, true);
+      return;
+    }
+
+    const target = event.target;
+    if (target instanceof Element && target.closest('.desktop-pin-light-slider, .desktop-pin-light-preset')) {
+      return;
+    }
+
+    stopDesktopPinEvent(event, true);
+    toggleEntity(state.STATES?.[entity.entity_id] || entity);
+  }, true);
 
   return div;
 }
@@ -3921,6 +3949,25 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {} }) {
     const supportProfile = getDesktopPinSupportProfile(entity);
 
     switch (action) {
+      case 'service-call': {
+        const domain = typeof payload?.domain === 'string' && payload.domain.trim()
+          ? payload.domain.trim()
+          : getEntityDomain(entity.entity_id);
+        const serviceName = typeof payload?.service === 'string' ? payload.service.trim() : '';
+        const serviceData = payload?.serviceData && typeof payload.serviceData === 'object'
+          ? payload.serviceData
+          : {};
+
+        if (!domain || !serviceName) {
+          break;
+        }
+
+        websocket.callService(domain, serviceName, {
+          entity_id: resolvedEntityId,
+          ...serviceData,
+        }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
+        break;
+      }
       case 'toggle':
         toggleEntity(entity);
         break;

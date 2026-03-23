@@ -86,6 +86,7 @@ function clearReconnectTimer() {
 }
 
 function connectWebSocket() {
+  if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
   websocket.connect();
 }
@@ -730,9 +731,6 @@ async function initializeDesktopPinMode() {
       setDesktopPinConnectionIssue('');
     }
     renderCurrentMode();
-    if (desktopPinUrl && desktopPinToken && desktopPinToken !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      connectWebSocket();
-    }
   } catch (error) {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);

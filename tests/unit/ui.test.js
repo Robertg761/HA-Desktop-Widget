@@ -1667,6 +1667,33 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(rerenderedSlider.value).toBe('82');
     });
 
+    it('toggles desktop light tiles when clicking the non-control surface', () => {
+      state.setStates({
+        'light.living_room': {
+          entity_id: 'light.living_room',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Living Room Light',
+            brightness: 140
+          }
+        }
+      });
+
+      ui.renderDesktopPinnedTile('light.living_room', state.STATES['light.living_room']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      const name = control?.querySelector('.desktop-pin-light-name');
+
+      expect(control).toBeTruthy();
+      expect(name).toBeTruthy();
+
+      name.click();
+
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
+        entity_id: 'light.living_room'
+      });
+    });
+
     it('keeps desktop pin optimistic light toggles in place without dropping focus', async () => {
       state.setStates({
         'light.office': {

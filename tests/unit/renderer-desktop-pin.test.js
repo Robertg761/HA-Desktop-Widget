@@ -262,6 +262,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(document.body.dataset.renderedMode).toBe('desktop-pin');
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
+    expect(mockWebsocket.connect).not.toHaveBeenCalled();
 
     focusBtn.click();
 
