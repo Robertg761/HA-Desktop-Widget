@@ -108,14 +108,14 @@ html {
      TYPOGRAPHY SCALE
      ============================================ */
 
-  --font-size-xs: 0.625rem;   /* 10px */
-  --font-size-sm: 0.75rem;    /* 12px */
+  --font-size-xs: 0.625rem; /* 10px */
+  --font-size-sm: 0.75rem; /* 12px */
   --font-size-base: 0.875rem; /* 14px */
-  --font-size-md: 1rem;       /* 16px */
-  --font-size-lg: 1.125rem;   /* 18px */
-  --font-size-xl: 1.25rem;    /* 20px */
-  --font-size-2xl: 1.5rem;    /* 24px */
-  --font-size-3xl: 1.875rem;  /* 30px */
+  --font-size-md: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
 
   --font-weight-normal: 400;
   --font-weight-medium: 500;
@@ -131,27 +131,27 @@ html {
      ============================================ */
 
   --space-0: 0;
-  --space-1: 0.125rem;  /* 2px */
-  --space-2: 0.25rem;   /* 4px */
-  --space-3: 0.5rem;    /* 8px */
-  --space-4: 0.75rem;   /* 12px */
-  --space-5: 1rem;      /* 16px */
-  --space-6: 1.5rem;    /* 24px */
-  --space-8: 2rem;      /* 32px */
-  --space-10: 2.5rem;   /* 40px */
-  --space-12: 3rem;     /* 48px */
-  --space-16: 4rem;     /* 64px */
+  --space-1: 0.125rem; /* 2px */
+  --space-2: 0.25rem; /* 4px */
+  --space-3: 0.5rem; /* 8px */
+  --space-4: 0.75rem; /* 12px */
+  --space-5: 1rem; /* 16px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  --space-10: 2.5rem; /* 40px */
+  --space-12: 3rem; /* 48px */
+  --space-16: 4rem; /* 64px */
 
   /* ============================================
      BORDER RADIUS
      ============================================ */
 
   --radius-none: 0;
-  --radius-sm: 0.25rem;   /* 4px */
-  --radius-md: 0.5rem;    /* 8px */
-  --radius-lg: 0.75rem;   /* 12px */
-  --radius-xl: 1rem;      /* 16px */
-  --radius-2xl: 1.5rem;   /* 24px */
+  --radius-sm: 0.25rem; /* 4px */
+  --radius-md: 0.5rem; /* 8px */
+  --radius-lg: 0.75rem; /* 12px */
+  --radius-xl: 1rem; /* 16px */
+  --radius-2xl: 1.5rem; /* 24px */
   --radius-full: 9999px;
 
   /* ============================================
@@ -244,7 +244,7 @@ body.frosted-glass {
   background: transparent !important;
   backdrop-filter: blur(var(--bg-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(180%);
-  
+
   /* Glass-specific CSS variables for content containers */
   --bg-color: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.45));
   --bg-elevated: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
@@ -255,12 +255,21 @@ body.frosted-glass {
   --surface-1: rgba(var(--frosted-surface-rgb, 25, 25, 30), var(--frosted-surface-alpha, 0.45));
   --surface-2: rgba(var(--frosted-elevated-rgb, 35, 35, 40), var(--frosted-elevated-alpha, 0.5));
   --surface-3: rgba(var(--frosted-elevated-rgb, 45, 45, 50), var(--frosted-elevated-alpha, 0.5));
-  --surface-hover: rgba(var(--frosted-surface-hover-rgb, 50, 50, 55), var(--frosted-surface-hover-alpha, 0.6));
+  --surface-hover: rgba(
+    var(--frosted-surface-hover-rgb, 50, 50, 55),
+    var(--frosted-surface-hover-alpha, 0.6)
+  );
   --card-bg: rgba(var(--frosted-card-rgb, 30, 30, 35), var(--frosted-card-alpha, 0.4));
 
   --glass-surface: rgba(var(--frosted-glass-rgb, 30, 30, 35), var(--frosted-glass-alpha, 0.35));
-  --glass-elevated: rgba(var(--frosted-glass-elevated-rgb, 40, 40, 45), var(--frosted-glass-elevated-alpha, 0.45));
-  --glass-overlay: rgba(var(--frosted-glass-overlay-rgb, 20, 20, 25), var(--frosted-glass-overlay-alpha, 0.5));
+  --glass-elevated: rgba(
+    var(--frosted-glass-elevated-rgb, 40, 40, 45),
+    var(--frosted-glass-elevated-alpha, 0.45)
+  );
+  --glass-overlay: rgba(
+    var(--frosted-glass-overlay-rgb, 20, 20, 25),
+    var(--frosted-glass-overlay-alpha, 0.5)
+  );
 
   /* Update blur variable for child elements */
   --bg-blur: var(--frosted-blur, 32px);
@@ -274,22 +283,40 @@ body.theme-light.frosted-glass {
   background: transparent !important;
   backdrop-filter: blur(var(--bg-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(180%);
-  
+
   --bg-color: rgba(var(--frosted-bg-rgb, 245, 245, 250), var(--frosted-bg-alpha, 0.5));
-  --bg-elevated: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.55));
+  --bg-elevated: rgba(
+    var(--frosted-elevated-rgb, 255, 255, 255),
+    var(--frosted-elevated-alpha, 0.55)
+  );
   --bg-primary: rgba(var(--frosted-bg-rgb, 245, 245, 250), var(--frosted-bg-alpha, 0.55));
-  --bg-secondary: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.6));
+  --bg-secondary: rgba(
+    var(--frosted-elevated-rgb, 255, 255, 255),
+    var(--frosted-elevated-alpha, 0.6)
+  );
   --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 240, 240, 245), var(--frosted-bg-alpha, 0.5));
 
   --surface-1: rgba(var(--frosted-surface-rgb, 250, 250, 255), var(--frosted-surface-alpha, 0.5));
-  --surface-2: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.55));
+  --surface-2: rgba(
+    var(--frosted-elevated-rgb, 255, 255, 255),
+    var(--frosted-elevated-alpha, 0.55)
+  );
   --surface-3: rgba(var(--frosted-elevated-rgb, 255, 255, 255), var(--frosted-elevated-alpha, 0.6));
-  --surface-hover: rgba(var(--frosted-surface-hover-rgb, 240, 240, 245), var(--frosted-surface-hover-alpha, 0.65));
+  --surface-hover: rgba(
+    var(--frosted-surface-hover-rgb, 240, 240, 245),
+    var(--frosted-surface-hover-alpha, 0.65)
+  );
   --card-bg: rgba(var(--frosted-card-rgb, 255, 255, 255), var(--frosted-card-alpha, 0.45));
 
   --glass-surface: rgba(var(--frosted-glass-rgb, 255, 255, 255), var(--frosted-glass-alpha, 0.45));
-  --glass-elevated: rgba(var(--frosted-glass-elevated-rgb, 250, 250, 250), var(--frosted-glass-elevated-alpha, 0.55));
-  --glass-overlay: rgba(var(--frosted-glass-overlay-rgb, 245, 245, 250), var(--frosted-glass-overlay-alpha, 0.6));
+  --glass-elevated: rgba(
+    var(--frosted-glass-elevated-rgb, 250, 250, 250),
+    var(--frosted-glass-elevated-alpha, 0.55)
+  );
+  --glass-overlay: rgba(
+    var(--frosted-glass-overlay-rgb, 245, 245, 250),
+    var(--frosted-glass-overlay-alpha, 0.6)
+  );
 
   --bg-blur: var(--frosted-blur, 32px);
 }
@@ -399,10 +426,15 @@ body {
   border-bottom: 1px solid var(--border-color);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .desktop-pin-shell {
+  --desktop-pin-ui-font: 'Aptos', 'Segoe UI', sans-serif;
+  --desktop-pin-display-font: 'Bahnschrift', 'Aptos', 'Segoe UI', sans-serif;
+  --desktop-pin-mono-font: Consolas, 'Roboto Mono', monospace;
   display: none;
   flex-direction: column;
   min-height: 100vh;
@@ -432,11 +464,48 @@ body.desktop-pin-mode #alert-entity-picker-modal {
 body.desktop-pin-mode .desktop-pin-shell {
   display: flex;
   padding: 0;
-  background: transparent;
+  font-family: var(--desktop-pin-ui-font);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(var(--accent-rgb), 0.2), transparent 26%),
+    radial-gradient(circle at 88% 88%, rgba(90, 150, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(7, 10, 16, 0.86), rgba(9, 12, 20, 0.7));
   width: 100vw;
   height: 100vh;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+body.desktop-pin-mode .desktop-pin-shell::before,
+body.desktop-pin-mode .desktop-pin-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+body.desktop-pin-mode .desktop-pin-shell::before {
+  background:
+    linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0.08),
+      transparent 28%,
+      transparent 72%,
+      rgba(255, 255, 255, 0.03)
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.028) 0,
+      rgba(255, 255, 255, 0.028) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+  mix-blend-mode: screen;
+  opacity: 0.52;
+}
+
+body.desktop-pin-mode .desktop-pin-shell::after {
+  background: radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.14), transparent 42%);
+  opacity: 0.55;
 }
 
 body.desktop-pin-mode .desktop-pin-header {
@@ -515,6 +584,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   gap: 10px;
   padding: 6px 8px 8px;
   flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
 }
 
 .desktop-pin-drag-region {
@@ -560,9 +631,21 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   font-size: 11px;
   font-weight: 600;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
   border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 body.desktop-pin-mode .desktop-pin-drag-region {
@@ -576,12 +659,23 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   pointer-events: auto;
 }
 
+body.desktop-pin-mode .desktop-pin-drag-region::before {
+  content: none;
+}
+
 .desktop-pin-action:hover {
-  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.07)),
+    rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 22px rgba(0, 0, 0, 0.2);
 }
 
 .desktop-pin-action:disabled,
-.desktop-pin-action[aria-disabled="true"] {
+.desktop-pin-action[aria-disabled='true'] {
   opacity: 0.48;
   cursor: default;
   background: rgba(255, 255, 255, 0.03);
@@ -605,6 +699,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   min-height: 0;
   padding: 0;
   -webkit-app-region: no-drag;
+  z-index: 1;
 }
 
 .desktop-pin-content .control-item {
@@ -623,22 +718,57 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .desktop-pin-light-control {
-  --desktop-pin-control-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  --desktop-pin-tint-rgb: 255, 203, 104;
+  --desktop-pin-control-shadow:
+    0 20px 38px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   padding: 10px;
   text-align: left;
   background:
-    linear-gradient(155deg, rgba(9, 14, 24, 0.92), rgba(20, 26, 38, 0.84)),
-    radial-gradient(circle at top left, rgba(var(--accent-rgb), var(--desktop-pin-light-glow-opacity, 0.18)), transparent 62%);
+    linear-gradient(155deg, rgba(8, 11, 18, 0.96), rgba(20, 24, 34, 0.9)),
+    radial-gradient(
+      circle at top left,
+      rgba(var(--desktop-pin-tint-rgb), var(--desktop-pin-light-glow-opacity, 0.22)),
+      transparent 62%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 44%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
   box-shadow: var(--desktop-pin-control-shadow);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .desktop-pin-light-control::before {
-  opacity: 0.32;
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12),
+      transparent 26%,
+      transparent 72%,
+      rgba(var(--desktop-pin-tint-rgb), 0.14)
+    ),
+    radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.08), transparent 24%);
+  opacity: 0.85;
+  pointer-events: none;
 }
 
 .desktop-pin-light-control:hover {
-  border-color: transparent;
-  box-shadow: var(--desktop-pin-control-shadow);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 24px 44px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
 }
 
 .desktop-pin-light-shell {
@@ -646,6 +776,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   grid-template-rows: auto auto auto auto;
   gap: 8px;
   min-height: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .desktop-pin-light-topline {
@@ -660,6 +792,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .desktop-pin-light-name {
+  font-family: var(--desktop-pin-ui-font);
   font-size: clamp(10px, 1.9vw, 12px);
   font-weight: 700;
   line-height: 1.1;
@@ -672,8 +805,12 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 .desktop-pin-light-status {
   margin-top: 3px;
-  font-size: clamp(8px, 1.5vw, 10px);
-  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--desktop-pin-display-font);
+  font-size: clamp(7px, 1.4vw, 9px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.56);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -688,15 +825,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   min-width: 44px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 16px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
-.desktop-pin-light-power[data-active="true"] {
-  background: rgba(var(--accent-rgb), 0.22);
-  border-color: rgba(var(--accent-rgb), 0.48);
+.desktop-pin-light-power[data-active='true'] {
+  background: rgba(var(--desktop-pin-tint-rgb), 0.22);
+  border-color: rgba(var(--desktop-pin-tint-rgb), 0.48);
   color: rgba(255, 255, 255, 0.98);
 }
 
@@ -712,12 +858,35 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   grid-template-columns: auto 1fr;
   gap: 10px;
   align-items: center;
+  position: relative;
+  overflow: hidden;
   padding: 8px 10px;
   border-radius: 14px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    radial-gradient(circle at center, rgba(var(--accent-rgb), calc(var(--desktop-pin-light-level, 0) * 0.35)), transparent 70%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    radial-gradient(
+      circle at center,
+      rgba(var(--desktop-pin-tint-rgb), calc(var(--desktop-pin-light-level, 0) * 0.38)),
+      transparent 70%
+    );
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -18px 24px rgba(0, 0, 0, 0.18);
+}
+
+.desktop-pin-light-meter::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08),
+    transparent 36%,
+    transparent 68%,
+    rgba(0, 0, 0, 0.14)
+  );
+  pointer-events: none;
 }
 
 .desktop-pin-light-glyph {
@@ -726,17 +895,22 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 16px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 20px rgba(0, 0, 0, 0.16);
 }
 
 .desktop-pin-light-meter-value {
+  font-family: var(--desktop-pin-display-font);
   font-size: clamp(20px, 5vw, 32px);
   font-weight: 800;
   line-height: 0.95;
   letter-spacing: -0.05em;
   color: rgba(255, 255, 255, 0.98);
+  font-variant-numeric: tabular-nums;
 }
 
 .desktop-pin-light-slider-row {
@@ -747,11 +921,12 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .desktop-pin-light-slider-label {
-  font-size: 8px;
+  font-family: var(--desktop-pin-display-font);
+  font-size: 7px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.42);
+  color: rgba(255, 255, 255, 0.46);
 }
 
 .desktop-pin-light-slider {
@@ -769,166 +944,175 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 .desktop-pin-light-preset {
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.02);
   color: rgba(255, 255, 255, 0.86);
   border-radius: 10px;
   min-height: 28px;
-  font-size: 10px;
+  font-family: var(--desktop-pin-display-font);
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.12em;
   cursor: pointer;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 .desktop-pin-light-preset:hover,
 .desktop-pin-light-preset:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(var(--accent-rgb), 0.46);
-  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--desktop-pin-tint-rgb), 0.46);
+  background: rgba(var(--desktop-pin-tint-rgb), 0.14);
   outline: none;
 }
 
-.desktop-pin-light-control[data-state="off"] .desktop-pin-light-meter {
+.desktop-pin-light-control[data-state='off'] .desktop-pin-light-meter {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
     radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 72%);
 }
 
-.desktop-pin-light-control[data-layout="micro"] {
+.desktop-pin-light-control[data-layout='micro'] {
   padding: 6px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-shell {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-shell {
   gap: 3px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-topline {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-topline {
   gap: 4px;
   align-items: center;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-name {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-name {
   font-size: 9px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-status {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-status {
   display: none;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-power {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-power {
   min-width: 34px;
   padding: 2px 6px;
   font-size: 8px;
   letter-spacing: 0.05em;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-meter {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-meter {
   gap: 5px;
   padding: 4px 5px;
   border-radius: 10px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-glyph {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-glyph {
   width: 18px;
   height: 18px;
   border-radius: 6px;
   font-size: 10px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-meter-value {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-meter-value {
   font-size: 12px;
   letter-spacing: -0.02em;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-slider-row {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-slider-row {
   gap: 4px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-slider-label {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-slider-label {
   font-size: 7px;
   letter-spacing: 0.05em;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-presets {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-presets {
   gap: 3px;
 }
 
-.desktop-pin-light-control[data-layout="micro"] .desktop-pin-light-preset {
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-preset {
   min-height: 20px;
   font-size: 8px;
   border-radius: 8px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-shell {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-shell {
   gap: 5px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-meter {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-meter {
   gap: 7px;
   padding: 5px 6px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-glyph {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-glyph {
   width: 22px;
   height: 22px;
   border-radius: 8px;
   font-size: 12px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-meter-value {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-meter-value {
   font-size: clamp(14px, 4vw, 18px);
   letter-spacing: -0.03em;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-topline {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-topline {
   gap: 6px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-name {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-name {
   font-size: 10px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-power {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-power {
   min-width: 40px;
   padding: 3px 7px;
   font-size: 9px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-slider-row {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider-row {
   gap: 6px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-presets {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-presets {
   gap: 4px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-preset {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-preset {
   min-height: 24px;
   font-size: 9px;
 }
 
-.desktop-pin-light-control[data-layout="compact"] .desktop-pin-light-status {
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-status {
   display: none;
 }
 
-.desktop-pin-light-control[data-layout="roomy"] .desktop-pin-light-shell {
+.desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-shell {
   gap: 10px;
 }
 
-.desktop-pin-light-control[data-layout="roomy"] .desktop-pin-light-meter {
+.desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-meter {
   padding: 10px 12px;
 }
 
-.desktop-pin-light-control[data-layout="roomy"] .desktop-pin-light-power {
+.desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-power {
   min-width: 52px;
 }
 
 .desktop-pin-panel-control {
-  --desktop-pin-control-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  --desktop-pin-control-shadow:
+    0 20px 38px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --desktop-pin-panel-pad: 10px;
   --desktop-pin-panel-gap: 8px;
   --desktop-pin-panel-radius: 16px;
   --desktop-pin-panel-meter-radius: 14px;
+  --desktop-pin-tint-rgb: var(--accent-rgb);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
@@ -939,17 +1123,62 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   height: 100%;
   min-height: 100%;
   min-width: 0;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   padding: var(--desktop-pin-panel-pad);
   text-align: left;
   background:
-    linear-gradient(155deg, rgba(8, 12, 20, 0.92), rgba(22, 28, 40, 0.86)),
-    radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.16), transparent 62%);
+    linear-gradient(155deg, rgba(8, 12, 20, 0.96), rgba(18, 24, 36, 0.9)),
+    radial-gradient(circle at top left, rgba(var(--desktop-pin-tint-rgb), 0.18), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 42%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--desktop-pin-panel-radius);
   box-shadow: var(--desktop-pin-control-shadow);
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .desktop-pin-panel-control:hover {
-  border-color: transparent;
-  box-shadow: var(--desktop-pin-control-shadow);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 24px 44px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
+}
+
+.desktop-pin-panel-control::before,
+.desktop-pin-panel-control::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.desktop-pin-panel-control::before {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12),
+      transparent 24%,
+      transparent 72%,
+      rgba(var(--desktop-pin-tint-rgb), 0.12)
+    ),
+    radial-gradient(circle at 86% 16%, rgba(255, 255, 255, 0.08), transparent 24%);
+  opacity: 0.86;
+}
+
+.desktop-pin-panel-control::after {
+  inset: auto 14px 10px 14px;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  opacity: 0.72;
 }
 
 .desktop-pin-panel-shell,
@@ -959,6 +1188,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   width: 100%;
   min-height: 100%;
   height: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .desktop-pin-panel-topline {
@@ -987,6 +1218,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .desktop-pin-panel-name {
+  font-family: var(--desktop-pin-ui-font);
   font-size: clamp(10px, 1.9vw, 12px);
   font-weight: 700;
   line-height: 1.1;
@@ -998,10 +1230,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .desktop-pin-panel-stat-label,
 .desktop-pin-panel-slider-label,
 .desktop-pin-panel-caption {
+  font-family: var(--desktop-pin-display-font);
   color: rgba(255, 255, 255, 0.58);
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -1014,9 +1247,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 .desktop-pin-panel-kpi,
 .desktop-pin-panel-value {
+  font-family: var(--desktop-pin-display-font);
   color: rgba(255, 255, 255, 0.98);
   font-weight: 800;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 .desktop-pin-panel-kpi {
@@ -1034,13 +1269,37 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   display: grid;
   place-items: center;
   gap: 6px;
+  position: relative;
+  overflow: hidden;
   min-height: 42px;
   padding: 8px 10px;
   border-radius: var(--desktop-pin-panel-meter-radius);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    radial-gradient(circle at center, rgba(var(--accent-rgb), calc(var(--desktop-pin-progress, 0) * 0.34)), transparent 72%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    radial-gradient(
+      circle at center,
+      rgba(var(--desktop-pin-tint-rgb), calc(var(--desktop-pin-progress, 0) * 0.36)),
+      transparent 72%
+    );
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -18px 24px rgba(0, 0, 0, 0.18);
+}
+
+.desktop-pin-panel-meter::after,
+.desktop-pin-cover-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08),
+    transparent 36%,
+    transparent 68%,
+    rgba(0, 0, 0, 0.14)
+  );
+  pointer-events: none;
 }
 
 .desktop-pin-panel-glyph,
@@ -1050,18 +1309,25 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   width: 28px;
   height: 28px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 20px rgba(0, 0, 0, 0.16);
   font-size: 15px;
 }
 
-.desktop-pin-fan-glyph[data-active="true"] {
+.desktop-pin-fan-glyph[data-active='true'] {
   animation: desktop-pin-fan-spin 1.6s linear infinite;
 }
 
 @keyframes desktop-pin-fan-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .desktop-pin-panel-stat,
@@ -1079,13 +1345,16 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .desktop-pin-panel-stat {
   padding: 6px 8px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .desktop-pin-panel-stat-emphasis {
-  background: rgba(var(--accent-rgb), 0.12);
-  border-color: rgba(var(--accent-rgb), 0.2);
+  background: rgba(var(--desktop-pin-tint-rgb), 0.14);
+  border-color: rgba(var(--desktop-pin-tint-rgb), 0.24);
 }
 
 .desktop-pin-panel-slider-row {
@@ -1136,13 +1405,26 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   padding: 6px 8px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.92);
+  font-family: var(--desktop-pin-ui-font);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 16px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .desktop-pin-panel-button-icon,
@@ -1156,31 +1438,39 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   white-space: nowrap;
 }
 
-.desktop-pin-panel-button[data-active="true"] {
-  background: rgba(var(--accent-rgb), 0.18);
-  border-color: rgba(var(--accent-rgb), 0.4);
+.desktop-pin-panel-button[data-active='true'] {
+  background: rgba(var(--desktop-pin-tint-rgb), 0.18);
+  border-color: rgba(var(--desktop-pin-tint-rgb), 0.4);
 }
 
 .desktop-pin-panel-button:hover,
 .desktop-pin-panel-button:focus-visible {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 20px rgba(0, 0, 0, 0.18);
   outline: none;
 }
 
 .desktop-pin-media-copy {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
 .desktop-pin-media-title {
+  font-family: var(--desktop-pin-ui-font);
   color: rgba(255, 255, 255, 0.96);
   font-size: clamp(11px, 2.3vw, 13px);
   font-weight: 700;
 }
 
 .desktop-pin-media-artist {
+  font-family: var(--desktop-pin-ui-font);
   color: rgba(255, 255, 255, 0.62);
   font-size: 10px;
 }
@@ -1189,13 +1479,21 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   overflow: hidden;
   height: 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .desktop-pin-panel-progress-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.48), rgba(var(--accent-rgb), 0.94));
+  background: linear-gradient(
+    90deg,
+    rgba(var(--desktop-pin-tint-rgb), 0.48),
+    rgba(var(--desktop-pin-tint-rgb), 0.94)
+  );
+  box-shadow: 0 0 16px rgba(var(--desktop-pin-tint-rgb), 0.28);
 }
 
 .desktop-pin-cover-visual {
@@ -1215,7 +1513,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   position: absolute;
   inset: 0;
   top: auto;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(var(--accent-rgb), 0.28));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.18),
+    rgba(var(--desktop-pin-tint-rgb), 0.28)
+  );
   border-top: 1px solid rgba(255, 255, 255, 0.18);
 }
 
@@ -1251,8 +1553,16 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   padding: var(--desktop-pin-scene-hero-pad, clamp(4px, 2vw, 10px));
   border-radius: var(--desktop-pin-scene-hero-radius, clamp(18px, 9vw, 28px));
   background:
-    radial-gradient(circle at center, rgba(var(--accent-rgb), 0.16), transparent 74%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+    radial-gradient(
+      circle at center,
+      rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.18),
+      transparent 74%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 20px 34px rgba(0, 0, 0, 0.18);
 }
 
 .desktop-pin-scene-emoji {
@@ -1269,7 +1579,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .desktop-pin-scene-control {
   --desktop-pin-panel-pad: 0;
   --desktop-pin-panel-gap: 0;
+  --desktop-pin-tint-rgb: 255, 183, 77;
   cursor: pointer;
+  background:
+    radial-gradient(circle at top center, rgba(var(--desktop-pin-tint-rgb), 0.24), transparent 42%),
+    linear-gradient(160deg, rgba(24, 16, 12, 0.96), rgba(40, 24, 18, 0.88));
 }
 
 .desktop-pin-scene-control .desktop-pin-panel-shell,
@@ -1280,17 +1594,98 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .desktop-pin-scene-name {
   max-width: 100%;
   color: rgba(255, 255, 255, 0.92);
+  font-family: var(--desktop-pin-ui-font);
   font-size: var(--desktop-pin-scene-name-font-size, clamp(8px, min(5.2vmin, 14px), 24px));
   font-weight: 800;
   line-height: var(--desktop-pin-scene-name-line-height, 1.1);
   letter-spacing: -0.02em;
   text-align: center;
-  padding: var(--desktop-pin-scene-name-pad-y, clamp(1px, 1vw, 4px)) var(--desktop-pin-scene-name-pad-x, clamp(2px, 4vw, 14px));
+  padding: var(--desktop-pin-scene-name-pad-y, clamp(1px, 1vw, 4px))
+    var(--desktop-pin-scene-name-pad-x, clamp(2px, 4vw, 14px));
   overflow: hidden;
   display: block;
   overflow-wrap: anywhere;
   white-space: normal;
   text-wrap: pretty;
+}
+
+.desktop-pin-climate-control {
+  --desktop-pin-tint-rgb: 255, 132, 96;
+}
+.desktop-pin-fan-control {
+  --desktop-pin-tint-rgb: 116, 214, 255;
+}
+.desktop-pin-cover-control {
+  --desktop-pin-tint-rgb: 172, 153, 255;
+}
+.desktop-pin-media-control {
+  --desktop-pin-tint-rgb: 86, 214, 255;
+}
+
+.desktop-pin-media-control .desktop-pin-panel-actions {
+  grid-template-columns: repeat(3, minmax(46px, 72px));
+  justify-content: center;
+}
+.desktop-pin-toggle-control {
+  --desktop-pin-tint-rgb: 132, 226, 122;
+}
+.desktop-pin-camera-control {
+  --desktop-pin-tint-rgb: 114, 255, 224;
+}
+.desktop-pin-sensor-control {
+  --desktop-pin-tint-rgb: 153, 197, 255;
+}
+.desktop-pin-timer-control {
+  --desktop-pin-tint-rgb: 255, 167, 108;
+}
+.desktop-pin-action-control {
+  --desktop-pin-tint-rgb: 255, 128, 164;
+}
+.desktop-pin-numeric-control {
+  --desktop-pin-tint-rgb: 184, 152, 255;
+}
+.desktop-pin-enum-control {
+  --desktop-pin-tint-rgb: 134, 224, 206;
+}
+.desktop-pin-presence-control {
+  --desktop-pin-tint-rgb: 255, 132, 116;
+}
+.desktop-pin-weather-control {
+  --desktop-pin-tint-rgb: 124, 214, 255;
+}
+.desktop-pin-vacuum-control {
+  --desktop-pin-tint-rgb: 176, 222, 120;
+}
+
+.desktop-pin-toggle-control[data-state='off'],
+.desktop-pin-fan-control[data-state='off'],
+.desktop-pin-vacuum-control[data-state='docked'],
+.desktop-pin-camera-control[data-state='idle'] {
+  --desktop-pin-tint-rgb: 130, 150, 176;
+}
+
+.desktop-pin-media-control[data-state='playing'] .desktop-pin-panel-progress-fill {
+  box-shadow:
+    0 0 16px rgba(var(--desktop-pin-tint-rgb), 0.36),
+    0 0 24px rgba(var(--desktop-pin-tint-rgb), 0.18);
+}
+
+.desktop-pin-action-primary,
+.desktop-pin-toggle-action,
+.desktop-pin-media-play,
+.desktop-pin-camera-open,
+.desktop-pin-weather-focus,
+.desktop-pin-presence-focus {
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.desktop-pin-weather-stats .desktop-pin-panel-stat,
+.desktop-pin-vacuum-actions .desktop-pin-panel-button,
+.desktop-pin-enum-actions .desktop-pin-panel-button,
+.desktop-pin-numeric-actions .desktop-pin-panel-button,
+.desktop-pin-presence-actions .desktop-pin-panel-button {
+  min-height: 30px;
 }
 
 .desktop-pin-toggle-body .desktop-pin-panel-actions {
@@ -1301,147 +1696,148 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 
-.desktop-pin-panel-control[data-dense-variant="tight"] {
+.desktop-pin-panel-control[data-dense-variant='tight'] {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
   --desktop-pin-panel-meter-radius: 12px;
 }
 
-.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-topline {
+.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-topline {
   gap: 6px;
 }
 
-.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-meter,
-.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-cover-frame {
+.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-meter,
+.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-cover-frame {
   min-height: 34px;
   padding: 6px 8px;
 }
 
-.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-button {
+.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-button {
   min-height: 24px;
   padding: 4px 6px;
   border-radius: 9px;
 }
 
-.desktop-pin-panel-control[data-dense-variant="tight"] .desktop-pin-panel-actions {
+.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
   gap: 4px;
 }
 
-.desktop-pin-climate-control[data-dense-variant="tight"] .desktop-pin-climate-target-stat {
+.desktop-pin-climate-control[data-dense-variant='tight'] .desktop-pin-climate-target-stat {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.desktop-pin-climate-control[data-dense-variant="tight"] .desktop-pin-climate-inline-copy {
+.desktop-pin-climate-control[data-dense-variant='tight'] .desktop-pin-climate-inline-copy {
   margin-top: -2px;
 }
 
-.desktop-pin-fan-control[data-dense-variant="tight"] .desktop-pin-panel-actions,
-.desktop-pin-media-control[data-dense-variant="tight"] .desktop-pin-panel-actions {
+.desktop-pin-fan-control[data-dense-variant='tight'] .desktop-pin-panel-actions,
+.desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
+  grid-template-columns: repeat(3, minmax(42px, 64px));
+  justify-content: center;
+}
+
+.desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.desktop-pin-cover-control[data-dense-variant="tight"] .desktop-pin-panel-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.desktop-pin-media-control[data-dense-variant="tight"] .desktop-pin-media-copy {
+.desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-media-copy {
   gap: 1px;
 }
 
-.desktop-pin-media-control[data-dense-variant="tight"] .desktop-pin-panel-progress {
+.desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-panel-progress {
   height: 6px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] {
+.desktop-pin-panel-control[data-layout='micro'] {
   --desktop-pin-panel-pad: 6px;
   --desktop-pin-panel-gap: 4px;
   --desktop-pin-panel-meter-radius: 10px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-topline {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-topline {
   gap: 4px;
   align-items: center;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-name {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-name {
   font-size: 9px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-status {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-status {
   display: none;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-meter,
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-cover-frame {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-meter,
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-cover-frame {
   min-height: 28px;
   padding: 5px 6px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-glyph,
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-fan-glyph {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-glyph,
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-fan-glyph {
   width: 18px;
   height: 18px;
   border-radius: 6px;
   font-size: 10px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-kpi,
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-value {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-kpi,
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-value {
   font-size: 11px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-actions {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-actions {
   gap: 3px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-button {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-button {
   min-height: 20px;
   padding: 3px 5px;
   font-size: 7px;
   border-radius: 8px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-slider-row-solo {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-slider-row-solo {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-climate-summary {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-climate-summary {
   gap: 4px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-panel-stat {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-stat {
   padding: 4px 5px;
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-body {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-scene-body {
   padding: var(--desktop-pin-scene-body-pad, 2px);
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-hero {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-scene-hero {
   padding: var(--desktop-pin-scene-hero-pad, 2px);
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-emoji {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-scene-emoji {
   min-height: 0;
   font-size: var(--desktop-pin-scene-emoji-size, clamp(14px, 22vmin, 42px));
 }
 
-.desktop-pin-panel-control[data-layout="micro"] .desktop-pin-scene-name {
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-scene-name {
   font-size: var(--desktop-pin-scene-name-font-size, clamp(8px, min(4.4vmin, 12px), 13px));
   line-height: var(--desktop-pin-scene-name-line-height, 1.05);
   max-width: 100%;
 }
 
-.desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-scene-name {
+.desktop-pin-panel-control[data-layout='roomy'] .desktop-pin-scene-name {
   font-size: var(--desktop-pin-scene-name-font-size, clamp(18px, 3.2vw, 30px));
 }
 
-.desktop-pin-panel-control[data-layout="roomy"] {
+.desktop-pin-panel-control[data-layout='roomy'] {
   --desktop-pin-panel-pad: 12px;
   --desktop-pin-panel-gap: 10px;
 }
 
-.desktop-pin-panel-control[data-layout="roomy"] .desktop-pin-panel-button {
+.desktop-pin-panel-control[data-layout='roomy'] .desktop-pin-panel-button {
   min-height: 30px;
   font-size: 10px;
 }
@@ -1449,12 +1845,20 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .desktop-pin-empty {
   flex: 1;
   margin: 8px;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
+  --desktop-pin-empty-accent-rgb: var(--accent-rgb);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   padding: 14px 12px;
   color: var(--text-secondary);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    radial-gradient(
+      circle at top left,
+      rgba(var(--desktop-pin-empty-accent-rgb), 0.16),
+      transparent 58%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
     rgba(255, 255, 255, 0.03);
   display: flex;
   flex-direction: column;
@@ -1463,29 +1867,70 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   text-align: center;
   min-height: 0;
   -webkit-app-region: no-drag;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 20px 36px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
 }
 
-.desktop-pin-empty[data-state="waiting"],
-.desktop-pin-empty[data-state="missing"],
-.desktop-pin-empty[data-state="unavailable"],
-.desktop-pin-empty[data-state="unsupported"],
-.desktop-pin-empty[data-state="disconnected"] {
+.desktop-pin-empty::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.1),
+      transparent 24%,
+      transparent 72%,
+      rgba(var(--desktop-pin-empty-accent-rgb), 0.12)
+    ),
+    radial-gradient(circle at 84% 18%, rgba(255, 255, 255, 0.08), transparent 24%);
+  pointer-events: none;
+}
+
+.desktop-pin-empty > * {
+  position: relative;
+  z-index: 1;
+}
+
+.desktop-pin-empty[data-state='waiting'],
+.desktop-pin-empty[data-state='missing'],
+.desktop-pin-empty[data-state='unavailable'],
+.desktop-pin-empty[data-state='unsupported'],
+.desktop-pin-empty[data-state='disconnected'] {
   flex: 1 1 auto;
 }
 
-.desktop-pin-empty[data-state="waiting"] {
-  border-style: solid;
+.desktop-pin-empty[data-state='waiting'] {
+  --desktop-pin-empty-accent-rgb: 100, 181, 246;
+}
+
+.desktop-pin-empty[data-state='missing'] {
+  --desktop-pin-empty-accent-rgb: 255, 183, 77;
+}
+
+.desktop-pin-empty[data-state='unavailable'],
+.desktop-pin-empty[data-state='unsupported'] {
+  --desktop-pin-empty-accent-rgb: 180, 180, 190;
+}
+
+.desktop-pin-empty[data-state='disconnected'] {
+  --desktop-pin-empty-accent-rgb: 244, 143, 177;
 }
 
 .desktop-pin-empty-kicker {
-  font-size: 10px;
+  font-family: var(--desktop-pin-display-font);
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
 
 .desktop-pin-empty-title {
+  font-family: var(--desktop-pin-ui-font);
   font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
@@ -1493,6 +1938,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .desktop-pin-empty-copy {
+  font-family: var(--desktop-pin-ui-font);
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-secondary);
@@ -1627,7 +2073,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   padding: 10px 12px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--accent-rgb), 0.35);
-  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(var(--blur-sm)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(160%);
   opacity: 0;
@@ -1653,7 +2101,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
-.connection-status-tooltip[data-placement="bottom"]::after {
+.connection-status-tooltip[data-placement='bottom']::after {
   top: -8px;
   bottom: auto;
   transform: translateX(-50%) rotate(180deg);
@@ -1769,7 +2217,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   align-items: center;
   backdrop-filter: blur(var(--blur-lg)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   transition: var(--transition-base);
   min-height: 64px;
   overflow: hidden;
@@ -1784,11 +2234,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
   opacity: 0.5;
 }
 
@@ -1796,9 +2242,10 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg),
-              inset 0 1px 0 rgba(255, 255, 255, 0.15),
-              var(--glow-accent);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    var(--glow-accent);
 }
 
 .media-tile-artwork {
@@ -1938,7 +2385,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .media-tile-btn:active {
-  transform: scale(1.0);
+  transform: scale(1);
 }
 
 .media-tile-btn-play {
@@ -1975,7 +2422,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 @keyframes iconGlow {
-  0%, 100% {
+  0%,
+  100% {
     filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
   }
   50% {
@@ -1984,7 +2432,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 /* Hide media tile when no media player is configured */
-.media-tile[style*="display: none"] {
+.media-tile[style*='display: none'] {
   display: none !important;
 }
 
@@ -1998,7 +2446,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   gap: var(--space-3);
   backdrop-filter: blur(var(--blur-lg)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   transition: var(--transition-base);
   position: relative;
   overflow: hidden;
@@ -2015,11 +2465,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
   opacity: 0.5;
 }
 
@@ -2027,19 +2473,16 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg),
-              inset 0 1px 0 rgba(255, 255, 255, 0.15),
-              var(--glow-accent);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    var(--glow-accent);
 }
-
 
 .card-content {
   flex: 1;
   min-width: 0;
 }
-
-
-
 
 /* Sections */
 .controls-section,
@@ -2101,16 +2544,18 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .section-btn.reorganize-active {
   background: var(--accent-bg);
   color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .section-btn.reorganize-active:hover {
   background: rgba(var(--accent-rgb), 0.25);
   color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent),
-              inset 0 1px 0 rgba(255, 255, 255, 0.15),
-              var(--glow-focus);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    var(--glow-focus);
 }
 
 /* Controls grid */
@@ -2139,12 +2584,14 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   align-items: stretch;
   box-sizing: border-box;
   height: auto;
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
 }
 
-.control-item[data-desktop-pinned="true"] {
+.control-item[data-desktop-pinned='true'] {
   border-color: rgba(var(--accent-rgb), 0.36);
   box-shadow:
     var(--shadow-md),
@@ -2159,11 +2606,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(255, 255, 255, 0.08),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
   opacity: 0.7;
 }
 
@@ -2182,9 +2625,10 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1),
-              var(--glow-accent);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    var(--glow-accent);
 }
 
 .control-item:active {
@@ -2198,59 +2642,55 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .control-item.active {
-  background: linear-gradient(135deg,
-    var(--accent) 0%,
-    var(--accent-hover) 100%
-  );
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
   color: #000;
   border-color: var(--accent);
-  box-shadow: var(--shadow-md),
-              inset 0 1px 0 rgba(255, 255, 255, 0.3),
-              var(--glow-accent);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    var(--glow-accent);
 }
 
 .control-item.active::before {
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
 }
 
 /* Data-state based active styling for consistency */
-.control-item[data-state="on"],
-.control-item[data-state="open"],
-.control-item[data-state="unlocked"],
-.control-item[data-state="home"] {
+.control-item[data-state='on'],
+.control-item[data-state='open'],
+.control-item[data-state='unlocked'],
+.control-item[data-state='home'] {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.15), rgba(var(--accent-rgb), 0.05));
   border-color: rgba(var(--accent-rgb), 0.3);
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.1);
 }
 
-.control-item[data-state="on"]:hover,
-.control-item[data-state="open"]:hover,
-.control-item[data-state="unlocked"]:hover,
-.control-item[data-state="home"]:hover {
+.control-item[data-state='on']:hover,
+.control-item[data-state='open']:hover,
+.control-item[data-state='unlocked']:hover,
+.control-item[data-state='home']:hover {
   border-color: rgba(var(--accent-rgb), 0.5);
-  box-shadow: var(--shadow-md), 0 0 0 2px rgba(var(--accent-rgb), 0.2);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 2px rgba(var(--accent-rgb), 0.2);
 }
 
 /* Locked state styling */
-.control-item[data-state="locked"] {
+.control-item[data-state='locked'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.05));
   border-color: rgba(255, 152, 0, 0.3);
 }
 
 /* Climate active state */
-.control-item[data-state="heat"],
-.control-item[data-state="cool"],
-.control-item[data-state="heat_cool"],
-.control-item[data-state="auto"] {
+.control-item[data-state='heat'],
+.control-item[data-state='cool'],
+.control-item[data-state='heat_cool'],
+.control-item[data-state='auto'] {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.15), rgba(var(--accent-rgb), 0.05));
   border-color: rgba(var(--accent-rgb), 0.3);
 }
 
-.control-item[data-state="heat"] {
+.control-item[data-state='heat'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.05));
   border-color: rgba(255, 152, 0, 0.3);
 }
@@ -2576,7 +3016,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Weather Configuration Styles */
@@ -2640,54 +3082,110 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 @keyframes weatherPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 /* Base weather icon animations */
 @keyframes rain {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes snow {
-  0% { transform: rotate(0deg) scale(1); }
-  25% { transform: rotate(5deg) scale(1.02); }
-  75% { transform: rotate(-5deg) scale(1.02); }
-  100% { transform: rotate(0deg) scale(1); }
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(5deg) scale(1.02);
+  }
+  75% {
+    transform: rotate(-5deg) scale(1.02);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
 }
 
 @keyframes wind {
-  0%, 100% { transform: translateX(0) scale(1); }
-  25% { transform: translateX(-1px) scale(1.02); }
-  75% { transform: translateX(1px) scale(1.02); }
+  0%,
+  100% {
+    transform: translateX(0) scale(1);
+  }
+  25% {
+    transform: translateX(-1px) scale(1.02);
+  }
+  75% {
+    transform: translateX(1px) scale(1.02);
+  }
 }
 
 @keyframes sun {
-  0% { transform: rotate(0deg) scale(1); }
-  50% { transform: rotate(180deg) scale(1.1); }
-  100% { transform: rotate(360deg) scale(1); }
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
 }
 
 @keyframes lightning {
-  0%, 90%, 100% { opacity: 1; }
-  5%, 15%, 25%, 35%, 45%, 55%, 65%, 75%, 85% { opacity: 0.3; }
+  0%,
+  90%,
+  100% {
+    opacity: 1;
+  }
+  5%,
+  15%,
+  25%,
+  35%,
+  45%,
+  55%,
+  65%,
+  75%,
+  85% {
+    opacity: 0.3;
+  }
 }
 
 @keyframes cloud {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(2px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(2px);
+  }
 }
 
 @keyframes fog {
-  0%, 100% { opacity: 0.8; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Rain droplets animation */
 @keyframes rainDroplets {
-  0% { 
+  0% {
     transform: translateY(0px) translateX(0px);
     opacity: 0;
   }
@@ -2697,7 +3195,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   90% {
     opacity: 1;
   }
-  100% { 
+  100% {
     transform: translateY(15px) translateX(2px);
     opacity: 0;
   }
@@ -2705,7 +3203,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 /* Snowflakes animation */
 @keyframes snowflakes {
-  0% { 
+  0% {
     transform: translateY(-15px) translateX(0px) rotate(0deg);
     opacity: 0;
   }
@@ -2715,7 +3213,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   90% {
     opacity: 1;
   }
-  100% { 
+  100% {
     transform: translateY(15px) translateX(3px) rotate(360deg);
     opacity: 0;
   }
@@ -2723,11 +3221,21 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 /* Lightning bolts animation */
 @keyframes lightningBolts {
-  0%, 90%, 100% { 
+  0%,
+  90%,
+  100% {
     opacity: 0;
     transform: scale(0.8);
   }
-  5%, 15%, 25%, 35%, 45%, 55%, 65%, 75%, 85% { 
+  5%,
+  15%,
+  25%,
+  35%,
+  45%,
+  55%,
+  65%,
+  75%,
+  85% {
     opacity: 1;
     transform: scale(1.2);
   }
@@ -2735,7 +3243,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 /* Wind particles animation */
 @keyframes windParticles {
-  0% { 
+  0% {
     transform: translateX(-10px) translateY(0px);
     opacity: 0;
   }
@@ -2745,7 +3253,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   90% {
     opacity: 0.6;
   }
-  100% { 
+  100% {
     transform: translateX(10px) translateY(-2px);
     opacity: 0;
   }
@@ -2978,7 +3486,6 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   box-sizing: border-box;
   padding: 0 4px;
 }
-
 
 .status-card.time-card .date-display {
   font-size: 13px;
@@ -3423,8 +3930,13 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 @keyframes brightnessGlow {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
 }
 
 .brightness-value-large {
@@ -3461,12 +3973,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   width: 100%;
   max-width: 280px;
   height: 8px;
-  background: linear-gradient(
-    to right,
-    var(--surface-1) 0%,
-    var(--accent) 50%,
-    #ffd700 100%
-  );
+  background: linear-gradient(to right, var(--surface-1) 0%, var(--accent) 50%, #ffd700 100%);
   border-radius: 4px;
   outline: none;
   cursor: pointer;
@@ -3475,11 +3982,15 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .brightness-slider:hover {
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 4px rgba(var(--accent-rgb), 0.1);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 0 4px rgba(var(--accent-rgb), 0.1);
 }
 
 .brightness-slider:focus {
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 4px rgba(var(--accent-rgb), 0.2);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.2),
+    0 0 0 4px rgba(var(--accent-rgb), 0.2);
 }
 
 .brightness-slider::-webkit-slider-thumb {
@@ -3491,19 +4002,25 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   border: 2px solid var(--accent);
   border-radius: 50%;
   cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 4px rgba(var(--accent-rgb), 0.1);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 0 0 4px rgba(var(--accent-rgb), 0.1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .brightness-slider::-webkit-slider-thumb:hover {
   transform: scale(1.15);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3), 0 0 0 6px rgba(var(--accent-rgb), 0.2);
+  box-shadow:
+    0 3px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 6px rgba(var(--accent-rgb), 0.2);
 }
 
 .brightness-slider::-webkit-slider-thumb:active {
   cursor: grabbing;
   transform: scale(1.05);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 0 0 8px rgba(var(--accent-rgb), 0.3);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    0 0 0 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .brightness-slider::-moz-range-thumb {
@@ -3513,19 +4030,25 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   border: 2px solid var(--accent);
   border-radius: 50%;
   cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 4px rgba(var(--accent-rgb), 0.1);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 0 0 4px rgba(var(--accent-rgb), 0.1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .brightness-slider::-moz-range-thumb:hover {
   transform: scale(1.15);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3), 0 0 0 6px rgba(var(--accent-rgb), 0.2);
+  box-shadow:
+    0 3px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 6px rgba(var(--accent-rgb), 0.2);
 }
 
 .brightness-slider::-moz-range-thumb:active {
   cursor: grabbing;
   transform: scale(1.05);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 0 0 8px rgba(var(--accent-rgb), 0.3);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    0 0 0 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .brightness-presets {
@@ -3708,20 +4231,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   appearance: none;
   width: 100%;
   height: 8px;
-  background: linear-gradient(to right,
+  background: linear-gradient(
+    to right,
     rgba(33, 150, 243, 0.3) 0%,
     var(--accent) 50%,
-    rgba(255, 152, 0, 0.8) 100%);
+    rgba(255, 152, 0, 0.8) 100%
+  );
   border-radius: 4px;
   outline: none;
   transition: var(--transition-base);
 }
 
 .climate-slider:hover {
-  background: linear-gradient(to right,
+  background: linear-gradient(
+    to right,
     rgba(33, 150, 243, 0.5) 0%,
     var(--accent-hover) 50%,
-    rgba(255, 152, 0, 1) 100%);
+    rgba(255, 152, 0, 1) 100%
+  );
 }
 
 .climate-slider::-webkit-slider-thumb {
@@ -3947,20 +4474,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   appearance: none;
   width: 100%;
   height: 8px;
-  background: linear-gradient(to right,
+  background: linear-gradient(
+    to right,
     var(--surface-3) 0%,
     rgba(var(--accent-rgb), 0.3) 30%,
-    var(--accent) 100%);
+    var(--accent) 100%
+  );
   border-radius: 4px;
   outline: none;
   transition: var(--transition-base);
 }
 
 .fan-slider:hover {
-  background: linear-gradient(to right,
+  background: linear-gradient(
+    to right,
     var(--surface-3) 0%,
     rgba(var(--accent-rgb), 0.5) 30%,
-    var(--accent-hover) 100%);
+    var(--accent-hover) 100%
+  );
 }
 
 .fan-slider::-webkit-slider-thumb {
@@ -4156,20 +4687,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   appearance: none;
   width: 100%;
   height: 8px;
-  background: linear-gradient(to right,
+  background: linear-gradient(
+    to right,
     rgba(158, 158, 158, 0.3) 0%,
     rgba(var(--accent-rgb), 0.3) 50%,
-    var(--accent) 100%);
+    var(--accent) 100%
+  );
   border-radius: 4px;
   outline: none;
   transition: var(--transition-base);
 }
 
 .cover-slider:hover {
-  background: linear-gradient(to right,
+  background: linear-gradient(
+    to right,
     rgba(158, 158, 158, 0.5) 0%,
     rgba(var(--accent-rgb), 0.5) 50%,
-    var(--accent-hover) 100%);
+    var(--accent-hover) 100%
+  );
 }
 
 .cover-slider::-webkit-slider-thumb {
@@ -4582,8 +5117,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   overflow: hidden;
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow: var(--shadow-2xl),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    var(--shadow-2xl),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   position: relative;
   animation: modalSlideIn var(--transition-slow) var(--ease-out);
 }
@@ -4595,11 +5131,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(255, 255, 255, 0.2),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
   opacity: 0.6;
 }
 
@@ -4648,10 +5180,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   align-items: center;
   padding: var(--space-5);
   border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
 }
 
 .modal-header h2 {
@@ -4677,7 +5206,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   justify-content: center;
   font-size: var(--font-size-md);
   transition: var(--transition-base);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .close-btn:hover {
@@ -4793,16 +5324,18 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   outline: none;
   border-color: var(--accent);
   background: var(--glass-elevated);
-  box-shadow: var(--glow-focus), inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow:
+    var(--glow-focus),
+    inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.form-group input[type="checkbox"] {
+.form-group input[type='checkbox'] {
   width: auto;
   margin-right: var(--space-2);
   accent-color: var(--accent);
 }
 
-.form-group input[type="range"] {
+.form-group input[type='range'] {
   padding: 0;
   background: transparent;
   box-shadow: none;
@@ -4850,7 +5383,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   max-height: var(--section-body-height, 2000px);
   opacity: 1;
   transform: translateY(0);
-  transition: max-height 180ms ease, opacity 140ms ease, transform 180ms ease, margin-top 180ms ease;
+  transition:
+    max-height 180ms ease,
+    opacity 140ms ease,
+    transform 180ms ease,
+    margin-top 180ms ease;
   overflow: hidden;
   contain: layout paint;
   will-change: max-height, opacity, transform;
@@ -4911,7 +5448,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 .theme-option.selected {
   border-color: var(--swatch, var(--accent));
-  box-shadow: 0 0 0 1px var(--swatch, var(--accent)),
+  box-shadow:
+    0 0 0 1px var(--swatch, var(--accent)),
     0 10px 24px rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);
 }
 
@@ -4920,7 +5458,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   height: 100%;
   border-radius: var(--radius-md);
   background: var(--swatch, var(--accent));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
     0 6px 12px rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);
   flex-shrink: 0;
 }
@@ -4930,12 +5469,18 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   left: 0;
   top: 0;
   transform: translateY(6px);
-  background: linear-gradient(160deg, rgba(var(--swatch-rgb, var(--accent-rgb)), 0.2), var(--glass-elevated));
+  background: linear-gradient(
+    160deg,
+    rgba(var(--swatch-rgb, var(--accent-rgb)), 0.2),
+    var(--glass-elevated)
+  );
   color: var(--text-primary);
   padding: 10px 14px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);
-  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(var(--blur-sm)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(160%);
   opacity: 0;
@@ -4962,7 +5507,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
-.theme-tooltip-flyout[data-placement="bottom"]::after {
+.theme-tooltip-flyout[data-placement='bottom']::after {
   top: -8px;
   bottom: auto;
   transform: translateX(-50%) rotate(180deg);
@@ -5130,7 +5675,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   outline: none;
   border-color: var(--accent);
   background: var(--glass-elevated);
-  box-shadow: var(--glow-focus), inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow:
+    var(--glow-focus),
+    inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .custom-dropdown-value {
@@ -5166,9 +5713,10 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-8px);
-  transition: opacity var(--transition-base),
-              transform var(--transition-base),
-              visibility var(--transition-base);
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base),
+    visibility var(--transition-base);
   z-index: 1000;
 }
 
@@ -5252,7 +5800,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   min-height: 36px;
   display: inline-flex;
   align-items: center;
@@ -5264,18 +5814,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   border-color: var(--border-hover);
   background: var(--glass-elevated);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .btn:active {
   transform: translateY(0);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  box-shadow: var(--glow-focus), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow:
+    var(--glow-focus),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .btn-primary {
@@ -5313,13 +5869,13 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   box-shadow: none;
 }
 
-.btn-secondary:not([id*="cancel"]):not([id*="close"]):not([id*="reset"]) {
+.btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   transition: all 0.2s ease;
 }
 
-.btn-secondary:not([id*="cancel"]):not([id*="close"]):not([id*="reset"]):active {
+.btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']):active {
   transform: scale(0.98);
 }
 
@@ -5333,22 +5889,24 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 /* Neutral actions keep lower emphasis even with accent-forward button styling */
-.btn-secondary[id*="cancel"],
-.btn-secondary[id*="close"],
-.btn-secondary[id*="reset"] {
+.btn-secondary[id*='cancel'],
+.btn-secondary[id*='close'],
+.btn-secondary[id*='reset'] {
   background: transparent;
   color: var(--text-secondary);
   border-color: var(--border-color);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.btn-secondary[id*="cancel"]:hover,
-.btn-secondary[id*="close"]:hover,
-.btn-secondary[id*="reset"]:hover {
+.btn-secondary[id*='cancel']:hover,
+.btn-secondary[id*='close']:hover,
+.btn-secondary[id*='reset']:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .profile-sync-group {
@@ -5590,7 +6148,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-overlay p {
@@ -5613,7 +6173,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 .toast {
   background: var(--surface-3);
-    color: var(--text-color);
+  color: var(--text-color);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 12px 16px;
@@ -5712,7 +6272,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .sortable-drag {
   cursor: grabbing !important;
   transform: scale(1.05) rotate(2deg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), var(--glow-accent);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    var(--glow-accent);
   opacity: 0.95;
   transition: transform 0.2s ease;
   backdrop-filter: blur(var(--blur-md));
@@ -5731,11 +6293,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .drop-zone {
   border: 2px dashed var(--accent);
   background: rgba(var(--accent-rgb), 0.1);
-    border-radius: 8px;
+  border-radius: 8px;
   min-height: 60px;
   display: flex;
-    align-items: center;
-    justify-content: center;
+  align-items: center;
+  justify-content: center;
   color: var(--accent);
   font-size: 12px;
   margin: 4px 0;
@@ -5771,8 +6333,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   align-items: center;
   justify-content: center;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: all var(--transition-base);
   pointer-events: auto;
   -webkit-user-drag: none;
@@ -5782,8 +6345,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .reorganize-mode .control-item .remove-btn:hover {
   background: rgba(183, 28, 28, 1);
   transform: scale(1.15);
-  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.6),
-              inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 4px 12px rgba(211, 47, 47, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .reorganize-mode .control-item .remove-btn:active {
@@ -5873,8 +6437,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   align-items: center;
   justify-content: center;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: all var(--transition-base);
   pointer-events: auto;
   -webkit-user-drag: none;
@@ -5884,8 +6449,9 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 .reorganize-mode .control-item .rename-btn:hover {
   background: rgba(21, 101, 192, 1);
   transform: scale(1.15);
-  box-shadow: 0 4px 12px rgba(25, 118, 210, 0.6),
-              inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 4px 12px rgba(25, 118, 210, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .reorganize-mode .control-item .rename-btn:active {
@@ -5932,14 +6498,14 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   outline: none;
 }
 
-.reorganize-mode .control-item .desktop-pin-quick-toggle[data-active="true"] {
+.reorganize-mode .control-item .desktop-pin-quick-toggle[data-active='true'] {
   color: var(--accent);
   border-color: rgba(var(--accent-rgb), 0.38);
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.24), rgba(var(--accent-rgb), 0.08));
 }
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle:disabled,
-.reorganize-mode .control-item .desktop-pin-quick-toggle[aria-disabled="true"] {
+.reorganize-mode .control-item .desktop-pin-quick-toggle[aria-disabled='true'] {
   cursor: not-allowed;
   color: rgba(255, 255, 255, 0.56);
   border-color: rgba(255, 255, 255, 0.08);
@@ -5951,7 +6517,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle:disabled:hover,
-.reorganize-mode .control-item .desktop-pin-quick-toggle[aria-disabled="true"]:hover {
+.reorganize-mode .control-item .desktop-pin-quick-toggle[aria-disabled='true']:hover {
   color: rgba(255, 255, 255, 0.56);
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(10, 14, 24, 0.9);
@@ -5974,7 +6540,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   left: 0;
   width: 100%;
   height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6120,38 +6686,39 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 /* Timer states */
-.timer-entity[data-state="active"] {
+.timer-entity[data-state='active'] {
   background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.08));
   border-color: rgba(76, 175, 80, 0.4);
   animation: timerPulse 2s ease-in-out infinite;
 }
 
-.timer-entity[data-state="paused"] {
+.timer-entity[data-state='paused'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.08));
   border-color: rgba(255, 152, 0, 0.4);
 }
 
-.timer-entity[data-state="idle"] {
+.timer-entity[data-state='idle'] {
   background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
   border-color: rgba(158, 158, 158, 0.3);
 }
 
 @keyframes timerPulse {
-  0%, 100% { 
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
   }
-  50% { 
+  50% {
     box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
   }
 }
 
 /* Timer sensor specific states */
-.timer-entity[data-state="unknown"] {
+.timer-entity[data-state='unknown'] {
   background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
   border-color: rgba(158, 158, 158, 0.3);
 }
 
-.timer-entity[data-state="unavailable"] {
+.timer-entity[data-state='unavailable'] {
   background: linear-gradient(135deg, rgba(244, 67, 54, 0.1), rgba(244, 67, 54, 0.05));
   border-color: rgba(244, 67, 54, 0.3);
 }
@@ -6285,10 +6852,12 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 @keyframes marquee-scroll {
-  0%, 10% {
+  0%,
+  10% {
     transform: translateX(0%);
   }
-  90%, 100% {
+  90%,
+  100% {
     transform: translateX(calc(-100% + 80px));
   }
 }
@@ -6330,7 +6899,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .media-btn:active {
-  transform: scale(1.0);
+  transform: scale(1);
 }
 
 .media-btn:focus-visible {
@@ -6378,52 +6947,52 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .play-pause-btn.is-active,
-.media-player-entity[data-media-playing="true"] .play-pause-btn {
+.media-player-entity[data-media-playing='true'] .play-pause-btn {
   color: var(--accent);
   animation: iconGlow 2s ease-in-out infinite;
 }
 
-.media-player-entity[data-media-playing="true"] .play-pause-btn:hover {
+.media-player-entity[data-media-playing='true'] .play-pause-btn:hover {
   color: var(--accent-hover);
   transform: scale(1.25);
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
 }
 
 /* Media Player State Indicators */
-.media-player-entity[data-state="playing"] {
+.media-player-entity[data-state='playing'] {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(var(--accent-rgb), 0.05));
   border-color: rgba(var(--accent-rgb), 0.3);
 }
 
-.media-player-entity[data-state="paused"] {
+.media-player-entity[data-state='paused'] {
   background: linear-gradient(135deg, rgba(255, 183, 77, 0.1), rgba(255, 183, 77, 0.05));
   border-color: rgba(255, 183, 77, 0.3);
 }
 
-.media-player-entity[data-state="idle"],
-.media-player-entity[data-state="off"] {
+.media-player-entity[data-state='idle'],
+.media-player-entity[data-state='off'] {
   background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
   border-color: rgba(158, 158, 158, 0.3);
 }
 
 /* Condensed state for idle/off media players */
-.media-player-entity[data-state="idle"] .media-info,
-.media-player-entity[data-state="off"] .media-info {
+.media-player-entity[data-state='idle'] .media-info,
+.media-player-entity[data-state='off'] .media-info {
   display: none;
 }
 
-.media-player-entity[data-state="idle"] .media-controls,
-.media-player-entity[data-state="off"] .media-controls {
+.media-player-entity[data-state='idle'] .media-controls,
+.media-player-entity[data-state='off'] .media-controls {
   display: none;
 }
 
-.media-player-entity[data-state="idle"],
-.media-player-entity[data-state="off"] {
+.media-player-entity[data-state='idle'],
+.media-player-entity[data-state='off'] {
   min-height: 48px;
 }
 
-.media-player-entity[data-state="idle"] .control-info,
-.media-player-entity[data-state="off"] .control-info {
+.media-player-entity[data-state='idle'] .control-info,
+.media-player-entity[data-state='off'] .control-info {
   justify-content: center;
 }
 
@@ -6432,34 +7001,35 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   .media-player-entity {
     min-height: 70px;
   }
-  
+
   .media-controls {
     gap: 4px;
     padding-top: 2px;
   }
-  
+
   .media-btn {
     width: 28px;
     height: 28px;
   }
-  
+
   .media-btn-icon {
     font-size: 14px;
   }
-  
+
   .play-pause-btn {
     width: 34px;
     height: 30px;
   }
-  
+
   .media-title {
     font-size: 0.7em;
   }
-  
-  .media-artist, .media-album {
+
+  .media-artist,
+  .media-album {
     font-size: 0.65em;
   }
-  
+
   .media-player-entity .control-name {
     font-size: 0.8em;
   }
@@ -6478,31 +7048,31 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 
 /* Brightness Slider */
 .brightness-slider-container {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin: 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 20px 0;
 }
 
-.brightness-slider-container input[type="range"] {
-    flex: 1;
+.brightness-slider-container input[type='range'] {
+  flex: 1;
 }
 
 .brightness-value {
-    min-width: 50px;
-    text-align: right;
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--accent);
+  min-width: 50px;
+  text-align: right;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 /* Camera Modal */
 .modal-large {
-    max-width: 900px;
+  max-width: 900px;
 }
 
 .camera-content {
-    max-width: 800px;
+  max-width: 800px;
 }
 
 /* Media Detail Modal */
@@ -6605,7 +7175,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .media-detail-controls .btn:active {
-  transform: scale(1.0);
+  transform: scale(1);
   background: transparent !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -6666,295 +7236,296 @@ body.desktop-pin-mode .desktop-pin-drag-region {
 }
 
 .camera-stream {
-    width: 100%;
-    height: auto;
-    border-radius: 8px;
-    background: #000;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #000;
 }
 
 .camera-img {
-    display: block;
-    max-width: 100%;
-    height: auto;
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .camera-loading {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    z-index: 10;
-    border-radius: 8px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  z-index: 10;
+  border-radius: 8px;
 }
 
 .camera-loading .spinner {
-    width: 50px;
-    height: 50px;
-    border: 4px solid rgba(255, 255, 255, 0.2);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-bottom: 12px;
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
 }
 
 .camera-info {
-    margin-top: 16px;
-    padding: 12px;
-    background: var(--card-bg);
-    border-radius: 8px;
-    font-size: 14px;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--card-bg);
+  border-radius: 8px;
+  font-size: 14px;
 }
 
 .camera-info p {
-    margin: 4px 0;
+  margin: 4px 0;
 }
 
 /* Settings Tabs */
 .modal-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 16px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab-link {
-    padding: 12px 16px;
-    cursor: pointer;
-    border: none;
-    background: none;
-    color: var(--muted-text);
-    font-size: 14px;
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex-shrink: 0;
+  padding: 12px 16px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--muted-text);
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .tab-link.active,
 .tab-link:hover {
-    color: var(--text-color);
-    border-bottom-color: var(--accent);
+  color: var(--text-color);
+  border-bottom-color: var(--accent);
 }
 
 .tab-content {
-    display: none;
+  display: none;
 }
 
 .tab-content.active {
-    display: block;
+  display: block;
 }
 
 /* Hotkeys Tab */
 /* Popup Hotkey Configuration */
 .popup-hotkey-config {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 #popup-hotkey-input {
-    flex: 1 1 200px;
-    min-width: 200px;
-    text-align: center;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    letter-spacing: 0.5px;
-    padding: 8px 12px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-color);
+  flex: 1 1 200px;
+  min-width: 200px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-color);
 }
 
 .help-text {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin: 4px 0 8px 0;
-    line-height: 1.4;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 4px 0 8px 0;
+  line-height: 1.4;
 }
 
 .preset-hotkey-btn {
-    margin: 4px 4px 4px 0;
-    font-family: 'Courier New', monospace;
-    font-size: 11px;
+  margin: 4px 4px 4px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
 }
 
 #hotkeys-list-container {
-    margin-top: 16px;
+  margin-top: 16px;
 }
 
 #hotkey-entity-search {
-    width: 100%;
-    margin-bottom: 12px;
+  width: 100%;
+  margin-bottom: 12px;
 }
 
 #hotkeys-list {
-    max-height: 40vh;
-    overflow-y: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
 }
 
 .hotkey-item {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color);
-    transition: background-color 0.2s ease;
-    min-width: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+  min-width: 0;
 }
 
 .hotkey-item:last-child {
-    border-bottom: none;
+  border-bottom: none;
 }
 
 .hotkey-item:hover {
-    background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .hotkey-item .entity-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-color);
-    flex: 1 1 120px;
-    min-width: 100px;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-color);
+  flex: 1 1 120px;
+  min-width: 100px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hotkey-input-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: nowrap;
-    flex: 0 1 auto;
-    min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .hotkey-input {
-    width: 140px;
-    flex-shrink: 1;
-    min-width: 100px;
-    text-align: center;
-    cursor: pointer;
-    padding: 6px 10px;
-    font-size: 12px;
-    font-family: 'Courier New', monospace;
-    letter-spacing: 0.5px;
+  width: 140px;
+  flex-shrink: 1;
+  min-width: 100px;
+  text-align: center;
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
 }
 
 /* Hotkey Action Custom Dropdown - Compact version */
 .hotkey-action-dropdown {
-    position: relative;
-    width: 120px;
-    flex-shrink: 1;
-    min-width: 100px;
+  position: relative;
+  width: 120px;
+  flex-shrink: 1;
+  min-width: 100px;
 }
 
 .hotkey-action-dropdown .custom-dropdown-trigger {
-    padding: 6px 8px;
-    font-size: 12px;
-    gap: 6px;
-    min-height: auto;
+  padding: 6px 8px;
+  font-size: 12px;
+  gap: 6px;
+  min-height: auto;
 }
 
 .hotkey-action-dropdown .custom-dropdown-arrow {
-    width: 12px;
-    height: 12px;
+  width: 12px;
+  height: 12px;
 }
 
 .hotkey-action-dropdown .custom-dropdown-value {
-    font-size: 12px;
+  font-size: 12px;
 }
 
 .hotkey-action-dropdown .custom-dropdown-menu {
-    font-size: 12px;
-    max-height: 200px;
+  font-size: 12px;
+  max-height: 200px;
 }
 
 .hotkey-action-dropdown .custom-dropdown-option {
-    padding: 6px 8px;
-    font-size: 12px;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .btn-clear-hotkey {
-    width: 24px;
-    height: 24px;
-    flex-shrink: 0;
-    border: 1px solid rgba(var(--accent-rgb), 0.45);
-    background: rgba(var(--accent-rgb), 0.1);
-    color: var(--accent);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: bold;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-clear-hotkey:hover {
-    background: rgba(var(--accent-rgb), 0.18);
-    color: var(--accent-hover);
-    border-color: var(--accent);
-    transform: scale(1.1);
+  background: rgba(var(--accent-rgb), 0.18);
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  transform: scale(1.1);
 }
 
 .hotkey-capture-modal .modal-content {
-    text-align: center;
+  text-align: center;
 }
 
 .hotkey-preview-box {
-    margin: 16px 0;
-    padding: 12px 20px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--surface-2);
-    color: var(--accent);
-    font-size: 18px;
-    min-height: 24px;
+  margin: 16px 0;
+  padding: 12px 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 18px;
+  min-height: 24px;
 }
 
 .hotkey-help {
-    margin-top: 16px;
-    font-size: 12px;
-    color: var(--muted-text);
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted-text);
 }
 
 .hotkey-capture-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 3000;
-    color: white;
-    font-size: 18px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  color: white;
+  font-size: 18px;
 }
 
 /* Global Hotkeys and Alerts Styles */
-.hotkeys-section, .alerts-section {
+.hotkeys-section,
+.alerts-section {
   margin-top: 12px;
   padding: 12px;
   background: var(--surface-2);
@@ -6962,19 +7533,22 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   border: 1px solid var(--border-color);
 }
 
-.hotkeys-info, .alerts-info {
+.hotkeys-info,
+.alerts-info {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.hotkeys-info p, .alerts-info p {
+.hotkeys-info p,
+.alerts-info p {
   margin: 0;
   color: var(--text-secondary);
   font-size: 14px;
 }
 
-.hotkeys-list, .alerts-list {
+.hotkeys-list,
+.alerts-list {
   max-height: 400px;
   overflow-y: auto;
   border: 1px solid var(--border-color);
@@ -6982,7 +7556,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   background: var(--surface-2);
 }
 
-.hotkey-item, .alert-item {
+.hotkey-item,
+.alert-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6991,45 +7566,53 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   transition: background-color 0.2s ease;
 }
 
-.hotkey-item:last-child, .alert-item:last-child {
+.hotkey-item:last-child,
+.alert-item:last-child {
   border-bottom: none;
 }
 
-.hotkey-item:hover, .alert-item:hover {
+.hotkey-item:hover,
+.alert-item:hover {
   background: var(--surface-hover);
 }
 
-.hotkey-info, .alert-info {
+.hotkey-info,
+.alert-info {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.hotkey-icon, .alert-icon {
+.hotkey-icon,
+.alert-icon {
   font-size: 18px;
   width: 24px;
   text-align: center;
 }
 
-.hotkey-details, .alert-details {
+.hotkey-details,
+.alert-details {
   flex: 1;
 }
 
-.hotkey-name, .alert-name {
+.hotkey-name,
+.alert-name {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
-.hotkey-meta, .alert-meta {
+.hotkey-meta,
+.alert-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
 }
 
-.hotkey-type, .alert-type {
+.hotkey-type,
+.alert-type {
   color: var(--accent);
   font-weight: 500;
   background: var(--accent-bg);
@@ -7038,7 +7621,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   font-size: 11px;
 }
 
-.hotkey-combination, .alert-config {
+.hotkey-combination,
+.alert-config {
   color: var(--text-secondary);
   font-family: monospace;
   background: var(--surface-3);
@@ -7047,7 +7631,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   font-size: 11px;
 }
 
-.hotkey-actions, .alert-actions {
+.hotkey-actions,
+.alert-actions {
   display: flex;
   gap: 8px;
 }
@@ -7113,7 +7698,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   margin-bottom: 16px;
 }
 
-.hotkey-btn, .alert-btn {
+.hotkey-btn,
+.alert-btn {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
@@ -7122,35 +7708,42 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   transition: all 0.2s ease;
 }
 
-.hotkey-btn.primary, .alert-btn.primary {
+.hotkey-btn.primary,
+.alert-btn.primary {
   background: var(--primary);
   color: white;
 }
 
-.hotkey-btn.primary:hover, .alert-btn.primary:hover {
+.hotkey-btn.primary:hover,
+.alert-btn.primary:hover {
   background: var(--primary-hover);
 }
 
-.hotkey-btn.secondary, .alert-btn.secondary {
+.hotkey-btn.secondary,
+.alert-btn.secondary {
   background: var(--surface-3);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
 }
 
-.hotkey-btn.secondary:hover, .alert-btn.secondary:hover {
+.hotkey-btn.secondary:hover,
+.alert-btn.secondary:hover {
   background: var(--surface-hover);
 }
 
-.hotkey-btn.danger, .alert-btn.danger {
+.hotkey-btn.danger,
+.alert-btn.danger {
   background: var(--danger);
   color: white;
 }
 
-.hotkey-btn.danger:hover, .alert-btn.danger:hover {
+.hotkey-btn.danger:hover,
+.alert-btn.danger:hover {
   background: var(--danger-hover);
 }
 
-.hotkey-input, .alert-input {
+.hotkey-input,
+.alert-input {
   padding: 6px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -7161,18 +7754,21 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   width: 120px;
 }
 
-.hotkey-input:focus, .alert-input:focus {
+.hotkey-input:focus,
+.alert-input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
-.hotkey-input.invalid, .alert-input.invalid {
+.hotkey-input.invalid,
+.alert-input.invalid {
   border-color: var(--danger);
   background: var(--danger-bg);
 }
 
-.hotkey-help, .alert-help {
+.hotkey-help,
+.alert-help {
   margin-top: 16px;
   padding: 12px;
   background: var(--surface-3);
@@ -7180,19 +7776,22 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   border: 1px solid var(--border-color);
 }
 
-.hotkey-help h4, .alert-help h4 {
+.hotkey-help h4,
+.alert-help h4 {
   margin: 0 0 8px 0;
   color: var(--text-primary);
   font-size: 14px;
 }
 
-.hotkey-help p, .alert-help p {
+.hotkey-help p,
+.alert-help p {
   margin: 4px 0;
   color: var(--text-secondary);
   font-size: 13px;
 }
 
-.hotkey-help code, .alert-help code {
+.hotkey-help code,
+.alert-help code {
   background: var(--surface-2);
   padding: 2px 4px;
   border-radius: 3px;
@@ -7222,11 +7821,11 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   color: var(--text-primary);
 }
 
-.alert-config-options input[type="checkbox"] {
+.alert-config-options input[type='checkbox'] {
   margin: 0;
 }
 
-.alert-config-options input[type="text"] {
+.alert-config-options input[type='text'] {
   padding: 4px 6px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -7236,7 +7835,8 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   width: 80px;
 }
 
-.no-hotkeys, .no-alerts {
+.no-hotkeys,
+.no-alerts {
   padding: 20px;
   text-align: center;
   color: var(--text-secondary);
@@ -7325,7 +7925,7 @@ body.desktop-pin-mode .desktop-pin-drag-region {
   border-color: var(--accent);
 }
 
-.radio-option input[type="radio"] {
+.radio-option input[type='radio'] {
   margin: 0;
   margin-top: 2px;
 }
@@ -7662,8 +8262,8 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-[role="button"]:focus-visible,
-[tabindex]:not([tabindex="-1"]):focus-visible {
+[role='button']:focus-visible,
+[tabindex]:not([tabindex='-1']):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
@@ -7718,7 +8318,7 @@ input:disabled,
 select:disabled,
 textarea:disabled,
 .btn:disabled,
-[aria-disabled="true"] {
+[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
@@ -7732,12 +8332,12 @@ label.disabled {
 }
 
 /* Loading state accessibility */
-[aria-busy="true"] {
+[aria-busy='true'] {
   opacity: 0.6;
   pointer-events: none;
 }
 
-[aria-busy="true"]::after {
+[aria-busy='true']::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -7759,7 +8359,7 @@ label.disabled {
 
 /* Improve error message visibility */
 .error-message,
-[role="alert"] {
+[role='alert'] {
   color: var(--error);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);

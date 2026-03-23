@@ -144,6 +144,7 @@ let mainWindow;
 let tray;
 let config;
 let isQuitting = false;
+const IS_DEV_MODE = process.argv.includes('--dev');
 let windowStateSaveTimer = null;
 const CONFIG_SAVE_DEBOUNCE_MS = 120;
 let configWriteTimer = null;
@@ -187,6 +188,111 @@ const desktopPinContentMinBounds = new Map();
 const latestEntityStates = new Map();
 let hasPublishedHaSnapshot = false;
 let desktopPinEditMode = false;
+const DEV_RENDERER_BUNDLE_PATH = path.join(__dirname, 'dist-renderer', 'renderer.bundle.js');
+const DEV_RELOAD_DEBOUNCE_MS = 220;
+const DEV_RELOAD_RETRY_MS = 160;
+const DEV_RELOAD_MAX_RETRIES = 20;
+let devReloadTimer = null;
+let devReloadWatchersStarted = false;
+const devReloadWatchers = [];
+
+function closeDevReloadWatchers() {
+  if (devReloadTimer) {
+    clearTimeout(devReloadTimer);
+    devReloadTimer = null;
+  }
+
+  while (devReloadWatchers.length) {
+    const watcher = devReloadWatchers.pop();
+    try {
+      watcher?.close?.();
+    } catch (error) {
+      log.warn('Failed to close dev reload watcher:', error.message);
+    }
+  }
+
+  devReloadWatchersStarted = false;
+}
+
+function reloadOpenWindowsIgnoringCache() {
+  const windows = [];
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    windows.push(mainWindow);
+  }
+  desktopPinWindows.forEach((window) => {
+    if (window && !window.isDestroyed()) {
+      windows.push(window);
+    }
+  });
+
+  windows.forEach((window) => {
+    try {
+      window.webContents.reloadIgnoringCache();
+    } catch (error) {
+      log.warn('Failed to reload dev window:', error.message);
+    }
+  });
+}
+
+function attemptDevWindowReload(triggerLabel = 'unknown', attempt = 0) {
+  if (!IS_DEV_MODE || isQuitting) return;
+
+  if (!fs.existsSync(DEV_RENDERER_BUNDLE_PATH) && attempt < DEV_RELOAD_MAX_RETRIES) {
+    devReloadTimer = setTimeout(() => {
+      attemptDevWindowReload(triggerLabel, attempt + 1);
+    }, DEV_RELOAD_RETRY_MS);
+    return;
+  }
+
+  devReloadTimer = null;
+  log.info(`Dev live reload triggered by ${triggerLabel}`);
+  reloadOpenWindowsIgnoringCache();
+}
+
+function scheduleDevWindowReload(triggerPath = '') {
+  if (!IS_DEV_MODE || isQuitting) return;
+  if (devReloadTimer) {
+    clearTimeout(devReloadTimer);
+  }
+
+  const triggerLabel = triggerPath
+    ? path.relative(__dirname, triggerPath)
+    : 'file watcher';
+
+  devReloadTimer = setTimeout(() => {
+    attemptDevWindowReload(triggerLabel);
+  }, DEV_RELOAD_DEBOUNCE_MS);
+}
+
+function watchDevReloadTarget(targetPath, options = {}) {
+  if (!IS_DEV_MODE || !targetPath || !fs.existsSync(targetPath)) return;
+
+  try {
+    const watcher = fs.watch(targetPath, options, (_eventType, fileName) => {
+      const changedPath = fileName
+        ? path.join(targetPath, String(fileName))
+        : targetPath;
+      scheduleDevWindowReload(changedPath);
+    });
+    watcher.on('error', (error) => {
+      log.warn(`Dev reload watcher error for ${targetPath}:`, error.message);
+    });
+    devReloadWatchers.push(watcher);
+  } catch (error) {
+    log.warn(`Unable to watch ${targetPath} for dev reload:`, error.message);
+  }
+}
+
+function startDevLiveReloadWatchers() {
+  if (!IS_DEV_MODE || devReloadWatchersStarted) return;
+  devReloadWatchersStarted = true;
+
+  watchDevReloadTarget(path.join(__dirname, 'index.html'));
+  watchDevReloadTarget(path.join(__dirname, 'styles.css'));
+  watchDevReloadTarget(path.join(__dirname, 'dist-renderer'), { recursive: true });
+
+  log.info('Dev live reload watchers enabled');
+}
 
 function isProfileSyncProviderSupported(provider) {
   if (typeof provider !== 'string') return false;
@@ -1924,7 +2030,7 @@ function createWindow() {
   });
 
   // Open DevTools in development mode
-  if (process.argv.includes('--dev')) {
+  if (IS_DEV_MODE) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
@@ -3211,6 +3317,7 @@ function setupAutoUpdates() {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  closeDevReloadWatchers();
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer);
     windowStateSaveTimer = null;
@@ -3233,6 +3340,7 @@ app.whenReady().then(() => {
   }
 
   loadConfig();
+  startDevLiveReloadWatchers();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
   try {
