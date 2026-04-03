@@ -304,6 +304,17 @@ function createSettingsModalDOM() {
             <div id="primary-cards-list"></div>
           </div>
         </div>
+        <div id="desktop-pins-section" class="personalization-section collapsed">
+          <button type="button" id="desktop-pins-toggle" class="section-toggle" aria-expanded="false">
+            Desktop Pins
+          </button>
+          <div class="section-body">
+            <div id="desktop-pins-current"></div>
+            <input type="text" id="desktop-pins-search" />
+            <div id="desktop-pins-list"></div>
+            <div id="desktop-pins-summary"></div>
+          </div>
+        </div>
         <div id="custom-entity-icons-section" class="personalization-section collapsed">
           <button type="button" id="custom-entity-icons-toggle" class="section-toggle" aria-expanded="false">
             Custom Entity Icons
@@ -402,6 +413,21 @@ describe('Settings + Config Integration', () => {
     const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
     if (customIconsToggle && customIconsToggle.getAttribute('aria-expanded') !== 'true') {
       customIconsToggle.click();
+    }
+  };
+  const openSettingsWithDesktopPinsExpanded = async (uiHooks = undefined) => {
+    const config = state.CONFIG;
+    config.ui = config.ui || {};
+    config.ui.personalizationSectionsCollapsed = {
+      ...(config.ui.personalizationSectionsCollapsed || {}),
+      'desktop-pins-section': false
+    };
+    state.setConfig(config);
+
+    await settings.openSettings(uiHooks);
+    const desktopPinsToggle = document.getElementById('desktop-pins-toggle');
+    if (desktopPinsToggle && desktopPinsToggle.getAttribute('aria-expanded') !== 'true') {
+      desktopPinsToggle.click();
     }
   };
 
@@ -563,15 +589,104 @@ describe('Settings + Config Integration', () => {
 
       // Collapsed sections should not eagerly render heavy lists.
       expect(document.querySelector('[data-primary-assign]')).toBeNull();
+      expect(document.querySelector('[data-desktop-pin-toggle]')).toBeNull();
       expect(document.querySelector('[data-custom-icon-input]')).toBeNull();
 
       const primaryCardsToggle = document.getElementById('primary-cards-toggle');
+      const desktopPinsToggle = document.getElementById('desktop-pins-toggle');
       const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
       primaryCardsToggle.click();
+      desktopPinsToggle.click();
       customIconsToggle.click();
 
       expect(document.querySelector('[data-primary-assign]')).toBeTruthy();
+      expect(document.querySelector('[data-desktop-pin-toggle]')).toBeTruthy();
       expect(document.querySelector('[data-custom-icon-input]')).toBeTruthy();
+    });
+  });
+
+  describe('Desktop Pins', () => {
+    test('desktop pins section hydrates from saved config and allows focusing a saved pin', async () => {
+      state.CONFIG.desktopPins = {
+        'light.living_room': { x: 10, y: 20, width: 176, height: 176 }
+      };
+
+      await openSettingsWithDesktopPinsExpanded();
+
+      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
+      expect(document.getElementById('desktop-pins-summary').textContent)
+        .toContain('persisted when you save settings');
+      expect(document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent).toBe('Unpin');
+
+      const focusButton = document.querySelector('[data-desktop-pin-focus="light.living_room"]');
+      expect(focusButton).toBeTruthy();
+
+      focusButton.click();
+      await Promise.resolve();
+
+      expect(window.electronAPI.focusDesktopPin).toHaveBeenCalledWith('light.living_room');
+    });
+
+    test('desktop pins save persists pending pin changes for favorites only', async () => {
+      state.CONFIG.favoriteEntities = ['light.living_room', 'switch.bedroom'];
+      state.CONFIG.desktopPins = {
+        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
+        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 }
+      };
+
+      await openSettingsWithDesktopPinsExpanded();
+
+      expect(document.querySelector('[data-desktop-pin-toggle="sensor.temperature"]')).toBeNull();
+      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
+
+      document.querySelector('[data-desktop-pin-toggle="light.living_room"]').click();
+      document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').click();
+
+      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
+      expect(document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent).toBe('Pin');
+      expect(document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').textContent).toBe('Unpin');
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.desktopPins).toEqual({
+        'switch.bedroom': {}
+      });
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          desktopPins: {
+            'switch.bedroom': {}
+          }
+        })
+      );
+    });
+
+    test('desktop pins save preserves live bounds updates that happen while settings is open', async () => {
+      state.CONFIG.favoriteEntities = ['light.living_room'];
+      state.CONFIG.desktopPins = {
+        'light.living_room': { x: 10, y: 20, width: 176, height: 176 }
+      };
+
+      await openSettingsWithDesktopPinsExpanded();
+
+      state.setConfig({
+        ...state.CONFIG,
+        desktopPins: {
+          'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+        }
+      });
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.desktopPins).toEqual({
+        'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+      });
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          desktopPins: {
+            'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+          }
+        })
+      );
     });
   });
 

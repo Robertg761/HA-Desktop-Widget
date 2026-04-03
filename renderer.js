@@ -15,6 +15,15 @@ const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
 const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
+const WINDOW_QUERY = new URLSearchParams(window.location.search);
+const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
+const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
+const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
+const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
+let desktopPinEditMode = false;
+let desktopPinBounds = null;
+let desktopPinHasSnapshot = false;
+let desktopPinConnectionIssue = '';
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -77,6 +86,7 @@ function clearReconnectTimer() {
 }
 
 function connectWebSocket() {
+  if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
   websocket.connect();
 }
@@ -92,6 +102,94 @@ function setDisconnectedStatus(detailMessage = '') {
 function setConnectedStatus(detailMessage = DEFAULT_CONNECTED_STATUS_DETAIL) {
   lastDisconnectReason = '';
   uiUtils.setStatus(true, detailMessage);
+}
+
+function setDesktopPinConnectionIssue(detailMessage = '') {
+  desktopPinConnectionIssue = typeof detailMessage === 'string'
+    ? detailMessage.trim()
+    : '';
+}
+
+function getSettingsUiHooks() {
+  return {
+    initUpdateUI: ui.initUpdateUI,
+    renderActiveTab: ui.renderActiveTab,
+    updateMediaTile: ui.updateMediaTile,
+    renderPrimaryCards: ui.renderPrimaryCards,
+    exitReorganizeMode: () => {
+      const container = document.getElementById('quick-controls');
+      if (container && container.classList.contains('reorganize-mode')) {
+        ui.toggleReorganizeMode();
+      }
+    },
+  };
+}
+
+function openSettingsModal() {
+  settings.openSettings(getSettingsUiHooks());
+}
+
+function applyRendererConfig(nextConfig) {
+  if (!nextConfig || !nextConfig.homeAssistant) return;
+  state.setConfig(nextConfig);
+  uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+  uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
+  uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+  uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
+  uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+  uiUtils.applyWindowEffects(state.CONFIG || {});
+}
+
+function renderCurrentMode() {
+  if (IS_DESKTOP_PIN_MODE) {
+    const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
+    document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
+    ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, {
+      hasSnapshot: desktopPinHasSnapshot,
+      connectionIssue: desktopPinConnectionIssue,
+    });
+    return;
+  }
+  ui.renderActiveTab();
+}
+
+async function handleDesktopPinUpdate(message = {}) {
+  try {
+    if (!IS_DESKTOP_PIN_MODE) return;
+    if (message.config?.homeAssistant) {
+      applyRendererConfig(message.config);
+    }
+
+    if (message.entityId && message.entityId !== DESKTOP_PIN_ENTITY_ID) {
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'editMode')) {
+      desktopPinEditMode = !!message.editMode;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'pinBounds')) {
+      desktopPinBounds = message.pinBounds || null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'hasSnapshot')) {
+      desktopPinHasSnapshot = !!message.hasSnapshot;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
+      if (message.entity) {
+        state.setEntityState(message.entity);
+      } else {
+        const nextStates = { ...(state.STATES || {}) };
+        delete nextStates[DESKTOP_PIN_ENTITY_ID];
+        state.setStates(nextStates);
+      }
+    }
+
+    renderCurrentMode();
+  } catch (error) {
+    log.error('Failed to handle desktop pin update:', error);
+  }
 }
 
 function classifyConnectionError(error) {
@@ -230,9 +328,15 @@ window.addEventListener('online', () => {
 window.addEventListener('offline', () => {
   browserReportedOffline = true;
   clearReconnectTimer();
-  setDisconnectedStatus('No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.');
+  const disconnectedMessage = 'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.';
+  setDisconnectedStatus(disconnectedMessage);
+  setDesktopPinConnectionIssue(disconnectedMessage);
   uiUtils.showLoading(false);
-  ui.renderActiveTab();
+  if (IS_SPECIAL_PIN_MODE) {
+    renderCurrentMode();
+  } else {
+    ui.renderActiveTab();
+  }
   showClassifiedConnectionToast(new Error('Browser reported offline'));
 
   // Proactively close stale sockets so reconnect can start fresh once online.
@@ -253,6 +357,7 @@ websocket.on('message', (msg) => {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
       browserReportedOffline = false;
+      setDesktopPinConnectionIssue('');
       resetConnectionToastTracking();
       clearReconnectTimer();
       setConnectedStatus();
@@ -285,17 +390,24 @@ websocket.on('message', (msg) => {
       websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
-      setDisconnectedStatus('Authentication failed. Please check your Home Assistant token in Settings.');
+      const authFailureMessage = 'Authentication failed. Please check your Home Assistant token in Settings.';
+      setDisconnectedStatus(authFailureMessage);
+      setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
       // Show clear error message to user
-      uiUtils.showToast('Authentication failed. Please check your Home Assistant token in Settings.', 'error', 15000);
+      uiUtils.showToast(authFailureMessage, 'error', 15000);
       // Render the UI so user can access settings
-      ui.renderActiveTab();
+      renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
         state.setEntityState(entity);
-        if (ui.isEntityVisible(entity.entity_id)) {
+        window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
+          log.warn('Failed to publish HA entity update to main process:', error);
+        });
+        if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
+          renderCurrentMode();
+        } else if (ui.isEntityVisible(entity.entity_id)) {
           ui.updateEntityInUI(entity);
         }
         alerts.checkEntityAlerts(entity.entity_id, entity.state);
@@ -328,6 +440,13 @@ websocket.on('message', (msg) => {
               favoriteCount: Array.isArray(state.CONFIG?.favoriteEntities) ? state.CONFIG.favoriteEntities.length : 0,
             });
             state.setStates(mergedStates);
+            if (IS_DESKTOP_PIN_MODE) {
+              desktopPinHasSnapshot = true;
+            }
+            setDesktopPinConnectionIssue('');
+            window.electronAPI.publishHaSnapshot(mergedStates).catch((error) => {
+              log.warn('Failed to publish HA snapshot to main process:', error);
+            });
 
             const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
             if (reconciliation.changed) {
@@ -355,10 +474,16 @@ websocket.on('message', (msg) => {
             }
 
             // This is the correct place to render and hide loading
-            ui.renderActiveTab();
+            if (IS_SPECIAL_PIN_MODE) {
+              renderCurrentMode();
+            } else {
+              ui.renderActiveTab();
+            }
             uiUtils.showLoading(false);
 
-            alerts.initializeEntityAlerts();
+            if (!IS_SPECIAL_PIN_MODE) {
+              alerts.initializeEntityAlerts();
+            }
           }
         } else if (msg.id === getServicesId) { // get_services response
           state.setServices(msg.result);
@@ -400,7 +525,11 @@ websocket.on('close', (closeInfo = {}) => {
     }
 
     setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
+    setDesktopPinConnectionIssue(DEFAULT_DISCONNECTED_STATUS_DETAIL);
     uiUtils.showLoading(false);
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    }
 
     scheduleReconnect();
   } catch (error) {
@@ -412,24 +541,34 @@ websocket.on('error', (error) => {
   try {
     log.error('WebSocket error:', error);
     const classifiedIssue = classifyConnectionError(error);
+    let desktopPinIssueMessage = classifiedIssue.message;
     setDisconnectedStatus(classifiedIssue.message);
     uiUtils.showLoading(false); // Hide loading on failure
-
-    // Show the UI with setup message
-    ui.renderActiveTab();
 
     // Show user-friendly error message
     const errorMessage = String(error?.message || '');
     if (errorMessage.includes('default token')) {
-      setDisconnectedStatus('Please configure your Home Assistant token in Settings (gear icon).');
-      uiUtils.showToast('Please configure your Home Assistant token in Settings (gear icon).', 'error', 20000);
+      desktopPinIssueMessage = 'Please configure your Home Assistant token in Settings (gear icon).';
+      setDisconnectedStatus(desktopPinIssueMessage);
+      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (errorMessage.includes('Invalid configuration')) {
-      setDisconnectedStatus('Please configure connection settings (gear icon).');
-      uiUtils.showToast('Please configure connection settings (gear icon).', 'error', 20000);
+      desktopPinIssueMessage = 'Please configure connection settings (gear icon).';
+      setDisconnectedStatus(desktopPinIssueMessage);
+      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
       const toastInfo = showClassifiedConnectionToast(error);
-      setDisconnectedStatus(toastInfo?.message || classifiedIssue.message);
+      desktopPinIssueMessage = toastInfo?.message || classifiedIssue.message;
+      setDisconnectedStatus(desktopPinIssueMessage);
+    }
+
+    setDesktopPinConnectionIssue(desktopPinIssueMessage);
+
+    // Show the UI with the current connection state instead of stale live controls.
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    } else {
+      ui.renderActiveTab();
     }
   } catch (err) {
     log.error('Error handling WebSocket error:', err);
@@ -468,19 +607,8 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
 
 // Listen for open-settings event from tray menu
 window.electronAPI.onOpenSettings(() => {
-  settings.openSettings({
-    initUpdateUI: ui.initUpdateUI,
-    renderActiveTab: ui.renderActiveTab,
-    updateMediaTile: ui.updateMediaTile,
-    renderPrimaryCards: ui.renderPrimaryCards,
-    exitReorganizeMode: () => {
-      // Exit reorganize mode if active
-      const container = document.getElementById('quick-controls');
-      if (container && container.classList.contains('reorganize-mode')) {
-        ui.toggleReorganizeMode();
-      }
-    },
-  });
+  if (IS_SPECIAL_PIN_MODE) return;
+  openSettingsModal();
 });
 
 window.electronAPI.onProfileSyncStatus((status) => {
@@ -492,17 +620,20 @@ window.electronAPI.onProfileSyncStatus((status) => {
 window.electronAPI.onConfigUpdated((nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
-    state.setConfig(nextConfig);
-    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
-    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
-    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
-    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
-    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
-    ui.renderActiveTab();
+    applyRendererConfig(nextConfig);
+    renderCurrentMode();
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }
+});
+
+window.electronAPI.onDesktopPinActionRequested((payload) => {
+  if (IS_DESKTOP_PIN_MODE) return;
+  ui.handleDesktopPinActionRequest(payload);
+});
+
+window.electronAPI.onDesktopPinUpdate((payload) => {
+  void handleDesktopPinUpdate(payload);
 });
 
 /**
@@ -559,10 +690,66 @@ function replaceEmojiIcons() {
  *
  * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
  */
+async function initializeDesktopPinMode() {
+  try {
+    log.info('Initializing desktop pin renderer');
+    const bootstrap = await window.electronAPI.getDesktopPinBootstrap(DESKTOP_PIN_ENTITY_ID);
+    const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
+    desktopPinEditMode = !!bootstrap?.editMode;
+    desktopPinBounds = bootstrap?.pinBounds || null;
+    desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
+
+    if (nextConfig?.homeAssistant) {
+      applyRendererConfig(nextConfig);
+    } else {
+      state.setConfig({
+        homeAssistant: { url: '', token: 'YOUR_LONG_LIVED_ACCESS_TOKEN' },
+        ui: {},
+      });
+    }
+
+    if (bootstrap?.entity) {
+      state.setStates({ [DESKTOP_PIN_ENTITY_ID]: bootstrap.entity });
+    } else {
+      state.setStates({});
+    }
+
+    wireDesktopPinUI();
+    replaceEmojiIcons();
+    uiUtils.showLoading(false);
+    const desktopPinUrl = typeof nextConfig?.homeAssistant?.url === 'string'
+      ? nextConfig.homeAssistant.url.trim()
+      : '';
+    const desktopPinToken = typeof nextConfig?.homeAssistant?.token === 'string'
+      ? nextConfig.homeAssistant.token.trim()
+      : '';
+    if (!desktopPinUrl) {
+      setDesktopPinConnectionIssue('Please configure connection settings (gear icon).');
+    } else if (!desktopPinToken || desktopPinToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+      setDesktopPinConnectionIssue('Please configure your Home Assistant token in Settings (gear icon).');
+    } else {
+      setDesktopPinConnectionIssue('');
+    }
+    renderCurrentMode();
+  } catch (error) {
+    log.error('Desktop pin initialization error:', error);
+    uiUtils.showLoading(false);
+    wireDesktopPinUI();
+    setDesktopPinConnectionIssue('Unable to initialize the desktop tile. Focus the main widget to review your settings.');
+    renderCurrentMode();
+  }
+}
+
 async function init() {
   try {
     log.info('Initializing application');
+    document.body.classList.toggle('desktop-pin-mode', IS_DESKTOP_PIN_MODE);
     uiUtils.showLoading(true);
+    if (IS_DESKTOP_PIN_MODE) {
+      await initializeDesktopPinMode();
+      return;
+    }
+
     uiUtils.initializeConnectionStatusTooltip();
     setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
 
@@ -591,7 +778,7 @@ async function init() {
       return;
     }
 
-    state.setConfig(config);
+    applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
 
@@ -626,14 +813,6 @@ async function init() {
       return;
     }
 
-    // Apply theme and UI preferences from saved config
-    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
-    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
-    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
-    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
-    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
-
     // Start consolidated UI tick scheduler for time/timer/media updates.
     startUiTickScheduler();
 
@@ -643,7 +822,7 @@ async function init() {
 
     // Always hide loading and show UI
     uiUtils.showLoading(false);
-    ui.renderActiveTab();
+    renderCurrentMode();
 
     // Connect to WebSocket in background
     log.info('Connecting to Home Assistant WebSocket');
@@ -670,21 +849,7 @@ function wireUI() {
   try {
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
-      settingsBtn.onclick = () => {
-        settings.openSettings({
-          initUpdateUI: ui.initUpdateUI,
-          renderActiveTab: ui.renderActiveTab,
-          updateMediaTile: ui.updateMediaTile,
-          renderPrimaryCards: ui.renderPrimaryCards,
-          exitReorganizeMode: () => {
-            // Exit reorganize mode if active
-            const container = document.getElementById('quick-controls');
-            if (container && container.classList.contains('reorganize-mode')) {
-              ui.toggleReorganizeMode();
-            }
-          },
-        });
-      };
+      settingsBtn.onclick = openSettingsModal;
     }
 
     const closeSettingsBtn = document.getElementById('close-settings');
@@ -995,6 +1160,137 @@ function wireUI() {
     }
   } catch (error) {
     log.error('Error wiring UI:', error);
+  }
+}
+
+function wireDesktopPinUI() {
+  try {
+    const focusBtn = document.getElementById('desktop-pin-focus-btn');
+    if (focusBtn) {
+      focusBtn.onclick = () => {
+        if (focusBtn.disabled) return;
+        window.electronAPI.requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'focus-main').catch((error) => {
+          log.error('Failed to focus main widget from desktop pin:', error);
+        });
+      };
+    }
+
+    document.querySelectorAll('.desktop-pin-resize-handle').forEach((resizeHandle) => {
+      if (resizeHandle.dataset.bound) return;
+      resizeHandle.dataset.bound = 'true';
+      resizeHandle.addEventListener('pointerdown', (event) => {
+        if (!desktopPinEditMode) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const startX = event.screenX;
+        const startY = event.screenY;
+        const startBounds = desktopPinBounds || {
+          x: window.screenX || 0,
+          y: window.screenY || 0,
+          width: window.outerWidth || window.innerWidth,
+          height: window.outerHeight || window.innerHeight,
+        };
+        const corner = resizeHandle.dataset.corner || 'bottom-right';
+
+        let pendingBounds = null;
+        let resizeInFlight = false;
+        let frameScheduled = false;
+        const pointerId = event.pointerId;
+
+        try {
+          resizeHandle.setPointerCapture(pointerId);
+        } catch {
+          // Ignore pointer capture failures and continue with window listeners.
+        }
+
+        const flushResize = async () => {
+          frameScheduled = false;
+          if (resizeInFlight || !pendingBounds) return;
+          resizeInFlight = true;
+          const nextBounds = pendingBounds;
+          pendingBounds = null;
+
+          try {
+            const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, nextBounds);
+            if (result?.success && result.pinBounds) {
+              desktopPinBounds = result.pinBounds;
+            }
+          } catch (error) {
+            log.error('Failed to resize desktop tile:', error);
+          } finally {
+            resizeInFlight = false;
+            if (pendingBounds) {
+              requestAnimationFrame(flushResize);
+              frameScheduled = true;
+            }
+          }
+        };
+
+        const scheduleResize = (nextBounds) => {
+          pendingBounds = nextBounds;
+          if (!frameScheduled) {
+            requestAnimationFrame(flushResize);
+            frameScheduled = true;
+          }
+        };
+
+        const handlePointerMove = (moveEvent) => {
+          const deltaX = moveEvent.screenX - startX;
+          const deltaY = moveEvent.screenY - startY;
+          const nextBounds = {
+            x: startBounds.x,
+            y: startBounds.y,
+            width: startBounds.width,
+            height: startBounds.height,
+          };
+
+          switch (corner) {
+            case 'top-left':
+              nextBounds.x = Math.round(startBounds.x + deltaX);
+              nextBounds.y = Math.round(startBounds.y + deltaY);
+              nextBounds.width = Math.round(startBounds.width - deltaX);
+              nextBounds.height = Math.round(startBounds.height - deltaY);
+              break;
+            case 'top-right':
+              nextBounds.y = Math.round(startBounds.y + deltaY);
+              nextBounds.width = Math.round(startBounds.width + deltaX);
+              nextBounds.height = Math.round(startBounds.height - deltaY);
+              break;
+            case 'bottom-left':
+              nextBounds.x = Math.round(startBounds.x + deltaX);
+              nextBounds.width = Math.round(startBounds.width - deltaX);
+              nextBounds.height = Math.round(startBounds.height + deltaY);
+              break;
+            case 'bottom-right':
+            default:
+              nextBounds.width = Math.round(startBounds.width + deltaX);
+              nextBounds.height = Math.round(startBounds.height + deltaY);
+              break;
+          }
+
+          scheduleResize(nextBounds);
+        };
+
+        const finishResize = () => {
+          window.removeEventListener('pointermove', handlePointerMove, true);
+          window.removeEventListener('pointerup', finishResize, true);
+          window.removeEventListener('pointercancel', finishResize, true);
+          try {
+            resizeHandle.releasePointerCapture(pointerId);
+          } catch {
+            // no-op
+          }
+        };
+
+        window.addEventListener('pointermove', handlePointerMove, true);
+        window.addEventListener('pointerup', finishResize, true);
+        window.addEventListener('pointercancel', finishResize, true);
+      }, true);
+    });
+  } catch (error) {
+    log.error('Error wiring desktop pin UI:', error);
   }
 }
 

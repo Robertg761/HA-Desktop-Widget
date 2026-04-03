@@ -511,6 +511,9 @@ function applyWindowEffects(config = {}) {
   try {
     const body = document.body;
     const enabled = !!config.frostedGlass;
+    const opacity = Math.max(0.5, Math.min(1, Number(config.opacity) || 1));
+
+    body.style.setProperty('--desktop-pin-window-opacity', opacity.toFixed(3));
 
     if (!enabled) {
       // Remove frosted glass class first

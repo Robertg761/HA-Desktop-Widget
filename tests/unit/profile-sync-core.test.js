@@ -24,6 +24,9 @@ describe('profile-sync-core', () => {
       windowSize: { width: 300, height: 400 },
       alwaysOnTop: true,
       favoriteEntities: ['light.kitchen'],
+      desktopPins: {
+        'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
+      },
       primaryMediaPlayer: 'media_player.office',
       profileSync: { enabled: true, syncScope: { preset: 'custom' } },
     });
@@ -33,6 +36,9 @@ describe('profile-sync-core', () => {
     expect(projected.windowSize).toBeUndefined();
     expect(projected.profileSync).toBeUndefined();
     expect(projected.favoriteEntities).toEqual(['light.kitchen']);
+    expect(projected.desktopPins).toEqual({
+      'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
+    });
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
   });
 
@@ -40,6 +46,9 @@ describe('profile-sync-core', () => {
     const projected = projectSyncProfile(
       {
         favoriteEntities: ['light.kitchen'],
+        desktopPins: {
+          'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
+        },
         ui: { theme: 'dark' },
         globalHotkeys: { enabled: true, hotkeys: {} },
         primaryMediaPlayer: 'media_player.office',
@@ -56,6 +65,9 @@ describe('profile-sync-core', () => {
     );
 
     expect(projected.favoriteEntities).toEqual(['light.kitchen']);
+    expect(projected.desktopPins).toEqual({
+      'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
+    });
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
     expect(projected.ui).toBeUndefined();
     expect(projected.globalHotkeys).toBeUndefined();
@@ -69,11 +81,17 @@ describe('profile-sync-core', () => {
         alwaysOnTop: true,
         ui: { theme: 'dark' },
         favoriteEntities: ['light.local'],
+        desktopPins: {
+          'light.local': { x: 3, y: 4, width: 176, height: 176 }
+        },
       },
       {
         alwaysOnTop: false,
         ui: { theme: 'light' },
         favoriteEntities: ['light.remote'],
+        desktopPins: {
+          'light.remote': { x: 30, y: 40, width: 352, height: 176 }
+        },
       },
       {
         preset: 'custom',
@@ -92,6 +110,9 @@ describe('profile-sync-core', () => {
     expect(merged.alwaysOnTop).toBe(true);
     expect(merged.ui).toEqual({ theme: 'dark' });
     expect(merged.favoriteEntities).toEqual(['light.remote']);
+    expect(merged.desktopPins).toEqual({
+      'light.remote': { x: 30, y: 40, width: 352, height: 176 }
+    });
   });
 
   test('should handle nullish and missing profile fields in projection and merge helpers', () => {

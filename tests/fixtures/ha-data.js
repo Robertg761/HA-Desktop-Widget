@@ -51,6 +51,7 @@ const sampleConfig = {
     'weather.home',
     'media_player.spotify'
   ],
+  desktopPins: {},
   customEntityNames: {
     'light.living_room': 'Main Light',
     'sensor.temperature': 'Room Temp'
@@ -247,6 +248,93 @@ const sampleStates = {
     last_changed: '2025-01-15T09:00:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
     context: { id: 'context_9', parent_id: null, user_id: null }
+  },
+  'button.refresh_router': {
+    entity_id: 'button.refresh_router',
+    state: 'unknown',
+    attributes: {
+      friendly_name: 'Refresh Router'
+    },
+    last_changed: '2025-01-15T09:40:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_10', parent_id: null, user_id: null }
+  },
+  'number.water_heater_target': {
+    entity_id: 'number.water_heater_target',
+    state: '48',
+    attributes: {
+      friendly_name: 'Water Heater Target',
+      min: 40,
+      max: 60,
+      step: 1,
+      unit_of_measurement: '°C'
+    },
+    last_changed: '2025-01-15T09:45:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_11', parent_id: null, user_id: null }
+  },
+  'input_number.night_brightness': {
+    entity_id: 'input_number.night_brightness',
+    state: '2',
+    attributes: {
+      friendly_name: 'Night Brightness',
+      step: 1
+    },
+    last_changed: '2025-01-15T09:46:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_12', parent_id: null, user_id: null }
+  },
+  'select.air_purifier_mode': {
+    entity_id: 'select.air_purifier_mode',
+    state: 'auto',
+    attributes: {
+      friendly_name: 'Air Purifier Mode',
+      options: ['sleep', 'auto', 'boost']
+    },
+    last_changed: '2025-01-15T09:47:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_13', parent_id: null, user_id: null }
+  },
+  'input_select.bedtime_scene': {
+    entity_id: 'input_select.bedtime_scene',
+    state: 'Reading',
+    attributes: {
+      friendly_name: 'Bedtime Scene',
+      options: ['Reading', 'Relax', 'Sleep']
+    },
+    last_changed: '2025-01-15T09:48:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_14', parent_id: null, user_id: null }
+  },
+  'person.robert': {
+    entity_id: 'person.robert',
+    state: 'home',
+    attributes: {
+      friendly_name: 'Robert'
+    },
+    last_changed: '2025-01-15T09:49:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_15', parent_id: null, user_id: null }
+  },
+  'device_tracker.robert_phone': {
+    entity_id: 'device_tracker.robert_phone',
+    state: 'not_home',
+    attributes: {
+      friendly_name: 'Robert Phone'
+    },
+    last_changed: '2025-01-15T09:50:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_16', parent_id: null, user_id: null }
+  },
+  'vacuum.roomba': {
+    entity_id: 'vacuum.roomba',
+    state: 'docked',
+    attributes: {
+      friendly_name: 'Robot Vacuum'
+    },
+    last_changed: '2025-01-15T09:51:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_17', parent_id: null, user_id: null }
   }
 };
 
@@ -306,6 +394,20 @@ const sampleServices = {
       fields: {}
     }
   },
+  automation: {
+    trigger: {
+      name: 'Trigger',
+      description: 'Trigger an automation.',
+      fields: {}
+    }
+  },
+  button: {
+    press: {
+      name: 'Press',
+      description: 'Press a button entity.',
+      fields: {}
+    }
+  },
   climate: {
     turn_on: {
       name: 'Turn on',
@@ -326,6 +428,64 @@ const sampleServices = {
           example: 22
         }
       }
+    }
+  },
+  number: {
+    set_value: {
+      name: 'Set value',
+      description: 'Set the numeric value.',
+      fields: {
+        value: {
+          description: 'Target value',
+          example: 42
+        }
+      }
+    }
+  },
+  input_number: {
+    set_value: {
+      name: 'Set value',
+      description: 'Set the numeric value.',
+      fields: {
+        value: {
+          description: 'Target value',
+          example: 42
+        }
+      }
+    }
+  },
+  select: {
+    select_option: {
+      name: 'Select option',
+      description: 'Select a specific option.',
+      fields: {}
+    },
+    select_next: {
+      name: 'Next option',
+      description: 'Select the next option.',
+      fields: {}
+    },
+    select_previous: {
+      name: 'Previous option',
+      description: 'Select the previous option.',
+      fields: {}
+    }
+  },
+  input_select: {
+    select_option: {
+      name: 'Select option',
+      description: 'Select a specific option.',
+      fields: {}
+    },
+    select_next: {
+      name: 'Next option',
+      description: 'Select the next option.',
+      fields: {}
+    },
+    select_previous: {
+      name: 'Previous option',
+      description: 'Select the previous option.',
+      fields: {}
     }
   },
   media_player: {
@@ -373,6 +533,29 @@ const sampleServices = {
           example: 0.5
         }
       }
+    }
+  }
+  ,
+  vacuum: {
+    start: {
+      name: 'Start',
+      description: 'Start cleaning.',
+      fields: {}
+    },
+    pause: {
+      name: 'Pause',
+      description: 'Pause cleaning.',
+      fields: {}
+    },
+    stop: {
+      name: 'Stop',
+      description: 'Stop cleaning.',
+      fields: {}
+    },
+    return_to_base: {
+      name: 'Return to base',
+      description: 'Return vacuum to base.',
+      fields: {}
     }
   }
 };

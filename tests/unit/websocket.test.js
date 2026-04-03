@@ -77,6 +77,8 @@ describe('WebSocket Manager', () => {
   beforeEach(() => {
     // Clear all mocks
     jest.clearAllMocks();
+    window.electronAPI = undefined;
+    window.history.replaceState({}, '', 'http://localhost/');
 
     // Reset state
     state.setConfig(null);
@@ -484,6 +486,30 @@ describe('WebSocket Manager', () => {
       ).rejects.toThrow('WebSocket not connected');
 
       errorSpy.mockRestore();
+    });
+
+    test('should proxy desktop-pin service calls through the main window when disconnected', async () => {
+      const requestDesktopPinAction = jest.fn().mockResolvedValue({ success: true, forwarded: true });
+      window.electronAPI = { requestDesktopPinAction };
+      window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
+      wsManager.ws.readyState = MockWebSocket.CLOSED;
+
+      const result = await wsManager.callService('light', 'turn_on', {
+        entity_id: 'light.living_room'
+      });
+
+      expect(requestDesktopPinAction).toHaveBeenCalledWith(
+        'light.living_room',
+        'service-call',
+        {
+          domain: 'light',
+          service: 'turn_on',
+          serviceData: {
+            entity_id: 'light.living_room'
+          }
+        }
+      );
+      expect(result).toEqual({ success: true, forwarded: true });
     });
   });
 

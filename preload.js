@@ -8,6 +8,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+  pinEntityToDesktop: (entityId, supportInfo = null) => ipcRenderer.invoke('pin-entity-to-desktop', entityId, supportInfo),
+  unpinEntityFromDesktop: (entityId) => ipcRenderer.invoke('unpin-entity-from-desktop', entityId),
+  setDesktopPinEditMode: (enabled) => ipcRenderer.invoke('set-desktop-pin-edit-mode', enabled),
+  updateDesktopPinBounds: (entityId, bounds) => ipcRenderer.invoke('update-desktop-pin-bounds', entityId, bounds),
+  syncDesktopPinContentMinBounds: (entityId, minBounds) => ipcRenderer.invoke('sync-desktop-pin-content-min-bounds', entityId, minBounds),
+  getDesktopPinBootstrap: (entityId) => ipcRenderer.invoke('get-desktop-pin-bootstrap', entityId),
+  publishHaSnapshot: (states) => ipcRenderer.invoke('publish-ha-snapshot', states),
+  publishHaEntityUpdate: (entity) => ipcRenderer.invoke('publish-ha-entity-update', entity),
+  requestDesktopPinAction: (entityId, action, payload) => ipcRenderer.invoke('request-desktop-pin-action', entityId, action, payload),
+  showEntityTileMenu: (entityId, supportInfo = null) => ipcRenderer.invoke('show-entity-tile-menu', entityId, supportInfo),
   chooseProfileSyncFolder: (provider) => ipcRenderer.invoke('choose-profile-sync-folder', provider),
   copyProfileSyncFile: (fromPath, toPath, overwrite = false) => ipcRenderer.invoke('copy-profile-sync-file', fromPath, toPath, overwrite),
   getProfileSyncStatus: () => ipcRenderer.invoke('get-profile-sync-status'),
@@ -25,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setLoginItemSettings: (openAtLogin) => ipcRenderer.invoke('set-login-item-settings', openAtLogin),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   focusWindow: () => ipcRenderer.invoke('focus-window'),
+  focusDesktopPin: (entityId) => ipcRenderer.invoke('focus-desktop-pin', entityId),
   restartApp: () => ipcRenderer.invoke('restart-app'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
 
@@ -85,5 +96,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('config-updated', handler);
     return () => ipcRenderer.removeListener('config-updated', handler);
+  },
+  onDesktopPinUpdate: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('desktop-pin-update', handler);
+    return () => ipcRenderer.removeListener('desktop-pin-update', handler);
+  },
+  onDesktopPinActionRequested: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('desktop-pin-action-requested', handler);
+    return () => ipcRenderer.removeListener('desktop-pin-action-requested', handler);
   }
 });

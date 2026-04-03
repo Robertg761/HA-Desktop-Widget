@@ -27,6 +27,7 @@ let mockConfig = {
   },
   popupHotkey: '',
   favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
+  desktopPins: {},
   customEntityNames: {},
   customEntityIcons: {},
   selectedWeatherEntity: null,
@@ -72,7 +73,9 @@ const eventListeners = {
   autoUpdate: [],
   openSettings: [],
   profileSyncStatus: [],
-  configUpdated: []
+  configUpdated: [],
+  desktopPinUpdate: [],
+  desktopPinActionRequested: []
 };
 
 /**
@@ -149,6 +152,21 @@ function createMockElectronAPI() {
     })),
     minimizeWindow: jest.fn(() => Promise.resolve()),
     focusWindow: jest.fn(() => Promise.resolve()),
+    focusDesktopPin: jest.fn((_entityId) => Promise.resolve({ focused: true, exists: true })),
+    pinEntityToDesktop: jest.fn((_entityId) => Promise.resolve({
+      success: true,
+      focused: false,
+      pinBounds: { x: 10, y: 20, width: 168, height: 148 }
+    })),
+    unpinEntityFromDesktop: jest.fn((_entityId) => Promise.resolve({ success: true })),
+    setDesktopPinEditMode: jest.fn((_enabled) => Promise.resolve({ success: true, enabled: !!_enabled })),
+    updateDesktopPinBounds: jest.fn((_entityId, bounds) => Promise.resolve({ success: true, pinBounds: bounds })),
+    syncDesktopPinContentMinBounds: jest.fn((_entityId, minBounds) => Promise.resolve({ success: true, minBounds, pinBounds: { x: 10, y: 20, width: minBounds?.width || 168, height: minBounds?.height || 148 } })),
+    getDesktopPinBootstrap: jest.fn((_entityId) => Promise.resolve(null)),
+    publishHaSnapshot: jest.fn((_states) => Promise.resolve()),
+    publishHaEntityUpdate: jest.fn((_entity) => Promise.resolve()),
+    requestDesktopPinAction: jest.fn((_entityId, _action, _payload) => Promise.resolve({ success: true })),
+    showEntityTileMenu: jest.fn((_entityId) => Promise.resolve({ shown: true })),
     restartApp: jest.fn(() => Promise.resolve()),
     quitApp: jest.fn(() => Promise.resolve()),
 
@@ -220,6 +238,20 @@ function createMockElectronAPI() {
         const index = eventListeners.configUpdated.indexOf(callback);
         if (index > -1) eventListeners.configUpdated.splice(index, 1);
       };
+    }),
+    onDesktopPinUpdate: jest.fn((callback) => {
+      eventListeners.desktopPinUpdate.push(callback);
+      return () => {
+        const index = eventListeners.desktopPinUpdate.indexOf(callback);
+        if (index > -1) eventListeners.desktopPinUpdate.splice(index, 1);
+      };
+    }),
+    onDesktopPinActionRequested: jest.fn((callback) => {
+      eventListeners.desktopPinActionRequested.push(callback);
+      return () => {
+        const index = eventListeners.desktopPinActionRequested.indexOf(callback);
+        if (index > -1) eventListeners.desktopPinActionRequested.splice(index, 1);
+      };
     })
   };
 }
@@ -258,6 +290,7 @@ function resetMockElectronAPI() {
     },
     popupHotkey: '',
     favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
+    desktopPins: {},
     customEntityNames: {},
     customEntityIcons: {},
     selectedWeatherEntity: null,
@@ -303,6 +336,8 @@ function resetMockElectronAPI() {
   eventListeners.openSettings = [];
   eventListeners.profileSyncStatus = [];
   eventListeners.configUpdated = [];
+  eventListeners.desktopPinUpdate = [];
+  eventListeners.desktopPinActionRequested = [];
 }
 
 /**

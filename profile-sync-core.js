@@ -6,6 +6,7 @@ const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'cu
 const SYNC_SCOPE_SECTION_FIELDS = {
   quickAccessLayout: [
     'favoriteEntities',
+    'desktopPins',
     'customEntityNames',
     'customEntityIcons',
     'tileSpans',
