@@ -15,6 +15,10 @@ permissions:
 jobs:
   validate:
     runs-on: windows-latest
+    outputs:
+      should_release: ${{ steps.release-check.outputs.should_release }}
+      previous_version: ${{ steps.release-check.outputs.previous_version }}
+      release_version: ${{ steps.release-check.outputs.release_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,9 +32,8 @@ jobs:
           cache: 'npm'
 
       - name: Verify release version bump
+        id: release-check
         shell: pwsh
-        env:
-          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           $baseRef = $env:PUSH_BEFORE
           if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
@@ -46,15 +49,12 @@ jobs:
             throw "No changed files detected between $baseRef and HEAD."
           }
 
-          if (-not ($changedFiles -contains 'package.json')) {
-            throw 'Releases require a package.json change.'
-          }
-
-          if (-not ($changedFiles -contains 'package-lock.json')) {
-            throw 'Releases require a package-lock.json change.'
-          }
+          $packageJsonChanged = $changedFiles -contains 'package.json'
+          $packageLockChanged = $changedFiles -contains 'package-lock.json'
 
           $env:BASE_REF = $baseRef
+          $env:PACKAGE_JSON_CHANGED = if ($packageJsonChanged) { 'true' } else { 'false' }
+          $env:PACKAGE_LOCK_CHANGED = if ($packageLockChanged) { 'true' } else { 'false' }
 
           @'
           const fs = require('fs');
@@ -115,24 +115,57 @@ jobs:
             fail(`Previous commit has inconsistent versions. package.json=${previousPackageVersion}, package-lock.json=${previousLockVersion}, package-lock root=${previousRootLockVersion}`);
           }
 
-          if (compareVersions(currentPackageVersion, previousPackageVersion) <= 0) {
+          const packageVersionComparison = compareVersions(currentPackageVersion, previousPackageVersion);
+          const lockVersionComparison = compareVersions(currentLockVersion, previousLockVersion);
+          const rootLockVersionComparison = compareVersions(currentRootLockVersion, previousRootLockVersion);
+          const releaseTriggered = packageVersionComparison > 0 || lockVersionComparison > 0 || rootLockVersionComparison > 0;
+
+          if (!releaseTriggered) {
+            console.log(`No release version bump detected (${previousPackageVersion} -> ${currentPackageVersion}).`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_release=false\n');
+            process.exit(0);
+          }
+
+          if (process.env.PACKAGE_JSON_CHANGED !== 'true') {
+            fail('Release version bump detected but package.json was not changed.');
+          }
+
+          if (process.env.PACKAGE_LOCK_CHANGED !== 'true') {
+            fail('Release version bump detected but package-lock.json was not changed.');
+          }
+
+          if (packageVersionComparison <= 0) {
             fail(`Release version must be greater than the previous commit. Current=${currentPackageVersion}, Previous=${previousPackageVersion}`);
           }
 
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `should_release=true\nprevious_version=${previousPackageVersion}\nrelease_version=${currentPackageVersion}\n`
+          );
           console.log(`Validated version bump ${previousPackageVersion} -> ${currentPackageVersion}`);
           '@ | node -
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
 
       - name: Install dependencies
+        if: ${{ steps.release-check.outputs.should_release == 'true' }}
         run: npm ci
 
       - name: Run linter
+        if: ${{ steps.release-check.outputs.should_release == 'true' }}
         run: npm run lint
 
       - name: Run tests
+        if: ${{ steps.release-check.outputs.should_release == 'true' }}
         run: npm test
+
+      - name: Skip release
+        if: ${{ steps.release-check.outputs.should_release != 'true' }}
+        run: echo "No version bump detected; skipping release build."
 
   build:
     needs: validate
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -162,6 +195,7 @@ jobs:
 
   build-mac:
     needs: validate
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: macos-latest
     steps:
       - name: Checkout
