@@ -53,6 +53,7 @@
       "main.js",
       "profile-sync-core.js",
       "preload.js",
+      "src/**/*",
       "dist-renderer/**/*",
       "styles.css",
       "build/**/*",
