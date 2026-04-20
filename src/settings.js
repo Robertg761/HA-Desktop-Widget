@@ -2881,7 +2881,7 @@ async function openSettings(uiHooks) {
         } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
           warningMessage += 'Token decryption failed.';
         }
-        uiHooks.showToast(warningMessage, 'warning', 10000);
+        uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
     }
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
@@ -3136,9 +3136,16 @@ async function saveSettings() {
     }
 
     if (haToken) {
-      state.CONFIG.homeAssistant.token = haToken.value.trim();
-      // Clear tokenResetReason when user enters a new token
-      if (state.CONFIG.tokenResetReason) {
+      const nextToken = haToken.value.trim();
+      const currentToken = state.CONFIG.homeAssistant?.token || '';
+      const shouldPreservePlaceholderToken = !nextToken && currentToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+
+      if (!shouldPreservePlaceholderToken) {
+        state.CONFIG.homeAssistant.token = nextToken;
+      }
+
+      // Clear tokenResetReason only after the user enters a replacement token.
+      if (nextToken && state.CONFIG.tokenResetReason) {
         delete state.CONFIG.tokenResetReason;
       }
     }

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Config operations
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
+  clearTokenResetReason: () => ipcRenderer.invoke('clear-token-reset-reason'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   pinEntityToDesktop: (entityId, supportInfo = null) => ipcRenderer.invoke('pin-entity-to-desktop', entityId, supportInfo),
   unpinEntityFromDesktop: (entityId) => ipcRenderer.invoke('unpin-entity-from-desktop', entityId),

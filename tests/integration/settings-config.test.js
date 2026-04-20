@@ -744,6 +744,48 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {
+      state.CONFIG.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+      state.CONFIG.tokenResetReason = 'decryption_failed';
+
+      await settings.openSettings();
+
+      expect(document.getElementById('ha-token').value).toBe('');
+
+      document.getElementById('always-on-top').checked = false;
+      await settings.saveSettings();
+
+      expect(state.CONFIG.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
+      expect(state.CONFIG.tokenResetReason).toBe('decryption_failed');
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          homeAssistant: expect.objectContaining({
+            token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
+          })
+        })
+      );
+    });
+
+    test('entering a replacement token clears tokenResetReason during save', async () => {
+      state.CONFIG.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+      state.CONFIG.tokenResetReason = 'decryption_failed';
+
+      await settings.openSettings();
+
+      document.getElementById('ha-token').value = 'replacement-token-789';
+      await settings.saveSettings();
+
+      expect(state.CONFIG.homeAssistant.token).toBe('replacement-token-789');
+      expect(state.CONFIG.tokenResetReason).toBeUndefined();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          homeAssistant: expect.objectContaining({
+            token: 'replacement-token-789'
+          })
+        })
+      );
+    });
+
     test('URL validation prevents invalid save', async () => {
       await settings.openSettings();
 

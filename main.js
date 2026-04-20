@@ -155,12 +155,15 @@ let pendingConfigSnapshot = null;
 let configSnapshotVersion = 0;
 let configWriteEpoch = 0;
 let configShutdownPending = false;
+let preservedEncryptedTokenForRecovery = null;
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set(['cloudFile', 'googleDrive', 'icloudDrive', 'syncthing']);
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
+const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decryption_failed']);
 
 const profileSyncRuntime = {
   inFlight: false,
@@ -1422,6 +1425,19 @@ function pruneConfig(target) {
   return target;
 }
 
+function isPlaceholderOrEmptyToken(token) {
+  return !token || token === HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+}
+
+function hasRecoveryTokenBackup() {
+  return !!preservedEncryptedTokenForRecovery;
+}
+
+function shouldPreserveRecoveryTokenForSave(configToSave) {
+  if (!hasRecoveryTokenBackup()) return false;
+  return isPlaceholderOrEmptyToken(configToSave?.homeAssistant?.token);
+}
+
 /**
  * Load the application's configuration into the in-memory `config` variable.
  *
@@ -1446,6 +1462,7 @@ function loadConfig() {
   log.debug('Loading configuration');
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
+  preservedEncryptedTokenForRecovery = null;
 
   // Default configuration
   const defaultConfig = {
@@ -1510,13 +1527,14 @@ function loadConfig() {
             log.debug('Decrypting token...');
             const encryptedBuffer = Buffer.from(config.homeAssistant.token, 'base64');
             config.homeAssistant.token = safeStorage.decryptString(encryptedBuffer);
+            preservedEncryptedTokenForRecovery = null;
             log.info('Token decrypted successfully');
           } else {
             // Encryption not available - preserve encrypted token on disk but set in-memory token to default
             log.warn('Encryption not available on this system. Encrypted token cannot be decrypted.');
             log.warn('Token preserved on disk. User must re-enter token or use on a system with encryption support.');
-            const _encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
-            config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN'; // In-memory default for UI
+            preservedEncryptedTokenForRecovery = config.homeAssistant.token;
+            config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER; // In-memory default for UI
             config.tokenResetReason = 'encryption_unavailable';
             // Don't save config here - this preserves the encrypted token on disk as a backup
             log.info('Encrypted token preserved in config file. If encryption becomes available, it can be decrypted.');
@@ -1525,14 +1543,14 @@ function loadConfig() {
           // Decryption failed - token may be corrupted or encryption API failed
           log.error('Exception during token decryption:', error);
           log.warn('Encrypted token preserved on disk. User must re-enter token.');
-          const _encryptedTokenBackup = config.homeAssistant.token; // Keep encrypted version
-          config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN'; // In-memory default for UI
+          preservedEncryptedTokenForRecovery = config.homeAssistant.token;
+          config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER; // In-memory default for UI
           config.tokenResetReason = 'decryption_failed';
           // Don't save config here - this preserves the encrypted token on disk
           log.info('Encrypted token preserved in config file for recovery attempts.');
         }
       } else if (config.homeAssistant?.token &&
-        config.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
+        config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER &&
         !config.homeAssistant?.tokenEncrypted) {
         // Migration: existing plaintext token from pre-encryption version
         log.info('Detected plaintext token from pre-encryption version - attempting migration...');
@@ -1683,12 +1701,21 @@ function buildConfigSnapshotForSave() {
   // Create a copy for saving with encrypted token
   const configToSave = JSON.parse(JSON.stringify(config));
   pruneConfig(configToSave);
+  const preserveRecoveryToken = shouldPreserveRecoveryTokenForSave(configToSave);
+
+  if (preserveRecoveryToken) {
+    configToSave.homeAssistant = configToSave.homeAssistant || {};
+    configToSave.homeAssistant.token = preservedEncryptedTokenForRecovery;
+    configToSave.homeAssistant.tokenEncrypted = true;
+  }
 
   // Encrypt token before saving
   // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
   if (configToSave.homeAssistant?.token &&
-    configToSave.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-    if (safeStorage.isEncryptionAvailable()) {
+    configToSave.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) {
+    if (preserveRecoveryToken) {
+      log.debug('Preserving encrypted recovery token for storage');
+    } else if (safeStorage.isEncryptionAvailable()) {
       try {
         const plainToken = configToSave.homeAssistant.token;
         const encryptedBuffer = safeStorage.encryptString(plainToken);
@@ -2238,6 +2265,15 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   ensureProfileSyncConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   pruneConfig(config);
+  if (
+    TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason) &&
+    !isPlaceholderOrEmptyToken(config.homeAssistant?.token)
+  ) {
+    delete config.tokenResetReason;
+  }
+  if (config.homeAssistant?.token && config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) {
+    preservedEncryptedTokenForRecovery = null;
+  }
   applyMainWindowSettingSideEffects(prevConfig, config);
 
   const syncEnabled = !!config.profileSync?.enabled;
@@ -2263,6 +2299,15 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   pushConfigToRenderer();
   broadcastDesktopPinConfigUpdate();
   emitProfileSyncStatus();
+  return sanitizeConfigForRenderer(config);
+});
+
+ipcMain.handle('clear-token-reset-reason', () => {
+  if (TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason)) {
+    delete config.tokenResetReason;
+    saveConfig();
+    pushConfigToRenderer();
+  }
   return sanitizeConfigForRenderer(config);
 });
 
