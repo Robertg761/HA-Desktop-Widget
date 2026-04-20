@@ -1,29 +1,23 @@
-name: Release (Windows)
+name: Release
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - package.json
-      - package-lock.json
-  workflow_dispatch:
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: write
 
 jobs:
   validate:
-    runs-on: windows-latest
     outputs:
-      should_release: ${{ steps.release-check.outputs.should_release }}
-      previous_version: ${{ steps.release-check.outputs.previous_version }}
-      release_version: ${{ steps.release-check.outputs.release_version }}
+      release_version: ${{ steps.release_meta.outputs.release_version }}
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -31,151 +25,119 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Verify release version bump
-        id: release-check
+      - id: release_meta
+        name: Resolve release version from tag
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $baseRef = $env:PUSH_BEFORE
-          if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
-            $baseRef = (git rev-parse HEAD^).Trim()
+          $releaseTag = $env:RELEASE_TAG
+          if ([string]::IsNullOrWhiteSpace($releaseTag)) {
+            throw 'Release tag is missing.'
           }
 
-          if ([string]::IsNullOrWhiteSpace($baseRef)) {
-            throw 'Unable to determine the previous commit for version comparison.'
+          if ($releaseTag -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
+            throw "Invalid release tag: $releaseTag. Expected vX.Y.Z or vX.Y.Z-suffix."
           }
 
-          $changedFiles = git diff --name-only $baseRef HEAD
-          if (-not $changedFiles) {
-            throw "No changed files detected between $baseRef and HEAD."
-          }
+          $releaseVersion = $releaseTag.Substring(1)
+          "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Resolved release version $releaseVersion from tag $releaseTag"
 
-          $packageJsonChanged = $changedFiles -contains 'package.json'
-          $packageLockChanged = $changedFiles -contains 'package-lock.json'
+      - name: Verify tag points to main HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          main_head="$(git rev-parse origin/main)"
+          tag_sha="$(git rev-parse "$GITHUB_SHA")"
 
-          $env:BASE_REF = $baseRef
-          $env:PACKAGE_JSON_CHANGED = if ($packageJsonChanged) { 'true' } else { 'false' }
-          $env:PACKAGE_LOCK_CHANGED = if ($packageLockChanged) { 'true' } else { 'false' }
+          if [[ "$tag_sha" != "$main_head" ]]; then
+            echo "Release tag must point to the current origin/main HEAD." >&2
+            echo "Tag commit:  $tag_sha" >&2
+            echo "origin/main: $main_head" >&2
+            exit 1
+          fi
 
+      - name: Align package versions to release tag
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release_meta.outputs.release_version }}
+        run: |
+          npm version $env:RELEASE_VERSION --no-git-tag-version --allow-same-version
+
+      - name: Verify aligned package versions
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ steps.release_meta.outputs.release_version }}
+        run: |
           @'
           const fs = require('fs');
-          const { execFileSync } = require('child_process');
 
           function fail(message) {
             console.error(message);
             process.exit(1);
           }
 
-          function parseVersion(version, label) {
-            const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version || '');
-            if (!match) fail(`Invalid ${label} version: ${version || '(empty)'}`);
-            return match.slice(1, 4).map(Number);
-          }
-
-          function compareVersions(left, right) {
-            const a = parseVersion(left, 'current');
-            const b = parseVersion(right, 'previous');
-            for (let index = 0; index < 3; index += 1) {
-              if (a[index] > b[index]) return 1;
-              if (a[index] < b[index]) return -1;
-            }
-            return 0;
-          }
-
-          function readJsonAtRef(ref, file) {
-            return JSON.parse(execFileSync('git', ['show', `${ref}:${file}`], { encoding: 'utf8' }));
-          }
-
-          const baseRef = process.env.BASE_REF;
+          const releaseVersion = process.env.RELEASE_VERSION;
+          const releaseTag = process.env.RELEASE_TAG;
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const previousPkg = readJsonAtRef(baseRef, 'package.json');
-          const previousLock = readJsonAtRef(baseRef, 'package-lock.json');
 
-          const currentPackageVersion = pkg.version;
-          const currentLockVersion = lock.version;
-          const currentRootLockVersion = lock.packages?.['']?.version;
+          const versions = [
+            ['package.json', pkg.version],
+            ['package-lock.json', lock.version],
+            ['package-lock.json packages[""]', lock.packages?.['']?.version],
+          ];
 
-          if (!currentPackageVersion || !currentLockVersion || !currentRootLockVersion) {
-            fail('package.json and package-lock.json must define matching non-empty versions.');
+          for (const [label, version] of versions) {
+            if (!version) {
+              fail(`${label} is missing a release version.`);
+            }
           }
 
-          if (currentPackageVersion !== currentLockVersion || currentPackageVersion !== currentRootLockVersion) {
-            fail(`Version mismatch detected. package.json=${currentPackageVersion}, package-lock.json=${currentLockVersion}, package-lock root=${currentRootLockVersion}`);
+          const mismatches = versions.filter(([, version]) => version !== releaseVersion);
+          if (mismatches.length > 0) {
+            const summary = versions
+              .map(([label, version]) => `${label}=${version}`)
+              .join(', ');
+            fail(`Release tag ${releaseTag} must match package metadata. Expected ${releaseVersion}; found ${summary}`);
           }
 
-          const previousPackageVersion = previousPkg.version;
-          const previousLockVersion = previousLock.version;
-          const previousRootLockVersion = previousLock.packages?.['']?.version;
-
-          if (!previousPackageVersion || !previousLockVersion || !previousRootLockVersion) {
-            fail('Previous commit is missing version metadata required for comparison.');
-          }
-
-          if (previousPackageVersion !== previousLockVersion || previousPackageVersion !== previousRootLockVersion) {
-            fail(`Previous commit has inconsistent versions. package.json=${previousPackageVersion}, package-lock.json=${previousLockVersion}, package-lock root=${previousRootLockVersion}`);
-          }
-
-          const packageVersionComparison = compareVersions(currentPackageVersion, previousPackageVersion);
-          const lockVersionComparison = compareVersions(currentLockVersion, previousLockVersion);
-          const rootLockVersionComparison = compareVersions(currentRootLockVersion, previousRootLockVersion);
-          const releaseTriggered = packageVersionComparison > 0 || lockVersionComparison > 0 || rootLockVersionComparison > 0;
-
-          if (!releaseTriggered) {
-            console.log(`No release version bump detected (${previousPackageVersion} -> ${currentPackageVersion}).`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'should_release=false\n');
-            process.exit(0);
-          }
-
-          if (process.env.PACKAGE_JSON_CHANGED !== 'true') {
-            fail('Release version bump detected but package.json was not changed.');
-          }
-
-          if (process.env.PACKAGE_LOCK_CHANGED !== 'true') {
-            fail('Release version bump detected but package-lock.json was not changed.');
-          }
-
-          if (packageVersionComparison <= 0) {
-            fail(`Release version must be greater than the previous commit. Current=${currentPackageVersion}, Previous=${previousPackageVersion}`);
-          }
-
-          fs.appendFileSync(
-            process.env.GITHUB_OUTPUT,
-            `should_release=true\nprevious_version=${previousPackageVersion}\nrelease_version=${currentPackageVersion}\n`
-          );
-          console.log(`Validated version bump ${previousPackageVersion} -> ${currentPackageVersion}`);
+          console.log(`Validated release tag ${releaseTag} against package metadata.`);
           '@ | node -
-        env:
-          PUSH_BEFORE: ${{ github.event.before }}
 
       - name: Install dependencies
-        if: ${{ steps.release-check.outputs.should_release == 'true' }}
         run: npm ci
 
       - name: Run linter
-        if: ${{ steps.release-check.outputs.should_release == 'true' }}
         run: npm run lint
 
       - name: Run tests
-        if: ${{ steps.release-check.outputs.should_release == 'true' }}
         run: npm test
-
-      - name: Skip release
-        if: ${{ steps.release-check.outputs.should_release != 'true' }}
-        run: echo "No version bump detected; skipping release build."
 
   build:
     needs: validate
-    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Align package versions to release tag
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          npm version $env:RELEASE_VERSION --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci
@@ -195,17 +157,25 @@ jobs:
 
   build-mac:
     needs: validate
-    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Align package versions to release tag
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci
@@ -223,3 +193,46 @@ jobs:
         with:
           name: dist-mac
           path: dist/*
+
+  sync-version:
+    needs: [validate, build, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Align package versions to release tag
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Commit version bump back to main
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "package.json and package-lock.json already match $RELEASE_TAG on the tagged commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "release-version-sync-$RELEASE_VERSION"
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to $RELEASE_VERSION"
+          git push origin HEAD:main
