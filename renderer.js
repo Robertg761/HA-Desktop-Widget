@@ -785,8 +785,10 @@ async function init() {
     // Check if token was reset due to encryption issues
     if (state.CONFIG.tokenResetReason) {
       const reason = state.CONFIG.tokenResetReason;
-      delete state.CONFIG.tokenResetReason; // Clear flag
-      await window.electronAPI.updateConfig(state.CONFIG); // Save cleared flag
+      if (window.electronAPI.clearTokenResetReason) {
+        await window.electronAPI.clearTokenResetReason();
+      }
+      delete state.CONFIG.tokenResetReason;
 
       let message = 'Your Home Assistant token needs to be re-entered. ';
       let detailMessage = '';

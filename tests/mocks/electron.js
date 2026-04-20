@@ -100,7 +100,18 @@ function createMockElectronAPI() {
     getConfig: jest.fn(() => Promise.resolve({ ...mockConfig })),
     updateConfig: jest.fn((config) => {
       mockConfig = { ...mockConfig, ...config };
-      return Promise.resolve();
+      if (
+        ['encryption_unavailable', 'decryption_failed'].includes(mockConfig.tokenResetReason) &&
+        mockConfig.homeAssistant?.token &&
+        mockConfig.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN'
+      ) {
+        delete mockConfig.tokenResetReason;
+      }
+      return Promise.resolve({ ...mockConfig });
+    }),
+    clearTokenResetReason: jest.fn(() => {
+      delete mockConfig.tokenResetReason;
+      return Promise.resolve({ ...mockConfig });
     }),
     saveConfig: jest.fn((config) => {
       mockConfig = { ...mockConfig, ...config };
