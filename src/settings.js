@@ -23,6 +23,12 @@ import {
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
+import {
+  formatDateTime,
+  getLanguageDisplayName,
+  getLocaleState,
+  t,
+} from './i18n.js';
 
 let previewState = null;
 let previewRaf = null;
@@ -51,6 +57,9 @@ let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
 let profileSyncStatusCache = null;
+let localePackListCache = [];
+let localePackListError = '';
+let languagePackRefreshPromise = Promise.resolve();
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'desktop-pins-section', 'custom-entity-icons-section']);
@@ -2507,10 +2516,10 @@ function ensureProfileSyncConfig() {
 }
 
 function formatProfileSyncTimestamp(isoString) {
-  if (!isoString) return 'never';
+  if (!isoString) return t('never');
   const value = Date.parse(isoString);
-  if (Number.isNaN(value)) return 'never';
-  return new Date(value).toLocaleString();
+  if (Number.isNaN(value)) return t('never');
+  return formatDateTime(value);
 }
 
 function setProfileSyncSettingsVisibility() {
@@ -2833,6 +2842,292 @@ function bindProfileSyncSettingsUi() {
   if (resolveCancel) resolveCancel.onclick = () => resolveProfileSyncFirstEnable('cancel');
 }
 
+function compareLocalePackVersions(a = '', b = '') {
+  const toParts = (value) => String(value || '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10))
+    .map((part) => (Number.isNaN(part) ? 0 : part));
+  const aParts = toParts(a);
+  const bParts = toParts(b);
+  const length = Math.max(aParts.length, bParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (aParts[index] || 0) - (bParts[index] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function getLanguagePackDisplayName(pack = {}) {
+  return pack.displayName || getLanguageDisplayName(pack.locale, pack.englishName || pack.locale || '');
+}
+
+function findLocalePack(locale) {
+  const normalizedLocale = String(locale || '').trim().toLowerCase();
+  if (!normalizedLocale) return null;
+  const baseLocale = normalizedLocale.split('-')[0];
+  return localePackListCache.find((pack) => {
+    const packLocale = String(pack?.locale || '').trim().toLowerCase();
+    if (!packLocale) return false;
+    return packLocale === normalizedLocale || packLocale.split('-')[0] === baseLocale;
+  }) || null;
+}
+
+function updateLanguageSummaryText() {
+  const currentSummary = document.getElementById('language-current-summary');
+  const systemSummary = document.getElementById('language-system-summary');
+  const fallbackSummary = document.getElementById('language-fallback-summary');
+  const languageSelect = document.getElementById('language-select');
+  const localeState = getLocaleState();
+  const selectedLocale = languageSelect?.value || state.CONFIG?.ui?.language || 'auto';
+  const selectedPack = findLocalePack(selectedLocale);
+  const selectedLabel = selectedLocale === 'auto'
+    ? t('Auto (System Default)')
+    : (selectedPack ? getLanguagePackDisplayName(selectedPack) : getLanguageDisplayName(selectedLocale, selectedLocale));
+  const detectedLabel = getLanguageDisplayName(localeState.detectedLocale, localeState.detectedLocale || 'en');
+
+  if (currentSummary) {
+    currentSummary.textContent = t('Selected language: {{language}}', { language: selectedLabel });
+  }
+  if (systemSummary) {
+    systemSummary.textContent = t('System language detected: {{language}}', { language: detectedLabel });
+  }
+  if (fallbackSummary) {
+    const needsPack = selectedLocale !== 'auto'
+      && selectedLocale !== 'en'
+      && localeState.activeLocale === 'en';
+    fallbackSummary.classList.toggle('hidden', !needsPack);
+    fallbackSummary.textContent = t('Using English until the selected language pack is installed.');
+  }
+}
+
+function syncLanguageSelectOptions() {
+  const languageSelect = document.getElementById('language-select');
+  if (!languageSelect) return;
+  const selectedValue = languageSelect.value || state.CONFIG?.ui?.language || 'auto';
+  const builtinValues = new Set(['auto', 'en']);
+
+  Array.from(languageSelect.querySelectorAll('option'))
+    .filter((option) => !builtinValues.has(option.value))
+    .forEach((option) => option.remove());
+
+  localePackListCache.forEach((pack) => {
+    if (!pack?.locale || builtinValues.has(pack.locale)) return;
+    const option = document.createElement('option');
+    option.value = pack.locale;
+    option.textContent = getLanguagePackDisplayName(pack);
+    if (!pack.installed) {
+      option.disabled = true;
+      option.textContent += ` (${t('Download first')})`;
+    }
+    languageSelect.appendChild(option);
+  });
+
+  if (selectedValue && !Array.from(languageSelect.options).some((option) => option.value === selectedValue)) {
+    const fallbackOption = document.createElement('option');
+    fallbackOption.value = selectedValue;
+    fallbackOption.disabled = selectedValue !== 'auto' && selectedValue !== 'en';
+    fallbackOption.textContent = `${getLanguageDisplayName(selectedValue, selectedValue)} (${fallbackOption.disabled ? t('Download first') : t('Available')})`;
+    languageSelect.appendChild(fallbackOption);
+  }
+
+  if (Array.from(languageSelect.options).some((option) => option.value === selectedValue)) {
+    languageSelect.value = selectedValue;
+  }
+}
+
+function renderLanguagePackList() {
+  const container = document.getElementById('language-packs-list');
+  const statusEl = document.getElementById('language-pack-status');
+  if (!container) return;
+
+  container.innerHTML = '';
+  if (statusEl) {
+    statusEl.classList.toggle('hidden', !localePackListError);
+    statusEl.textContent = localePackListError;
+  }
+
+  if (!localePackListCache.length) {
+    const empty = document.createElement('div');
+    empty.className = 'help-text';
+    empty.textContent = localePackListError || t('No downloadable language packs are currently available.');
+    container.appendChild(empty);
+    return;
+  }
+
+  localePackListCache.forEach((pack) => {
+    const row = document.createElement('div');
+    row.className = 'language-pack-row';
+
+    const info = document.createElement('div');
+    info.className = 'language-pack-info';
+
+    const name = document.createElement('div');
+    name.className = 'language-pack-name';
+    name.textContent = getLanguagePackDisplayName(pack);
+
+    const meta = document.createElement('div');
+    meta.className = 'language-pack-meta';
+    const stateLabel = pack.installed ? t('Installed') : t('Available');
+    const versionLabel = pack.version ? `v${pack.version}` : '';
+    const downloadedLabel = pack.downloadedAt ? ` • ${formatDateTime(pack.downloadedAt)}` : '';
+    meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
+
+    info.appendChild(name);
+    info.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'language-pack-actions';
+
+    const versionAhead = !!pack.updateAvailable || (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
+    if (pack.installed && versionAhead) {
+      const updateBtn = document.createElement('button');
+      updateBtn.type = 'button';
+      updateBtn.className = 'btn btn-secondary btn-small';
+      updateBtn.dataset.localeAction = 'download';
+      updateBtn.dataset.locale = pack.locale;
+      updateBtn.textContent = t('Update');
+      actions.appendChild(updateBtn);
+    } else if (!pack.installed) {
+      const downloadBtn = document.createElement('button');
+      downloadBtn.type = 'button';
+      downloadBtn.className = 'btn btn-secondary btn-small';
+      downloadBtn.dataset.localeAction = 'download';
+      downloadBtn.dataset.locale = pack.locale;
+      downloadBtn.textContent = t('Download');
+      actions.appendChild(downloadBtn);
+    }
+
+    if (pack.installed) {
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn btn-secondary btn-small';
+      removeBtn.dataset.localeAction = 'remove';
+      removeBtn.dataset.locale = pack.locale;
+      removeBtn.textContent = t('Remove');
+      actions.appendChild(removeBtn);
+    }
+
+    row.appendChild(info);
+    row.appendChild(actions);
+    container.appendChild(row);
+  });
+}
+
+async function refreshLanguagePackList(forceRefresh = false) {
+  try {
+    localePackListError = '';
+    if (!window?.electronAPI?.getLocalePacks) {
+      localePackListCache = [];
+    } else {
+      localePackListCache = await window.electronAPI.getLocalePacks(forceRefresh);
+    }
+  } catch (error) {
+    log.error('Failed to load locale packs:', error);
+    localePackListCache = Array.isArray(error?.installedPacks) ? error.installedPacks : [];
+    localePackListError = t('Unable to load language packs right now.');
+  }
+  syncLanguageSelectOptions();
+  renderLanguagePackList();
+  updateLanguageSummaryText();
+}
+
+function refreshLanguagePackListInBackground(forceRefresh = false) {
+  languagePackRefreshPromise = refreshLanguagePackList(forceRefresh).catch((error) => {
+    log.error('Unexpected language pack refresh failure:', error);
+  });
+  return languagePackRefreshPromise;
+}
+
+function waitForLanguagePackRefresh() {
+  return languagePackRefreshPromise;
+}
+
+async function persistLanguageSelection(nextLanguage) {
+  const normalizedLanguage = String(nextLanguage || '').trim() || 'auto';
+  if (!window?.electronAPI?.updateConfig) {
+    throw new Error('Language updates are unavailable on this build.');
+  }
+
+  state.CONFIG.ui = state.CONFIG.ui || {};
+  const nextUiConfig = {
+    ...state.CONFIG.ui,
+    language: normalizedLanguage,
+  };
+
+  const updatedConfig = await window.electronAPI.updateConfig({
+    ui: nextUiConfig,
+  });
+
+  if (updatedConfig) {
+    state.setConfig(updatedConfig);
+  } else {
+    state.CONFIG.ui = nextUiConfig;
+  }
+
+  return updatedConfig;
+}
+
+function bindLanguageSettingsUi() {
+  const languageSelect = document.getElementById('language-select');
+  if (languageSelect) {
+    languageSelect.value = state.CONFIG?.ui?.language || 'auto';
+    languageSelect.onchange = async () => {
+      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
+      const nextLanguage = languageSelect.value || previousLanguage;
+      updateLanguageSummaryText();
+
+      if (nextLanguage === previousLanguage) return;
+
+      languageSelect.disabled = true;
+      try {
+        await persistLanguageSelection(nextLanguage);
+      } catch (error) {
+        log.error('Failed to update language selection:', error);
+        languageSelect.value = previousLanguage;
+        updateLanguageSummaryText();
+        showToast(t('Failed to save language selection'), 'error', 2600);
+      } finally {
+        languageSelect.disabled = false;
+      }
+    };
+  }
+
+  const languagePackList = document.getElementById('language-packs-list');
+  if (languagePackList) {
+    languagePackList.onclick = async (event) => {
+      const button = event.target.closest('[data-locale-action]');
+      if (!button) return;
+      const locale = button.dataset.locale;
+      const action = button.dataset.localeAction;
+      if (!locale || !action) return;
+
+      button.disabled = true;
+      try {
+        if (action === 'download') {
+          const result = await window.electronAPI.downloadLocalePack(locale);
+          localePackListCache = Array.isArray(result?.packs) ? result.packs : localePackListCache;
+          showToast(t('Language pack downloaded: {{language}}', { language: getLanguageDisplayName(locale, locale) }), 'success', 2200);
+        } else if (action === 'remove') {
+          await window.electronAPI.removeLocalePack(locale);
+          showToast(t('Language pack removed: {{language}}', { language: getLanguageDisplayName(locale, locale) }), 'success', 2200);
+          localePackListCache = await window.electronAPI.getLocalePacks(true);
+        }
+      } catch (error) {
+        log.error(`Failed locale pack action: ${action}`, error);
+        showToast(
+          action === 'remove'
+            ? t('Failed to remove language pack')
+            : t('Failed to download language pack'),
+          'error',
+          2600
+        );
+      } finally {
+        await refreshLanguagePackList(true);
+      }
+    };
+  }
+}
+
 /**
  * Open and initialize the settings modal, populate controls from persisted config, initialize theme and preview state, and trap focus.
  *
@@ -2898,6 +3193,12 @@ async function openSettings(uiHooks) {
         startWithWindows.checked = false;
       }
     }
+
+    bindLanguageSettingsUi();
+    syncLanguageSelectOptions();
+    renderLanguagePackList();
+    updateLanguageSummaryText();
+    refreshLanguagePackListInBackground(true);
 
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
@@ -3109,6 +3410,7 @@ async function saveSettings() {
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
+    const languageSelect = document.getElementById('language-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -3154,6 +3456,7 @@ async function saveSettings() {
     delete state.CONFIG.frostedGlassStrength;
     delete state.CONFIG.frostedGlassTint;
     state.CONFIG.ui = state.CONFIG.ui || {};
+    state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
     if (enableInteractionDebugLogs) {
       state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
@@ -4180,4 +4483,5 @@ export {
   initializePopupHotkey,
   refreshPersonalizationSectionHeights,
   handleProfileSyncStatusUpdate,
+  waitForLanguagePackRefresh,
 };

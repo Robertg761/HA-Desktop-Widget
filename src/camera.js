@@ -2,6 +2,7 @@ import state from './state.js';
 import websocket from './websocket.js';
 import { escapeHtml, getEntityDisplayName } from './utils.js';
 import { showToast } from './ui-utils.js';
+import { formatDateTime, t } from './i18n.js';
 
 // Dynamic import for hls.js (large library, lazy loaded)
 let Hls = null;
@@ -67,16 +68,16 @@ async function openCamera(cameraId) {
             <img alt="${escapeHtml(getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
-              Loading live stream...
+              ${escapeHtml(t('Loading live stream...'))}
             </div>
           </div>
           <div style="margin-top: 12px; display:flex; gap:8px;">
-            <button class="btn btn-secondary" id="snapshot-btn">Snapshot</button>
-            <button class="btn btn-primary" id="live-btn">Live</button>
+            <button class="btn btn-secondary" id="snapshot-btn">${escapeHtml(t('Snapshot'))}</button>
+            <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
           </div>
           <div class="camera-info">
-            <p><strong>Status:</strong> ${camera.state}</p>
-            <p><strong>Last Updated:</strong> ${new Date(camera.last_updated).toLocaleString()}</p>
+            <p><strong>${escapeHtml(t('Status:'))}</strong> ${camera.state}</p>
+            <p><strong>${escapeHtml(t('Last Updated:'))}</strong> ${escapeHtml(formatDateTime(camera.last_updated))}</p>
           </div>
         </div>
       </div>
@@ -109,7 +110,7 @@ async function openCamera(cameraId) {
         img.style.display = 'block';
       }
       isLive = false;
-      if (liveBtn) { liveBtn.textContent = 'Live'; }
+      if (liveBtn) { liveBtn.textContent = t('Live'); }
     };
 
     const loadSnapshot = async () => {
@@ -199,7 +200,7 @@ async function openCamera(cameraId) {
       }
 
       isLive = true;
-      if (liveBtn) { liveBtn.textContent = 'Stop'; }
+      if (liveBtn) { liveBtn.textContent = t('Stop'); }
     };
 
     // Button handlers
@@ -240,7 +241,7 @@ async function openCamera(cameraId) {
 
   } catch (error) {
     console.error('Error opening camera:', error);
-    showToast('Failed to open camera viewer', 'error', 2000);
+    showToast(t('Failed to open camera viewer'), 'error', 2000);
   }
 }
 

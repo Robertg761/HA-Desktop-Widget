@@ -6045,6 +6045,54 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   margin-top: 16px;
 }
 
+.language-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.language-packs-section {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  padding: 12px;
+}
+
+.language-packs-list {
+  display: grid;
+  gap: 10px;
+}
+
+.language-pack-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 10px 12px;
+}
+
+.language-pack-info {
+  min-width: 0;
+}
+
+.language-pack-name {
+  font-weight: 600;
+}
+
+.language-pack-meta {
+  font-size: 11px;
+  color: var(--muted-text);
+}
+
+.language-pack-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .profile-sync-settings {
   margin-top: 12px;
   border: 1px solid var(--border-color);

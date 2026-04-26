@@ -86,7 +86,8 @@
  * @property {Object.<string, string>} [customEntityNames] - Custom display names
  * @property {Object.<string, string>} [customEntityIcons] - Custom icon glyphs per entity ID
  * @property {Object} [customTabs] - Custom tab configurations
- * @property {Object} [ui] - UI preferences (theme, accent, background, section collapse states, etc.)
+ * @property {Object} [ui] - UI preferences (theme, accent, background, language, section collapse states, etc.)
+ * @property {string} [ui.language] - UI language setting (`auto` or locale code such as `en` / `fr`)
  * @property {Object} [profileSync] - Profile sync preferences/state (provider, file path, scope, encryption, last status)
  */
 

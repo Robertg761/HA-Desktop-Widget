@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   // Config operations
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getLocaleBootstrap: () => ipcRenderer.invoke('get-locale-bootstrap'),
+  getLocalePacks: (forceRefresh = false) => ipcRenderer.invoke('get-locale-packs', forceRefresh),
+  downloadLocalePack: (locale) => ipcRenderer.invoke('download-locale-pack', locale),
+  removeLocalePack: (locale) => ipcRenderer.invoke('remove-locale-pack', locale),
   updateConfig: (config) => ipcRenderer.invoke('update-config', config),
   clearTokenResetReason: () => ipcRenderer.invoke('clear-token-reset-reason'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),

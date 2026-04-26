@@ -1,6 +1,7 @@
 import state from './state.js';
 import { showToast } from './ui-utils.js';
 import { getEntityDisplayName, getEntityIcon } from './utils.js';
+import { t } from './i18n.js';
 
 let entityAlerts = {};
 let alertStates = {};
@@ -32,10 +33,17 @@ function checkEntityAlerts(entityId, newState) {
 
     if (alertConfig.onStateChange && previousState !== newState) {
       shouldAlert = true;
-      alertMessage = `${getEntityDisplayName(state.STATES[entityId])} changed from ${previousState} to ${newState}`;
+      alertMessage = t('{{name}} changed from {{previousState}} to {{newState}}', {
+        name: getEntityDisplayName(state.STATES[entityId]),
+        previousState,
+        newState,
+      });
     } else if (alertConfig.onSpecificState && alertConfig.targetState === newState) {
       shouldAlert = true;
-      alertMessage = `${getEntityDisplayName(state.STATES[entityId])} is now ${newState}`;
+      alertMessage = t('{{name}} is now {{newState}}', {
+        name: getEntityDisplayName(state.STATES[entityId]),
+        newState,
+      });
     }
 
     if (shouldAlert) {
@@ -51,7 +59,7 @@ function showEntityAlert(message, entityId) {
     if (Notification.permission === 'granted') {
       const entity = state.STATES[entityId];
       const icon = entity ? getEntityIcon(entity) : '❓';
-      new Notification('Home Assistant Alert', {
+      new Notification(t('Home Assistant Alert'), {
         body: message,
         icon: icon,
         tag: `ha-alert-${entityId}`,
@@ -70,12 +78,12 @@ async function toggleAlerts(enabled) {
     const result = await window.electronAPI.toggleAlerts(enabled);
     if (result.success) {
       entityAlerts.enabled = enabled;
-      showToast(`Entity alerts ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
+      showToast(enabled ? t('Entity alerts enabled') : t('Entity alerts disabled'), 'success', 2000);
       return true;
     }
   } catch (error) {
     console.error('Error toggling alerts:', error);
-    showToast('Error toggling alerts', 'error', 2000);
+    showToast(t('Error toggling alerts'), 'error', 2000);
   }
   return false;
 }
@@ -85,9 +93,9 @@ function requestNotificationPermission() {
     if (Notification.permission === 'default') {
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
-          showToast('Notifications enabled', 'success', 2000);
+          showToast(t('Notifications enabled'), 'success', 2000);
         } else {
-          showToast('Notifications disabled', 'warning', 2000);
+          showToast(t('Notifications disabled'), 'warning', 2000);
         }
       });
     }

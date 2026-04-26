@@ -34,6 +34,7 @@ let mockConfig = {
   primaryMediaPlayer: null,
   ui: {
     theme: 'auto',
+    language: 'auto',
     highContrast: false,
     opaquePanels: false,
     density: 'comfortable',
@@ -98,8 +99,55 @@ function createMockElectronAPI() {
   return {
     // Config Operations
     getConfig: jest.fn(() => Promise.resolve({ ...mockConfig })),
+    getLocaleBootstrap: jest.fn(() => Promise.resolve({
+      languageSetting: mockConfig.ui?.language || 'auto',
+      detectedLocale: 'en',
+      requestedLocale: mockConfig.ui?.language === 'auto' ? 'en' : (mockConfig.ui?.language || 'en'),
+      activeLocale: 'en',
+      fallbackLocale: 'en',
+      localeSource: 'bundled',
+      packInstalled: true,
+      usingEnglishFallback: false,
+      messages: {},
+      installedPacks: [],
+    })),
+    getLocalePacks: jest.fn(() => Promise.resolve([
+      {
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.0.0',
+        latestVersion: '1.0.0',
+        installed: false,
+        updateAvailable: false,
+      }
+    ])),
+    downloadLocalePack: jest.fn((locale) => Promise.resolve({
+      success: true,
+      pack: { locale, displayName: locale, englishName: locale, version: '1.0.0', installed: true },
+      packs: [{
+        locale,
+        displayName: locale,
+        englishName: locale,
+        version: '1.0.0',
+        latestVersion: '1.0.0',
+        installed: true,
+        updateAvailable: false,
+      }],
+    })),
+    removeLocalePack: jest.fn((locale) => Promise.resolve({
+      success: true,
+      removed: true,
+      locale,
+      packs: [],
+    })),
     updateConfig: jest.fn((config) => {
-      mockConfig = { ...mockConfig, ...config };
+      mockConfig = {
+        ...mockConfig,
+        ...config,
+        ui: { ...(mockConfig.ui || {}), ...(config.ui || {}) },
+        profileSync: { ...(mockConfig.profileSync || {}), ...(config.profileSync || {}) },
+      };
       if (
         ['encryption_unavailable', 'decryption_failed'].includes(mockConfig.tokenResetReason) &&
         mockConfig.homeAssistant?.token &&
@@ -308,6 +356,7 @@ function resetMockElectronAPI() {
     primaryMediaPlayer: null,
     ui: {
       theme: 'auto',
+      language: 'auto',
       highContrast: false,
       opaquePanels: false,
       density: 'comfortable',

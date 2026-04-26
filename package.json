@@ -50,6 +50,7 @@
     },
     "files": [
       "index.html",
+      "locales/**/*",
       "main.js",
       "profile-sync-core.js",
       "preload.js",

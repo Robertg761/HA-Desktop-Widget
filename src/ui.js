@@ -3,6 +3,7 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
+import { formatDate, formatTime, t } from './i18n.js';
 import { setIconContent } from './icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import desktopPinSupport from './desktop-pin-support.cjs';
@@ -132,8 +133,8 @@ function getEntityForDisplay(entity) {
 function handleServiceError(error, entityName = null) {
   const errorMessage = error?.message || 'Unknown error';
   const displayMessage = entityName
-    ? `Failed to control ${entityName}: ${errorMessage}`
-    : `Service call failed: ${errorMessage}`;
+    ? t('Failed to control {{entityName}}: {{errorMessage}}', { entityName, errorMessage })
+    : t('Service call failed: {{errorMessage}}', { errorMessage });
 
   console.error('WebSocket service call failed:', error);
   emitUiDebug('service.error', {
@@ -427,7 +428,7 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(true).catch((error) => {
         console.error('Failed to enable desktop pin edit mode:', error);
       });
-      uiUtils.showToast('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit', 'info', 3000);
+      uiUtils.showToast(t('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit'), 'info', 3000);
     } else {
       // Destroy Sortable instance
       if (sortableInstance) {
@@ -447,7 +448,7 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(false).catch((error) => {
         console.error('Failed to disable desktop pin edit mode:', error);
       });
-      uiUtils.showToast('Quick Access order saved', 'success', 2000);
+      uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
     }
   } catch (error) {
     console.error('Error toggling reorganize mode:', error);
@@ -4882,7 +4883,7 @@ function callMediaPlayerService(entityId, action) {
     }
   } catch (error) {
     console.error('Error calling media player service:', error);
-    uiUtils.showToast('Failed to control media player', 'error', 3000);
+    uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
   }
 }
 
@@ -5072,7 +5073,7 @@ function toggleEntity(entity) {
       entityId: entity?.entity_id || null,
       error: error?.message || String(error),
     });
-    uiUtils.showToast('Failed to toggle entity', 'error', 3000);
+    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
   }
 }
 
@@ -5169,7 +5170,7 @@ function executeHotkeyAction(entity, action) {
     }
   } catch (error) {
     console.error(`Error executing hotkey action '${action}' for entity ${entity.entity_id}:`, error);
-    uiUtils.showToast(`Failed to execute hotkey action`, 'error', 3000);
+    uiUtils.showToast(t('Failed to execute hotkey action'), 'error', 3000);
   }
 }
 
@@ -5366,11 +5367,11 @@ async function selectWeatherEntity(entityId) {
     // Show success toast
     const entity = state.STATES[entityId];
     if (entity) {
-      uiUtils.showToast(`Weather entity set to ${utils.getEntityDisplayName(entity)}`, 'success', 2000);
+      uiUtils.showToast(t('Weather entity set to {{name}}', { name: utils.getEntityDisplayName(entity) }), 'success', 2000);
     }
   } catch (error) {
     console.error('Error selecting weather entity:', error);
-    uiUtils.showToast('Failed to save weather entity selection', 'error', 3000);
+    uiUtils.showToast(t('Failed to save weather entity selection'), 'error', 3000);
   }
 }
 
@@ -5555,7 +5556,7 @@ function callMediaTileService(action) {
     }
   } catch (error) {
     console.error('Error calling media tile service:', error);
-    uiUtils.showToast('Failed to control media player', 'error', 3000);
+    uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
   }
 }
 
@@ -5602,8 +5603,8 @@ function updateTimeDisplay() {
     const timeEl = document.getElementById('current-time');
     const dateEl = document.getElementById('current-date');
 
-    if (timeEl) timeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (dateEl) dateEl.textContent = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    if (timeEl) timeEl.textContent = formatTime(now, { hour: '2-digit', minute: '2-digit' });
+    if (dateEl) dateEl.textContent = formatDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
   } catch (error) {
     console.error('Error updating time display:', error);
   }
@@ -6440,24 +6441,24 @@ function initUpdateUI() {
       checkUpdatesBtn.onclick = async () => {
         // Disable button and show checking status
         if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-        if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
+        if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
 
         try {
           const result = await window.electronAPI.checkForUpdates();
           if (result.status === 'dev') {
             // In development mode, auto-updater doesn't work
-            if (updateStatusText) updateStatusText.textContent = 'Auto-updates only work in packaged builds';
+            if (updateStatusText) updateStatusText.textContent = t('Auto-updates only work in packaged builds');
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
           } else if (result.status === 'portable') {
             portableDownloadUrl = result.downloadUrl || null;
             if (updateStatusText) {
-              const baseMessage = result.message || 'Portable builds do not support in-app updates.';
+              const baseMessage = result.message || t('Portable builds do not support in-app updates.');
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent = 'Download Portable Update';
+                installUpdateBtn.textContent = t('Download Portable Update');
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');
@@ -6467,7 +6468,7 @@ function initUpdateUI() {
           } else if (result.status === 'none') {
             portableDownloadUrl = null;
             if (updateStatusText) {
-              const baseMessage = result.message || 'You are up to date!';
+              const baseMessage = result.message || t('You are up to date!');
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
@@ -6476,7 +6477,7 @@ function initUpdateUI() {
           } else if (result.status === 'error') {
             portableDownloadUrl = null;
             if (updateStatusText) {
-              const baseMessage = `Error: ${result.error || 'Unknown error'}`;
+              const baseMessage = t('Error: {{error}}', { error: result.error || t('Unknown error') });
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
@@ -6487,7 +6488,7 @@ function initUpdateUI() {
           // The button will be re-enabled by the event handlers
         } catch (error) {
           console.error('Error checking for updates:', error);
-          if (updateStatusText) updateStatusText.textContent = 'Error checking for updates';
+          if (updateStatusText) updateStatusText.textContent = t('Error checking for updates');
           if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
         }
       };
@@ -6512,7 +6513,7 @@ function initUpdateUI() {
         switch (data.status) {
           case 'checking':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = 'Checking for updates...';
+            if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -6522,7 +6523,7 @@ function initUpdateUI() {
             portableDownloadUrl = null;
             if (updateStatusText) {
               const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = `Update available: v${version}`;
+              updateStatusText.textContent = t('Update available: v{{version}}', { version });
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (updateProgress) updateProgress.classList.remove('hidden');
@@ -6530,7 +6531,7 @@ function initUpdateUI() {
 
           case 'none':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = 'You are up to date!';
+            if (updateStatusText) updateStatusText.textContent = t('You are up to date!');
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -6538,7 +6539,7 @@ function initUpdateUI() {
 
           case 'downloading':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = 'Downloading update...';
+            if (updateStatusText) updateStatusText.textContent = t('Downloading update...');
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (updateProgress) updateProgress.classList.remove('hidden');
             if (data.progress) {
@@ -6552,11 +6553,11 @@ function initUpdateUI() {
             portableDownloadUrl = null;
             if (updateStatusText) {
               const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = `Update v${version} ready to install`;
+              updateStatusText.textContent = t('Update v{{version}} ready to install', { version });
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
-              installUpdateBtn.textContent = 'Install Update';
+              installUpdateBtn.textContent = t('Install Update');
               installUpdateBtn.classList.remove('hidden');
             }
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -6565,7 +6566,7 @@ function initUpdateUI() {
           case 'error':
             portableDownloadUrl = null;
             if (updateStatusText) {
-              updateStatusText.textContent = `Error: ${data.error || 'Unknown error'}`;
+              updateStatusText.textContent = t('Error: {{error}}', { error: data.error || t('Unknown error') });
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
@@ -6575,13 +6576,13 @@ function initUpdateUI() {
           case 'portable':
             portableDownloadUrl = data.downloadUrl || null;
             if (updateStatusText) {
-              const baseMessage = data.message || 'Portable builds do not support in-app updates.';
+              const baseMessage = data.message || t('Portable builds do not support in-app updates.');
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent = 'Download Portable Update';
+                installUpdateBtn.textContent = t('Download Portable Update');
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');
@@ -6596,7 +6597,7 @@ function initUpdateUI() {
     });
 
     // Initialize with ready status
-    if (updateStatusText) updateStatusText.textContent = 'Ready to check for updates';
+    if (updateStatusText) updateStatusText.textContent = t('Ready to check for updates');
 
   } catch (error) {
     console.error('Error initializing update UI:', error);

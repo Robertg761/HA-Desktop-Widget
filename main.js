@@ -2,12 +2,15 @@ const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, 
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { pathToFileURL } = require('url');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
+const pkg = require('./package.json');
 const profileSyncCore = require('./profile-sync-core.js');
+const { createLocalizationService } = require('./src/i18n-main.cjs');
 const {
   normalizeEntityId,
   getDesktopPinBaseBounds,
@@ -38,6 +41,14 @@ const httpsKeepAliveAgent = new https.Agent({
 });
 
 const DESKTOP_PIN_WINDOW_CORNER_RADIUS = 24;
+const LOCALE_PACK_MANIFEST_URL = 'https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/manifest.json';
+
+function getLocalePackManifestSource() {
+  if (!app.isPackaged) {
+    return pathToFileURL(path.join(__dirname, 'locale-packs', 'manifest.json')).toString();
+  }
+  return LOCALE_PACK_MANIFEST_URL;
+}
 
 function getHeaderValue(headers, name) {
   if (!headers || !name) return undefined;
@@ -193,6 +204,19 @@ const desktopPinContentMinBounds = new Map();
 const latestEntityStates = new Map();
 let hasPublishedHaSnapshot = false;
 let desktopPinEditMode = false;
+const localizationService = createLocalizationService({
+  bundledDir: path.join(__dirname, 'locales'),
+  getUserDataDir: () => app.getPath('userData'),
+  appVersion: pkg.version,
+  getDetectedLocale: () => {
+    try {
+      return app.getLocale() || app.getSystemLocale() || 'en';
+    } catch {
+      return 'en';
+    }
+  },
+  manifestUrl: getLocalePackManifestSource(),
+});
 const DEV_RENDERER_BUNDLE_PATH = path.join(__dirname, 'dist-renderer', 'renderer.bundle.js');
 const DEV_RELOAD_DEBOUNCE_MS = 220;
 const DEV_RELOAD_RETRY_MS = 160;
@@ -200,6 +224,10 @@ const DEV_RELOAD_MAX_RETRIES = 20;
 let devReloadTimer = null;
 let devReloadWatchersStarted = false;
 const devReloadWatchers = [];
+
+function mainT(key, vars = {}) {
+  return localizationService.translate(config?.ui?.language || 'auto', key, vars);
+}
 
 function closeDevReloadWatchers() {
   if (devReloadTimer) {
@@ -1487,6 +1515,7 @@ function loadConfig() {
       theme: 'auto',
       accent: 'original',
       background: 'original',
+      language: 'auto',
       customColors: [],
       personalizationSectionsCollapsed: {},
       enableInteractionDebugLogs: false
@@ -1512,6 +1541,9 @@ function loadConfig() {
       };
       normalizeDesktopPinsConfig(config);
       pruneConfig(config);
+      if (typeof config.ui?.language !== 'string' || !config.ui.language.trim()) {
+        config.ui.language = 'auto';
+      }
       ensureProfileSyncConfigDefaults(config);
 
       // Handle token encryption/decryption
@@ -2131,16 +2163,10 @@ function createWindow() {
   });
 }
 
-function createTray() {
-  log.info('Creating system tray icon');
-  // Resolve a tray icon that works in dev and production
-  const pkg = require('./package.json');
-
-  tray = new Tray(resolveTrayIcon());
-
-  const contextMenu = Menu.buildFromTemplate([
+function buildTrayContextMenu() {
+  return Menu.buildFromTemplate([
     {
-      label: 'Show/Hide',
+      label: mainT('Show/Hide'),
       click: () => {
         if (mainWindow.isVisible()) {
           mainWindow.hide();
@@ -2152,7 +2178,7 @@ function createTray() {
       }
     },
     {
-      label: 'Always on Top',
+      label: mainT('Always on Top'),
       type: 'checkbox',
       checked: config.alwaysOnTop,
       click: (menuItem) => {
@@ -2162,7 +2188,7 @@ function createTray() {
       }
     },
     {
-      label: 'Reset Position',
+      label: mainT('Reset Position'),
       click: () => {
         mainWindow.setPosition(100, 100);
         config.windowPosition = { x: 100, y: 100 };
@@ -2171,20 +2197,20 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'DevTools',
+      label: mainT('DevTools'),
       click: () => {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
       }
     },
     {
-      label: 'Reload',
+      label: mainT('Reload'),
       click: () => {
         mainWindow.reload();
       }
     },
     { type: 'separator' },
     {
-      label: 'Open Settings',
+      label: mainT('Open Settings'),
       click: () => {
         if (mainWindow) {
           // Restore window size before showing to prevent resizing issues
@@ -2195,7 +2221,7 @@ function createTray() {
       }
     },
     {
-      label: 'Check for Updates',
+      label: mainT('Check for Updates'),
       click: () => {
         if (app.isPackaged) {
           if (isPortableBuild()) {
@@ -2217,7 +2243,7 @@ function createTray() {
       }
     },
     {
-      label: 'Report Issue',
+      label: mainT('Report Issue'),
       click: () => {
         const url = (pkg && pkg.bugs && pkg.bugs.url) || (pkg && pkg.homepage) || 'https://github.com/';
         shell.openExternal(url);
@@ -2225,33 +2251,80 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Quit',
+      label: mainT('Quit'),
       click: () => {
         isQuitting = true;
         app.quit();
       }
     }
   ]);
+}
 
-  tray.setToolTip('Home Assistant Widget');
+function createTray() {
+  log.info('Creating system tray icon');
+  if (!tray || tray.isDestroyed?.()) {
+    tray = new Tray(resolveTrayIcon());
+    tray.on('click', () => {
+      if (!mainWindow) return;
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        // Restore window size before showing to prevent resizing issues
+        mainWindow.setSize(config.windowSize.width, config.windowSize.height);
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  }
+
+  const contextMenu = buildTrayContextMenu();
+  tray.setToolTip(mainT('Home Assistant Widget'));
   tray.setContextMenu(contextMenu);
-
-  tray.on('click', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      // Restore window size before showing to prevent resizing issues
-      mainWindow.setSize(config.windowSize.width, config.windowSize.height);
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
 }
 
 // IPC handlers for configuration
 ipcMain.handle('get-config', () => {
   return sanitizeConfigForRenderer(config);
+});
+
+ipcMain.handle('get-locale-bootstrap', () => {
+  return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto');
+});
+
+ipcMain.handle('get-locale-packs', async (_event, forceRefresh = false) => {
+  return localizationService.listLocalePacks(!!forceRefresh);
+});
+
+ipcMain.handle('download-locale-pack', async (_event, locale) => {
+  const pack = await localizationService.downloadLocalePack(locale);
+  pushConfigToRenderer();
+  if (tray) {
+    createTray();
+  }
+  return {
+    success: true,
+    pack,
+    localeBootstrap: localizationService.getLocaleBootstrap(config?.ui?.language || 'auto'),
+    // Keep the response strict for now: if the authoritative manifest refresh fails
+    // after mutation, the renderer reports failure. Decoupled success is deferred.
+    packs: await localizationService.listLocalePacks(true),
+  };
+});
+
+ipcMain.handle('remove-locale-pack', async (_event, locale) => {
+  const result = localizationService.removeLocalePack(locale);
+  pushConfigToRenderer();
+  if (tray) {
+    createTray();
+  }
+  return {
+    success: true,
+    ...result,
+    localeBootstrap: localizationService.getLocaleBootstrap(config?.ui?.language || 'auto'),
+    // Keep the response strict for now: if the authoritative manifest refresh fails
+    // after mutation, the renderer reports failure. Decoupled success is deferred.
+    packs: await localizationService.listLocalePacks(true),
+  };
 });
 
 ipcMain.handle('update-config', async (event, newConfig) => {
@@ -2295,6 +2368,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   }
 
   saveConfig();
+  if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
+    createTray();
+  }
   syncDesktopPinWindowsWithConfig();
   pushConfigToRenderer();
   broadcastDesktopPinConfigUpdate();
@@ -2433,8 +2509,8 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   const menu = Menu.buildFromTemplate([
     {
       label: isPinned
-        ? 'Unpin from Desktop'
-        : (canPinToDesktop ? 'Pin to Desktop' : 'Desktop Pin Not Supported Yet'),
+        ? mainT('Unpin from Desktop')
+        : (canPinToDesktop ? mainT('Pin to Desktop') : mainT('Desktop Pin Not Supported Yet')),
       enabled: isPinned || canPinToDesktop,
       click: () => {
         if (isPinned) {
@@ -2496,7 +2572,7 @@ ipcMain.handle('choose-profile-sync-folder', async (_event, provider) => {
   const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
   const defaultPath = getDefaultProfileSyncFolderPath(providerToUse, profileSync.cloudFilePath);
   const result = await dialog.showOpenDialog({
-    title: 'Choose Profile Sync Folder',
+    title: mainT('Choose Profile Sync Folder'),
     defaultPath,
     properties: ['openDirectory', 'createDirectory'],
   });
@@ -3363,12 +3439,12 @@ async function checkPortableUpdate() {
     }
 
     if (currentVersion && latestVersion === currentVersion) {
-      return { status: 'none', message: 'You are up to date!' };
+      return { status: 'none', message: mainT('You are up to date!') };
     }
 
     return {
       status: 'portable',
-      message: `Portable update available: v${latestVersion}. Click "Download Portable Update" to get the Portable build.`,
+      message: mainT('Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.', { version: latestVersion }),
       version: latestVersion,
       downloadUrl
     };

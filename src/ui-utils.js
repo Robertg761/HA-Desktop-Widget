@@ -1,13 +1,11 @@
+import { t } from './i18n.js';
+
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
 let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
-const CONNECTED_STATUS_SUMMARY = 'Connected to Home Assistant';
-const DISCONNECTED_STATUS_SUMMARY = 'Disconnected from Home Assistant';
-const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
-const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
   { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
@@ -654,15 +652,15 @@ function ensureConnectionStatusTooltip() {
 }
 
 function getConnectionStatusSummary(connected) {
-  return connected ? CONNECTED_STATUS_SUMMARY : DISCONNECTED_STATUS_SUMMARY;
+  return connected ? t('Connected to Home Assistant') : t('Disconnected from Home Assistant');
 }
 
 function getConnectionStatusDetail(statusElement) {
   const explicitDetail = statusElement?.dataset?.statusDetail?.trim();
   if (explicitDetail) return explicitDetail;
   const summary = statusElement?.dataset?.statusSummary || '';
-  if (summary === CONNECTED_STATUS_SUMMARY) return DEFAULT_CONNECTED_STATUS_DETAIL;
-  return DEFAULT_DISCONNECTED_STATUS_DETAIL;
+  if (summary === t('Connected to Home Assistant')) return t('Real-time updates active.');
+  return t('Disconnected from Home Assistant. Retrying automatically.');
 }
 
 function positionConnectionStatusTooltip(target) {
@@ -685,7 +683,7 @@ function showConnectionStatusTooltip(target, { pinned = false } = {}) {
   const tooltip = ensureConnectionStatusTooltip();
   const titleEl = tooltip.querySelector('.connection-status-tooltip-title');
   const detailEl = tooltip.querySelector('.connection-status-tooltip-detail');
-  const summary = target.dataset.statusSummary || target.title || DISCONNECTED_STATUS_SUMMARY;
+  const summary = target.dataset.statusSummary || target.title || t('Disconnected from Home Assistant');
   const detail = getConnectionStatusDetail(target);
   if (titleEl) titleEl.textContent = summary;
   if (detailEl) detailEl.textContent = detail;
@@ -834,7 +832,7 @@ function setStatus(connected, detailMessage = '') {
 }
 
 window.electronAPI.onHotkeyRegistrationFailed(({ hotkey }) => {
-  showToast(`Hotkey "${hotkey}" is already in use by another application.`, 'error', 5000);
+  showToast(t('Hotkey "{{hotkey}}" is already in use by another application.', { hotkey }), 'error', 5000);
 });
 
 function showConfirm(title, message, options = {}) {
@@ -853,10 +851,10 @@ function showConfirm(title, message, options = {}) {
       }
 
       // Set content
-      titleEl.textContent = title || 'Confirm Action';
-      messageEl.textContent = message || 'Are you sure?';
-      okBtn.textContent = options.confirmText || 'Confirm';
-      cancelBtn.textContent = options.cancelText || 'Cancel';
+      titleEl.textContent = title || t('Confirm Action');
+      messageEl.textContent = message || t('Are you sure?');
+      okBtn.textContent = options.confirmText || t('Confirm');
+      cancelBtn.textContent = options.cancelText || t('Cancel');
 
       // Configure buttons
       okBtn.className = `btn ${options.confirmClass || 'btn-danger'}`;

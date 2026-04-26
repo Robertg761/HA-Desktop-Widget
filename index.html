@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' ha: data: blob:; media-src 'self' ha: blob:; connect-src * ha:;">
-    <title>Home Assistant Widget</title>
+    <title data-i18n="Home Assistant Widget">Home Assistant Widget</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
     <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
         <div class="desktop-pin-header">
-            <div class="desktop-pin-drag-region" aria-label="Move desktop tile" title="Move desktop tile"></div>
+            <div class="desktop-pin-drag-region" data-i18n-title="Move desktop tile" data-i18n-aria-label="Move desktop tile" aria-label="Move desktop tile" title="Move desktop tile"></div>
         </div>
         <div id="desktop-pin-content" class="desktop-pin-content"></div>
         <div id="desktop-pin-empty" class="desktop-pin-empty hidden" data-state="waiting">
@@ -21,13 +21,13 @@
             <div class="desktop-pin-empty-title" id="desktop-pin-empty-title">Waiting for first live update</div>
             <div class="desktop-pin-empty-copy" id="desktop-pin-empty-copy">Waiting for live Home Assistant data...</div>
             <div id="desktop-pin-empty-actions" class="desktop-pin-empty-actions hidden">
-                <button id="desktop-pin-focus-btn" class="control-btn desktop-pin-action desktop-pin-empty-action" title="Focus the main widget">Focus Main</button>
+                <button id="desktop-pin-focus-btn" class="control-btn desktop-pin-action desktop-pin-empty-action" data-i18n="Focus Main" data-i18n-title="Focus Main" title="Focus Main">Focus Main</button>
             </div>
         </div>
-        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-top-left" data-corner="top-left" title="Resize tile from top left">↖</div>
-        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-top-right" data-corner="top-right" title="Resize tile from top right">↗</div>
-        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-bottom-left" data-corner="bottom-left" title="Resize tile from bottom left">↙</div>
-        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-bottom-right" data-corner="bottom-right" title="Resize tile from bottom right">↘</div>
+        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-top-left" data-corner="top-left" data-i18n-title="Resize tile from top left" title="Resize tile from top left">↖</div>
+        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-top-right" data-corner="top-right" data-i18n-title="Resize tile from top right" title="Resize tile from top right">↗</div>
+        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-bottom-left" data-corner="bottom-left" data-i18n-title="Resize tile from bottom left" title="Resize tile from bottom left">↙</div>
+        <div class="desktop-pin-resize-handle desktop-pin-resize-handle-bottom-right" data-corner="bottom-right" data-i18n-title="Resize tile from bottom right" title="Resize tile from bottom right">↘</div>
     </div>
 
     <!-- Minimal header with just drag area and essential controls -->
@@ -37,9 +37,9 @@
             <div class="connection-indicator" id="connection-status"></div>
         </div>
         <div class="header-controls">
-            <button id="settings-btn" class="control-btn" title="Settings">⚙️</button>
-            <button id="minimize-btn" class="control-btn" title="Minimize">➖</button>
-            <button id="close-btn" class="control-btn" title="Close">❌</button>
+            <button id="settings-btn" class="control-btn" data-i18n-title="Settings" title="Settings">⚙️</button>
+            <button id="minimize-btn" class="control-btn" data-i18n-title="Minimize" title="Minimize">➖</button>
+            <button id="close-btn" class="control-btn" data-i18n-title="Close" title="Close">❌</button>
         </div>
     </div>
 
@@ -47,7 +47,7 @@
     <div class="widget-content">
         <!-- Quick Status Cards -->
         <div class="status-grid">
-            <div class="status-card weather-card" id="weather-card" title="Long-press to configure weather">
+            <div class="status-card weather-card" id="weather-card" data-i18n-title="Long-press to configure weather" title="Long-press to configure weather">
                 <div class="weather-icon" id="weather-icon">🌤️</div>
                 <div class="weather-content">
                     <div class="weather-main">
@@ -95,9 +95,9 @@
                     <div class="media-tile-time" id="media-tile-time-total">0:00</div>
                 </div>
                 <div class="media-tile-controls">
-                    <button class="media-tile-btn" id="media-tile-prev" title="Previous"></button>
-                    <button class="media-tile-btn media-tile-btn-play" id="media-tile-play" title="Play/Pause"></button>
-                    <button class="media-tile-btn" id="media-tile-next" title="Next"></button>
+                    <button class="media-tile-btn" id="media-tile-prev" data-i18n-title="Previous" title="Previous"></button>
+                    <button class="media-tile-btn media-tile-btn-play" id="media-tile-play" data-i18n-title="Play/Pause" title="Play/Pause"></button>
+                    <button class="media-tile-btn" id="media-tile-next" data-i18n-title="Next" title="Next"></button>
                 </div>
             </div>
         </div>
@@ -105,11 +105,11 @@
         <!-- Quick Access -->
         <div class="controls-section">
             <div class="section-header">
-                <span class="section-title">Quick Access</span>
+                <span class="section-title" data-i18n="Quick Access">Quick Access</span>
                 <div class="section-buttons">
                     <button id="reorganize-quick-controls-btn" class="section-btn"
-                        title="Reorganize Quick Access">⋮⋮</button>
-                    <button id="manage-quick-controls-btn" class="section-btn" title="Manage Quick Access">➕</button>
+                        data-i18n-title="Reorganize Quick Access" title="Reorganize Quick Access">⋮⋮</button>
+                    <button id="manage-quick-controls-btn" class="section-btn" data-i18n-title="Manage Quick Access" title="Manage Quick Access">➕</button>
                 </div>
             </div>
             <div id="quick-controls" class="controls-grid">
@@ -123,38 +123,55 @@
     <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="settings-title">Settings</h2>
+                <h2 id="settings-title" data-i18n="Settings">Settings</h2>
                 <button id="close-settings" class="close-btn">×</button>
             </div>
             <div class="modal-tabs">
-                <button class="tab-link active" data-tab="general">General</button>
-                <button class="tab-link" data-tab="personalization">Personalization</button>
-                <button class="tab-link" data-tab="hotkeys">Hotkeys</button>
-                <button class="tab-link" data-tab="alerts">Alerts</button>
-                <button class="tab-link" data-tab="advanced">Advanced</button>
+                <button class="tab-link active" data-tab="general" data-i18n="General">General</button>
+                <button class="tab-link" data-tab="personalization" data-i18n="Personalization">Personalization</button>
+                <button class="tab-link" data-tab="hotkeys" data-i18n="Hotkeys">Hotkeys</button>
+                <button class="tab-link" data-tab="alerts" data-i18n="Alerts">Alerts</button>
+                <button class="tab-link" data-tab="advanced" data-i18n="Advanced">Advanced</button>
             </div>
             <div class="modal-body">
                 <div id="general-tab" class="tab-content active">
                     <div class="form-group">
-                        <label for="ha-url">Home Assistant URL:</label>
-                        <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123">
+                        <label for="ha-url" data-i18n="Home Assistant URL:">Home Assistant URL:</label>
+                        <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123" data-i18n-placeholder="http://homeassistant.local:8123">
                     </div>
                     <div class="form-group">
-                        <label for="ha-token">Access Token:</label>
-                        <input type="password" id="ha-token" placeholder="Your long-lived access token">
+                        <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
+                        <input type="password" id="ha-token" placeholder="Your long-lived access token" data-i18n-placeholder="Your long-lived access token">
                     </div>
 
                     <div class="form-group">
                         <label>
                             <input type="checkbox" id="always-on-top">
-                            Always on top
+                            <span data-i18n="Always on top">Always on top</span>
                         </label>
                     </div>
                     <div class="form-group">
                         <label>
                             <input type="checkbox" id="start-with-windows">
-                            Start with Windows
+                            <span data-i18n="Start with Windows">Start with Windows</span>
                         </label>
+                    </div>
+                    <div class="form-group language-section">
+                        <label for="language-select" data-i18n="Language Mode">Language Mode</label>
+                        <select id="language-select">
+                            <option value="auto" data-i18n="Auto (System Default)">Auto (System Default)</option>
+                            <option value="en" data-i18n="English">English</option>
+                        </select>
+                        <p id="language-select-help" class="help-text" data-i18n="Download a language pack below to enable it in the selector.">Download a language pack below to enable it in the selector.</p>
+                        <p id="language-current-summary" class="help-text">Selected language: English</p>
+                        <p id="language-system-summary" class="help-text">System language detected: English</p>
+                        <p id="language-fallback-summary" class="help-text hidden">Using English until the selected language pack is installed.</p>
+                    </div>
+                    <div class="form-group language-packs-section">
+                        <label data-i18n="Offline Language Packs">Offline Language Packs</label>
+                        <p class="help-text" data-i18n="Download, update, or remove offline language packs. English is always available offline.">Download, update, or remove offline language packs. English is always available offline.</p>
+                        <div id="language-pack-status" class="help-text hidden"></div>
+                        <div id="language-packs-list" class="language-packs-list"></div>
                     </div>
                     <div class="form-group profile-sync-group">
                         <label>
@@ -256,10 +273,10 @@
                         </div>
                     </div>
                     <div class="form-group update-section">
-                        <label>Application Updates</label>
+                        <label data-i18n="Application Updates">Application Updates</label>
                         <div class="update-info">
                             <div class="version-info">
-                                <span>Current Version: <strong id="current-version">Loading...</strong></span>
+                                <span><span data-i18n="Current Version:">Current Version:</span> <strong id="current-version">Loading...</strong></span>
                             </div>
                             <div class="update-status" id="update-status">
                                 <span id="update-status-text">Checking for updates...</span>
@@ -563,8 +580,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="save-settings" class="btn btn-primary">Save</button>
-                <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
+                <button id="save-settings" class="btn btn-primary" data-i18n="Save">Save</button>
+                <button id="cancel-settings" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -601,8 +618,8 @@
                 <p id="confirm-message">Are you sure?</p>
             </div>
             <div class="modal-footer">
-                <button id="confirm-cancel-btn" class="btn btn-secondary">Cancel</button>
-                <button id="confirm-ok-btn" class="btn btn-danger">Remove</button>
+                <button id="confirm-cancel-btn" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
+                <button id="confirm-ok-btn" class="btn btn-danger" data-i18n="Remove">Remove</button>
             </div>
         </div>
     </div>

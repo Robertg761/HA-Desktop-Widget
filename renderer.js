@@ -8,13 +8,12 @@ import * as ui from './src/ui.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
+import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
-const DEFAULT_CONNECTED_STATUS_DETAIL = 'Real-time updates active.';
-const DEFAULT_DISCONNECTED_STATUS_DETAIL = 'Disconnected from Home Assistant. Retrying automatically.';
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
@@ -77,7 +76,7 @@ let uiTickIntervalId = null;
 let offlineConnectionToastShown = false;
 let lastConnectionToast = { key: null, shownAt: 0 };
 let browserReportedOffline = false;
-let lastDisconnectReason = DEFAULT_DISCONNECTED_STATUS_DETAIL;
+let lastDisconnectReason = 'Disconnected from Home Assistant. Retrying automatically.';
 
 function clearReconnectTimer() {
   if (!reconnectTimerId) return;
@@ -96,10 +95,10 @@ function setDisconnectedStatus(detailMessage = '') {
   if (normalizedDetail) {
     lastDisconnectReason = normalizedDetail;
   }
-  uiUtils.setStatus(false, lastDisconnectReason || DEFAULT_DISCONNECTED_STATUS_DETAIL);
+  uiUtils.setStatus(false, lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.'));
 }
 
-function setConnectedStatus(detailMessage = DEFAULT_CONNECTED_STATUS_DETAIL) {
+function setConnectedStatus(detailMessage = t('Real-time updates active.')) {
   lastDisconnectReason = '';
   uiUtils.setStatus(true, detailMessage);
 }
@@ -138,6 +137,14 @@ function applyRendererConfig(nextConfig) {
   uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
   uiUtils.applyUiPreferences(state.CONFIG.ui || {});
   uiUtils.applyWindowEffects(state.CONFIG || {});
+}
+
+async function refreshLocaleBootstrap() {
+  if (!window?.electronAPI?.getLocaleBootstrap) return null;
+  const bootstrap = await window.electronAPI.getLocaleBootstrap();
+  setLocaleBootstrap(bootstrap || {});
+  translateDocument(document);
+  return bootstrap;
 }
 
 function renderCurrentMode() {
@@ -201,7 +208,7 @@ function classifyConnectionError(error) {
   if (browserOffline) {
     return {
       key: OFFLINE_CONNECTION_ERROR_KEY,
-      message: 'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.',
+      message: t('No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'),
       persistUntilOnline: true,
     };
   }
@@ -213,14 +220,14 @@ function classifyConnectionError(error) {
   ) {
     return {
       key: 'ha-connection-unreachable',
-      message: 'Unable to reach Home Assistant. Check your network or Home Assistant URL.',
+      message: t('Unable to reach Home Assistant. Check your network or Home Assistant URL.'),
       persistUntilOnline: false,
     };
   }
 
   return {
     key: normalizedMessage,
-    message: `Connection error: ${normalizedMessage}`,
+    message: t('Connection error: {{message}}', { message: normalizedMessage }),
     persistUntilOnline: false,
   };
 }
@@ -524,8 +531,8 @@ websocket.on('close', (closeInfo = {}) => {
       return;
     }
 
-    setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
-    setDesktopPinConnectionIssue(DEFAULT_DISCONNECTED_STATUS_DETAIL);
+    setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
+    setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
     uiUtils.showLoading(false);
     if (IS_SPECIAL_PIN_MODE) {
       renderCurrentMode();
@@ -548,11 +555,11 @@ websocket.on('error', (error) => {
     // Show user-friendly error message
     const errorMessage = String(error?.message || '');
     if (errorMessage.includes('default token')) {
-      desktopPinIssueMessage = 'Please configure your Home Assistant token in Settings (gear icon).';
+      desktopPinIssueMessage = t('Please configure your Home Assistant token in Settings (gear icon).');
       setDisconnectedStatus(desktopPinIssueMessage);
       uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (errorMessage.includes('Invalid configuration')) {
-      desktopPinIssueMessage = 'Please configure connection settings (gear icon).';
+      desktopPinIssueMessage = t('Please configure connection settings (gear icon).');
       setDisconnectedStatus(desktopPinIssueMessage);
       uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
@@ -617,9 +624,10 @@ window.electronAPI.onProfileSyncStatus((status) => {
   }
 });
 
-window.electronAPI.onConfigUpdated((nextConfig) => {
+window.electronAPI.onConfigUpdated(async (nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
+    await refreshLocaleBootstrap();
     applyRendererConfig(nextConfig);
     renderCurrentMode();
   } catch (error) {
@@ -693,6 +701,7 @@ function replaceEmojiIcons() {
 async function initializeDesktopPinMode() {
   try {
     log.info('Initializing desktop pin renderer');
+    await refreshLocaleBootstrap();
     const bootstrap = await window.electronAPI.getDesktopPinBootstrap(DESKTOP_PIN_ENTITY_ID);
     const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
     desktopPinEditMode = !!bootstrap?.editMode;
@@ -724,9 +733,9 @@ async function initializeDesktopPinMode() {
       ? nextConfig.homeAssistant.token.trim()
       : '';
     if (!desktopPinUrl) {
-      setDesktopPinConnectionIssue('Please configure connection settings (gear icon).');
+      setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
     } else if (!desktopPinToken || desktopPinToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      setDesktopPinConnectionIssue('Please configure your Home Assistant token in Settings (gear icon).');
+      setDesktopPinConnectionIssue(t('Please configure your Home Assistant token in Settings (gear icon).'));
     } else {
       setDesktopPinConnectionIssue('');
     }
@@ -735,7 +744,7 @@ async function initializeDesktopPinMode() {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);
     wireDesktopPinUI();
-    setDesktopPinConnectionIssue('Unable to initialize the desktop tile. Focus the main widget to review your settings.');
+    setDesktopPinConnectionIssue(t('Unable to initialize the desktop tile. Focus the main widget to review your settings.'));
     renderCurrentMode();
   }
 }
@@ -744,6 +753,7 @@ async function init() {
   try {
     log.info('Initializing application');
     document.body.classList.toggle('desktop-pin-mode', IS_DESKTOP_PIN_MODE);
+    await refreshLocaleBootstrap();
     uiUtils.showLoading(true);
     if (IS_DESKTOP_PIN_MODE) {
       await initializeDesktopPinMode();
@@ -751,12 +761,12 @@ async function init() {
     }
 
     uiUtils.initializeConnectionStatusTooltip();
-    setDisconnectedStatus(DEFAULT_DISCONNECTED_STATUS_DETAIL);
+    setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
 
     const config = await window.electronAPI.getConfig();
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
-      setDisconnectedStatus('Please configure connection settings (gear icon).');
+      setDisconnectedStatus(t('Please configure connection settings (gear icon).'));
       state.setConfig({
         homeAssistant: {
           url: '',
@@ -790,26 +800,26 @@ async function init() {
       }
       delete state.CONFIG.tokenResetReason;
 
-      let message = 'Your Home Assistant token needs to be re-entered. ';
+      let message = t('Your Home Assistant token needs to be re-entered. ');
       let detailMessage = '';
       if (reason === 'encryption_unavailable') {
-        message += 'Token encryption is not available on this system.';
-        detailMessage = 'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.';
+        message += t('Token encryption is not available on this system.');
+        detailMessage = t('Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.');
       } else if (reason === 'decryption_failed') {
-        message += 'The stored token could not be decrypted.';
-        detailMessage = 'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.';
+        message += t('The stored token could not be decrypted.');
+        detailMessage = t('The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.');
       }
 
       log.warn('[Init] Token reset:', message);
       log.info('[Init]', detailMessage);
 
       // Show prominent warning message with extended duration
-      uiUtils.showToast(message + ' Click the gear icon to open Settings.', 'warning', 20000);
+      uiUtils.showToast(message + t(' Click the gear icon to open Settings.'), 'warning', 20000);
     }
 
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       log.warn('[Init] Using default token. Please configure your Home Assistant token in settings.');
-      setDisconnectedStatus('Please configure your Home Assistant token in Settings (gear icon).');
+      setDisconnectedStatus(t('Please configure your Home Assistant token in Settings (gear icon).'));
       uiUtils.showLoading(false);
       ui.renderActiveTab();
       return;
@@ -872,11 +882,11 @@ function wireUI() {
             log.info('Log file opened successfully');
           } else {
             log.error('Failed to open log file:', result.error);
-            uiUtils.showToast('Failed to open log file: ' + result.error, 'error');
+            uiUtils.showToast(t('Failed to open log file: {{error}}', { error: result.error }), 'error');
           }
         } catch (error) {
           log.error('Error opening log file:', error);
-          uiUtils.showToast('Error opening log file: ' + error.message, 'error');
+          uiUtils.showToast(t('Error opening log file: {{error}}', { error: error.message }), 'error');
         }
       };
     }
@@ -1054,10 +1064,10 @@ function wireUI() {
           // Refresh the list
           ui.populateWeatherEntitiesList();
 
-          uiUtils.showToast('Weather entity cleared (using first available)', 'success', 2000);
+          uiUtils.showToast(t('Weather entity cleared (using first available)'), 'success', 2000);
         } catch (error) {
           console.error('Error clearing weather entity:', error);
-          uiUtils.showToast('Failed to clear weather entity', 'error', 3000);
+          uiUtils.showToast(t('Failed to clear weather entity'), 'error', 3000);
         }
       };
     }

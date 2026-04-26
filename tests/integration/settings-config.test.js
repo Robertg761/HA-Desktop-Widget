@@ -182,6 +182,18 @@ function createSettingsModalDOM() {
         Always on Top
       </label>
 
+      <label for="language-select">Language Mode</label>
+      <select id="language-select">
+        <option value="auto">Auto (System Default)</option>
+        <option value="en">English</option>
+      </select>
+      <div id="language-select-help">Download a language pack below to enable it in the selector.</div>
+      <div id="language-current-summary"></div>
+      <div id="language-system-summary"></div>
+      <div id="language-fallback-summary" class="hidden"></div>
+      <div id="language-pack-status" class="hidden"></div>
+      <div id="language-packs-list"></div>
+
       <label for="opacity-slider">Opacity</label>
       <input type="range" id="opacity-slider" min="1" max="100" />
       <span id="opacity-value">90</span>
@@ -354,6 +366,10 @@ describe('Settings + Config Integration', () => {
   const settings = require('../../src/settings.js');
   const state = require('../../src/state.js').default;
   const profileSyncFixture = JSON.parse(JSON.stringify(sampleConfig.profileSync));
+  const waitForLanguagePackRefresh = async () => {
+    await settings.waitForLanguagePackRefresh();
+    await Promise.resolve();
+  };
   const buildProfileSync = (overrides = {}) => {
     const next = {
       ...profileSyncFixture,
@@ -742,6 +758,101 @@ describe('Settings + Config Integration', () => {
           })
         })
       );
+    });
+
+    test('downloadable languages stay disabled in the selector until installed', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValue([
+        {
+          locale: 'es',
+          displayName: 'Español',
+          englishName: 'Spanish',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: false,
+          updateAvailable: false,
+        },
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          englishName: 'French',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: true,
+          updateAvailable: false,
+        }
+      ]);
+
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+
+      const languageSelect = document.getElementById('language-select');
+      const spanishOption = Array.from(languageSelect.options).find((option) => option.value === 'es');
+      const frenchOption = Array.from(languageSelect.options).find((option) => option.value === 'fr');
+
+      expect(document.getElementById('language-select-help').textContent).toBe('Download a language pack below to enable it in the selector.');
+      expect(spanishOption).toBeTruthy();
+      expect(spanishOption.disabled).toBe(true);
+      expect(spanishOption.textContent).toContain('Download first');
+      expect(frenchOption).toBeTruthy();
+      expect(frenchOption.disabled).toBe(false);
+    });
+
+    test('changing the language selector persists immediately without waiting for Save', async () => {
+      state.CONFIG.ui.language = 'fr';
+      window.electronAPI.getLocalePacks.mockResolvedValue([
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          englishName: 'French',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: true,
+          updateAvailable: false,
+        }
+      ]);
+
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+
+      const languageSelect = document.getElementById('language-select');
+      languageSelect.value = 'en';
+      languageSelect.dispatchEvent(new Event('change'));
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            language: 'en'
+          })
+        })
+      );
+      expect(state.CONFIG.ui.language).toBe('en');
+    });
+
+    test('language pack load failures surface an error while still showing installed packs', async () => {
+      const error = new Error('manifest unavailable');
+      error.installedPacks = [
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          englishName: 'French',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: true,
+          updateAvailable: false,
+        }
+      ];
+      window.electronAPI.getLocalePacks.mockRejectedValueOnce(error);
+
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+
+      expect(document.getElementById('language-pack-status').textContent).toBe('Unable to load language packs right now.');
+      expect(document.getElementById('language-pack-status').classList.contains('hidden')).toBe(false);
+      expect(document.getElementById('language-packs-list').textContent).toContain('Français');
+      expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
     });
 
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {

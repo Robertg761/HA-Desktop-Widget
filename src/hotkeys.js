@@ -1,6 +1,7 @@
 import state from './state.js';
 import { showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
+import { t } from './i18n.js';
 
 let globalHotkeys = {};
 
@@ -119,9 +120,9 @@ function renderHotkeysTab() {
             item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="No hotkey set" data-entity-id="${escapedEntityId}">
+                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtml(t('No hotkey set'))}" data-entity-id="${escapedEntityId}">
                     ${dropdownHTML}
-                    <button class="btn-clear-hotkey" title="Clear hotkey">&times;</button>
+                    <button class="btn-clear-hotkey" title="${escapeHtml(t('Clear hotkey'))}">&times;</button>
                 </div>
             `;
             container.appendChild(item);
@@ -142,12 +143,12 @@ async function toggleHotkeys(enabled) {
                 state.CONFIG.globalHotkeys.enabled = enabled;
             }
             globalHotkeys.enabled = enabled;
-            showToast(`Global hotkeys ${enabled ? 'enabled' : 'disabled'}`, 'success', 2000);
+            showToast(enabled ? t('Global hotkeys enabled') : t('Global hotkeys disabled'), 'success', 2000);
             return true;
         }
     } catch (error) {
         console.error('Error toggling hotkeys:', error);
-        showToast('Error toggling hotkeys', 'error', 2000);
+        showToast(t('Error toggling hotkeys'), 'error', 2000);
     }
     return false;
 }
@@ -201,9 +202,9 @@ function captureHotkey() {
             modal.className = 'hotkey-capture-modal';
             modal.innerHTML = `
                 <div class="modal-content">
-                    <p>Press the desired key combination...</p>
+                    <p>${escapeHtml(t('Press the desired key combination...'))}</p>
                     <div id="hotkey-preview" class="hotkey-preview-box"></div>
-                    <p><small>Press Esc to cancel.</small></p>
+                    <p><small>${escapeHtml(t('Press Esc to cancel.'))}</small></p>
                 </div>
             `;
             document.body.appendChild(modal);
@@ -230,7 +231,7 @@ function captureHotkey() {
                         resolve(accelerator);
                     } else {
                         // Show feedback that a modifier is required
-                        previewBox.textContent = accelerator + ' (add Ctrl/Alt/Shift)';
+                        previewBox.textContent = t('{{hotkey}} (add Ctrl/Alt/Shift)', { hotkey: accelerator });
                     }
                 } else {
                     // Just show the modifiers being pressed
