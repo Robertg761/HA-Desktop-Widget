@@ -1,5 +1,6 @@
 {
   "Settings": "Settings",
+  "Settings sections": "Settings sections",
   "General": "General",
   "Personalization": "Personalization",
   "Hotkeys": "Hotkeys",
@@ -11,6 +12,8 @@
   "Your long-lived access token": "Your long-lived access token",
   "Always on top": "Always on top",
   "Start with Windows": "Start with Windows",
+  "Edit accent color used for buttons, focus rings, highlights, and active states.": "Edit accent color used for buttons, focus rings, highlights, and active states.",
+  "Edit background color used for the window, panels, cards, and glass surfaces.": "Edit background color used for the window, panels, cards, and glass surfaces.",
   "Language": "Language",
   "Language Mode": "Language Mode",
   "Auto (System Default)": "Auto (System Default)",
