@@ -1101,8 +1101,12 @@ function wireUI() {
     document.querySelectorAll('.modal-tabs .tab-link').forEach(button => {
       button.addEventListener('click', () => {
         const tab = button.dataset.tab;
-        document.querySelectorAll('.modal-tabs .tab-link').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.modal-tabs .tab-link').forEach(btn => {
+          btn.classList.remove('active');
+          btn.setAttribute('aria-selected', 'false');
+        });
         button.classList.add('active');
+        button.setAttribute('aria-selected', 'true');
         document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
         document.getElementById(`${tab}-tab`).classList.add('active');
         if (tab === 'personalization') {

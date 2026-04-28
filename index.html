@@ -126,12 +126,12 @@
                 <h2 id="settings-title" data-i18n="Settings">Settings</h2>
                 <button id="close-settings" class="close-btn">×</button>
             </div>
-            <div class="modal-tabs">
-                <button class="tab-link active" data-tab="general" data-i18n="General">General</button>
-                <button class="tab-link" data-tab="personalization" data-i18n="Personalization">Personalization</button>
-                <button class="tab-link" data-tab="hotkeys" data-i18n="Hotkeys">Hotkeys</button>
-                <button class="tab-link" data-tab="alerts" data-i18n="Alerts">Alerts</button>
-                <button class="tab-link" data-tab="advanced" data-i18n="Advanced">Advanced</button>
+            <div class="modal-tabs" role="tablist" aria-label="Settings sections">
+                <button class="tab-link active" role="tab" aria-selected="true" data-tab="general" data-i18n="General">General</button>
+                <button class="tab-link" role="tab" aria-selected="false" data-tab="personalization" data-i18n="Personalization">Personalization</button>
+                <button class="tab-link" role="tab" aria-selected="false" data-tab="hotkeys" data-i18n="Hotkeys">Hotkeys</button>
+                <button class="tab-link" role="tab" aria-selected="false" data-tab="alerts" data-i18n="Alerts">Alerts</button>
+                <button class="tab-link" role="tab" aria-selected="false" data-tab="advanced" data-i18n="Advanced">Advanced</button>
             </div>
             <div class="modal-body">
                 <div id="general-tab" class="tab-content active">
