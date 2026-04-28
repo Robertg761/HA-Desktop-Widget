@@ -307,12 +307,32 @@
                         </button>
                         <div id="color-themes-body" class="section-body">
                             <div class="form-group">
-                                <label for="color-target-select">Editing</label>
-                                <select id="color-target-select">
+                                <label id="color-target-label">Editing</label>
+                                <select id="color-target-select" class="color-target-select-native" aria-hidden="true" tabindex="-1">
                                     <option value="accent">Accent Color</option>
                                     <option value="background">Background Color</option>
                                 </select>
-                                <div class="form-help">Choose which part of the UI the palette will update.</div>
+                                <div class="color-target-control" role="radiogroup" aria-labelledby="color-target-label">
+                                    <button type="button" class="color-target-option active" data-color-target="accent"
+                                        role="radio" aria-checked="true"
+                                        title="Edit accent color used for buttons, focus rings, highlights, and active states.">
+                                        <span class="color-target-swatch color-target-swatch-accent" aria-hidden="true"></span>
+                                        <span class="color-target-copy">
+                                            <span class="color-target-name">Accent</span>
+                                            <span class="color-target-note">Buttons, focus, active states</span>
+                                        </span>
+                                    </button>
+                                    <button type="button" class="color-target-option" data-color-target="background"
+                                        role="radio" aria-checked="false"
+                                        title="Edit background color used for the window, panels, cards, and glass surfaces.">
+                                        <span class="color-target-swatch color-target-swatch-background" aria-hidden="true"></span>
+                                        <span class="color-target-copy">
+                                            <span class="color-target-name">Background</span>
+                                            <span class="color-target-note">Window, panels, cards</span>
+                                        </span>
+                                    </button>
+                                </div>
+                                <div class="form-help">Choose whether the palette updates highlights or the window base.</div>
                             </div>
                             <div class="form-group">
                                 <label id="theme-options-label">Color Options</label>

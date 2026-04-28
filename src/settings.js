@@ -1145,6 +1145,17 @@ function updateThemeSelectionUI() {
   });
 }
 
+function updateColorTargetUI() {
+  const select = document.getElementById('color-target-select');
+  if (select) select.value = activeColorTarget;
+
+  document.querySelectorAll('.color-target-option').forEach(option => {
+    const isActive = option.dataset.colorTarget === activeColorTarget;
+    option.classList.toggle('active', isActive);
+    option.setAttribute('aria-checked', isActive ? 'true' : 'false');
+  });
+}
+
 /**
  * Update the theme options label to indicate whether Accent or Background colors are active.
  *
@@ -1180,6 +1191,8 @@ function updateThemeSummary() {
  */
 function setActiveColorTarget(target) {
   activeColorTarget = target === COLOR_TARGETS.background ? COLOR_TARGETS.background : COLOR_TARGETS.accent;
+  hasDraftColorPreview = false;
+  updateColorTargetUI();
   renderColorThemeOptions();
 }
 
@@ -1384,11 +1397,29 @@ function renderColorThemeOptions() {
  */
 function initColorTargetSelect() {
   const select = document.getElementById('color-target-select');
-  if (!select) return;
-  select.value = activeColorTarget;
-  select.onchange = (e) => {
-    setActiveColorTarget(e.target.value);
-  };
+  if (select) {
+    select.value = activeColorTarget;
+    select.onchange = (e) => {
+      setActiveColorTarget(e.target.value);
+    };
+  }
+
+  document.querySelectorAll('.color-target-option').forEach(option => {
+    option.onclick = () => {
+      setActiveColorTarget(option.dataset.colorTarget);
+    };
+    option.onkeydown = (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const nextTarget = activeColorTarget === COLOR_TARGETS.accent
+        ? COLOR_TARGETS.background
+        : COLOR_TARGETS.accent;
+      setActiveColorTarget(nextTarget);
+      document.querySelector(`.color-target-option[data-color-target="${nextTarget}"]`)?.focus();
+    };
+  });
+
+  updateColorTargetUI();
 }
 
 function getSavedPersonalizationSectionStates() {

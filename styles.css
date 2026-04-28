@@ -5562,6 +5562,103 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: rotate(-90deg);
 }
 
+/* Color target picker */
+.color-target-select-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
+.color-target-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.color-target-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 72px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--glass-surface);
+  color: var(--text-primary);
+  text-align: center;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition-base);
+  box-shadow: var(--shadow-sm);
+}
+
+.color-target-option:hover {
+  border-color: var(--border-hover);
+  background: var(--glass-elevated);
+  transform: translateY(-1px);
+}
+
+.color-target-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--glow-focus);
+}
+
+.color-target-option.active {
+  border-color: var(--accent);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.05)),
+    var(--glass-elevated);
+  box-shadow:
+    0 0 0 1px rgba(var(--accent-rgb), 0.45),
+    0 12px 28px rgba(var(--accent-rgb), 0.2);
+}
+
+.color-target-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 8px 18px rgba(0, 0, 0, 0.18);
+  flex-shrink: 0;
+}
+
+.color-target-swatch-accent {
+  background: var(--accent);
+}
+
+.color-target-swatch-background {
+  background: linear-gradient(135deg, var(--bg-color), var(--surface-2));
+}
+
+.color-target-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  text-align: center;
+}
+
+.color-target-name {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.color-target-note {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
 /* Accent theme picker */
 .accent-theme-grid {
   display: grid;
