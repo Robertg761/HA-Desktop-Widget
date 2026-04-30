@@ -22,6 +22,11 @@ const {
   resolveDesktopPinProfile,
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
+const {
+  getWindowsStartupRegistryName,
+  isWindowsLoginItemEnabled,
+  quoteWindowsExecutablePath,
+} = require('./src/windows-startup.cjs');
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -359,17 +364,22 @@ function isPortableBuild() {
  * Portable builds run from a temporary extracted executable, so we must use
  * PORTABLE_EXECUTABLE_FILE to register the launcher that actually exists
  * across reboots.
- * @returns {{path: string, args: string[]}}
+ * @param {{quotePath?: boolean}} [options]
+ * @returns {{path: string, args: string[], name: string, executablePath: string}}
  */
-function getWindowsStartupRegistrationTarget() {
+function getWindowsStartupRegistrationTarget(options = {}) {
   const env = process.env || {};
   const portableExecutable = env.PORTABLE_EXECUTABLE_FILE;
   const portableBuild = isPortableBuild();
+  const quotePath = options.quotePath !== false;
 
   if (portableBuild && portableExecutable) {
+    const executablePath = portableExecutable;
     return {
-      path: portableExecutable,
-      args: []
+      path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
+      args: [],
+      name: getWindowsStartupRegistryName(pkg, app.getName()),
+      executablePath
     };
   }
 
@@ -377,9 +387,19 @@ function getWindowsStartupRegistrationTarget() {
     log.warn('Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath(\'exe\') which may be an ephemeral path.');
   }
 
+  const executablePath = app.getPath('exe');
   return {
-    path: app.getPath('exe'),
-    args: []
+    path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
+    args: [],
+    name: getWindowsStartupRegistryName(pkg, app.getName()),
+    executablePath
+  };
+}
+
+function getWindowsStartupLookupOptions(target) {
+  return {
+    path: target.path,
+    args: target.args
   };
 }
 
@@ -2681,13 +2701,24 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (_event, choice) => {
 // Start with Windows IPC handlers
 ipcMain.handle('get-login-item-settings', () => {
   try {
-    const lookupOptions = process.platform === 'win32'
-      ? getWindowsStartupRegistrationTarget()
-      : undefined;
-    const settings = app.getLoginItemSettings(lookupOptions);
-    const openAtLogin = lookupOptions
-      ? Boolean(settings.executableWillLaunchAtLogin ?? settings.openAtLogin)
-      : Boolean(settings.openAtLogin);
+    if (process.platform === 'win32') {
+      const startupTarget = getWindowsStartupRegistrationTarget();
+      const legacyStartupTarget = getWindowsStartupRegistrationTarget({ quotePath: false });
+      const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
+      let openAtLogin = isWindowsLoginItemEnabled(settings, startupTarget.executablePath);
+      let legacySettings = null;
+
+      if (!openAtLogin && legacyStartupTarget.path !== startupTarget.path) {
+        legacySettings = app.getLoginItemSettings(getWindowsStartupLookupOptions(legacyStartupTarget));
+        openAtLogin = isWindowsLoginItemEnabled(legacySettings, startupTarget.executablePath);
+      }
+
+      log.debug('Login item settings:', { settings, legacySettings });
+      return { openAtLogin };
+    }
+
+    const settings = app.getLoginItemSettings();
+    const openAtLogin = Boolean(settings.openAtLogin);
     log.debug('Login item settings:', settings);
     return { openAtLogin };
   } catch (error) {
@@ -2704,7 +2735,13 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
       : {};
     const loginItemSettings = {
       openAtLogin: normalizedOpenAtLogin,
-      ...startupTarget
+      ...(process.platform === 'win32'
+        ? {
+          path: startupTarget.path,
+          args: startupTarget.args,
+          name: startupTarget.name
+        }
+        : startupTarget)
     };
 
     if (process.platform === 'win32') {
@@ -2715,6 +2752,18 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
     const withWindowsSuffix = process.platform === 'win32' ? ' with Windows' : '';
     log.info(`Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`, loginItemSettings);
     app.setLoginItemSettings(loginItemSettings);
+
+    if (process.platform === 'win32') {
+      const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
+      const confirmedOpenAtLogin = isWindowsLoginItemEnabled(settings, startupTarget.executablePath);
+      if (confirmedOpenAtLogin !== normalizedOpenAtLogin) {
+        const error = `Windows startup setting did not persist as ${normalizedOpenAtLogin ? 'enabled' : 'disabled'}`;
+        log.warn(error, settings);
+        return { success: false, error, openAtLogin: confirmedOpenAtLogin };
+      }
+      return { success: true, openAtLogin: confirmedOpenAtLogin };
+    }
+
     return { success: true, openAtLogin: normalizedOpenAtLogin };
   } catch (error) {
     log.error('Failed to set login item settings:', error);
