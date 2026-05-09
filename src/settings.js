@@ -3213,7 +3213,7 @@ async function openSettings(uiHooks) {
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
 
-    // Initialize "Start with Windows" checkbox
+    // Initialize "Start at login" checkbox
     const startWithWindows = document.getElementById('start-with-windows');
     if (startWithWindows) {
       try {
@@ -3422,7 +3422,7 @@ function closeSettings() {
  *
  * Reads and validates form fields (including Home Assistant URL and token), persists the resulting configuration,
  * applies UI and window-effect changes (opacity, themes, frosted glass, always-on-top), updates platform-specific
- * settings (Start with Windows, global hotkeys, entity alerts, primary media player), refreshes the media tile,
+ * settings (Start at login, global hotkeys, entity alerts, primary media player), refreshes the media tile,
  * and reconnects to Home Assistant only if connection settings changed. May prompt the user to restart the app when
  * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
  */
@@ -3496,14 +3496,14 @@ async function saveSettings() {
     state.CONFIG.ui.customColors = getCustomColorsForSave();
     setCustomThemes(state.CONFIG.ui.customColors);
 
-    // Save "Start with Windows" setting
+    // Save "Start at login" setting
     const startWithWindows = document.getElementById('start-with-windows');
     if (startWithWindows) {
       try {
         const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
         if (!result.success) {
           log.error('Failed to set login item settings:', result.error);
-          showToast('Failed to update Start with Windows setting', 'warning', 3000);
+          showToast(t('Failed to update Start at login setting'), 'warning', 3000);
         }
       } catch (error) {
         log.error('Failed to set login item settings:', error);

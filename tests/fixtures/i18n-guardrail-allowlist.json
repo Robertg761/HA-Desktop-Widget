@@ -41,7 +41,6 @@
   "src/settings.js|showToast|showToast(`Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`, 'error', 3400);",
   "src/settings.js|showToast|showToast('Saved passphrase cleared.', 'success', 2000);",
   "src/settings.js|showToast|showToast('Home Assistant URL cannot be empty', 'error', 3000);",
-  "src/settings.js|showToast|showToast('Failed to update Start with Windows setting', 'warning', 3000);",
   "src/settings.js|showToast|showToast('Choose a sync folder before enabling profile sync.', 'error', 3200);",
   "src/settings.js|showToast|showToast('Kept current sync folder.', 'warning', 2200);",
   "src/settings.js|showToast|showToast('Copy is unavailable on this build. Kept current sync folder.', 'warning', 3200);",

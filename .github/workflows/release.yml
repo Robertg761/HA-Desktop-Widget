@@ -194,8 +194,51 @@ jobs:
           name: dist-mac
           path: dist/*
 
+  build-linux:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools fakeroot dpkg libcrypt1
+
+      - name: Align package versions to release tag
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux artifacts (AppImage and deb)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run dist:linux -- --publish always
+
+      - name: Upload artifacts (fallback)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/*
+
   sync-version:
-    needs: [validate, build, build-mac]
+    needs: [validate, build, build-mac, build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tagged commit

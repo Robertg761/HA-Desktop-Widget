@@ -6449,7 +6449,7 @@ function initUpdateUI() {
             // In development mode, auto-updater doesn't work
             if (updateStatusText) updateStatusText.textContent = t('Auto-updates only work in packaged builds');
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-          } else if (result.status === 'portable') {
+          } else if (result.status === 'portable' || result.status === 'manual') {
             portableDownloadUrl = result.downloadUrl || null;
             if (updateStatusText) {
               const baseMessage = result.message || t('Portable builds do not support in-app updates.');
@@ -6458,7 +6458,7 @@ function initUpdateUI() {
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent = t('Download Portable Update');
+                installUpdateBtn.textContent = result.status === 'manual' ? t('Download Update') : t('Download Portable Update');
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');
@@ -6574,6 +6574,7 @@ function initUpdateUI() {
             break;
 
           case 'portable':
+          case 'manual':
             portableDownloadUrl = data.downloadUrl || null;
             if (updateStatusText) {
               const baseMessage = data.message || t('Portable builds do not support in-app updates.');
@@ -6582,7 +6583,7 @@ function initUpdateUI() {
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent = t('Download Portable Update');
+                installUpdateBtn.textContent = data.status === 'manual' ? t('Download Update') : t('Download Portable Update');
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');

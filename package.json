@@ -12,6 +12,7 @@
     "dist": "npm run build:renderer && electron-builder --win nsis portable",
     "dist:win": "npm run build:renderer && electron-builder --win nsis",
     "dist:mac": "npm run build:renderer && electron-builder --mac dmg zip",
+    "dist:linux": "npm run build:renderer && electron-builder --linux AppImage deb",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -102,6 +103,26 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-win-${arch}-Portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "maintainer": "Robertg761",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     }
   },
   "devDependencies": {

@@ -49,7 +49,7 @@ The Personalization tab covers themes, window effects, primary cards, and media 
 - **System Tray**: Minimize to tray with quick access menu
 - **Configuration**: Easy setup with Home Assistant URL and token
 - **Performance**: Optimized rendering and memory management
-- **Cross-Platform**: Windows and macOS support with transparency effects
+- **Cross-Platform**: Windows, macOS, and Linux support with transparency effects where available
 - **Personalization**: Accent/background themes, window opacity, and frosted glass
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
 - **Alerts**: Desktop notifications for entity state changes
@@ -60,8 +60,8 @@ The Personalization tab covers themes, window effects, primary cards, and media 
 ## Quick Start
 
 ### Download & Install
-1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest available installer or portable build.
-2. If using the Installer: run the .exe and follow the prompts. If using the Portable build: unzip and run the executable (no installation required).
+1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest available build for your OS.
+2. Windows: run the `.exe` installer or portable build. macOS: open the `.dmg` or `.zip`. Linux: use the `.AppImage` or install the `.deb` package.
 3. Run the app and click the Settings button to configure your Home Assistant connection.
 
 ### First-Time Setup
@@ -113,13 +113,16 @@ cd HA-Desktop-Widget
 npm install
 npm run dev   # Development mode (opens DevTools)
 npm start     # Regular run
-npm run dist  # Build for distribution
+npm run dist        # Build Windows distribution artifacts
+npm run dist:mac    # Build macOS distribution artifacts
+npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
 
 ### Configuration
 - **Config Location**: Stored as `config.json` in Electron's userData directory.
   - **Windows (packaged)**: `%AppData%/Home Assistant Widget/config.json`
   - **macOS (packaged)**: `~/Library/Application Support/HA Desktop Widget/config.json`
+  - **Linux (packaged)**: `~/.config/HA Desktop Widget/config.json`
   - **Development builds**: typically use `home-assistant-widget` as the folder name
 - **Config Contents**: `homeAssistant` (url, token, tokenEncrypted), `favoriteEntities`, `customEntityNames`,
   `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,

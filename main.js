@@ -27,6 +27,15 @@ const {
   isWindowsLoginItemEnabled,
   quoteWindowsExecutablePath,
 } = require('./src/windows-startup.cjs');
+const {
+  getLinuxStartupExecutablePath,
+  isLinuxLoginItemEnabled,
+  setLinuxLoginItemSettings,
+} = require('./src/linux-startup.cjs');
+const {
+  getAppIconPath,
+  supportsAutoUpdater,
+} = require('./src/platform.cjs');
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -892,7 +901,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = pinBounds;
 
-  const iconPath = path.join(__dirname, 'build', 'icon.ico');
+  const iconPath = getAppIconPath(__dirname);
   const windowOptions = {
     x: pinBounds.x,
     y: pinBounds.y,
@@ -2091,7 +2100,7 @@ function createWindow() {
   const { width: _width, height: _height } = primaryDisplay.workAreaSize;
 
   // Resolve icon path
-  const iconPath = path.join(__dirname, 'build', 'icon.ico');
+  const iconPath = getAppIconPath(__dirname);
 
   // Create the browser window with transparency
   const windowOptions = {
@@ -2698,7 +2707,7 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (_event, choice) => {
   }
 });
 
-// Start with Windows IPC handlers
+// Start at login IPC handlers
 ipcMain.handle('get-login-item-settings', () => {
   try {
     if (process.platform === 'win32') {
@@ -2714,22 +2723,50 @@ ipcMain.handle('get-login-item-settings', () => {
       }
 
       log.debug('Login item settings:', { settings, legacySettings });
-      return { openAtLogin };
+      return { openAtLogin, supported: true };
+    }
+
+    if (process.platform === 'linux') {
+      const executablePath = getLinuxStartupExecutablePath(app, process.env);
+      const openAtLogin = isLinuxLoginItemEnabled({
+        pkg,
+        appName: app.getName(),
+        executablePath,
+        env: process.env,
+      });
+      return { openAtLogin, supported: true };
     }
 
     const settings = app.getLoginItemSettings();
     const openAtLogin = Boolean(settings.openAtLogin);
     log.debug('Login item settings:', settings);
-    return { openAtLogin };
+    return { openAtLogin, supported: true };
   } catch (error) {
     log.error('Failed to get login item settings:', error);
-    return { openAtLogin: false };
+    return { openAtLogin: false, supported: false, error: error.message };
   }
 });
 
 ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   try {
     const normalizedOpenAtLogin = !!openAtLogin;
+    if (process.platform === 'linux') {
+      const executablePath = getLinuxStartupExecutablePath(app, process.env);
+      setLinuxLoginItemSettings(normalizedOpenAtLogin, {
+        pkg,
+        appName: app.getName(),
+        executablePath,
+        env: process.env,
+      });
+      const confirmedOpenAtLogin = isLinuxLoginItemEnabled({
+        pkg,
+        appName: app.getName(),
+        executablePath,
+        env: process.env,
+      });
+      return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
+    }
+
     const startupTarget = process.platform === 'win32'
       ? getWindowsStartupRegistrationTarget()
       : {};
@@ -2761,13 +2798,13 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
         log.warn(error, settings);
         return { success: false, error, openAtLogin: confirmedOpenAtLogin };
       }
-      return { success: true, openAtLogin: confirmedOpenAtLogin };
+      return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
     }
 
-    return { success: true, openAtLogin: normalizedOpenAtLogin };
+    return { success: true, openAtLogin: normalizedOpenAtLogin, supported: true };
   } catch (error) {
     log.error('Failed to set login item settings:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, supported: false };
   }
 });
 
@@ -2801,6 +2838,13 @@ ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) return { status: 'dev' };
   if (isPortableBuild()) {
     return checkPortableUpdate();
+  }
+  if (!supportsAutoUpdater(process.platform, process.env)) {
+    return {
+      status: 'manual',
+      message: mainT('This package does not support in-app updates. Open Releases to download the latest build.'),
+      downloadUrl: pkg.homepage ? `${pkg.homepage}/releases/latest` : '',
+    };
   }
   try {
     const info = await autoUpdater.checkForUpdates();
@@ -3507,6 +3551,10 @@ function setupAutoUpdates() {
   if (!app.isPackaged) return;
   if (isPortableBuild()) {
     log.info('Portable build detected; auto-updates are disabled.');
+    return;
+  }
+  if (!supportsAutoUpdater(process.platform, process.env)) {
+    log.info(`${process.platform} package does not support in-app auto-updates.`);
     return;
   }
   try {

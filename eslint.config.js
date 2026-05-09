@@ -11,7 +11,7 @@ module.exports = [
   prettier,
   // Config files (CommonJS, Node.js globals)
   {
-    files: ['eslint.config.js', 'jest.config.js', 'babel.config.js'],
+    files: ['eslint.config.js', 'jest.config.js', 'babel.config.js', 'src/linux-startup.cjs', 'src/platform.cjs', 'src/windows-startup.cjs'],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'script',
