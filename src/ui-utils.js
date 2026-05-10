@@ -5,6 +5,7 @@ const focusTrapHandlers = new WeakMap();
 let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
+const MIN_BACKGROUND_OPACITY = 0.18;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
@@ -100,6 +101,11 @@ function mixRgb(base, mixin, amount) {
     g: mix('g'),
     b: mix('b'),
   };
+}
+
+function mapWindowOpacityToBackgroundAlpha(opacity) {
+  const normalized = (opacity - 0.5) / 0.5;
+  return MIN_BACKGROUND_OPACITY + (Math.max(0, Math.min(1, normalized)) * (1 - MIN_BACKGROUND_OPACITY));
 }
 
 /**
@@ -339,6 +345,7 @@ function applyBackgroundColor(color, backgroundId = 'custom-preview', { disableT
   };
 
   const bgColor = setRgbaVar('--bg-color', base.bgColor);
+  root.style.setProperty('--window-bg-rgb', `${bgColor.r}, ${bgColor.g}, ${bgColor.b}`);
   const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
   setRgbaVar('--bg-primary', base.bgPrimary);
   setRgbaVar('--bg-secondary', base.bgSecondary);
@@ -433,6 +440,10 @@ function isNativeGlassPlatform() {
   return platform === 'win32' || platform === 'darwin';
 }
 
+function isLightThemeActive() {
+  return document.body?.classList.contains('theme-light');
+}
+
 /**
  * Display a transient toast notification in the element with id "toast-container".
  *
@@ -510,13 +521,17 @@ function applyWindowEffects(config = {}) {
     const body = document.body;
     const enabled = !!config.frostedGlass;
     const opacity = Math.max(0.5, Math.min(1, Number(config.opacity) || 1));
+    const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
-    body.style.setProperty('--desktop-pin-window-opacity', opacity.toFixed(3));
+    body.style.setProperty('--window-opacity', opacity.toFixed(3));
+    body.style.setProperty('--window-bg-alpha', backgroundAlpha.toFixed(3));
+    body.style.setProperty('--desktop-pin-window-opacity', backgroundAlpha.toFixed(3));
 
     if (!enabled) {
       // Remove frosted glass class first
       body.classList.remove('frosted-glass');
       body.classList.remove('native-glass');
+      body.classList.remove('software-glass');
       
       // Then clear all custom properties
       body.style.removeProperty('--frosted-blur');
@@ -528,11 +543,16 @@ function applyWindowEffects(config = {}) {
       body.style.removeProperty('--frosted-glass-alpha');
       body.style.removeProperty('--frosted-glass-elevated-alpha');
       body.style.removeProperty('--frosted-glass-overlay-alpha');
+      body.style.removeProperty('--software-acrylic-bg-alpha');
+      body.style.removeProperty('--software-acrylic-highlight-alpha');
+      body.style.removeProperty('--software-acrylic-noise-alpha');
+      body.style.removeProperty('--software-acrylic-shadow-alpha');
       return;
     }
 
     const strength = DEFAULT_FROSTED_STRENGTH;
     const tint = DEFAULT_FROSTED_TINT / 100;
+    const nativeGlass = isNativeGlassPlatform();
     
     // Linear interpolation helper
     const lerp = (min, max, value) => min + (max - min) * value;
@@ -542,14 +562,24 @@ function applyWindowEffects(config = {}) {
 
     // Calculate alpha values based on tint
     // Lower tint = more transparent, higher tint = more opaque
-    const bgAlpha = lerp(0.25, 0.75, tint);
-    const elevatedAlpha = lerp(0.3, 0.8, tint);
-    const surfaceAlpha = lerp(0.25, 0.75, tint);
-    const surfaceHoverAlpha = lerp(0.35, 0.85, tint);
-    const cardAlpha = lerp(0.2, 0.65, tint);
-    const glassAlpha = lerp(0.2, 0.6, tint);
-    const glassElevatedAlpha = lerp(0.25, 0.7, tint);
-    const glassOverlayAlpha = lerp(0.3, 0.85, tint);
+    const softwareGlassScale = 0.74 + (backgroundAlpha * 0.26);
+    const glassScale = nativeGlass ? backgroundAlpha : softwareGlassScale;
+    const scaleAlpha = (value, softwareFloor = 0) => {
+      const scaled = value * glassScale;
+      return nativeGlass ? scaled : Math.max(softwareFloor, scaled);
+    };
+    const bgAlpha = scaleAlpha(lerp(0.25, 0.75, tint), 0.42);
+    const elevatedAlpha = scaleAlpha(lerp(0.3, 0.8, tint), 0.54);
+    const surfaceAlpha = scaleAlpha(lerp(0.25, 0.75, tint), 0.48);
+    const surfaceHoverAlpha = scaleAlpha(lerp(0.35, 0.85, tint), 0.58);
+    const cardAlpha = scaleAlpha(lerp(0.2, 0.65, tint), 0.44);
+    const glassAlpha = scaleAlpha(lerp(0.2, 0.6, tint), 0.46);
+    const glassElevatedAlpha = scaleAlpha(lerp(0.25, 0.7, tint), 0.58);
+    const glassOverlayAlpha = scaleAlpha(lerp(0.3, 0.85, tint), 0.5);
+    const softwareBodyAlpha = Math.max(0.34, Math.min(0.76, 0.28 + (backgroundAlpha * 0.48)));
+    const softwareHighlightAlpha = isLightThemeActive() ? 0.16 : 0.08;
+    const softwareNoiseAlpha = isLightThemeActive() ? 0.08 : 0.055;
+    const softwareShadowAlpha = isLightThemeActive() ? 0.035 : 0.08;
 
     /* 
      * CRITICAL: Set CSS custom properties BEFORE adding the class.
@@ -565,10 +595,15 @@ function applyWindowEffects(config = {}) {
     body.style.setProperty('--frosted-glass-alpha', glassAlpha.toFixed(3));
     body.style.setProperty('--frosted-glass-elevated-alpha', glassElevatedAlpha.toFixed(3));
     body.style.setProperty('--frosted-glass-overlay-alpha', glassOverlayAlpha.toFixed(3));
+    body.style.setProperty('--software-acrylic-bg-alpha', softwareBodyAlpha.toFixed(3));
+    body.style.setProperty('--software-acrylic-highlight-alpha', softwareHighlightAlpha.toFixed(3));
+    body.style.setProperty('--software-acrylic-noise-alpha', softwareNoiseAlpha.toFixed(3));
+    body.style.setProperty('--software-acrylic-shadow-alpha', softwareShadowAlpha.toFixed(3));
     
     // Now add the frosted-glass class
     body.classList.add('frosted-glass');
-    body.classList.toggle('native-glass', isNativeGlassPlatform());
+    body.classList.toggle('native-glass', nativeGlass);
+    body.classList.toggle('software-glass', !nativeGlass);
   } catch (error) {
     console.error('Error applying window effects:', error);
   }

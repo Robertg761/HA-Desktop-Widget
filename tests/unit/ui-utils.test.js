@@ -1048,6 +1048,33 @@ describe('UI Utilities', () => {
     });
   });
 
+  describe('applyWindowEffects', () => {
+    it('applies opacity to background surfaces without fading child controls', () => {
+      mockElectronAPI.platform = 'linux';
+
+      uiUtils.applyWindowEffects({ opacity: 0.62, frostedGlass: false });
+
+      expect(document.body.style.getPropertyValue('--window-opacity')).toBe('0.620');
+      expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.377');
+      expect(document.body.style.getPropertyValue('--desktop-pin-window-opacity')).toBe('0.377');
+      expect(document.body.style.opacity).toBe('');
+    });
+
+    it('treats 100 percent opacity as a fully opaque window surface', () => {
+      mockElectronAPI.platform = 'linux';
+
+      uiUtils.applyWindowEffects({ opacity: 1, frostedGlass: true });
+
+      expect(document.body.style.getPropertyValue('--window-opacity')).toBe('1.000');
+      expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('1.000');
+      expect(document.body.classList.contains('frosted-glass')).toBe(true);
+      expect(document.body.classList.contains('software-glass')).toBe(true);
+      expect(document.body.classList.contains('native-glass')).toBe(false);
+      expect(document.body.style.getPropertyValue('--software-acrylic-bg-alpha')).toBe('0.760');
+      expect(Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))).toBeGreaterThan(0.5);
+    });
+  });
+
   describe('Module exports', () => {
     it('should export all required functions', () => {
       expect(typeof uiUtils.showToast).toBe('function');

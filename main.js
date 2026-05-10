@@ -1058,8 +1058,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
 
     try {
       if (typeof nextConfig?.opacity === 'number' && previousConfig?.opacity !== nextConfig.opacity) {
-        const safeOpacity = Math.max(0.5, Math.min(1, nextConfig.opacity));
-        mainWindow.setOpacity(safeOpacity);
+        mainWindow.setOpacity(1);
       }
     } catch (error) {
       log.warn('Failed to apply opacity update from sync:', error.message);
@@ -2134,9 +2133,9 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
 
-  // Set window opacity with failsafe
+  // Keep native opacity at 1; renderer CSS applies the saved opacity only to background surfaces.
   const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
-  mainWindow.setOpacity(safeOpacity);
+  mainWindow.setOpacity(1);
   config.opacity = safeOpacity; // Update config to safe value
   applyFrostedGlass();
 
@@ -2579,7 +2578,7 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
 ipcMain.handle('set-opacity', (event, opacity) => {
   // Ensure opacity is within safe range (50% to 100%)
   const safeOpacity = Math.max(0.5, Math.min(1, opacity));
-  mainWindow.setOpacity(safeOpacity);
+  mainWindow.setOpacity(1);
   config.opacity = safeOpacity;
   saveConfig();
 });
@@ -2587,8 +2586,7 @@ ipcMain.handle('set-opacity', (event, opacity) => {
 ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   if (!mainWindow) return;
   if (typeof effects.opacity === 'number') {
-    const safeOpacity = Math.max(0.5, Math.min(1, effects.opacity));
-    mainWindow.setOpacity(safeOpacity);
+    mainWindow.setOpacity(1);
   }
   if (typeof effects.frostedGlass === 'boolean') {
     applyFrostedGlass(effects.frostedGlass);
