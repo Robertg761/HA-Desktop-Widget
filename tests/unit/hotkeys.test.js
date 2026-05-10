@@ -48,6 +48,8 @@ beforeAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   resetMockElectronAPI();
+  document.body.innerHTML = '';
+  document.getElementById = Document.prototype.getElementById;
 
   // Reset mock state
   mockState.CONFIG = null;
@@ -287,6 +289,81 @@ describe('hotkeys module', () => {
     });
   });
 
+  describe('assignHotkeyToEntity', () => {
+    it('captures and registers a hotkey directly for an entity', async () => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: {}
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.living_room': {
+          entity_id: 'light.living_room',
+          state: 'off',
+          attributes: {
+            friendly_name: 'Living Room'
+          }
+        }
+      });
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.living_room');
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'A',
+        code: 'KeyA',
+        ctrlKey: true,
+        bubbles: true
+      }));
+      const result = await assignment;
+
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        hotkey: 'Ctrl+A',
+        action: 'toggle'
+      }));
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('light.living_room', 'Ctrl+A', 'toggle');
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.living_room']).toEqual({
+        hotkey: 'Ctrl+A',
+        action: 'toggle'
+      });
+      expect(showToast).toHaveBeenCalledWith('Hotkey set for Living Room', 'success', 2200);
+    });
+
+    it('uses the domain default action when assigning a scene hotkey', async () => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: {}
+      };
+      state.setConfig(config);
+      state.setStates({
+        'scene.movie': {
+          entity_id: 'scene.movie',
+          state: 'scening',
+          attributes: {
+            friendly_name: 'Movie'
+          }
+        }
+      });
+
+      const assignment = hotkeys.assignHotkeyToEntity('scene.movie');
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'M',
+        code: 'KeyM',
+        altKey: true,
+        bubbles: true
+      }));
+      const result = await assignment;
+
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        hotkey: 'Alt+M',
+        action: 'turn_on'
+      }));
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('scene.movie', 'Alt+M', 'turn_on');
+    });
+  });
+
   describe('cleanupHotkeyEventListeners', () => {
     it('should not throw when cleaning up event listeners', () => {
       expect(() => hotkeys.cleanupHotkeyEventListeners()).not.toThrow();
@@ -306,6 +383,7 @@ describe('hotkeys module', () => {
       expect(typeof hotkeys.toggleHotkeys).toBe('function');
       expect(typeof hotkeys.captureHotkey).toBe('function');
       expect(typeof hotkeys.renderExistingHotkeys).toBe('function');
+      expect(typeof hotkeys.assignHotkeyToEntity).toBe('function');
       expect(typeof hotkeys.setupHotkeyEventListeners).toBe('function');
       expect(typeof hotkeys.cleanupHotkeyEventListeners).toBe('function');
     });

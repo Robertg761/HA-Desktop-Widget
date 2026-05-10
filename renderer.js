@@ -640,6 +640,11 @@ window.electronAPI.onDesktopPinActionRequested((payload) => {
   ui.handleDesktopPinActionRequest(payload);
 });
 
+window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
+  if (IS_DESKTOP_PIN_MODE || !entityId) return;
+  hotkeys.assignHotkeyToEntity(entityId);
+});
+
 window.electronAPI.onDesktopPinUpdate((payload) => {
   void handleDesktopPinUpdate(payload);
 });

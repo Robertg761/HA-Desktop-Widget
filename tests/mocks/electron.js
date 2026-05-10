@@ -76,7 +76,8 @@ const eventListeners = {
   profileSyncStatus: [],
   configUpdated: [],
   desktopPinUpdate: [],
-  desktopPinActionRequested: []
+  desktopPinActionRequested: [],
+  entityTileHotkeyRequested: []
 };
 
 /**
@@ -310,6 +311,13 @@ function createMockElectronAPI() {
       return () => {
         const index = eventListeners.desktopPinActionRequested.indexOf(callback);
         if (index > -1) eventListeners.desktopPinActionRequested.splice(index, 1);
+      };
+    }),
+    onEntityTileHotkeyRequested: jest.fn((callback) => {
+      eventListeners.entityTileHotkeyRequested.push(callback);
+      return () => {
+        const index = eventListeners.entityTileHotkeyRequested.indexOf(callback);
+        if (index > -1) eventListeners.entityTileHotkeyRequested.splice(index, 1);
       };
     })
   };

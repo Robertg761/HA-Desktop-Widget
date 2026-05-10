@@ -2535,7 +2535,22 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   const isPinned = !!config?.desktopPins?.[normalizedEntityId];
   const supportProfile = resolveDesktopPinSupportDecision(normalizedEntityId, supportInfo);
   const canPinToDesktop = supportProfile.supported;
+  const existingHotkeyConfig = config?.globalHotkeys?.hotkeys?.[normalizedEntityId];
+  const existingHotkey = (typeof existingHotkeyConfig === 'object' && existingHotkeyConfig?.hotkey)
+    ? existingHotkeyConfig.hotkey
+    : existingHotkeyConfig;
+  const hasHotkey = typeof existingHotkey === 'string' && existingHotkey.trim().length > 0;
   const menu = Menu.buildFromTemplate([
+    {
+      label: hasHotkey ? mainT('Edit Hotkey') : mainT('Add Hotkey'),
+      click: () => {
+        senderWindow.focus();
+        senderWindow.webContents.send('entity-tile-hotkey-requested', {
+          entityId: normalizedEntityId,
+        });
+      }
+    },
+    { type: 'separator' },
     {
       label: isPinned
         ? mainT('Unpin from Desktop')

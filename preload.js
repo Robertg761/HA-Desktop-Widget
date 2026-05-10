@@ -111,5 +111,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('desktop-pin-action-requested', handler);
     return () => ipcRenderer.removeListener('desktop-pin-action-requested', handler);
+  },
+  onEntityTileHotkeyRequested: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('entity-tile-hotkey-requested', handler);
+    return () => ipcRenderer.removeListener('entity-tile-hotkey-requested', handler);
   }
 });

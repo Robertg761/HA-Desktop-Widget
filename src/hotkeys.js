@@ -135,6 +135,56 @@ function renderHotkeysTab() {
     }
 }
 
+function getDefaultActionForEntity(entity) {
+    const domain = entity?.entity_id?.split('.')?.[0] || '';
+    const options = getActionOptionsForDomain(domain);
+    return options[0]?.value || 'toggle';
+}
+
+async function assignHotkeyToEntity(entityId, options = {}) {
+    try {
+        const entity = state.STATES?.[entityId];
+        if (!entity) {
+            showToast(t('Entity not found'), 'error', 2500);
+            return { success: false, error: 'Entity not found' };
+        }
+
+        if (!state.CONFIG.globalHotkeys) {
+            state.CONFIG.globalHotkeys = { enabled: false, hotkeys: {} };
+        }
+        if (!state.CONFIG.globalHotkeys.hotkeys) {
+            state.CONFIG.globalHotkeys.hotkeys = {};
+        }
+
+        const currentConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
+        const currentAction = (typeof currentConfig === 'object' && currentConfig?.action)
+            ? currentConfig.action
+            : null;
+        const action = options.action || currentAction || getDefaultActionForEntity(entity);
+        const hotkey = await captureHotkey();
+
+        if (!hotkey) {
+            return { success: false, canceled: true };
+        }
+
+        const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
+        if (result?.success) {
+            state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+            renderHotkeysTab();
+            showToast(t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }), 'success', 2200);
+            return { success: true, hotkey, action };
+        }
+
+        const error = result?.error || t('Failed to set hotkey');
+        showToast(error, 'error', 3000);
+        return { success: false, error };
+    } catch (error) {
+        console.error('Error assigning hotkey to entity:', error);
+        showToast(t('Failed to set hotkey'), 'error', 3000);
+        return { success: false, error };
+    }
+}
+
 async function toggleHotkeys(enabled) {
     try {
         const result = await window.electronAPI.toggleHotkeys(enabled);
@@ -452,6 +502,7 @@ export {
     toggleHotkeys,
     captureHotkey,
     renderExistingHotkeys,
+    assignHotkeyToEntity,
     setupHotkeyEventListeners,
     cleanupHotkeyEventListeners,
 };
