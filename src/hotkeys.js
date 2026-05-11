@@ -4,6 +4,7 @@ import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { t } from './i18n.js';
 
 let globalHotkeys = {};
+const HOTKEY_SUPPORTED_DOMAINS = new Set(['light', 'switch', 'scene', 'script', 'automation', 'button', 'input_button', 'input_boolean', 'fan']);
 
 // Helper function to escape HTML
 function escapeHtml(text) {
@@ -39,11 +40,20 @@ function getActionOptionsForDomain(domain) {
         scene: [
             { value: 'turn_on', label: 'Activate' }
         ],
+        script: [
+            { value: 'turn_on', label: 'Run' }
+        ],
         automation: [
             { value: 'trigger', label: 'Trigger' },
             { value: 'toggle', label: 'Toggle' },
             { value: 'turn_on', label: 'Enable' },
             { value: 'turn_off', label: 'Disable' }
+        ],
+        button: [
+            { value: 'press', label: 'Press' }
+        ],
+        input_button: [
+            { value: 'press', label: 'Press' }
         ],
         input_boolean: [
             { value: 'toggle', label: 'Toggle' },
@@ -93,7 +103,7 @@ function renderHotkeysTab() {
 
         const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
         const hotkeyEntities = Object.values(state.STATES)
-            .filter(e => ['light', 'switch', 'scene', 'automation', 'input_boolean', 'fan'].includes(e.entity_id.split('.')[0]))
+            .filter(e => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
             .map(entity => {
                 const score = filter ? getSearchScore(getEntityDisplayName(entity), filter) + getSearchScore(entity.entity_id, filter) : 1;
                 return { entity, score };

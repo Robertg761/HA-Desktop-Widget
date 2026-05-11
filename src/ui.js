@@ -51,6 +51,7 @@ const DESKTOP_PIN_FAN_PRESETS_TIGHT = [
 const {
   resolveDesktopPinProfile,
 } = desktopPinSupport;
+const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -88,6 +89,10 @@ function emitUiDebug(event, details = {}) {
 
 function isOnOffToggleDomain(domain) {
   return ON_OFF_TOGGLE_DOMAINS.has(domain);
+}
+
+function isPressActionDomain(domain) {
+  return PRESS_ACTION_DOMAINS.has(domain);
 }
 
 function getEntityDomain(entityId) {
@@ -2713,7 +2718,7 @@ function updateExistingDesktopPinTimerControl(root, entity) {
 function getDesktopPinActionCtaLabel(entity) {
   const domain = getEntityDomain(entity?.entity_id);
   if (domain === 'automation') return 'Trigger';
-  if (domain === 'button') return 'Press';
+  if (isPressActionDomain(domain)) return 'Press';
   return 'Run';
 }
 
@@ -2750,7 +2755,7 @@ function createDesktopPinActionControlElement(entity) {
 
   bindDesktopPinButton(root.querySelector('.desktop-pin-action-primary'), () => {
     triggerActivationFeedback(entity.entity_id);
-    const serviceName = getEntityDomain(entity.entity_id) === 'button' ? 'press' : 'trigger';
+    const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id)) ? 'press' : 'trigger';
     callEntityDomainService(state.STATES?.[entity.entity_id] || entity, serviceName);
   });
 
@@ -3974,7 +3979,7 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {} }) {
         break;
       case 'trigger':
         if (supportProfile.family === 'action') {
-          const serviceName = getEntityDomain(entity.entity_id) === 'button' ? 'press' : 'trigger';
+          const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id)) ? 'press' : 'trigger';
           callEntityDomainService(entity, serviceName);
         }
         break;
@@ -4126,6 +4131,11 @@ function createControlElement(entity) {
       div.title = `Click to toggle, hold for position control`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = `Click to play/pause, hold for controls`;
+    } else if (entity.entity_id.startsWith('button.') || entity.entity_id.startsWith('input_button.')) {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+      };
+      div.title = `Click to press ${utils.getEntityDisplayName(entity)}`;
     } else {
       div.onclick = () => {
         if (!shouldBlockInteraction(div)) toggleEntity(entity);
@@ -5039,6 +5049,11 @@ function toggleEntity(entity) {
         // Add activation animation for scenes and scripts
         triggerActivationFeedback(entity.entity_id);
         break;
+      case 'button':
+      case 'input_button':
+        service = 'press';
+        triggerActivationFeedback(entity.entity_id);
+        break;
       default:
         // No toggle action for this domain
         emitUiDebug('entity.toggle_ignored_domain', {
@@ -5137,6 +5152,12 @@ function executeHotkeyAction(entity, action) {
         // For automations
         if (domain === 'automation') {
           websocket.callService('automation', 'trigger', { entity_id: entity.entity_id })
+            .catch(error => handleServiceError(error, entityName));
+        }
+        break;
+      case 'press':
+        if (isPressActionDomain(domain)) {
+          websocket.callService(domain, 'press', { entity_id: entity.entity_id })
             .catch(error => handleServiceError(error, entityName));
         }
         break;

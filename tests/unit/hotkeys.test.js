@@ -185,6 +185,37 @@ describe('hotkeys module', () => {
       document.body.removeChild(searchInput);
     });
 
+    it('should include script, button, and input_button action entities in the picker', () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = '';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+      state.setStates({
+        ...sampleStates,
+        'script.tv_fast_forward': {
+          entity_id: 'script.tv_fast_forward',
+          state: 'off',
+          attributes: {
+            friendly_name: 'TV Fast Forward'
+          }
+        }
+      });
+
+      hotkeys.renderHotkeysTab();
+
+      expect(container.querySelector('[data-entity-id="script.tv_fast_forward"]')).toBeTruthy();
+      expect(container.querySelector('[data-entity-id="button.refresh_router"]')).toBeTruthy();
+      expect(container.querySelector('[data-entity-id="input_button.tv_rewind"]')).toBeTruthy();
+      expect(container.querySelector('[data-entity-id="input_button.tv_rewind"] .custom-dropdown-value')?.textContent).toBe('Press');
+      expect(container.querySelector('[data-entity-id="script.tv_fast_forward"] .custom-dropdown-value')?.textContent).toBe('Run');
+
+      document.body.removeChild(container);
+      document.body.removeChild(searchInput);
+    });
+
     it('should filter entities by search term', () => {
       // Create real DOM elements
       const container = document.createElement('div');
@@ -361,6 +392,34 @@ describe('hotkeys module', () => {
         action: 'turn_on'
       }));
       expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('scene.movie', 'Alt+M', 'turn_on');
+    });
+
+    it('uses press as the default action when assigning an input_button hotkey', async () => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: {}
+      };
+      state.setConfig(config);
+      state.setStates({
+        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
+      });
+
+      const assignment = hotkeys.assignHotkeyToEntity('input_button.tv_rewind');
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'R',
+        code: 'KeyR',
+        ctrlKey: true,
+        bubbles: true
+      }));
+      const result = await assignment;
+
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        hotkey: 'Ctrl+R',
+        action: 'press'
+      }));
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('input_button.tv_rewind', 'Ctrl+R', 'press');
     });
   });
 

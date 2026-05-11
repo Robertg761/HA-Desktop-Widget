@@ -89,7 +89,11 @@ function getEntityIcon(entity, options = {}) {
             case 'climate': return '🌡️';
             case 'media_player': return '🎵';
             case 'scene': return '✨';
+            case 'script': return '▶️';
             case 'automation': return '🤖';
+            case 'button':
+            case 'input_button':
+                return '🔘';
             case 'camera': return '📷';
             case 'lock': return entityState === 'locked' ? '🔒' : '🔓';
             case 'cover': return '🪟';

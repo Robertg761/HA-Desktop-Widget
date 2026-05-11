@@ -259,6 +259,16 @@ const sampleStates = {
     last_updated: '2025-01-15T10:30:00.000Z',
     context: { id: 'context_10', parent_id: null, user_id: null }
   },
+  'input_button.tv_rewind': {
+    entity_id: 'input_button.tv_rewind',
+    state: '2025-01-15T10:30:00.000Z',
+    attributes: {
+      friendly_name: 'TV Rewind'
+    },
+    last_changed: '2025-01-15T10:30:00.000Z',
+    last_updated: '2025-01-15T10:30:00.000Z',
+    context: { id: 'context_input_button', parent_id: null, user_id: null }
+  },
   'number.water_heater_target': {
     entity_id: 'number.water_heater_target',
     state: '48',
@@ -405,6 +415,13 @@ const sampleServices = {
     press: {
       name: 'Press',
       description: 'Press a button entity.',
+      fields: {}
+    }
+  },
+  input_button: {
+    press: {
+      name: 'Press',
+      description: 'Press an input button helper.',
       fields: {}
     }
   },

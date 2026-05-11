@@ -388,6 +388,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it('should press input button helpers', () => {
+      const entity = {
+        entity_id: 'input_button.tv_rewind',
+        state: '2025-01-15T10:30:00.000Z',
+        attributes: { friendly_name: 'TV Rewind' }
+      };
+
+      ui.executeHotkeyAction(entity, 'press');
+
+      expect(mockCallService).toHaveBeenCalledWith(
+        'input_button',
+        'press',
+        { entity_id: 'input_button.tv_rewind' }
+      );
+    });
+
     it('should default to toggle for unknown action', () => {
       const entity = {
         entity_id: 'light.bedroom',
@@ -1161,6 +1177,27 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerIcon.textContent).toContain('🔥');
     });
 
+    it('presses input button helpers from quick access tiles', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['input_button.tv_rewind'];
+      state.setConfig(config);
+      state.setStates({
+        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
+      });
+
+      ui.renderActiveTab();
+
+      const inputButtonTile = document.querySelector('.control-item[data-entity-id="input_button.tv_rewind"]');
+      expect(inputButtonTile).toBeTruthy();
+      expect(inputButtonTile.title).toBe('Click to press TV Rewind');
+
+      inputButtonTile.click();
+
+      expect(mockCallService).toHaveBeenCalledWith('input_button', 'press', {
+        entity_id: 'input_button.tv_rewind'
+      });
+    });
+
     it('re-renders climate tiles when temperature attributes change', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['climate.living_room'];
@@ -1350,6 +1387,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('resolves desktop-pin support families through the shared profile helper', () => {
       const cases = [
         { entity: sampleStates['button.refresh_router'], family: 'action', supported: true },
+        { entity: sampleStates['input_button.tv_rewind'], family: 'action', supported: true },
         { entity: sampleStates['number.water_heater_target'], family: 'numeric', supported: true },
         { entity: sampleStates['select.air_purifier_mode'], family: 'enum', supported: true },
         { entity: sampleStates['person.robert'], family: 'presence', supported: true },
@@ -2046,6 +2084,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         entity: sampleStates['button.refresh_router'],
         expectedLabel: 'Press',
         expectedService: 'press',
+      },
+      {
+        entityId: 'input_button.tv_rewind',
+        entity: sampleStates['input_button.tv_rewind'],
+        expectedLabel: 'Press',
+        expectedService: 'press',
       }
     ])('renders $entityId desktop action tiles and triggers the primary service', ({ entityId, entity, expectedLabel, expectedService }) => {
       state.setStates({ [entityId]: entity });
@@ -2688,6 +2732,21 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('handleDesktopPinActionRequest', () => {
+    it('routes action trigger requests to input_button.press', () => {
+      state.setStates({
+        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
+      });
+
+      ui.handleDesktopPinActionRequest({
+        entityId: 'input_button.tv_rewind',
+        action: 'trigger'
+      });
+
+      expect(mockCallService).toHaveBeenCalledWith('input_button', 'press', {
+        entity_id: 'input_button.tv_rewind'
+      });
+    });
+
     it('does not toggle unsupported entities for open-details requests', () => {
       state.setStates({
         'lock.front_door': {

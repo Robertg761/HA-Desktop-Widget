@@ -153,6 +153,7 @@ function resolveDesktopPinProfile(entityOrEntityId = null) {
     case 'automation':
       return { ...baseProfile, family: 'action', label: 'Automation tile', primaryAction: 'trigger' };
     case 'button':
+    case 'input_button':
       return { ...baseProfile, family: 'action', label: 'Button tile', primaryAction: 'press' };
     case 'number':
     case 'input_number':
