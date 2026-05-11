@@ -1049,15 +1049,31 @@ describe('UI Utilities', () => {
   });
 
   describe('applyWindowEffects', () => {
+    beforeEach(() => {
+      document.body.classList.remove('theme-light');
+    });
+
     it('applies opacity to background surfaces without fading child controls', () => {
       mockElectronAPI.platform = 'linux';
 
       uiUtils.applyWindowEffects({ opacity: 0.62, frostedGlass: false });
 
       expect(document.body.style.getPropertyValue('--window-opacity')).toBe('0.620');
-      expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.377');
-      expect(document.body.style.getPropertyValue('--desktop-pin-window-opacity')).toBe('0.377');
+      expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.214');
+      expect(document.body.style.getPropertyValue('--desktop-pin-window-opacity')).toBe('0.214');
       expect(document.body.style.opacity).toBe('');
+    });
+
+    it('makes Linux software glass visibly more transparent at the low end', () => {
+      mockElectronAPI.platform = 'linux';
+
+      uiUtils.applyWindowEffects({ opacity: 0.5, frostedGlass: true });
+
+      expect(document.body.classList.contains('frosted-glass')).toBe(true);
+      expect(document.body.classList.contains('software-glass')).toBe(true);
+      expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.080');
+      expect(document.body.style.getPropertyValue('--software-acrylic-bg-alpha')).toBe('0.190');
+      expect(Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))).toBeLessThan(0.3);
     });
 
     it('treats 100 percent opacity as a fully opaque window surface', () => {

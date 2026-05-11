@@ -5,7 +5,8 @@ const focusTrapHandlers = new WeakMap();
 let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
-const MIN_BACKGROUND_OPACITY = 0.18;
+const MIN_BACKGROUND_OPACITY = 0.08;
+const BACKGROUND_OPACITY_CURVE = 1.35;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
@@ -105,7 +106,8 @@ function mixRgb(base, mixin, amount) {
 
 function mapWindowOpacityToBackgroundAlpha(opacity) {
   const normalized = (opacity - 0.5) / 0.5;
-  return MIN_BACKGROUND_OPACITY + (Math.max(0, Math.min(1, normalized)) * (1 - MIN_BACKGROUND_OPACITY));
+  const curvedOpacity = Math.pow(Math.max(0, Math.min(1, normalized)), BACKGROUND_OPACITY_CURVE);
+  return MIN_BACKGROUND_OPACITY + (curvedOpacity * (1 - MIN_BACKGROUND_OPACITY));
 }
 
 /**
@@ -553,6 +555,7 @@ function applyWindowEffects(config = {}) {
     const strength = DEFAULT_FROSTED_STRENGTH;
     const tint = DEFAULT_FROSTED_TINT / 100;
     const nativeGlass = isNativeGlassPlatform();
+    const lightTheme = isLightThemeActive();
     
     // Linear interpolation helper
     const lerp = (min, max, value) => min + (max - min) * value;
@@ -562,24 +565,28 @@ function applyWindowEffects(config = {}) {
 
     // Calculate alpha values based on tint
     // Lower tint = more transparent, higher tint = more opaque
-    const softwareGlassScale = 0.74 + (backgroundAlpha * 0.26);
+    const softwareGlassScale = 0.32 + (backgroundAlpha * 0.68);
     const glassScale = nativeGlass ? backgroundAlpha : softwareGlassScale;
+    const softwareFloorBias = lightTheme ? 1.15 : 1;
     const scaleAlpha = (value, softwareFloor = 0) => {
       const scaled = value * glassScale;
-      return nativeGlass ? scaled : Math.max(softwareFloor, scaled);
+      return nativeGlass ? scaled : Math.max(softwareFloor * softwareFloorBias, scaled);
     };
-    const bgAlpha = scaleAlpha(lerp(0.25, 0.75, tint), 0.42);
-    const elevatedAlpha = scaleAlpha(lerp(0.3, 0.8, tint), 0.54);
-    const surfaceAlpha = scaleAlpha(lerp(0.25, 0.75, tint), 0.48);
-    const surfaceHoverAlpha = scaleAlpha(lerp(0.35, 0.85, tint), 0.58);
-    const cardAlpha = scaleAlpha(lerp(0.2, 0.65, tint), 0.44);
-    const glassAlpha = scaleAlpha(lerp(0.2, 0.6, tint), 0.46);
-    const glassElevatedAlpha = scaleAlpha(lerp(0.25, 0.7, tint), 0.58);
-    const glassOverlayAlpha = scaleAlpha(lerp(0.3, 0.85, tint), 0.5);
-    const softwareBodyAlpha = Math.max(0.34, Math.min(0.76, 0.28 + (backgroundAlpha * 0.48)));
-    const softwareHighlightAlpha = isLightThemeActive() ? 0.16 : 0.08;
-    const softwareNoiseAlpha = isLightThemeActive() ? 0.08 : 0.055;
-    const softwareShadowAlpha = isLightThemeActive() ? 0.035 : 0.08;
+    const bgAlpha = scaleAlpha(lerp(0.25, 0.75, tint), 0.18);
+    const elevatedAlpha = scaleAlpha(lerp(0.3, 0.8, tint), 0.22);
+    const surfaceAlpha = scaleAlpha(lerp(0.25, 0.75, tint), 0.2);
+    const surfaceHoverAlpha = scaleAlpha(lerp(0.35, 0.85, tint), 0.28);
+    const cardAlpha = scaleAlpha(lerp(0.2, 0.65, tint), 0.16);
+    const glassAlpha = scaleAlpha(lerp(0.2, 0.6, tint), 0.16);
+    const glassElevatedAlpha = scaleAlpha(lerp(0.25, 0.7, tint), 0.22);
+    const glassOverlayAlpha = scaleAlpha(lerp(0.3, 0.85, tint), 0.22);
+    const softwareBodyAlpha = lightTheme
+      ? Math.max(0.22, Math.min(0.78, 0.18 + (backgroundAlpha * 0.6)))
+      : Math.max(0.16, Math.min(0.76, 0.14 + (backgroundAlpha * 0.62)));
+    const softwareEffectScale = 0.45 + (backgroundAlpha * 0.55);
+    const softwareHighlightAlpha = (lightTheme ? 0.16 : 0.08) * softwareEffectScale;
+    const softwareNoiseAlpha = (lightTheme ? 0.08 : 0.055) * softwareEffectScale;
+    const softwareShadowAlpha = (lightTheme ? 0.035 : 0.08) * softwareEffectScale;
 
     /* 
      * CRITICAL: Set CSS custom properties BEFORE adding the class.

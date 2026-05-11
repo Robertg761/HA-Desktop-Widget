@@ -8013,6 +8013,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 #hotkeys-list {
   max-height: 40vh;
   overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid var(--border-color);
   border-radius: 4px;
 }
@@ -8036,6 +8037,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.hotkey-item:has(.hotkey-action-dropdown.open) {
+  align-items: flex-start;
+}
+
 .hotkey-item .entity-name {
   font-size: 13px;
   font-weight: 500;
@@ -8055,6 +8060,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   flex-wrap: nowrap;
   flex: 0 1 auto;
   min-width: 0;
+}
+
+.hotkey-input-container:has(.hotkey-action-dropdown.open) {
+  align-items: flex-start;
 }
 
 .hotkey-input {
@@ -8077,6 +8086,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-width: 100px;
 }
 
+.hotkey-action-dropdown.open {
+  z-index: var(--z-dropdown);
+}
+
 .hotkey-action-dropdown .custom-dropdown-trigger {
   padding: 6px 8px;
   font-size: 12px;
@@ -8096,6 +8109,16 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .hotkey-action-dropdown .custom-dropdown-menu {
   font-size: 12px;
   max-height: 200px;
+  position: static;
+  display: none;
+  margin-top: var(--space-2);
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.hotkey-action-dropdown.open .custom-dropdown-menu {
+  display: block;
 }
 
 .hotkey-action-dropdown .custom-dropdown-option {
