@@ -599,6 +599,119 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('callMediaPlayerService relative seeking', () => {
+    const createSeekableMediaEntity = (attributeOverrides = {}, entityOverrides = {}) => ({
+      ...sampleStates['media_player.spotify'],
+      ...entityOverrides,
+      entity_id: entityOverrides.entity_id || 'media_player.spotify',
+      state: entityOverrides.state || 'paused',
+      attributes: {
+        ...sampleStates['media_player.spotify'].attributes,
+        media_position_updated_at: undefined,
+        ...attributeOverrides
+      }
+    });
+
+    beforeEach(() => {
+      state.setStates({
+        'media_player.spotify': createSeekableMediaEntity({
+          media_position: 60,
+          media_duration: 240
+        })
+      });
+    });
+
+    it('calculates relative seek targets and clamps them to the media duration', () => {
+      const entity = state.STATES['media_player.spotify'];
+
+      expect(ui.getMediaSeekTarget(entity, -10)).toBe(50);
+      expect(ui.getMediaSeekTarget(entity, -120)).toBe(0);
+      expect(ui.getMediaSeekTarget(entity, 300)).toBe(240);
+    });
+
+    it('calls media_seek with an integer relative seek position', () => {
+      ui.callMediaPlayerService('media_player.spotify', 'seek_relative', {
+        deltaSeconds: 10.4
+      });
+
+      expect(mockCallService).toHaveBeenCalledWith(
+        'media_player',
+        'media_seek',
+        {
+          entity_id: 'media_player.spotify',
+          seek_position: 70
+        }
+      );
+    });
+
+    it('optimistically updates media position after a successful seek', async () => {
+      ui.callMediaPlayerService('media_player.spotify', 'seek_relative', {
+        deltaSeconds: 30
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.STATES['media_player.spotify'].attributes.media_position).toBe(90);
+      expect(state.STATES['media_player.spotify'].attributes.media_position_updated_at).toEqual(expect.any(String));
+    });
+
+    it('does not seek when no timeline data is available', () => {
+      state.setStates({
+        'media_player.spotify': createSeekableMediaEntity({
+          media_position: undefined,
+          media_duration: undefined,
+          media_position_updated_at: undefined
+        })
+      });
+
+      ui.callMediaPlayerService('media_player.spotify', 'seek_relative', {
+        deltaSeconds: 10
+      });
+
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+
+    it('renders seek buttons in the media detail modal and routes clicks through media_seek', () => {
+      jest.useFakeTimers();
+      try {
+        state.setConfig({
+          ...state.CONFIG,
+          favoriteEntities: ['media_player.spotify']
+        });
+        ui.renderActiveTab();
+
+        const tile = document.querySelector('.control-item[data-entity-id="media_player.spotify"]');
+        expect(tile).toBeTruthy();
+
+        tile.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        jest.advanceTimersByTime(500);
+
+        const rewindButton = document.querySelector('.media-detail-seek-btn[data-seek-delta="-10"]');
+        const forwardButton = document.querySelector('.media-detail-seek-btn[data-seek-delta="10"]');
+        expect(rewindButton).toBeTruthy();
+        expect(forwardButton).toBeTruthy();
+        expect(rewindButton.disabled).toBe(false);
+        expect(forwardButton.disabled).toBe(false);
+
+        mockCallService.mockClear();
+        rewindButton.click();
+
+        expect(mockCallService).toHaveBeenCalledWith(
+          'media_player',
+          'media_seek',
+          {
+            entity_id: 'media_player.spotify',
+            seek_position: 50
+          }
+        );
+      } finally {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+  });
+
   // ==============================================================================
   // GROUP 2: Config Management (2 tests)
   // Note: toggleQuickAccess, saveQuickAccessOrder, removeFromQuickAccess not exported

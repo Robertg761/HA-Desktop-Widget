@@ -7755,6 +7755,24 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   outline: none;
 }
 
+.media-detail-controls .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+  transform: none;
+  filter: none;
+}
+
+.media-detail-controls .btn:disabled:hover {
+  color: var(--accent);
+  transform: none;
+  filter: none;
+}
+
+.media-detail-controls .media-detail-seek-btn {
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .media-detail-controls .play-pause-btn {
   width: 56px;
   height: 56px;

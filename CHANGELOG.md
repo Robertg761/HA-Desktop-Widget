@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added `input_button` support for Quick Access tiles, desktop pins, and global hotkeys so Home Assistant helpers can trigger automations from the widget.
 - Added script entities to the global hotkey picker, using `script.turn_on` as the default action.
+- Added native 10-second rewind and fast-forward controls to the media detail modal using Home Assistant `media_player.media_seek`.
 
 ### Changed
 - Nothing yet

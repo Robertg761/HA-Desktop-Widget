@@ -541,6 +541,16 @@ const sampleServices = {
       description: 'Skip to previous track',
       fields: {}
     },
+    media_seek: {
+      name: 'Seek',
+      description: 'Seek to a position in the current media',
+      fields: {
+        seek_position: {
+          description: 'Position to seek to',
+          example: 30
+        }
+      }
+    },
     volume_set: {
       name: 'Set volume',
       description: 'Set volume level',

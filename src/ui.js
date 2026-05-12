@@ -4697,12 +4697,39 @@ function getMediaTimeline(entity) {
   };
 }
 
+function hasMediaSeekData(entity) {
+  const attrs = entity?.attributes || {};
+  const hasPosition = parseMediaSeconds(attrs.media_position) != null;
+  const hasDuration = parseMediaSeconds(attrs.media_duration) != null;
+  return hasPosition || hasDuration;
+}
+
+function canSeekMedia(entity) {
+  if (!entity?.entity_id?.startsWith('media_player.')) return false;
+  if (!hasEntityService(entity, 'media_seek')) return false;
+  return hasMediaSeekData(entity);
+}
+
+function getMediaSeekTarget(entity, deltaSeconds) {
+  if (!hasMediaSeekData(entity)) return null;
+
+  const delta = Number(deltaSeconds);
+  if (!Number.isFinite(delta)) return null;
+
+  const { duration, currentPosition } = getMediaTimeline(entity);
+  const maxPosition = duration > 0 ? duration : Number.POSITIVE_INFINITY;
+  const nextPosition = Math.max(0, Math.min(maxPosition, currentPosition + delta));
+
+  return Math.round(nextPosition);
+}
+
 function showMediaDetail(entity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
     const initialTimeline = getMediaTimeline(entity);
+    const seekControlsDisabled = canSeekMedia(entity) ? '' : ' disabled aria-disabled="true"';
 
     const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
 
@@ -4730,7 +4757,9 @@ function showMediaDetail(entity) {
           </div>
           <div class="media-detail-controls">
             <button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous"></button>
+            <button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="Rewind 10 seconds" aria-label="Rewind 10 seconds"${seekControlsDisabled}>-10</button>
             <button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="Play/Pause"></button>
+            <button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="Forward 10 seconds" aria-label="Forward 10 seconds"${seekControlsDisabled}>+10</button>
             <button class="btn media-detail-next-btn" data-action="next_track" title="Next"></button>
           </div>
         </div>
@@ -4801,6 +4830,10 @@ function showMediaDetail(entity) {
       const action = btn.dataset.action;
       if (action === 'previous_track' || action === 'next_track') {
         callMediaPlayerService(entity.entity_id, action);
+      } else if (action === 'seek_relative') {
+        callMediaPlayerService(entity.entity_id, 'seek_relative', {
+          deltaSeconds: Number(btn.dataset.seekDelta)
+        });
       } else if (action === 'play_pause') {
         const nowPlaying = updatePlayPauseBtn();
         callMediaPlayerService(entity.entity_id, nowPlaying ? 'pause' : 'play');
@@ -4863,7 +4896,27 @@ function scheduleMediaFit() {
   });
 }
 
-function callMediaPlayerService(entityId, action) {
+function updateMediaEntityPosition(entityId, seekPosition) {
+  const currentEntity = state.STATES?.[entityId];
+  if (!currentEntity || !Number.isFinite(seekPosition)) return;
+
+  const updatedEntity = {
+    ...currentEntity,
+    attributes: {
+      ...(currentEntity.attributes || {}),
+      media_position: seekPosition,
+      media_position_updated_at: new Date().toISOString(),
+    },
+  };
+
+  state.setEntityState(updatedEntity);
+
+  if (state.CONFIG?.primaryMediaPlayer === entityId) {
+    updateMediaSeekBar(updatedEntity);
+  }
+}
+
+function callMediaPlayerService(entityId, action, options = {}) {
   try {
     // websocket already imported at top
     const entity = state.STATES[entityId];
@@ -4883,6 +4936,18 @@ function callMediaPlayerService(entityId, action) {
       case 'previous_track':
         serviceCall = websocket.callService('media_player', 'media_previous_track', { entity_id: entityId });
         break;
+      case 'seek_relative': {
+        const seekPosition = getMediaSeekTarget(entity, options.deltaSeconds);
+        if (seekPosition == null) return;
+        serviceCall = websocket.callService('media_player', 'media_seek', {
+          entity_id: entityId,
+          seek_position: seekPosition,
+        }).then((response) => {
+          updateMediaEntityPosition(entityId, seekPosition);
+          return response;
+        });
+        break;
+      }
       default:
         console.warn('Unknown media player action:', action);
         return;
@@ -6668,4 +6733,6 @@ export {
   updateMediaTile,
   updateMediaSeekBar,
   callMediaTileService,
+  callMediaPlayerService,
+  getMediaSeekTarget,
 };
