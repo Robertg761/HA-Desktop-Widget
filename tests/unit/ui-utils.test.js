@@ -1061,6 +1061,7 @@ describe('UI Utilities', () => {
       expect(document.body.style.getPropertyValue('--window-opacity')).toBe('0.620');
       expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.214');
       expect(document.body.style.getPropertyValue('--desktop-pin-window-opacity')).toBe('0.214');
+      expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
       expect(document.body.style.opacity).toBe('');
     });
 
@@ -1071,6 +1072,7 @@ describe('UI Utilities', () => {
 
       expect(document.body.classList.contains('frosted-glass')).toBe(true);
       expect(document.body.classList.contains('software-glass')).toBe(true);
+      expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
       expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.080');
       expect(document.body.style.getPropertyValue('--software-acrylic-bg-alpha')).toBe('0.190');
       expect(Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))).toBeLessThan(0.3);

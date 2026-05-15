@@ -83,6 +83,10 @@ html {
   --glass-surface: rgba(30, 30, 35, 0.7);
   --glass-elevated: rgba(40, 40, 45, 0.8);
   --glass-overlay: rgba(20, 20, 25, 0.85);
+  --settings-modal-bg-rgb: 24, 24, 29;
+  --settings-modal-bg-alpha: 0.82;
+  --settings-modal-panel-rgb: 31, 31, 37;
+  --settings-modal-panel-alpha: 0.88;
 
   /* ============================================
      ELEVATION & SHADOWS
@@ -217,6 +221,10 @@ html {
   --glass-surface: rgba(255, 255, 255, 0.7);
   --glass-elevated: rgba(250, 250, 250, 0.8);
   --glass-overlay: rgba(245, 245, 250, 0.85);
+  --settings-modal-bg-rgb: 248, 248, 252;
+  --settings-modal-bg-alpha: 0.84;
+  --settings-modal-panel-rgb: 255, 255, 255;
+  --settings-modal-panel-alpha: 0.9;
 
   /* Shadows (lighter for light theme) */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -389,6 +397,31 @@ body.software-glass.frosted-glass .modal-content {
     var(--shadow-sm),
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+body.linux-performance-mode,
+body.linux-performance-mode .widget-header,
+body.linux-performance-mode .widget-content,
+body.linux-performance-mode .desktop-pin-shell,
+body.linux-performance-mode .modal,
+body.linux-performance-mode .modal-content,
+body.linux-performance-mode .loading-overlay,
+body.linux-performance-mode .status-card,
+body.linux-performance-mode .media-tile,
+body.linux-performance-mode .control-item,
+body.linux-performance-mode .btn,
+body.linux-performance-mode .close-btn,
+body.linux-performance-mode .form-group input,
+body.linux-performance-mode .form-group select,
+body.linux-performance-mode .form-group textarea,
+body.linux-performance-mode .desktop-pin-panel-button,
+body.linux-performance-mode .desktop-pin-control,
+body.linux-performance-mode .desktop-pin-action-primary,
+body.linux-performance-mode .desktop-pin-quick-toggle,
+body.linux-performance-mode .remove-btn,
+body.linux-performance-mode .rename-btn {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Status cards in frosted glass mode */
@@ -5346,7 +5379,22 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 /* Specific settings modal sizing */
+#settings-modal {
+  background: rgba(8, 10, 14, 0.5);
+  backdrop-filter: blur(56px) saturate(165%) contrast(112%) !important;
+  -webkit-backdrop-filter: blur(56px) saturate(165%) contrast(112%) !important;
+}
+
+.theme-light #settings-modal {
+  background: rgba(244, 246, 250, 0.5);
+}
+
 #settings-modal .modal-content {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+    rgba(var(--settings-modal-bg-rgb), var(--settings-modal-bg-alpha));
+  backdrop-filter: blur(48px) saturate(190%) contrast(112%) !important;
+  -webkit-backdrop-filter: blur(48px) saturate(190%) contrast(112%) !important;
   max-width: 85vw;
   width: 85%;
   height: 85vh;
@@ -5361,8 +5409,17 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: visible;
 }
 
+.theme-light #settings-modal .modal-content {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28)),
+    rgba(var(--settings-modal-bg-rgb), var(--settings-modal-bg-alpha));
+}
+
 #settings-modal .modal-header {
   grid-area: header;
+  background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
+  backdrop-filter: blur(28px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
 }
 
 #settings-modal .modal-tabs {
@@ -5377,8 +5434,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   padding: var(--space-4);
   border-right: 1px solid var(--border-color);
   border-bottom: none;
-  background: var(--surface-1);
-  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
+  backdrop-filter: blur(28px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
 }
 
 #settings-modal .modal-body {
@@ -5397,7 +5455,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 #settings-modal .modal-footer {
   grid-area: footer;
   padding: var(--space-3) var(--space-5);
-  background: transparent;
+  background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
+  backdrop-filter: blur(28px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
 }
 
 .modal-header {

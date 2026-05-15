@@ -433,15 +433,6 @@ function getPlatform() {
   return null;
 }
 
-/**
- * Detects whether the current platform supports native glass/window blur effects.
- * @returns {boolean} `true` if the platform is 'win32' or 'darwin', `false` otherwise.
- */
-function isNativeGlassPlatform() {
-  const platform = getPlatform();
-  return platform === 'win32' || platform === 'darwin';
-}
-
 function isLightThemeActive() {
   return document.body?.classList.contains('theme-light');
 }
@@ -522,9 +513,12 @@ function applyWindowEffects(config = {}) {
   try {
     const body = document.body;
     const enabled = !!config.frostedGlass;
+    const platform = getPlatform();
+    const linuxPerformanceMode = platform === 'linux';
     const opacity = Math.max(0.5, Math.min(1, Number(config.opacity) || 1));
     const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
+    body.classList.toggle('linux-performance-mode', linuxPerformanceMode);
     body.style.setProperty('--window-opacity', opacity.toFixed(3));
     body.style.setProperty('--window-bg-alpha', backgroundAlpha.toFixed(3));
     body.style.setProperty('--desktop-pin-window-opacity', backgroundAlpha.toFixed(3));
@@ -554,7 +548,7 @@ function applyWindowEffects(config = {}) {
 
     const strength = DEFAULT_FROSTED_STRENGTH;
     const tint = DEFAULT_FROSTED_TINT / 100;
-    const nativeGlass = isNativeGlassPlatform();
+    const nativeGlass = platform === 'win32' || platform === 'darwin';
     const lightTheme = isLightThemeActive();
     
     // Linear interpolation helper
