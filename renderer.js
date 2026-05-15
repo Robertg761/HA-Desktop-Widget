@@ -288,9 +288,7 @@ function scheduleReconnect() {
 }
 
 function shouldPauseUiTick() {
-  const hidden = typeof document?.hidden === 'boolean' ? document.hidden : false;
-  const unfocused = typeof document?.hasFocus === 'function' ? !document.hasFocus() : false;
-  return hidden || unfocused;
+  return typeof document?.hidden === 'boolean' ? document.hidden : false;
 }
 
 function runUiTick() {

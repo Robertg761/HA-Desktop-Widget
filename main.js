@@ -925,6 +925,7 @@ function createDesktopPinWindow(entityId, options = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      backgroundThrottling: false,
     }
   };
 
@@ -2119,7 +2120,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
-      webSecurity: true
+      webSecurity: true,
+      backgroundThrottling: false,
     }
   };
 
