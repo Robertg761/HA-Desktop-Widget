@@ -16,7 +16,7 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 ![Personalization Tab](images/Personalization_Tab.png)
 
-The Personalization tab covers themes, window effects, primary cards, and media tile selection. Other Settings tabs include hotkeys, alerts, updates, and log access.
+The Personalization tab covers themes, window effects, primary cards, media tile selection, and language packs. Other Settings tabs include hotkeys, alerts, updates, profile sync, and log access.
 
 ## Features
 
@@ -45,7 +45,7 @@ The Personalization tab covers themes, window effects, primary cards, and media 
 - **Scenes**: One-click scene activation
 
 ### Advanced Features
-- **Auto-Updates**: Seamless background updates from GitHub
+- **Auto-Updates**: GitHub release checks for packaged builds, with manual download flow for portable builds
 - **System Tray**: Minimize to tray with quick access menu
 - **Configuration**: Easy setup with Home Assistant URL and token
 - **Performance**: Optimized rendering and memory management
@@ -93,7 +93,7 @@ The Personalization tab covers themes, window effects, primary cards, and media 
 
 ### System Integration
 - **Minimize to Tray**: Click the minimize button to hide to system tray
-- **Auto-Updates**: The app automatically checks for and installs updates
+- **Auto-Updates**: Supported packaged builds check for updates in the background; portable builds offer a GitHub download link
 - **Settings**: Access via the Settings button or right-click the tray icon
 
 ### Settings Highlights

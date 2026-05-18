@@ -489,7 +489,10 @@ describe('WebSocket Manager', () => {
     });
 
     test('should proxy desktop-pin service calls through the main window when disconnected', async () => {
-      const requestDesktopPinAction = jest.fn().mockResolvedValue({ success: true, forwarded: true });
+      const requestDesktopPinAction = jest.fn().mockResolvedValue({
+        success: true,
+        result: { context: { id: 'service-context' } }
+      });
       window.electronAPI = { requestDesktopPinAction };
       window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
       wsManager.ws.readyState = MockWebSocket.CLOSED;
@@ -509,7 +512,45 @@ describe('WebSocket Manager', () => {
           }
         }
       );
-      expect(result).toEqual({ success: true, forwarded: true });
+      expect(result).toEqual({
+        success: true,
+        result: { context: { id: 'service-context' } }
+      });
+    });
+
+    test('should reject desktop-pin service calls when the main renderer reports failure', async () => {
+      const requestDesktopPinAction = jest.fn().mockResolvedValue({
+        success: false,
+        error: {
+          message: 'Light failed',
+          code: 'service_error'
+        }
+      });
+      window.electronAPI = { requestDesktopPinAction };
+      window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
+      wsManager.ws.readyState = MockWebSocket.CLOSED;
+
+      await expect(
+        wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' })
+      ).rejects.toMatchObject({
+        message: 'Light failed',
+        code: 'service_error',
+        details: {
+          message: 'Light failed',
+          code: 'service_error'
+        }
+      });
+    });
+
+    test('should reject forwarded-only desktop-pin service responses', async () => {
+      const requestDesktopPinAction = jest.fn().mockResolvedValue({ success: true, forwarded: true });
+      window.electronAPI = { requestDesktopPinAction };
+      window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
+      wsManager.ws.readyState = MockWebSocket.CLOSED;
+
+      await expect(
+        wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' })
+      ).rejects.toThrow('light.turn_on was forwarded without a service result');
     });
   });
 

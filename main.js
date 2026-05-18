@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, 
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
@@ -57,6 +57,22 @@ const httpsKeepAliveAgent = new https.Agent({
 
 const DESKTOP_PIN_WINDOW_CORNER_RADIUS = 24;
 const LOCALE_PACK_MANIFEST_URL = 'https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/manifest.json';
+const DESKTOP_PIN_ACTION_RESPONSE_TIMEOUT_MS = 30000;
+const MEDIA_ARTWORK_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+const MEDIA_ARTWORK_GENERIC_CONTENT_TYPES = new Set(['application/octet-stream', 'binary/octet-stream']);
+const MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES = new Set([
+  'image/apng',
+  'image/avif',
+  'image/bmp',
+  'image/gif',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/vnd.microsoft.icon',
+  'image/webp',
+  'image/x-icon',
+]);
+const EXTERNAL_LINK_PROTOCOLS = new Set(['http:', 'https:']);
 
 function getLocalePackManifestSource() {
   if (!app.isPackaged) {
@@ -72,10 +88,87 @@ function getHeaderValue(headers, name) {
   return value;
 }
 
-function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000) {
+function createProtocolError(message, statusCode, code) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
+function getContentLength(headers) {
+  const rawValue = getHeaderValue(headers, 'content-length');
+  if (rawValue === undefined || rawValue === null || rawValue === '') return null;
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function getMimeType(contentType) {
+  if (!contentType || typeof contentType !== 'string') return '';
+  return contentType.split(';')[0].trim().toLowerCase();
+}
+
+function isPotentialMediaArtworkContentType(contentType) {
+  const mimeType = getMimeType(contentType);
+  if (!mimeType) return true;
+  if (MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES.has(mimeType)) return true;
+  return MEDIA_ARTWORK_GENERIC_CONTENT_TYPES.has(mimeType);
+}
+
+function sniffMediaArtworkContentType(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return 'image/png';
+  }
+  if (buffer.slice(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
+  if (
+    buffer.length >= 12 &&
+    buffer.slice(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.slice(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.slice(4, 8).toString('ascii') === 'ftyp' &&
+    ['avif', 'avis'].includes(buffer.slice(8, 12).toString('ascii'))
+  ) {
+    return 'image/avif';
+  }
+  if (buffer[0] === 0x42 && buffer[1] === 0x4d) return 'image/bmp';
+
+  return null;
+}
+
+function resolveMediaArtworkContentType(headers, buffer) {
+  const contentType = getHeaderValue(headers, 'content-type');
+  const mimeType = getMimeType(contentType);
+  if (MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES.has(mimeType)) return mimeType;
+
+  if (!mimeType || MEDIA_ARTWORK_GENERIC_CONTENT_TYPES.has(mimeType)) {
+    return sniffMediaArtworkContentType(buffer);
+  }
+
+  return null;
+}
+
+function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000, options = {}) {
   return new Promise((resolve, reject) => {
     let completed = false;
     const chunks = [];
+    let receivedBytes = 0;
+    const maxBytes = Number.isFinite(Number(options.maxBytes))
+      ? Math.max(0, Math.floor(Number(options.maxBytes)))
+      : null;
+    const validateContentType = typeof options.validateContentType === 'function'
+      ? options.validateContentType
+      : null;
 
     const request = net.request({
       method: 'GET',
@@ -96,10 +189,42 @@ function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000) {
       reject(new Error(`Artwork request timeout after ${timeoutMs}ms`));
     }, timeoutMs);
 
+    const rejectRequest = (error) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      try { request.abort(); } catch { /* noop */ }
+      reject(error);
+    };
+
     request.on('response', (response) => {
+      const responseHeaders = response.headers || {};
+      const statusCode = response.statusCode || 0;
+      const shouldValidateBody = statusCode >= 200 && statusCode < 300;
+      if (
+        shouldValidateBody &&
+        validateContentType &&
+        !validateContentType(getHeaderValue(responseHeaders, 'content-type'))
+      ) {
+        rejectRequest(createProtocolError('Artwork response is not an image', 415, 'MEDIA_ARTWORK_UNSUPPORTED_TYPE'));
+        return;
+      }
+
+      const contentLength = getContentLength(responseHeaders);
+      if (maxBytes !== null && contentLength !== null && contentLength > maxBytes) {
+        rejectRequest(createProtocolError('Artwork response is too large', 413, 'MEDIA_ARTWORK_TOO_LARGE'));
+        return;
+      }
+
       response.on('data', (chunk) => {
         if (completed) return;
-        chunks.push(Buffer.from(chunk));
+        const chunkBuffer = Buffer.from(chunk);
+        receivedBytes += chunkBuffer.length;
+        if (maxBytes !== null && receivedBytes > maxBytes) {
+          rejectRequest(createProtocolError('Artwork response is too large', 413, 'MEDIA_ARTWORK_TOO_LARGE'));
+          return;
+        }
+        chunks.push(chunkBuffer);
       });
 
       response.on('end', () => {
@@ -109,26 +234,78 @@ function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000) {
         resolve({
           status: response.statusCode || 0,
           headers: response.headers || {},
-          data: Buffer.concat(chunks),
+          data: Buffer.concat(chunks, receivedBytes),
         });
       });
 
       response.on('error', (error) => {
-        if (completed) return;
-        completed = true;
-        clearTimeout(timeoutId);
-        reject(error);
+        rejectRequest(error);
       });
     });
 
     request.on('error', (error) => {
-      if (completed) return;
-      completed = true;
-      clearTimeout(timeoutId);
-      reject(error);
+      rejectRequest(error);
     });
 
     request.end();
+  });
+}
+
+function isHttpOrHttpsUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    return EXTERNAL_LINK_PROTOCOLS.has(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function routeExternalHttpLink(rawUrl) {
+  if (!isHttpOrHttpsUrl(rawUrl)) return false;
+
+  try {
+    const parsed = new URL(rawUrl);
+    shell.openExternal(parsed.toString()).catch((error) => {
+      log.warn('Failed to open external link:', error?.message || error);
+    });
+    return true;
+  } catch (error) {
+    log.warn('Failed to route external link:', error?.message || error);
+    return false;
+  }
+}
+
+function isAllowedRendererNavigation(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'file:') return false;
+
+    const targetPath = path.resolve(fileURLToPath(parsed));
+    const indexPath = path.resolve(path.join(__dirname, 'index.html'));
+    return targetPath === indexPath;
+  } catch {
+    return false;
+  }
+}
+
+function hardenRendererNavigation(targetWindow) {
+  const webContents = targetWindow?.webContents;
+  if (!webContents) return;
+
+  if (typeof webContents.setWindowOpenHandler === 'function') {
+    webContents.setWindowOpenHandler(({ url }) => {
+      routeExternalHttpLink(url);
+      return { action: 'deny' };
+    });
+  }
+
+  webContents.on('will-navigate', (event, url) => {
+    if (isAllowedRendererNavigation(url)) return;
+
+    if (event && typeof event.preventDefault === 'function') {
+      event.preventDefault();
+    }
+    routeExternalHttpLink(url);
   });
 }
 
@@ -216,6 +393,8 @@ let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is c
 let popupHotkeyLastShownTime = null;
 const desktopPinWindows = new Map();
 const desktopPinContentMinBounds = new Map();
+const pendingDesktopPinActionRequests = new Map();
+let nextDesktopPinActionRequestId = 1;
 const latestEntityStates = new Map();
 let hasPublishedHaSnapshot = false;
 let desktopPinEditMode = false;
@@ -509,6 +688,94 @@ function sanitizeConfigForRenderer(inputConfig) {
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeDesktopPinActionError(error) {
+  if (isPlainObject(error)) {
+    return {
+      ...error,
+      message: typeof error.message === 'string' && error.message.trim()
+        ? error.message
+        : 'Desktop pin action failed',
+    };
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return { message: error };
+  }
+  return { message: 'Desktop pin action failed' };
+}
+
+function normalizeDesktopPinActionResponse(response) {
+  if (!isPlainObject(response)) {
+    return { success: true, result: response };
+  }
+
+  if (response.success === false) {
+    return {
+      success: false,
+      error: normalizeDesktopPinActionError(response.error),
+    };
+  }
+
+  return { success: true, ...response };
+}
+
+function createDesktopPinActionRequestId() {
+  const requestId = `desktop-pin-action-${Date.now()}-${nextDesktopPinActionRequestId}`;
+  nextDesktopPinActionRequestId += 1;
+  return requestId;
+}
+
+function settleDesktopPinActionRequest(requestId, settle, value) {
+  const pending = pendingDesktopPinActionRequests.get(requestId);
+  if (!pending) return false;
+
+  pendingDesktopPinActionRequests.delete(requestId);
+  clearTimeout(pending.timeoutId);
+  pending[settle](value);
+  return true;
+}
+
+function forwardDesktopPinActionToMainWindow(entityId, action, payload = {}, options = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return Promise.resolve({ success: false, error: 'Main window is not available' });
+  }
+
+  const requestPayload = {
+    entityId,
+    action,
+    payload: isPlainObject(payload) ? payload : {},
+  };
+
+  if (!options.awaitResponse) {
+    mainWindow.webContents.send('desktop-pin-action-requested', requestPayload);
+    return Promise.resolve({ success: true, forwarded: true });
+  }
+
+  const requestId = createDesktopPinActionRequestId();
+  requestPayload.requestId = requestId;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      settleDesktopPinActionRequest(
+        requestId,
+        'reject',
+        new Error(`Timed out waiting for desktop pin action response: ${action}`)
+      );
+    }, DESKTOP_PIN_ACTION_RESPONSE_TIMEOUT_MS);
+
+    pendingDesktopPinActionRequests.set(requestId, {
+      resolve: (response) => resolve(normalizeDesktopPinActionResponse(response)),
+      reject,
+      timeoutId,
+    });
+
+    try {
+      mainWindow.webContents.send('desktop-pin-action-requested', requestPayload);
+    } catch (error) {
+      settleDesktopPinActionRequest(requestId, 'reject', error);
+    }
+  });
 }
 
 function getDesktopPinCascadeOrigin(index = 0) {
@@ -967,6 +1234,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   }
 
   const pinWindow = new BrowserWindow(windowOptions);
+  hardenRendererNavigation(pinWindow);
   pinWindow.setMenuBarVisibility(false);
   pinWindow.__desktopPinEntityId = normalizedEntityId;
   desktopPinWindows.set(normalizedEntityId, pinWindow);
@@ -2309,6 +2577,7 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  hardenRendererNavigation(mainWindow);
 
   // Keep native opacity at 1; renderer CSS applies the saved opacity only to background surfaces.
   const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
@@ -2734,12 +3003,35 @@ ipcMain.handle('request-desktop-pin-action', (_event, entityId, action, payload 
     return { success: false, error: 'Main window is not available' };
   }
 
-  mainWindow.webContents.send('desktop-pin-action-requested', {
-    entityId: normalizedEntityId,
-    action: normalizedAction,
-    payload: isPlainObject(payload) ? payload : {},
-  });
-  return { success: true, forwarded: true };
+  return forwardDesktopPinActionToMainWindow(
+    normalizedEntityId,
+    normalizedAction,
+    payload,
+    { awaitResponse: normalizedAction === 'service-call' }
+  );
+});
+
+ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) => {
+  const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
+  if (!normalizedRequestId) {
+    return { success: false, error: 'Invalid desktop pin action request ID' };
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { success: false, error: 'Desktop pin action responses must come from the main window' };
+  }
+
+  const settled = settleDesktopPinActionRequest(
+    normalizedRequestId,
+    'resolve',
+    normalizeDesktopPinActionResponse(response)
+  );
+
+  if (!settled) {
+    return { success: false, error: 'Unknown desktop pin action request ID' };
+  }
+
+  return { success: true };
 });
 
 ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
@@ -3945,12 +4237,19 @@ app.whenReady().then(() => {
             headers = { Authorization: `Bearer ${token}` };
           }
 
-          const res = await fetchBinaryWithElectronNet(upstream, headers, 10000);
+          const res = await fetchBinaryWithElectronNet(upstream, headers, 10000, {
+            maxBytes: MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
+            validateContentType: isPotentialMediaArtworkContentType,
+          });
 
           if (res.status >= 200 && res.status < 300) {
             const buf = Buffer.isBuffer(res.data) ? res.data : Buffer.from(res.data);
+            const contentType = resolveMediaArtworkContentType(res.headers, buf);
+            if (!contentType) {
+              respond({ statusCode: 415 });
+              return;
+            }
             const stream = Readable.from(buf);
-            const contentType = getHeaderValue(res.headers, 'content-type') || 'image/jpeg';
             respond({
               data: stream,
               statusCode: 200,
@@ -3967,7 +4266,7 @@ app.whenReady().then(() => {
         }
       } catch (error) {
         log.error('Protocol handler error:', error);
-        respond({ statusCode: 500 });
+        respond({ statusCode: error?.statusCode || 500 });
       }
     });
   } catch (error) {

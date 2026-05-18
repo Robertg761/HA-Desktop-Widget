@@ -14,6 +14,7 @@ import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants
 
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
+const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
@@ -23,6 +24,7 @@ let desktopPinEditMode = false;
 let desktopPinBounds = null;
 let desktopPinHasSnapshot = false;
 let desktopPinConnectionIssue = '';
+const favoriteStalePreservation = new Map();
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -107,6 +109,55 @@ function setDesktopPinConnectionIssue(detailMessage = '') {
   desktopPinConnectionIssue = typeof detailMessage === 'string'
     ? detailMessage.trim()
     : '';
+}
+
+function reconcileFavoriteStalePreservation(newStates) {
+  const oldStates = state.STATES || {};
+  const favoriteEntityIds = [...new Set(
+    Array.isArray(state.CONFIG?.favoriteEntities)
+      ? state.CONFIG.favoriteEntities.filter(entityId => typeof entityId === 'string' && entityId)
+      : []
+  )];
+  const favoriteEntityIdSet = new Set(favoriteEntityIds);
+
+  Array.from(favoriteStalePreservation.keys()).forEach((entityId) => {
+    if (!favoriteEntityIdSet.has(entityId) || newStates[entityId] || !oldStates[entityId]) {
+      favoriteStalePreservation.delete(entityId);
+    }
+  });
+
+  const preservedFavorites = {};
+  const droppedStaleFavorites = [];
+  const now = Date.now();
+
+  favoriteEntityIds.forEach((entityId) => {
+    if (newStates[entityId] || !oldStates[entityId]) {
+      favoriteStalePreservation.delete(entityId);
+      return;
+    }
+
+    const previousRecord = favoriteStalePreservation.get(entityId);
+    const missingSince = previousRecord?.missingSince || now;
+    const staleAgeMs = Math.max(0, now - missingSince);
+
+    if (staleAgeMs <= FAVORITE_STALE_ENTITY_PRESERVE_MS) {
+      preservedFavorites[entityId] = oldStates[entityId];
+      favoriteStalePreservation.set(entityId, {
+        missingSince,
+        lastPreservedAt: now,
+      });
+      return;
+    }
+
+    droppedStaleFavorites.push(entityId);
+    favoriteStalePreservation.delete(entityId);
+  });
+
+  return {
+    favoriteCount: favoriteEntityIds.length,
+    preservedFavorites,
+    droppedStaleFavorites,
+  };
 }
 
 function getSettingsUiHooks() {
@@ -426,23 +477,20 @@ websocket.on('message', (msg) => {
             log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
             msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
 
-            // Preserve only favorited entities from old states (in case they're temporarily unavailable during HA restart)
-            // This prevents deleted entities from persisting indefinitely while still protecting favorites
-            const favoriteEntityIds = state.CONFIG.favoriteEntities || [];
-            const preservedFavorites = {};
-            favoriteEntityIds.forEach(entityId => {
-              if (state.STATES[entityId] && !newStates[entityId]) {
-                preservedFavorites[entityId] = state.STATES[entityId];
-              }
-            });
+            const {
+              favoriteCount,
+              preservedFavorites,
+              droppedStaleFavorites,
+            } = reconcileFavoriteStalePreservation(newStates);
 
             const mergedStates = { ...newStates, ...preservedFavorites };
-            log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites = ${Object.keys(mergedStates).length} total`);
+            log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites - ${droppedStaleFavorites.length} stale favorites = ${Object.keys(mergedStates).length} total`);
             emitRendererDebug('ws.get_states.received', {
               fetchedEntities: Object.keys(newStates).length,
               preservedFavorites: Object.keys(preservedFavorites),
+              droppedStaleFavorites,
               mergedTotal: Object.keys(mergedStates).length,
-              favoriteCount: Array.isArray(state.CONFIG?.favoriteEntities) ? state.CONFIG.favoriteEntities.length : 0,
+              favoriteCount,
             });
             state.setStates(mergedStates);
             if (IS_DESKTOP_PIN_MODE) {

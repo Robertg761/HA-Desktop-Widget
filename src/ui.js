@@ -151,6 +151,32 @@ function handleServiceError(error, entityName = null) {
   uiUtils.showToast(displayMessage, 'error', 4000);
 }
 
+function serializeDesktopPinActionError(error, fallbackMessage = 'Desktop pin action failed') {
+  const message = (typeof error?.message === 'string' && error.message.trim())
+    ? error.message
+    : fallbackMessage;
+  const serialized = { message };
+
+  if (error?.code) serialized.code = error.code;
+  if (error?.details) serialized.details = error.details;
+
+  return serialized;
+}
+
+function normalizeDesktopPinActionResult(result) {
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    return { success: result.success !== false, ...result };
+  }
+  return { success: true, result };
+}
+
+function respondToDesktopPinActionRequest(requestId, response) {
+  if (!requestId || !window?.electronAPI?.respondDesktopPinActionRequest) return;
+  window.electronAPI.respondDesktopPinActionRequest(requestId, response).catch((error) => {
+    console.error('Error sending desktop pin action response:', error);
+  });
+}
+
 /**
  * Clear all active long-press timers
  * Called when reorganize mode changes to prevent inconsistent state
@@ -3947,11 +3973,19 @@ function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
   });
 }
 
-function handleDesktopPinActionRequest({ entityId, action, payload = {} }) {
+function handleDesktopPinActionRequest({ entityId, action, payload = {}, requestId = null } = {}) {
+  const sendResponse = (response) => respondToDesktopPinActionRequest(requestId, response);
+
   try {
     const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
     const entity = state.STATES?.[resolvedEntityId];
-    if (!entity) return;
+    if (!entity) {
+      sendResponse({
+        success: false,
+        error: { message: 'Entity is not available' },
+      });
+      return;
+    }
     const supportProfile = getDesktopPinSupportProfile(entity);
 
     switch (action) {
@@ -3965,14 +3999,26 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {} }) {
           : {};
 
         if (!domain || !serviceName) {
-          break;
+          sendResponse({
+            success: false,
+            error: { message: 'Invalid service call request' },
+          });
+          return;
         }
 
         websocket.callService(domain, serviceName, {
           entity_id: resolvedEntityId,
           ...serviceData,
-        }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
-        break;
+        }).then((result) => {
+          sendResponse(normalizeDesktopPinActionResult(result));
+        }).catch((error) => {
+          handleServiceError(error, utils.getEntityDisplayName(entity));
+          sendResponse({
+            success: false,
+            error: serializeDesktopPinActionError(error, `${domain}.${serviceName} failed`),
+          });
+        });
+        return;
       }
       case 'toggle':
         toggleEntity(entity);
@@ -4034,8 +4080,13 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {} }) {
       default:
         break;
     }
+    sendResponse({ success: true });
   } catch (error) {
     console.error('Error handling desktop pin action request:', error);
+    sendResponse({
+      success: false,
+      error: serializeDesktopPinActionError(error),
+    });
   }
 }
 

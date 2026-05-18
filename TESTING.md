@@ -22,7 +22,7 @@ This guide explains when and how to run tests for the HA Desktop Widget project.
 ### Quick Start (Most Common)
 
 ```bash
-# Run all tests (takes ~4-5 seconds)
+# Run all tests (runtime varies by machine)
 npm test
 ```
 
@@ -32,8 +32,8 @@ PASS tests/unit/state.test.js
 PASS tests/unit/utils.test.js
 PASS tests/unit/websocket.test.js
 ...
-Test Suites: 11 passed, 11 total
-Tests:       403 passed, 403 total
+Test Suites: ... passed, ... total
+Tests:       ... passed, ... total
 ```
 
 ✅ **All tests passing?** You're good to commit!
@@ -108,9 +108,9 @@ After fixing, run `npm test` again to verify the fix.
 ### Step 4: Ask for Help (If Needed)
 
 If you're stuck:
-1. Check `testing-progress.md` for test implementation details
+1. Check `CLAUDE.md` for project-specific test guidance
 2. Look at similar tests in the same test file for patterns
-3. Ask Claude Code or create a GitHub issue
+3. Ask a maintainer or create a GitHub issue
 
 ## Quick Reference
 
@@ -124,14 +124,14 @@ If you're stuck:
 
 ## Test Statistics
 
-- **403 tests** across 11 test suites
-- **All tests should pass** before committing
-- **Run time:** ~4-5 seconds for full suite
-- **Coverage:** 35% overall, 77-100% on critical modules
+- **Current suite list**: Run `npm test -- --listTests` to see the test files in this checkout.
+- **All tests should pass** before committing.
+- **Run time**: Varies by machine and by whether you run the full suite or targeted files.
+- **Coverage**: Run `npm test -- --coverage` when you need current coverage numbers.
 
 ## Additional Resources
 
-- **Detailed test implementation:** See `testing-progress.md`
+- **Detailed test guidance:** See `CLAUDE.md`
 - **Writing new tests:** See the "Testing" section in `CLAUDE.md`
 - **CI/CD:** Tests run automatically on every pull request
 

@@ -64,6 +64,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     jest.useRealTimers();
     jest.clearAllMocks();
     resetMockElectronAPI();
+    mockElectronAPI.respondDesktopPinActionRequest = jest.fn(() => Promise.resolve({ success: true }));
     document.head.innerHTML = `<style>${desktopPinStyles}</style>`;
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 168 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 148 });
@@ -2845,6 +2846,99 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('handleDesktopPinActionRequest', () => {
+    const flushMicrotasks = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    it('responds to correlated service-call requests after the service resolves', async () => {
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom'],
+          state: 'on',
+          attributes: {
+            ...sampleStates['light.bedroom'].attributes,
+            friendly_name: 'Bedroom Light'
+          }
+        }
+      });
+      mockCallService.mockResolvedValueOnce({
+        success: true,
+        result: { context: { id: 'service-context' } }
+      });
+
+      ui.handleDesktopPinActionRequest({
+        entityId: 'light.bedroom',
+        action: 'service-call',
+        requestId: 'desktop-pin-action-1',
+        payload: {
+          domain: 'light',
+          service: 'turn_on',
+          serviceData: { brightness: 180 }
+        }
+      });
+
+      await flushMicrotasks();
+
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.bedroom',
+        brightness: 180
+      });
+      expect(mockElectronAPI.respondDesktopPinActionRequest).toHaveBeenCalledWith(
+        'desktop-pin-action-1',
+        {
+          success: true,
+          result: { context: { id: 'service-context' } }
+        }
+      );
+    });
+
+    it('responds with failure and keeps existing toast feedback when a correlated service-call fails', async () => {
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom'],
+          state: 'on',
+          attributes: {
+            ...sampleStates['light.bedroom'].attributes,
+            friendly_name: 'Bedroom Light'
+          }
+        }
+      });
+      const serviceError = new Error('Service failed');
+      serviceError.code = 'service_error';
+      serviceError.details = { domain: 'light', service: 'turn_on' };
+      mockCallService.mockRejectedValueOnce(serviceError);
+
+      ui.handleDesktopPinActionRequest({
+        entityId: 'light.bedroom',
+        action: 'service-call',
+        requestId: 'desktop-pin-action-2',
+        payload: {
+          domain: 'light',
+          service: 'turn_on'
+        }
+      });
+
+      await flushMicrotasks();
+
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Service failed'),
+        'error',
+        4000
+      );
+      expect(mockElectronAPI.respondDesktopPinActionRequest).toHaveBeenCalledWith(
+        'desktop-pin-action-2',
+        {
+          success: false,
+          error: {
+            message: 'Service failed',
+            code: 'service_error',
+            details: { domain: 'light', service: 'turn_on' }
+          }
+        }
+      );
+    });
+
     it('routes action trigger requests to input_button.press', () => {
       state.setStates({
         'input_button.tv_rewind': sampleStates['input_button.tv_rewind']

@@ -78,7 +78,7 @@ Goal: stop pinned tiles from entering visually broken sizes or over-promoted lay
 - [x] Keep scene/script minimum behavior only if validated by the size audit.
 - [x] Re-check resize clamping from all four resize handles.
 - [x] Confirm default pin bounds still feel sensible after bound updates.
-- [x] Confirm saved bounds persist correctly after resize and restart.
+- [x] Confirm saved bounds persistence through automated config/hydration coverage; full packaged restart remains a manual pre-release QA item below.
 - [x] Verify pinned tiles cannot be resized into clearly broken states.
 
 Dependencies:
@@ -338,7 +338,16 @@ Dependencies:
   - `npm test -- --runTestsByPath tests/unit/ui.test.js tests/unit/renderer-desktop-pin.test.js tests/unit/desktop-pin-bounds.test.js tests/integration/settings-config.test.js`
   - `npm run lint`
 
+### Pre-Release Manual QA Items
+
+These are still open because they need a packaged Electron build and a real close/relaunch cycle. The automated tests cover the underlying renderer, bounds, and config paths, but they do not prove the native window lifecycle end to end.
+
+- [ ] Packaged edit-mode desktop pin drag/resize smoke pass: verify drag handles, resize handles, clamping, and content layout while edit mode is active.
+- [ ] Packaged restart persistence smoke pass: resize and move representative desktop pins, fully quit/relaunch the app, and confirm restored position, size, minimum bounds, and selected entity.
+
+Remaining risk: a packaged-only Electron window lifecycle issue could still affect drag/resize persistence or restart restoration even though the unit and integration coverage passes.
+
 ### Remaining Follow-Ups
 
-- [ ] Run one packaged-app/manual smoke pass for end-to-end desktop pin drag/resize interaction while edit mode is active. Current automated coverage verifies reorganize-mode pin/unpin flows and resize clamp math, but not the full Electron window drag/resize lifecycle.
-- [ ] Run one packaged-app/manual smoke pass for desktop pin persistence after a real app restart. Current automated coverage verifies settings hydration and preserved bounds updates, but not a full close/relaunch window restoration path.
+- [ ] Complete the packaged edit-mode desktop pin drag/resize smoke pass before release.
+- [ ] Complete the packaged restart persistence smoke pass before release.

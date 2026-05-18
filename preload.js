@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   publishHaSnapshot: (states) => ipcRenderer.invoke('publish-ha-snapshot', states),
   publishHaEntityUpdate: (entity) => ipcRenderer.invoke('publish-ha-entity-update', entity),
   requestDesktopPinAction: (entityId, action, payload) => ipcRenderer.invoke('request-desktop-pin-action', entityId, action, payload),
+  respondDesktopPinActionRequest: (requestId, response) => ipcRenderer.invoke('desktop-pin-action-response', requestId, response),
   showEntityTileMenu: (entityId, supportInfo = null) => ipcRenderer.invoke('show-entity-tile-menu', entityId, supportInfo),
   chooseProfileSyncFolder: (provider) => ipcRenderer.invoke('choose-profile-sync-folder', provider),
   copyProfileSyncFile: (fromPath, toPath, overwrite = false) => ipcRenderer.invoke('copy-profile-sync-file', fromPath, toPath, overwrite),

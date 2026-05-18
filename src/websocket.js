@@ -36,6 +36,19 @@ function getDesktopPinServiceProxyContext(serviceData = {}) {
   return { entityId };
 }
 
+function throwForFailedServiceResponse(response, fallbackMessage) {
+  if (response && response.success === false) {
+    const details = response.error || {};
+    const message = details.message || fallbackMessage;
+    const serviceError = new Error(message);
+    if (details.code) serviceError.code = details.code;
+    serviceError.details = details;
+    throw serviceError;
+  }
+
+  return response;
+}
+
 class WebSocketManager extends EventEmitter {
   constructor() {
     super();
@@ -186,15 +199,15 @@ class WebSocketManager extends EventEmitter {
             serviceData: serviceData || {},
           }
         ).then((response) => {
-          if (response && response.success === false) {
-            const details = response.error || {};
-            const message = details.message || `${domain}.${service} failed`;
-            const serviceError = new Error(message);
-            if (details.code) serviceError.code = details.code;
-            serviceError.details = details;
-            throw serviceError;
+          if (
+            response &&
+            response.forwarded === true &&
+            response.success !== false &&
+            !Object.prototype.hasOwnProperty.call(response, 'result')
+          ) {
+            throw new Error(`${domain}.${service} was forwarded without a service result`);
           }
-          return response;
+          return throwForFailedServiceResponse(response, `${domain}.${service} failed`);
         });
         proxiedPromise.id = null;
         return proxiedPromise;
@@ -207,17 +220,9 @@ class WebSocketManager extends EventEmitter {
         service_data: serviceData,
       });
 
-      const servicePromise = requestPromise.then((response) => {
-        if (response && response.success === false) {
-          const details = response.error || {};
-          const message = details.message || `${domain}.${service} failed`;
-          const serviceError = new Error(message);
-          if (details.code) serviceError.code = details.code;
-          serviceError.details = details;
-          throw serviceError;
-        }
-        return response;
-      });
+      const servicePromise = requestPromise.then((response) => (
+        throwForFailedServiceResponse(response, `${domain}.${service} failed`)
+      ));
 
       // Preserve request ID for tests and callers that correlate responses
       servicePromise.id = requestPromise.id;
