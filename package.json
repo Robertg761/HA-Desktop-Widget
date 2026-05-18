@@ -63,7 +63,7 @@
       "package.json"
     ],
     "asar": true,
-    "compression": "maximum",
+    "compression": "normal",
     "publish": [
       {
         "provider": "github",

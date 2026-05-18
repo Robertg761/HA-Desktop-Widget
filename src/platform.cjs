@@ -18,9 +18,16 @@ function supportsAutoUpdater(platform = process.platform, env = process.env) {
   return platform === 'win32' || platform === 'darwin';
 }
 
+function shouldUseTransparentWindow(platform = process.platform, env = process.env) {
+  if (platform !== 'linux') return true;
+  const override = String(env?.HA_WIDGET_LINUX_TRANSPARENT_WINDOW || '').trim().toLowerCase();
+  return override === '1' || override === 'true' || override === 'yes';
+}
+
 module.exports = {
   getAppIconPath,
   isLinuxAppImage,
+  shouldUseTransparentWindow,
   supportsAutoUpdater,
   supportsElectronLoginItems,
 };

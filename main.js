@@ -34,6 +34,7 @@ const {
 } = require('./src/linux-startup.cjs');
 const {
   getAppIconPath,
+  shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 
@@ -238,6 +239,29 @@ const DEV_RELOAD_MAX_RETRIES = 20;
 let devReloadTimer = null;
 let devReloadWatchersStarted = false;
 const devReloadWatchers = [];
+let postWindowStartupTasksScheduled = false;
+let deferredHomeAssistantTokenDecryptPending = false;
+let deferredPlaintextTokenMigrationPending = false;
+let deferredProfileSyncPassphraseDecryptPending = false;
+let deferredSecureConfigResolutionInProgress = false;
+
+function getWindowTransparencyOptions() {
+  const transparent = shouldUseTransparentWindow(process.platform, process.env);
+  return {
+    transparent,
+    backgroundColor: transparent ? '#00000000' : '#28282d',
+  };
+}
+
+function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
+  if (decodePassphrase) {
+    profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
+  }
+  const activeScope = getActiveProfileSyncScope();
+  const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
+  profileSyncRuntime.localProfileUpdatedAt = config?.profileSync?.lastSyncAt || new Date().toISOString();
+}
 
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
@@ -663,6 +687,7 @@ function pinEntityToDesktopInternal(entityId, supportInfo = null) {
 
 function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass) {
   if (!targetWindow || targetWindow.isDestroyed()) return;
+  const transparencyOptions = getWindowTransparencyOptions();
   const enabled = typeof overrideFrostedGlass === 'boolean'
     ? overrideFrostedGlass
     : !!currentConfig?.frostedGlass;
@@ -691,7 +716,7 @@ function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrosted
   }
 
   try {
-    targetWindow.setBackgroundColor('#00000000');
+    targetWindow.setBackgroundColor(transparencyOptions.backgroundColor);
   } catch (error) {
     log.warn('Failed to set background color:', error.message);
   }
@@ -902,13 +927,14 @@ function createDesktopPinWindow(entityId, options = {}) {
   config.desktopPins[normalizedEntityId] = pinBounds;
 
   const iconPath = getAppIconPath(__dirname);
+  const transparencyOptions = getWindowTransparencyOptions();
   const windowOptions = {
     x: pinBounds.x,
     y: pinBounds.y,
     width: pinBounds.width,
     height: pinBounds.height,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: transparencyOptions.transparent,
+    backgroundColor: transparencyOptions.backgroundColor,
     frame: false,
     hasShadow: false,
     alwaysOnTop: false,
@@ -1515,11 +1541,15 @@ function shouldPreserveRecoveryTokenForSave(configToSave) {
  * - May call `saveConfig()` and `backupConfig()` to persist changes or backups.
  * - Logs migration and error information.
  */
-function loadConfig() {
+function loadConfig(options = {}) {
   log.debug('Loading configuration');
+  const deferSecureStorage = !!options.deferSecureStorage;
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
   preservedEncryptedTokenForRecovery = null;
+  deferredHomeAssistantTokenDecryptPending = false;
+  deferredPlaintextTokenMigrationPending = false;
+  deferredProfileSyncPassphraseDecryptPending = false;
 
   // Default configuration
   const defaultConfig = {
@@ -1577,6 +1607,11 @@ function loadConfig() {
 
       // Handle token encryption/decryption
       if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
+        if (deferSecureStorage) {
+          preservedEncryptedTokenForRecovery = config.homeAssistant.token;
+          config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+          deferredHomeAssistantTokenDecryptPending = true;
+        } else {
         // Token is marked as encrypted, decrypt it
         log.debug('Attempting to decrypt stored token...');
         try {
@@ -1610,9 +1645,13 @@ function loadConfig() {
           // Don't save config here - this preserves the encrypted token on disk
           log.info('Encrypted token preserved in config file for recovery attempts.');
         }
+        }
       } else if (config.homeAssistant?.token &&
         config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER &&
         !config.homeAssistant?.tokenEncrypted) {
+        if (deferSecureStorage) {
+          deferredPlaintextTokenMigrationPending = true;
+        } else {
         // Migration: existing plaintext token from pre-encryption version
         log.info('Detected plaintext token from pre-encryption version - attempting migration...');
 
@@ -1682,6 +1721,7 @@ function loadConfig() {
           };
           saveConfig();
         }
+        }
       }
     } else {
       // Migrate legacy config if present in app directory
@@ -1719,10 +1759,143 @@ function loadConfig() {
     normalizeDesktopPinsConfig(config);
   }
 
-  profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
-  const initialProfile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
-  profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, getActiveProfileSyncScope());
-  profileSyncRuntime.localProfileUpdatedAt = config?.profileSync?.lastSyncAt || new Date().toISOString();
+  deferredProfileSyncPassphraseDecryptPending = !!(
+    deferSecureStorage &&
+    config?.profileSync?.rememberPassphrase &&
+    config?.profileSync?.storedPassphrase &&
+    config?.profileSync?.passphraseEncrypted
+  );
+  if (deferredProfileSyncPassphraseDecryptPending) {
+    profileSyncRuntime.passphraseSession = '';
+    profileSyncRuntime.passphraseWarning = '';
+    refreshProfileSyncRuntimeTracking({ decodePassphrase: false });
+  } else {
+    refreshProfileSyncRuntimeTracking();
+  }
+}
+
+function resolveDeferredSecureConfig(options = {}) {
+  if (deferredSecureConfigResolutionInProgress) return false;
+  const notifyRenderer = !!options.notifyRenderer;
+  const hasDeferredWork = deferredHomeAssistantTokenDecryptPending
+    || deferredPlaintextTokenMigrationPending
+    || deferredProfileSyncPassphraseDecryptPending;
+  if (!hasDeferredWork) return false;
+
+  deferredSecureConfigResolutionInProgress = true;
+  let changed = false;
+
+  try {
+    if (deferredHomeAssistantTokenDecryptPending) {
+      deferredHomeAssistantTokenDecryptPending = false;
+      const encryptedToken = preservedEncryptedTokenForRecovery;
+      if (encryptedToken) {
+        try {
+          if (safeStorage.isEncryptionAvailable()) {
+            const encryptedBuffer = Buffer.from(encryptedToken, 'base64');
+            config.homeAssistant = config.homeAssistant || {};
+            config.homeAssistant.token = safeStorage.decryptString(encryptedBuffer);
+            config.homeAssistant.tokenEncrypted = true;
+            preservedEncryptedTokenForRecovery = null;
+            changed = true;
+            log.info('Token decrypted after initial window startup');
+          } else {
+            log.warn('Encryption not available on this system. Encrypted token cannot be decrypted.');
+            config.homeAssistant = config.homeAssistant || {};
+            config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+            config.tokenResetReason = 'encryption_unavailable';
+            changed = true;
+          }
+        } catch (error) {
+          log.error('Exception during deferred token decryption:', error);
+          config.homeAssistant = config.homeAssistant || {};
+          config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+          config.tokenResetReason = 'decryption_failed';
+          changed = true;
+        }
+      }
+    }
+
+    if (deferredPlaintextTokenMigrationPending) {
+      deferredPlaintextTokenMigrationPending = false;
+      if (config.homeAssistant?.token &&
+        config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER &&
+        !config.homeAssistant?.tokenEncrypted) {
+        log.info('Detected plaintext token after startup - attempting migration...');
+        backupConfig();
+
+        try {
+          if (safeStorage.isEncryptionAvailable()) {
+            const plainToken = config.homeAssistant.token;
+            try {
+              const encryptedBuffer = safeStorage.encryptString(plainToken);
+              config.homeAssistant.token = encryptedBuffer.toString('base64');
+              config.homeAssistant.tokenEncrypted = true;
+              config.migrationInfo = {
+                version: app.getVersion(),
+                date: new Date().toISOString(),
+                tokenEncrypted: true
+              };
+              saveConfig();
+              config.homeAssistant.token = plainToken;
+              changed = true;
+              log.info('Deferred token migration complete - token is now encrypted at rest');
+            } catch (error) {
+              log.error('Exception during deferred token encryption:', error);
+              config.homeAssistant.tokenEncrypted = false;
+              config.migrationInfo = {
+                version: app.getVersion(),
+                date: new Date().toISOString(),
+                tokenEncrypted: false,
+                reason: 'encryption_failed'
+              };
+              saveConfig();
+              changed = true;
+            }
+          } else {
+            config.homeAssistant.tokenEncrypted = false;
+            config.migrationInfo = {
+              version: app.getVersion(),
+              date: new Date().toISOString(),
+              tokenEncrypted: false,
+              reason: 'encryption_unavailable'
+            };
+            saveConfig();
+            changed = true;
+          }
+        } catch (error) {
+          log.error('Unexpected error during deferred token migration:', error);
+          config.homeAssistant.tokenEncrypted = false;
+          config.migrationInfo = {
+            version: app.getVersion(),
+            date: new Date().toISOString(),
+            tokenEncrypted: false,
+            reason: 'migration_error'
+          };
+          saveConfig();
+          changed = true;
+        }
+      }
+    }
+
+    if (deferredProfileSyncPassphraseDecryptPending) {
+      deferredProfileSyncPassphraseDecryptPending = false;
+      profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
+      changed = true;
+    }
+
+    refreshProfileSyncRuntimeTracking({ decodePassphrase: false });
+
+    if (changed && notifyRenderer) {
+      pushConfigToRenderer();
+      broadcastDesktopPinConfigUpdate();
+      emitProfileSyncStatus();
+    }
+
+    return changed;
+  } finally {
+    deferredSecureConfigResolutionInProgress = false;
+  }
 }
 
 // Backup configuration before migration
@@ -2101,15 +2274,17 @@ function createWindow() {
 
   // Resolve icon path
   const iconPath = getAppIconPath(__dirname);
+  const transparencyOptions = getWindowTransparencyOptions();
 
-  // Create the browser window with transparency
+  // Create the browser window. Linux defaults to an opaque native window because
+  // transparent Electron windows are a major compositor performance cost there.
   const windowOptions = {
     x: config.windowPosition.x,
     y: config.windowPosition.y,
     width: config.windowSize.width,
     height: config.windowSize.height,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: transparencyOptions.transparent,
+    backgroundColor: transparencyOptions.backgroundColor,
     frame: false,
     alwaysOnTop: config.alwaysOnTop,
     skipTaskbar: true,
@@ -2312,8 +2487,52 @@ function createTray() {
   tray.setContextMenu(contextMenu);
 }
 
+function schedulePostWindowStartupTasks() {
+  if (postWindowStartupTasksScheduled) return;
+  postWindowStartupTasksScheduled = true;
+
+  setTimeout(() => {
+    resolveDeferredSecureConfig({ notifyRenderer: true });
+
+    try {
+      syncDesktopPinWindowsWithConfig();
+    } catch (error) {
+      log.warn('Desktop pin startup sync failed:', error.message);
+    }
+
+    try {
+      createTray();
+    } catch (error) {
+      log.warn('Tray startup initialization failed:', error.message);
+    }
+
+    try {
+      registerGlobalHotkeys();
+    } catch (error) {
+      log.warn('Global hotkey startup initialization failed:', error.message);
+    }
+
+    try {
+      setupEntityAlerts();
+    } catch (error) {
+      log.warn('Entity alert startup initialization failed:', error.message);
+    }
+
+    try {
+      registerPopupHotkey();
+    } catch (error) {
+      log.warn('Popup hotkey startup initialization failed:', error.message);
+    }
+
+    void initializeProfileSyncOnStartup().catch((error) => {
+      log.warn('Profile sync startup initialization failed:', error.message);
+    });
+  }, 1000);
+}
+
 // IPC handlers for configuration
 ipcMain.handle('get-config', () => {
+  resolveDeferredSecureConfig();
   return sanitizeConfigForRenderer(config);
 });
 
@@ -2452,6 +2671,7 @@ ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
 });
 
 ipcMain.handle('get-desktop-pin-bootstrap', (_event, entityId) => {
+  resolveDeferredSecureConfig();
   const normalizedEntityId = normalizeEntityId(entityId);
   return {
     entityId: normalizedEntityId,
@@ -3597,8 +3817,8 @@ function setupAutoUpdates() {
       mainWindow?.webContents.send('auto-update', { status: 'error', error: err?.message });
     });
 
-    // Initial check
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => { }), 3000);
+    // Keep the first packaged-launch window responsive before doing network/update work.
+    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => { }), 30000);
   } catch (error) {
     log.error('Auto-update setup failed:', error);
   }
@@ -3628,7 +3848,7 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
   }
 
-  loadConfig();
+  loadConfig({ deferSecureStorage: true });
   startDevLiveReloadWatchers();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
@@ -3755,15 +3975,8 @@ app.whenReady().then(() => {
   }
 
   createWindow();
-  syncDesktopPinWindowsWithConfig();
-  createTray();
   setupAutoUpdates();
-  registerGlobalHotkeys();
-  setupEntityAlerts();
-  registerPopupHotkey();
-  void initializeProfileSyncOnStartup().catch((error) => {
-    log.warn('Profile sync startup initialization failed:', error.message);
-  });
+  schedulePostWindowStartupTasks();
 });
 
 app.on('window-all-closed', () => {

@@ -2,6 +2,7 @@ const path = require('path');
 const {
   getAppIconPath,
   isLinuxAppImage,
+  shouldUseTransparentWindow,
   supportsAutoUpdater,
   supportsElectronLoginItems,
 } = require('../../src/platform.cjs');
@@ -25,5 +26,13 @@ describe('platform helpers', () => {
     expect(supportsAutoUpdater('linux', {})).toBe(false);
     expect(supportsAutoUpdater('win32', {})).toBe(true);
     expect(supportsAutoUpdater('darwin', {})).toBe(true);
+  });
+
+  test('uses opaque native windows on Linux unless explicitly overridden', () => {
+    expect(shouldUseTransparentWindow('linux', {})).toBe(false);
+    expect(shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: '1' })).toBe(true);
+    expect(shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: 'true' })).toBe(true);
+    expect(shouldUseTransparentWindow('win32', {})).toBe(true);
+    expect(shouldUseTransparentWindow('darwin', {})).toBe(true);
   });
 });

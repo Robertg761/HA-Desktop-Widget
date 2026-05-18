@@ -424,6 +424,13 @@ body.linux-performance-mode .rename-btn {
   -webkit-backdrop-filter: none !important;
 }
 
+body.linux-performance-mode {
+  --bg-blur: 0px;
+  --glass-blur-strong: 0px;
+  --glass-blur-medium: 0px;
+  --glass-blur-light: 0px;
+}
+
 /* Status cards in frosted glass mode */
 body.frosted-glass .status-card {
   background: var(--glass-surface);
@@ -8973,6 +8980,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   .media-tile-btn {
     border-width: 2px;
   }
+}
+
+body.linux-performance-mode,
+body.linux-performance-mode * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Skip to main content link (for screen readers) */
