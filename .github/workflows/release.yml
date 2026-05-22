@@ -153,7 +153,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.blockmap
-            dist/*.yml
+            dist/latest*.yml
           if-no-files-found: error
 
   build-mac:
@@ -211,7 +211,7 @@ jobs:
             dist/*.dmg
             dist/*-mac.zip
             dist/*.blockmap
-            dist/*.yml
+            dist/latest*.yml
           if-no-files-found: error
 
   build-linux:
@@ -255,7 +255,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
-            dist/*.yml
+            dist/latest*.yml
           if-no-files-found: error
 
   publish-release:
