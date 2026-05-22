@@ -644,7 +644,7 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.focusDesktopPin).toHaveBeenCalledWith('light.living_room');
     });
 
-    test('desktop pins save persists pending pin changes for favorites only', async () => {
+    test('desktop pins save persists pending pin changes without dropping existing hidden pins', async () => {
       state.CONFIG.favoriteEntities = ['light.living_room', 'switch.bedroom'];
       state.CONFIG.desktopPins = {
         'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
@@ -654,23 +654,25 @@ describe('Settings + Config Integration', () => {
       await openSettingsWithDesktopPinsExpanded();
 
       expect(document.querySelector('[data-desktop-pin-toggle="sensor.temperature"]')).toBeNull();
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
+      expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
 
       document.querySelector('[data-desktop-pin-toggle="light.living_room"]').click();
       document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').click();
 
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
+      expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
       expect(document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent).toBe('Pin');
       expect(document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').textContent).toBe('Unpin');
 
       await settings.saveSettings();
 
       expect(state.CONFIG.desktopPins).toEqual({
+        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
         'switch.bedroom': {}
       });
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           desktopPins: {
+            'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
             'switch.bedroom': {}
           }
         })

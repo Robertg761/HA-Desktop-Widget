@@ -1738,16 +1738,17 @@ function initPrimaryCardsUI() {
   section.dataset.initialized = 'true';
 }
 
-function normalizeDesktopPinMap(desktopPins) {
+function normalizeDesktopPinMap(desktopPins, options = {}) {
   if (!desktopPins || typeof desktopPins !== 'object' || Array.isArray(desktopPins)) {
     return {};
   }
 
+  const requireFavorite = !!options.requireFavorite;
   const favorites = new Set((state.CONFIG?.favoriteEntities || []).filter(entityId => typeof entityId === 'string' && entityId.trim()));
   return Object.entries(desktopPins).reduce((acc, [entityId, bounds]) => {
     if (typeof entityId !== 'string') return acc;
     const trimmedEntityId = entityId.trim();
-    if (!trimmedEntityId || !favorites.has(trimmedEntityId) || !bounds || typeof bounds !== 'object') {
+    if (!trimmedEntityId || (requireFavorite && !favorites.has(trimmedEntityId)) || !bounds || typeof bounds !== 'object') {
       return acc;
     }
     acc[trimmedEntityId] = { ...bounds };

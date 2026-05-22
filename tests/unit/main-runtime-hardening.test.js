@@ -30,4 +30,20 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('MEDIA_ARTWORK_UNSUPPORTED_TYPE');
     expect(mainSource).toContain("host === 'media_artwork'");
   });
+
+  it('preserves persisted desktop pins during config normalization even when favorites are stale', () => {
+    const start = mainSource.indexOf('function normalizeDesktopPinsConfig');
+    const end = mainSource.indexOf('function resolveDesktopPinSupportDecision');
+    const normalizeDesktopPinsConfigSource = mainSource.slice(start, end);
+
+    expect(normalizeDesktopPinsConfigSource).toContain('targetConfig.desktopPins = nextPins');
+    expect(normalizeDesktopPinsConfigSource).not.toContain('favoriteSet.has');
+  });
+
+  it('backs up config before first write and blocks default-like config clobbers', () => {
+    expect(mainSource).toContain('ensureConfigBackupBeforeFirstWrite');
+    expect(mainSource).toContain('configBackupCreatedThisRun');
+    expect(mainSource).toContain('shouldBlockPotentialConfigClobber');
+    expect(mainSource).toContain('Blocked config save because it would replace an existing user config with default-like data.');
+  });
 });

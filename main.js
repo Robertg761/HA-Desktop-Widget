@@ -358,6 +358,7 @@ let pendingConfigSnapshot = null;
 let configSnapshotVersion = 0;
 let configWriteEpoch = 0;
 let configShutdownPending = false;
+let configBackupCreatedThisRun = false;
 let preservedEncryptedTokenForRecovery = null;
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
@@ -888,17 +889,13 @@ function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
 
 function normalizeDesktopPinsConfig(targetConfig) {
   if (!isPlainObject(targetConfig)) return targetConfig;
-  const favoriteEntities = Array.isArray(targetConfig.favoriteEntities)
-    ? targetConfig.favoriteEntities.map(normalizeEntityId).filter(Boolean)
-    : [];
-  const favoriteSet = new Set(favoriteEntities);
   const sourcePins = isPlainObject(targetConfig.desktopPins) ? targetConfig.desktopPins : {};
   const nextPins = {};
   let index = 0;
 
   Object.entries(sourcePins).forEach(([entityId, bounds]) => {
     const normalizedEntityId = normalizeEntityId(entityId);
-    if (!normalizedEntityId || !favoriteSet.has(normalizedEntityId)) return;
+    if (!normalizedEntityId) return;
     nextPins[normalizedEntityId] = clampDesktopPinBounds(bounds, normalizedEntityId, index++);
   });
 
@@ -2185,22 +2182,73 @@ function resolveDeferredSecureConfig(options = {}) {
   }
 }
 
-// Backup configuration before migration
-function backupConfig() {
+function getSafeConfigBackupLabel(reason) {
+  const label = typeof reason === 'string' && reason.trim() ? reason.trim() : 'backup';
+  return label.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'backup';
+}
+
+// Backup configuration before migration or first write in a process.
+function backupConfig(reason = 'migration') {
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupLabel = getSafeConfigBackupLabel(reason);
   const backupPath = path.join(userDataDir, 'config.backup.json');
+  const timestampedBackupPath = path.join(userDataDir, `config.${backupLabel}.${timestamp}.json`);
   try {
     if (fs.existsSync(configPath)) {
       const configContent = fs.readFileSync(configPath, 'utf8');
+      fs.writeFileSync(timestampedBackupPath, configContent);
       fs.writeFileSync(backupPath, configContent);
-      log.info('Config backup created at', backupPath);
+      log.info('Config backup created at', timestampedBackupPath);
       return true;
     }
   } catch (error) {
     log.warn('Failed to create config backup:', error);
   }
   return false;
+}
+
+function ensureConfigBackupBeforeFirstWrite(reason = 'pre-save') {
+  if (configBackupCreatedThisRun) return;
+  configBackupCreatedThisRun = backupConfig(reason);
+}
+
+function hasMeaningfulConfigData(inputConfig) {
+  if (!isPlainObject(inputConfig)) return false;
+  const homeAssistant = isPlainObject(inputConfig.homeAssistant) ? inputConfig.homeAssistant : {};
+  const token = typeof homeAssistant.token === 'string' ? homeAssistant.token.trim() : '';
+  const url = typeof homeAssistant.url === 'string' ? homeAssistant.url.trim() : '';
+  if (token && token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) return true;
+  if (url && url !== 'http://homeassistant.local:8123') return true;
+  if (Array.isArray(inputConfig.favoriteEntities) && inputConfig.favoriteEntities.length > 0) return true;
+  if (isPlainObject(inputConfig.desktopPins) && Object.keys(inputConfig.desktopPins).length > 0) return true;
+  if (isPlainObject(inputConfig.customTabs) && Object.keys(inputConfig.customTabs).length > 0) return true;
+  if (Array.isArray(inputConfig.customTabs) && inputConfig.customTabs.length > 0) return true;
+  if (isPlainObject(inputConfig.customEntityIcons) && Object.keys(inputConfig.customEntityIcons).length > 0) return true;
+  if (isPlainObject(inputConfig.globalHotkeys?.hotkeys) && Object.keys(inputConfig.globalHotkeys.hotkeys).length > 0) return true;
+  if (isPlainObject(inputConfig.entityAlerts?.alerts) && Object.keys(inputConfig.entityAlerts.alerts).length > 0) return true;
+  if (typeof inputConfig.primaryMediaPlayer === 'string' && inputConfig.primaryMediaPlayer.trim()) return true;
+  if (typeof inputConfig.popupHotkey === 'string' && inputConfig.popupHotkey.trim()) return true;
+  return false;
+}
+
+function shouldBlockPotentialConfigClobber(snapshot) {
+  try {
+    if (!snapshot?.configPath || !fs.existsSync(snapshot.configPath)) return false;
+    const existingConfigContent = fs.readFileSync(snapshot.configPath, 'utf8');
+    let existingConfig;
+    try {
+      existingConfig = JSON.parse(existingConfigContent);
+    } catch (error) {
+      log.error('Blocked config save because the existing config could not be parsed:', error.message);
+      return existingConfigContent.trim().length > 0;
+    }
+    return hasMeaningfulConfigData(existingConfig) && !hasMeaningfulConfigData(snapshot.configToSave);
+  } catch (error) {
+    log.warn('Unable to compare existing config before save:', error.message);
+    return false;
+  }
 }
 
 /**
@@ -2218,6 +2266,8 @@ function buildConfigSnapshotForSave() {
   const configPath = path.join(userDataDir, 'config.json');
   const snapshotVersion = ++configSnapshotVersion;
   const tempPath = `${configPath}.${snapshotVersion}.tmp`;
+
+  ensureConfigBackupBeforeFirstWrite('pre-save');
 
   // Create a copy for saving with encrypted token
   const configToSave = JSON.parse(JSON.stringify(config));
@@ -2267,6 +2317,10 @@ function buildConfigSnapshotForSave() {
 }
 
 async function writeConfigSnapshotAsync(snapshot) {
+  if (shouldBlockPotentialConfigClobber(snapshot)) {
+    log.error('Blocked config save because it would replace an existing user config with default-like data.');
+    return;
+  }
   await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
   await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
   if (configShutdownPending || snapshot.epoch !== configWriteEpoch) {
@@ -2319,6 +2373,10 @@ function flushPendingConfigWriteSync() {
   }
 
   try {
+    if (shouldBlockPotentialConfigClobber(snapshot)) {
+      log.error('Blocked synchronous config save because it would replace an existing user config with default-like data.');
+      return;
+    }
     fs.mkdirSync(snapshot.userDataDir, { recursive: true });
     fs.writeFileSync(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
     fs.renameSync(snapshot.tempPath, snapshot.configPath);
