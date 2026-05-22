@@ -135,165 +135,212 @@
             </div>
             <div class="modal-body">
                 <div id="general-tab" class="tab-content active">
-                    <div class="form-group">
-                        <label for="ha-url" data-i18n="Home Assistant URL:">Home Assistant URL:</label>
-                        <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123" data-i18n-placeholder="http://homeassistant.local:8123">
-                    </div>
-                    <div class="form-group">
-                        <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
-                        <input type="password" id="ha-token" placeholder="Your long-lived access token" data-i18n-placeholder="Your long-lived access token">
-                    </div>
-
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="always-on-top">
-                            <span data-i18n="Always on top">Always on top</span>
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="start-with-windows">
-                            <span data-i18n="Start at login">Start at login</span>
-                        </label>
-                    </div>
-                    <div class="form-group language-section">
-                        <label for="language-select" data-i18n="Language Mode">Language Mode</label>
-                        <select id="language-select">
-                            <option value="auto" data-i18n="Auto (System Default)">Auto (System Default)</option>
-                            <option value="en" data-i18n="English">English</option>
-                        </select>
-                        <p id="language-select-help" class="help-text" data-i18n="Download a language pack below to enable it in the selector.">Download a language pack below to enable it in the selector.</p>
-                        <p id="language-current-summary" class="help-text">Selected language: English</p>
-                        <p id="language-system-summary" class="help-text">System language detected: English</p>
-                        <p id="language-fallback-summary" class="help-text hidden">Using English until the selected language pack is installed.</p>
-                    </div>
-                    <div class="form-group language-packs-section">
-                        <label data-i18n="Offline Language Packs">Offline Language Packs</label>
-                        <p class="help-text" data-i18n="Download, update, or remove offline language packs. English is always available offline.">Download, update, or remove offline language packs. English is always available offline.</p>
-                        <div id="language-pack-status" class="help-text hidden"></div>
-                        <div id="language-packs-list" class="language-packs-list"></div>
-                    </div>
-                    <div class="form-group profile-sync-group">
-                        <label>
-                            <input type="checkbox" id="profile-sync-enabled">
-                            Enable Profile Sync (Opt-in)
-                        </label>
-                        <p class="help-text">Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar.</p>
-                        <p class="help-text profile-sync-warning">
-                            <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please
-                            report bugs in the <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener noreferrer">Issues section</a>.
-                        </p>
-
-                        <div id="profile-sync-settings" class="profile-sync-settings hidden">
-                            <div class="form-group">
-                                <label for="profile-sync-provider">Sync Provider</label>
-                                <select id="profile-sync-provider">
-                                    <option value="cloudFile">Cloud Folder File (Free)</option>
-                                    <option value="googleDrive">Google Drive</option>
-                                    <option value="icloudDrive">iCloud Drive</option>
-                                    <option value="syncthing">Syncthing</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="profile-sync-folder-path">Sync Folder</label>
-                                <div class="profile-sync-file-row">
-                                    <input type="text" id="profile-sync-folder-path" class="form-control" placeholder="Choose a synced folder..." readonly>
-                                    <button type="button" id="profile-sync-choose-folder" class="btn btn-secondary btn-small">Choose Folder...</button>
-                                </div>
-                                <p class="help-text">Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync.</p>
-                            </div>
-                            <div class="form-group profile-sync-scope-group">
-                                <label for="profile-sync-scope-preset">Sync Scope</label>
-                                <select id="profile-sync-scope-preset">
-                                    <option value="all">All Syncable Settings</option>
-                                    <option value="visual">Visual Personalization Only</option>
-                                    <option value="quick_access">Quick Access/Layout Only</option>
-                                    <option value="custom">Custom (Advanced)</option>
-                                </select>
-                                <div id="profile-sync-scope-advanced" class="profile-sync-scope-advanced hidden">
-                                     <label class="profile-sync-scope-option">
-                                         <input type="checkbox" id="profile-sync-scope-quick-access-layout">
-                                         Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs, primary cards)
-                                     </label>
-                                    <label class="profile-sync-scope-option">
-                                        <input type="checkbox" id="profile-sync-scope-visual-personalization">
-                                        Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)
-                                    </label>
-                                    <label class="profile-sync-scope-option">
-                                        <input type="checkbox" id="profile-sync-scope-automation-alerts">
-                                        Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)
-                                    </label>
-                                    <label class="profile-sync-scope-option">
-                                        <input type="checkbox" id="profile-sync-scope-connection-media-preferences">
-                                        Connection/Media Preferences (weather entity and primary media player)
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <button type="button" id="profile-sync-help-btn" class="btn btn-secondary btn-small">Need Help?</button>
-                                <p class="help-text">Open setup instructions for profile sync.</p>
-                            </div>
-                            <div class="form-group">
-                                <label for="profile-sync-interval">Background Sync Interval</label>
-                                <select id="profile-sync-interval">
-                                    <option value="1">Every 1 minute</option>
-                                    <option value="5">Every 5 minutes</option>
-                                    <option value="15">Every 15 minutes</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="profile-sync-encryption-enabled">
-                                    Encrypt synced profile with passphrase
-                                </label>
-                            </div>
-                            <div class="form-group" id="profile-sync-passphrase-group">
-                                <label for="profile-sync-passphrase">Sync Passphrase</label>
-                                <input type="password" id="profile-sync-passphrase" placeholder="Enter passphrase (min 4 chars)">
-                                <label class="profile-sync-remember">
-                                    <input type="checkbox" id="profile-sync-remember-passphrase">
-                                    Remember passphrase on this device
-                                </label>
-                                <button type="button" id="profile-sync-clear-passphrase" class="btn btn-secondary btn-small">Clear Saved Passphrase</button>
-                            </div>
-                            <div class="form-group profile-sync-actions">
-                                <button type="button" id="profile-sync-pull-now" class="btn btn-secondary btn-small">Sync Down</button>
-                                <button type="button" id="profile-sync-push-now" class="btn btn-secondary btn-small">Sync Up</button>
-                            </div>
-                            <div class="form-group profile-sync-resolution hidden" id="profile-sync-resolution">
-                                <p class="help-text"><strong>First-time conflict:</strong> Both local and remote profiles have data.</p>
-                                <div class="profile-sync-resolution-actions">
-                                    <button type="button" id="profile-sync-resolve-upload" class="btn btn-primary btn-small">Keep Local (Upload)</button>
-                                    <button type="button" id="profile-sync-resolve-remote" class="btn btn-secondary btn-small">Use Remote (Download)</button>
-                                    <button type="button" id="profile-sync-resolve-cancel" class="btn btn-danger btn-small">Cancel Setup</button>
-                                </div>
-                            </div>
-                            <div id="profile-sync-status" class="help-text profile-sync-status">Status: Disabled</div>
-                            <div id="profile-sync-error" class="help-text profile-sync-error hidden"></div>
+                    <!-- Home Assistant Connection Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Home Assistant Connection">Home Assistant Connection</h3>
+                        </div>
+                        <div class="form-group">
+                            <label for="ha-url" data-i18n="Home Assistant URL:">Home Assistant URL:</label>
+                            <input type="text" id="ha-url" placeholder="http://homeassistant.local:8123" data-i18n-placeholder="http://homeassistant.local:8123">
+                        </div>
+                        <div class="form-group">
+                            <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
+                            <input type="password" id="ha-token" placeholder="Your long-lived access token" data-i18n-placeholder="Your long-lived access token">
                         </div>
                     </div>
-                    <div class="form-group update-section">
-                        <label data-i18n="Application Updates">Application Updates</label>
-                        <div class="update-info">
-                            <div class="version-info">
-                                <span><span data-i18n="Current Version:">Current Version:</span> <strong id="current-version">Loading...</strong></span>
-                            </div>
-                            <div class="update-status" id="update-status">
-                                <span id="update-status-text">Checking for updates...</span>
-                            </div>
-                            <div class="update-actions">
-                                <button id="check-updates-btn" class="btn btn-secondary" disabled>
-                                    <span id="check-updates-text">Check for Updates</span>
-                                </button>
-                                <button id="install-update-btn" class="btn btn-primary hidden">
-                                    <span id="install-update-text">Install Update</span>
-                                </button>
-                            </div>
-                            <div class="update-progress hidden" id="update-progress">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="progress-fill"></div>
+
+                    <!-- Window & Behavior Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Window & Behavior">Window & Behavior</h3>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="always-on-top">
+                                <span data-i18n="Always on top">Always on top</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="start-with-windows">
+                                <span data-i18n="Start at login">Start at login</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Language & Localization Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Language & Localization">Language & Localization</h3>
+                        </div>
+                        <div class="form-group language-section">
+                            <label for="language-select" data-i18n="Language Mode">Language Mode</label>
+                            <select id="language-select">
+                                <option value="auto" data-i18n="Auto (System Default)">Auto (System Default)</option>
+                                <option value="en" data-i18n="English">English</option>
+                            </select>
+                            <p id="language-select-help" class="help-text" data-i18n="Download a language pack below to enable it in the selector.">Download a language pack below to enable it in the selector.</p>
+                            <p id="language-current-summary" class="help-text">Selected language: English</p>
+                            <p id="language-system-summary" class="help-text">System language detected: English</p>
+                            <p id="language-fallback-summary" class="help-text hidden">Using English until the selected language pack is installed.</p>
+                        </div>
+                        <div class="form-group language-packs-section">
+                            <label data-i18n="Offline Language Packs">Offline Language Packs</label>
+                            <p class="help-text" data-i18n="Download, update, or remove offline language packs. English is always available offline.">Download, update, or remove offline language packs. English is always available offline.</p>
+                            <div id="language-pack-status" class="help-text hidden"></div>
+                            <div id="language-packs-list" class="language-packs-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Profile Synchronization Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Profile Syncing">Profile Syncing</h3>
+                        </div>
+                        <div class="form-group profile-sync-group">
+                            <label>
+                                <input type="checkbox" id="profile-sync-enabled">
+                                Enable Profile Sync (Opt-in)
+                            </label>
+                            <p class="help-text">Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar.</p>
+                            <p class="help-text profile-sync-warning">
+                                <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please
+                                report bugs in the <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener noreferrer">Issues section</a>.
+                            </p>
+
+                            <div id="profile-sync-settings" class="profile-sync-settings hidden">
+                                <div class="form-group">
+                                    <label for="profile-sync-provider">Sync Provider</label>
+                                    <select id="profile-sync-provider">
+                                        <option value="cloudFile">Cloud Folder File (Free)</option>
+                                        <option value="googleDrive">Google Drive</option>
+                                        <option value="icloudDrive">iCloud Drive</option>
+                                        <option value="syncthing">Syncthing</option>
+                                    </select>
                                 </div>
-                                <span class="progress-text" id="progress-text">0%</span>
+                                <div class="form-group">
+                                    <label for="profile-sync-folder-path">Sync Folder</label>
+                                    <div class="profile-sync-file-row">
+                                        <input type="text" id="profile-sync-folder-path" class="form-control" placeholder="Choose a synced folder..." readonly>
+                                        <button type="button" id="profile-sync-choose-folder" class="btn btn-secondary btn-small">Choose Folder...</button>
+                                    </div>
+                                    <p class="help-text">Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync.</p>
+                                </div>
+                                <div class="form-group profile-sync-scope-group">
+                                    <label for="profile-sync-scope-preset">Sync Scope</label>
+                                    <select id="profile-sync-scope-preset">
+                                        <option value="all">All Syncable Settings</option>
+                                        <option value="visual">Visual Personalization Only</option>
+                                        <option value="quick_access">Quick Access/Layout Only</option>
+                                        <option value="custom">Custom (Advanced)</option>
+                                    </select>
+                                    <div id="profile-sync-scope-advanced" class="profile-sync-scope-advanced hidden">
+                                         <label class="profile-sync-scope-option">
+                                             <input type="checkbox" id="profile-sync-scope-quick-access-layout">
+                                             Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs, primary cards)
+                                         </label>
+                                        <label class="profile-sync-scope-option">
+                                            <input type="checkbox" id="profile-sync-scope-visual-personalization">
+                                            Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)
+                                        </label>
+                                        <label class="profile-sync-scope-option">
+                                            <input type="checkbox" id="profile-sync-scope-automation-alerts">
+                                            Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)
+                                        </label>
+                                        <label class="profile-sync-scope-option">
+                                            <input type="checkbox" id="profile-sync-scope-connection-media-preferences">
+                                            Connection/Media Preferences (weather entity and primary media player)
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <button type="button" id="profile-sync-help-btn" class="btn btn-secondary btn-small">Need Help?</button>
+                                    <p class="help-text">Open setup instructions for profile sync.</p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-sync-interval">Background Sync Interval</label>
+                                    <select id="profile-sync-interval">
+                                        <option value="1">Every 1 minute</option>
+                                        <option value="5">Every 5 minutes</option>
+                                        <option value="15">Every 15 minutes</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="profile-sync-encryption-enabled">
+                                        Encrypt synced profile with passphrase
+                                    </label>
+                                </div>
+                                <div class="form-group" id="profile-sync-passphrase-group">
+                                    <label for="profile-sync-passphrase">Sync Passphrase</label>
+                                    <input type="password" id="profile-sync-passphrase" placeholder="Enter passphrase (min 4 chars)">
+                                    <label class="profile-sync-remember">
+                                        <input type="checkbox" id="profile-sync-remember-passphrase">
+                                        Remember passphrase on this device
+                                    </label>
+                                    <button type="button" id="profile-sync-clear-passphrase" class="btn btn-secondary btn-small">Clear Saved Passphrase</button>
+                                </div>
+                                <div class="form-group profile-sync-actions">
+                                    <button type="button" id="profile-sync-pull-now" class="btn btn-secondary btn-small">Sync Down</button>
+                                    <button type="button" id="profile-sync-push-now" class="btn btn-secondary btn-small">Sync Up</button>
+                                </div>
+                                <div class="form-group profile-sync-resolution hidden" id="profile-sync-resolution">
+                                    <p class="help-text"><strong>First-time conflict:</strong> Both local and remote profiles have data.</p>
+                                    <div class="profile-sync-resolution-actions">
+                                        <button type="button" id="profile-sync-resolve-upload" class="btn btn-primary btn-small">Keep Local (Upload)</button>
+                                        <button type="button" id="profile-sync-resolve-remote" class="btn btn-secondary btn-small">Use Remote (Download)</button>
+                                        <button type="button" id="profile-sync-resolve-cancel" class="btn btn-danger btn-small">Cancel Setup</button>
+                                    </div>
+                                </div>
+                                <div id="profile-sync-status" class="help-text profile-sync-status">Status: Disabled</div>
+                                <div id="profile-sync-error" class="help-text profile-sync-error hidden"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Updates & Versioning Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1-2.73 2.71-2.73 7.09 0 9.8 2.73 2.71 7.15 2.71 9.88 0 1.36-1.35 2.04-2.91 2.04-4.7H21c0 2.45-.93 4.9-2.79 6.76-3.73 3.7-9.78 3.7-13.51 0-3.73-3.69-3.73-9.69 0-13.38 3.73-3.69 9.78-3.69 13.51 0l2.79-2.88v7.52z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Application Updates">Application Updates</h3>
+                        </div>
+                        <div class="form-group update-section">
+                            <div class="update-info">
+                                <div class="version-info">
+                                    <span><span data-i18n="Current Version:">Current Version:</span> <strong id="current-version">Loading...</strong></span>
+                                </div>
+                                <div class="update-status" id="update-status">
+                                    <span id="update-status-text">Checking for updates...</span>
+                                </div>
+                                <div class="update-actions">
+                                    <button id="check-updates-btn" class="btn btn-secondary" disabled>
+                                        <span id="check-updates-text">Check for Updates</span>
+                                    </button>
+                                    <button id="install-update-btn" class="btn btn-primary hidden">
+                                        <span id="install-update-text">Install Update</span>
+                                    </button>
+                                </div>
+                                <div class="update-progress hidden" id="update-progress">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="progress-fill"></div>
+                                    </div>
+                                    <span class="progress-text" id="progress-text">0%</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -522,86 +569,122 @@
                     </div>
                 </div>
                 <div id="advanced-tab" class="tab-content">
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="enable-interaction-debug-logs">
-                            Enable interaction diagnostics logs
-                        </label>
-                        <p class="help-text">Writes detailed UI interaction debug events to logs. Keep off for normal use.</p>
-                    </div>
-                    <div class="form-group">
-                        <button id="view-logs-btn" class="btn btn-secondary"
-                            title="Opens the log file location in your file explorer">📋 View Logs</button>
+                    <!-- Diagnostics & Troubleshooting Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Diagnostics & Troubleshooting">Diagnostics & Troubleshooting</h3>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="enable-interaction-debug-logs">
+                                Enable interaction diagnostics logs
+                            </label>
+                            <p class="help-text">Writes detailed UI interaction debug events to logs. Keep off for normal use.</p>
+                        </div>
+                        <div class="form-group">
+                            <button id="view-logs-btn" class="btn btn-secondary"
+                                title="Opens the log file location in your file explorer">📋 View Logs</button>
+                        </div>
                     </div>
                 </div>
                 <div id="hotkeys-tab" class="tab-content">
-                    <div class="form-group">
-                        <label>Popup Hotkey (Hold to Bring Window to Front)</label>
-                        <p class="help-text">Configure a global hotkey that brings the window to front while held down.
-                            When released, the window returns to normal z-order.</p>
-                        <div class="popup-hotkey-config">
-                            <input type="text" id="popup-hotkey-input" placeholder="Not set (click Set Hotkey)"
-                                readonly>
-                            <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">Set Hotkey</button>
-                            <button id="popup-hotkey-clear-btn" class="btn btn-danger btn-small"
-                                style="display: none;">Clear</button>
+                    <!-- Global Popup Trigger Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-3 0h2v2H5v-2zm0-3h2v2H5V8zm3 6h8v2H5v-2zm11-3h2v2h-2v-2zm0-3h2v2h-2V8z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Global Popup Trigger">Global Popup Trigger</h3>
                         </div>
-                        <p class="help-text" style="margin-top: 8px;">
-                            <strong>Recommended presets (click to use):</strong><br>
-                            <button class="btn btn-secondary btn-small preset-hotkey-btn"
-                                data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
-                            <button class="btn btn-secondary btn-small preset-hotkey-btn"
-                                data-hotkey="Ctrl+Alt+H">Ctrl+Alt+H</button>
-                            <button class="btn btn-secondary btn-small preset-hotkey-btn"
-                                data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
-                        </p>
-                        <div class="form-group" style="margin-top: 12px;">
-                            <label id="popup-hotkey-toggle-mode-label">
-                                <input type="checkbox" id="popup-hotkey-toggle-mode">
-                                Press to toggle (tap to show/hide)
-                            </label>
-                            <p class="help-text">When enabled, press the hotkey once to show the window and again to
-                                hide it. This disables hold-to-show behavior.</p>
-                        </div>
-                        <div class="form-group" style="margin-top: 12px;">
-                            <label id="popup-hotkey-hide-on-release-label">
-                                <input type="checkbox" id="popup-hotkey-hide-on-release">
-                                Hide window when hotkey is released
-                            </label>
-                            <p class="help-text">When enabled, the window will hide when you release the popup hotkey
-                                instead of just returning to normal z-order.</p>
-                        </div>
-                    </div>
-                    <hr>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="global-hotkeys-enabled">
-                            Enable Entity Hotkeys
-                        </label>
-                    </div>
-                    <div id="hotkeys-list-container">
                         <div class="form-group">
-                            <input type="text" id="hotkey-entity-search"
-                                placeholder="Search entities to assign hotkeys...">
+                            <label>Popup Hotkey (Hold to Bring Window to Front)</label>
+                            <p class="help-text">Configure a global hotkey that brings the window to front while held down.
+                                When released, the window returns to normal z-order.</p>
+                            <div class="popup-hotkey-config">
+                                <input type="text" id="popup-hotkey-input" placeholder="Not set (click Set Hotkey)"
+                                    readonly>
+                                <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">Set Hotkey</button>
+                                <button id="popup-hotkey-clear-btn" class="btn btn-danger btn-small"
+                                    style="display: none;">Clear</button>
+                            </div>
+                            <p class="help-text" style="margin-top: 8px;">
+                                <strong>Recommended presets (click to use):</strong><br>
+                                <button class="btn btn-secondary btn-small preset-hotkey-btn"
+                                    data-hotkey="Ctrl+Shift+Space">Ctrl+Shift+Space</button>
+                                <button class="btn btn-secondary btn-small preset-hotkey-btn"
+                                    data-hotkey="Ctrl+Alt+H">Ctrl+Alt+H</button>
+                                <button class="btn btn-secondary btn-small preset-hotkey-btn"
+                                    data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
+                            </p>
+                            <div class="form-group" style="margin-top: 12px;">
+                                <label id="popup-hotkey-toggle-mode-label">
+                                    <input type="checkbox" id="popup-hotkey-toggle-mode">
+                                    Press to toggle (tap to show/hide)
+                                </label>
+                                <p class="help-text">When enabled, press the hotkey once to show the window and again to
+                                    hide it. This disables hold-to-show behavior.</p>
+                            </div>
+                            <div class="form-group" style="margin-top: 12px;">
+                                <label id="popup-hotkey-hide-on-release-label">
+                                    <input type="checkbox" id="popup-hotkey-hide-on-release">
+                                    Hide window when hotkey is released
+                                </label>
+                                <p class="help-text">When enabled, the window will hide when you release the popup hotkey
+                                    instead of just returning to normal z-order.</p>
+                            </div>
                         </div>
-                        <div id="hotkeys-list"></div>
                     </div>
-                    <div class="hotkey-help">
-                        <p>Supported modifiers: Ctrl, Alt, Shift, Command, Super.</p>
-                        <p>Example: <code>Ctrl+Shift+A</code></p>
+
+                    <!-- Entity Shortcuts Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Entity Shortcuts">Entity Shortcuts</h3>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="global-hotkeys-enabled">
+                                Enable Entity Hotkeys
+                            </label>
+                        </div>
+                        <div id="hotkeys-list-container">
+                            <div class="form-group">
+                                <input type="text" id="hotkey-entity-search"
+                                    placeholder="Search entities to assign hotkeys...">
+                            </div>
+                            <div id="hotkeys-list"></div>
+                        </div>
+                        <div class="hotkey-help">
+                            <p>Supported modifiers: Ctrl, Alt, Shift, Command, Super.</p>
+                            <p>Example: <code>Ctrl+Shift+A</code></p>
+                        </div>
                     </div>
                 </div>
                 <div id="alerts-tab" class="tab-content">
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="entity-alerts-enabled">
-                            Enable Entity Alerts
-                        </label>
-                    </div>
-                    <div id="alerts-section" style="display: none;">
-                        <p>Configure which entities should trigger desktop notifications.</p>
-                        <div id="inline-alerts-list" class="inline-alerts-container">
-                            <!-- Inline alerts list will be rendered here -->
+                    <!-- Desktop Notifications Card -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">
+                                <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                            </span>
+                            <h3 class="settings-card-title" data-i18n="Desktop Notifications">Desktop Notifications</h3>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="entity-alerts-enabled">
+                                Enable Entity Alerts
+                            </label>
+                        </div>
+                        <div id="alerts-section" style="display: none;">
+                            <p>Configure which entities should trigger desktop notifications.</p>
+                            <div id="inline-alerts-list" class="inline-alerts-container">
+                                <!-- Inline alerts list will be rendered here -->
+                            </div>
                         </div>
                     </div>
                 </div>

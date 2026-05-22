@@ -1,3 +1,4 @@
+/* global process */
 import { t } from './i18n.js';
 
 let lastFocusedElement = null;
@@ -915,13 +916,25 @@ function showConfirm(title, message, options = {}) {
       };
 
       const cleanup = () => {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
         okBtn.removeEventListener('click', handleConfirm);
         cancelBtn.removeEventListener('click', handleCancel);
         modal.removeEventListener('click', handleBackdropClick);
         document.removeEventListener('keydown', handleKeydown);
-        releaseFocusTrap(modal);
+
+        const closeImmediate = () => {
+          modal.classList.add('hidden');
+          modal.style.display = 'none';
+          releaseFocusTrap(modal);
+          modal.classList.remove('modal-closing');
+        };
+
+        const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+        if (isTest) {
+          closeImmediate();
+        } else {
+          modal.classList.add('modal-closing');
+          setTimeout(closeImmediate, 180);
+        }
       };
 
       const handleBackdropClick = (e) => {

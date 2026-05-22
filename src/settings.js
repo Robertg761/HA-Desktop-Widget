@@ -1,3 +1,4 @@
+/* global process */
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -3412,9 +3413,20 @@ function closeSettings() {
 
     const modal = document.getElementById('settings-modal');
     if (modal) {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-      releaseFocusTrap(modal);
+      const closeImmediate = () => {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        releaseFocusTrap(modal);
+        modal.classList.remove('modal-closing');
+      };
+
+      const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+      if (isTest) {
+        closeImmediate();
+      } else {
+        modal.classList.add('modal-closing');
+        setTimeout(closeImmediate, 180);
+      }
     }
   } catch (error) {
     log.error('Error closing settings:', error);
