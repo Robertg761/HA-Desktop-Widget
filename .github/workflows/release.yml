@@ -255,6 +255,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+            dist/*.blockmap
             dist/latest*.yml
           if-no-files-found: error
 
@@ -287,6 +288,21 @@ jobs:
             echo "No release artifacts were downloaded." >&2
             exit 1
           fi
+
+          for artifact in "${artifacts[@]}"; do
+            dir="$(dirname "$artifact")"
+            base="$(basename "$artifact")"
+            normalized="${base/#HA Desktop Widget-/HA-Desktop-Widget-}"
+            normalized="${normalized/#HA.Desktop.Widget-/HA-Desktop-Widget-}"
+            if [[ "$normalized" != "$base" ]]; then
+              mv "$artifact" "$dir/$normalized"
+            fi
+          done
+
+          artifacts=()
+          while IFS= read -r -d '' artifact; do
+            artifacts+=("$artifact")
+          done < <(find release-artifacts -type f -print0)
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${artifacts[@]}" --clobber
