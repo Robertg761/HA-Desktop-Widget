@@ -272,6 +272,7 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
         shell: bash
         run: |
