@@ -143,17 +143,18 @@ jobs:
         run: npm ci
 
       - name: Build Windows artifacts (NSIS)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm run dist -- --win nsis --publish always
+          npm run dist -- --publish never
 
-      - name: Upload artifacts (fallback)
-        if: ${{ always() }}
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/*
+          name: release-windows
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/*.yml
+          if-no-files-found: error
 
   build-mac:
     needs: validate
@@ -182,7 +183,6 @@ jobs:
 
       - name: Build macOS artifacts
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
           npm run dist:mac -- --publish never
@@ -203,29 +203,16 @@ jobs:
             exit 1
           fi
 
-      - name: Publish macOS artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          artifacts=()
-          while IFS= read -r -d '' artifact; do
-            artifacts+=("$artifact")
-          done < <(find dist -maxdepth 1 -type f -print0)
-
-          if [[ "${#artifacts[@]}" -eq 0 ]]; then
-            echo "No macOS artifacts found under dist." >&2
-            exit 1
-          fi
-
-          gh release upload "$GITHUB_REF_NAME" "${artifacts[@]}" --clobber
-
-      - name: Upload artifacts (fallback)
-        if: ${{ always() }}
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-mac
-          path: dist/*
+          name: release-macos
+          path: |
+            dist/*.dmg
+            dist/*-mac.zip
+            dist/*.blockmap
+            dist/*.yml
+          if-no-files-found: error
 
   build-linux:
     needs: validate
@@ -258,20 +245,59 @@ jobs:
         run: npm ci
 
       - name: Build Linux artifacts (AppImage and deb)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm run dist:linux -- --publish always
+          npm run dist:linux -- --publish never
 
-      - name: Upload artifacts (fallback)
-        if: ${{ always() }}
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-linux
-          path: dist/*
+          name: release-linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.yml
+          if-no-files-found: error
+
+  publish-release:
+    needs: [validate, build, build-mac, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifacts=()
+          while IFS= read -r -d '' artifact; do
+            artifacts+=("$artifact")
+          done < <(find release-artifacts -type f -print0)
+
+          if [[ "${#artifacts[@]}" -eq 0 ]]; then
+            echo "No release artifacts were downloaded." >&2
+            exit 1
+          fi
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${artifacts[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${artifacts[@]}" \
+              --verify-tag \
+              --title "$RELEASE_VERSION" \
+              --notes "Release $RELEASE_VERSION"
+          fi
 
   sync-version:
-    needs: [validate, build, build-mac, build-linux]
+    needs: [validate, publish-release]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tagged commit
