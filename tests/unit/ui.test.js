@@ -2988,6 +2988,141 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('updateWeatherEffects', () => {
+    let mockWeatherEffects;
+
+    beforeEach(() => {
+      mockWeatherEffects = {
+        setEffect: jest.fn()
+      };
+      window.weatherEffects = mockWeatherEffects;
+    });
+
+    afterEach(() => {
+      delete window.weatherEffects;
+    });
+
+    it('should set effect to null if disabled', () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: false
+        }
+      });
+
+      ui.updateWeatherEffects();
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
+    });
+
+    it('should keep weather effects off when the setting is omitted', () => {
+      const { weatherEffectsEnabled, weatherOverride, ...uiConfigWithoutWeatherEffects } = sampleConfig.ui;
+      state.setConfig({
+        ...sampleConfig,
+        ui: uiConfigWithoutWeatherEffects
+      });
+
+      ui.updateWeatherEffects();
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
+    });
+
+    it('should use override if enabled and override is not auto', () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: true,
+          weatherOverride: 'rainy'
+        }
+      });
+
+      ui.updateWeatherEffects();
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith('rainy');
+    });
+
+    it('should use HA state if override is auto', () => {
+      state.setConfig({
+        ...sampleConfig,
+        selectedWeatherEntity: 'weather.home',
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: true,
+          weatherOverride: 'auto'
+        }
+      });
+
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'pouring'
+        }
+      });
+
+      ui.updateWeatherEffects();
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith('rainy');
+    });
+
+    it('should map all Home Assistant weather states to correct effects', () => {
+      state.setConfig({
+        ...sampleConfig,
+        selectedWeatherEntity: 'weather.home',
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: true,
+          weatherOverride: 'auto'
+        }
+      });
+
+      const mappings = [
+        { haState: 'clear-night', expected: 'sunny' },
+        { haState: 'sunny', expected: 'sunny' },
+        { haState: 'stable', expected: 'sunny' },
+        { haState: 'pouring', expected: 'rainy' },
+        { haState: 'rainy', expected: 'rainy' },
+        { haState: 'drizzle', expected: 'rainy' },
+        { haState: 'snowy', expected: 'snowy' },
+        { haState: 'hail', expected: 'snowy' },
+        { haState: 'sleet', expected: 'snowy' },
+        { haState: 'cloudy', expected: 'cloudy' },
+        { haState: 'partlycloudy', expected: 'cloudy' },
+        { haState: 'fog', expected: 'cloudy' },
+        { haState: 'mist', expected: 'cloudy' },
+        { haState: 'haze', expected: 'cloudy' },
+        { haState: 'windy', expected: 'cloudy' },
+        { haState: 'windy-variant', expected: 'cloudy' },
+        { haState: 'exceptional', expected: 'cloudy' },
+        { haState: 'lightning', expected: 'stormy' },
+        { haState: 'lightning-rainy', expected: 'stormy' },
+        { haState: 'unknown-weird-state', expected: 'sunny' }
+      ];
+
+      for (const { haState, expected } of mappings) {
+        state.setStates({
+          'weather.home': {
+            entity_id: 'weather.home',
+            state: haState
+          }
+        });
+        mockWeatherEffects.setEffect.mockClear();
+        ui.updateWeatherEffects();
+        expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(expected);
+      }
+    });
+
+    it('should accept preview parameters overriding config values', () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: false
+        }
+      });
+
+      ui.updateWeatherEffects(true, 'stormy');
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith('stormy');
+    });
+  });
+
   // ==============================================================================
   // Module Exports
   // ==============================================================================
@@ -3008,6 +3143,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(typeof ui.updateMediaTile).toBe('function');
       expect(typeof ui.updateMediaSeekBar).toBe('function');
       expect(typeof ui.callMediaTileService).toBe('function');
+      expect(typeof ui.updateWeatherEffects).toBe('function');
     });
   });
 });

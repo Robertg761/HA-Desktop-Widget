@@ -67,6 +67,8 @@ const sampleConfig = {
     customColors: [],
     personalizationSectionsCollapsed: {},
     use24HourClock: false,
+    weatherEffectsEnabled: false,
+    weatherOverride: 'auto',
     enableInteractionDebugLogs: false
   },
   customTabs: [

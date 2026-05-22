@@ -5394,9 +5394,87 @@ function updateWeatherFromHA() {
       iconEl.textContent = icon;
       iconEl.className = classes;
     }
+
+    updateWeatherEffects();
   } catch (error) {
     console.error('Error updating weather:', error);
   }
+}
+
+function getWeatherEffectForState(condition) {
+  if (!condition) return null;
+  const cond = condition.toLowerCase();
+  if (
+    cond.includes('storm') || 
+    cond.includes('thunder') || 
+    cond.includes('lightning')
+  ) {
+    return 'stormy';
+  } else if (
+    cond.includes('rain') || 
+    cond.includes('drizzle') || 
+    cond.includes('pouring')
+  ) {
+    return 'rainy';
+  } else if (
+    cond.includes('snow') || 
+    cond.includes('hail') || 
+    cond.includes('sleet')
+  ) {
+    return 'snowy';
+  } else if (
+    cond.includes('cloud') || 
+    cond.includes('fog') || 
+    cond.includes('mist') || 
+    cond.includes('haze') || 
+    cond.includes('wind') || 
+    cond.includes('dust') || 
+    cond.includes('sand') || 
+    cond.includes('smoke') || 
+    cond.includes('ash') || 
+    cond.includes('squall') || 
+    cond.includes('exceptional')
+  ) {
+    return 'cloudy';
+  } else if (
+    cond.includes('sun') || 
+    cond.includes('clear') || 
+    cond.includes('stable')
+  ) {
+    return 'sunny';
+  }
+  return 'sunny';
+}
+
+function updateWeatherEffects(previewEnabled, previewOverride) {
+  if (!window.weatherEffects) return;
+
+  const uiConfig = state.CONFIG?.ui || {};
+  
+  const enabled = previewEnabled !== undefined ? !!previewEnabled : !!uiConfig.weatherEffectsEnabled;
+  const override = previewOverride !== undefined ? previewOverride : (uiConfig.weatherOverride || 'auto');
+
+  if (!enabled) {
+    window.weatherEffects.setEffect(null);
+    return;
+  }
+
+  if (override !== 'auto') {
+    window.weatherEffects.setEffect(override);
+    return;
+  }
+
+  // Get current HA weather state
+  const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
+  const weatherEntity = selectedWeatherEntityId ? state.STATES?.[selectedWeatherEntityId] : null;
+  if (!weatherEntity) {
+    window.weatherEffects.setEffect(null);
+    return;
+  }
+
+  const condition = weatherEntity.state;
+  const effect = getWeatherEffectForState(condition);
+  window.weatherEffects.setEffect(effect);
 }
 
 function populateWeatherEntitiesList() {
@@ -6770,6 +6848,7 @@ export {
   renderActiveTab,
   updateEntityInUI,
   updateWeatherFromHA,
+  updateWeatherEffects,
   populateWeatherEntitiesList,
   selectWeatherEntity,
   initUpdateUI,

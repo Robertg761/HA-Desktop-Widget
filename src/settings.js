@@ -2300,9 +2300,17 @@ function getPreviewValuesFromInputs() {
   const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
   const frostedGlassEnabled = !!frostedGlass.checked;
 
+  const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
+  const weatherEffectsEnabledVal = weatherEffectsEnabled ? !!weatherEffectsEnabled.checked : false;
+
+  const weatherOverrideSelect = document.getElementById('weather-override-select');
+  const weatherOverrideVal = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
+
   return {
     opacity,
     frostedGlass: frostedGlassEnabled,
+    weatherEffectsEnabled: weatherEffectsEnabledVal,
+    weatherOverride: weatherOverrideVal,
   };
 }
 
@@ -2326,6 +2334,10 @@ function previewWindowEffectsNow() {
       }).catch(err => {
         log.error('Failed to preview window effects:', err);
       });
+    }
+
+    if (settingsUiHooks?.updateWeatherEffects) {
+      settingsUiHooks.updateWeatherEffects(values.weatherEffectsEnabled, values.weatherOverride);
     }
   } catch (error) {
     log.error('Error applying preview window effects:', error);
@@ -2383,6 +2395,13 @@ function restorePreviewWindowEffects() {
       }).catch(err => {
         log.error('Failed to restore preview window effects:', err);
       });
+    }
+
+    if (settingsUiHooks?.updateWeatherEffects) {
+      settingsUiHooks.updateWeatherEffects(
+        previewState.weatherEffectsEnabled,
+        previewState.weatherOverride
+      );
     }
   } catch (error) {
     log.error('Error restoring preview window effects:', error);
@@ -3243,9 +3262,25 @@ async function openSettings(uiHooks) {
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
 
+    const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
+    const weatherOverrideSelect = document.getElementById('weather-override-select');
+    const weatherOverrideGroup = document.getElementById('weather-override-group');
+
+    if (weatherEffectsEnabled) {
+      weatherEffectsEnabled.checked = !!state.CONFIG.ui?.weatherEffectsEnabled;
+      if (weatherOverrideGroup) {
+        weatherOverrideGroup.style.display = weatherEffectsEnabled.checked ? 'block' : 'none';
+      }
+    }
+    if (weatherOverrideSelect) {
+      weatherOverrideSelect.value = state.CONFIG.ui?.weatherOverride || 'auto';
+    }
+
     previewState = {
       opacity: storedOpacity,
       frostedGlass: !!state.CONFIG.frostedGlass,
+      weatherEffectsEnabled: !!state.CONFIG.ui?.weatherEffectsEnabled,
+      weatherOverride: state.CONFIG.ui?.weatherOverride || 'auto',
     };
     hasDraftColorPreview = false;
 
@@ -3503,7 +3538,12 @@ async function saveSettings() {
     if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
     delete state.CONFIG.frostedGlassStrength;
     delete state.CONFIG.frostedGlassTint;
+    
+    const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
+    const weatherOverrideSelect = document.getElementById('weather-override-select');
     state.CONFIG.ui = state.CONFIG.ui || {};
+    state.CONFIG.ui.weatherEffectsEnabled = weatherEffectsEnabled ? !!weatherEffectsEnabled.checked : false;
+    state.CONFIG.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
     if (enableInteractionDebugLogs) {
       state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;

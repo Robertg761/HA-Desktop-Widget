@@ -11,6 +11,7 @@
 </head>
 
 <body>
+    <canvas id="weather-effects-canvas"></canvas>
     <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
         <div class="desktop-pin-header">
             <div class="desktop-pin-drag-region" data-i18n-title="Move desktop tile" data-i18n-aria-label="Move desktop tile" aria-label="Move desktop tile" title="Move desktop tile"></div>
@@ -459,6 +460,25 @@
                                 </label>
                                 <div class="form-help">Blurs what's behind the widget to keep it readable while
                                     transparent</div>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="weather-effects-enabled">
+                                    Subtle weather effects
+                                </label>
+                                <div class="form-help">Renders ambient background animations based on the current weather</div>
+                            </div>
+                            <div class="form-group" id="weather-override-group" style="display: none;">
+                                <label for="weather-override-select">Weather Effect Override:</label>
+                                <select id="weather-override-select">
+                                    <option value="auto">Auto (Home Assistant)</option>
+                                    <option value="sunny">Sunny</option>
+                                    <option value="cloudy">Cloudy</option>
+                                    <option value="rainy">Rainy</option>
+                                    <option value="snowy">Snowy</option>
+                                    <option value="stormy">Stormy</option>
+                                </select>
+                                <div class="form-help">Manually override the weather effect for testing</div>
                             </div>
                         </div>
                     </div>

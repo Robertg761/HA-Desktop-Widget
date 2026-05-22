@@ -9517,3 +9517,23 @@ label.disabled {
   border-radius: var(--radius-md);
   margin-top: var(--space-2);
 }
+
+/* Ambient Weather background canvas */
+#weather-effects-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Ensure content sits on top of weather effects canvas */
+.widget-header,
+.widget-content,
+.desktop-pin-shell,
+#desktop-pin-app {
+  position: relative;
+  z-index: 2;
+}

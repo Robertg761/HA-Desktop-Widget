@@ -11,6 +11,7 @@ import * as utils from './src/utils.js';
 import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
+import { WeatherEffectsManager } from './src/weather-effects.js';
 
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
@@ -166,6 +167,7 @@ function getSettingsUiHooks() {
     renderActiveTab: ui.renderActiveTab,
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,
+    updateWeatherEffects: ui.updateWeatherEffects,
     exitReorganizeMode: () => {
       const container = document.getElementById('quick-controls');
       if (container && container.classList.contains('reorganize-mode')) {
@@ -188,6 +190,10 @@ function applyRendererConfig(nextConfig) {
   uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
   uiUtils.applyUiPreferences(state.CONFIG.ui || {});
   uiUtils.applyWindowEffects(state.CONFIG || {});
+
+  if (ui.updateWeatherEffects) {
+    ui.updateWeatherEffects();
+  }
 }
 
 async function refreshLocaleBootstrap() {
@@ -804,6 +810,14 @@ async function init() {
   try {
     log.info('Initializing application');
     document.body.classList.toggle('desktop-pin-mode', IS_DESKTOP_PIN_MODE);
+
+    // Initialize weather background effects
+    try {
+      window.weatherEffects = new WeatherEffectsManager('weather-effects-canvas');
+    } catch (e) {
+      log.error('Failed to initialize weather background effects:', e);
+    }
+
     await refreshLocaleBootstrap();
     uiUtils.showLoading(true);
     if (IS_DESKTOP_PIN_MODE) {
@@ -962,6 +976,28 @@ function wireUI() {
     const frostedGlassToggle = document.getElementById('frosted-glass');
     if (frostedGlassToggle) {
       frostedGlassToggle.addEventListener('change', () => {
+        if (settings.previewWindowEffects) {
+          settings.previewWindowEffects();
+        }
+      });
+    }
+
+    const weatherEffectsToggle = document.getElementById('weather-effects-enabled');
+    const weatherOverrideSelect = document.getElementById('weather-override-select');
+    const weatherOverrideGroup = document.getElementById('weather-override-group');
+    if (weatherEffectsToggle) {
+      weatherEffectsToggle.addEventListener('change', () => {
+        if (weatherOverrideGroup) {
+          weatherOverrideGroup.style.display = weatherEffectsToggle.checked ? 'block' : 'none';
+        }
+        if (settings.previewWindowEffects) {
+          settings.previewWindowEffects();
+        }
+      });
+    }
+
+    if (weatherOverrideSelect) {
+      weatherOverrideSelect.addEventListener('change', () => {
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
         }
