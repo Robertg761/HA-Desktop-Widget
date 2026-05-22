@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap');
+
 /* Modern Glassmorphism Design System */
 
 /* ============================================
@@ -490,7 +492,7 @@ body.frosted-glass .modal-content {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-color);
   color: var(--text-color);
   overflow: hidden;
@@ -529,9 +531,9 @@ html.desktop-pin-mode body {
 }
 
 .desktop-pin-shell {
-  --desktop-pin-ui-font: 'Aptos', 'Segoe UI', sans-serif;
-  --desktop-pin-display-font: 'Bahnschrift', 'Aptos', 'Segoe UI', sans-serif;
-  --desktop-pin-mono-font: Consolas, 'Roboto Mono', monospace;
+  --desktop-pin-ui-font: 'Inter', 'Segoe UI', sans-serif;
+  --desktop-pin-display-font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  --desktop-pin-mono-font: 'Inter-Mono', Consolas, 'Roboto Mono', monospace;
   display: none;
   flex-direction: column;
   min-height: 100vh;
@@ -2424,7 +2426,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   grid-column: 1 / -1; /* Span full width */
   background: var(--glass-surface);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: var(--space-3);
   display: grid;
   grid-template-columns: 56px 1fr;
@@ -2456,7 +2458,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .media-tile:hover {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.01);
   box-shadow:
     var(--shadow-lg),
     inset 0 1px 0 rgba(255, 255, 255, 0.15),
@@ -2466,7 +2468,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .media-tile-artwork {
   width: 56px;
   height: 56px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--glass-elevated);
   backdrop-filter: blur(var(--blur-sm));
@@ -2545,9 +2547,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .media-tile-seek-bar {
   flex: 1;
-  height: 4px;
+  height: 3px;
   background: var(--surface-3);
-  border-radius: 2px;
+  border-radius: var(--radius-full);
   overflow: hidden;
   position: relative;
   min-width: 36px;
@@ -2557,7 +2559,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   height: 100%;
   background: var(--accent);
   transition: width 0.5s linear;
-  border-radius: 2px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 6px var(--accent);
 }
 
 .media-tile-controls {
@@ -2654,7 +2657,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .status-card {
   background: var(--glass-surface);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: var(--space-4);
   display: flex;
   align-items: center;
@@ -2663,10 +2666,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
   box-shadow:
     var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transition: var(--transition-base);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform var(--transition-slow), border-color var(--transition-slow), background-color var(--transition-slow), box-shadow var(--transition-slow);
   position: relative;
   overflow: hidden;
+  will-change: transform, box-shadow;
 }
 
 .primary-card-hidden {
@@ -2680,17 +2684,17 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  opacity: 0.5;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  opacity: 0.7;
 }
 
 .status-card:hover {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.015);
   box-shadow:
     var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     var(--glow-accent);
 }
 
@@ -2839,7 +2843,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .control-item:hover {
   background: var(--glass-elevated);
   border-color: var(--border-hover);
-  transform: none;
+  transform: translateY(-2px) scale(1.02);
   box-shadow:
     var(--shadow-md),
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -2847,7 +2851,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .control-item:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.97);
 }
 
 .control-item:focus-visible {
@@ -2857,17 +2861,17 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .control-item.active {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
-  color: #000;
-  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.25) 0%, rgba(var(--accent-rgb), 0.1) 100%);
+  color: var(--text-primary);
+  border-color: rgba(var(--accent-rgb), 0.6);
   box-shadow:
     var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
     var(--glow-accent);
 }
 
 .control-item.active::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
 }
 
 /* Data-state based active styling for consistency */
@@ -3634,8 +3638,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .weather-details {
   display: flex;
-  gap: 12px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .weather-detail {
@@ -3644,6 +3648,20 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   gap: 4px;
   font-size: 11px;
   color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 8px;
+  border-radius: 99px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-light .weather-detail {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .detail-icon {
@@ -3683,12 +3701,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .status-card.time-card .time-display {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 800;
   color: var(--text-primary);
   line-height: 1;
-  font-family: 'Courier New', monospace;
-  letter-spacing: 1px;
+  font-family: var(--desktop-pin-display-font), sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
   text-align: center;
   width: 100%;
   word-wrap: break-word;
@@ -5530,24 +5549,21 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .modal-body::-webkit-scrollbar {
-  width: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 .modal-body::-webkit-scrollbar-track {
-  background: var(--glass-surface);
-  border-radius: var(--radius-sm);
+  background: transparent;
 }
 
 .modal-body::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  border-radius: var(--radius-sm);
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: var(--border-color);
+  border-radius: 99px;
 }
 
 .modal-body::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-hover);
-  background-clip: padding-box;
+  background: var(--border-hover);
 }
 
 .modal-footer {
@@ -5622,10 +5638,66 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
     inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
+/* Premium Custom Toggle Switch Checkboxes */
+.form-group label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  user-select: none;
+  font-weight: 500;
+}
+
 .form-group input[type='checkbox'] {
-  width: auto;
-  margin-right: var(--space-2);
-  accent-color: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 38px;
+  height: 20px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-color);
+  position: relative;
+  transition: var(--transition-base);
+  margin-right: var(--space-3);
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.form-group input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: var(--transition-base);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-group input[type='checkbox']:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+}
+
+.form-group input[type='checkbox']:checked {
+  background: rgba(var(--accent-rgb), 0.25);
+  border-color: var(--accent);
+}
+
+.form-group input[type='checkbox']:checked::after {
+  transform: translateX(18px);
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.5);
+}
+
+.form-group input[type='checkbox']:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
 }
 
 .form-group input[type='range'] {
@@ -6650,7 +6722,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -6659,7 +6732,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 3px;
+  border-radius: 99px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -7982,6 +8055,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   color: var(--text-secondary);
   font-weight: var(--font-weight-medium);
   text-align: left;
+  transition: var(--transition-base);
 }
 
 #settings-modal .tab-link:hover {
