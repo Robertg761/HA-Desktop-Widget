@@ -192,22 +192,27 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -d '' apps < <(find dist -type d -name '*.app' -print0)
-          if [[ "${#apps[@]}" -eq 0 ]]; then
+          found_app=0
+          while IFS= read -r -d '' app; do
+            found_app=1
+            codesign --verify --deep --strict --verbose=4 "$app"
+          done < <(find dist -type d -name '*.app' -print0)
+
+          if [[ "$found_app" -eq 0 ]]; then
             echo "No packaged macOS .app bundle found under dist." >&2
             exit 1
           fi
-
-          for app in "${apps[@]}"; do
-            codesign --verify --deep --strict --verbose=4 "$app"
-          done
 
       - name: Publish macOS artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          mapfile -d '' artifacts < <(find dist -maxdepth 1 -type f -print0)
+          artifacts=()
+          while IFS= read -r -d '' artifact; do
+            artifacts+=("$artifact")
+          done < <(find dist -maxdepth 1 -type f -print0)
+
           if [[ "${#artifacts[@]}" -eq 0 ]]; then
             echo "No macOS artifacts found under dist." >&2
             exit 1
