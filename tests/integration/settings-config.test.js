@@ -312,6 +312,7 @@ function createSettingsModalDOM() {
             <div id="primary-card-1-current"></div>
             <div id="primary-card-2-current"></div>
             <button type="button" id="primary-cards-reset">Reset</button>
+            <input type="checkbox" id="use-24-hour-clock" />
             <input type="text" id="primary-cards-search" />
             <div id="primary-cards-list"></div>
           </div>
@@ -755,6 +756,27 @@ describe('Settings + Config Integration', () => {
         expect.objectContaining({
           ui: expect.objectContaining({
             enableInteractionDebugLogs: false
+          })
+        })
+      );
+    });
+
+    test('loads and saves 24-hour clock preference from primary cards settings', async () => {
+      state.CONFIG.ui.use24HourClock = true;
+      await settings.openSettings();
+
+      const clockToggle = document.getElementById('use-24-hour-clock');
+      expect(clockToggle).toBeTruthy();
+      expect(clockToggle.checked).toBe(true);
+
+      clockToggle.checked = false;
+      await settings.saveSettings();
+
+      expect(state.CONFIG.ui.use24HourClock).toBe(false);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            use24HourClock: false
           })
         })
       );

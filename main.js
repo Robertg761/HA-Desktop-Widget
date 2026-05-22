@@ -1845,6 +1845,7 @@ function loadConfig(options = {}) {
       language: 'auto',
       customColors: [],
       personalizationSectionsCollapsed: {},
+      use24HourClock: false,
       enableInteractionDebugLogs: false
     },
     primaryCards: ['weather', 'time'],

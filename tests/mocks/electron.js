@@ -40,6 +40,7 @@ let mockConfig = {
     density: 'comfortable',
     customColors: [],
     personalizationSectionsCollapsed: {},
+    use24HourClock: false,
     enableInteractionDebugLogs: false
   },
   customTabs: [],
@@ -370,6 +371,7 @@ function resetMockElectronAPI() {
       density: 'comfortable',
       customColors: [],
       personalizationSectionsCollapsed: {},
+      use24HourClock: false,
       enableInteractionDebugLogs: false
     },
     customTabs: [],

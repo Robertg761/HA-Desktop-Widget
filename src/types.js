@@ -88,6 +88,7 @@
  * @property {Object} [customTabs] - Custom tab configurations
  * @property {Object} [ui] - UI preferences (theme, accent, background, language, section collapse states, etc.)
  * @property {string} [ui.language] - UI language setting (`auto` or locale code such as `en` / `fr`)
+ * @property {boolean} [ui.use24HourClock] - Force the primary Time card to use 24-hour time
  * @property {Object} [profileSync] - Profile sync preferences/state (provider, file path, scope, encryption, last status)
  */
 

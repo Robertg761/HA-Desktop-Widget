@@ -180,12 +180,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build macOS artifacts (unsigned)
+      - name: Build macOS artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
-          npm run dist:mac -- --publish always
+          npm run dist:mac -- --publish never
+
+      - name: Verify macOS app bundle signature
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -d '' apps < <(find dist -type d -name '*.app' -print0)
+          if [[ "${#apps[@]}" -eq 0 ]]; then
+            echo "No packaged macOS .app bundle found under dist." >&2
+            exit 1
+          fi
+
+          for app in "${apps[@]}"; do
+            codesign --verify --deep --strict --verbose=4 "$app"
+          done
+
+      - name: Publish macOS artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mapfile -d '' artifacts < <(find dist -maxdepth 1 -type f -print0)
+          if [[ "${#artifacts[@]}" -eq 0 ]]; then
+            echo "No macOS artifacts found under dist." >&2
+            exit 1
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" "${artifacts[@]}" --clobber
 
       - name: Upload artifacts (fallback)
         if: ${{ always() }}

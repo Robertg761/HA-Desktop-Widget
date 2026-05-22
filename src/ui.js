@@ -5739,8 +5739,13 @@ function updateTimeDisplay() {
     const now = new Date();
     const timeEl = document.getElementById('current-time');
     const dateEl = document.getElementById('current-date');
+    const timeOptions = { hour: '2-digit', minute: '2-digit' };
 
-    if (timeEl) timeEl.textContent = formatTime(now, { hour: '2-digit', minute: '2-digit' });
+    if (state.CONFIG?.ui?.use24HourClock) {
+      timeOptions.hour12 = false;
+    }
+
+    if (timeEl) timeEl.textContent = formatTime(now, timeOptions);
     if (dateEl) dateEl.textContent = formatDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
   } catch (error) {
     console.error('Error updating time display:', error);

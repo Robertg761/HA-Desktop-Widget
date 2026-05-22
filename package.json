@@ -49,6 +49,7 @@
       "buildResources": "build",
       "output": "dist"
     },
+    "afterPack": "scripts/after-pack-mac-adhoc-sign.cjs",
     "files": [
       "index.html",
       "locales/**/*",

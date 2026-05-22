@@ -66,6 +66,7 @@ const sampleConfig = {
     density: 'comfortable',
     customColors: [],
     personalizationSectionsCollapsed: {},
+    use24HourClock: false,
     enableInteractionDebugLogs: false
   },
   customTabs: [

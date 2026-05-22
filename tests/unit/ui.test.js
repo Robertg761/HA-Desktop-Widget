@@ -961,6 +961,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(ui.isEntityVisible('weather.zeta')).toBe(false);
     });
 
+    it('uses 24-hour time when enabled for the primary time card', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-15T20:05:00'));
+      const config = state.CONFIG;
+      config.ui = { ...(config.ui || {}), use24HourClock: true };
+      state.setConfig(config);
+
+      ui.updateTimeDisplay();
+
+      expect(document.getElementById('current-time').textContent).toBe('20:05');
+      jest.useRealTimers();
+    });
+
     it('should handle missing weather entity gracefully', () => {
       state.setStates({});
 

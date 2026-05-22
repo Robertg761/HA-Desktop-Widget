@@ -3305,6 +3305,10 @@ async function openSettings(uiHooks) {
     const shouldRenderPrimaryCardsList = !(primarySection?.classList.contains('collapsed'));
     const primarySearch = document.getElementById('primary-cards-search');
     if (primarySearch) primarySearch.value = '';
+    const use24HourClock = document.getElementById('use-24-hour-clock');
+    if (use24HourClock) {
+      use24HourClock.checked = !!state.CONFIG?.ui?.use24HourClock;
+    }
     setPendingPrimaryCards(
       state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS,
       { renderList: shouldRenderPrimaryCardsList }
@@ -3494,6 +3498,8 @@ async function saveSettings() {
     state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
     state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
     state.CONFIG.ui.customColors = getCustomColorsForSave();
+    const use24HourClock = document.getElementById('use-24-hour-clock');
+    state.CONFIG.ui.use24HourClock = !!use24HourClock?.checked;
     setCustomThemes(state.CONFIG.ui.customColors);
 
     // Save "Start at login" setting
