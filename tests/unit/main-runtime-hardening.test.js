@@ -46,4 +46,9 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('shouldBlockPotentialConfigClobber');
     expect(mainSource).toContain('Blocked config save because it would replace an existing user config with default-like data.');
   });
+
+  it('loads secure Home Assistant config before the renderer can enter setup mode', () => {
+    expect(mainSource).toContain('loadConfig();');
+    expect(mainSource).not.toContain('loadConfig({ deferSecureStorage: true });');
+  });
 });

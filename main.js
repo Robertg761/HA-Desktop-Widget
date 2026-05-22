@@ -4229,7 +4229,7 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
   }
 
-  loadConfig({ deferSecureStorage: true });
+  loadConfig();
   startDevLiveReloadWatchers();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
