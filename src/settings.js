@@ -3433,6 +3433,7 @@ function closeSettings() {
 async function saveSettings() {
   try {
     const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
+    const prevOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
     const prevProfileSync = { ...(state.CONFIG.profileSync || {}) };
 
     // Store previous HA connection settings to detect if reconnect is needed
@@ -3677,6 +3678,20 @@ async function saveSettings() {
     // Apply opacity immediately
     if (opacitySlider) {
       await window.electronAPI.setOpacity(state.CONFIG.opacity);
+    }
+
+    const platform = window?.electronAPI?.platform || 'web';
+    const nextOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
+    const opacityNeedsRestart = platform === 'linux' && 
+      ((prevOpacity === 1 && nextOpacity < 1) || (prevOpacity < 1 && nextOpacity === 1));
+
+    if (opacityNeedsRestart) {
+      if (confirm('Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?')) {
+        await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
+        await window.electronAPI.restartApp();
+        return;
+      }
+      await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
     }
 
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
