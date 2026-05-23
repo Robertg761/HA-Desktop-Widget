@@ -248,6 +248,46 @@ jobs:
         run: |
           npm run dist:linux -- --publish never
 
+      - name: Generate Linux AppImage blockmap
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          appimages=(dist/*.AppImage)
+          if [[ "${#appimages[@]}" -eq 0 ]]; then
+            echo "No Linux AppImage artifact found under dist." >&2
+            exit 1
+          fi
+
+          if [[ "${#appimages[@]}" -gt 1 ]]; then
+            echo "Expected one Linux AppImage artifact, found ${#appimages[@]}." >&2
+            printf '%s\n' "${appimages[@]}" >&2
+            exit 1
+          fi
+
+          appimage="${appimages[0]}"
+          blockmap="${appimage}.blockmap"
+          ./node_modules/app-builder-bin/linux/x64/app-builder blockmap \
+            --input "$appimage" \
+            --output "$blockmap"
+
+          blockmap_size="$(stat -c '%s' "$blockmap")"
+          BLOCKMAP_SIZE="$blockmap_size" node <<'NODE'
+          const fs = require('fs');
+
+          const latestPath = 'dist/latest-linux.yml';
+          const blockMapSize = process.env.BLOCKMAP_SIZE;
+          let latest = fs.readFileSync(latestPath, 'utf8');
+
+          if (!/blockMapSize:\s*\d+/.test(latest)) {
+            throw new Error(`${latestPath} is missing blockMapSize for the AppImage.`);
+          }
+
+          latest = latest.replace(/blockMapSize:\s*\d+/, `blockMapSize: ${blockMapSize}`);
+          fs.writeFileSync(latestPath, latest);
+          NODE
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
