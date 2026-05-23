@@ -8972,6 +8972,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   color: var(--text-secondary);
 }
 
+.form-warning {
+  color: var(--warning);
+}
+
 .form-help code {
   background: var(--surface-2);
   padding: 2px 4px;

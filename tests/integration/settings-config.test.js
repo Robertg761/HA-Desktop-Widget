@@ -302,6 +302,14 @@ function createSettingsModalDOM() {
           </button>
           <div class="section-body">
             <input type="checkbox" id="frosted-glass" />
+            <input type="checkbox" id="weather-effects-enabled" />
+            <div id="weather-effects-warning" class="hidden"></div>
+            <div id="weather-override-group" style="display: none;">
+              <select id="weather-override-select">
+                <option value="auto">Auto</option>
+                <option value="rainy">Rainy</option>
+              </select>
+            </div>
           </div>
         </div>
         <div id="primary-cards-section" class="personalization-section collapsed">
@@ -986,6 +994,46 @@ describe('Settings + Config Integration', () => {
           expect.closeTo(testCase.expected, 2)
         );
       }
+    });
+
+    test('disables weather effects control and warning when frosted glass is off', async () => {
+      state.CONFIG.frostedGlass = false;
+      state.CONFIG.ui.weatherEffectsEnabled = true;
+
+      await settings.openSettings();
+
+      const weatherEffects = document.getElementById('weather-effects-enabled');
+      const warning = document.getElementById('weather-effects-warning');
+      expect(weatherEffects.checked).toBe(false);
+      expect(weatherEffects.disabled).toBe(true);
+      expect(warning.classList.contains('hidden')).toBe(false);
+      expect(warning.textContent).toContain('Frosted glass');
+    });
+
+    test('does not save weather effects enabled unless frosted glass is enabled', async () => {
+      await settings.openSettings();
+
+      document.getElementById('frosted-glass').checked = false;
+      document.getElementById('weather-effects-enabled').checked = true;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.frostedGlass).toBe(false);
+      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(false);
+    });
+
+    test('allows weather effects when frosted glass is enabled', async () => {
+      state.CONFIG.frostedGlass = true;
+
+      await settings.openSettings();
+
+      document.getElementById('frosted-glass').checked = true;
+      document.getElementById('weather-effects-enabled').checked = true;
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.frostedGlass).toBe(true);
+      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(true);
     });
   });
 

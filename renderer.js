@@ -976,6 +976,9 @@ function wireUI() {
     const frostedGlassToggle = document.getElementById('frosted-glass');
     if (frostedGlassToggle) {
       frostedGlassToggle.addEventListener('change', () => {
+        if (settings.syncWeatherEffectsAvailability) {
+          settings.syncWeatherEffectsAvailability({ showWarning: true });
+        }
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
         }
@@ -987,8 +990,11 @@ function wireUI() {
     const weatherOverrideGroup = document.getElementById('weather-override-group');
     if (weatherEffectsToggle) {
       weatherEffectsToggle.addEventListener('change', () => {
+        const canEnableWeatherEffects = settings.syncWeatherEffectsAvailability
+          ? settings.syncWeatherEffectsAvailability({ showWarning: true })
+          : true;
         if (weatherOverrideGroup) {
-          weatherOverrideGroup.style.display = weatherEffectsToggle.checked ? 'block' : 'none';
+          weatherOverrideGroup.style.display = canEnableWeatherEffects && weatherEffectsToggle.checked ? 'block' : 'none';
         }
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();

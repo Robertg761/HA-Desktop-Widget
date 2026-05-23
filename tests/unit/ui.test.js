@@ -3016,7 +3016,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('should keep weather effects off when the setting is omitted', () => {
-      const { weatherEffectsEnabled, weatherOverride, ...uiConfigWithoutWeatherEffects } = sampleConfig.ui;
+      const {
+        weatherEffectsEnabled: _weatherEffectsEnabled,
+        weatherOverride: _weatherOverride,
+        ...uiConfigWithoutWeatherEffects
+      } = sampleConfig.ui;
       state.setConfig({
         ...sampleConfig,
         ui: uiConfigWithoutWeatherEffects
@@ -3029,6 +3033,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('should use override if enabled and override is not auto', () => {
       state.setConfig({
         ...sampleConfig,
+        frostedGlass: true,
         ui: {
           ...sampleConfig.ui,
           weatherEffectsEnabled: true,
@@ -3043,6 +3048,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('should use HA state if override is auto', () => {
       state.setConfig({
         ...sampleConfig,
+        frostedGlass: true,
         selectedWeatherEntity: 'weather.home',
         ui: {
           ...sampleConfig.ui,
@@ -3065,6 +3071,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('should map all Home Assistant weather states to correct effects', () => {
       state.setConfig({
         ...sampleConfig,
+        frostedGlass: true,
         selectedWeatherEntity: 'weather.home',
         ui: {
           ...sampleConfig.ui,
@@ -3112,6 +3119,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('should accept preview parameters overriding config values', () => {
       state.setConfig({
         ...sampleConfig,
+        frostedGlass: true,
         ui: {
           ...sampleConfig.ui,
           weatherEffectsEnabled: false
@@ -3120,6 +3128,21 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.updateWeatherEffects(true, 'stormy');
       expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith('stormy');
+    });
+
+    it('should keep weather effects off when frosted glass is disabled', () => {
+      state.setConfig({
+        ...sampleConfig,
+        frostedGlass: false,
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: true,
+          weatherOverride: 'rainy'
+        }
+      });
+
+      ui.updateWeatherEffects();
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
     });
   });
 

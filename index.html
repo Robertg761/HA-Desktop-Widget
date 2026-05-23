@@ -463,10 +463,14 @@
                             </div>
                             <div class="form-group">
                                 <label>
-                                    <input type="checkbox" id="weather-effects-enabled">
+                                    <input type="checkbox" id="weather-effects-enabled"
+                                        aria-describedby="weather-effects-help weather-effects-warning">
                                     Subtle weather effects
                                 </label>
-                                <div class="form-help">Renders ambient background animations based on the current weather</div>
+                                <div class="form-help" id="weather-effects-help">Renders ambient background animations based on the current weather</div>
+                                <div class="form-help form-warning hidden" id="weather-effects-warning" aria-live="polite">
+                                    Requires Frosted glass background.
+                                </div>
                             </div>
                             <div class="form-group" id="weather-override-group" style="display: none;">
                                 <label for="weather-override-select">Weather Effect Override:</label>

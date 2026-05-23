@@ -41,6 +41,7 @@ const COLOR_TARGETS = {
   accent: 'accent',
   background: 'background',
 };
+const WEATHER_EFFECTS_GLASS_WARNING = 'Turn on Frosted glass background before enabling subtle weather effects.';
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
@@ -85,6 +86,41 @@ const CUSTOM_ENTITY_ICON_FALLBACKS = [
   '💡', '🔌', '💨', '🌡️', '💧', '🔋', '⚡', '📈', '🏃', '🧍', '🚪', '🪟', '✔️', '❌', '🎵', '📷',
   '🔒', '🔓', '🏠', '✈️', '⏲️', '🛡️', '🤖', '✨', '🧹', '🔥', '❄️', '🌙', '☀️', '⭐', '🛋️', '🛏️', '🍳', '🚿',
 ];
+
+function syncWeatherEffectsAvailability(options = {}) {
+  const { showWarning = false } = options;
+  const frostedGlass = document.getElementById('frosted-glass');
+  const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
+  const weatherOverrideGroup = document.getElementById('weather-override-group');
+  const warning = document.getElementById('weather-effects-warning');
+  if (!weatherEffectsEnabled) return true;
+
+  const frostedGlassEnabled = !!frostedGlass?.checked;
+  const wasChecked = !!weatherEffectsEnabled.checked;
+  weatherEffectsEnabled.disabled = !frostedGlassEnabled;
+  weatherEffectsEnabled.setAttribute('aria-disabled', String(!frostedGlassEnabled));
+  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : WEATHER_EFFECTS_GLASS_WARNING;
+
+  if (!frostedGlassEnabled) {
+    weatherEffectsEnabled.checked = false;
+  }
+
+  if (weatherOverrideGroup) {
+    weatherOverrideGroup.style.display = frostedGlassEnabled && weatherEffectsEnabled.checked ? 'block' : 'none';
+  }
+
+  if (warning) {
+    warning.classList.toggle('hidden', frostedGlassEnabled);
+    warning.textContent = WEATHER_EFFECTS_GLASS_WARNING;
+  }
+
+  if (!frostedGlassEnabled && showWarning && wasChecked) {
+    showToast(WEATHER_EFFECTS_GLASS_WARNING, 'warning', 3500);
+  }
+
+  return frostedGlassEnabled;
+}
+
 const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '💡': ['light', 'lamp', 'bulb'],
   '🔌': ['plug', 'socket', 'power'],
@@ -2302,7 +2338,9 @@ function getPreviewValuesFromInputs() {
   const frostedGlassEnabled = !!frostedGlass.checked;
 
   const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
-  const weatherEffectsEnabledVal = weatherEffectsEnabled ? !!weatherEffectsEnabled.checked : false;
+  const weatherEffectsEnabledVal = weatherEffectsEnabled
+    ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
+    : false;
 
   const weatherOverrideSelect = document.getElementById('weather-override-select');
   const weatherOverrideVal = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
@@ -3268,7 +3306,7 @@ async function openSettings(uiHooks) {
     const weatherOverrideGroup = document.getElementById('weather-override-group');
 
     if (weatherEffectsEnabled) {
-      weatherEffectsEnabled.checked = !!state.CONFIG.ui?.weatherEffectsEnabled;
+      weatherEffectsEnabled.checked = !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled;
       if (weatherOverrideGroup) {
         weatherOverrideGroup.style.display = weatherEffectsEnabled.checked ? 'block' : 'none';
       }
@@ -3280,9 +3318,10 @@ async function openSettings(uiHooks) {
     previewState = {
       opacity: storedOpacity,
       frostedGlass: !!state.CONFIG.frostedGlass,
-      weatherEffectsEnabled: !!state.CONFIG.ui?.weatherEffectsEnabled,
+      weatherEffectsEnabled: !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled,
       weatherOverride: state.CONFIG.ui?.weatherOverride || 'auto',
     };
+    syncWeatherEffectsAvailability();
     hasDraftColorPreview = false;
 
     state.CONFIG.ui = state.CONFIG.ui || {};
@@ -3543,7 +3582,10 @@ async function saveSettings() {
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
     state.CONFIG.ui = state.CONFIG.ui || {};
-    state.CONFIG.ui.weatherEffectsEnabled = weatherEffectsEnabled ? !!weatherEffectsEnabled.checked : false;
+    const frostedGlassEnabled = !!state.CONFIG.frostedGlass;
+    state.CONFIG.ui.weatherEffectsEnabled = weatherEffectsEnabled
+      ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
+      : false;
     state.CONFIG.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
     if (enableInteractionDebugLogs) {
@@ -4579,6 +4621,7 @@ export {
   closeSettings,
   saveSettings,
   previewWindowEffects,
+  syncWeatherEffectsAvailability,
   renderAlertsListInline,
   openAlertEntityPicker,
   closeAlertEntityPicker,

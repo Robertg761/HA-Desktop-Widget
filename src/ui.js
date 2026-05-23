@@ -5451,7 +5451,8 @@ function updateWeatherEffects(previewEnabled, previewOverride) {
 
   const uiConfig = state.CONFIG?.ui || {};
   
-  const enabled = previewEnabled !== undefined ? !!previewEnabled : !!uiConfig.weatherEffectsEnabled;
+  const enabled = state.CONFIG?.frostedGlass
+    && (previewEnabled !== undefined ? !!previewEnabled : !!uiConfig.weatherEffectsEnabled);
   const override = previewOverride !== undefined ? previewOverride : (uiConfig.weatherOverride || 'auto');
 
   if (!enabled) {
