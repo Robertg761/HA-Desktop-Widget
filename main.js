@@ -37,6 +37,9 @@ const {
   shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
+const { configureMainLogging } = require('./src/main-logging.cjs');
+
+configureMainLogging(log, { isPackaged: app.isPackaged });
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -320,21 +323,6 @@ try {
   log.info('uiohook-napi loaded successfully');
 } catch (error) {
   log.warn('uiohook-napi is not available on this platform. Popup hotkey feature will be disabled.', error.message);
-}
-
-// --- Main Log Configuration ---
-// This will catch any uncaught errors in your main process
-log.errorHandler.startCatching();
-
-// You can customize the log format if you want
-log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
-
-// Set the log level
-// 'info' is a good default. Others: 'error', 'warn', 'verbose', 'debug', 'silly'
-log.transports.file.level = 'info';
-// Keep console quieter (DevTools): only warnings and errors
-if (log?.transports?.console) {
-  log.transports.console.level = 'warn';
 }
 
 // Log the app starting up
