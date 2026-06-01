@@ -27,6 +27,9 @@ describe('profile-sync-core', () => {
       desktopPins: {
         'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
       },
+      quickAccessTileOptions: {
+        'sensor.office_temperature': { valueSize: 'extra-large' }
+      },
       primaryMediaPlayer: 'media_player.office',
       profileSync: { enabled: true, syncScope: { preset: 'custom' } },
     });
@@ -39,6 +42,9 @@ describe('profile-sync-core', () => {
     expect(projected.desktopPins).toEqual({
       'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
     });
+    expect(projected.quickAccessTileOptions).toEqual({
+      'sensor.office_temperature': { valueSize: 'extra-large' }
+    });
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
   });
 
@@ -48,6 +54,9 @@ describe('profile-sync-core', () => {
         favoriteEntities: ['light.kitchen'],
         desktopPins: {
           'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
+        },
+        quickAccessTileOptions: {
+          'sensor.office_temperature': { valueSize: 'large' }
         },
         ui: { theme: 'dark' },
         globalHotkeys: { enabled: true, hotkeys: {} },
@@ -68,6 +77,9 @@ describe('profile-sync-core', () => {
     expect(projected.desktopPins).toEqual({
       'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
     });
+    expect(projected.quickAccessTileOptions).toEqual({
+      'sensor.office_temperature': { valueSize: 'large' }
+    });
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
     expect(projected.ui).toBeUndefined();
     expect(projected.globalHotkeys).toBeUndefined();
@@ -84,6 +96,9 @@ describe('profile-sync-core', () => {
         desktopPins: {
           'light.local': { x: 3, y: 4, width: 176, height: 176 }
         },
+        quickAccessTileOptions: {
+          'sensor.local': { valueSize: 'small' }
+        },
       },
       {
         alwaysOnTop: false,
@@ -91,6 +106,9 @@ describe('profile-sync-core', () => {
         favoriteEntities: ['light.remote'],
         desktopPins: {
           'light.remote': { x: 30, y: 40, width: 352, height: 176 }
+        },
+        quickAccessTileOptions: {
+          'sensor.remote': { valueSize: 'extra-large' }
         },
       },
       {
@@ -112,6 +130,9 @@ describe('profile-sync-core', () => {
     expect(merged.favoriteEntities).toEqual(['light.remote']);
     expect(merged.desktopPins).toEqual({
       'light.remote': { x: 30, y: 40, width: 352, height: 176 }
+    });
+    expect(merged.quickAccessTileOptions).toEqual({
+      'sensor.remote': { valueSize: 'extra-large' }
     });
   });
 

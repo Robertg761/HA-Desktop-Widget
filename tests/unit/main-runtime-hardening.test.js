@@ -51,4 +51,10 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('loadConfig();');
     expect(mainSource).not.toContain('loadConfig({ deferSecureStorage: true });');
   });
+
+  it('loads electron-updater lazily so development startup is not coupled to updater detection', () => {
+    expect(mainSource).toContain('function getAutoUpdater()');
+    expect(mainSource).toContain("require('electron-updater')");
+    expect(mainSource).not.toContain("const { autoUpdater } = require('electron-updater');");
+  });
 });

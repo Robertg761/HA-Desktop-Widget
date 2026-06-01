@@ -85,6 +85,7 @@
  * @property {Object.<string, {x:number, y:number, width:number, height:number}>} [desktopPins] - Persisted desktop mini-widget bounds keyed by entity ID
  * @property {Object.<string, string>} [customEntityNames] - Custom display names
  * @property {Object.<string, string>} [customEntityIcons] - Custom icon glyphs per entity ID
+ * @property {Object.<string, {valueSize?: string}>} [quickAccessTileOptions] - Per-tile Quick Access display options
  * @property {Object} [customTabs] - Custom tab configurations
  * @property {Object} [ui] - UI preferences (theme, accent, background, language, section collapse states, etc.)
  * @property {string} [ui.language] - UI language setting (`auto` or locale code such as `en` / `fr`)

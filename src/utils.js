@@ -569,6 +569,13 @@ function reconcileConfigEntityIds(config, states = state.STATES) {
         changed = true;
     }
 
+    const quickAccessTileOptionsResult = remapObjectKeys(config.quickAccessTileOptions);
+    if (quickAccessTileOptionsResult.changed) {
+        ensureConfigClone();
+        nextConfig.quickAccessTileOptions = quickAccessTileOptionsResult.value;
+        changed = true;
+    }
+
     if (config.globalHotkeys && typeof config.globalHotkeys === 'object') {
         const hotkeysResult = remapObjectKeys(config.globalHotkeys.hotkeys);
         if (hotkeysResult.changed) {

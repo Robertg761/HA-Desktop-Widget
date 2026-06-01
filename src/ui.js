@@ -26,6 +26,14 @@ const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
+const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set(['auto', 'small', 'normal', 'large', 'extra-large']);
+const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
+  { value: 'auto', label: 'Auto (Default)' },
+  { value: 'small', label: 'Small' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'large', label: 'Large' },
+  { value: 'extra-large', label: 'Extra Large' },
+];
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   off: 'Off',
@@ -516,7 +524,7 @@ function addButtonsToElement(item) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
       setIconContent(renameBtn, 'edit', { size: 14 });
-      renameBtn.title = 'Rename Entity';
+      renameBtn.title = t('Edit Tile Settings');
       renameBtn.setAttribute('draggable', 'false');
       renameBtn.addEventListener('mousedown', (e) => {
         e.stopPropagation();
@@ -582,31 +590,47 @@ function showRenameModal(entityId) {
     if (!entity) return;
 
     const currentName = state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
+    const hasValueSizeControl = isQuickAccessTileValueSizeApplicable(entity);
+    const currentValueSize = getQuickAccessTileValueSize(entityId);
+    const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS
+      .map(option => `
+                <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`)
+      .join('');
+    const valueSizeControlMarkup = hasValueSizeControl ? `
+          <div class="form-group">
+            <label for="tile-value-size-select">${utils.escapeHtml(t('Value Font Size:'))}</label>
+            <select id="tile-value-size-select" class="form-control">
+              ${valueSizeOptionsMarkup}
+            </select>
+            <div class="form-help">${utils.escapeHtml(t('Adjusts the state or readout text size for this Quick Access tile.'))}</div>
+          </div>` : '';
 
     const modal = document.createElement('div');
     modal.className = 'modal rename-modal';
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Rename Entity</h2>
+          <h2>${utils.escapeHtml(t('Tile Settings'))}</h2>
           <button class="close-btn">×</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="rename-input">Display Name:</label>
-            <input type="text" id="rename-input" class="form-control" value="${utils.escapeHtml(currentName)}" placeholder="Enter custom name">
+            <label for="rename-input">${utils.escapeHtml(t('Display Name:'))}</label>
+            <input type="text" id="rename-input" class="form-control" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
           </div>
+          ${valueSizeControlMarkup}
         </div>
         <div class="modal-footer">
-          <button id="save-rename-btn" class="btn btn-primary">Save</button>
-          <button id="reset-rename-btn" class="btn btn-secondary">Reset to Default</button>
-          <button id="cancel-rename-btn" class="btn btn-secondary">Cancel</button>
+          <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
+          <button id="reset-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Reset to Default'))}</button>
+          <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
 
     const input = modal.querySelector('#rename-input');
+    const valueSizeSelect = modal.querySelector('#tile-value-size-select');
     const saveBtn = modal.querySelector('#save-rename-btn');
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
@@ -614,26 +638,46 @@ function showRenameModal(entityId) {
 
     if (input) input.focus();
 
+    const refreshQuickAccessAfterTileSettingsChange = () => {
+      renderActiveTab();
+      if (isReorganizeMode) {
+        const container = document.getElementById('quick-controls');
+        if (container) container.classList.add('reorganize-mode');
+        addRemoveButtons();
+      }
+    };
+
     if (saveBtn) {
       saveBtn.onclick = async () => {
-        const newName = input.value.trim();
+        const newName = input ? input.value.trim() : '';
+        let changed = false;
+        let renamed = false;
+
         if (newName && newName !== currentName) {
           // Initialize customEntityNames if it doesn't exist
           if (!state.CONFIG.customEntityNames) {
             state.CONFIG.customEntityNames = {};
           }
           state.CONFIG.customEntityNames[entityId] = newName;
+          changed = true;
+          renamed = true;
+        }
 
+        const nextValueSize = hasValueSizeControl
+          ? normalizeQuickAccessTileValueSize(valueSizeSelect?.value || 'auto')
+          : currentValueSize;
+        if (hasValueSizeControl && nextValueSize !== currentValueSize) {
+          setQuickAccessTileValueSize(entityId, nextValueSize);
+          changed = true;
+        }
+
+        if (changed) {
           await window.electronAPI.updateConfig(state.CONFIG);
-
-          renderActiveTab();
-          if (isReorganizeMode) {
-            const container = document.getElementById('quick-controls');
-            if (container) container.classList.add('reorganize-mode');
-            addRemoveButtons();
-          }
-
-          uiUtils.showToast(`Renamed to "${newName}"`, 'success', 2000);
+          refreshQuickAccessAfterTileSettingsChange();
+          const toastMessage = renamed
+            ? t('Renamed to "{{name}}"', { name: newName })
+            : t('Tile settings saved');
+          uiUtils.showToast(toastMessage, 'success', 2000);
         }
         modal.remove();
       };
@@ -641,19 +685,24 @@ function showRenameModal(entityId) {
 
     if (resetBtn) {
       resetBtn.onclick = async () => {
+        let changed = false;
+
         if (state.CONFIG.customEntityNames && state.CONFIG.customEntityNames[entityId]) {
           delete state.CONFIG.customEntityNames[entityId];
+          changed = true;
+        }
 
+        const hadValueSizeOverride = state.CONFIG.quickAccessTileOptions?.[entityId]?.valueSize !== undefined;
+        if (hadValueSizeOverride) {
+          setQuickAccessTileValueSize(entityId, 'auto');
+          changed = true;
+        }
+
+        if (changed) {
           await window.electronAPI.updateConfig(state.CONFIG);
+          refreshQuickAccessAfterTileSettingsChange();
 
-          renderActiveTab();
-          if (isReorganizeMode) {
-            const container = document.getElementById('quick-controls');
-            if (container) container.classList.add('reorganize-mode');
-            addRemoveButtons();
-          }
-
-          uiUtils.showToast('Reset to default name', 'info', 2000);
+          uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);
         }
         modal.remove();
       };
@@ -812,9 +861,12 @@ function updateEntityInUI(entity, options = {}) {
         return;
       }
       const isPrimary = item.dataset.primaryCard === 'true';
+      const isQuickAccessTile = !isDesktopPin && !isPrimary && !!item.closest('#quick-controls');
       const newControl = isDesktopPin
         ? createDesktopPinControlElement(renderEntity)
-        : createControlElement(renderEntity);
+        : createControlElement(renderEntity, {
+          context: isQuickAccessTile ? 'quick-access' : 'default',
+        });
       if (isPrimary) {
         newControl.dataset.primaryCard = 'true';
       }
@@ -838,6 +890,7 @@ function updateEntityInUI(entity, options = {}) {
 function getControlRenderSignature(entity) {
   if (!entity || !entity.entity_id) return '';
   const attrs = entity.attributes || {};
+  const hasQuickAccessValueSize = isQuickAccessTileValueSizeApplicable(entity);
   return JSON.stringify({
     entityId: entity.entity_id,
     desktopPinned: !!state.CONFIG?.desktopPins?.[entity.entity_id],
@@ -845,6 +898,7 @@ function getControlRenderSignature(entity) {
     displayState: utils.getEntityDisplayState(entity),
     name: utils.getEntityDisplayName(entity),
     icon: utils.getEntityIcon(entity),
+    quickAccessValueSize: hasQuickAccessValueSize ? getQuickAccessTileValueSize(entity.entity_id) : null,
     brightness: attrs.brightness ?? null,
     percentage: attrs.percentage ?? null,
     timerEndsAt: attrs.finishes_at || attrs.end_time || attrs.finish_time || null,
@@ -864,6 +918,146 @@ function getUnavailableControlSignature(entityId) {
     unavailable: true,
     customName,
   });
+}
+
+function escapeHtmlAttribute(value) {
+  return utils.escapeHtml(String(value ?? ''))
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function isTimerLikeSensorEntity(entity) {
+  if (!entity?.entity_id?.startsWith('sensor.')) return false;
+
+  const hasTimerAttributes = entity.attributes && (
+    entity.attributes.finishes_at ||
+    entity.attributes.end_time ||
+    entity.attributes.finish_time ||
+    entity.attributes.duration
+  );
+  if (hasTimerAttributes) return true;
+
+  if (entity.entity_id.toLowerCase().includes('timer')) return true;
+  if (!entity.state || entity.state === 'unavailable' || entity.state === 'unknown') return false;
+
+  const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
+  if (!iso8601Pattern.test(entity.state)) return false;
+
+  const stateTime = new Date(entity.state).getTime();
+  return !isNaN(stateTime) && stateTime > Date.now();
+}
+
+function isQuickAccessTileValueSizeApplicable(entity) {
+  const displayEntity = getEntityForDisplay(entity);
+  if (!displayEntity?.entity_id) return false;
+
+  if (displayEntity.entity_id.startsWith('sensor.')) return true;
+  if (displayEntity.entity_id.startsWith('timer.')) return true;
+
+  if (displayEntity.entity_id.startsWith('light.')) {
+    if (displayEntity.state !== 'on') return true;
+    const brightnessValue = Number(displayEntity.attributes?.brightness);
+    return Number.isFinite(brightnessValue) && brightnessValue >= 0;
+  }
+
+  if (displayEntity.entity_id.startsWith('climate.')) {
+    return !!(displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature);
+  }
+
+  return false;
+}
+
+function isFiniteNumericSensorState(entity) {
+  const raw = typeof entity?.state === 'string' ? entity.state.trim() : entity?.state;
+  if (raw === '' || raw == null) return false;
+  const value = Number(raw);
+  return Number.isFinite(value);
+}
+
+function getQuickAccessSensorPrecision(entity) {
+  const attrs = entity?.attributes || {};
+  const deviceClass = attrs.device_class;
+  const unit = typeof attrs.unit_of_measurement === 'string'
+    ? attrs.unit_of_measurement.trim()
+    : attrs.unit_of_measurement;
+
+  if (deviceClass === 'temperature'
+    || deviceClass === 'humidity'
+    || unit === '%'
+    || unit === '°C'
+    || unit === '°F') {
+    return 1;
+  }
+
+  return 2;
+}
+
+function formatQuickAccessSensorNumber(value, precision) {
+  return Number(value)
+    .toFixed(precision)
+    .replace(/\.?0+$/, '');
+}
+
+function getQuickAccessSensorDisplayParts(entity) {
+  if (!entity?.entity_id?.startsWith('sensor.') || !isFiniteNumericSensorState(entity)) {
+    return null;
+  }
+
+  const value = Number(entity.state);
+  const precision = getQuickAccessSensorPrecision(entity);
+  const unit = typeof entity.attributes?.unit_of_measurement === 'string'
+    ? entity.attributes.unit_of_measurement.trim()
+    : '';
+  const formattedValue = formatQuickAccessSensorNumber(value, precision);
+
+  return {
+    value: formattedValue,
+    unit,
+    text: unit ? `${formattedValue} ${unit}` : formattedValue,
+  };
+}
+
+function normalizeQuickAccessTileValueSize(value) {
+  if (typeof value !== 'string') return 'auto';
+  const normalized = value.trim().toLowerCase();
+  return QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS.has(normalized) ? normalized : 'auto';
+}
+
+function getQuickAccessTileOptions(entityId) {
+  const options = state.CONFIG?.quickAccessTileOptions?.[entityId];
+  return options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+}
+
+function getQuickAccessTileValueSize(entityId) {
+  return normalizeQuickAccessTileValueSize(getQuickAccessTileOptions(entityId).valueSize);
+}
+
+function ensureQuickAccessTileOptionsConfig() {
+  if (!state.CONFIG.quickAccessTileOptions || typeof state.CONFIG.quickAccessTileOptions !== 'object' || Array.isArray(state.CONFIG.quickAccessTileOptions)) {
+    state.CONFIG.quickAccessTileOptions = {};
+  }
+  return state.CONFIG.quickAccessTileOptions;
+}
+
+function setQuickAccessTileValueSize(entityId, valueSize) {
+  const normalized = normalizeQuickAccessTileValueSize(valueSize);
+  const tileOptions = ensureQuickAccessTileOptionsConfig();
+
+  if (normalized === 'auto') {
+    if (tileOptions[entityId]) {
+      delete tileOptions[entityId].valueSize;
+      if (Object.keys(tileOptions[entityId]).length === 0) {
+        delete tileOptions[entityId];
+      }
+    }
+    return normalized;
+  }
+
+  tileOptions[entityId] = {
+    ...(tileOptions[entityId] || {}),
+    valueSize: normalized,
+  };
+  return normalized;
 }
 
 function isEntityDesktopPinned(entityId) {
@@ -3671,7 +3865,7 @@ function renderQuickControls() {
 
         if (entity) {
           // Entity exists in STATES - render normally
-          const control = createControlElement(entity);
+          const control = createControlElement(entity, { context: 'quick-access' });
           control.dataset.renderSignature = nextSignature;
           desiredNodes.push(control);
         } else {
@@ -4090,8 +4284,11 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
   }
 }
 
-function createControlElement(entity) {
+function createControlElement(entity, options = {}) {
   try {
+    const renderContext = options.context || 'default';
+    const isQuickAccessContext = renderContext === 'quick-access';
+
     entity = getEntityForDisplay(entity);
     if (!entity) {
       return document.createElement('div');
@@ -4100,6 +4297,9 @@ function createControlElement(entity) {
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
+    if (isQuickAccessContext && isQuickAccessTileValueSizeApplicable(entity)) {
+      div.dataset.valueSize = getQuickAccessTileValueSize(entity.entity_id);
+    }
     div.addEventListener('contextmenu', (event) => {
       if (div.dataset.desktopPin === 'true') return;
       event.preventDefault();
@@ -4125,31 +4325,7 @@ function createControlElement(entity) {
 
     // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
-    const hasTimerAttributes = entity.attributes && (
-      entity.attributes.finishes_at ||
-      entity.attributes.end_time ||
-      entity.attributes.finish_time ||
-      entity.attributes.duration
-    );
-
-    // Check if entity ID contains "timer" or if state is a valid future timestamp
-    const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
-    let stateIsTimestamp = false;
-    if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
-      // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
-      // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
-      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-      const looksLikeTimestamp = iso8601Pattern.test(entity.state);
-      if (looksLikeTimestamp) {
-        const stateTime = new Date(entity.state).getTime();
-        if (!isNaN(stateTime) && stateTime > Date.now()) {
-          stateIsTimestamp = true;
-        }
-      }
-    }
-
-    const isTimerSensor = entity.entity_id.startsWith('sensor.') && (hasTimerAttributes || hasTimerInName || stateIsTimestamp);
+    const isTimerSensor = isTimerLikeSensorEntity(entity);
     const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
 
     // Handle different entity types (matching main branch)
@@ -4200,7 +4376,22 @@ function createControlElement(entity) {
 
     let stateDisplay = '';
     if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
-      stateDisplay = `<div class="control-state">${state}</div>`;
+      const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(entity) : null;
+
+      if (sensorDisplay) {
+        div.classList.add('sensor-entity', 'sensor-numeric-entity');
+        div.title = `${utils.getEntityDisplayName(entity)}: ${sensorDisplay.text}`;
+        const sensorLabel = escapeHtmlAttribute(sensorDisplay.text);
+        stateDisplay = `
+        <div class="control-state control-sensor-readout" aria-label="${sensorLabel}">
+          <span class="control-sensor-value">${utils.escapeHtml(sensorDisplay.value)}</span>
+          ${sensorDisplay.unit ? `<span class="control-sensor-unit">${utils.escapeHtml(sensorDisplay.unit)}</span>` : ''}
+        </div>
+      `;
+      } else {
+        div.classList.add('sensor-entity');
+        stateDisplay = `<div class="control-state">${state}</div>`;
+      }
     } else if (isTimer) {
       const timerDisplay = utils.escapeHtml(utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state);
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;

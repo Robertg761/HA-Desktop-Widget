@@ -125,7 +125,7 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
   - **Linux (packaged)**: `~/.config/HA Desktop Widget/config.json`
   - **Development builds**: typically use `home-assistant-widget` as the folder name
 - **Config Contents**: `homeAssistant` (url, token, tokenEncrypted), `favoriteEntities`, `customEntityNames`,
-  `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,
+  `quickAccessTileOptions`, `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,
   `windowPosition`, `windowSize`, `opacity`, `ui` (theme, highContrast, opaquePanels, density, accent, background),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
   `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, and `profileSync`.

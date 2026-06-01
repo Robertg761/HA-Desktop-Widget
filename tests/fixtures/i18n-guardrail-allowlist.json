@@ -60,8 +60,6 @@
   "src/settings.js|showToast|showToast('Failed to set popup hotkey', 'error');",
   "src/settings.js|showToast|showToast(`Popup hotkey set to ${hotkey}`, 'success');",
   "src/settings.js|showToast|showToast('Failed to register popup hotkey', 'error');",
-  "src/ui.js|showToast|uiUtils.showToast(`Renamed to \"${newName}\"`, 'success', 2000);",
-  "src/ui.js|showToast|uiUtils.showToast('Reset to default name', 'info', 2000);",
   "src/ui.js|showToast|uiUtils.showToast('Entity removed from Quick Access', 'success', 2000);",
   "src/ui.js|showToast|uiUtils.showToast('Removed desktop pin', 'info', 1800);",
   "src/ui.js|showToast|uiUtils.showToast('Pinned to desktop', 'success', 1800);",

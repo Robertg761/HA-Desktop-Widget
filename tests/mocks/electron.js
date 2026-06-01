@@ -30,6 +30,7 @@ let mockConfig = {
   desktopPins: {},
   customEntityNames: {},
   customEntityIcons: {},
+  quickAccessTileOptions: {},
   selectedWeatherEntity: null,
   primaryMediaPlayer: null,
   ui: {
@@ -361,6 +362,7 @@ function resetMockElectronAPI() {
     desktopPins: {},
     customEntityNames: {},
     customEntityIcons: {},
+    quickAccessTileOptions: {},
     selectedWeatherEntity: null,
     primaryMediaPlayer: null,
     ui: {

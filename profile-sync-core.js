@@ -10,6 +10,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'customEntityNames',
     'customEntityIcons',
     'tileSpans',
+    'quickAccessTileOptions',
     'primaryCards',
     'customTabs',
   ],

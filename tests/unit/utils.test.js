@@ -573,6 +573,7 @@ describe('Utils Module', () => {
         customEntityNames: { 'light.closet light': 'Closet Light' },
         customEntityIcons: { 'light.closet light': '🧰' },
         tileSpans: { 'light.closet light': 2 },
+        quickAccessTileOptions: { 'light.closet light': { valueSize: 'large' } },
         globalHotkeys: {
           enabled: true,
           hotkeys: {
@@ -597,6 +598,7 @@ describe('Utils Module', () => {
       expect(result.config.customEntityNames['light.closet_light']).toBe('Closet Light');
       expect(result.config.customEntityIcons['light.closet_light']).toBe('🧰');
       expect(result.config.tileSpans['light.closet_light']).toBe(2);
+      expect(result.config.quickAccessTileOptions['light.closet_light']).toEqual({ valueSize: 'large' });
       expect(result.config.globalHotkeys.hotkeys['light.closet_light']).toEqual({ hotkey: 'Ctrl+1', action: 'toggle' });
       expect(result.config.entityAlerts.alerts['light.closet_light']).toEqual({ onStateChange: true });
     });
@@ -631,6 +633,9 @@ describe('Utils Module', () => {
         },
         tileSpans: {
           '': 2
+        },
+        quickAccessTileOptions: {
+          '': { valueSize: 'large' }
         },
         globalHotkeys: {
           enabled: true,
@@ -670,6 +675,7 @@ describe('Utils Module', () => {
         customEntityNames: { 'light.missing room': 'Missing Light', '': 'Empty key' },
         customEntityIcons: { 'light.missing room': '🔥' },
         tileSpans: { 'light.missing room': 2 },
+        quickAccessTileOptions: { 'light.missing room': { valueSize: 'large' } },
         globalHotkeys: {
           enabled: true,
           hotkeys: {

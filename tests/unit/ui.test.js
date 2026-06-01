@@ -1309,8 +1309,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       config.favoriteEntities = ['input_button.tv_rewind'];
       state.setConfig(config);
       state.setStates({
-        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
-      });
+	        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
+	      });
 
       ui.renderActiveTab();
 
@@ -1323,6 +1323,318 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledWith('input_button', 'press', {
         entity_id: 'input_button.tv_rewind'
       });
+    });
+
+    it('hides value font size controls for quick access tiles without displayed values', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['input_button.tv_rewind'];
+      config.quickAccessTileOptions = {
+        'input_button.tv_rewind': { valueSize: 'extra-large' }
+      };
+      state.setConfig(config);
+      state.setStates({
+        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
+      });
+
+      ui.renderActiveTab();
+
+      const inputButtonTile = document.querySelector('.control-item[data-entity-id="input_button.tv_rewind"]');
+      expect(inputButtonTile).toBeTruthy();
+      expect(inputButtonTile.dataset.valueSize).toBeUndefined();
+      expect(inputButtonTile.querySelector('.control-state')).toBeNull();
+
+      ui.toggleReorganizeMode();
+      inputButtonTile.querySelector('.rename-btn').click();
+
+      const modal = document.querySelector('.rename-modal');
+      expect(modal).toBeTruthy();
+      expect(modal.querySelector('#tile-value-size-select')).toBeNull();
+
+      modal.querySelector('#reset-rename-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.quickAccessTileOptions['input_button.tv_rewind']).toBeUndefined();
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        quickAccessTileOptions: {}
+      }));
+    });
+
+    it('renders quick access temperature sensors as large rounded readouts', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const sensorTile = document.querySelector('.control-item.sensor-numeric-entity[data-entity-id="sensor.office_temperature"]');
+      expect(sensorTile).toBeTruthy();
+      expect(sensorTile.dataset.valueSize).toBe('auto');
+      expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
+      expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('°C');
+      expect(sensorTile.title).toBe('Office Temperature: 29.3 °C');
+    });
+
+    it('saves quick access tile value font size from the pencil settings modal', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.quickAccessTileOptions = {};
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      const sizeSelect = modal.querySelector('#tile-value-size-select');
+      expect(sizeSelect.value).toBe('auto');
+      sizeSelect.value = 'extra-large';
+      modal.querySelector('#save-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toEqual({
+        valueSize: 'extra-large'
+      });
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        quickAccessTileOptions: {
+          'sensor.office_temperature': { valueSize: 'extra-large' }
+        }
+      }));
+      expect(document.querySelector('.rename-modal')).toBeNull();
+
+      const sensorTile = document.querySelector('.control-item.sensor-numeric-entity[data-entity-id="sensor.office_temperature"]');
+      expect(sensorTile.dataset.valueSize).toBe('extra-large');
+      expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
+    });
+
+    it('resets quick access tile name and value font size from the pencil settings modal', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.customEntityNames = {
+        'sensor.office_temperature': 'Desk "Temp"'
+      };
+      config.quickAccessTileOptions = {
+        'sensor.office_temperature': { valueSize: 'large' }
+      };
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      expect(modal.querySelector('#rename-input').value).toBe('Desk "Temp"');
+      expect(modal.querySelector('#tile-value-size-select').value).toBe('large');
+      modal.querySelector('#reset-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
+      expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toBeUndefined();
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        customEntityNames: {},
+        quickAccessTileOptions: {}
+      }));
+
+      const sensorTile = document.querySelector('.control-item.sensor-numeric-entity[data-entity-id="sensor.office_temperature"]');
+      expect(sensorTile.dataset.valueSize).toBe('auto');
+      expect(sensorTile.querySelector('.control-name').textContent).toBe('Office Temperature');
+    });
+
+    it('trims trailing zeros for quick access humidity readouts', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_humidity'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_humidity': {
+          entity_id: 'sensor.office_humidity',
+          state: '37.0',
+          attributes: {
+            friendly_name: 'Office Humidity',
+            unit_of_measurement: '%',
+            device_class: 'humidity'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const sensorTile = document.querySelector('.control-item.sensor-numeric-entity[data-entity-id="sensor.office_humidity"]');
+      expect(sensorTile).toBeTruthy();
+      expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('37');
+      expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('%');
+    });
+
+    it('caps other quick access numeric sensor readouts at two decimals', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_power'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_power': {
+          entity_id: 'sensor.office_power',
+          state: '123.4567',
+          attributes: {
+            friendly_name: 'Office Power',
+            unit_of_measurement: 'W',
+            device_class: 'power'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const sensorTile = document.querySelector('.control-item.sensor-numeric-entity[data-entity-id="sensor.office_power"]');
+      expect(sensorTile).toBeTruthy();
+      expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('123.46');
+      expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('W');
+    });
+
+    it('keeps quick access numeric sensor formatting after live entity updates', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+      ui.updateEntityInUI({
+        entity_id: 'sensor.office_temperature',
+        state: '30.5999988132053',
+        attributes: {
+          friendly_name: 'Office Temperature',
+          unit_of_measurement: '°C',
+          device_class: 'temperature'
+        }
+      });
+
+      const sensorTile = document.querySelector('.control-item.sensor-numeric-entity[data-entity-id="sensor.office_temperature"]');
+      expect(sensorTile).toBeTruthy();
+      expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('30.6');
+      expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('°C');
+    });
+
+    it('leaves non-numeric quick access sensors on the standard state path', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.window_status'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.window_status': {
+          entity_id: 'sensor.window_status',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Window Status'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const sensorTile = document.querySelector('.control-item[data-entity-id="sensor.window_status"]');
+      expect(sensorTile).toBeTruthy();
+      expect(sensorTile.classList.contains('sensor-numeric-entity')).toBe(false);
+      expect(sensorTile.querySelector('.control-sensor-value')).toBeNull();
+      expect(sensorTile.querySelector('.control-state').textContent).toBe('open');
+    });
+
+    it('keeps timer-like quick access sensors on the timer tile path', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.kitchen_timer'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.kitchen_timer': {
+          entity_id: 'sensor.kitchen_timer',
+          state: 'active',
+          attributes: {
+            friendly_name: 'Kitchen Timer',
+            duration: '00:10:00'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const timerTile = document.querySelector('.control-item.timer-entity[data-entity-id="sensor.kitchen_timer"]');
+      expect(timerTile).toBeTruthy();
+      expect(timerTile.classList.contains('sensor-numeric-entity')).toBe(false);
+      expect(timerTile.querySelector('.control-sensor-value')).toBeNull();
+    });
+
+    it('does not apply quick access sensor readout formatting to primary entity cards', () => {
+      document.body.insertAdjacentHTML('beforeend', '<div id="time-card"></div>');
+      const config = state.CONFIG;
+      config.favoriteEntities = [];
+      config.primaryCards = ['sensor.office_temperature', 'none'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const primarySensorTile = document.querySelector('#weather-card .control-item[data-entity-id="sensor.office_temperature"]');
+      expect(primarySensorTile).toBeTruthy();
+      expect(primarySensorTile.classList.contains('sensor-numeric-entity')).toBe(false);
+      expect(primarySensorTile.querySelector('.control-sensor-value')).toBeNull();
+      expect(primarySensorTile.querySelector('.control-state').textContent).toBe('29.2999988132053 °C');
     });
 
     it('re-renders climate tiles when temperature attributes change', () => {

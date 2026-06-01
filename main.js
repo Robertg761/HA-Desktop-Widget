@@ -4,7 +4,6 @@ const fs = require('fs');
 const os = require('os');
 const { pathToFileURL, fileURLToPath } = require('url');
 const log = require('electron-log');
-const { autoUpdater } = require('electron-updater');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
@@ -40,6 +39,15 @@ const {
 const { configureMainLogging } = require('./src/main-logging.cjs');
 
 configureMainLogging(log, { isPackaged: app.isPackaged });
+
+let autoUpdaterInstance = null;
+
+function getAutoUpdater() {
+  if (!autoUpdaterInstance) {
+    ({ autoUpdater: autoUpdaterInstance } = require('electron-updater'));
+  }
+  return autoUpdaterInstance;
+}
 
 // HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
 const httpKeepAliveAgent = new http.Agent({
@@ -1854,6 +1862,7 @@ function loadConfig(options = {}) {
     primaryCards: ['weather', 'time'],
     desktopPins: {},
     customEntityIcons: {},
+    quickAccessTileOptions: {},
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
     popupHotkeyToggleMode: false, // Press once to show, press again to hide (instead of hold)
@@ -2214,6 +2223,7 @@ function hasMeaningfulConfigData(inputConfig) {
   if (isPlainObject(inputConfig.customTabs) && Object.keys(inputConfig.customTabs).length > 0) return true;
   if (Array.isArray(inputConfig.customTabs) && inputConfig.customTabs.length > 0) return true;
   if (isPlainObject(inputConfig.customEntityIcons) && Object.keys(inputConfig.customEntityIcons).length > 0) return true;
+  if (isPlainObject(inputConfig.quickAccessTileOptions) && Object.keys(inputConfig.quickAccessTileOptions).length > 0) return true;
   if (isPlainObject(inputConfig.globalHotkeys?.hotkeys) && Object.keys(inputConfig.globalHotkeys.hotkeys).length > 0) return true;
   if (isPlainObject(inputConfig.entityAlerts?.alerts) && Object.keys(inputConfig.entityAlerts.alerts).length > 0) return true;
   if (typeof inputConfig.primaryMediaPlayer === 'string' && inputConfig.primaryMediaPlayer.trim()) return true;
@@ -2775,7 +2785,7 @@ function buildTrayContextMenu() {
               }
             });
           } else {
-            autoUpdater.checkForUpdates();
+            getAutoUpdater().checkForUpdates();
           }
         } else {
           log.info('Update check is only available in packaged builds.');
@@ -3451,7 +3461,7 @@ ipcMain.handle('check-for-updates', async () => {
     };
   }
   try {
-    const info = await autoUpdater.checkForUpdates();
+    const info = await getAutoUpdater().checkForUpdates();
     return { status: 'checking', info };
   } catch (e) {
     return { status: 'error', error: e?.message };
@@ -3461,7 +3471,7 @@ ipcMain.handle('check-for-updates', async () => {
 ipcMain.handle('quit-and-install', () => {
   if (app.isPackaged && !isPortableBuild()) {
     isQuitting = true;
-    autoUpdater.quitAndInstall();
+    getAutoUpdater().quitAndInstall();
   }
 });
 
@@ -4162,6 +4172,7 @@ function setupAutoUpdates() {
     return;
   }
   try {
+    const autoUpdater = getAutoUpdater();
     autoUpdater.logger = log;
     autoUpdater.logger.transports.file.level = 'info';
     autoUpdater.autoDownload = true;

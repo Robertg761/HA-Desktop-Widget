@@ -5335,6 +5335,111 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   width: 100%;
 }
 
+#quick-controls .control-item.sensor-numeric-entity {
+  min-height: 74px;
+  gap: 6px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-icon {
+  margin-bottom: 0;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-name {
+  font-size: 9px;
+  line-height: 1.15;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-readout {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  min-height: 24px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-unit {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+#quick-controls .control-item[data-value-size='small'] .control-state:not(.control-sensor-readout) {
+  font-size: 10px;
+}
+
+#quick-controls .control-item[data-value-size='normal'] .control-state:not(.control-sensor-readout) {
+  font-size: 12px;
+}
+
+#quick-controls .control-item[data-value-size='large'] .control-state:not(.control-sensor-readout) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+#quick-controls .control-item[data-value-size='extra-large'] .control-state:not(.control-sensor-readout) {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] {
+  min-height: 66px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] .control-sensor-value {
+  font-size: 16px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] .control-sensor-unit {
+  font-size: 9px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='normal'] .control-sensor-value {
+  font-size: 18px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='normal'] .control-sensor-unit {
+  font-size: 10px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='large'] .control-sensor-value {
+  font-size: 22px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='large'] .control-sensor-unit {
+  font-size: 11px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] {
+  min-height: 80px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-value {
+  font-size: 26px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-unit {
+  font-size: 12px;
+}
+
 .entity-info {
   flex: 1;
   min-width: 0;
@@ -7394,7 +7499,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: 14px;
 }
 
-.rename-modal input {
+.rename-modal input,
+.rename-modal select {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--border-color);
@@ -7409,7 +7515,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   cursor: text;
 }
 
-.rename-modal input:focus {
+.rename-modal select {
+  cursor: pointer;
+}
+
+.rename-modal input:focus,
+.rename-modal select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
@@ -7575,6 +7686,38 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   }
 
   .control-state {
+    font-size: 11px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity {
+    min-height: 68px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity .control-sensor-value {
+    font-size: 20px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity .control-sensor-unit {
+    font-size: 10px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] .control-sensor-value {
+    font-size: 15px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity[data-value-size='normal'] .control-sensor-value {
+    font-size: 18px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity[data-value-size='large'] .control-sensor-value {
+    font-size: 20px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-value {
+    font-size: 22px;
+  }
+
+  #quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-unit {
     font-size: 11px;
   }
 }

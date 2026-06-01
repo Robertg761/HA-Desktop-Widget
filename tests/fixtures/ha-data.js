@@ -57,6 +57,7 @@ const sampleConfig = {
     'sensor.temperature': 'Room Temp'
   },
   customEntityIcons: {},
+  quickAccessTileOptions: {},
   selectedWeatherEntity: 'weather.home',
   primaryMediaPlayer: 'media_player.spotify',
   ui: {
