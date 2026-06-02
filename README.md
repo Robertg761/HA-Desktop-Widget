@@ -16,7 +16,7 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 ![Personalization Tab](images/Personalization_Tab.png?v=20260601)
 
-The Personalization tab covers themes, window effects, primary cards, media tile selection, and language packs. Other Settings tabs include hotkeys, alerts, updates, profile sync, and log access.
+The Settings modal is organized into General, Personalization, Hotkeys, Alerts, and Advanced. Personalization covers color themes, window effects, weather animations, primary cards, custom entity icons, and media tile selection. General includes Home Assistant connection, window behavior, language packs, profile sync, and update checks.
 
 ## Weather Effects
 
@@ -27,34 +27,42 @@ The Personalization tab covers themes, window effects, primary cards, media tile
 ### Smart Home Control
 - **Real-time Updates**: WebSocket connection for instant entity state changes
 - **Quick Access Dashboard**: Customizable grid of your most-used entities
-- **Entity Management**: Add, remove, and reorder entities with drag-and-drop
-- **Custom Names**: Rename entities with custom display names that persist
+- **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
+- **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles
+- **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant
+- **Tile Options**: Adjust selected Quick Access readout sizing for dense or prominent tiles
 - **Interactive Controls**: Toggle lights, switches, scenes, and more with a single click
 
 ### Modern Interface
 - **Rainmeter-style Design**: Clean, transparent desktop widget aesthetic
 - **Responsive Layout**: Auto-sizing tiles that adapt to content
 - **Dark/Light Themes**: Automatic theme switching based on system preferences
+- **Color Personalization**: Built-in and custom accent/background colors with live preview
+- **Weather Effects**: Optional subtle rain, snow, clouds, sun, and storm animations when frosted glass is enabled
 - **Smooth Animations**: Fluid drag-and-drop and hover effects
 - **Toast Notifications**: Real-time feedback for all actions
 
 ### Entity Support
-- **Lights**: Toggle on/off, brightness control with vertical slider
-- **Switches & Fans**: Simple on/off controls
-- **Sensors**: Real-time value display with units
+- **Lights**: Toggle on/off, brightness control, and desktop-pin brightness presets
+- **Switches, Fans & Input Booleans**: Simple on/off controls, with fan speed controls where available
+- **Covers & Locks**: Open/close and lock/unlock controls
+- **Sensors & Binary Sensors**: Real-time value display with units and state-aware icons
 - **Timers**: Live countdown displays for active timers
 - **Cameras**: Live feed viewing with snapshot fallback
 - **Climate**: Temperature display and control
-- **Media Players**: Play/pause, previous/next, artwork, and seek bar
-- **Scenes**: One-click scene activation
+- **Media Players**: Play/pause, previous/next, artwork, seek bar, and 10-second rewind/fast-forward where supported
+- **Scenes, Scripts & Buttons**: One-click scene activation, script running, and button/input-button pressing
+- **Automations**: Trigger, toggle, enable, or disable from configured hotkeys
 
 ### Advanced Features
 - **Auto-Updates**: GitHub release checks for packaged builds, with manual download flow for portable builds
 - **System Tray**: Minimize to tray with quick access menu
+- **Start at Login**: Optional OS login startup control
 - **Configuration**: Easy setup with Home Assistant URL and token
 - **Performance**: Optimized rendering and memory management
 - **Cross-Platform**: Windows, macOS, and Linux support with transparency effects where available
-- **Personalization**: Accent/background themes, window opacity, and frosted glass
+- **Personalization**: Accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
+- **Localization**: Auto/system language mode with downloadable offline language packs
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
 - **Alerts**: Desktop notifications for entity state changes
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
@@ -87,26 +95,35 @@ The Personalization tab covers themes, window effects, primary cards, media tile
 - **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
 - **Remove**: In reorganize mode, click the remove button to remove entities
+- **Pin to Desktop**: In reorganize mode or the tile context menu, pin supported Quick Access entities as standalone desktop tiles
 
 ### Entity Interactions
 - **Lights**: Click to toggle, long-press for brightness slider
+- **Fans**: Click to toggle, long-press for speed controls
+- **Covers**: Click to open/close, long-press for open/stop/close controls
+- **Climate**: Long-press for target temperature and mode controls
+- **Media Players**: Use the media tile controls or long-press a media player for details and seek controls
 - **Cameras**: Click to view live feed in popup window
 - **Sensors**: Display real-time values with automatic unit formatting
 - **Timers**: Show live countdown when active
-- **Scenes**: Click to activate instantly
+- **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
 
 ### System Integration
 - **Minimize to Tray**: Click the minimize button to hide to system tray
 - **Auto-Updates**: Supported packaged builds check for updates in the background; portable builds offer a GitHub download link
+- **Start at Login**: Enable or disable startup from Settings > General
 - **Settings**: Access via the Settings button or right-click the tray icon
 
 ### Settings Highlights
-- **Themes**: Choose accent and background color themes
-- **Window Effects**: Adjust opacity and toggle frosted glass
+- **General**: Configure Home Assistant connection, always-on-top, startup behavior, language packs, profile sync, and updates
+- **Themes**: Choose built-in or custom accent and background colors
+- **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects
 - **Primary Cards**: Pin weather/time or any entity to the top two cards
+- **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
 - **Media Tile**: Select the primary media player or hide the tile
-- **Hotkeys**: Configure global entity hotkeys and a popup hotkey (hold or toggle)
-- **Alerts**: Enable desktop notifications for entity state changes
+- **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold or toggle)
+- **Alerts**: Enable desktop notifications for entity state changes or target states
+- **Advanced**: Open logs and enable detailed interaction diagnostics when troubleshooting
 
 ## Advanced Usage
 
@@ -116,8 +133,11 @@ git clone https://github.com/Robertg761/HA-Desktop-Widget.git
 cd HA-Desktop-Widget
 npm install
 npm run dev   # Development mode (opens DevTools)
-npm start     # Regular run
-npm run dist        # Build Windows distribution artifacts
+npm start     # Regular run (builds the renderer, then starts Electron)
+npm run lint  # Run ESLint
+npm test      # Run Jest tests
+npm run dist        # Build Windows NSIS and portable artifacts
+npm run dist:win    # Build Windows NSIS installer artifacts
 npm run dist:mac    # Build macOS distribution artifacts
 npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
@@ -129,8 +149,9 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
   - **Linux (packaged)**: `~/.config/HA Desktop Widget/config.json`
   - **Development builds**: typically use `home-assistant-widget` as the folder name
 - **Config Contents**: `homeAssistant` (url, token, tokenEncrypted), `favoriteEntities`, `customEntityNames`,
-  `quickAccessTileOptions`, `selectedWeatherEntity`, `primaryMediaPlayer`, `globalHotkeys`, `entityAlerts`, `popupHotkey`,
-  `windowPosition`, `windowSize`, `opacity`, `ui` (theme, highContrast, opaquePanels, density, accent, background),
+  `desktopPins`, `customEntityIcons`, `quickAccessTileOptions`, `tileSpans`, `selectedWeatherEntity`, `primaryMediaPlayer`,
+  `globalHotkeys`, `entityAlerts`, `popupHotkey`, `windowPosition`, `windowSize`, `opacity`, `ui` (theme, accent, background,
+  language, customColors, use24HourClock, weatherEffectsEnabled, weatherOverride, enableInteractionDebugLogs),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
   `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, and `profileSync`.
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
@@ -139,7 +160,7 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
 - **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
 - **Default sync folder**: Starts in the app's local data folder (`userData`) and stores profile data in `ha-widget-profile-sync.json`.
 - **Folder changes**: When switching folders, the app can copy the existing sync file to the new location or keep the current folder.
-- **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections.
+- **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections for Quick Access/layout, visual personalization, automation/alerts, and connection/media preferences.
 - **Need help button**: Opens profile sync setup instructions in your browser.
 - **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
 - **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
