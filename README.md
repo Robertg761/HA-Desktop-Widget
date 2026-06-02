@@ -18,6 +18,10 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 The Personalization tab covers themes, window effects, primary cards, media tile selection, and language packs. Other Settings tabs include hotkeys, alerts, updates, profile sync, and log access.
 
+## Weather Effects
+
+![Rain Effect](images/Rain_Effect.png) ![Snow Effect](images/Snow_Effect.png)
+
 ## Features
 
 ### Smart Home Control
