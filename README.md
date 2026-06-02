@@ -10,17 +10,17 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 - [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-me-orange)](https://github.com/sponsors/robertg761)
 
-![Main View](images/Main_View.png) ![Edit View](images/Edit_View.png) ![Light_Adjust](images/Light_Adjust.png)
+![Main View](images/Main_View.png?v=20260601) ![Edit View](images/Edit_View.png?v=20260601) ![Light Adjust](images/Light_Adjust.png?v=20260601)
 
 ## Settings: Personalization
 
-![Personalization Tab](images/Personalization_Tab.png)
+![Personalization Tab](images/Personalization_Tab.png?v=20260601)
 
 The Personalization tab covers themes, window effects, primary cards, media tile selection, and language packs. Other Settings tabs include hotkeys, alerts, updates, profile sync, and log access.
 
 ## Weather Effects
 
-![Rain Effect](images/Rain_Effect.png) ![Snow Effect](images/Snow_Effect.png)
+![Rain Effect](images/Rain_Effect.png?v=20260601) ![Snow Effect](images/Snow_Effect.png?v=20260601)
 
 ## Features
 
