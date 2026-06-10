@@ -432,6 +432,13 @@ function getWindowTransparencyOptions() {
     transparent = true;
   }
 
+  // On Windows without frosted glass, use an opaque native window so setOpacity()
+  // controls the whole widget. CSS-only alpha on transparent Win32 windows renders
+  // as a solid block because backdrop-filter compositing does not show through.
+  if (process.platform === 'win32' && config && !config.frostedGlass) {
+    transparent = false;
+  }
+
   return {
     transparent,
     backgroundColor: transparent ? '#00000000' : '#28282d',
@@ -2649,6 +2656,11 @@ function createWindow() {
     } else if (process.platform === 'darwin') {
       windowOptions.vibrancy = 'sidebar';
     }
+  }
+
+  // Keep native edge resize hit targets on frameless Windows windows.
+  if (process.platform === 'win32') {
+    windowOptions.thickFrame = true;
   }
 
   mainWindow = new BrowserWindow(windowOptions);

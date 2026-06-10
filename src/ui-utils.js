@@ -3,7 +3,6 @@ import { t } from './i18n.js';
 
 let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
-let cachedPlatform = null;
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const MIN_BACKGROUND_OPACITY = 0.08;
@@ -425,13 +424,7 @@ function applyBackgroundThemeFromColor(hex) {
  * @returns {string|null} The platform identifier (e.g. 'win32', 'darwin') if available, `null` otherwise.
  */
 function getPlatform() {
-  if (cachedPlatform) return cachedPlatform;
-  const platform = window?.electronAPI?.platform;
-  if (platform) {
-    cachedPlatform = platform;
-    return cachedPlatform;
-  }
-  return null;
+  return window?.electronAPI?.platform || null;
 }
 
 function isLightThemeActive() {
@@ -515,7 +508,9 @@ function applyWindowEffects(config = {}) {
     const body = document.body;
     const enabled = !!config.frostedGlass;
     const platform = getPlatform();
-    const linuxPerformanceMode = platform === 'linux';
+    // Disable CSS backdrop filters when the platform uses native window opacity instead
+    // of CSS alpha (Linux default, Windows without frosted glass).
+    const linuxPerformanceMode = platform === 'linux' || (platform === 'win32' && !enabled);
     const opacity = Math.max(0.5, Math.min(1, Number(config.opacity) || 1));
     const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
