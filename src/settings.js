@@ -3778,17 +3778,11 @@ async function saveSettings() {
 
     const platform = window?.electronAPI?.platform || 'web';
     const nextOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
-    const nextFrostedGlass = !!state.CONFIG.frostedGlass;
     const opacityNeedsRestart = platform === 'linux' &&
       ((prevOpacity === 1 && nextOpacity < 1) || (prevOpacity < 1 && nextOpacity === 1));
-    const frostedGlassNeedsRestart = platform === 'win32' && prevFrostedGlass !== nextFrostedGlass;
-    const windowModeNeedsRestart = opacityNeedsRestart || frostedGlassNeedsRestart;
 
-    if (windowModeNeedsRestart) {
-      const restartMessage = frostedGlassNeedsRestart
-        ? 'Changing the frosted glass setting on Windows requires an app restart. Restart now?'
-        : 'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?';
-      if (confirm(restartMessage)) {
+    if (opacityNeedsRestart) {
+      if (confirm('Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?')) {
         await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
         await window.electronAPI.restartApp();
         return;
