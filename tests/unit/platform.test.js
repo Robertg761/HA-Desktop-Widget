@@ -1,6 +1,7 @@
 const path = require('path');
 const {
   getAppIconPath,
+  getMainWindowVisualOptions,
   isLinuxAppImage,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
@@ -34,5 +35,62 @@ describe('platform helpers', () => {
     expect(shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: 'true' })).toBe(true);
     expect(shouldUseTransparentWindow('win32', {})).toBe(true);
     expect(shouldUseTransparentWindow('darwin', {})).toBe(true);
+  });
+
+  test('keeps Windows transparent and resizable without frosted glass', () => {
+    expect(getMainWindowVisualOptions({
+      platform: 'win32',
+      frostedGlass: false,
+      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+    })).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+      thickFrame: true,
+    });
+  });
+
+  test('enables Windows acrylic only when frosted glass is enabled', () => {
+    expect(getMainWindowVisualOptions({
+      platform: 'win32',
+      frostedGlass: true,
+      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+    })).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+      thickFrame: true,
+      backgroundMaterial: 'acrylic',
+    });
+  });
+
+  test('enables macOS vibrancy only when frosted glass is enabled', () => {
+    expect(getMainWindowVisualOptions({
+      platform: 'darwin',
+      frostedGlass: true,
+      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+    })).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+      vibrancy: 'sidebar',
+    });
+
+    expect(getMainWindowVisualOptions({
+      platform: 'darwin',
+      frostedGlass: false,
+      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+    })).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+    });
+  });
+
+  test('leaves Linux visual options driven by transparency options', () => {
+    expect(getMainWindowVisualOptions({
+      platform: 'linux',
+      frostedGlass: true,
+      transparencyOptions: { transparent: false, backgroundColor: '#28282d' },
+    })).toEqual({
+      transparent: false,
+      backgroundColor: '#28282d',
+    });
   });
 });

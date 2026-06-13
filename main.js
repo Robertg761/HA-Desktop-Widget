@@ -33,6 +33,7 @@ const {
 } = require('./src/linux-startup.cjs');
 const {
   getAppIconPath,
+  getMainWindowVisualOptions,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
@@ -2621,13 +2622,17 @@ function createWindow() {
 
   // Create the browser window. Linux defaults to an opaque native window because
   // transparent Electron windows are a major compositor performance cost there.
+  const visualOptions = getMainWindowVisualOptions({
+    platform: process.platform,
+    frostedGlass: !!config.frostedGlass,
+    transparencyOptions,
+  });
   const windowOptions = {
     x: config.windowPosition.x,
     y: config.windowPosition.y,
     width: config.windowSize.width,
     height: config.windowSize.height,
-    transparent: transparencyOptions.transparent,
-    backgroundColor: transparencyOptions.backgroundColor,
+    ...visualOptions,
     frame: false,
     alwaysOnTop: config.alwaysOnTop,
     skipTaskbar: true,
@@ -2642,19 +2647,6 @@ function createWindow() {
       backgroundThrottling: false,
     }
   };
-
-  if (config.frostedGlass) {
-    if (process.platform === 'win32') {
-      windowOptions.backgroundMaterial = 'acrylic';
-    } else if (process.platform === 'darwin') {
-      windowOptions.vibrancy = 'sidebar';
-    }
-  }
-
-  // Keep native edge resize hit targets on frameless Windows windows.
-  if (process.platform === 'win32') {
-    windowOptions.thickFrame = true;
-  }
 
   mainWindow = new BrowserWindow(windowOptions);
   hardenRendererNavigation(mainWindow);

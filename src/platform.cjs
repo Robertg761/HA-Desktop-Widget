@@ -24,8 +24,27 @@ function shouldUseTransparentWindow(platform = process.platform, env = process.e
   return override === '1' || override === 'true' || override === 'yes';
 }
 
+function getMainWindowVisualOptions({ platform = process.platform, frostedGlass = false, transparencyOptions = {} } = {}) {
+  const options = {
+    transparent: !!transparencyOptions.transparent,
+    backgroundColor: transparencyOptions.backgroundColor || (transparencyOptions.transparent ? '#00000000' : '#28282d'),
+  };
+
+  if (platform === 'win32') {
+    options.thickFrame = true;
+    if (frostedGlass) {
+      options.backgroundMaterial = 'acrylic';
+    }
+  } else if (platform === 'darwin' && frostedGlass) {
+    options.vibrancy = 'sidebar';
+  }
+
+  return options;
+}
+
 module.exports = {
   getAppIconPath,
+  getMainWindowVisualOptions,
   isLinuxAppImage,
   shouldUseTransparentWindow,
   supportsAutoUpdater,

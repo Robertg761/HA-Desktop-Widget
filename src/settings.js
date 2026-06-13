@@ -3521,7 +3521,6 @@ async function saveSettings() {
   try {
     const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
     const prevOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
-    const prevFrostedGlass = !!state.CONFIG.frostedGlass;
     const prevProfileSync = { ...(state.CONFIG.profileSync || {}) };
 
     // Store previous HA connection settings to detect if reconnect is needed
