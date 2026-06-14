@@ -627,6 +627,59 @@ function normalizeVersion(value) {
   return String(value).trim().replace(/^v/i, '');
 }
 
+function parseVersionParts(value) {
+  const normalized = normalizeVersion(value);
+  const match = normalized.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
+  if (!match) return null;
+  return {
+    version: normalized,
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4] || '',
+  };
+}
+
+function comparePrereleaseIdentifiers(left, right) {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) return Number(left) - Number(right);
+  if (leftNumeric) return -1;
+  if (rightNumeric) return 1;
+  return left.localeCompare(right);
+}
+
+function compareVersions(leftValue, rightValue) {
+  const left = parseVersionParts(leftValue);
+  const right = parseVersionParts(rightValue);
+  if (!left && !right) return 0;
+  if (!left) return -1;
+  if (!right) return 1;
+
+  for (const key of ['major', 'minor', 'patch']) {
+    if (left[key] !== right[key]) return left[key] - right[key];
+  }
+
+  if (!left.prerelease && !right.prerelease) return 0;
+  if (!left.prerelease) return 1;
+  if (!right.prerelease) return -1;
+
+  const leftParts = left.prerelease.split('.');
+  const rightParts = right.prerelease.split('.');
+  const max = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < max; index += 1) {
+    if (leftParts[index] === undefined) return -1;
+    if (rightParts[index] === undefined) return 1;
+    const compared = comparePrereleaseIdentifiers(leftParts[index], rightParts[index]);
+    if (compared !== 0) return compared;
+  }
+  return 0;
+}
+
+function isPrereleaseVersion(value) {
+  return !!parseVersionParts(value)?.prerelease;
+}
+
 function generateProfileSyncDeviceId() {
   const host = (os.hostname && os.hostname()) || 'unknown-host';
   const raw = `${host}-${process.platform}-${process.arch}-${Date.now()}-${Math.random()}`;
@@ -677,6 +730,16 @@ function ensureProfileSyncConfigDefaults(target) {
   if (typeof target.profileSync.lastSyncError !== 'string') {
     target.profileSync.lastSyncError = '';
   }
+  return target;
+}
+
+function ensureUpdateConfigDefaults(target) {
+  if (!target || typeof target !== 'object') return target;
+  target.updates = {
+    allowPrerelease: false,
+    ...(target.updates || {}),
+  };
+  target.updates.allowPrerelease = target.updates.allowPrerelease === true;
   return target;
 }
 
@@ -1864,6 +1927,9 @@ function loadConfig(options = {}) {
     desktopPins: {},
     customEntityIcons: {},
     quickAccessTileOptions: {},
+    updates: {
+      allowPrerelease: false,
+    },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
     popupHotkeyToggleMode: false, // Press once to show, press again to hide (instead of hold)
@@ -1879,6 +1945,7 @@ function loadConfig(options = {}) {
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
         ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) },
         profileSync: { ...defaultConfig.profileSync, ...(userConfig.profileSync || {}) },
+        updates: { ...defaultConfig.updates, ...(userConfig.updates || {}) },
       };
       normalizeDesktopPinsConfig(config);
       pruneConfig(config);
@@ -1886,6 +1953,7 @@ function loadConfig(options = {}) {
         config.ui.language = 'auto';
       }
       ensureProfileSyncConfigDefaults(config);
+      ensureUpdateConfigDefaults(config);
 
       // Handle token encryption/decryption
       if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
@@ -2015,6 +2083,7 @@ function loadConfig(options = {}) {
           config = { ...defaultConfig, ...legacyConfig };
           pruneConfig(config);
           ensureProfileSyncConfigDefaults(config);
+          ensureUpdateConfigDefaults(config);
           normalizeDesktopPinsConfig(config);
           migrated = true;
         } catch (error) {
@@ -2025,6 +2094,7 @@ function loadConfig(options = {}) {
         config = defaultConfig;
       }
       ensureProfileSyncConfigDefaults(config);
+      ensureUpdateConfigDefaults(config);
       normalizeDesktopPinsConfig(config);
       // Ensure directory exists and persist
       fs.mkdirSync(userDataDir, { recursive: true });
@@ -2038,6 +2108,7 @@ function loadConfig(options = {}) {
     config = defaultConfig;
     pruneConfig(config);
     ensureProfileSyncConfigDefaults(config);
+    ensureUpdateConfigDefaults(config);
     normalizeDesktopPinsConfig(config);
   }
 
@@ -2925,8 +2996,10 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   pruneConfig(newConfig);
   const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
-  config = { ...config, ...newConfig, customTabs, profileSync };
+  const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
+  config = { ...config, ...newConfig, customTabs, profileSync, updates };
   ensureProfileSyncConfigDefaults(config);
+  ensureUpdateConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   pruneConfig(config);
   if (
@@ -2961,6 +3034,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   saveConfig();
   if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
     createTray();
+  }
+  if (prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease && autoUpdaterInstance) {
+    configureAutoUpdaterChannel(autoUpdaterInstance);
   }
   syncDesktopPinWindowsWithConfig();
   pushConfigToRenderer();
@@ -3458,7 +3534,9 @@ ipcMain.handle('check-for-updates', async () => {
     };
   }
   try {
-    const info = await getAutoUpdater().checkForUpdates();
+    const autoUpdater = getAutoUpdater();
+    configureAutoUpdaterChannel(autoUpdater);
+    const info = await autoUpdater.checkForUpdates();
     return { status: 'checking', info };
   } catch (e) {
     return { status: 'error', error: e?.message };
@@ -3637,8 +3715,10 @@ ipcMain.handle('save-config', (event, newConfig) => {
   // Update the config with the new values
   pruneConfig(newConfig);
   ensureProfileSyncConfigDefaults(newConfig);
+  ensureUpdateConfigDefaults(newConfig);
   config = newConfig;
   ensureProfileSyncConfigDefaults(config);
+  ensureUpdateConfigDefaults(config);
   pruneConfig(config);
   saveConfig();
   pushConfigToRenderer();
@@ -4107,9 +4187,40 @@ function setupEntityAlerts() {
   log.info('Entity alerts enabled');
 }
 
+function getUpdatesConfig() {
+  ensureUpdateConfigDefaults(config);
+  return config.updates;
+}
+
+function configureAutoUpdaterChannel(autoUpdater = getAutoUpdater()) {
+  const allowPrerelease = !!getUpdatesConfig().allowPrerelease;
+  autoUpdater.allowPrerelease = allowPrerelease;
+  return autoUpdater;
+}
+
+function selectPortableRelease(releases, allowPrerelease) {
+  const currentVersion = normalizeVersion(app.getVersion());
+  return (Array.isArray(releases) ? releases : [])
+    .filter((release) => release && !release.draft)
+    .filter((release) => allowPrerelease || !release.prerelease)
+    .filter((release) => {
+      const version = normalizeVersion(release.tag_name || release.name || '');
+      if (!version) return false;
+      return !currentVersion || compareVersions(version, currentVersion) > 0;
+    })
+    .sort((left, right) => {
+      const leftVersion = normalizeVersion(left.tag_name || left.name || '');
+      const rightVersion = normalizeVersion(right.tag_name || right.name || '');
+      return compareVersions(rightVersion, leftVersion);
+    })[0] || null;
+}
+
 async function checkPortableUpdate() {
   const repo = 'Robertg761/HA-Desktop-Widget';
-  const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
+  const allowPrerelease = !!getUpdatesConfig().allowPrerelease;
+  const apiUrl = allowPrerelease
+    ? `https://api.github.com/repos/${repo}/releases?per_page=20`
+    : `https://api.github.com/repos/${repo}/releases/latest`;
   try {
     const response = await axios.get(apiUrl, {
       headers: {
@@ -4119,7 +4230,12 @@ async function checkPortableUpdate() {
       timeout: 10000
     });
 
-    const release = response?.data || {};
+    const release = allowPrerelease
+      ? selectPortableRelease(response?.data, allowPrerelease)
+      : (response?.data || {});
+    if (!release) {
+      return { status: 'none', message: mainT('You are up to date!') };
+    }
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const arch = process.arch || 'x64';
     const archToken = `win-${arch}`;
@@ -4142,13 +4258,15 @@ async function checkPortableUpdate() {
       };
     }
 
-    if (currentVersion && latestVersion === currentVersion) {
+    if (currentVersion && compareVersions(latestVersion, currentVersion) <= 0) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
 
     return {
       status: 'portable',
-      message: mainT('Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.', { version: latestVersion }),
+      message: isPrereleaseVersion(latestVersion)
+        ? mainT('Portable beta update available: v{{version}}. Click "Download Portable Update" to get the Portable build.', { version: latestVersion })
+        : mainT('Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.', { version: latestVersion }),
       version: latestVersion,
       downloadUrl
     };
@@ -4174,6 +4292,7 @@ function setupAutoUpdates() {
     autoUpdater.logger.transports.file.level = 'info';
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    configureAutoUpdaterChannel(autoUpdater);
 
     autoUpdater.on('checking-for-update', () => {
       mainWindow?.webContents.send('auto-update', { status: 'checking' });

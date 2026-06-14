@@ -125,6 +125,7 @@ beforeEach(() => {
   testConfig.entityAlerts = { enabled: false, alerts: {} };
   testConfig.primaryMediaPlayer = null;
   testConfig.customEntityIcons = {};
+  testConfig.updates = { allowPrerelease: false };
   testConfig.ui = {
     theme: 'auto',
     highContrast: false,
@@ -180,6 +181,11 @@ function createSettingsModalDOM() {
       <label for="always-on-top">
         <input type="checkbox" id="always-on-top" />
         Always on Top
+      </label>
+
+      <label for="allow-prerelease-updates">
+        <input type="checkbox" id="allow-prerelease-updates" />
+        Receive beta updates
       </label>
 
       <label for="language-select">Language Mode</label>
@@ -766,6 +772,27 @@ describe('Settings + Config Integration', () => {
         expect.objectContaining({
           ui: expect.objectContaining({
             enableInteractionDebugLogs: false
+          })
+        })
+      );
+    });
+
+    test('loads and saves beta update opt-in from update settings', async () => {
+      state.CONFIG.updates = { allowPrerelease: true };
+      await settings.openSettings();
+
+      const prereleaseToggle = document.getElementById('allow-prerelease-updates');
+      expect(prereleaseToggle).toBeTruthy();
+      expect(prereleaseToggle.checked).toBe(true);
+
+      prereleaseToggle.checked = false;
+      await settings.saveSettings();
+
+      expect(state.CONFIG.updates.allowPrerelease).toBe(false);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          updates: expect.objectContaining({
+            allowPrerelease: false
           })
         })
       );

@@ -3252,6 +3252,7 @@ async function openSettings(uiHooks) {
     const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
+    const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
@@ -3271,6 +3272,9 @@ async function openSettings(uiHooks) {
     }
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
+    if (allowPrereleaseUpdates) {
+      allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
+    }
 
     // Initialize "Start at login" checkbox
     const startWithWindows = document.getElementById('start-with-windows');
@@ -3533,6 +3537,7 @@ async function saveSettings() {
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
+    const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
@@ -3590,6 +3595,10 @@ async function saveSettings() {
     state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
     if (enableInteractionDebugLogs) {
       state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
+    }
+    state.CONFIG.updates = state.CONFIG.updates || {};
+    if (allowPrereleaseUpdates) {
+      state.CONFIG.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
     }
     state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
     state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();

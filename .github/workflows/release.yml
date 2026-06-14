@@ -12,6 +12,7 @@ jobs:
   validate:
     outputs:
       release_version: ${{ steps.release_meta.outputs.release_version }}
+      release_prerelease: ${{ steps.release_meta.outputs.release_prerelease }}
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -41,8 +42,11 @@ jobs:
           }
 
           $releaseVersion = $releaseTag.Substring(1)
+          $releasePrerelease = if ($releaseVersion -match '-') { 'true' } else { 'false' }
           "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "release_prerelease=$releasePrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Resolved release version $releaseVersion from tag $releaseTag"
+          Write-Host "GitHub prerelease: $releasePrerelease"
 
       - name: Verify tag points to main HEAD
         shell: bash
@@ -153,7 +157,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.blockmap
-            dist/latest*.yml
+            dist/*.yml
           if-no-files-found: error
 
   build-mac:
@@ -211,7 +215,7 @@ jobs:
             dist/*.dmg
             dist/*-mac.zip
             dist/*.blockmap
-            dist/latest*.yml
+            dist/*.yml
           if-no-files-found: error
 
   build-linux:
@@ -276,7 +280,14 @@ jobs:
           BLOCKMAP_SIZE="$blockmap_size" node <<'NODE'
           const fs = require('fs');
 
-          const latestPath = 'dist/latest-linux.yml';
+          const linuxUpdateFiles = fs.readdirSync('dist')
+            .filter((name) => name.endsWith('-linux.yml'))
+            .map((name) => `dist/${name}`);
+          if (linuxUpdateFiles.length !== 1) {
+            throw new Error(`Expected one Linux update metadata file, found ${linuxUpdateFiles.length}: ${linuxUpdateFiles.join(', ')}`);
+          }
+
+          const latestPath = linuxUpdateFiles[0];
           const blockMapSize = process.env.BLOCKMAP_SIZE;
           let latest = fs.readFileSync(latestPath, 'utf8');
 
@@ -296,7 +307,7 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.blockmap
-            dist/latest*.yml
+            dist/*.yml
           if-no-files-found: error
 
   publish-release:
@@ -315,6 +326,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+          RELEASE_PRERELEASE: ${{ needs.validate.outputs.release_prerelease }}
         shell: bash
         run: |
           set -euo pipefail
@@ -346,11 +358,21 @@ jobs:
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${artifacts[@]}" --clobber
+            if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+              gh release edit "$GITHUB_REF_NAME" --prerelease
+            else
+              gh release edit "$GITHUB_REF_NAME" --latest
+            fi
           else
+            release_flags=(--latest)
+            if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+              release_flags=(--prerelease)
+            fi
             gh release create "$GITHUB_REF_NAME" "${artifacts[@]}" \
               --verify-tag \
               --title "$RELEASE_VERSION" \
-              --notes "Release $RELEASE_VERSION"
+              --notes "Release $RELEASE_VERSION" \
+              "${release_flags[@]}"
           fi
 
   sync-version:

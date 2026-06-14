@@ -142,6 +142,11 @@ npm run dist:mac    # Build macOS distribution artifacts
 npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
 
+### Release Channels
+- **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release, and existing users receive it through the standard update path.
+- **Tester prereleases**: Push a SemVer prerelease tag like `v3.5.4-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings -> Application Updates are offered these builds.
+- **Portable builds**: Portable users still update manually, but the update checker will show prerelease portable downloads when beta updates are enabled.
+
 ### Configuration
 - **Config Location**: Stored as `config.json` in Electron's userData directory.
   - **Windows (packaged)**: `%AppData%/Home Assistant Widget/config.json`
@@ -153,7 +158,7 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
   `globalHotkeys`, `entityAlerts`, `popupHotkey`, `windowPosition`, `windowSize`, `opacity`, `ui` (theme, accent, background,
   language, customColors, use24HourClock, weatherEffectsEnabled, weatherOverride, enableInteractionDebugLogs),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
-  `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, and `profileSync`.
+  `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, `updates`, and `profileSync`.
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
 
 ### Profile Sync (Opt-in)
