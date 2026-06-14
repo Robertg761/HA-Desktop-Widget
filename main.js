@@ -2853,7 +2853,9 @@ function buildTrayContextMenu() {
               }
             });
           } else {
-            getAutoUpdater().checkForUpdates();
+            const autoUpdater = getAutoUpdater();
+            configureAutoUpdaterChannel(autoUpdater);
+            autoUpdater.checkForUpdates();
           }
         } else {
           log.info('Update check is only available in packaged builds.');

@@ -61,6 +61,7 @@ describe('main-process runtime hardening', () => {
   it('supports opt-in prerelease update checks without moving stable users to prereleases', () => {
     expect(mainSource).toContain('function configureAutoUpdaterChannel');
     expect(mainSource).toContain('autoUpdater.allowPrerelease = allowPrerelease');
+    expect(mainSource).toContain('configureAutoUpdaterChannel(autoUpdater);\n            autoUpdater.checkForUpdates();');
     expect(mainSource).toContain('function selectPortableRelease');
     expect(mainSource).toContain('allowPrerelease || !release.prerelease');
     expect(mainSource).toContain('releases?per_page=20');
