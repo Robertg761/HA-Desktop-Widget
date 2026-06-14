@@ -1099,6 +1099,7 @@ describe('UI Utilities', () => {
 
       expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
       expect(document.body.classList.contains('frosted-glass')).toBe(false);
+      expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('1.000');
     });
 
     it('keeps backdrop filters on Windows when frosted glass is enabled', () => {

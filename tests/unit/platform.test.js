@@ -37,14 +37,14 @@ describe('platform helpers', () => {
     expect(shouldUseTransparentWindow('darwin', {})).toBe(true);
   });
 
-  test('keeps Windows transparent and resizable without frosted glass', () => {
+  test('uses an opaque resizable Windows window without frosted glass', () => {
     expect(getMainWindowVisualOptions({
       platform: 'win32',
       frostedGlass: false,
-      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      transparencyOptions: { transparent: false, backgroundColor: '#28282d' },
     })).toEqual({
-      transparent: true,
-      backgroundColor: '#00000000',
+      transparent: false,
+      backgroundColor: '#28282d',
       thickFrame: true,
     });
   });

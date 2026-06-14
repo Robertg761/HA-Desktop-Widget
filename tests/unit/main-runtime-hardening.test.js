@@ -67,4 +67,11 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('releases?per_page=20');
     expect(mainSource).toContain('/releases/latest');
   });
+
+  it('uses native opacity for Windows when frosted glass is disabled', () => {
+    expect(mainSource).toContain('function shouldUseNativeWindowOpacity');
+    expect(mainSource).toContain("process.platform === 'win32' && !frostedGlass");
+    expect(mainSource).toContain('targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig, overrideFrostedGlass) ? safeOpacity : 1)');
+    expect(mainSource).toContain("transparent = options.preferTransparentWindow ? true : frostedGlass");
+  });
 });
