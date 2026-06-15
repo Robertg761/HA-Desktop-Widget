@@ -5,8 +5,8 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- npm or yarn
+- Node.js 20
+- npm
 - Git
 - Windows 10/11 (for testing)
 
@@ -23,7 +23,7 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
    ```
 4. **Start development mode**:
    ```bash
-   npm start
+   npm run dev
    ```
 
 ## 🎯 How to Contribute

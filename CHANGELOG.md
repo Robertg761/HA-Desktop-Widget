@@ -8,15 +8,187 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Added `input_button` support for Quick Access tiles, desktop pins, and global hotkeys so Home Assistant helpers can trigger automations from the widget.
-- Added script entities to the global hotkey picker, using `script.turn_on` as the default action.
-- Added native 10-second rewind and fast-forward controls to the media detail modal using Home Assistant `media_player.media_seek`.
+- Nothing yet
 
 ### Changed
 - Nothing yet
 
 ### Fixed
 - Nothing yet
+
+## [3.5.4-beta.4] - 2026-06-14
+
+### Fixed
+- Scoped Windows opacity handling so visual effects apply to the intended window state.
+
+## [3.5.4-beta.3] - 2026-06-14
+
+### Fixed
+- Fixed Windows opacity behavior when frosted glass is disabled.
+
+## [3.5.4-beta.2] - 2026-06-14
+
+### Fixed
+- Fixed updater channel tests on Windows.
+
+## [3.5.4-beta.1] - 2026-06-14
+
+### Added
+- Added beta update opt-in support so testers can receive prerelease builds.
+
+### Changed
+- Configured the updater channel before update checks so prerelease selection is honored.
+- Refreshed README feature coverage and screenshots for the current effects and UI states.
+
+### Fixed
+- Removed the Windows frosted-glass restart requirement by keeping the transparent window path enabled.
+- Fixed native Windows frosted-glass rendering and restart logic.
+
+## [3.5.3] - 2026-06-01
+
+### Added
+- Added Quick Access tile settings for per-tile display options.
+
+## [3.5.2] - 2026-05-23
+
+### Changed
+- Gated weather effects behind frosted glass to avoid unsupported visual combinations.
+- Generated Linux AppImage blockmaps for release metadata.
+
+### Fixed
+- Hardened main-process logging so broken pipes do not crash or spam logs.
+
+## [3.5.1] - 2026-05-22
+
+### Added
+- Added ambient weather background effects.
+- Added widget build icons.
+- Added a 24-hour clock option for primary cards.
+
+### Changed
+- Refreshed desktop UI typography, controls, and settings card organization.
+- Improved Linux startup performance and opacity handling.
+- Normalized release asset filenames and publish flow across platforms.
+
+### Fixed
+- Preserved config during update migrations.
+- Loaded the Home Assistant token before renderer setup.
+- Hardened desktop pin actions and media artwork proxying.
+
+## [3.4.11] - 2026-05-15
+
+### Fixed
+- Kept UI ticks running while the window is unfocused.
+
+## [3.4.10] - 2026-05-15
+
+### Added
+- Added native 10-second rewind and fast-forward controls to the media detail modal using Home Assistant `media_player.media_seek`.
+
+### Changed
+- Improved Linux glass performance and settings modal styling.
+
+## [3.4.9] - 2026-05-11
+
+### Changed
+- Tightened window opacity scaling.
+- Improved hotkey dropdown layout.
+
+## [3.4.8] - 2026-05-11
+
+### Added
+- Added `input_button` support for Quick Access tiles, desktop pins, and global hotkeys.
+- Added script entities to the global hotkey picker, using `script.turn_on` as the default action.
+- Added hotkey actions to tile menus.
+
+### Fixed
+- Improved Linux opacity behavior and frosted-glass fallback handling.
+
+## [3.4.7] - 2026-05-09
+
+### Added
+- Added Linux release build support.
+
+## [3.4.6] - 2026-04-30
+
+### Fixed
+- Fixed Windows startup registration.
+
+## [3.4.5] - 2026-04-28
+
+### Fixed
+- Localized settings color labels.
+
+## [3.4.4] - 2026-04-28
+
+### Added
+- Added responsive breakpoints for the main widget.
+
+### Changed
+- Reworked the settings modal into a sidebar layout.
+- Refined the personalization color target picker.
+
+## [3.4.3] - 2026-04-26
+
+### Added
+- Added offline language pack localization.
+
+## [3.4.2] - 2026-04-20
+
+### Fixed
+- Included `src` modules in packaged app builds.
+
+## [3.4.1] - 2026-04-19
+
+### Added
+- Added desktop pin support, including pin creation, desktop tile windows, drag/resize controls, bounds handling, visibility toggles, and connection propagation.
+
+### Changed
+- Automated release version bumps from tags.
+- Refined desktop pin styling, light controls, fallback states, and review documentation.
+
+### Fixed
+- Preserved token recovery state across config saves.
+- Avoided release builds when the package version is unchanged.
+
+## [3.4.0] - 2026-03-06
+
+### Added
+- Added opt-in cloud-folder profile sync across devices.
+- Added Google Drive, iCloud Drive, and Syncthing profile sync provider presets.
+- Added scoped sync controls, folder copying, defaults, and encrypted passphrase handling for profile sync.
+
+### Changed
+- Improved connection status details and tooltip UX.
+
+### Fixed
+- Fixed Windows startup login-item handling for portable builds.
+- Improved offline network error handling.
+
+## [3.3.0] - 2026-02-12
+
+### Added
+- Added custom entity icons, including picker UI, emoji search synonyms, and fuzzy matching.
+- Added custom color editor and custom theme support.
+- Added interaction debug logging and build profile improvements.
+
+### Changed
+- Enabled renderer code splitting and module entry loading.
+- Improved media artwork fetching, personalization UI persistence, weather entity resolution, timers, and config-save reliability.
+
+### Fixed
+- Fixed personalization persistence and artwork retry behavior.
+- Fixed config save races and shutdown-time config writes.
+
+## [3.2.3] - 2026-02-07
+
+### Changed
+- Persisted personalization section collapse state.
+- Added deeper Quick Access debug logging for Windows tile investigation.
+
+### Fixed
+- Fixed Windows entity tile interactions.
+- Added tests for null and empty entity ID handling.
 
 ## [3.2.2] - 2026-02-05
 
@@ -28,6 +200,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Prevented Portable installs from accidentally running the NSIS installer update path.
+
+## [3.2.1] - 2026-02-05
+
+### Changed
+- Maintenance release metadata update; this tag points at the same commit as `3.2.0`.
+
+## [3.2.0] - 2026-02-05
+
+### Added
+- Added macOS release builds.
+- Added customizable primary status cards, including an interactive Primary Cards settings UI and a `None` option.
+- Added customizable accent and background color themes.
+- Added time ticker controls.
+- Added Vite renderer bundling, Babel/Jest support for ESNext tests, and context isolation hardening.
+- Added Start with Windows support in Settings.
+
+### Changed
+- Simplified frosted glass to a toggle.
+- Refactored popup hotkey state, constants, JSDoc types, and event listener cleanup.
+- Collapsed personalization sections and synchronized layout heights.
+- Organized docs and images, removing obsolete upgrade-note files.
+
+### Fixed
+- Removed deprecated config keys and legacy camera features.
+- Updated camera modal close behavior, layout sync, and related styles.
+
+## [3.1.2] - 2025-12-16
+
+### Added
+- Added smart toggle behavior for the popup hotkey.
+
+### Fixed
+- Debounced popup hotkey handling to prevent immediate hide after showing.
+- Prevented popup hotkey behavior from overriding the `alwaysOnTop` preference.
+
+## [3.1.1] - 2025-12-16
+
+### Added
+- Added toggle mode for the popup hotkey.
+
+## [3.1.0] - 2025-12-15
+
+### Added
+- Added a popup hotkey hide-on-release toggle.
+
+### Changed
+- Refactored window position and size saving.
+
+### Fixed
+- Fixed hotkey registration not saving.
 
 ## [3.0.0] - 2025-11-17
 

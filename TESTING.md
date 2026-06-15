@@ -108,8 +108,8 @@ After fixing, run `npm test` again to verify the fix.
 ### Step 4: Ask for Help (If Needed)
 
 If you're stuck:
-1. Check `CLAUDE.md` for project-specific test guidance
-2. Look at similar tests in the same test file for patterns
+1. Look at similar tests in the same test file for patterns
+2. Check neighboring tests under `tests/unit/` or `tests/integration/` for shared setup patterns
 3. Ask a maintainer or create a GitHub issue
 
 ## Quick Reference
@@ -131,8 +131,8 @@ If you're stuck:
 
 ## Additional Resources
 
-- **Detailed test guidance:** See `CLAUDE.md`
-- **Writing new tests:** See the "Testing" section in `CLAUDE.md`
+- **Existing patterns:** Start with nearby tests in `tests/unit/` and `tests/integration/`
+- **Test setup:** Shared mocks and fixtures live under `tests/mocks/` and `tests/fixtures/`
 - **CI/CD:** Tests run automatically on every pull request
 
 ---
