@@ -429,15 +429,13 @@ function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass)
     : !!currentConfig?.frostedGlass;
 }
 
-function getWindowTransparencyOptions(currentConfig = config, overrideFrostedGlass, options = {}) {
-  const frostedGlass = resolveFrostedGlassConfig(currentConfig, overrideFrostedGlass);
+function getWindowTransparencyOptions(currentConfig = config) {
   let transparent = shouldUseTransparentWindow(process.platform, process.env);
 
-  // Windows opacity behaves correctly through BrowserWindow.setOpacity when the
-  // main window is an opaque native surface. Keep transparency only for acrylic
-  // glass, or for shape-sensitive auxiliary windows such as desktop pins.
+  // Windows keeps a transparent window in both glass and non-glass modes so
+  // opacity can be applied to background surfaces without fading tiles/controls.
   if (process.platform === 'win32') {
-    transparent = options.preferTransparentWindow ? true : frostedGlass;
+    transparent = true;
   }
 
   // On Linux, if transparency is not already enabled via env override, but the user
@@ -454,16 +452,15 @@ function getWindowTransparencyOptions(currentConfig = config, overrideFrostedGla
   };
 }
 
-function shouldUseNativeWindowOpacity(currentConfig = config, overrideFrostedGlass) {
-  const frostedGlass = resolveFrostedGlassConfig(currentConfig, overrideFrostedGlass);
-  const transparencyOptions = getWindowTransparencyOptions(currentConfig, overrideFrostedGlass);
-  return !transparencyOptions.transparent || (process.platform === 'win32' && !frostedGlass);
+function shouldUseNativeWindowOpacity(currentConfig = config) {
+  const transparencyOptions = getWindowTransparencyOptions(currentConfig);
+  return !transparencyOptions.transparent;
 }
 
-function applyWindowOpacity(targetWindow, opacity, currentConfig = config, overrideFrostedGlass) {
+function applyWindowOpacity(targetWindow, opacity, currentConfig = config) {
   if (!targetWindow || targetWindow.isDestroyed()) return Math.max(0.5, Math.min(1, opacity || 1));
   const safeOpacity = Math.max(0.5, Math.min(1, opacity || 1));
-  targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig, overrideFrostedGlass) ? safeOpacity : 1);
+  targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1);
   return safeOpacity;
 }
 
@@ -1046,12 +1043,10 @@ function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   };
 }
 
-function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass, options = {}) {
+function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass) {
   if (!targetWindow || targetWindow.isDestroyed()) return;
-  const transparencyOptions = getWindowTransparencyOptions(currentConfig, overrideFrostedGlass, options);
-  const enabled = typeof overrideFrostedGlass === 'boolean'
-    ? overrideFrostedGlass
-    : !!currentConfig?.frostedGlass;
+  const transparencyOptions = getWindowTransparencyOptions(currentConfig);
+  const enabled = resolveFrostedGlassConfig(currentConfig, overrideFrostedGlass);
 
   if (process.platform === 'win32' && typeof targetWindow.setBackgroundMaterial === 'function') {
     try {
@@ -1086,7 +1081,7 @@ function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrosted
 function applyDesktopPinWindowEffects(targetWindow, currentConfig) {
   // Desktop pins intentionally keep native acrylic/vibrancy disabled so the
   // rounded CSS shape does not reveal a square backdrop during refreshes.
-  applyWindowEffectsToWindow(targetWindow, currentConfig, false, { preferTransparentWindow: true });
+  applyWindowEffectsToWindow(targetWindow, currentConfig, false);
 }
 
 function getDesktopPinBounds(entityId, existingBounds = null) {
@@ -1288,7 +1283,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   config.desktopPins[normalizedEntityId] = pinBounds;
 
   const iconPath = getAppIconPath(__dirname);
-  const transparencyOptions = getWindowTransparencyOptions(config, undefined, { preferTransparentWindow: true });
+  const transparencyOptions = getWindowTransparencyOptions(config);
   const windowOptions = {
     x: pinBounds.x,
     y: pinBounds.y,
@@ -1427,7 +1422,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
 
     try {
       const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
-      const transparencyOptions = getWindowTransparencyOptions(config, undefined, { preferTransparentWindow: true });
+      const transparencyOptions = getWindowTransparencyOptions(config);
       window.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
     } catch (error) {
       log.warn('Failed to refresh desktop pin window state:', error.message);
@@ -1468,7 +1463,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
     if (!window || window.isDestroyed()) return;
     try {
       const safeOpacity = Math.max(0.5, Math.min(1, nextConfig?.opacity || 1));
-      const transparencyOptions = getWindowTransparencyOptions(nextConfig, undefined, { preferTransparentWindow: true });
+      const transparencyOptions = getWindowTransparencyOptions(nextConfig);
       window.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
     } catch (error) {
       log.warn('Failed to update desktop pin opacity:', error.message);
@@ -2751,7 +2746,7 @@ function createWindow() {
   mainWindow = new BrowserWindow(windowOptions);
   hardenRendererNavigation(mainWindow);
 
-  // Glass/transparent windows use renderer CSS opacity; opaque Windows/non-glass
+  // Transparent windows use renderer CSS surface opacity; opaque fallback
   // windows use native BrowserWindow opacity so the desktop shows through.
   const safeOpacity = applyWindowOpacity(mainWindow, config.opacity, config);
   config.opacity = safeOpacity; // Update config to safe value
@@ -3282,19 +3277,18 @@ ipcMain.handle('set-opacity', (event, opacity) => {
 
 ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   if (!mainWindow) return;
-  const previewFrostedGlass = typeof effects.frostedGlass === 'boolean' ? effects.frostedGlass : undefined;
   if (typeof effects.frostedGlass === 'boolean') {
     applyFrostedGlass(effects.frostedGlass);
   }
   if (typeof effects.opacity === 'number') {
     try {
-      applyWindowOpacity(mainWindow, effects.opacity, config, previewFrostedGlass);
+      applyWindowOpacity(mainWindow, effects.opacity, config);
     } catch (error) {
       log.warn('Failed to preview main window opacity:', error.message);
     }
   } else if (typeof effects.frostedGlass === 'boolean') {
     try {
-      applyWindowOpacity(mainWindow, config.opacity, config, previewFrostedGlass);
+      applyWindowOpacity(mainWindow, config.opacity, config);
     } catch (error) {
       log.warn('Failed to preview main window opacity mode:', error.message);
     }

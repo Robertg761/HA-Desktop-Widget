@@ -1092,14 +1092,20 @@ describe('UI Utilities', () => {
       expect(Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))).toBeGreaterThan(0.5);
     });
 
-    it('disables backdrop filters on Windows when frosted glass is off for native opacity', () => {
+    it('applies Windows non-glass opacity to background surfaces only', () => {
       mockElectronAPI.platform = 'win32';
 
       uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
 
       expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
       expect(document.body.classList.contains('frosted-glass')).toBe(false);
+      expect(Number(document.body.style.getPropertyValue('--window-bg-alpha'))).toBeLessThan(1);
+      expect(document.body.style.opacity).toBe('');
+
+      uiUtils.applyWindowEffects({ opacity: 1, frostedGlass: false });
+
       expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('1.000');
+      expect(document.body.style.opacity).toBe('');
     });
 
     it('keeps backdrop filters on Windows when frosted glass is enabled', () => {
@@ -1110,6 +1116,19 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('linux-performance-mode')).toBe(false);
       expect(document.body.classList.contains('frosted-glass')).toBe(true);
       expect(document.body.classList.contains('native-glass')).toBe(true);
+      expect(Number(document.body.style.getPropertyValue('--window-bg-alpha'))).toBeLessThan(1);
+      expect(document.body.style.opacity).toBe('');
+    });
+
+    it('keeps macOS non-glass opacity on background surfaces without performance mode', () => {
+      mockElectronAPI.platform = 'darwin';
+
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+
+      expect(document.body.classList.contains('linux-performance-mode')).toBe(false);
+      expect(document.body.classList.contains('frosted-glass')).toBe(false);
+      expect(Number(document.body.style.getPropertyValue('--window-bg-alpha'))).toBeLessThan(1);
+      expect(document.body.style.opacity).toBe('');
     });
   });
 

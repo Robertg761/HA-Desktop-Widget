@@ -508,12 +508,11 @@ function applyWindowEffects(config = {}) {
     const body = document.body;
     const enabled = !!config.frostedGlass;
     const platform = getPlatform();
-    // Disable CSS backdrop filters when the platform uses native window opacity instead
-    // of CSS alpha (Linux default, Windows without frosted glass).
+    // Disable CSS backdrop filters for low-cost/no-glass rendering while keeping
+    // opacity on CSS background surfaces (Linux default, Windows without frosted glass).
     const linuxPerformanceMode = platform === 'linux' || (platform === 'win32' && !enabled);
     const opacity = Math.max(0.5, Math.min(1, Number(config.opacity) || 1));
-    const usesNativeOpacity = platform === 'win32' && !enabled;
-    const backgroundAlpha = usesNativeOpacity ? 1 : mapWindowOpacityToBackgroundAlpha(opacity);
+    const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
     body.classList.toggle('linux-performance-mode', linuxPerformanceMode);
     body.style.setProperty('--window-opacity', opacity.toFixed(3));

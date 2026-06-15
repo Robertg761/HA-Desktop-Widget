@@ -3,6 +3,7 @@ const path = require('path');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 const preloadSource = fs.readFileSync(path.resolve(__dirname, '../../preload.js'), 'utf8');
+const stylesSource = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
 describe('main-process runtime hardening', () => {
   it('denies renderer-created windows and routes http/https navigation externally', () => {
@@ -68,10 +69,24 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('/releases/latest');
   });
 
-  it('uses native opacity for Windows when frosted glass is disabled', () => {
+  it('keeps Windows non-glass opacity on renderer background surfaces', () => {
     expect(mainSource).toContain('function shouldUseNativeWindowOpacity');
-    expect(mainSource).toContain("process.platform === 'win32' && !frostedGlass");
-    expect(mainSource).toContain('targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig, overrideFrostedGlass) ? safeOpacity : 1)');
-    expect(mainSource).toContain("transparent = options.preferTransparentWindow ? true : frostedGlass");
+    expect(mainSource).toContain("process.platform === 'win32'");
+    expect(mainSource).toContain('transparent = true;');
+    expect(mainSource).toContain('targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1)');
+  });
+
+  it('limits non-glass window alpha CSS to background containers', () => {
+    const selectorStart = stylesSource.indexOf('body:not(.desktop-pin-mode):not(.frosted-glass),');
+    const ruleEnd = stylesSource.indexOf('}', selectorStart);
+    const nonGlassBackgroundRule = stylesSource.slice(selectorStart, ruleEnd);
+
+    expect(selectorStart).toBeGreaterThanOrEqual(0);
+    expect(nonGlassBackgroundRule).toContain('.widget-header');
+    expect(nonGlassBackgroundRule).toContain('.widget-content');
+    expect(nonGlassBackgroundRule).not.toContain('.status-card');
+    expect(nonGlassBackgroundRule).not.toContain('.media-tile');
+    expect(nonGlassBackgroundRule).not.toContain('.control-item');
+    expect(stylesSource).not.toMatch(/opacity:\s*var\(--window-opacity/);
   });
 });
