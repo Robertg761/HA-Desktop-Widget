@@ -16,22 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
-## [3.5.4-beta.4] - 2026-06-14
-
-### Fixed
-- Scoped Windows opacity handling so visual effects apply to the intended window state.
-
-## [3.5.4-beta.3] - 2026-06-14
-
-### Fixed
-- Fixed Windows opacity behavior when frosted glass is disabled.
-
-## [3.5.4-beta.2] - 2026-06-14
-
-### Fixed
-- Fixed updater channel tests on Windows.
-
-## [3.5.4-beta.1] - 2026-06-14
+## [3.5.4] - 2026-06-16
 
 ### Added
 - Added beta update opt-in support so testers can receive prerelease builds.
@@ -43,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Removed the Windows frosted-glass restart requirement by keeping the transparent window path enabled.
 - Fixed native Windows frosted-glass rendering and restart logic.
+- Fixed updater channel tests on Windows.
+- Fixed Windows opacity behavior when frosted glass is disabled.
+- Scoped Windows opacity handling so visual effects apply to the intended window state.
 
 ## [3.5.3] - 2026-06-01
 
