@@ -1078,6 +1078,27 @@ function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrosted
   }
 }
 
+function wireWindowEffectsRefresh(targetWindow, currentConfigProvider, overrideFrostedGlass) {
+  if (!targetWindow || process.platform !== 'win32') return;
+
+  const refreshEffects = () => {
+    const currentConfig = typeof currentConfigProvider === 'function'
+      ? currentConfigProvider()
+      : currentConfigProvider;
+    applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass);
+  };
+
+  const scheduleRefresh = () => {
+    refreshEffects();
+    setTimeout(refreshEffects, 50);
+    setTimeout(refreshEffects, 250);
+  };
+
+  ['focus', 'blur', 'show', 'restore', 'enter-full-screen', 'leave-full-screen'].forEach((eventName) => {
+    targetWindow.on(eventName, scheduleRefresh);
+  });
+}
+
 function applyDesktopPinWindowEffects(targetWindow, currentConfig) {
   // Desktop pins intentionally keep native acrylic/vibrancy disabled so the
   // rounded CSS shape does not reveal a square backdrop during refreshes.
@@ -1336,6 +1357,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   }
   applyDesktopPinWindowShape(pinWindow, pinBounds);
   applyDesktopPinWindowEffects(pinWindow, config);
+  wireWindowEffectsRefresh(pinWindow, () => config, false);
   applyDesktopPinEditModeToWindow(pinWindow);
 
   const persistBounds = () => {
@@ -2751,6 +2773,7 @@ function createWindow() {
   const safeOpacity = applyWindowOpacity(mainWindow, config.opacity, config);
   config.opacity = safeOpacity; // Update config to safe value
   applyFrostedGlass();
+  wireWindowEffectsRefresh(mainWindow, () => config);
 
   // Load the index.html file
   mainWindow.loadFile('index.html');

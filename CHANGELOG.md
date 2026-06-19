@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [3.5.5-beta.1] - 2026-06-19
+
+### Fixed
+- Reapplied Windows acrylic after focus, blur, restore, and fullscreen transitions so frosted glass does not disappear after switching into games.
+
 ## [3.5.4] - 2026-06-16
 
 ### Added

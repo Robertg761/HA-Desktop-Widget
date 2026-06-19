@@ -76,6 +76,26 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1)');
   });
 
+  it('reapplies Windows acrylic after focus and visibility lifecycle changes', () => {
+    const start = mainSource.indexOf('function wireWindowEffectsRefresh');
+    const end = mainSource.indexOf('function applyDesktopPinWindowEffects');
+    const refreshSource = mainSource.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(refreshSource).toContain("process.platform !== 'win32'");
+    expect(refreshSource).toContain("'focus'");
+    expect(refreshSource).toContain("'blur'");
+    expect(refreshSource).toContain("'show'");
+    expect(refreshSource).toContain("'restore'");
+    expect(refreshSource).toContain("'enter-full-screen'");
+    expect(refreshSource).toContain("'leave-full-screen'");
+    expect(refreshSource).toContain('applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass)');
+    expect(refreshSource).toContain('setTimeout(refreshEffects, 50)');
+    expect(refreshSource).toContain('setTimeout(refreshEffects, 250)');
+    expect(mainSource).toContain('wireWindowEffectsRefresh(mainWindow, () => config)');
+    expect(mainSource).toContain('wireWindowEffectsRefresh(pinWindow, () => config, false)');
+  });
+
   it('limits non-glass window alpha CSS to background containers', () => {
     const selectorStart = stylesSource.indexOf('body:not(.desktop-pin-mode):not(.frosted-glass),');
     const ruleEnd = stylesSource.indexOf('}', selectorStart);
