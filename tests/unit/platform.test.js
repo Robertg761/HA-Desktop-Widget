@@ -91,6 +91,7 @@ describe('platform helpers', () => {
     })).toEqual({
       transparent: false,
       backgroundColor: '#28282d',
+      roundedCorners: false,
     });
   });
 });

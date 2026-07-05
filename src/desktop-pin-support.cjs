@@ -1,5 +1,3 @@
-/* eslint-env node */
-
 const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
   'light',
   'climate',
