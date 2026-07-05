@@ -1692,6 +1692,7 @@ function renderPrimaryCardsEntityList() {
     const icon = utils.escapeHtml(utils.getEntityIcon(entity));
     const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const entityId = utils.escapeHtml(entity.entity_id);
+    const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
 
     const isCardOne = selections[0] === entity.entity_id;
     const isCardTwo = selections[1] === entity.entity_id;
@@ -1708,12 +1709,12 @@ function renderPrimaryCardsEntityList() {
         <span class="entity-icon">${icon}</span>
         <div class="entity-item-info">
           <span class="entity-name">${displayName}</span>
-          <span class="entity-id" title="${entityId}">${entityId}</span>
+          <span class="entity-id" title="${entityIdAttr}">${entityId}</span>
         </div>
       </div>
       <div class="primary-cards-list-actions">
-        <button class="${cardOneClass}" type="button" data-primary-assign="0" data-entity-id="${entityId}" ${cardOneDisabled}>${cardOneLabel}</button>
-        <button class="${cardTwoClass}" type="button" data-primary-assign="1" data-entity-id="${entityId}" ${cardTwoDisabled}>${cardTwoLabel}</button>
+        <button class="${cardOneClass}" type="button" data-primary-assign="0" data-entity-id="${entityIdAttr}" ${cardOneDisabled}>${cardOneLabel}</button>
+        <button class="${cardTwoClass}" type="button" data-primary-assign="1" data-entity-id="${entityIdAttr}" ${cardTwoDisabled}>${cardTwoLabel}</button>
       </div>
     `;
 
@@ -1878,13 +1879,13 @@ function renderDesktopPinsList() {
         <span class="entity-icon">${utils.escapeHtml(iconValue)}</span>
         <div class="entity-item-info">
           <span class="entity-name">${utils.escapeHtml(displayName)}</span>
-          <span class="entity-id" title="${utils.escapeHtml(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
+          <span class="entity-id" title="${utils.escapeHtmlAttribute(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
           ${isPinned ? '<span class="desktop-pin-status-badge">Pinned</span>' : ''}
         </div>
       </div>
       <div class="desktop-pins-list-actions">
-        ${isSavedPinned ? `<button class="btn btn-secondary btn-sm" type="button" data-desktop-pin-focus="${utils.escapeHtml(entityId)}">Focus</button>` : ''}
-        <button class="btn ${isPinned ? 'btn-primary' : 'btn-secondary'} btn-sm" type="button" data-desktop-pin-toggle="${utils.escapeHtml(entityId)}">${isPinned ? 'Unpin' : 'Pin'}</button>
+        ${isSavedPinned ? `<button class="btn btn-secondary btn-sm" type="button" data-desktop-pin-focus="${utils.escapeHtmlAttribute(entityId)}">Focus</button>` : ''}
+        <button class="btn ${isPinned ? 'btn-primary' : 'btn-secondary'} btn-sm" type="button" data-desktop-pin-toggle="${utils.escapeHtmlAttribute(entityId)}">${isPinned ? 'Unpin' : 'Pin'}</button>
       </div>
     `;
 
@@ -3893,8 +3894,8 @@ function renderAlertsListInline() {
           </div>
         </div>
         <div class="alert-actions">
-          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtml(entityId)}">Edit</button>
-          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtml(entityId)}">Remove</button>
+          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">Edit</button>
+          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">Remove</button>
         </div>
       `;
 
@@ -3985,7 +3986,7 @@ function populateAlertEntityPicker() {
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
           </div>
         </div>
-        <button class="entity-selector-btn ${hasAlert ? 'edit' : 'add'}" data-entity-id="${utils.escapeHtml(entityId)}">
+        <button class="entity-selector-btn ${hasAlert ? 'edit' : 'add'}" data-entity-id="${utils.escapeHtmlAttribute(entityId)}">
           ${hasAlert ? '⚙️ Edit Alert' : '+ Add Alert'}
         </button>
       `;

@@ -16,6 +16,7 @@ import { WeatherEffectsManager } from './src/weather-effects.js';
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
+const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
@@ -80,6 +81,8 @@ let offlineConnectionToastShown = false;
 let lastConnectionToast = { key: null, shownAt: 0 };
 let browserReportedOffline = false;
 let lastDisconnectReason = 'Disconnected from Home Assistant. Retrying automatically.';
+const pendingStateChangedEntities = new Map();
+let pendingStateChangedFlushId = null;
 
 function clearReconnectTimer() {
   if (!reconnectTimerId) return;
@@ -110,6 +113,39 @@ function setDesktopPinConnectionIssue(detailMessage = '') {
   desktopPinConnectionIssue = typeof detailMessage === 'string'
     ? detailMessage.trim()
     : '';
+}
+
+function flushPendingStateChangedEntities() {
+  pendingStateChangedFlushId = null;
+  const entities = Array.from(pendingStateChangedEntities.values());
+  pendingStateChangedEntities.clear();
+
+  entities.forEach((entity) => {
+    window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
+      log.warn('Failed to publish HA entity update to main process:', error);
+    });
+    if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
+      renderCurrentMode();
+    } else if (ui.isEntityVisible(entity.entity_id)) {
+      ui.updateEntityInUI(entity);
+    }
+    alerts.checkEntityAlerts(entity.entity_id, entity.state);
+  });
+}
+
+function scheduleStateChangedFlush() {
+  if (pendingStateChangedFlushId != null) return;
+  const canUseRaf = typeof window.requestAnimationFrame === 'function' && !document.hidden;
+  pendingStateChangedFlushId = canUseRaf
+    ? window.requestAnimationFrame(flushPendingStateChangedEntities)
+    : window.setTimeout(flushPendingStateChangedEntities, STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS);
+}
+
+function queueStateChangedEntity(entity) {
+  if (!entity?.entity_id) return;
+  state.setEntityState(entity);
+  pendingStateChangedEntities.set(entity.entity_id, entity);
+  scheduleStateChangedFlush();
 }
 
 function reconcileFavoriteStalePreservation(newStates) {
@@ -463,16 +499,7 @@ websocket.on('message', (msg) => {
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data.new_state;
       if (entity) {
-        state.setEntityState(entity);
-        window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
-          log.warn('Failed to publish HA entity update to main process:', error);
-        });
-        if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
-          renderCurrentMode();
-        } else if (ui.isEntityVisible(entity.entity_id)) {
-          ui.updateEntityInUI(entity);
-        }
-        alerts.checkEntityAlerts(entity.entity_id, entity.state);
+        queueStateChangedEntity(entity);
       }
     } else if (msg.type === 'result') {
       log.debug(`Received result for message ID: ${msg.id}`);
@@ -518,12 +545,19 @@ websocket.on('message', (msg) => {
                 nextSelectedWeatherEntity: reconciliation.config?.selectedWeatherEntity || null,
               });
               state.setConfig(reconciliation.config);
-              window.electronAPI.updateConfig(reconciliation.config).catch((error) => {
-                log.error('Failed to persist reconciled entity IDs:', error);
-                emitRendererDebug('config.entity_id_reconciliation.persist_error', {
-                  error: error?.message || String(error),
+              if (IS_DESKTOP_PIN_MODE) {
+                log.debug('Skipping entity ID reconciliation config write in desktop pin mode; main window will persist it.');
+                emitRendererDebug('config.entity_id_reconciliation.skip_pin_persist', {
+                  reason: 'desktop-pin-mode',
                 });
-              });
+              } else {
+                window.electronAPI.updateConfig(reconciliation.config).catch((error) => {
+                  log.error('Failed to persist reconciled entity IDs:', error);
+                  emitRendererDebug('config.entity_id_reconciliation.persist_error', {
+                    error: error?.message || String(error),
+                  });
+                });
+              }
             } else {
               emitRendererDebug('config.entity_id_reconciliation.no_change', {
                 favoriteEntities: state.CONFIG?.favoriteEntities || [],

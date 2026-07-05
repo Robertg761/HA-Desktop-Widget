@@ -206,6 +206,21 @@ describe('WebSocket Manager', () => {
       expect(wsManager.ws.url).toBe('wss://test.local:8123/api/websocket');
     });
 
+    test('should trim trailing URL slashes before appending websocket path', async () => {
+      state.setConfig({
+        homeAssistant: {
+          url: 'https://test.local:8123///',
+          token: 'test-token'
+        }
+      });
+
+      wsManager.connect();
+
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(wsManager.ws.url).toBe('wss://test.local:8123/api/websocket');
+    });
+
     test('should close existing connection before connecting', async () => {
       state.setConfig(sampleConfig);
 
