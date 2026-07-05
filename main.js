@@ -32,6 +32,11 @@ const {
   setLinuxLoginItemSettings,
 } = require('./src/linux-startup.cjs');
 const {
+  isAllowedHlsProxyPath,
+  normalizeEntityIdForObjectKey,
+  validateProfileSyncCopyPaths,
+} = require('./src/main-security.cjs');
+const {
   getAppIconPath,
   getMainWindowVisualOptions,
   shouldUseTransparentWindow,
@@ -346,6 +351,7 @@ let mainWindow;
 let tray;
 let config;
 let isQuitting = false;
+let autoUpdateDownloaded = false;
 const IS_DEV_MODE = process.argv.includes('--dev');
 let windowStateSaveTimer = null;
 const CONFIG_SAVE_DEBOUNCE_MS = 120;
@@ -783,6 +789,49 @@ function sanitizeConfigForRenderer(inputConfig) {
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getAuthorizedIpcSender(event) {
+  const sender = event?.sender || null;
+  if (!sender) return null;
+
+  const senderWindow = BrowserWindow.fromWebContents(sender);
+  if (!senderWindow || senderWindow.isDestroyed()) return null;
+
+  const senderFrame = event?.senderFrame || null;
+  if (senderFrame?.top && senderFrame.top !== senderFrame) {
+    return null;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && sender === mainWindow.webContents && senderWindow === mainWindow) {
+    return { type: 'main', window: mainWindow };
+  }
+
+  for (const [entityId, pinWindow] of desktopPinWindows.entries()) {
+    if (pinWindow && !pinWindow.isDestroyed() && sender === pinWindow.webContents && senderWindow === pinWindow) {
+      return { type: 'desktop-pin', entityId, window: pinWindow };
+    }
+  }
+
+  return null;
+}
+
+function rejectUnauthorizedIpc(channel, response = { success: false, error: 'Unauthorized' }) {
+  log.warn(`Unauthorized IPC sender rejected for ${channel}`);
+  return response;
+}
+
+function authorizeIpcSender(event, channel, options = {}) {
+  void channel;
+  const sender = getAuthorizedIpcSender(event);
+  if (!sender) return null;
+  if (sender.type === 'main') return sender;
+  if (sender.type === 'desktop-pin' && options.allowDesktopPin === true) return sender;
+  return null;
+}
+
+function normalizeIpcEntityIdForKey(entityId) {
+  return normalizeEntityIdForObjectKey(entityId, normalizeEntityId);
 }
 
 function normalizeDesktopPinActionError(error) {
@@ -1332,6 +1381,10 @@ function createDesktopPinWindow(entityId, options = {}) {
     }
   };
 
+  if (process.platform === 'linux') {
+    windowOptions.roundedCorners = false;
+  }
+
   // Desktop pin windows render their own rounded glass surface in CSS.
   // Keeping native acrylic enabled here leaves a rectangular backdrop behind
   // the rounded widget, which creates mismatched corners.
@@ -1647,11 +1700,17 @@ async function writeCloudFileEnvelope(filePath, envelope) {
 
 async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
   try {
-    const sourcePath = String(fromPath || '').trim();
-    const destinationPath = String(toPath || '').trim();
-    if (!sourcePath || !destinationPath) {
-      return { ok: false, status: 'error', error: 'Source and destination file paths are required' };
-    }
+    const profileSync = getProfileSyncConfig();
+    const configuredSyncFolder = profileSync.cloudFilePath
+      ? path.dirname(profileSync.cloudFilePath)
+      : '';
+    const { sourcePath, destinationPath } = await validateProfileSyncCopyPaths({
+      fromPath,
+      toPath,
+      defaultFileName: PROFILE_SYNC_DEFAULT_FILE_NAME,
+      allowedFolders: [configuredSyncFolder, app.getPath('userData')],
+      fsModule: fs,
+    });
 
     if (sourcePath === destinationPath) {
       return { ok: true, status: 'copied', copied: false, reason: 'same_path' };
@@ -2079,8 +2138,8 @@ function loadConfig(options = {}) {
               log.info('Token migration complete - token is now encrypted at rest');
             } catch (error) {
               log.error('Exception during token encryption:', error);
-              log.warn('Token encryption failed, keeping plaintext');
-              // Keep plaintext token and set flag to prevent retry
+              log.warn('Token encryption failed; token will stay in memory for this session and be omitted from saved config');
+              // Keep the in-memory token for this session and set a flag to prevent retry.
               config.homeAssistant.tokenEncrypted = false;
               config.migrationInfo = {
                 version: app.getVersion(),
@@ -2088,12 +2147,12 @@ function loadConfig(options = {}) {
                 tokenEncrypted: false,
                 reason: 'encryption_failed'
               };
-              saveConfig(); // Persist the flag to prevent migration retry on every load
-              log.info('Token will remain in plaintext storage');
+              saveConfig(); // Persist the flag without writing the plaintext token.
+              log.info('Token omitted from saved config until it can be re-entered or encrypted');
             }
           } else {
-            log.info('Encryption not available, keeping token in plaintext');
-            // Token stays plaintext - set flag to prevent migration retry
+            log.info('Encryption not available; token will stay in memory for this session and be omitted from saved config');
+            // Keep the in-memory token for this session and set a flag to prevent retry.
             config.homeAssistant.tokenEncrypted = false;
             config.migrationInfo = {
               version: app.getVersion(),
@@ -2101,13 +2160,13 @@ function loadConfig(options = {}) {
               tokenEncrypted: false,
               reason: 'encryption_unavailable'
             };
-            saveConfig(); // Persist the flag to prevent migration retry on every load
-            log.info('Token will remain in plaintext storage');
+            saveConfig(); // Persist the flag without writing the plaintext token.
+            log.info('Token omitted from saved config until it can be re-entered or encrypted');
           }
         } catch (error) {
           // Catch any unexpected errors during migration check
           log.error('Unexpected error during migration check:', error);
-          log.warn('Migration aborted, keeping token in plaintext');
+          log.warn('Migration aborted; token will stay in memory for this session and be omitted from saved config');
           config.homeAssistant.tokenEncrypted = false;
           config.migrationInfo = {
             version: app.getVersion(),
@@ -2373,9 +2432,9 @@ function shouldBlockPotentialConfigClobber(snapshot) {
  * Writes the current `config` object to the application's userData/config.json. If `homeAssistant.token` is present
  * and not the placeholder value, this function attempts to encrypt the token using Electron's `safeStorage`; on
  * successful encryption the token is stored as a base64 string and `homeAssistant.tokenEncrypted` is set to `true`.
- * If encryption is unavailable or fails, the token is written as plaintext and `homeAssistant.tokenEncrypted` is set to
- * `false`. The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during
- * the save process are logged; the function does not throw.
+ * If encryption is unavailable or fails, the token is omitted from the saved config and `tokenResetReason` is recorded.
+ * The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during the save
+ * process are logged; the function does not throw.
  */
 function buildConfigSnapshotForSave() {
   const userDataDir = app.getPath('userData');
@@ -2396,6 +2455,19 @@ function buildConfigSnapshotForSave() {
     configToSave.homeAssistant.tokenEncrypted = true;
   }
 
+  const omitTokenFromSavedConfig = (reason, warning, error = null) => {
+    configToSave.homeAssistant = configToSave.homeAssistant || {};
+    delete configToSave.homeAssistant.token;
+    configToSave.homeAssistant.tokenEncrypted = false;
+    configToSave.tokenResetReason = reason;
+    config.tokenResetReason = reason;
+    if (error) {
+      log.warn(warning, error);
+    } else {
+      log.warn(warning);
+    }
+  };
+
   // Encrypt token before saving
   // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
   if (configToSave.homeAssistant?.token &&
@@ -2410,14 +2482,17 @@ function buildConfigSnapshotForSave() {
         configToSave.homeAssistant.tokenEncrypted = true;
         log.debug('Token encrypted for storage');
       } catch (error) {
-        log.warn('Failed to encrypt token, saving as plaintext:', error);
-        configToSave.homeAssistant.tokenEncrypted = false;
-        // Keep plaintext token if encryption fails
+        omitTokenFromSavedConfig(
+          'encryption_unavailable',
+          'Failed to encrypt token; omitting it from saved config so it is not written in plaintext:',
+          error
+        );
       }
     } else {
-      log.debug('Encryption not available, saving token as plaintext');
-      configToSave.homeAssistant.tokenEncrypted = false;
-      // Token stays plaintext
+      omitTokenFromSavedConfig(
+        'encryption_unavailable',
+        'Encryption not available; omitting token from saved config so it is not written in plaintext'
+      );
     }
   }
 
@@ -2901,7 +2976,13 @@ function buildTrayContextMenu() {
           } else {
             const autoUpdater = getAutoUpdater();
             configureAutoUpdaterChannel(autoUpdater);
-            autoUpdater.checkForUpdates();
+            autoUpdater.checkForUpdates().catch((error) => {
+              const payload = { status: 'error', error: error?.message || String(error) };
+              log.warn('Tray update check failed:', payload.error);
+              if (mainWindow) {
+                mainWindow.webContents.send('auto-update', payload);
+              }
+            });
           }
         } else {
           log.info('Update check is only available in packaged builds.');
@@ -2992,20 +3073,28 @@ function schedulePostWindowStartupTasks() {
 }
 
 // IPC handlers for configuration
-ipcMain.handle('get-config', () => {
+ipcMain.handle('get-config', (event) => {
+  const sender = authorizeIpcSender(event, 'get-config', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('get-config');
   resolveDeferredSecureConfig();
   return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('get-locale-bootstrap', () => {
+ipcMain.handle('get-locale-bootstrap', (event) => {
+  const sender = authorizeIpcSender(event, 'get-locale-bootstrap', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('get-locale-bootstrap');
   return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto');
 });
 
-ipcMain.handle('get-locale-packs', async (_event, forceRefresh = false) => {
+ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
+  const sender = authorizeIpcSender(event, 'get-locale-packs');
+  if (!sender) return rejectUnauthorizedIpc('get-locale-packs');
   return localizationService.listLocalePacks(!!forceRefresh);
 });
 
-ipcMain.handle('download-locale-pack', async (_event, locale) => {
+ipcMain.handle('download-locale-pack', async (event, locale) => {
+  const sender = authorizeIpcSender(event, 'download-locale-pack');
+  if (!sender) return rejectUnauthorizedIpc('download-locale-pack');
   const pack = await localizationService.downloadLocalePack(locale);
   pushConfigToRenderer();
   if (tray) {
@@ -3021,7 +3110,9 @@ ipcMain.handle('download-locale-pack', async (_event, locale) => {
   };
 });
 
-ipcMain.handle('remove-locale-pack', async (_event, locale) => {
+ipcMain.handle('remove-locale-pack', async (event, locale) => {
+  const sender = authorizeIpcSender(event, 'remove-locale-pack');
+  if (!sender) return rejectUnauthorizedIpc('remove-locale-pack');
   const result = localizationService.removeLocalePack(locale);
   pushConfigToRenderer();
   if (tray) {
@@ -3038,6 +3129,11 @@ ipcMain.handle('remove-locale-pack', async (_event, locale) => {
 });
 
 ipcMain.handle('update-config', async (event, newConfig) => {
+  const sender = authorizeIpcSender(event, 'update-config');
+  if (!sender) return rejectUnauthorizedIpc('update-config');
+  if (!isPlainObject(newConfig)) {
+    return { success: false, error: 'Invalid config payload' };
+  }
   log.debug('Updating configuration');
   const prevConfig = config;
   const prevSyncEnabled = !!config?.profileSync?.enabled;
@@ -3093,7 +3189,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('clear-token-reset-reason', () => {
+ipcMain.handle('clear-token-reset-reason', (event) => {
+  const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
+  if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
   if (TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason)) {
     delete config.tokenResetReason;
     saveConfig();
@@ -3102,23 +3200,39 @@ ipcMain.handle('clear-token-reset-reason', () => {
   return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('pin-entity-to-desktop', (_event, entityId, supportInfo = null) => {
+ipcMain.handle('pin-entity-to-desktop', (event, entityId, supportInfo = null) => {
+  const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
+  if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
   return pinEntityToDesktopInternal(entityId, supportInfo);
 });
 
-ipcMain.handle('set-desktop-pin-edit-mode', (_event, enabled) => {
+ipcMain.handle('set-desktop-pin-edit-mode', (event, enabled) => {
+  const sender = authorizeIpcSender(event, 'set-desktop-pin-edit-mode');
+  if (!sender) return rejectUnauthorizedIpc('set-desktop-pin-edit-mode');
   return setDesktopPinEditMode(enabled);
 });
 
-ipcMain.handle('update-desktop-pin-bounds', (_event, entityId, nextBounds = {}) => {
+ipcMain.handle('update-desktop-pin-bounds', (event, entityId, nextBounds = {}) => {
+  const sender = authorizeIpcSender(event, 'update-desktop-pin-bounds', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('update-desktop-pin-bounds');
+  if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
   return updateDesktopPinBounds(entityId, nextBounds);
 });
 
-ipcMain.handle('sync-desktop-pin-content-min-bounds', (_event, entityId, minBounds = {}) => {
+ipcMain.handle('sync-desktop-pin-content-min-bounds', (event, entityId, minBounds = {}) => {
+  const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('sync-desktop-pin-content-min-bounds');
+  if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
   return syncDesktopPinContentMinBounds(entityId, minBounds);
 });
 
-ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
+ipcMain.handle('unpin-entity-from-desktop', (event, entityId) => {
+  const sender = authorizeIpcSender(event, 'unpin-entity-from-desktop');
+  if (!sender) return rejectUnauthorizedIpc('unpin-entity-from-desktop');
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -3136,9 +3250,14 @@ ipcMain.handle('unpin-entity-from-desktop', (_event, entityId) => {
   return { success: true, pinned: false };
 });
 
-ipcMain.handle('get-desktop-pin-bootstrap', (_event, entityId) => {
+ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
+  const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('get-desktop-pin-bootstrap');
   resolveDeferredSecureConfig();
   const normalizedEntityId = normalizeEntityId(entityId);
+  if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
   return {
     entityId: normalizedEntityId,
     entity: latestEntityStates.get(normalizedEntityId) || null,
@@ -3150,7 +3269,9 @@ ipcMain.handle('get-desktop-pin-bootstrap', (_event, entityId) => {
   };
 });
 
-ipcMain.handle('publish-ha-snapshot', (_event, states) => {
+ipcMain.handle('publish-ha-snapshot', (event, states) => {
+  const sender = authorizeIpcSender(event, 'publish-ha-snapshot', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('publish-ha-snapshot');
   hasPublishedHaSnapshot = true;
   latestEntityStates.clear();
   if (isPlainObject(states)) {
@@ -3168,7 +3289,9 @@ ipcMain.handle('publish-ha-snapshot', (_event, states) => {
   return { success: true, count: latestEntityStates.size };
 });
 
-ipcMain.handle('publish-ha-entity-update', (_event, entity) => {
+ipcMain.handle('publish-ha-entity-update', (event, entity) => {
+  const sender = authorizeIpcSender(event, 'publish-ha-entity-update', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('publish-ha-entity-update');
   const normalizedEntityId = normalizeEntityId(entity?.entity_id);
   if (!normalizedEntityId || !isPlainObject(entity)) {
     return { success: false, error: 'Invalid entity payload' };
@@ -3179,11 +3302,16 @@ ipcMain.handle('publish-ha-entity-update', (_event, entity) => {
   return { success: true };
 });
 
-ipcMain.handle('request-desktop-pin-action', (_event, entityId, action, payload = {}) => {
+ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload = {}) => {
+  const sender = authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('request-desktop-pin-action');
   const normalizedEntityId = normalizeEntityId(entityId);
   const normalizedAction = typeof action === 'string' ? action.trim() : '';
   if (!normalizedEntityId || !normalizedAction) {
     return { success: false, error: 'Invalid desktop pin action' };
+  }
+  if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
   }
 
   if (normalizedAction === 'open-settings') {
@@ -3209,6 +3337,8 @@ ipcMain.handle('request-desktop-pin-action', (_event, entityId, action, payload 
 });
 
 ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) => {
+  const sender = authorizeIpcSender(event, 'desktop-pin-action-response');
+  if (!sender) return rejectUnauthorizedIpc('desktop-pin-action-response');
   const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
   if (!normalizedRequestId) {
     return { success: false, error: 'Invalid desktop pin action request ID' };
@@ -3232,6 +3362,8 @@ ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) 
 });
 
 ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
+  const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
+  if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -3287,6 +3419,8 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
 });
 
 ipcMain.handle('set-opacity', (event, opacity) => {
+  const sender = authorizeIpcSender(event, 'set-opacity');
+  if (!sender) return rejectUnauthorizedIpc('set-opacity');
   // Ensure opacity is within safe range (50% to 100%)
   let safeOpacity = Math.max(0.5, Math.min(1, opacity));
   try {
@@ -3299,6 +3433,8 @@ ipcMain.handle('set-opacity', (event, opacity) => {
 });
 
 ipcMain.handle('preview-window-effects', (event, effects = {}) => {
+  const sender = authorizeIpcSender(event, 'preview-window-effects');
+  if (!sender) return rejectUnauthorizedIpc('preview-window-effects');
   if (!mainWindow) return;
   if (typeof effects.frostedGlass === 'boolean') {
     applyFrostedGlass(effects.frostedGlass);
@@ -3319,6 +3455,8 @@ ipcMain.handle('preview-window-effects', (event, effects = {}) => {
 });
 
 ipcMain.handle('set-always-on-top', (event, value) => {
+  const sender = authorizeIpcSender(event, 'set-always-on-top');
+  if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
   const flag = !!value;
   config.alwaysOnTop = flag;
   try {
@@ -3330,11 +3468,15 @@ ipcMain.handle('set-always-on-top', (event, value) => {
   return { applied: mainWindow?.isAlwaysOnTop?.() === flag };
 });
 
-ipcMain.handle('get-window-state', () => {
+ipcMain.handle('get-window-state', (event) => {
+  const sender = authorizeIpcSender(event, 'get-window-state');
+  if (!sender) return rejectUnauthorizedIpc('get-window-state');
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
-ipcMain.handle('choose-profile-sync-folder', async (_event, provider) => {
+ipcMain.handle('choose-profile-sync-folder', async (event, provider) => {
+  const sender = authorizeIpcSender(event, 'choose-profile-sync-folder');
+  if (!sender) return rejectUnauthorizedIpc('choose-profile-sync-folder');
   const profileSync = getProfileSyncConfig();
   const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
   const defaultPath = getDefaultProfileSyncFolderPath(providerToUse, profileSync.cloudFilePath);
@@ -3353,15 +3495,23 @@ ipcMain.handle('choose-profile-sync-folder', async (_event, provider) => {
   return { canceled: false, folderPath, filePath, provider: providerToUse };
 });
 
-ipcMain.handle('copy-profile-sync-file', async (_event, fromPath, toPath, overwrite = false) => {
+ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwrite = false) => {
+  const sender = authorizeIpcSender(event, 'copy-profile-sync-file');
+  if (!sender) {
+    return rejectUnauthorizedIpc('copy-profile-sync-file', { ok: false, status: 'error', error: 'Unauthorized' });
+  }
   return copyProfileSyncFile(fromPath, toPath, overwrite);
 });
 
-ipcMain.handle('get-profile-sync-status', () => {
+ipcMain.handle('get-profile-sync-status', (event) => {
+  const sender = authorizeIpcSender(event, 'get-profile-sync-status');
+  if (!sender) return rejectUnauthorizedIpc('get-profile-sync-status');
   return buildProfileSyncStatus();
 });
 
-ipcMain.handle('run-profile-sync', async (_event, direction = 'auto') => {
+ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
+  const sender = authorizeIpcSender(event, 'run-profile-sync');
+  if (!sender) return rejectUnauthorizedIpc('run-profile-sync');
   try {
     const allowedDirections = new Set(['auto', 'pull', 'push']);
     const normalizedDirection = allowedDirections.has(direction) ? direction : 'auto';
@@ -3371,7 +3521,9 @@ ipcMain.handle('run-profile-sync', async (_event, direction = 'auto') => {
   }
 });
 
-ipcMain.handle('set-profile-sync-passphrase', async (_event, passphrase, remember = false) => {
+ipcMain.handle('set-profile-sync-passphrase', async (event, passphrase, remember = false) => {
+  const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
+  if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
   try {
     if (typeof passphrase !== 'string' || passphrase.trim().length < 4) {
       return { success: false, error: 'Passphrase must be at least 4 characters long' };
@@ -3384,7 +3536,9 @@ ipcMain.handle('set-profile-sync-passphrase', async (_event, passphrase, remembe
   }
 });
 
-ipcMain.handle('clear-profile-sync-passphrase', async () => {
+ipcMain.handle('clear-profile-sync-passphrase', async (event) => {
+  const sender = authorizeIpcSender(event, 'clear-profile-sync-passphrase');
+  if (!sender) return rejectUnauthorizedIpc('clear-profile-sync-passphrase');
   profileSyncRuntime.passphraseSession = '';
   const profileSync = getProfileSyncConfig();
   profileSync.rememberPassphrase = false;
@@ -3396,7 +3550,9 @@ ipcMain.handle('clear-profile-sync-passphrase', async () => {
   return { success: true, status: buildProfileSyncStatus() };
 });
 
-ipcMain.handle('resolve-profile-sync-first-enable', async (_event, choice) => {
+ipcMain.handle('resolve-profile-sync-first-enable', async (event, choice) => {
+  const sender = authorizeIpcSender(event, 'resolve-profile-sync-first-enable');
+  if (!sender) return rejectUnauthorizedIpc('resolve-profile-sync-first-enable');
   if (!PROFILE_SYNC_RESOLUTION_CHOICES.has(choice)) {
     return { success: false, error: 'Invalid resolution choice', status: buildProfileSyncStatus() };
   }
@@ -3446,7 +3602,9 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (_event, choice) => {
 });
 
 // Start at login IPC handlers
-ipcMain.handle('get-login-item-settings', () => {
+ipcMain.handle('get-login-item-settings', (event) => {
+  const sender = authorizeIpcSender(event, 'get-login-item-settings');
+  if (!sender) return rejectUnauthorizedIpc('get-login-item-settings');
   try {
     if (process.platform === 'win32') {
       const startupTarget = getWindowsStartupRegistrationTarget();
@@ -3486,6 +3644,8 @@ ipcMain.handle('get-login-item-settings', () => {
 });
 
 ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
+  const sender = authorizeIpcSender(event, 'set-login-item-settings');
+  if (!sender) return rejectUnauthorizedIpc('set-login-item-settings');
   try {
     const normalizedOpenAtLogin = !!openAtLogin;
     if (process.platform === 'linux') {
@@ -3546,7 +3706,9 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   }
 });
 
-ipcMain.handle('restart-app', () => {
+ipcMain.handle('restart-app', (event) => {
+  const sender = authorizeIpcSender(event, 'restart-app');
+  if (!sender) return rejectUnauthorizedIpc('restart-app');
   log.info('Restarting application');
   try {
     isQuitting = true;
@@ -3557,22 +3719,30 @@ ipcMain.handle('restart-app', () => {
   }
 });
 
-ipcMain.handle('minimize-window', () => {
+ipcMain.handle('minimize-window', (event) => {
+  const sender = authorizeIpcSender(event, 'minimize-window');
+  if (!sender) return rejectUnauthorizedIpc('minimize-window');
   if (mainWindow) {
     mainWindow.minimize();
   }
 });
 
-ipcMain.handle('focus-window', () => {
+ipcMain.handle('focus-window', (event) => {
+  const sender = authorizeIpcSender(event, 'focus-window');
+  if (!sender) return rejectUnauthorizedIpc('focus-window');
   return focusMainWindow();
 });
 
-ipcMain.handle('focus-desktop-pin', (_event, entityId) => {
+ipcMain.handle('focus-desktop-pin', (event, entityId) => {
+  const sender = authorizeIpcSender(event, 'focus-desktop-pin');
+  if (!sender) return rejectUnauthorizedIpc('focus-desktop-pin');
   return focusDesktopPinWindow(normalizeEntityId(entityId));
 });
 
 // Updates IPC
-ipcMain.handle('check-for-updates', async () => {
+ipcMain.handle('check-for-updates', async (event) => {
+  const sender = authorizeIpcSender(event, 'check-for-updates');
+  if (!sender) return rejectUnauthorizedIpc('check-for-updates');
   if (!app.isPackaged) return { status: 'dev' };
   if (isPortableBuild()) {
     return checkPortableUpdate();
@@ -3594,25 +3764,41 @@ ipcMain.handle('check-for-updates', async () => {
   }
 });
 
-ipcMain.handle('quit-and-install', () => {
-  if (app.isPackaged && !isPortableBuild()) {
-    isQuitting = true;
-    getAutoUpdater().quitAndInstall();
+ipcMain.handle('quit-and-install', (event) => {
+  const sender = authorizeIpcSender(event, 'quit-and-install');
+  if (!sender) return rejectUnauthorizedIpc('quit-and-install');
+  if (!app.isPackaged) {
+    return { success: false, error: 'Update install is only available in packaged builds' };
   }
+  if (isPortableBuild() || !supportsAutoUpdater(process.platform, process.env)) {
+    return { success: false, error: 'In-app updates are not supported for this package' };
+  }
+  if (!autoUpdateDownloaded) {
+    return { success: false, error: 'No downloaded update is ready to install' };
+  }
+  isQuitting = true;
+  getAutoUpdater().quitAndInstall();
+  return { success: true };
 });
 
 // Handle quit request from renderer
-ipcMain.handle('quit-app', () => {
+ipcMain.handle('quit-app', (event) => {
+  const sender = authorizeIpcSender(event, 'quit-app');
+  if (!sender) return rejectUnauthorizedIpc('quit-app');
   isQuitting = true;
   app.quit();
 });
 
-ipcMain.handle('get-app-version', () => {
+ipcMain.handle('get-app-version', (event) => {
+  const sender = authorizeIpcSender(event, 'get-app-version');
+  if (!sender) return rejectUnauthorizedIpc('get-app-version');
   return app.getVersion();
 });
 
 // Log file viewer functionality
-ipcMain.handle('open-logs', () => {
+ipcMain.handle('open-logs', (event) => {
+  const sender = authorizeIpcSender(event, 'open-logs');
+  if (!sender) return rejectUnauthorizedIpc('open-logs');
   try {
     let logFilePath = null;
     try {
@@ -3648,6 +3834,8 @@ ipcMain.handle('open-logs', () => {
 });
 
 ipcMain.handle('open-external', async (event, url) => {
+  const sender = authorizeIpcSender(event, 'open-external');
+  if (!sender) return rejectUnauthorizedIpc('open-external');
   try {
     if (!url || typeof url !== 'string') {
       return { success: false, error: 'Invalid URL' };
@@ -3663,7 +3851,9 @@ ipcMain.handle('open-external', async (event, url) => {
   }
 });
 
-ipcMain.handle('debug-log', (_event, payload) => {
+ipcMain.handle('debug-log', (event, payload) => {
+  const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
+  if (!sender) return rejectUnauthorizedIpc('debug-log');
   try {
     if (typeof payload === 'string') {
       log.info(`[RendererDebug] ${payload}`);
@@ -3701,10 +3891,21 @@ ipcMain.handle('debug-log', (_event, payload) => {
 
 // Global Hotkey IPC Handlers
 ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
+  const sender = authorizeIpcSender(event, 'register-hotkey');
+  if (!sender) return rejectUnauthorizedIpc('register-hotkey');
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+
+  if (!validateHotkey(hotkey)) {
+    return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
+  }
+
   // Check for conflicts with existing hotkeys first
   // Handle both string (legacy) and object (new) formats
   const existingEntity = Object.entries(config.globalHotkeys.hotkeys).find(([id, hotkeyConfig]) => {
-    if (id === entityId) return false; // Skip the entity we're currently updating
+    if (id === normalizedEntityId) return false; // Skip the entity we're currently updating
 
     // Extract hotkey from either format: string or object
     const existingHotkey = (typeof hotkeyConfig === 'object' && hotkeyConfig.hotkey)
@@ -3720,12 +3921,7 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
     return { success: false, error: `Hotkey already assigned to ${entityName}` };
   }
 
-  // Then, validate the hotkey format and check against system shortcuts
-  if (!validateHotkey(hotkey)) {
-    return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
-  }
-
-  config.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+  config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
   saveConfig();
 
   // Only register if hotkeys are enabled
@@ -3736,7 +3932,7 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
     if (!globalShortcut.isRegistered(hotkey)) {
       log.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
       // Unset it from config so the user can try again
-      delete config.globalHotkeys.hotkeys[entityId];
+      delete config.globalHotkeys.hotkeys[normalizedEntityId];
       saveConfig();
       registerGlobalHotkeys();
       return { success: false, error: 'Hotkey is likely in use by another application' };
@@ -3747,13 +3943,21 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
 });
 
 ipcMain.handle('unregister-hotkey', (event, entityId) => {
-  delete config.globalHotkeys.hotkeys[entityId];
+  const sender = authorizeIpcSender(event, 'unregister-hotkey');
+  if (!sender) return rejectUnauthorizedIpc('unregister-hotkey');
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  delete config.globalHotkeys.hotkeys[normalizedEntityId];
   saveConfig();
   registerGlobalHotkeys();
   return { success: true };
 });
 
-ipcMain.handle('register-hotkeys', () => {
+ipcMain.handle('register-hotkeys', (event) => {
+  const sender = authorizeIpcSender(event, 'register-hotkeys');
+  if (!sender) return rejectUnauthorizedIpc('register-hotkeys');
   // Re-register all hotkeys (useful after config changes)
   registerGlobalHotkeys();
   return { success: true };
@@ -3762,6 +3966,11 @@ ipcMain.handle('register-hotkeys', () => {
 // DEPRECATED: Use 'update-config' instead for safer config merging
 // This handler replaces the entire config which can lose data if not careful
 ipcMain.handle('save-config', (event, newConfig) => {
+  const sender = authorizeIpcSender(event, 'save-config');
+  if (!sender) return rejectUnauthorizedIpc('save-config');
+  if (!isPlainObject(newConfig)) {
+    return { success: false, error: 'Invalid config payload' };
+  }
   log.warn('save-config handler is deprecated, use update-config instead');
   // Update the config with the new values
   pruneConfig(newConfig);
@@ -3778,6 +3987,8 @@ ipcMain.handle('save-config', (event, newConfig) => {
 });
 
 ipcMain.handle('toggle-hotkeys', (event, enabled) => {
+  const sender = authorizeIpcSender(event, 'toggle-hotkeys');
+  if (!sender) return rejectUnauthorizedIpc('toggle-hotkeys');
   config.globalHotkeys.enabled = enabled;
   saveConfig();
 
@@ -3791,23 +4002,39 @@ ipcMain.handle('toggle-hotkeys', (event, enabled) => {
 });
 
 ipcMain.handle('validate-hotkey', (event, hotkey) => {
+  const sender = authorizeIpcSender(event, 'validate-hotkey');
+  if (!sender) return rejectUnauthorizedIpc('validate-hotkey');
   return { valid: validateHotkey(hotkey) };
 });
 
 // Entity Alert IPC Handlers
 ipcMain.handle('set-entity-alert', (event, entityId, alertConfig) => {
-  config.entityAlerts.alerts[entityId] = alertConfig;
+  const sender = authorizeIpcSender(event, 'set-entity-alert');
+  if (!sender) return rejectUnauthorizedIpc('set-entity-alert');
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  config.entityAlerts.alerts[normalizedEntityId] = alertConfig;
   saveConfig();
   return { success: true };
 });
 
 ipcMain.handle('remove-entity-alert', (event, entityId) => {
-  delete config.entityAlerts.alerts[entityId];
+  const sender = authorizeIpcSender(event, 'remove-entity-alert');
+  if (!sender) return rejectUnauthorizedIpc('remove-entity-alert');
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  delete config.entityAlerts.alerts[normalizedEntityId];
   saveConfig();
   return { success: true };
 });
 
 ipcMain.handle('toggle-alerts', (event, enabled) => {
+  const sender = authorizeIpcSender(event, 'toggle-alerts');
+  if (!sender) return rejectUnauthorizedIpc('toggle-alerts');
   config.entityAlerts.enabled = enabled;
   saveConfig();
   return { success: true };
@@ -3815,6 +4042,8 @@ ipcMain.handle('toggle-alerts', (event, enabled) => {
 
 // Popup Hotkey IPC Handlers
 ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
+  const sender = authorizeIpcSender(event, 'register-popup-hotkey');
+  if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
   if (!uiohookAvailable) {
     return { success: false, error: 'Popup hotkey feature is not available on this platform' };
   }
@@ -3839,18 +4068,24 @@ ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
   return { success: true };
 });
 
-ipcMain.handle('unregister-popup-hotkey', () => {
+ipcMain.handle('unregister-popup-hotkey', (event) => {
+  const sender = authorizeIpcSender(event, 'unregister-popup-hotkey');
+  if (!sender) return rejectUnauthorizedIpc('unregister-popup-hotkey');
   config.popupHotkey = '';
   saveConfig();
   unregisterPopupHotkey();
   return { success: true };
 });
 
-ipcMain.handle('get-popup-hotkey', () => {
+ipcMain.handle('get-popup-hotkey', (event) => {
+  const sender = authorizeIpcSender(event, 'get-popup-hotkey');
+  if (!sender) return rejectUnauthorizedIpc('get-popup-hotkey');
   return { hotkey: config.popupHotkey || '' };
 });
 
-ipcMain.handle('is-popup-hotkey-available', () => {
+ipcMain.handle('is-popup-hotkey-available', (event) => {
+  const sender = authorizeIpcSender(event, 'is-popup-hotkey-available');
+  if (!sender) return rejectUnauthorizedIpc('is-popup-hotkey-available');
   return uiohookAvailable;
 });
 
@@ -4346,21 +4581,26 @@ function setupAutoUpdates() {
     configureAutoUpdaterChannel(autoUpdater);
 
     autoUpdater.on('checking-for-update', () => {
+      autoUpdateDownloaded = false;
       mainWindow?.webContents.send('auto-update', { status: 'checking' });
     });
     autoUpdater.on('update-available', (info) => {
+      autoUpdateDownloaded = false;
       mainWindow?.webContents.send('auto-update', { status: 'available', info });
     });
     autoUpdater.on('update-not-available', (info) => {
+      autoUpdateDownloaded = false;
       mainWindow?.webContents.send('auto-update', { status: 'none', info });
     });
     autoUpdater.on('download-progress', (progress) => {
       mainWindow?.webContents.send('auto-update', { status: 'downloading', progress });
     });
     autoUpdater.on('update-downloaded', (info) => {
+      autoUpdateDownloaded = true;
       mainWindow?.webContents.send('auto-update', { status: 'downloaded', info });
     });
     autoUpdater.on('error', (err) => {
+      autoUpdateDownloaded = false;
       mainWindow?.webContents.send('auto-update', { status: 'error', error: err?.message });
     });
 
@@ -4431,6 +4671,10 @@ app.whenReady().then(() => {
             respond({ statusCode: res.status || 502 });
           }
         } else if (host === 'hls') {
+          if (!isAllowedHlsProxyPath(url.pathname)) {
+            respond({ statusCode: 403 });
+            return;
+          }
           const upstream = `${haUrl.replace(/\/$/, '')}${url.pathname}${url.search || ''}`;
           const isHttps = haUrl.startsWith('https://');
           const res = await axios.get(upstream, {

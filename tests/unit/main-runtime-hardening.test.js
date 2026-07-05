@@ -62,11 +62,27 @@ describe('main-process runtime hardening', () => {
   it('supports opt-in prerelease update checks without moving stable users to prereleases', () => {
     expect(mainSource).toContain('function configureAutoUpdaterChannel');
     expect(mainSource).toContain('autoUpdater.allowPrerelease = allowPrerelease');
-    expect(mainSource).toMatch(/configureAutoUpdaterChannel\(autoUpdater\);\s+autoUpdater\.checkForUpdates\(\);/);
+    expect(mainSource).toContain('autoUpdater.checkForUpdates().catch');
     expect(mainSource).toContain('function selectPortableRelease');
     expect(mainSource).toContain('allowPrerelease || !release.prerelease');
     expect(mainSource).toContain('releases?per_page=20');
     expect(mainSource).toContain('/releases/latest');
+  });
+
+  it('fails closed for token saves when encryption is unavailable', () => {
+    expect(mainSource).toContain('delete configToSave.homeAssistant.token');
+    expect(mainSource).toContain("configToSave.tokenResetReason = reason");
+    expect(mainSource).toContain("config.tokenResetReason = reason");
+    expect(mainSource).toContain('omitting token from saved config so it is not written in plaintext');
+    expect(mainSource).not.toContain('Failed to encrypt token, saving as plaintext');
+  });
+
+  it('guards privileged IPC senders and restricts desktop-pin channels', () => {
+    expect(mainSource).toContain('function getAuthorizedIpcSender');
+    expect(mainSource).toContain("sender.type === 'desktop-pin' && options.allowDesktopPin === true");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'update-config')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'copy-profile-sync-file')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })");
   });
 
   it('keeps Windows non-glass opacity on renderer background surfaces', () => {
