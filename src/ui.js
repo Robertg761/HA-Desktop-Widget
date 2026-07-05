@@ -204,9 +204,6 @@ function shouldBlockInteraction(el) {
 
 let sortableInstance = null; // SortableJS instance for reorganize mode
 
-const mediaFitElements = new Set();
-let mediaFitScheduled = false;
-let mediaFitResizeBound = false;
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
 let hasVisibleTimerEntities = false;
@@ -862,11 +859,20 @@ function updateEntityInUI(entity, options = {}) {
       }
       const isPrimary = item.dataset.primaryCard === 'true';
       const isQuickAccessTile = !isDesktopPin && !isPrimary && !!item.closest('#quick-controls');
+      const nextSignature = getControlRenderSignature(renderEntity);
+      if (item.dataset.renderSignature === nextSignature && updateExistingQuickAccessControl(item, renderEntity, {
+        context: isQuickAccessTile ? 'quick-access' : 'default',
+      })) {
+        return;
+      }
       const newControl = isDesktopPin
         ? createDesktopPinControlElement(renderEntity)
         : createControlElement(renderEntity, {
           context: isQuickAccessTile ? 'quick-access' : 'default',
         });
+      if (!isDesktopPin) {
+        newControl.dataset.renderSignature = nextSignature;
+      }
       if (isPrimary) {
         newControl.dataset.primaryCard = 'true';
       }
@@ -890,40 +896,46 @@ function updateEntityInUI(entity, options = {}) {
 function getControlRenderSignature(entity) {
   if (!entity || !entity.entity_id) return '';
   const attrs = entity.attributes || {};
+  const domain = getEntityDomain(entity.entity_id);
+  const isTimerSensor = isTimerLikeSensorEntity(entity);
+  const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
+  const sensorDisplay = entity.entity_id.startsWith('sensor.') && !isTimerSensor
+    ? getQuickAccessSensorDisplayParts(entity)
+    : null;
+  let contentKind = 'default';
+  if (isTimer) {
+    contentKind = 'timer';
+  } else if (domain === 'sensor') {
+    contentKind = sensorDisplay ? 'sensor-numeric' : 'sensor';
+  } else if (domain === 'media_player') {
+    contentKind = 'media';
+  } else if (domain === 'light') {
+    contentKind = entity.state === 'on' && attrs.brightness ? 'light-brightness' : (entity.state !== 'on' ? 'light-off' : 'light-empty');
+  } else if (domain === 'climate') {
+    contentKind = attrs.current_temperature || attrs.temperature ? 'climate-temp' : 'climate-empty';
+  }
   const hasQuickAccessValueSize = isQuickAccessTileValueSizeApplicable(entity);
   return JSON.stringify({
     entityId: entity.entity_id,
+    domain,
+    contentKind,
+    sensorHasUnit: !!sensorDisplay?.unit,
+    span: getTileSpan(entity),
     desktopPinned: !!state.CONFIG?.desktopPins?.[entity.entity_id],
-    state: entity.state || '',
-    displayState: utils.getEntityDisplayState(entity),
-    name: utils.getEntityDisplayName(entity),
-    icon: utils.getEntityIcon(entity),
     quickAccessValueSize: hasQuickAccessValueSize ? getQuickAccessTileValueSize(entity.entity_id) : null,
-    brightness: attrs.brightness ?? null,
-    percentage: attrs.percentage ?? null,
-    timerEndsAt: attrs.finishes_at || attrs.end_time || attrs.finish_time || null,
-    timerDuration: attrs.duration || attrs.remaining || null,
-    mediaTitle: attrs.media_title || null,
-    mediaArtist: attrs.media_artist || null,
-    mediaAlbum: attrs.media_album_name || null,
-    mediaImage: attrs.entity_picture || attrs.media_image_url || attrs.media_content_id || null,
   });
 }
 
 function getUnavailableControlSignature(entityId) {
-  const customName = state.CONFIG?.customEntityNames?.[entityId] || null;
   return JSON.stringify({
     entityId: entityId || '',
     desktopPinned: !!state.CONFIG?.desktopPins?.[entityId],
     unavailable: true,
-    customName,
   });
 }
 
 function escapeHtmlAttribute(value) {
-  return utils.escapeHtml(String(value ?? ''))
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return utils.escapeHtmlAttribute(value);
 }
 
 function isTimerLikeSensorEntity(entity) {
@@ -1750,10 +1762,10 @@ function createDesktopPinButtonMarkup({
   title = '',
 }) {
   const safeLabel = utils.escapeHtml(label || '');
-  const safeAriaLabel = utils.escapeHtml(ariaLabel || label || '');
+  const safeAriaLabel = escapeHtmlAttribute(ariaLabel || label || '');
   const safeIcon = utils.escapeHtml(icon || '');
-  const safeTitle = utils.escapeHtml(title || ariaLabel || label || '');
-  const safeAction = utils.escapeHtml(action || '');
+  const safeTitle = escapeHtmlAttribute(title || ariaLabel || label || '');
+  const safeAction = escapeHtmlAttribute(action || '');
   return `
     <button
       class="${className}"
@@ -3091,7 +3103,7 @@ function createDesktopPinNumericControlElement(entity) {
     ? `
       <div class="desktop-pin-panel-slider-row">
         <span class="desktop-pin-panel-slider-label">${utils.escapeHtml(formatDesktopPinNumericValue(spec.min, entity, { spec }))}</span>
-        <input class="desktop-pin-panel-slider desktop-pin-numeric-slider" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.value}" aria-label="${utils.escapeHtml(utils.getEntityDisplayName(entity))} value" />
+      <input class="desktop-pin-panel-slider desktop-pin-numeric-slider" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.value}" aria-label="${escapeHtmlAttribute(`${utils.getEntityDisplayName(entity)} value`)}" />
         <span class="desktop-pin-panel-slider-label">${utils.escapeHtml(formatDesktopPinNumericValue(spec.max, entity, { spec }))}</span>
       </div>
     `
@@ -3857,7 +3869,13 @@ function renderQuickControls() {
           ? getControlRenderSignature(entity)
           : getUnavailableControlSignature(entityId);
 
-        if (existingNode && existingNode.dataset.renderSignature === nextSignature) {
+        if (
+          existingNode &&
+          existingNode.dataset.renderSignature === nextSignature &&
+          (entity
+            ? updateExistingQuickAccessControl(existingNode, entity, { context: 'quick-access' })
+            : updateExistingUnavailableControl(existingNode, entityId))
+        ) {
           desiredNodes.push(existingNode);
           existingNodesById.delete(renderedEntityId);
           return;
@@ -4297,6 +4315,9 @@ function createControlElement(entity, options = {}) {
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
+    if (isQuickAccessContext) {
+      applyQuickAccessTileAccessibility(div, entity);
+    }
     if (isQuickAccessContext && isQuickAccessTileValueSizeApplicable(entity)) {
       div.dataset.valueSize = getQuickAccessTileValueSize(entity.entity_id);
     }
@@ -4466,11 +4487,14 @@ function createUnavailableElement(entityId) {
     div.className = 'control-item unavailable-entity';
     div.dataset.entityId = entityId;
     div.dataset.span = '1';
+    div.setAttribute('role', 'button');
+    div.setAttribute('tabindex', '0');
     div.style.gridColumn = 'span 1';
 
     // Get custom name if available, otherwise use entity ID
     const customName = state.CONFIG.customEntityNames?.[entityId];
     const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
+    div.setAttribute('aria-label', displayName);
 
     div.innerHTML = `
       <div class="control-icon unavailable-icon">⚠️</div>
@@ -4490,6 +4514,147 @@ function createUnavailableElement(entityId) {
   }
 }
 
+function applyQuickAccessTileAccessibility(div, entity) {
+  if (!div || !entity?.entity_id) return;
+  div.setAttribute('role', 'button');
+  div.setAttribute('tabindex', '0');
+  div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
+  if (div.dataset.keyboardActivationBound === 'true') return;
+  div.dataset.keyboardActivationBound = 'true';
+  div.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    if (shouldBlockInteraction(div)) return;
+    div.click();
+  });
+}
+
+function updateExistingUnavailableControl(div, entityId) {
+  if (!div || !div.classList.contains('unavailable-entity')) return false;
+  const customName = state.CONFIG.customEntityNames?.[entityId];
+  const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
+  div.dataset.entityId = entityId;
+  const name = div.querySelector('.control-name');
+  if (name) name.textContent = displayName;
+  div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
+  return true;
+}
+
+function updateExistingQuickAccessControl(div, entity, options = {}) {
+  const renderContext = options.context || 'default';
+  const isQuickAccessContext = renderContext === 'quick-access';
+  const displayEntity = getEntityForDisplay(entity);
+  if (!div || !displayEntity?.entity_id || div.dataset.desktopPin === 'true') return false;
+
+  if (displayEntity.entity_id.startsWith('media_player.')) {
+    return updateExistingMediaPlayerControl(div, displayEntity);
+  }
+
+  const span = getTileSpan(displayEntity);
+  div.dataset.entityId = displayEntity.entity_id;
+  div.dataset.span = String(span);
+  div.style.gridColumn = `span ${span}`;
+  if (isQuickAccessContext && isQuickAccessTileValueSizeApplicable(displayEntity)) {
+    div.dataset.valueSize = getQuickAccessTileValueSize(displayEntity.entity_id);
+  } else {
+    delete div.dataset.valueSize;
+  }
+  if (isQuickAccessContext) {
+    applyQuickAccessTileAccessibility(div, displayEntity);
+  }
+
+  const isTimerSensor = isTimerLikeSensorEntity(displayEntity);
+  const isTimer = displayEntity.entity_id.startsWith('timer.') || isTimerSensor;
+  const icon = div.querySelector('.control-icon');
+  if (icon) icon.textContent = utils.getEntityIcon(displayEntity);
+
+  const name = div.querySelector('.control-name');
+  if (name) name.textContent = utils.getEntityDisplayName(displayEntity);
+
+  const stateEl = div.querySelector('.control-state');
+  if (displayEntity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+    const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(displayEntity) : null;
+    div.classList.add('sensor-entity');
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) showSensorDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
+    };
+    div.title = sensorDisplay
+      ? `${utils.getEntityDisplayName(displayEntity)}: ${sensorDisplay.text}`
+      : `${utils.getEntityDisplayName(displayEntity)}: ${utils.getEntityDisplayState(displayEntity)}`;
+    if (sensorDisplay) {
+      div.classList.add('sensor-numeric-entity');
+      if (stateEl) stateEl.setAttribute('aria-label', sensorDisplay.text);
+      const value = div.querySelector('.control-sensor-value');
+      if (value) value.textContent = sensorDisplay.value;
+      const unit = div.querySelector('.control-sensor-unit');
+      if (unit) unit.textContent = sensorDisplay.unit;
+    } else if (stateEl) {
+      div.classList.remove('sensor-numeric-entity');
+      stateEl.textContent = utils.getEntityDisplayState(displayEntity);
+    }
+    return true;
+  }
+
+  if (isTimer) {
+    div.classList.add('timer-entity');
+    div.dataset.state = displayEntity.state;
+    div.title = `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
+    if (stateEl) stateEl.textContent = utils.getTimerDisplay ? utils.getTimerDisplay(displayEntity) : utils.getEntityDisplayState(displayEntity);
+    return true;
+  }
+
+  if (displayEntity.entity_id.startsWith('light.')) {
+    div.title = 'Click to toggle, hold for brightness control';
+    if (stateEl) {
+      if (displayEntity.state === 'on' && displayEntity.attributes?.brightness) {
+        const brightnessValue = Number(displayEntity.attributes.brightness);
+        stateEl.textContent = !isNaN(brightnessValue) && brightnessValue >= 0
+          ? `${Math.round((brightnessValue / 255) * 100)}%`
+          : '';
+      } else {
+        stateEl.textContent = 'Off';
+      }
+    }
+    return true;
+  }
+
+  if (displayEntity.entity_id.startsWith('climate.')) {
+    div.title = 'Click to toggle, hold for temperature control';
+    if (stateEl) {
+      const temp = displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature;
+      stateEl.textContent = temp ? `${temp}°` : '';
+    }
+    return true;
+  }
+
+  if (displayEntity.entity_id.startsWith('fan.')) {
+    div.title = 'Click to toggle, hold for speed control';
+    return true;
+  }
+
+  if (displayEntity.entity_id.startsWith('cover.')) {
+    div.title = 'Click to toggle, hold for position control';
+    return true;
+  }
+
+  if (displayEntity.entity_id.startsWith('camera.')) {
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) camera.openCamera(displayEntity.entity_id);
+    };
+    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    return true;
+  }
+
+  const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
+  div.onclick = () => {
+    if (!shouldBlockInteraction(div)) toggleEntity(liveEntity());
+  };
+  div.title = (displayEntity.entity_id.startsWith('button.') || displayEntity.entity_id.startsWith('input_button.'))
+    ? `Click to press ${utils.getEntityDisplayName(displayEntity)}`
+    : `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
+  return true;
+}
+
 function showSensorDetails(entity) {
   try {
     uiUtils.showToast(`${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`, 'info', 3000);
@@ -4500,6 +4665,7 @@ function showSensorDetails(entity) {
 
 function setupPressAndHoldToggle(div, entity, onLongPress) {
   try {
+    const liveEntity = () => state.STATES?.[entity.entity_id] || entity;
     let pressTimer = null;
     let longPressTriggered = false;
     let shortPressHandled = false;
@@ -4530,9 +4696,9 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
         emitUiDebug('quick_access.long_press', {
           entityId: entity.entity_id,
           domain: entity.entity_id.split('.')[0],
-          state: entity.state,
+          state: liveEntity().state,
         });
-        onLongPress();
+        onLongPress(liveEntity());
       }, 500);
       activePressTimers.add(pressTimer);
     };
@@ -4570,9 +4736,9 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
       emitUiDebug('quick_access.short_press_toggle', {
         entityId: entity.entity_id,
         domain: entity.entity_id.split('.')[0],
-        state: entity.state,
+        state: liveEntity().state,
       });
-      toggleEntity(entity);
+      toggleEntity(liveEntity());
       setTimeout(() => {
         shortPressHandled = false;
       }, 0);
@@ -4599,9 +4765,9 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
       emitUiDebug('quick_access.click_toggle', {
         entityId: entity.entity_id,
         domain: entity.entity_id.split('.')[0],
-        state: entity.state,
+        state: liveEntity().state,
       });
-      toggleEntity(entity);
+      toggleEntity(liveEntity());
     });
   } catch (error) {
     console.error('Error setting up press/hold controls:', error);
@@ -4614,7 +4780,7 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
 
 function setupLightControls(div, entity) {
   try {
-    setupPressAndHoldToggle(div, entity, () => showBrightnessSlider(entity));
+    setupPressAndHoldToggle(div, entity, (liveEntity) => showBrightnessSlider(liveEntity));
   } catch (error) {
     console.error('Error setting up light controls:', error);
   }
@@ -4622,7 +4788,7 @@ function setupLightControls(div, entity) {
 
 function setupClimateControls(div, entity) {
   try {
-    setupPressAndHoldToggle(div, entity, () => showClimateControls(entity));
+    setupPressAndHoldToggle(div, entity, (liveEntity) => showClimateControls(liveEntity));
   } catch (error) {
     console.error('Error setting up climate controls:', error);
   }
@@ -4630,7 +4796,7 @@ function setupClimateControls(div, entity) {
 
 function setupFanControls(div, entity) {
   try {
-    setupPressAndHoldToggle(div, entity, () => showFanControls(entity));
+    setupPressAndHoldToggle(div, entity, (liveEntity) => showFanControls(liveEntity));
   } catch (error) {
     console.error('Error setting up fan controls:', error);
   }
@@ -4638,7 +4804,7 @@ function setupFanControls(div, entity) {
 
 function setupCoverControls(div, entity) {
   try {
-    setupPressAndHoldToggle(div, entity, () => showCoverControls(entity));
+    setupPressAndHoldToggle(div, entity, (liveEntity) => showCoverControls(liveEntity));
   } catch (error) {
     console.error('Error setting up cover controls:', error);
   }
@@ -4825,65 +4991,6 @@ function getTileSpan(entity) {
   } catch {
     return entity.entity_id.startsWith('media_player.') ? 2 : 1;
   }
-}
-
-// Simple single-line fit: shrink font-size until text fits width
-function fitSingleLine(el, opts = {}) {
-  if (!el || !el.isConnected) return;
-  if (!el.dataset.baseFontSize) {
-    const computed = parseFloat(getComputedStyle(el).fontSize) || 12;
-    el.dataset.baseFontSize = String(computed);
-  }
-  const base = parseFloat(el.dataset.baseFontSize) || 12;
-  const max = opts.max || base;
-  const min = opts.min || Math.max(base * 0.6, 8);
-  if (!el.clientWidth) {
-    el.style.fontSize = `${max}px`;
-    return;
-  }
-  el.style.fontSize = `${max}px`;
-  if (el.scrollWidth <= el.clientWidth + 1) {
-    return;
-  }
-  let low = min;
-  let high = max;
-  let best = min;
-  for (let i = 0; i < 6; i++) {
-    const mid = (low + high) / 2;
-    el.style.fontSize = `${mid}px`;
-    if (el.scrollWidth <= el.clientWidth + 1) {
-      best = mid;
-      high = mid - 0.1;
-    } else {
-      low = mid + 0.1;
-    }
-  }
-  el.style.fontSize = `${Math.max(min, best)}px`;
-}
-
-function fitMediaText(root) {
-  try {
-    if (!root || !root.isConnected) return;
-    const title = root.querySelector('.media-title');
-    const artist = root.querySelector('.media-artist');
-    const album = root.querySelector('.media-album');
-    fitSingleLine(title);
-    fitSingleLine(artist);
-    fitSingleLine(album);
-  } catch { /* noop */ }
-}
-
-function _setupMediaTextAutoFit(div) {
-  try {
-    if (!div) return;
-    mediaFitElements.add(div);
-    fitMediaText(div);
-    scheduleMediaFit();
-    if (!mediaFitResizeBound && typeof window !== 'undefined') {
-      window.addEventListener('resize', scheduleMediaFit);
-      mediaFitResizeBound = true;
-    }
-  } catch { /* noop */ }
 }
 
 function parseMediaSeconds(value) {
@@ -5121,21 +5228,6 @@ function showMediaDetail(entity) {
   } catch (error) {
     console.error('Error showing media details:', error);
   }
-}
-
-function scheduleMediaFit() {
-  if (mediaFitScheduled || typeof window === 'undefined') return;
-  mediaFitScheduled = true;
-  window.requestAnimationFrame(() => {
-    mediaFitScheduled = false;
-    mediaFitElements.forEach((el) => {
-      if (!el || !el.isConnected) {
-        mediaFitElements.delete(el);
-        return;
-      }
-      fitMediaText(el);
-    });
-  });
 }
 
 function updateMediaEntityPosition(entityId, seekPosition) {
@@ -6332,13 +6424,19 @@ function showBrightnessSlider(light) {
 function showClimateControls(climateEntity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(climateEntity));
-    const currentTemp = climateEntity.attributes.current_temperature || 0;
-    const targetTemp = climateEntity.attributes.temperature || 20;
-    const currentMode = climateEntity.state || 'off';
-    const minTemp = climateEntity.attributes.min_temp || 10;
-    const maxTemp = climateEntity.attributes.max_temp || 30;
+    const currentTempValue = Number(climateEntity.attributes.current_temperature);
+    const targetTempValue = Number(climateEntity.attributes.temperature);
+    const minTempValue = Number(climateEntity.attributes.min_temp);
+    const maxTempValue = Number(climateEntity.attributes.max_temp);
+    const currentTemp = Number.isFinite(currentTempValue) ? currentTempValue : 0;
+    const targetTemp = Number.isFinite(targetTempValue) ? targetTempValue : 20;
+    const currentMode = String(climateEntity.state || 'off');
+    const minTemp = Number.isFinite(minTempValue) ? minTempValue : 10;
+    const maxTemp = Number.isFinite(maxTempValue) ? maxTempValue : 30;
     const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
-    const availableModes = climateEntity.attributes.hvac_modes || ['off', 'heat', 'cool', 'auto'];
+    const availableModes = Array.isArray(climateEntity.attributes.hvac_modes)
+      ? climateEntity.attributes.hvac_modes
+      : ['off', 'heat', 'cool', 'auto'];
 
     const modal = document.createElement('div');
     modal.className = 'modal climate-modal';
@@ -6380,18 +6478,7 @@ function showClimateControls(climateEntity) {
 
             <div class="climate-modes">
               <div class="climate-modes-label">Mode</div>
-              <div class="climate-mode-buttons" id="climate-mode-buttons">
-                ${availableModes.map(mode => `
-                  <button
-                    class="climate-mode-btn ${mode === currentMode ? 'active' : ''}"
-                    data-mode="${mode}"
-                    title="${mode.charAt(0).toUpperCase() + mode.slice(1)}"
-                  >
-                    <span class="climate-mode-icon">${getModeIcon(mode)}</span>
-                    <span class="climate-mode-label">${mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
-                  </button>
-                `).join('')}
-              </div>
+              <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
             </div>
           </div>
         </div>
@@ -6406,7 +6493,7 @@ function showClimateControls(climateEntity) {
     const targetValue = modal.querySelector('#climate-target-value');
     const closeBtn = modal.querySelector('#climate-close');
     const cancelBtn = modal.querySelector('#climate-cancel');
-    const modeButtons = modal.querySelectorAll('.climate-mode-btn');
+    const modeButtonsContainer = modal.querySelector('#climate-mode-buttons');
 
     // Helper function to get mode icons
     function getModeIcon(mode) {
@@ -6421,6 +6508,36 @@ function showClimateControls(climateEntity) {
       };
       return icons[mode] || '⚙️';
     }
+
+    function formatModeLabel(mode) {
+      const normalizedMode = String(mode ?? '').trim();
+      if (!normalizedMode) return 'Mode';
+      return normalizedMode.charAt(0).toUpperCase() + normalizedMode.slice(1);
+    }
+
+    if (modeButtonsContainer) {
+      availableModes.forEach((mode) => {
+        const modeValue = String(mode ?? '');
+        const modeLabel = formatModeLabel(modeValue);
+        const button = document.createElement('button');
+        button.className = `climate-mode-btn ${modeValue === currentMode ? 'active' : ''}`.trim();
+        button.dataset.mode = modeValue;
+        button.title = modeLabel;
+
+        const icon = document.createElement('span');
+        icon.className = 'climate-mode-icon';
+        icon.textContent = getModeIcon(modeValue);
+        button.appendChild(icon);
+
+        const label = document.createElement('span');
+        label.className = 'climate-mode-label';
+        label.textContent = modeLabel;
+        button.appendChild(label);
+
+        modeButtonsContainer.appendChild(button);
+      });
+    }
+    const modeButtons = modal.querySelectorAll('.climate-mode-btn');
 
     // Close handlers
     const closeModal = () => {
@@ -6478,7 +6595,10 @@ function showClimateControls(climateEntity) {
 function showFanControls(fanEntity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(fanEntity));
-    const currentSpeed = fanEntity.attributes.percentage || 0;
+    const currentSpeedValue = Number(fanEntity.attributes.percentage);
+    const currentSpeed = Number.isFinite(currentSpeedValue)
+      ? Math.max(0, Math.min(100, Math.round(currentSpeedValue)))
+      : 0;
     const isOn = fanEntity.state === 'on';
 
     const modal = document.createElement('div');
@@ -6599,7 +6719,10 @@ function showFanControls(fanEntity) {
 function showCoverControls(coverEntity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
-    const currentPosition = coverEntity.attributes.current_position || 0;
+    const currentPositionValue = Number(coverEntity.attributes.current_position);
+    const currentPosition = Number.isFinite(currentPositionValue)
+      ? Math.max(0, Math.min(100, Math.round(currentPositionValue)))
+      : 0;
     const _state = coverEntity.state;
 
     const modal = document.createElement('div');
@@ -6777,10 +6900,10 @@ function populateQuickControlsList() {
                         <span class="entity-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
                         <div class="entity-item-info">
                             <span class="entity-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
-                            <span class="entity-id" title="${utils.escapeHtml(entity.entity_id)}">${utils.escapeHtml(entity.entity_id)}</span>
+                            <span class="entity-id" title="${escapeHtmlAttribute(entity.entity_id)}">${utils.escapeHtml(entity.entity_id)}</span>
                         </div>
                     </div>
-                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${utils.escapeHtml(entity.entity_id)}">
+                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${escapeHtmlAttribute(entity.entity_id)}">
                         ${isFavorite ? 'Remove' : 'Add'}
                     </button>
                 `;

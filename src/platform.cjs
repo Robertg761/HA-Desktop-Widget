@@ -37,6 +37,8 @@ function getMainWindowVisualOptions({ platform = process.platform, frostedGlass 
     }
   } else if (platform === 'darwin' && frostedGlass) {
     options.vibrancy = 'sidebar';
+  } else if (platform === 'linux') {
+    options.roundedCorners = false;
   }
 
   return options;

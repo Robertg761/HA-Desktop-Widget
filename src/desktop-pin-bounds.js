@@ -1,4 +1,3 @@
-/* eslint-env node */
 /* global module, require */
 
 const DESKTOP_PIN_DEFAULT_BOUNDS = { width: 168, height: 148 };

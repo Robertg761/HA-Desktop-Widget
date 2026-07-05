@@ -1,6 +1,6 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { escapeHtml, getEntityDisplayName } from './utils.js';
+import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
 import { showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 
@@ -65,7 +65,7 @@ async function openCamera(cameraId) {
         </div>
         <div class="modal-body">
           <div style="position: relative;">
-            <img alt="${escapeHtml(getEntityDisplayName(camera))}" class="camera-stream camera-img">
+            <img alt="${escapeHtmlAttribute(getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
               ${escapeHtml(t('Loading live stream...'))}
@@ -76,7 +76,7 @@ async function openCamera(cameraId) {
             <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
           </div>
           <div class="camera-info">
-            <p><strong>${escapeHtml(t('Status:'))}</strong> ${camera.state}</p>
+            <p><strong>${escapeHtml(t('Status:'))}</strong> ${escapeHtml(camera.state)}</p>
             <p><strong>${escapeHtml(t('Last Updated:'))}</strong> ${escapeHtml(formatDateTime(camera.last_updated))}</p>
           </div>
         </div>

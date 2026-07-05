@@ -83,7 +83,8 @@ class WebSocketManager extends EventEmitter {
     }
 
     try {
-      const wsUrl = state.CONFIG.homeAssistant.url.replace(/^http/, 'ws') + '/api/websocket';
+      const haUrl = state.CONFIG.homeAssistant.url.trim().replace(/\/+$/, '');
+      const wsUrl = haUrl.replace(/^http/, 'ws') + '/api/websocket';
       log.debug(`Connecting to WebSocket URL: ${wsUrl}`);
       const ws = new WebSocket(wsUrl);
       ws.__intentionalClose = false;

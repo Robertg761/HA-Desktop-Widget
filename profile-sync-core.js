@@ -1,4 +1,3 @@
-/* eslint-env node */
 const nodeCrypto = require('crypto');
 
 const SYNC_SCHEMA_VERSION = 2;

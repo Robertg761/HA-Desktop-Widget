@@ -340,6 +340,12 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function escapeHtmlAttribute(text) {
+    return String(escapeHtml(String(text ?? '')))
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 /**
  * Base64-encode a string using UTF-8 bytes (safe for Unicode).
  * @param {string} input - The string to encode.
@@ -607,6 +613,7 @@ export {
     getEntityDisplayState,
     getTimerDisplay,
     escapeHtml,
+    escapeHtmlAttribute,
     base64Encode,
     resolveEntityId,
     reconcileConfigEntityIds,

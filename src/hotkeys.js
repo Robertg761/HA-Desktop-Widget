@@ -13,6 +13,12 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function escapeHtmlAttribute(text) {
+    return String(escapeHtml(String(text ?? '')))
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function initializeHotkeys() {
     try {
         if (state.CONFIG && state.CONFIG.globalHotkeys) {
@@ -75,7 +81,7 @@ function getActionOptionsForDomain(domain) {
 function createCustomDropdownHTML(options, selectedAction, entityId) {
     const selectedOption = options.find(opt => opt.value === selectedAction) || options[0];
     const selectedLabel = escapeHtml(selectedOption.label);
-    const escapedEntityId = escapeHtml(entityId);
+    const escapedEntityId = escapeHtmlAttribute(entityId);
 
     const optionsHTML = options.map(opt =>
         `<div class="custom-dropdown-option ${opt.value === selectedAction ? 'selected' : ''}" role="option" data-value="${opt.value}">${escapeHtml(opt.label)}</div>`
@@ -125,14 +131,14 @@ function renderHotkeysTab() {
             const item = document.createElement('div');
             item.className = 'hotkey-item';
             const displayName = escapeHtml(getEntityDisplayName(entity));
-            const escapedHotkey = escapeHtml(hotkey || '');
-            const escapedEntityId = escapeHtml(entity.entity_id);
+            const escapedHotkey = escapeHtmlAttribute(hotkey || '');
+            const escapedEntityId = escapeHtmlAttribute(entity.entity_id);
             item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtml(t('No hotkey set'))}" data-entity-id="${escapedEntityId}">
+                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('No hotkey set'))}" data-entity-id="${escapedEntityId}">
                     ${dropdownHTML}
-                    <button class="btn-clear-hotkey" title="${escapeHtml(t('Clear hotkey'))}">&times;</button>
+                    <button class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
                 </div>
             `;
             container.appendChild(item);
@@ -328,7 +334,7 @@ function renderExistingHotkeys() {
             item.className = 'existing-hotkey-item';
             const displayName = escapeHtml(getEntityDisplayName(entity));
             const hotkeyDisplay = typeof hotkey === 'string' ? escapeHtml(hotkey) : escapeHtml(hotkey.hotkey || '');
-            const escapedEntityId = escapeHtml(entityId);
+            const escapedEntityId = escapeHtmlAttribute(entityId);
             item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <span class="hotkey-display">${hotkeyDisplay}</span>
