@@ -67,8 +67,13 @@ describe('main-process security helpers', () => {
         fsModule: fs,
       });
 
-      expect(result.sourcePath).toBe(path.join(fs.realpathSync(sourceDir), 'ha-widget-profile-sync.json'));
-      expect(result.destinationPath).toBe(path.join(fs.realpathSync(destinationDir), 'ha-widget-profile-sync.json'));
+      // Match production's async realpath (validateProfileSyncCopyPaths uses
+      // fs.promises.realpath); on Windows sync vs async realpath can return
+      // different 8.3 short/long name forms for the same directory.
+      const realSourceDir = await fs.promises.realpath(sourceDir);
+      const realDestinationDir = await fs.promises.realpath(destinationDir);
+      expect(result.sourcePath).toBe(path.join(realSourceDir, 'ha-widget-profile-sync.json'));
+      expect(result.destinationPath).toBe(path.join(realDestinationDir, 'ha-widget-profile-sync.json'));
     });
 
     it('rejects wrong filenames and copies outside allowed folders', async () => {

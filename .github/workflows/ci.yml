@@ -43,7 +43,7 @@ jobs:
       - name: Install native build dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev
+          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev
 
       - name: Install dependencies
         run: npm ci
