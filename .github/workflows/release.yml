@@ -6,7 +6,7 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -313,6 +313,8 @@ jobs:
   publish-release:
     needs: [validate, build, build-mac, build-linux]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download release artifacts
         uses: actions/download-artifact@v7
@@ -378,6 +380,8 @@ jobs:
   sync-version:
     needs: [validate, publish-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout tagged commit
         uses: actions/checkout@v5

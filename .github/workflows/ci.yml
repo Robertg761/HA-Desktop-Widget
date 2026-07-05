@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -21,7 +23,7 @@ jobs:
         run: npm ci
 
       - name: Run linter
-        run: npm run lint
+        run: npx eslint . --max-warnings=0
 
       - name: Run tests
         run: npm test
@@ -42,7 +44,7 @@ jobs:
         run: npm ci
 
       - name: Run linter
-        run: npm run lint
+        run: npx eslint . --max-warnings=0
 
       - name: Run tests
         run: npm test

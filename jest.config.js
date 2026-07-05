@@ -2,6 +2,13 @@
 module.exports = {
   testEnvironment: 'jsdom',
   testMatch: ['<rootDir>/tests/**/*.test.js'],
+  collectCoverageFrom: [
+    'main.js',
+    'renderer.js',
+    'preload.js',
+    'profile-sync-core.js',
+    'src/**/*.{js,cjs}'
+  ],
   roots: ['<rootDir>'],
   testPathIgnorePatterns: [
     '/node_modules/',
@@ -18,4 +25,3 @@ module.exports = {
     '/node_modules/(?!(sortablejs|hls.js)/)'
   ],
 };
-
