@@ -46,7 +46,7 @@ describe('main-process security helpers', () => {
     let tempDir;
 
     beforeEach(() => {
-      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-main-security-'));
+      tempDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-main-security-')));
     });
 
     afterEach(() => {
