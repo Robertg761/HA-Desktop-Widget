@@ -187,8 +187,9 @@ class WebSocketManager extends EventEmitter {
     }
   }
 
-  callService(domain, service, serviceData) {
+  callService(domain, service, serviceData, options = {}) {
     try {
+      const shouldReturnResponse = options?.returnResponse === true;
       const proxyContext = getDesktopPinServiceProxyContext(serviceData);
       if ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && proxyContext) {
         const proxiedPromise = window.electronAPI.requestDesktopPinAction(
@@ -198,6 +199,7 @@ class WebSocketManager extends EventEmitter {
             domain,
             service,
             serviceData: serviceData || {},
+            ...(shouldReturnResponse ? { returnResponse: true } : {}),
           }
         ).then((response) => {
           if (
@@ -208,22 +210,29 @@ class WebSocketManager extends EventEmitter {
           ) {
             throw new Error(`${domain}.${service} was forwarded without a service result`);
           }
-          return throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+          const checkedResponse = throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+          if (!shouldReturnResponse) return checkedResponse;
+          return checkedResponse?.result?.response ?? checkedResponse?.response ?? checkedResponse?.result ?? checkedResponse;
         });
         proxiedPromise.id = null;
         return proxiedPromise;
       }
 
-      const requestPromise = this.request({
+      const payload = {
         type: 'call_service',
         domain,
         service,
         service_data: serviceData,
-      });
+      };
+      if (shouldReturnResponse) payload.return_response = true;
 
-      const servicePromise = requestPromise.then((response) => (
-        throwForFailedServiceResponse(response, `${domain}.${service} failed`)
-      ));
+      const requestPromise = this.request(payload);
+
+      const servicePromise = requestPromise.then((response) => {
+        const checkedResponse = throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+        if (!shouldReturnResponse) return checkedResponse;
+        return checkedResponse?.result?.response ?? checkedResponse?.response ?? checkedResponse?.result ?? checkedResponse;
+      });
 
       // Preserve request ID for tests and callers that correlate responses
       servicePromise.id = requestPromise.id;
@@ -232,6 +241,10 @@ class WebSocketManager extends EventEmitter {
       log.error('Error calling service:', error);
       return Promise.reject(error);
     }
+  }
+
+  callServiceWithResponse(domain, service, serviceData) {
+    return this.callService(domain, service, serviceData, { returnResponse: true });
   }
 }
 

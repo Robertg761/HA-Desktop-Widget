@@ -3823,6 +3823,59 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   color: var(--text-primary);
 }
 
+.weather-forecast {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.weather-forecast[hidden] {
+  display: none;
+}
+
+.weather-forecast-day {
+  min-width: 0;
+  padding: 5px 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  text-align: center;
+}
+
+.theme-light .weather-forecast-day {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.weather-forecast-label,
+.weather-forecast-temps {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weather-forecast-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.weather-forecast-icon {
+  font-size: 14px;
+  line-height: 1.1;
+  margin: 2px 0;
+}
+
+.weather-forecast-temps {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Enhanced Time Card Styles */
 .status-card.time-card {
   min-height: 120px;
@@ -5588,6 +5641,38 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: 12px;
 }
 
+#quick-controls .control-item.todo-entity,
+#quick-controls .control-item.calendar-entity {
+  min-height: 74px;
+}
+
+#quick-controls .control-item.todo-entity .control-icon,
+#quick-controls .control-item.calendar-entity .control-icon {
+  margin-bottom: 2px;
+}
+
+#quick-controls .control-item.todo-entity .control-state,
+#quick-controls .control-item.calendar-entity .control-state {
+  display: block;
+  width: 100%;
+  min-height: 16px;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#quick-controls .control-item.todo-entity .todo-active-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-secondary);
+}
+
 .entity-info {
   flex: 1;
   min-width: 0;
@@ -6118,6 +6203,141 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border-color);
   background: transparent;
+}
+
+.entity-detail-modal-content {
+  width: min(520px, 92vw);
+}
+
+.entity-detail-section-title {
+  margin: 16px 0 10px;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.entity-detail-empty {
+  padding: 16px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.todo-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.todo-items-list,
+.calendar-events-list,
+.weather-detail-forecast {
+  display: grid;
+  gap: 8px;
+}
+
+.todo-item-row,
+.calendar-event-row,
+.weather-detail-forecast-row {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.theme-light .todo-item-row,
+.theme-light .calendar-event-row,
+.theme-light .weather-detail-forecast-row {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.todo-item-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.todo-item-row[data-status='completed'] .todo-item-summary {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.todo-item-summary,
+.calendar-event-summary,
+.calendar-event-description,
+.weather-detail-forecast-condition {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-row {
+  padding: 12px;
+}
+
+.calendar-event-summary {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.calendar-event-time,
+.calendar-event-description {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.weather-detail-current {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.theme-light .weather-detail-current {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.weather-detail-current-icon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.weather-detail-current-temp {
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.weather-detail-current-condition {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.weather-detail-forecast-row {
+  display: grid;
+  grid-template-columns: 44px 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.weather-detail-forecast-day,
+.weather-detail-forecast-temps {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-detail-forecast-icon {
+  font-size: 20px;
+  text-align: center;
 }
 
 /* Horizontal rule separator */

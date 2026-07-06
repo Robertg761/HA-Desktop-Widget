@@ -490,6 +490,60 @@ describe('WebSocket Manager', () => {
       expect(result.success).toBe(true);
     });
 
+    test('should request and return service response payloads', async () => {
+      const promise = wsManager.callServiceWithResponse('weather', 'get_forecasts', {
+        entity_id: 'weather.home',
+        type: 'daily'
+      });
+
+      const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(sentMessage.type).toBe('call_service');
+      expect(sentMessage.return_response).toBe(true);
+      expect(sentMessage.service_data).toEqual({
+        entity_id: 'weather.home',
+        type: 'daily'
+      });
+
+      const forecastResponse = {
+        'weather.home': {
+          forecast: [{ datetime: '2026-07-06T12:00:00', condition: 'sunny' }]
+        }
+      };
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        result: {
+          response: forecastResponse
+        }
+      });
+
+      await expect(promise).resolves.toEqual(forecastResponse);
+    });
+
+    test('should support top-level response payload fallback', async () => {
+      const promise = wsManager.callService('todo', 'get_items', {
+        entity_id: 'todo.shopping'
+      }, { returnResponse: true });
+
+      const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(sentMessage.return_response).toBe(true);
+
+      const todoResponse = {
+        'todo.shopping': {
+          items: [{ uid: '1', summary: 'Milk', status: 'needs_action' }]
+        }
+      };
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        response: todoResponse
+      });
+
+      await expect(promise).resolves.toEqual(todoResponse);
+    });
+
     test('should handle service call errors', async () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 

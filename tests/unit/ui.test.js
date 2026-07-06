@@ -59,9 +59,11 @@ jest.mock('sortablejs', () => ({
 
 // Mock WebSocket callService method
 const mockCallService = jest.fn().mockResolvedValue({});
+const mockCallServiceWithResponse = jest.fn().mockResolvedValue({});
 
 jest.mock('../../src/websocket.js', () => ({
   callService: mockCallService,
+  callServiceWithResponse: mockCallServiceWithResponse,
   on: jest.fn(),
   emit: jest.fn()
 }));
@@ -94,6 +96,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     // Reset WebSocket mock
     mockCallService.mockClear();
     mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
+    mockCallServiceWithResponse.mockClear();
+    mockCallServiceWithResponse.mockResolvedValue({});
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -775,6 +779,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // GROUP 3: Data Transformation (15 tests)
   // ==============================================================================
 
+  describe('Home Assistant feature helpers', () => {
+    it('formats forecast day labels from forecast datetimes', () => {
+      expect(ui.formatForecastDayLabel('2026-07-06T12:00:00')).toBe('Mon');
+      expect(ui.formatForecastDayLabel('not-a-date')).toBe('--');
+    });
+
+    it('counts only needs_action todo items as active', () => {
+      expect(ui.getTodoActiveCount([
+        { uid: '1', summary: 'Milk', status: 'needs_action' },
+        { uid: '2', summary: 'Done', status: 'completed' },
+        { uid: '3', summary: 'Call', status: 'needs_action' },
+      ])).toBe(2);
+      expect(ui.getTodoActiveCount(null)).toBe(0);
+    });
+  });
+
   describe('updateWeatherFromHA', () => {
     beforeEach(() => {
       state.setStates({
@@ -1324,6 +1344,67 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('renders todo tiles with active item counts from get_items', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['todo.shopping'];
+      state.setConfig(config);
+      state.setStates({
+        'todo.shopping': {
+          entity_id: 'todo.shopping',
+          state: '0',
+          attributes: {
+            friendly_name: 'Shopping'
+          }
+        }
+      });
+      mockCallServiceWithResponse.mockResolvedValueOnce({
+        'todo.shopping': {
+          items: [
+            { uid: '1', summary: '<milk>', status: 'needs_action' },
+            { uid: '2', summary: 'Done', status: 'completed' },
+            { uid: '3', summary: 'Eggs', status: 'needs_action' }
+          ]
+        }
+      });
+
+      ui.renderActiveTab();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const todoTile = document.querySelector('.control-item.todo-entity[data-entity-id="todo.shopping"]');
+      expect(todoTile).toBeTruthy();
+      expect(todoTile.querySelector('.control-name').textContent).toBe('Shopping');
+      expect(todoTile.querySelector('.todo-active-count').textContent).toBe('2 active');
+      expect(mockCallServiceWithResponse).toHaveBeenCalledWith('todo', 'get_items', {
+        entity_id: 'todo.shopping'
+      });
+    });
+
+    it('renders calendar tiles with next event details from attributes', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['calendar.family'];
+      state.setConfig(config);
+      state.setStates({
+        'calendar.family': {
+          entity_id: 'calendar.family',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Family Calendar',
+            message: 'Dentist <checkup>',
+            start_time: '2026-07-06T09:30:00'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const calendarTile = document.querySelector('.control-item.calendar-entity[data-entity-id="calendar.family"]');
+      expect(calendarTile).toBeTruthy();
+      expect(calendarTile.querySelector('.control-name').textContent).toBe('Family Calendar');
+      expect(calendarTile.querySelector('.calendar-next-event').textContent).toContain('Dentist <checkup>');
+      expect(calendarTile.innerHTML).not.toContain('<checkup>');
     });
 
     it('presses input button helpers from quick access tiles', () => {

@@ -1098,9 +1098,13 @@ function wireUI() {
     statusCards.forEach((card) => {
       if (!card) return;
       let pressTimer = null;
+      let longPressTriggered = false;
+      const isWeatherCard = () => card.dataset.primaryType === 'weather' || card.classList.contains('weather-card');
       const startPress = () => {
-        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card')) return;
+        if (!isWeatherCard()) return;
+        longPressTriggered = false;
         pressTimer = setTimeout(() => {
+          longPressTriggered = true;
           const modal = document.getElementById('weather-config-modal');
           if (modal) {
             ui.populateWeatherEntitiesList();
@@ -1115,6 +1119,18 @@ function wireUI() {
       card.addEventListener('mousedown', startPress);
       card.addEventListener('mouseup', cancelPress);
       card.addEventListener('mouseleave', cancelPress);
+      card.addEventListener('click', (event) => {
+        if (!isWeatherCard()) return;
+        if (longPressTriggered) {
+          event.preventDefault();
+          event.stopPropagation();
+          setTimeout(() => {
+            longPressTriggered = false;
+          }, 0);
+          return;
+        }
+        ui.showWeatherDetails();
+      });
     });
 
     // Wire up alerts management

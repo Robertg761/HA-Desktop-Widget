@@ -102,6 +102,8 @@ function getEntityIcon(entity, options = {}) {
             case 'alarm_control_panel': return '🛡️';
             case 'vacuum': return '🧹';
             case 'timer': return '⏲️';
+            case 'todo': return '✅';
+            case 'calendar': return '📅';
             default: return '❓';
         }
     } catch (error) {

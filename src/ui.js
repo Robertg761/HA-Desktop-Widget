@@ -45,6 +45,10 @@ const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
   { value: 'large', label: 'Large' },
   { value: 'extra-large', label: 'Extra Large' },
 ];
+const WEATHER_FORECAST_CACHE_TTL_MS = 30 * 60 * 1000;
+const WEATHER_FORECAST_REFRESH_THROTTLE_MS = 10 * 60 * 1000;
+const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
+const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   off: 'Off',
@@ -224,6 +228,10 @@ let lastMediaTileArtworkSrc = '';
 
 let weatherCardTemplate = null;
 let timeCardTemplate = null;
+const weatherForecastCacheByEntity = new Map();
+const weatherForecastPendingByEntity = new Map();
+const todoItemsCacheByEntity = new Map();
+const todoItemsPendingByEntity = new Map();
 
 function cachePrimaryCardTemplates() {
   if (!weatherCardTemplate) {
@@ -949,6 +957,115 @@ function escapeHtmlAttribute(value) {
   return utils.escapeHtmlAttribute(value);
 }
 
+function getWeatherConditionIcon(condition) {
+  const value = typeof condition === 'string' ? condition.toLowerCase() : '';
+  if (value.includes('sunny') || value === 'clear') return { icon: '☀️', className: 'sunny' };
+  if (value.includes('partly') || value.includes('cloudy')) return { icon: '⛅', className: 'cloudy' };
+  if (value.includes('rain') || value.includes('rainy')) return { icon: '🌧️', className: 'rain' };
+  if (value.includes('snow') || value.includes('snowy')) return { icon: '❄️', className: 'snow' };
+  if (value.includes('storm') || value.includes('thunder') || value.includes('lightning')) return { icon: '⛈️', className: 'storm' };
+  if (value.includes('fog') || value.includes('mist') || value.includes('haze')) return { icon: '🌫️', className: 'fog' };
+  if (value.includes('wind')) return { icon: '💨', className: 'wind' };
+  if (value.includes('cloud')) return { icon: '☁️', className: 'cloudy' };
+  if (value.includes('night') || value.includes('clear-night')) return { icon: '🌙', className: 'night' };
+  return { icon: '🌤️', className: '' };
+}
+
+function formatForecastDayLabel(datetime) {
+  const date = new Date(datetime);
+  if (Number.isNaN(date.getTime())) return '--';
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+}
+
+function getTodoActiveCount(items = []) {
+  if (!Array.isArray(items)) return 0;
+  return items.filter((item) => item?.status === 'needs_action').length;
+}
+
+function getServiceEntityPayload(response, entityId) {
+  if (!response || typeof response !== 'object') return null;
+  if (entityId && response[entityId]) return response[entityId];
+  const firstValue = Object.values(response)[0];
+  return firstValue && typeof firstValue === 'object' ? firstValue : response;
+}
+
+function normalizeForecastItems(response, entityId) {
+  const entityPayload = getServiceEntityPayload(response, entityId);
+  const forecast = Array.isArray(entityPayload?.forecast)
+    ? entityPayload.forecast
+    : (Array.isArray(response?.forecast) ? response.forecast : []);
+  return forecast.filter((item) => item && typeof item === 'object');
+}
+
+function normalizeTodoItems(response, entityId) {
+  const entityPayload = getServiceEntityPayload(response, entityId);
+  const items = Array.isArray(entityPayload?.items)
+    ? entityPayload.items
+    : (Array.isArray(response?.items) ? response.items : []);
+  return items.filter((item) => item && typeof item === 'object');
+}
+
+function normalizeCalendarEvents(response, entityId) {
+  const entityPayload = getServiceEntityPayload(response, entityId);
+  const events = Array.isArray(entityPayload?.events)
+    ? entityPayload.events
+    : (Array.isArray(response?.events) ? response.events : []);
+  return events.filter((event) => event && typeof event === 'object');
+}
+
+function getForecastTemperatureValue(forecast, keys) {
+  for (const key of keys) {
+    const value = forecast?.[key];
+    if (value != null && value !== '') return value;
+  }
+  return null;
+}
+
+function formatForecastTemperature(value, unit = '') {
+  const numberValue = Number(value);
+  const displayValue = Number.isFinite(numberValue) ? Math.round(numberValue) : value;
+  return value == null || value === '' ? '--' : `${displayValue}${unit}`;
+}
+
+function getForecastTemperatureParts(forecast, unit = '') {
+  const high = getForecastTemperatureValue(forecast, ['temperature', 'templow_high', 'high_temperature']);
+  const low = getForecastTemperatureValue(forecast, ['templow', 'low_temperature']);
+  return {
+    high: formatForecastTemperature(high, unit),
+    low: formatForecastTemperature(low, unit),
+  };
+}
+
+function getEventDateValue(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return value.dateTime || value.date_time || value.date || null;
+  return null;
+}
+
+function formatDateTimeValue(value) {
+  const dateValue = getEventDateValue(value);
+  if (!dateValue) return '--';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return String(dateValue);
+  return `${formatDate(date)} ${formatTime(date)}`;
+}
+
+function formatCalendarTileStart(startTime) {
+  const dateValue = getEventDateValue(startTime);
+  if (!dateValue) return '';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return String(dateValue);
+  return formatTime(date);
+}
+
+function formatCalendarEventRange(event) {
+  const start = formatDateTimeValue(event?.start || event?.start_time);
+  const end = formatDateTimeValue(event?.end || event?.end_time);
+  if (!end || end === '--') return start;
+  return `${start} - ${end}`;
+}
+
 function isTimerLikeSensorEntity(entity) {
   if (!entity?.entity_id?.startsWith('sensor.')) return false;
 
@@ -1127,6 +1244,13 @@ function callEntityDomainService(entity, serviceName, serviceData = {}) {
     entity_id: entityId,
     ...(serviceData || {}),
   }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity || entity)));
+}
+
+function callServiceWithResponse(domain, service, serviceData = {}) {
+  if (typeof websocket.callServiceWithResponse === 'function') {
+    return websocket.callServiceWithResponse(domain, service, serviceData);
+  }
+  return websocket.callService(domain, service, serviceData, { returnResponse: true });
 }
 
 function clampDesktopPinMetric(value, min, max) {
@@ -3839,6 +3963,85 @@ function updateExistingMediaPlayerControl(item, entity) {
   return true;
 }
 
+function getCachedTodoItems(entityId) {
+  const cached = todoItemsCacheByEntity.get(entityId);
+  return Array.isArray(cached?.items) ? cached.items : null;
+}
+
+function getTodoTileCountLabel(entity) {
+  const cachedItems = getCachedTodoItems(entity?.entity_id);
+  if (cachedItems) return `${getTodoActiveCount(cachedItems)} active`;
+
+  const stateCount = Number(entity?.state);
+  if (Number.isFinite(stateCount)) return `${stateCount} active`;
+
+  return '-- active';
+}
+
+function updateTodoTileCount(entityId) {
+  const items = document.querySelectorAll(`.control-item.todo-entity[data-entity-id="${entityId}"]`);
+  items.forEach((item) => {
+    const entity = state.STATES?.[entityId];
+    const countEl = item.querySelector('.todo-active-count');
+    if (countEl && entity) countEl.textContent = getTodoTileCountLabel(entity);
+    item.title = entity ? `Click to view ${utils.getEntityDisplayName(entity)}` : item.title;
+  });
+}
+
+function fetchTodoItems(entityId, { force = false } = {}) {
+  if (!entityId || typeof callServiceWithResponse !== 'function') return Promise.resolve([]);
+  const now = Date.now();
+  const cached = todoItemsCacheByEntity.get(entityId);
+  if (!force && cached?.items && now - cached.fetchedAt < TODO_ITEMS_CACHE_TTL_MS) {
+    return Promise.resolve(cached.items);
+  }
+  if (!force && cached && now - (cached.lastRequestedAt || cached.fetchedAt || 0) < TODO_ITEMS_REFRESH_THROTTLE_MS) {
+    return Promise.resolve(cached.items || []);
+  }
+  if (todoItemsPendingByEntity.has(entityId)) return todoItemsPendingByEntity.get(entityId);
+
+  todoItemsCacheByEntity.set(entityId, {
+    ...(cached || {}),
+    lastRequestedAt: now,
+  });
+
+  const request = callServiceWithResponse('todo', 'get_items', { entity_id: entityId })
+    .then((response) => {
+      const items = normalizeTodoItems(response, entityId);
+      todoItemsCacheByEntity.set(entityId, {
+        items,
+        fetchedAt: Date.now(),
+        lastRequestedAt: Date.now(),
+      });
+      updateTodoTileCount(entityId);
+      return items;
+    })
+    .catch((error) => {
+      console.warn('Unable to fetch todo items:', error);
+      return cached?.items || [];
+    })
+    .finally(() => {
+      todoItemsPendingByEntity.delete(entityId);
+    });
+
+  todoItemsPendingByEntity.set(entityId, request);
+  return request;
+}
+
+function renderTodoTileStateMarkup(entity) {
+  return `<div class="control-state todo-active-count">${utils.escapeHtml(getTodoTileCountLabel(entity))}</div>`;
+}
+
+function getCalendarNextEventSummary(entity) {
+  const message = entity?.attributes?.message || 'No upcoming event';
+  const start = formatCalendarTileStart(entity?.attributes?.start_time || entity?.attributes?.start);
+  return start ? `${message} · ${start}` : message;
+}
+
+function renderCalendarTileStateMarkup(entity) {
+  return `<div class="control-state calendar-next-event">${utils.escapeHtml(getCalendarNextEventSummary(entity))}</div>`;
+}
+
 // --- Quick Controls ---
 function renderQuickControls() {
   try {
@@ -4359,14 +4562,15 @@ function createControlElement(entity, options = {}) {
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
     const isTimerSensor = isTimerLikeSensorEntity(entity);
     const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
+    const domain = getEntityDomain(entity.entity_id);
 
     // Handle different entity types (matching main branch)
-    if (entity.entity_id.startsWith('camera.')) {
+    if (domain === 'camera') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div)) camera.openCamera(entity.entity_id);
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
-    } else if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+    } else if (domain === 'sensor' && !isTimerSensor) {
       div.onclick = () => {
         if (!shouldBlockInteraction(div)) showSensorDetails(entity);
       };
@@ -4390,6 +4594,17 @@ function createControlElement(entity, options = {}) {
       div.title = `Click to toggle, hold for position control`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = `Click to play/pause, hold for controls`;
+    } else if (domain === 'todo') {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div)) showTodoDetails(state.STATES?.[entity.entity_id] || entity);
+      };
+      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
+      fetchTodoItems(entity.entity_id);
+    } else if (domain === 'calendar') {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div)) showCalendarDetails(state.STATES?.[entity.entity_id] || entity);
+      };
+      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('button.') || entity.entity_id.startsWith('input_button.')) {
       div.onclick = () => {
         if (!shouldBlockInteraction(div)) toggleEntity(entity);
@@ -4407,7 +4622,7 @@ function createControlElement(entity, options = {}) {
     const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
 
     let stateDisplay = '';
-    if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+    if (domain === 'sensor' && !isTimerSensor) {
       const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(entity) : null;
 
       if (sensorDisplay) {
@@ -4441,6 +4656,12 @@ function createControlElement(entity, options = {}) {
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
+    } else if (domain === 'todo') {
+      div.classList.add('todo-entity');
+      stateDisplay = renderTodoTileStateMarkup(entity);
+    } else if (domain === 'calendar') {
+      div.classList.add('calendar-entity');
+      stateDisplay = renderCalendarTileStateMarkup(entity);
     }
 
     // Special layout for timer entities
@@ -4576,6 +4797,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   const isTimerSensor = isTimerLikeSensorEntity(displayEntity);
   const isTimer = displayEntity.entity_id.startsWith('timer.') || isTimerSensor;
+  const domain = getEntityDomain(displayEntity.entity_id);
   const icon = div.querySelector('.control-icon');
   if (icon) icon.textContent = utils.getEntityIcon(displayEntity);
 
@@ -4583,7 +4805,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (name) name.textContent = utils.getEntityDisplayName(displayEntity);
 
   const stateEl = div.querySelector('.control-state');
-  if (displayEntity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+  if (domain === 'sensor' && !isTimerSensor) {
     const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(displayEntity) : null;
     div.classList.add('sensor-entity');
     div.onclick = () => {
@@ -4656,6 +4878,27 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     return true;
   }
 
+  if (domain === 'todo') {
+    div.classList.add('todo-entity');
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) showTodoDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
+    };
+    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    if (stateEl) stateEl.textContent = getTodoTileCountLabel(displayEntity);
+    fetchTodoItems(displayEntity.entity_id);
+    return true;
+  }
+
+  if (domain === 'calendar') {
+    div.classList.add('calendar-entity');
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) showCalendarDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
+    };
+    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    if (stateEl) stateEl.textContent = getCalendarNextEventSummary(displayEntity);
+    return true;
+  }
+
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
   div.onclick = () => {
     if (!shouldBlockInteraction(div)) toggleEntity(liveEntity());
@@ -4671,6 +4914,221 @@ function showSensorDetails(entity) {
     uiUtils.showToast(`${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`, 'info', 3000);
   } catch (error) {
     console.error('Error showing sensor details:', error);
+  }
+}
+
+function createEntityDetailModal({ className, title }) {
+  const modal = document.createElement('div');
+  modal.className = `modal ${className}`;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `
+    <div class="modal-content entity-detail-modal-content">
+      <div class="modal-header">
+        <h2></h2>
+        <button class="close-btn" type="button">×</button>
+      </div>
+      <div class="modal-body"></div>
+    </div>
+  `;
+  const titleEl = modal.querySelector('h2');
+  if (titleEl) titleEl.textContent = title;
+
+  const closeModal = () => modal.remove();
+  const closeBtn = modal.querySelector('.close-btn');
+  if (closeBtn) closeBtn.onclick = closeModal;
+  modal.onclick = (event) => {
+    if (event.target === modal) closeModal();
+  };
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function renderTodoItemsInto(container, entity, items) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  const list = document.createElement('div');
+  list.className = 'todo-items-list';
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'entity-detail-empty';
+    empty.textContent = 'No active items';
+    list.appendChild(empty);
+  } else {
+    items.forEach((item) => {
+      const row = document.createElement('label');
+      row.className = 'todo-item-row';
+      row.dataset.status = item.status || 'needs_action';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = item.status === 'completed';
+      checkbox.disabled = !item.uid;
+
+      const summary = document.createElement('span');
+      summary.className = 'todo-item-summary';
+      summary.textContent = item.summary || 'Untitled item';
+
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        try {
+          await websocket.callService('todo', 'update_item', {
+            entity_id: entity.entity_id,
+            item: item.uid,
+            status: checkbox.checked ? 'completed' : 'needs_action',
+          });
+          const refreshedItems = await fetchTodoItems(entity.entity_id, { force: true });
+          renderTodoItemsInto(container, state.STATES?.[entity.entity_id] || entity, refreshedItems);
+        } catch (error) {
+          checkbox.checked = !checkbox.checked;
+          checkbox.disabled = false;
+          handleServiceError(error, utils.getEntityDisplayName(entity));
+        }
+      });
+
+      row.appendChild(checkbox);
+      row.appendChild(summary);
+      list.appendChild(row);
+    });
+  }
+
+  container.appendChild(list);
+}
+
+function showTodoDetails(entity) {
+  try {
+    if (!entity?.entity_id) return;
+    const modal = createEntityDetailModal({
+      className: 'todo-modal',
+      title: utils.getEntityDisplayName(entity),
+    });
+    const body = modal.querySelector('.modal-body');
+    if (!body) return;
+
+    const addForm = document.createElement('form');
+    addForm.className = 'todo-add-form';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    input.placeholder = 'Add item';
+    const addButton = document.createElement('button');
+    addButton.type = 'submit';
+    addButton.className = 'btn btn-primary';
+    addButton.textContent = 'Add';
+    addForm.appendChild(input);
+    addForm.appendChild(addButton);
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'todo-detail-list-container';
+    listContainer.textContent = 'Loading...';
+
+    addForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const summary = input.value.trim();
+      if (!summary) return;
+      input.disabled = true;
+      addButton.disabled = true;
+      try {
+        await websocket.callService('todo', 'add_item', {
+          entity_id: entity.entity_id,
+          item: summary,
+        });
+        input.value = '';
+        const refreshedItems = await fetchTodoItems(entity.entity_id, { force: true });
+        renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, refreshedItems);
+      } catch (error) {
+        handleServiceError(error, utils.getEntityDisplayName(entity));
+      } finally {
+        input.disabled = false;
+        addButton.disabled = false;
+        input.focus();
+      }
+    });
+
+    body.appendChild(addForm);
+    body.appendChild(listContainer);
+
+    fetchTodoItems(entity.entity_id, { force: true })
+      .then((items) => renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, items))
+      .catch(() => {
+        listContainer.textContent = 'Unable to load items';
+      });
+  } catch (error) {
+    console.error('Error showing todo details:', error);
+  }
+}
+
+function renderCalendarEventsInto(container, events) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!events.length) {
+    const empty = document.createElement('div');
+    empty.className = 'entity-detail-empty';
+    empty.textContent = 'No upcoming events';
+    container.appendChild(empty);
+    return;
+  }
+
+  events.forEach((event) => {
+    const item = document.createElement('div');
+    item.className = 'calendar-event-row';
+
+    const summary = document.createElement('div');
+    summary.className = 'calendar-event-summary';
+    summary.textContent = event.summary || event.message || 'Untitled event';
+
+    const time = document.createElement('div');
+    time.className = 'calendar-event-time';
+    time.textContent = formatCalendarEventRange(event);
+
+    item.appendChild(summary);
+    item.appendChild(time);
+
+    if (event.description) {
+      const description = document.createElement('div');
+      description.className = 'calendar-event-description';
+      description.textContent = event.description;
+      item.appendChild(description);
+    }
+
+    container.appendChild(item);
+  });
+}
+
+function showCalendarDetails(entity) {
+  try {
+    if (!entity?.entity_id) return;
+    const modal = createEntityDetailModal({
+      className: 'calendar-modal',
+      title: utils.getEntityDisplayName(entity),
+    });
+    const body = modal.querySelector('.modal-body');
+    if (!body) return;
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'calendar-events-list';
+    listContainer.textContent = 'Loading...';
+    body.appendChild(listContainer);
+
+    const start = new Date();
+    const end = new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000));
+    callServiceWithResponse('calendar', 'get_events', {
+      entity_id: entity.entity_id,
+      start_date_time: start.toISOString(),
+      end_date_time: end.toISOString(),
+    })
+      .then((response) => {
+        renderCalendarEventsInto(listContainer, normalizeCalendarEvents(response, entity.entity_id));
+      })
+      .catch((error) => {
+        console.warn('Unable to fetch calendar events:', error);
+        listContainer.textContent = 'Unable to load events';
+      });
+  } catch (error) {
+    console.error('Error showing calendar details:', error);
   }
 }
 
@@ -5766,6 +6224,110 @@ function executeHotkeyAction(entity, action) {
 }
 
 // --- Weather ---
+function ensureWeatherForecastContainer() {
+  let forecastEl = document.getElementById('weather-forecast');
+  if (forecastEl) return forecastEl;
+
+  const weatherContent = document.querySelector('#weather-card .weather-content');
+  if (!weatherContent) return null;
+  forecastEl = document.createElement('div');
+  forecastEl.id = 'weather-forecast';
+  forecastEl.className = 'weather-forecast';
+  forecastEl.hidden = true;
+  weatherContent.appendChild(forecastEl);
+  return forecastEl;
+}
+
+function renderWeatherForecastRow(entityId) {
+  const forecastEl = ensureWeatherForecastContainer();
+  if (!forecastEl || !entityId) return;
+
+  const cached = weatherForecastCacheByEntity.get(entityId);
+  const forecastItems = Array.isArray(cached?.forecast) ? cached.forecast.slice(0, 5) : [];
+  forecastEl.innerHTML = '';
+
+  if (!forecastItems.length) {
+    forecastEl.hidden = true;
+    return;
+  }
+
+  const unit = state.UNIT_SYSTEM?.temperature || '°C';
+  forecastItems.forEach((forecast) => {
+    const item = document.createElement('div');
+    item.className = 'weather-forecast-day';
+
+    const label = document.createElement('div');
+    label.className = 'weather-forecast-label';
+    label.textContent = formatForecastDayLabel(forecast.datetime);
+
+    const icon = document.createElement('div');
+    icon.className = 'weather-forecast-icon';
+    icon.textContent = getWeatherConditionIcon(forecast.condition).icon;
+
+    const temps = document.createElement('div');
+    temps.className = 'weather-forecast-temps';
+    const { high, low } = getForecastTemperatureParts(forecast, unit);
+    temps.textContent = `${high} / ${low}`;
+
+    item.appendChild(label);
+    item.appendChild(icon);
+    item.appendChild(temps);
+    forecastEl.appendChild(item);
+  });
+
+  forecastEl.hidden = false;
+}
+
+function fetchWeatherForecast(entityId, { force = false } = {}) {
+  if (!entityId) return Promise.resolve([]);
+  const now = Date.now();
+  const cached = weatherForecastCacheByEntity.get(entityId);
+
+  if (!force && cached?.forecast && now - cached.fetchedAt < WEATHER_FORECAST_CACHE_TTL_MS) {
+    renderWeatherForecastRow(entityId);
+    return Promise.resolve(cached.forecast);
+  }
+  if (!force && cached && now - (cached.lastRequestedAt || cached.fetchedAt || 0) < WEATHER_FORECAST_REFRESH_THROTTLE_MS) {
+    renderWeatherForecastRow(entityId);
+    return Promise.resolve(cached.forecast || []);
+  }
+  if (weatherForecastPendingByEntity.has(entityId)) return weatherForecastPendingByEntity.get(entityId);
+
+  weatherForecastCacheByEntity.set(entityId, {
+    ...(cached || {}),
+    lastRequestedAt: now,
+  });
+
+  const request = callServiceWithResponse('weather', 'get_forecasts', {
+    entity_id: entityId,
+    type: 'daily',
+  })
+    .then((response) => {
+      const forecast = normalizeForecastItems(response, entityId).slice(0, 5);
+      weatherForecastCacheByEntity.set(entityId, {
+        forecast,
+        fetchedAt: Date.now(),
+        lastRequestedAt: Date.now(),
+      });
+      renderWeatherForecastRow(entityId);
+      return forecast;
+    })
+    .catch((error) => {
+      console.warn('Unable to fetch weather forecast:', error);
+      if (!cached?.forecast?.length) {
+        weatherForecastCacheByEntity.delete(entityId);
+        renderWeatherForecastRow(entityId);
+      }
+      return cached?.forecast || [];
+    })
+    .finally(() => {
+      weatherForecastPendingByEntity.delete(entityId);
+    });
+
+  weatherForecastPendingByEntity.set(entityId, request);
+  return request;
+}
+
 function updateWeatherFromHA() {
   try {
     const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
@@ -5779,7 +6341,7 @@ function updateWeatherFromHA() {
     const iconEl = document.getElementById('weather-icon');
 
     // Use Home Assistant's global unit system (from config)
-    const tempUnit = state.UNIT_SYSTEM.temperature || '°C';
+    const tempUnit = state.UNIT_SYSTEM?.temperature || '°C';
 
     // Handle wind speed: trust entity's unit if provided, otherwise use HA system units
     let windSpeed = weatherEntity.attributes.wind_speed || 0;
@@ -5794,7 +6356,7 @@ function updateWeatherFromHA() {
       windUnit = entityWindUnit;
     } else {
       // Fall back to HA global unit system
-      const haWindUnit = state.UNIT_SYSTEM.wind_speed || 'm/s';
+      const haWindUnit = state.UNIT_SYSTEM?.wind_speed || 'm/s';
 
       if (haWindUnit === 'mph') {
         // Imperial: display as-is in mph
@@ -5814,44 +6376,117 @@ function updateWeatherFromHA() {
 
     // Update weather icon based on current condition
     if (iconEl) {
-      const condition = weatherEntity.state?.toLowerCase() || '';
-      let icon = '🌤️'; // default
-      let classes = 'weather-icon';
-
-      if (condition.includes('sunny') || condition === 'clear') {
-        icon = '☀️';
-        classes += ' sunny';
-      } else if (condition.includes('partly') || condition.includes('cloudy')) {
-        icon = '⛅';
-        classes += ' cloudy';
-      } else if (condition.includes('rain') || condition.includes('rainy')) {
-        icon = '🌧️';
-        classes += ' rain';
-      } else if (condition.includes('snow') || condition.includes('snowy')) {
-        icon = '❄️';
-        classes += ' snow';
-      } else if (condition.includes('storm') || condition.includes('thunder') || condition.includes('lightning')) {
-        icon = '⛈️';
-        classes += ' storm';
-      } else if (condition.includes('fog') || condition.includes('mist') || condition.includes('haze')) {
-        icon = '🌫️';
-      } else if (condition.includes('wind')) {
-        icon = '💨';
-        classes += ' wind';
-      } else if (condition.includes('cloud')) {
-        icon = '☁️';
-        classes += ' cloudy';
-      } else if (condition.includes('night') || condition.includes('clear-night')) {
-        icon = '🌙';
-      }
-
-      iconEl.textContent = icon;
-      iconEl.className = classes;
+      const icon = getWeatherConditionIcon(weatherEntity.state);
+      iconEl.textContent = icon.icon;
+      iconEl.className = ['weather-icon', icon.className].filter(Boolean).join(' ');
     }
 
+    renderWeatherForecastRow(selectedWeatherEntityId);
+    fetchWeatherForecast(selectedWeatherEntityId);
     updateWeatherEffects();
   } catch (error) {
     console.error('Error updating weather:', error);
+  }
+}
+
+function renderWeatherDetailForecast(container, entityId) {
+  if (!container) return;
+  container.innerHTML = '';
+  const cached = weatherForecastCacheByEntity.get(entityId);
+  const forecastItems = Array.isArray(cached?.forecast) ? cached.forecast.slice(0, 5) : [];
+
+  if (!forecastItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'entity-detail-empty';
+    empty.textContent = 'No forecast available';
+    container.appendChild(empty);
+    return;
+  }
+
+  const unit = state.UNIT_SYSTEM?.temperature || '°C';
+  forecastItems.forEach((forecast) => {
+    const row = document.createElement('div');
+    row.className = 'weather-detail-forecast-row';
+
+    const label = document.createElement('div');
+    label.className = 'weather-detail-forecast-day';
+    label.textContent = formatForecastDayLabel(forecast.datetime);
+
+    const icon = document.createElement('div');
+    icon.className = 'weather-detail-forecast-icon';
+    icon.textContent = getWeatherConditionIcon(forecast.condition).icon;
+
+    const condition = document.createElement('div');
+    condition.className = 'weather-detail-forecast-condition';
+    condition.textContent = forecast.condition || '--';
+
+    const temps = document.createElement('div');
+    temps.className = 'weather-detail-forecast-temps';
+    const { high, low } = getForecastTemperatureParts(forecast, unit);
+    temps.textContent = `${high} / ${low}`;
+
+    row.appendChild(label);
+    row.appendChild(icon);
+    row.appendChild(condition);
+    row.appendChild(temps);
+    container.appendChild(row);
+  });
+}
+
+function showWeatherDetails() {
+  try {
+    const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
+    const entity = selectedWeatherEntityId ? state.STATES?.[selectedWeatherEntityId] : null;
+    if (!entity) return;
+
+    const modal = createEntityDetailModal({
+      className: 'weather-detail-modal',
+      title: utils.getEntityDisplayName(entity),
+    });
+    const body = modal.querySelector('.modal-body');
+    if (!body) return;
+
+    const current = document.createElement('div');
+    current.className = 'weather-detail-current';
+
+    const icon = document.createElement('div');
+    icon.className = 'weather-detail-current-icon';
+    icon.textContent = getWeatherConditionIcon(entity.state).icon;
+
+    const summary = document.createElement('div');
+    summary.className = 'weather-detail-current-summary';
+
+    const temperature = document.createElement('div');
+    temperature.className = 'weather-detail-current-temp';
+    temperature.textContent = `${Math.round(entity.attributes?.temperature || 0)}${state.UNIT_SYSTEM?.temperature || '°C'}`;
+
+    const condition = document.createElement('div');
+    condition.className = 'weather-detail-current-condition';
+    condition.textContent = entity.state || '--';
+
+    summary.appendChild(temperature);
+    summary.appendChild(condition);
+    current.appendChild(icon);
+    current.appendChild(summary);
+
+    const forecastTitle = document.createElement('h3');
+    forecastTitle.className = 'entity-detail-section-title';
+    forecastTitle.textContent = '5-day forecast';
+
+    const forecastContainer = document.createElement('div');
+    forecastContainer.className = 'weather-detail-forecast';
+    forecastContainer.textContent = 'Loading...';
+
+    body.appendChild(current);
+    body.appendChild(forecastTitle);
+    body.appendChild(forecastContainer);
+
+    renderWeatherDetailForecast(forecastContainer, selectedWeatherEntityId);
+    fetchWeatherForecast(selectedWeatherEntityId, { force: true })
+      .then(() => renderWeatherDetailForecast(forecastContainer, selectedWeatherEntityId))
+      .catch(() => renderWeatherDetailForecast(forecastContainer, selectedWeatherEntityId));
+  } catch (error) {
+    console.error('Error showing weather details:', error);
   }
 }
 
@@ -7527,6 +8162,7 @@ export {
   updateWeatherEffects,
   populateWeatherEntitiesList,
   selectWeatherEntity,
+  showWeatherDetails,
   initUpdateUI,
   updateTimeDisplay,
   startTimeTicker,
@@ -7546,4 +8182,6 @@ export {
   callMediaTileService,
   callMediaPlayerService,
   getMediaSeekTarget,
+  formatForecastDayLabel,
+  getTodoActiveCount,
 };
