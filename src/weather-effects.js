@@ -3,6 +3,9 @@
  * Draws subtle, elegant ambient animations on a canvas (rain, snow, clouds, warm sunlight)
  * behind the widget elements, showing through glassmorphic/frosted surfaces.
  */
+const TARGET_FRAME_INTERVAL_MS = 1000 / 30;
+const BASELINE_FRAME_INTERVAL_MS = 1000 / 60;
+
 export class WeatherEffectsManager {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
@@ -196,36 +199,43 @@ export class WeatherEffectsManager {
       return;
     }
 
+    const elapsedMs = timestamp - this.lastTime;
+    if (elapsedMs < TARGET_FRAME_INTERVAL_MS) {
+      this.animationFrameId = requestAnimationFrame(this.loop);
+      return;
+    }
+
+    const frameScale = Math.min(2, Math.max(0.5, elapsedMs / BASELINE_FRAME_INTERVAL_MS));
     this.lastTime = timestamp;
 
     if (this.ctx && this.canvas) {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
       if (this.activeEffect === 'rainy' || this.activeEffect === 'stormy') {
-        this.updateAndDrawRain();
+        this.updateAndDrawRain(frameScale);
         if (this.activeEffect === 'stormy') {
           this.updateAndDrawLightning(timestamp);
         }
       } else if (this.activeEffect === 'snowy') {
-        this.updateAndDrawSnow();
+        this.updateAndDrawSnow(frameScale);
       } else if (this.activeEffect === 'cloudy') {
-        this.updateAndDrawClouds();
+        this.updateAndDrawClouds(frameScale);
       } else if (this.activeEffect === 'sunny') {
-        this.updateAndDrawSun();
+        this.updateAndDrawSun(frameScale);
       }
     }
 
     this.animationFrameId = requestAnimationFrame(this.loop);
   }
 
-  updateAndDrawRain() {
+  updateAndDrawRain(frameScale = 1) {
     if (!this.ctx || !this.canvas) return;
     this.ctx.strokeStyle = 'rgba(165, 218, 255, 0.85)';
     this.ctx.lineWidth = 1.5;
 
     for (const p of this.particles) {
-      p.y += p.vy;
-      p.x += p.vx;
+      p.y += p.vy * frameScale;
+      p.x += p.vx * frameScale;
 
       if (p.y > this.canvas.height) {
         p.y = -p.length;
@@ -302,14 +312,14 @@ export class WeatherEffectsManager {
     }
   }
 
-  updateAndDrawSnow() {
+  updateAndDrawSnow(frameScale = 1) {
     if (!this.ctx || !this.canvas) return;
     this.ctx.fillStyle = '#ffffff';
 
     for (const p of this.particles) {
-      p.y += p.vy;
-      p.swingAngle += p.swingSpeed;
-      p.x += Math.sin(p.swingAngle) * p.swingRange * 0.2 + 0.3;
+      p.y += p.vy * frameScale;
+      p.swingAngle += p.swingSpeed * frameScale;
+      p.x += (Math.sin(p.swingAngle) * p.swingRange * 0.2 + 0.3) * frameScale;
 
       if (p.y > this.canvas.height) {
         p.y = -p.radius * 2;
@@ -336,10 +346,10 @@ export class WeatherEffectsManager {
     this.ctx.globalAlpha = 1.0;
   }
 
-  updateAndDrawClouds() {
+  updateAndDrawClouds(frameScale = 1) {
     if (!this.ctx || !this.canvas) return;
     for (const c of this.clouds) {
-      c.x += c.vx;
+      c.x += c.vx * frameScale;
       if (c.x - c.radius > this.canvas.width) {
         c.x = -c.radius;
       }
@@ -360,10 +370,10 @@ export class WeatherEffectsManager {
     this.updateAndDrawClouds();
   }
 
-  updateAndDrawSun() {
+  updateAndDrawSun(frameScale = 1) {
     if (!this.ctx || !this.canvas || !this.sun) return;
 
-    this.sun.pulse += 0.008 * this.sun.pulseDirection;
+    this.sun.pulse += 0.008 * this.sun.pulseDirection * frameScale;
     if (this.sun.pulse > 1) {
       this.sun.pulse = 1;
       this.sun.pulseDirection = -1;

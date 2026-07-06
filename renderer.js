@@ -86,7 +86,9 @@ let getStatesId, getServicesId, getAreasId, getConfigId;
 // WebSocket reconnection state
 let reconnectAttempts = 0;
 let reconnectTimerId = null;
-let uiTickIntervalId = null;
+let uiTickTimerId = null;
+let uiTickSchedulerStarted = false;
+let uiTickNudgeTimerId = null;
 let offlineConnectionToastShown = false;
 let lastConnectionToast = { key: null, shownAt: 0 };
 let browserReportedOffline = false;
@@ -94,8 +96,12 @@ let lastDisconnectReason = '';
 let mainConnectionState = 'idle';
 let firstRunWizard = null;
 let firstRunSettingsObserver = null;
+let configuredRuntimeStarted = false;
 const pendingStateChangedEntities = new Map();
 let pendingStateChangedFlushId = null;
+const UI_TICK_ACTIVE_INTERVAL_MS = 1000;
+const UI_TICK_IDLE_POLL_INTERVAL_MS = 15000;
+const UI_TICK_MINUTE_BUFFER_MS = 50;
 
 function clearReconnectTimer() {
   if (!reconnectTimerId) return;
@@ -130,6 +136,10 @@ function setDesktopPinConnectionIssue(detailMessage = '') {
     : '';
 }
 
+function isSecureStoragePending(targetConfig = state.CONFIG) {
+  return targetConfig?.secureStoragePending === true;
+}
+
 function flushPendingStateChangedEntities() {
   pendingStateChangedFlushId = null;
   const entities = Array.from(pendingStateChangedEntities.values());
@@ -146,6 +156,8 @@ function flushPendingStateChangedEntities() {
     }
     alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
+
+  nudgeUiTickScheduler();
 }
 
 function scheduleStateChangedFlush() {
@@ -658,7 +670,7 @@ function ensureFirstRunWizard() {
 }
 
 function maybeShowFirstRunWizard() {
-  if (IS_DESKTOP_PIN_MODE || isConfigured(state.CONFIG)) {
+  if (IS_DESKTOP_PIN_MODE || isConfigured(state.CONFIG) || isSecureStoragePending()) {
     setFirstRunWizardVisible(false);
     return false;
   }
@@ -667,6 +679,36 @@ function maybeShowFirstRunWizard() {
   firstRunWizard.lastTestSuccessful = false;
   renderWizardStep();
   setFirstRunWizardVisible(true);
+  return true;
+}
+
+function startConfiguredRuntime() {
+  if (IS_DESKTOP_PIN_MODE || !isConfigured(state.CONFIG)) return false;
+
+  const shouldInitializeRuntime = !configuredRuntimeStarted;
+  configuredRuntimeStarted = true;
+
+  startUiTickScheduler();
+
+  if (shouldInitializeRuntime) {
+    hotkeys.initializeHotkeys();
+    hotkeys.setupHotkeyEventListeners();
+    alerts.initializeEntityAlerts();
+    notifications.initializePersistentNotifications();
+  }
+
+  uiUtils.showLoading(false);
+  renderCurrentMode();
+
+  if (shouldInitializeRuntime) {
+    log.info('Connecting to Home Assistant WebSocket');
+    connectWebSocket();
+
+    setTimeout(() => {
+      uiUtils.showLoading(false);
+    }, 5000);
+  }
+
   return true;
 }
 
@@ -844,11 +886,44 @@ function shouldPauseUiTick() {
   return typeof document?.hidden === 'boolean' ? document.hidden : false;
 }
 
+function getNextMinuteTickDelay(nowMs = Date.now()) {
+  const elapsedMinuteMs = nowMs % 60000;
+  return Math.max(UI_TICK_ACTIVE_INTERVAL_MS, 60000 - elapsedMinuteMs + UI_TICK_MINUTE_BUFFER_MS);
+}
+
+function getNextUiTickDelay(tickTargets) {
+  if (tickTargets?.hasVisibleTimers || tickTargets?.mediaEntity) {
+    return UI_TICK_ACTIVE_INTERVAL_MS;
+  }
+  if (tickTargets?.timeVisible) {
+    return getNextMinuteTickDelay();
+  }
+  return UI_TICK_IDLE_POLL_INTERVAL_MS;
+}
+
+function clearUiTickTimer() {
+  if (!uiTickTimerId) return;
+  clearTimeout(uiTickTimerId);
+  uiTickTimerId = null;
+}
+
+function scheduleNextUiTick(tickTargets) {
+  clearUiTickTimer();
+  if (!uiTickSchedulerStarted || shouldPauseUiTick()) return;
+  uiTickTimerId = setTimeout(runUiTick, getNextUiTickDelay(tickTargets));
+}
+
 function runUiTick() {
-  if (shouldPauseUiTick()) return;
+  if (shouldPauseUiTick()) {
+    clearUiTickTimer();
+    return;
+  }
 
   const tickTargets = ui.getTickTargets?.();
-  if (!tickTargets) return;
+  if (!tickTargets) {
+    scheduleNextUiTick(null);
+    return;
+  }
 
   if (tickTargets.timeVisible) {
     ui.updateTimeDisplay();
@@ -861,15 +936,29 @@ function runUiTick() {
   if (tickTargets.mediaEntity) {
     ui.updateMediaSeekBar(tickTargets.mediaEntity);
   }
+
+  scheduleNextUiTick(tickTargets);
+}
+
+function nudgeUiTickScheduler() {
+  if (!uiTickSchedulerStarted || shouldPauseUiTick() || uiTickNudgeTimerId) return;
+  uiTickNudgeTimerId = setTimeout(() => {
+    uiTickNudgeTimerId = null;
+    runUiTick();
+  }, 0);
 }
 
 function startUiTickScheduler() {
-  if (uiTickIntervalId) return;
+  if (uiTickSchedulerStarted) {
+    nudgeUiTickScheduler();
+    return;
+  }
 
-  uiTickIntervalId = setInterval(runUiTick, 1000);
+  uiTickSchedulerStarted = true;
   runUiTick();
 
   document.addEventListener('visibilitychange', runUiTick);
+  document.addEventListener('click', nudgeUiTickScheduler, true);
   window.addEventListener('focus', runUiTick);
 }
 
@@ -1187,9 +1276,14 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
     await refreshLocaleBootstrap();
+    const wasConfigured = isConfigured(state.CONFIG);
+    const wasSecureStoragePending = isSecureStoragePending();
     applyRendererConfig(nextConfig);
     renderCurrentMode();
-    maybeShowFirstRunWizard();
+    const wizardShown = maybeShowFirstRunWizard();
+    if (!wizardShown && isConfigured(state.CONFIG) && (!wasConfigured || wasSecureStoragePending || !configuredRuntimeStarted)) {
+      startConfiguredRuntime();
+    }
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }
@@ -1395,6 +1489,15 @@ async function init() {
     }
 
     if (!isConfigured(state.CONFIG)) {
+      if (isSecureStoragePending()) {
+        log.info('[Init] Secure config is pending; showing shell while saved credentials unlock.');
+        setDisconnectedStatus(t('Unlocking saved Home Assistant credentials...'));
+        uiUtils.showLoading(false);
+        renderCurrentMode();
+        maybeShowFirstRunWizard();
+        return;
+      }
+
       log.warn('[Init] Home Assistant is not configured. Showing first-run onboarding.');
       setDisconnectedStatus(t('Please configure connection settings (gear icon).'));
       uiUtils.showLoading(false);
@@ -1403,26 +1506,7 @@ async function init() {
       return;
     }
 
-    // Start consolidated UI tick scheduler for time/timer/media updates.
-    startUiTickScheduler();
-
-    hotkeys.initializeHotkeys();
-    hotkeys.setupHotkeyEventListeners();
-    alerts.initializeEntityAlerts();
-    notifications.initializePersistentNotifications();
-
-    // Always hide loading and show UI
-    uiUtils.showLoading(false);
-    renderCurrentMode();
-
-    // Connect to WebSocket in background
-    log.info('Connecting to Home Assistant WebSocket');
-    connectWebSocket();
-
-    // Backup timeout to ensure loading is hidden
-    setTimeout(() => {
-      uiUtils.showLoading(false);
-    }, 5000);
+    startConfiguredRuntime();
 
   } catch (error) {
     log.error('Initialization error:', error);

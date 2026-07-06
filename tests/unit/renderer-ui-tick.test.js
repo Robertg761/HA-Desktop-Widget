@@ -15,10 +15,19 @@ describe('Renderer UI tick scheduler', () => {
     await Promise.resolve();
   };
 
-  const loadRenderer = async ({ hidden = false, focused = false } = {}) => {
+  const loadRenderer = async ({
+    hidden = false,
+    focused = false,
+    tickTargets = {
+      timeVisible: true,
+      hasVisibleTimers: true,
+      mediaEntity: { entity_id: 'media_player.office', state: 'playing' },
+    },
+  } = {}) => {
     jest.resetModules();
     resetMockElectronAPI();
     jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-06T12:00:00.000Z'));
 
     Object.defineProperty(document, 'hidden', {
       configurable: true,
@@ -62,11 +71,7 @@ describe('Renderer UI tick scheduler', () => {
       executeHotkeyAction: jest.fn(),
       handleDesktopPinActionRequest: jest.fn(),
       callMediaTileService: jest.fn(),
-      getTickTargets: jest.fn(() => ({
-        timeVisible: true,
-        hasVisibleTimers: true,
-        mediaEntity: { entity_id: 'media_player.office', state: 'playing' },
-      })),
+      getTickTargets: jest.fn(() => tickTargets),
     };
 
     mockWebsocket = new EventEmitter();
@@ -176,6 +181,53 @@ describe('Renderer UI tick scheduler', () => {
     expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(2);
     expect(mockUi.updateTimerDisplays).toHaveBeenCalledTimes(2);
     expect(mockUi.updateMediaSeekBar).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses minute cadence when only the clock needs ticking', async () => {
+    await loadRenderer({
+      hidden: false,
+      focused: false,
+      tickTargets: {
+        timeVisible: true,
+        hasVisibleTimers: false,
+        mediaEntity: null,
+      },
+    });
+
+    expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1000);
+
+    expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(59050);
+
+    expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(2);
+    expect(mockUi.updateTimerDisplays).not.toHaveBeenCalled();
+    expect(mockUi.updateMediaSeekBar).not.toHaveBeenCalled();
+  });
+
+  it('polls idle dashboards at a low frequency when nothing needs ticking', async () => {
+    await loadRenderer({
+      hidden: false,
+      focused: false,
+      tickTargets: {
+        timeVisible: false,
+        hasVisibleTimers: false,
+        mediaEntity: null,
+      },
+    });
+
+    expect(mockUi.getTickTargets).toHaveBeenCalledTimes(1);
+    expect(mockUi.updateTimeDisplay).not.toHaveBeenCalled();
+    expect(mockUi.updateTimerDisplays).not.toHaveBeenCalled();
+    expect(mockUi.updateMediaSeekBar).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1000);
+    expect(mockUi.getTickTargets).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(14000);
+    expect(mockUi.getTickTargets).toHaveBeenCalledTimes(2);
   });
 
   it('still pauses dashboard ticks while the document is hidden', async () => {

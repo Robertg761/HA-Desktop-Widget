@@ -226,6 +226,7 @@
   "Resize tile from bottom left": "Resize tile from bottom left",
   "Resize tile from bottom right": "Resize tile from bottom right",
   "Connecting": "Connecting",
+  "Unlocking saved Home Assistant credentials...": "Unlocking saved Home Assistant credentials...",
   "Waiting for first live update": "Waiting for first live update",
   "Waiting for live Home Assistant data...": "Waiting for live Home Assistant data...",
   "Auto-updates only work in packaged builds": "Auto-updates only work in packaged builds",

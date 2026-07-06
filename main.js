@@ -779,11 +779,18 @@ function getProfileSyncConfig() {
   return config.profileSync;
 }
 
+function hasDeferredSecureConfigWork() {
+  return deferredHomeAssistantTokenDecryptPending
+    || deferredPlaintextTokenMigrationPending
+    || deferredProfileSyncPassphraseDecryptPending;
+}
+
 function sanitizeConfigForRenderer(inputConfig) {
   const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
   if (cloned.profileSync) {
     delete cloned.profileSync.storedPassphrase;
   }
+  cloned.secureStoragePending = hasDeferredSecureConfigWork();
   return cloned;
 }
 
@@ -1377,7 +1384,6 @@ function createDesktopPinWindow(entityId, options = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-      backgroundThrottling: false,
     }
   };
 
@@ -2239,9 +2245,7 @@ function loadConfig(options = {}) {
 function resolveDeferredSecureConfig(options = {}) {
   if (deferredSecureConfigResolutionInProgress) return false;
   const notifyRenderer = !!options.notifyRenderer;
-  const hasDeferredWork = deferredHomeAssistantTokenDecryptPending
-    || deferredPlaintextTokenMigrationPending
-    || deferredProfileSyncPassphraseDecryptPending;
+  const hasDeferredWork = hasDeferredSecureConfigWork();
   if (!hasDeferredWork) return false;
 
   deferredSecureConfigResolutionInProgress = true;
@@ -2840,7 +2844,6 @@ function createWindow() {
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true,
-      backgroundThrottling: false,
     }
   };
 
@@ -3080,7 +3083,6 @@ function schedulePostWindowStartupTasks() {
 ipcMain.handle('get-config', (event) => {
   const sender = authorizeIpcSender(event, 'get-config', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('get-config');
-  resolveDeferredSecureConfig();
   return sanitizeConfigForRenderer(config);
 });
 
@@ -3341,7 +3343,6 @@ ipcMain.handle('unpin-entity-from-desktop', (event, entityId) => {
 ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('get-desktop-pin-bootstrap');
-  resolveDeferredSecureConfig();
   const normalizedEntityId = normalizeEntityId(entityId);
   if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
@@ -4723,7 +4724,7 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
   }
 
-  loadConfig();
+  loadConfig({ deferSecureStorage: true });
   startDevLiveReloadWatchers();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)

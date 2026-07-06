@@ -173,31 +173,31 @@ describe('WeatherEffectsManager', () => {
     
     // Test rainy
     manager.setEffect('rainy');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     expect(mockContext.stroke).toHaveBeenCalled();
 
     // Test stormy (lightning)
     mockContext.clearRect.mockClear();
     manager.setEffect('stormy');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     // Simulate lightning timer triggering
     manager.lightningTime = performance.now() - 100;
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(manager.lightningOpacity).toBeGreaterThanOrEqual(0);
 
     // Test cloudy
     mockContext.clearRect.mockClear();
     manager.setEffect('cloudy');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     expect(mockContext.fill).toHaveBeenCalled();
 
     // Test sunny
     mockContext.clearRect.mockClear();
     manager.setEffect('sunny');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     expect(mockContext.fill).toHaveBeenCalled();
 
