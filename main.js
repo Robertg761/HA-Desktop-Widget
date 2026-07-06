@@ -2029,6 +2029,9 @@ function loadConfig(options = {}) {
       enableInteractionDebugLogs: false
     },
     primaryCards: ['weather', 'time'],
+    favoriteEntities: [],
+    customTabs: [],
+    activeTabId: '',
     desktopPins: {},
     customEntityIcons: {},
     quickAccessTileOptions: {},
@@ -3138,7 +3141,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   const prevConfig = config;
   const prevSyncEnabled = !!config?.profileSync?.enabled;
   pruneConfig(newConfig);
-  const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
+  const customTabs = Array.isArray(newConfig.customTabs)
+    ? newConfig.customTabs
+    : (Array.isArray(config.customTabs) ? config.customTabs : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) });
   const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
   const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
   config = { ...config, ...newConfig, customTabs, profileSync, updates };

@@ -82,15 +82,24 @@
  * @property {string[]} [primaryCards] - Primary status cards (e.g., ["weather", "time"] or entity IDs)
  * @property {string} [selectedWeatherEntity] - Selected weather entity ID
  * @property {string[]} [favoriteEntities] - List of favorited entity IDs
+ * @property {QuickAccessTab[]} [customTabs] - Ordered Quick Access views
+ * @property {string} [activeTabId] - Active Quick Access view ID
  * @property {Object.<string, {x:number, y:number, width:number, height:number}>} [desktopPins] - Persisted desktop mini-widget bounds keyed by entity ID
  * @property {Object.<string, string>} [customEntityNames] - Custom display names
  * @property {Object.<string, string>} [customEntityIcons] - Custom icon glyphs per entity ID
  * @property {Object.<string, {valueSize?: string}>} [quickAccessTileOptions] - Per-tile Quick Access display options
- * @property {Object} [customTabs] - Custom tab configurations
  * @property {Object} [ui] - UI preferences (theme, accent, background, language, section collapse states, etc.)
  * @property {string} [ui.language] - UI language setting (`auto` or locale code such as `en` / `fr`)
  * @property {boolean} [ui.use24HourClock] - Force the primary Time card to use 24-hour time
  * @property {Object} [profileSync] - Profile sync preferences/state (provider, file path, scope, encryption, last status)
+ */
+
+/**
+ * Quick Access view configuration
+ * @typedef {Object} QuickAccessTab
+ * @property {string} id - Stable unique view ID
+ * @property {string} name - View display name
+ * @property {string[]} entityIds - Ordered entity IDs in this view
  */
 
 /**

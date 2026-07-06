@@ -121,6 +121,9 @@
                     <button id="manage-quick-controls-btn" class="section-btn" data-i18n-title="Manage Quick Access" title="Manage Quick Access">➕</button>
                 </div>
             </div>
+            <div id="quick-access-tabs" class="quick-access-tabs hidden" role="tablist" aria-label="Quick Access views" data-i18n-aria-label="Quick Access views">
+                <!-- Dynamic Quick Access views will be added here -->
+            </div>
             <div id="quick-controls" class="controls-grid">
                 <!-- Dynamic controls will be added here -->
             </div>
@@ -742,6 +745,18 @@
                 <button id="close-quick-controls" class="close-btn">×</button>
             </div>
             <div class="modal-body">
+                <div id="quick-access-view-manager" class="quick-access-view-manager">
+                    <div class="form-group">
+                        <label for="quick-access-view-select">Current View:</label>
+                        <select id="quick-access-view-select" class="form-control"></select>
+                    </div>
+                    <div class="quick-access-view-actions">
+                        <input type="text" id="quick-access-view-name" class="form-control" placeholder="View name" data-i18n-placeholder="View name">
+                        <button id="quick-access-rename-view-btn" type="button" class="btn btn-secondary">Rename</button>
+                        <button id="quick-access-add-view-btn" type="button" class="btn btn-primary">Add View</button>
+                        <button id="quick-access-delete-view-btn" type="button" class="btn btn-danger">Delete</button>
+                    </div>
+                </div>
                 <div class="form-group">
                     <input type="text" id="quick-controls-search" placeholder="Search entities..." class="form-control">
                 </div>

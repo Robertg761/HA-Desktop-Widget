@@ -24,6 +24,8 @@ describe('profile-sync-core', () => {
       windowSize: { width: 300, height: 400 },
       alwaysOnTop: true,
       favoriteEntities: ['light.kitchen'],
+      customTabs: [{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }],
+      activeTabId: 'kitchen',
       desktopPins: {
         'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
       },
@@ -39,6 +41,8 @@ describe('profile-sync-core', () => {
     expect(projected.windowSize).toBeUndefined();
     expect(projected.profileSync).toBeUndefined();
     expect(projected.favoriteEntities).toEqual(['light.kitchen']);
+    expect(projected.customTabs).toEqual([{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }]);
+    expect(projected.activeTabId).toBe('kitchen');
     expect(projected.desktopPins).toEqual({
       'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
     });
@@ -52,6 +56,8 @@ describe('profile-sync-core', () => {
     const projected = projectSyncProfile(
       {
         favoriteEntities: ['light.kitchen'],
+        customTabs: [{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }],
+        activeTabId: 'kitchen',
         desktopPins: {
           'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
         },
@@ -74,6 +80,8 @@ describe('profile-sync-core', () => {
     );
 
     expect(projected.favoriteEntities).toEqual(['light.kitchen']);
+    expect(projected.customTabs).toEqual([{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }]);
+    expect(projected.activeTabId).toBe('kitchen');
     expect(projected.desktopPins).toEqual({
       'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
     });
@@ -93,6 +101,8 @@ describe('profile-sync-core', () => {
         alwaysOnTop: true,
         ui: { theme: 'dark' },
         favoriteEntities: ['light.local'],
+        customTabs: [{ id: 'local', name: 'Local', entityIds: ['light.local'] }],
+        activeTabId: 'local',
         desktopPins: {
           'light.local': { x: 3, y: 4, width: 176, height: 176 }
         },
@@ -104,6 +114,8 @@ describe('profile-sync-core', () => {
         alwaysOnTop: false,
         ui: { theme: 'light' },
         favoriteEntities: ['light.remote'],
+        customTabs: [{ id: 'remote', name: 'Remote', entityIds: ['light.remote'] }],
+        activeTabId: 'remote',
         desktopPins: {
           'light.remote': { x: 30, y: 40, width: 352, height: 176 }
         },
@@ -128,6 +140,8 @@ describe('profile-sync-core', () => {
     expect(merged.alwaysOnTop).toBe(true);
     expect(merged.ui).toEqual({ theme: 'dark' });
     expect(merged.favoriteEntities).toEqual(['light.remote']);
+    expect(merged.customTabs).toEqual([{ id: 'remote', name: 'Remote', entityIds: ['light.remote'] }]);
+    expect(merged.activeTabId).toBe('remote');
     expect(merged.desktopPins).toEqual({
       'light.remote': { x: 30, y: 40, width: 352, height: 176 }
     });

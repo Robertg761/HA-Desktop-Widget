@@ -564,6 +564,10 @@ describe('Utils Module', () => {
       };
       const config = {
         favoriteEntities: ['light.closet light', 'light.closet_light', 'switch.kettle'],
+        customTabs: [
+          { id: 'main', name: 'Main', entities: ['light.closet light', 'switch.kettle'] },
+          { id: 'empty', name: 'Empty', entityIds: ['light.unknown'] }
+        ],
         primaryMediaPlayer: 'media_player.living room',
         selectedWeatherEntity: 'weather.home',
         primaryCards: ['weather', 'light.closet light'],
@@ -592,6 +596,10 @@ describe('Utils Module', () => {
 
       expect(result.changed).toBe(true);
       expect(result.config.favoriteEntities).toEqual(['light.closet_light', 'switch.kettle']);
+      expect(result.config.customTabs).toEqual([
+        { id: 'main', name: 'Main', entityIds: ['light.closet_light', 'switch.kettle'] },
+        { id: 'empty', name: 'Empty', entityIds: ['light.unknown'] }
+      ]);
       expect(result.config.primaryMediaPlayer).toBe('media_player.living_room');
       expect(result.config.primaryCards).toEqual(['weather', 'light.closet_light']);
       expect(result.config.desktopPins['light.closet_light']).toEqual({ x: 12, y: 24, width: 176, height: 176 });

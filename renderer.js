@@ -14,6 +14,7 @@ import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
+import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
@@ -221,7 +222,13 @@ function openSettingsModal() {
 
 function applyRendererConfig(nextConfig) {
   if (!nextConfig || !nextConfig.homeAssistant) return;
-  state.setConfig(nextConfig);
+  const normalizedQuickAccess = normalizeQuickAccessConfig(nextConfig, { withChanged: true });
+  state.setConfig(normalizedQuickAccess.config);
+  if (normalizedQuickAccess.changed && !IS_DESKTOP_PIN_MODE) {
+    window.electronAPI.updateConfig(normalizedQuickAccess.config).catch((error) => {
+      log.error('Failed to persist Quick Access view migration:', error);
+    });
+  }
   uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
   uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
   uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');

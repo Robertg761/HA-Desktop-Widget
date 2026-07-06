@@ -2899,6 +2899,51 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 /* Controls grid */
+.quick-access-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.quick-access-tabs .tab-link {
+  width: auto;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  transition: var(--transition-base);
+}
+
+.quick-access-tabs .tab-link:hover {
+  border-color: var(--border-hover);
+  background: var(--glass-surface);
+  color: var(--text-primary);
+}
+
+.quick-access-tabs .tab-link.active {
+  border-color: rgba(var(--accent-rgb), 0.36);
+  background: var(--accent-bg);
+  color: var(--text-primary);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.quick-access-tabs .tab-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -3266,6 +3311,37 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+}
+
+.quick-access-view-manager {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.quick-access-view-actions,
+.quick-access-entity-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.quick-access-view-actions .form-control {
+  min-width: 0;
+}
+
+.quick-access-entity-actions {
+  flex-shrink: 0;
+}
+
+.quick-access-entity-view-select {
+  width: 150px;
+  min-width: 120px;
+  max-width: 180px;
+  font-size: 12px;
+  padding: 6px 8px;
 }
 
 .entity-selector-info {

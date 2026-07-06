@@ -541,6 +541,27 @@ function reconcileConfigEntityIds(config, states = state.STATES) {
         changed = true;
     }
 
+    if (Array.isArray(config.customTabs)) {
+        let customTabsChanged = false;
+        const customTabsResult = config.customTabs.map((tab) => {
+            if (!tab || typeof tab !== 'object' || Array.isArray(tab)) return tab;
+            const entitySource = Array.isArray(tab.entityIds) ? tab.entityIds : tab.entities;
+            const entityIdsResult = remapArray(entitySource, { dedupe: true });
+            if (entityIdsResult.changed || !Array.isArray(tab.entityIds) || Object.prototype.hasOwnProperty.call(tab, 'entities')) {
+                customTabsChanged = true;
+                const rest = { ...tab };
+                delete rest.entities;
+                return { ...rest, entityIds: entityIdsResult.value };
+            }
+            return tab;
+        });
+        if (customTabsChanged) {
+            ensureConfigClone();
+            nextConfig.customTabs = customTabsResult;
+            changed = true;
+        }
+    }
+
     const desktopPinsResult = remapObjectKeys(config.desktopPins);
     if (desktopPinsResult.changed) {
         ensureConfigClone();
