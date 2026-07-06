@@ -1,23 +1,8 @@
 const {
   getNextQuickAccessFocusIndex,
-  matchesQuickAccessTileFilter,
 } = require('../../src/quick-access-ui-helpers.js');
 
 describe('quick access UI helpers', () => {
-  describe('matchesQuickAccessTileFilter', () => {
-    it('matches by display name or entity id case-insensitively', () => {
-      const tile = { name: 'Kitchen Pendant', entityId: 'light.kitchen_pendant' };
-
-      expect(matchesQuickAccessTileFilter(tile, 'pendant')).toBe(true);
-      expect(matchesQuickAccessTileFilter(tile, 'LIGHT.KITCHEN')).toBe(true);
-      expect(matchesQuickAccessTileFilter(tile, 'garage')).toBe(false);
-    });
-
-    it('treats blank filters as a match', () => {
-      expect(matchesQuickAccessTileFilter({ name: 'Office', entityId: 'light.office' }, '   ')).toBe(true);
-    });
-  });
-
   describe('getNextQuickAccessFocusIndex', () => {
     it('moves horizontally and clamps at edges', () => {
       expect(getNextQuickAccessFocusIndex(0, 4, 'ArrowLeft', 2)).toBe(0);

@@ -1,16 +1,3 @@
-function normalizeFilterValue(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function matchesQuickAccessTileFilter(tile, filterValue) {
-  const query = normalizeFilterValue(filterValue);
-  if (!query) return true;
-
-  const name = normalizeFilterValue(tile?.name);
-  const entityId = normalizeFilterValue(tile?.entityId);
-  return name.includes(query) || entityId.includes(query);
-}
-
 function getNextQuickAccessFocusIndex(currentIndex, itemCount, key, columns = 1) {
   if (!Number.isInteger(itemCount) || itemCount <= 0) return -1;
 
@@ -39,5 +26,4 @@ function getNextQuickAccessFocusIndex(currentIndex, itemCount, key, columns = 1)
 
 export {
   getNextQuickAccessFocusIndex,
-  matchesQuickAccessTileFilter,
 };
