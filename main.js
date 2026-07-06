@@ -2022,6 +2022,7 @@ function loadConfig(options = {}) {
       background: 'original',
       language: 'auto',
       customColors: [],
+      density: 'comfortable',
       personalizationSectionsCollapsed: {},
       use24HourClock: false,
       weatherEffectsEnabled: false,

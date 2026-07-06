@@ -124,6 +124,14 @@
             <div id="quick-access-tabs" class="quick-access-tabs hidden" role="tablist" aria-label="Quick Access views" data-i18n-aria-label="Quick Access views">
                 <!-- Dynamic Quick Access views will be added here -->
             </div>
+            <div class="quick-access-filter" id="quick-access-filter-row">
+                <label class="sr-only" for="quick-access-filter" data-i18n="Filter Quick Access">Filter Quick Access</label>
+                <input type="search" id="quick-access-filter" class="quick-access-filter-input"
+                    placeholder="Filter Quick Access" data-i18n-placeholder="Filter Quick Access"
+                    aria-label="Filter Quick Access" data-i18n-aria-label="Filter Quick Access" autocomplete="off">
+            </div>
+            <div id="quick-access-filter-empty" class="quick-access-filter-empty hidden" aria-live="polite"
+                data-i18n="No Quick Access matches">No Quick Access matches</div>
             <div id="quick-controls" class="controls-grid">
                 <!-- Dynamic controls will be added here -->
             </div>
@@ -468,6 +476,14 @@
                             <span class="section-toggle-icon">▾</span>
                         </button>
                         <div id="window-effects-body" class="section-body">
+                            <div class="form-group">
+                                <label for="density-select" data-i18n="Layout density">Layout density</label>
+                                <select id="density-select">
+                                    <option value="comfortable" data-i18n="Comfortable">Comfortable</option>
+                                    <option value="compact" data-i18n="Compact">Compact</option>
+                                </select>
+                                <div class="form-help" data-i18n="Compact mode tightens Quick Access tiles and spacing.">Compact mode tightens Quick Access tiles and spacing.</div>
+                            </div>
                             <div class="form-group">
                                 <label for="opacity-slider">Window Opacity:</label>
                                 <input type="range" id="opacity-slider" min="1" max="100" step="1" value="90">

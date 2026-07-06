@@ -19,6 +19,10 @@ import {
   reorderQuickAccessView,
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
+import {
+  getNextQuickAccessFocusIndex,
+  matchesQuickAccessTileFilter,
+} from './quick-access-ui-helpers.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -239,6 +243,7 @@ function shouldBlockInteraction(el) {
 
 let sortableInstance = null; // SortableJS instance for reorganize mode
 let quickAccessViewIdCounter = 0;
+let quickAccessRovingIndex = 0;
 
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
@@ -291,6 +296,11 @@ function setQuickAccessConfig(nextConfig, options = {}) {
 function getActiveQuickAccessEntityIds() {
   const config = ensureQuickAccessConfig();
   return getActiveQuickAccessTab(config)?.entityIds || [];
+}
+
+function isDesktopPinMode() {
+  return document.body?.classList.contains('desktop-pin-mode')
+    || document.documentElement?.classList.contains('desktop-pin-mode');
 }
 
 function findEntityAssignedQuickAccessTabId(config, entityId) {
@@ -416,6 +426,119 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     });
     tabBar.appendChild(button);
   });
+}
+
+function getQuickAccessTiles({ includeHidden = false } = {}) {
+  const container = document.getElementById('quick-controls');
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('.control-item[data-entity-id]'))
+    .filter((tile) => includeHidden || !tile.classList.contains('quick-access-filter-hidden'));
+}
+
+function getQuickAccessGridColumnCount(container) {
+  if (!container || typeof window?.getComputedStyle !== 'function') return 1;
+  const columns = window.getComputedStyle(container).gridTemplateColumns || '';
+  const count = columns.split(' ').filter(Boolean).length;
+  return count > 0 ? count : 1;
+}
+
+function syncQuickAccessRovingTabIndex(preferredTile = null) {
+  const visibleTiles = getQuickAccessTiles();
+  if (!visibleTiles.length) {
+    quickAccessRovingIndex = 0;
+    return;
+  }
+
+  const preferredIndex = preferredTile ? visibleTiles.indexOf(preferredTile) : -1;
+  if (preferredIndex >= 0) {
+    quickAccessRovingIndex = preferredIndex;
+  } else {
+    quickAccessRovingIndex = Math.min(Math.max(quickAccessRovingIndex, 0), visibleTiles.length - 1);
+  }
+
+  visibleTiles.forEach((tile, index) => {
+    tile.setAttribute('tabindex', index === quickAccessRovingIndex ? '0' : '-1');
+  });
+
+  getQuickAccessTiles({ includeHidden: true })
+    .filter(tile => !visibleTiles.includes(tile))
+    .forEach(tile => tile.setAttribute('tabindex', '-1'));
+}
+
+function updateQuickAccessFilterEmptyState(hasMatches, hasFilter) {
+  const emptyState = document.getElementById('quick-access-filter-empty');
+  if (!emptyState) return;
+  emptyState.classList.toggle('hidden', hasMatches || !hasFilter);
+}
+
+function applyQuickAccessFilter() {
+  const filterInput = document.getElementById('quick-access-filter');
+  const query = filterInput?.value || '';
+  const tiles = getQuickAccessTiles({ includeHidden: true });
+  let visibleCount = 0;
+
+  tiles.forEach((tile) => {
+    const matches = matchesQuickAccessTileFilter({
+      name: tile.dataset.quickAccessName || tile.querySelector('.control-name')?.textContent || '',
+      entityId: tile.dataset.entityId || '',
+    }, query);
+    tile.classList.toggle('quick-access-filter-hidden', !matches);
+    tile.hidden = !matches;
+    if (matches) visibleCount += 1;
+  });
+
+  updateQuickAccessFilterEmptyState(visibleCount > 0, !!query.trim());
+  syncQuickAccessRovingTabIndex(document.activeElement?.closest?.('#quick-controls .control-item'));
+}
+
+function setupQuickAccessFilter() {
+  if (isDesktopPinMode()) return;
+  const filterInput = document.getElementById('quick-access-filter');
+  if (!filterInput || filterInput.dataset.quickAccessFilterBound === 'true') return;
+
+  filterInput.addEventListener('input', applyQuickAccessFilter);
+  filterInput.dataset.quickAccessFilterBound = 'true';
+}
+
+function handleQuickAccessGridKeydown(event) {
+  if (isReorganizeMode) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const tile = event.target?.closest?.('#quick-controls .control-item');
+  if (!tile) return;
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    tile.click();
+    return;
+  }
+
+  const navigationKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+  if (!navigationKeys.includes(event.key)) return;
+
+  const container = document.getElementById('quick-controls');
+  const visibleTiles = getQuickAccessTiles();
+  const currentIndex = visibleTiles.indexOf(tile);
+  if (!container || currentIndex < 0) return;
+
+  event.preventDefault();
+  const nextIndex = getNextQuickAccessFocusIndex(
+    currentIndex,
+    visibleTiles.length,
+    event.key,
+    getQuickAccessGridColumnCount(container)
+  );
+  const nextTile = visibleTiles[nextIndex];
+  if (!nextTile) return;
+
+  syncQuickAccessRovingTabIndex(nextTile);
+  nextTile.focus();
+}
+
+function setupQuickAccessGridKeyboardNavigation() {
+  const container = document.getElementById('quick-controls');
+  if (!container || container.dataset.keyboardNavigationBound === 'true') return;
+  container.addEventListener('keydown', handleQuickAccessGridKeydown);
+  container.dataset.keyboardNavigationBound = 'true';
 }
 
 function cachePrimaryCardTemplates() {
@@ -1088,6 +1211,7 @@ function updateEntityInUI(entity, options = {}) {
         addButtonsToElement(newControl);
       }
     });
+    applyQuickAccessFilter();
   } catch (error) {
     console.error('Error updating entity in UI:', error);
   }
@@ -4495,6 +4619,9 @@ function renderQuickControls() {
       container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    setupQuickAccessFilter();
+    setupQuickAccessGridKeyboardNavigation();
+    applyQuickAccessFilter();
     refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering quick controls:', error, error.stack);
@@ -5094,14 +5221,13 @@ function createUnavailableElement(entityId) {
     div.className = 'control-item unavailable-entity';
     div.dataset.entityId = entityId;
     div.dataset.span = '1';
-    div.setAttribute('role', 'button');
-    div.setAttribute('tabindex', '0');
     div.style.gridColumn = 'span 1';
 
     // Get custom name if available, otherwise use entity ID
     const customName = state.CONFIG.customEntityNames?.[entityId];
     const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
-    div.setAttribute('aria-label', displayName);
+    div.dataset.quickAccessName = displayName;
+    applyQuickAccessTileAccessibility(div, { entity_id: entityId, attributes: { friendly_name: displayName } });
 
     div.innerHTML = `
       <div class="control-icon unavailable-icon">⚠️</div>
@@ -5124,16 +5250,9 @@ function createUnavailableElement(entityId) {
 function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
   div.setAttribute('role', 'button');
-  div.setAttribute('tabindex', '0');
+  div.setAttribute('tabindex', '-1');
   div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
-  if (div.dataset.keyboardActivationBound === 'true') return;
-  div.dataset.keyboardActivationBound = 'true';
-  div.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    if (shouldBlockInteraction(div)) return;
-    div.click();
-  });
+  div.dataset.quickAccessName = utils.getEntityDisplayName(entity);
 }
 
 function updateExistingUnavailableControl(div, entityId) {
@@ -5141,6 +5260,8 @@ function updateExistingUnavailableControl(div, entityId) {
   const customName = state.CONFIG.customEntityNames?.[entityId];
   const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
   div.dataset.entityId = entityId;
+  div.dataset.quickAccessName = displayName;
+  div.setAttribute('aria-label', displayName);
   const name = div.querySelector('.control-name');
   if (name) name.textContent = displayName;
   div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;

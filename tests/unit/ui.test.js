@@ -101,6 +101,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
+      <input type="search" id="quick-access-filter" />
+      <div id="quick-access-filter-empty" class="hidden"></div>
       <div id="quick-controls"></div>
       <div class="desktop-pin-shell">
         <div id="desktop-pin-content" class="desktop-pin-content"></div>
@@ -580,6 +582,78 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'error',
         4000
       );
+    });
+  });
+
+  describe('Quick Access keyboard and filter polish', () => {
+    it('uses roving tabindex and arrow keys without duplicating activation logic', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['light.bedroom', 'switch.bedroom'];
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ['light.bedroom', 'switch.bedroom'] }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': sampleStates['light.bedroom'],
+        'switch.bedroom': sampleStates['switch.bedroom']
+      });
+
+      ui.renderActiveTab();
+
+      const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
+      expect(tiles).toHaveLength(2);
+      expect(tiles[0].getAttribute('tabindex')).toBe('0');
+      expect(tiles[1].getAttribute('tabindex')).toBe('-1');
+
+      tiles[0].dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true
+      }));
+
+      expect(document.activeElement).toBe(tiles[1]);
+      expect(tiles[0].getAttribute('tabindex')).toBe('-1');
+      expect(tiles[1].getAttribute('tabindex')).toBe('0');
+
+      tiles[1].dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true
+      }));
+
+      expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_off', {
+        entity_id: 'switch.bedroom'
+      });
+    });
+
+    it('filters rendered quick access tiles without mutating favorites', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['light.bedroom', 'switch.bedroom'];
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ['light.bedroom', 'switch.bedroom'] }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': sampleStates['light.bedroom'],
+        'switch.bedroom': sampleStates['switch.bedroom']
+      });
+
+      ui.renderActiveTab();
+
+      const filter = document.getElementById('quick-access-filter');
+      filter.value = 'switch.bedroom';
+      filter.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const lightTile = document.querySelector('#quick-controls .control-item[data-entity-id="light.bedroom"]');
+      const switchTile = document.querySelector('#quick-controls .control-item[data-entity-id="switch.bedroom"]');
+      expect(lightTile.hidden).toBe(true);
+      expect(switchTile.hidden).toBe(false);
+      expect(state.CONFIG.favoriteEntities).toEqual(['light.bedroom', 'switch.bedroom']);
+
+      filter.value = 'not-here';
+      filter.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(document.getElementById('quick-access-filter-empty').classList.contains('hidden')).toBe(false);
+
+      filter.value = '';
+      filter.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(lightTile.hidden).toBe(false);
+      expect(switchTile.hidden).toBe(false);
     });
   });
 

@@ -17,6 +17,8 @@ export class WeatherEffectsManager {
     this.lightningDuration = 0;
     this.lightningStart = 0;
     this.lightningOpacity = 0;
+    this.reducedMotionQuery = null;
+    this.reducedMotionChangeHandler = null;
 
     // Resize handler
     this.resizeCanvas = this.resizeCanvas.bind(this);
@@ -24,6 +26,34 @@ export class WeatherEffectsManager {
     this.resizeCanvas();
 
     this.loop = this.loop.bind(this);
+    this.setupReducedMotionListener();
+  }
+
+  setupReducedMotionListener() {
+    if (typeof window.matchMedia !== 'function') return;
+    try {
+      this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.reducedMotionChangeHandler = () => {
+        if (this.prefersReducedMotion()) {
+          this.stopAnimation();
+          this.renderStaticFrame();
+        } else if (this.activeEffect) {
+          this.startAnimation();
+        }
+      };
+      if (typeof this.reducedMotionQuery.addEventListener === 'function') {
+        this.reducedMotionQuery.addEventListener('change', this.reducedMotionChangeHandler);
+      } else if (typeof this.reducedMotionQuery.addListener === 'function') {
+        this.reducedMotionQuery.addListener(this.reducedMotionChangeHandler);
+      }
+    } catch {
+      this.reducedMotionQuery = null;
+      this.reducedMotionChangeHandler = null;
+    }
+  }
+
+  prefersReducedMotion() {
+    return !!this.reducedMotionQuery?.matches;
   }
 
   resizeCanvas() {
@@ -33,6 +63,9 @@ export class WeatherEffectsManager {
     if (this.sun) {
       this.sun.x = this.canvas.width * 0.15;
       this.sun.y = this.canvas.height * 0.15;
+    }
+    if (this.activeEffect && this.prefersReducedMotion()) {
+      this.renderStaticFrame();
     }
   }
 
@@ -55,15 +88,48 @@ export class WeatherEffectsManager {
       this.initSun();
     }
 
-    if (effect && !this.animationFrameId) {
-      this.lastTime = performance.now();
-      this.animationFrameId = requestAnimationFrame(this.loop);
-    } else if (!effect && this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-      if (this.ctx && this.canvas) {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      }
+    if (!effect) {
+      this.stopAnimation();
+      this.clearCanvas();
+      return;
+    }
+
+    if (this.prefersReducedMotion()) {
+      this.stopAnimation();
+      this.renderStaticFrame();
+    } else {
+      this.startAnimation();
+    }
+  }
+
+  startAnimation() {
+    if (this.animationFrameId || !this.activeEffect) return;
+    this.lastTime = performance.now();
+    this.animationFrameId = requestAnimationFrame(this.loop);
+  }
+
+  stopAnimation() {
+    if (!this.animationFrameId) return;
+    cancelAnimationFrame(this.animationFrameId);
+    this.animationFrameId = null;
+  }
+
+  clearCanvas() {
+    if (!this.ctx || !this.canvas) return;
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  renderStaticFrame() {
+    if (!this.activeEffect || !this.ctx || !this.canvas) return;
+    this.clearCanvas();
+    if (this.activeEffect === 'rainy' || this.activeEffect === 'stormy') {
+      this.drawRainStatic();
+    } else if (this.activeEffect === 'snowy') {
+      this.drawSnowStatic();
+    } else if (this.activeEffect === 'cloudy') {
+      this.drawCloudsStatic();
+    } else if (this.activeEffect === 'sunny') {
+      this.drawSunStatic();
     }
   }
 
@@ -125,7 +191,10 @@ export class WeatherEffectsManager {
   }
 
   loop(timestamp) {
-    if (!this.activeEffect) return;
+    if (!this.activeEffect || this.prefersReducedMotion()) {
+      this.animationFrameId = null;
+      return;
+    }
 
     this.lastTime = timestamp;
 
@@ -170,6 +239,21 @@ export class WeatherEffectsManager {
       this.ctx.globalAlpha = p.opacity;
       this.ctx.moveTo(p.x, p.y);
       this.ctx.lineTo(p.x + p.vx * 1.5, p.y + p.length);
+      this.ctx.stroke();
+    }
+    this.ctx.globalAlpha = 1.0;
+  }
+
+  drawRainStatic() {
+    if (!this.ctx || !this.canvas) return;
+    this.ctx.strokeStyle = 'rgba(165, 218, 255, 0.45)';
+    this.ctx.lineWidth = 1.2;
+    const drops = this.particles.slice(0, this.activeEffect === 'stormy' ? 48 : 32);
+    for (const p of drops) {
+      this.ctx.beginPath();
+      this.ctx.globalAlpha = Math.min(p.opacity || 0.4, 0.5);
+      this.ctx.moveTo(p.x, p.y);
+      this.ctx.lineTo(p.x + (p.vx || -1) * 1.5, p.y + (p.length || 20));
       this.ctx.stroke();
     }
     this.ctx.globalAlpha = 1.0;
@@ -240,6 +324,18 @@ export class WeatherEffectsManager {
     this.ctx.globalAlpha = 1.0;
   }
 
+  drawSnowStatic() {
+    if (!this.ctx || !this.canvas) return;
+    this.ctx.fillStyle = '#ffffff';
+    for (const p of this.particles.slice(0, 36)) {
+      this.ctx.beginPath();
+      this.ctx.globalAlpha = Math.min(p.opacity || 0.45, 0.65);
+      this.ctx.arc(p.x, p.y, p.radius || 2, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.globalAlpha = 1.0;
+  }
+
   updateAndDrawClouds() {
     if (!this.ctx || !this.canvas) return;
     for (const c of this.clouds) {
@@ -258,6 +354,10 @@ export class WeatherEffectsManager {
       this.ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
       this.ctx.fill();
     }
+  }
+
+  drawCloudsStatic() {
+    this.updateAndDrawClouds();
   }
 
   updateAndDrawSun() {
@@ -284,10 +384,29 @@ export class WeatherEffectsManager {
     this.ctx.fill();
   }
 
+  drawSunStatic() {
+    if (!this.ctx || !this.canvas || !this.sun) return;
+    const radius = 320;
+    const gradient = this.ctx.createRadialGradient(this.sun.x, this.sun.y, 0, this.sun.x, this.sun.y, radius);
+    gradient.addColorStop(0, 'rgba(255, 225, 150, 0.2)');
+    gradient.addColorStop(0.5, 'rgba(255, 200, 110, 0.07)');
+    gradient.addColorStop(1, 'rgba(255, 200, 110, 0)');
+
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(this.sun.x, this.sun.y, radius, 0, Math.PI * 2);
+    this.ctx.fill();
+  }
+
   destroy() {
     window.removeEventListener('resize', this.resizeCanvas);
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
+    this.stopAnimation();
+    if (this.reducedMotionQuery && this.reducedMotionChangeHandler) {
+      if (typeof this.reducedMotionQuery.removeEventListener === 'function') {
+        this.reducedMotionQuery.removeEventListener('change', this.reducedMotionChangeHandler);
+      } else if (typeof this.reducedMotionQuery.removeListener === 'function') {
+        this.reducedMotionQuery.removeListener(this.reducedMotionChangeHandler);
+      }
     }
   }
 }

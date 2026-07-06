@@ -3163,6 +3163,44 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
+async function persistDensitySelection(nextDensity) {
+  const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
+  state.CONFIG.ui = state.CONFIG.ui || {};
+  const nextUiConfig = {
+    ...state.CONFIG.ui,
+    density: normalizedDensity,
+  };
+
+  state.CONFIG.ui = nextUiConfig;
+  applyUiPreferences(nextUiConfig);
+
+  if (!window?.electronAPI?.updateConfig) return null;
+  const updatedConfig = await window.electronAPI.updateConfig({
+    ui: nextUiConfig,
+  });
+
+  if (updatedConfig) {
+    state.setConfig(updatedConfig);
+  }
+
+  return updatedConfig;
+}
+
+function bindAppearanceSettingsUi() {
+  const densitySelect = document.getElementById('density-select');
+  if (!densitySelect) return;
+
+  densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
+  densitySelect.onchange = async () => {
+    try {
+      await persistDensitySelection(densitySelect.value);
+    } catch (error) {
+      log.error('Failed to save layout density:', error);
+      showToast(t('Failed to save layout density'), 'warning', 3000);
+    }
+  };
+}
+
 function bindLanguageSettingsUi() {
   const languageSelect = document.getElementById('language-select');
   if (languageSelect) {
@@ -3298,6 +3336,7 @@ async function openSettings(uiHooks) {
     }
 
     bindLanguageSettingsUi();
+    bindAppearanceSettingsUi();
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
@@ -3632,6 +3671,7 @@ async function saveSettings() {
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
+    const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -3686,6 +3726,7 @@ async function saveSettings() {
       : false;
     state.CONFIG.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
+    state.CONFIG.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
     if (enableInteractionDebugLogs) {
       state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }

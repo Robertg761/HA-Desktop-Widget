@@ -2953,6 +2953,44 @@ body.first-run-active .widget-content > * {
   outline-offset: 2px;
 }
 
+.quick-access-filter {
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.quick-access-filter-input {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--glass-surface);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: var(--transition-base);
+}
+
+.quick-access-filter-input::placeholder {
+  color: var(--text-muted);
+}
+
+.quick-access-filter-input:focus {
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: var(--glow-focus);
+}
+
+.quick-access-filter-empty {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+body.desktop-pin-mode .quick-access-filter,
+body.desktop-pin-mode .quick-access-filter-empty {
+  display: none;
+}
+
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -3033,6 +3071,10 @@ body.first-run-active .widget-content > * {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   box-shadow: var(--shadow-sm), var(--glow-focus);
+}
+
+.control-item.quick-access-filter-hidden {
+  display: none;
 }
 
 .control-item.active {
@@ -5641,6 +5683,36 @@ body.first-run-active .widget-content > * {
   justify-content: center;
   align-items: center;
   text-align: center;
+}
+
+body.density-compact .controls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 4px;
+}
+
+body.density-compact #quick-controls .control-item {
+  min-height: 52px;
+  padding: 8px;
+  gap: 8px;
+}
+
+body.density-compact #quick-controls .control-icon {
+  width: 26px;
+  font-size: 21px;
+}
+
+body.density-compact #quick-controls .control-name {
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+body.density-compact #quick-controls .control-state {
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+body.density-compact #quick-controls .control-item.sensor-numeric-entity {
+  min-height: 62px;
 }
 
 .control-name {
