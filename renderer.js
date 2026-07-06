@@ -5,6 +5,7 @@ import websocket from './src/websocket.js';
 import * as hotkeys from './src/hotkeys.js';
 import * as alerts from './src/alerts.js';
 import * as ui from './src/ui.js';
+import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
@@ -958,6 +959,8 @@ async function init() {
  */
 function wireUI() {
   try {
+    commandPalette.initializeCommandPalette();
+
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
       settingsBtn.onclick = openSettingsModal;

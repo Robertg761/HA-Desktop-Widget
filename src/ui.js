@@ -4764,17 +4764,17 @@ function createControlElement(entity, options = {}) {
     // Handle different entity types (matching main branch)
     if (domain === 'camera') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) camera.openCamera(entity.entity_id);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (domain === 'sensor' && !isTimerSensor) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) showSensorDetails(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
     } else if (isTimer) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('light.')) {
@@ -4793,23 +4793,23 @@ function createControlElement(entity, options = {}) {
       div.title = `Click to play/pause, hold for controls`;
     } else if (domain === 'todo') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) showTodoDetails(state.STATES?.[entity.entity_id] || entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, { source: 'quick-access-click' });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
       fetchTodoItems(entity.entity_id);
     } else if (domain === 'calendar') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) showCalendarDetails(state.STATES?.[entity.entity_id] || entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, { source: 'quick-access-click' });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('button.') || entity.entity_id.startsWith('input_button.')) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to press ${utils.getEntityDisplayName(entity)}`;
     } else {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
@@ -5078,7 +5078,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   if (displayEntity.entity_id.startsWith('camera.')) {
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) camera.openCamera(displayEntity.entity_id);
+      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(displayEntity, { source: 'quick-access-click' });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     return true;
@@ -5087,7 +5087,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (domain === 'todo') {
     div.classList.add('todo-entity');
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) showTodoDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
+      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, { source: 'quick-access-click' });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     if (stateEl) stateEl.textContent = getTodoTileCountLabel(displayEntity);
@@ -5098,7 +5098,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (domain === 'calendar') {
     div.classList.add('calendar-entity');
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) showCalendarDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
+      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, { source: 'quick-access-click' });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     if (stateEl) stateEl.textContent = getCalendarNextEventSummary(displayEntity);
@@ -5107,7 +5107,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
   div.onclick = () => {
-    if (!shouldBlockInteraction(div)) toggleEntity(liveEntity());
+    if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
   };
   div.title = (displayEntity.entity_id.startsWith('button.') || displayEntity.entity_id.startsWith('input_button.'))
     ? `Click to press ${utils.getEntityDisplayName(displayEntity)}`
@@ -5466,7 +5466,7 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
         domain: entity.entity_id.split('.')[0],
         state: liveEntity().state,
       });
-      toggleEntity(liveEntity());
+      executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-short-press' });
       setTimeout(() => {
         shortPressHandled = false;
       }, 0);
@@ -5495,7 +5495,7 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
         domain: entity.entity_id.split('.')[0],
         state: liveEntity().state,
       });
-      toggleEntity(liveEntity());
+      executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
     });
   } catch (error) {
     console.error('Error setting up press/hold controls:', error);
@@ -5694,8 +5694,7 @@ function setupMediaPlayerControls(div, entity) {
         if (shouldBlockInteraction(div) || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
         const currentEntity = state.STATES[entity.entity_id];
         if (!currentEntity) return;
-        const nowPlaying = currentEntity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
-        callMediaPlayerService(currentEntity.entity_id, nowPlaying ? 'pause' : 'play');
+        executeEntityPrimaryAction(currentEntity, { source: 'quick-access-click' });
       });
     }
 
@@ -6375,6 +6374,58 @@ function toggleEntity(entity) {
       entityId: entity?.entity_id || null,
       error: error?.message || String(error),
     });
+    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
+  }
+}
+
+function executeEntityPrimaryAction(entity, options = {}) {
+  try {
+    const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (!liveEntity?.entity_id) return;
+
+    const domain = getEntityDomain(liveEntity.entity_id);
+    const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
+
+    emitUiDebug('entity.primary_action', {
+      entityId: liveEntity.entity_id,
+      domain,
+      source: options.source || 'unknown',
+      state: liveEntity.state,
+    });
+
+    if (domain === 'camera') {
+      camera.openCamera(liveEntity.entity_id);
+      return;
+    }
+
+    if (domain === 'media_player') {
+      showMediaDetail(liveEntity);
+      return;
+    }
+
+    if (domain === 'climate') {
+      showClimateControls(liveEntity);
+      return;
+    }
+
+    if (domain === 'sensor' && !isTimer) {
+      showSensorDetails(liveEntity);
+      return;
+    }
+
+    if (domain === 'todo') {
+      showTodoDetails(liveEntity);
+      return;
+    }
+
+    if (domain === 'calendar') {
+      showCalendarDetails(liveEntity);
+      return;
+    }
+
+    toggleEntity(liveEntity);
+  } catch (error) {
+    console.error('Error executing entity primary action:', error);
     uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
   }
 }
@@ -8434,6 +8485,8 @@ export {
   getTickTargets,
   refreshVisibleEntityCache,
   executeHotkeyAction,
+  executeEntityPrimaryAction,
+  getEntityDomain,
   handleDesktopPinActionRequest,
   renderDesktopPinnedTile,
   updateMediaTile,
