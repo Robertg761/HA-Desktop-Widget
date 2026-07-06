@@ -100,6 +100,10 @@ describe('WebSocket Manager', () => {
     }
     wsManager.wsId = 1000;
     wsManager.pendingWs.clear();
+    wsManager.messageSubscriptions.clear();
+    wsManager.messageSubscriptionHandlers.clear();
+    wsManager.nextMessageSubscriptionKey = 1;
+    wsManager.isAuthenticated = false;
     wsManager.removeAllListeners();
   });
 
@@ -454,6 +458,99 @@ describe('WebSocket Manager', () => {
 
       expect(promise.id).toBeDefined();
       expect(typeof promise.id).toBe('number');
+    });
+  });
+
+  describe('Message Subscriptions', () => {
+    beforeEach(async () => {
+      state.setConfig(sampleConfig);
+      wsManager.connect();
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+
+    test('should subscribe after auth_ok, route subscription events, and unsubscribe', async () => {
+      const onEvent = jest.fn();
+      const unsubscribe = wsManager.subscribeMessage(
+        { type: 'persistent_notification/subscribe' },
+        onEvent
+      );
+
+      expect(wsManager.ws.sentMessages).toHaveLength(0);
+
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      const subscribeMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(subscribeMessage).toEqual({
+        id: 1000,
+        type: 'persistent_notification/subscribe'
+      });
+
+      wsManager.ws.simulateMessage({
+        id: subscribeMessage.id,
+        type: 'result',
+        success: true,
+        result: null
+      });
+      await Promise.resolve();
+
+      const eventPayload = {
+        type: 'added',
+        notifications: {
+          test: {
+            notification_id: 'test',
+            title: 'Door',
+            message: 'Open'
+          }
+        }
+      };
+      wsManager.ws.simulateMessage({
+        id: subscribeMessage.id,
+        type: 'event',
+        event: eventPayload
+      });
+
+      expect(onEvent).toHaveBeenCalledWith(
+        eventPayload,
+        expect.objectContaining({
+          id: subscribeMessage.id,
+          type: 'event'
+        })
+      );
+
+      unsubscribe();
+      const unsubscribeMessage = JSON.parse(wsManager.ws.sentMessages[1]);
+      expect(unsubscribeMessage).toEqual({
+        id: 1001,
+        type: 'unsubscribe_events',
+        subscription: subscribeMessage.id
+      });
+    });
+
+    test('should resubscribe active message subscriptions after reconnect auth_ok', async () => {
+      wsManager.subscribeMessage(
+        { type: 'persistent_notification/subscribe' },
+        jest.fn()
+      );
+
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      const firstSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
+      wsManager.ws.simulateMessage({
+        id: firstSubscribe.id,
+        type: 'result',
+        success: true,
+        result: null
+      });
+      await Promise.resolve();
+
+      wsManager.ws.close();
+      wsManager.connect();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+
+      const secondSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(secondSubscribe).toEqual({
+        id: 1001,
+        type: 'persistent_notification/subscribe'
+      });
     });
   });
 

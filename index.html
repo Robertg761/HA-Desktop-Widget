@@ -38,6 +38,13 @@
             <div class="connection-indicator" id="connection-status"></div>
         </div>
         <div class="header-controls">
+            <button id="persistent-notifications-btn" class="control-btn notification-bell-btn hidden"
+                data-i18n-title="Home Assistant Notifications" title="Home Assistant Notifications"
+                data-i18n-aria-label="Home Assistant Notifications" aria-label="Home Assistant Notifications"
+                aria-hidden="true">
+                <span id="persistent-notifications-icon" class="notification-bell-icon">🔔</span>
+                <span id="persistent-notifications-count" class="notification-bell-count">0</span>
+            </button>
             <button id="settings-btn" class="control-btn" data-i18n-title="Settings" title="Settings">⚙️</button>
             <button id="minimize-btn" class="control-btn" data-i18n-title="Minimize" title="Minimize">➖</button>
             <button id="close-btn" class="control-btn" data-i18n-title="Close" title="Close">❌</button>
@@ -881,6 +888,22 @@
     </div>
 
     <!-- Camera Viewer Modal (created dynamically by openCamera) -->
+
+    <!-- Home Assistant Persistent Notifications Modal -->
+    <div id="persistent-notifications-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="persistent-notifications-title">
+        <div class="modal-content persistent-notifications-modal-content">
+            <div class="modal-header">
+                <h2 id="persistent-notifications-title" data-i18n="Persistent Notifications">Persistent Notifications</h2>
+                <button id="close-persistent-notifications" class="close-btn" data-i18n-title="Close" title="Close">×</button>
+            </div>
+            <div class="modal-body persistent-notifications-body">
+                <div id="persistent-notifications-list" class="persistent-notifications-list"></div>
+                <div id="persistent-notifications-empty" class="persistent-notifications-empty hidden"
+                    data-i18n="No active notifications">No active notifications</div>
+            </div>
+        </div>
+    </div>
 
     <!-- Alert Configuration Modal -->
     <div id="alert-config-modal" class="modal hidden" role="dialog" aria-modal="true"

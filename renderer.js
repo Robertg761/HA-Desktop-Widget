@@ -4,6 +4,7 @@ import state from './src/state.js';
 import websocket from './src/websocket.js';
 import * as hotkeys from './src/hotkeys.js';
 import * as alerts from './src/alerts.js';
+import * as notifications from './src/notifications.js';
 import * as ui from './src/ui.js';
 import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
@@ -748,6 +749,9 @@ function replaceEmojiIcons() {
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) setIconContent(settingsBtn, 'settings', { size: 18 });
 
+    const persistentNotificationsIcon = document.getElementById('persistent-notifications-icon');
+    if (persistentNotificationsIcon) setIconContent(persistentNotificationsIcon, 'notifications', { size: 16 });
+
     const minimizeBtn = document.getElementById('minimize-btn');
     if (minimizeBtn) setIconContent(minimizeBtn, 'minimize', { size: 18 });
 
@@ -931,6 +935,7 @@ async function init() {
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
+    notifications.initializePersistentNotifications();
 
     // Always hide loading and show UI
     uiUtils.showLoading(false);
