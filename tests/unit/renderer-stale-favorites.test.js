@@ -139,7 +139,6 @@ describe('Renderer stale favorite state handling', () => {
       updateWeatherFromHA: jest.fn(),
       populateWeatherEntitiesList: jest.fn(),
       selectWeatherEntity: jest.fn(),
-      showWeatherDetails: jest.fn(),
       updateTimeDisplay: jest.fn(),
       updateTimerDisplays: jest.fn(),
       updateMediaSeekBar: jest.fn(),

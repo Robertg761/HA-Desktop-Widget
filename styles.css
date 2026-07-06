@@ -3953,59 +3953,6 @@ body.first-run-active .widget-content > * {
   color: var(--text-primary);
 }
 
-.weather-forecast {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
-  width: 100%;
-  margin-top: 6px;
-}
-
-.weather-forecast[hidden] {
-  display: none;
-}
-
-.weather-forecast-day {
-  min-width: 0;
-  padding: 5px 3px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.045);
-  text-align: center;
-}
-
-.theme-light .weather-forecast-day {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.06);
-}
-
-.weather-forecast-label,
-.weather-forecast-temps {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.weather-forecast-label {
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-}
-
-.weather-forecast-icon {
-  font-size: 14px;
-  line-height: 1.1;
-  margin: 2px 0;
-}
-
-.weather-forecast-temps {
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
 /* Enhanced Time Card Styles */
 .status-card.time-card {
   min-height: 120px;
@@ -6550,23 +6497,20 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 }
 
 .todo-items-list,
-.calendar-events-list,
-.weather-detail-forecast {
+.calendar-events-list {
   display: grid;
   gap: 8px;
 }
 
 .todo-item-row,
-.calendar-event-row,
-.weather-detail-forecast-row {
+.calendar-event-row {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.045);
 }
 
 .theme-light .todo-item-row,
-.theme-light .calendar-event-row,
-.theme-light .weather-detail-forecast-row {
+.theme-light .calendar-event-row {
   background: rgba(0, 0, 0, 0.03);
 }
 
@@ -6586,8 +6530,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 
 .todo-item-summary,
 .calendar-event-summary,
-.calendar-event-description,
-.weather-detail-forecast-condition {
+.calendar-event-description {
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -6606,58 +6549,6 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
-}
-
-.weather-detail-current {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.theme-light .weather-detail-current {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.weather-detail-current-icon {
-  font-size: 36px;
-  line-height: 1;
-}
-
-.weather-detail-current-temp {
-  color: var(--text-primary);
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.weather-detail-current-condition {
-  margin-top: 4px;
-  color: var(--text-secondary);
-  text-transform: capitalize;
-}
-
-.weather-detail-forecast-row {
-  display: grid;
-  grid-template-columns: 44px 32px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-}
-
-.weather-detail-forecast-day,
-.weather-detail-forecast-temps {
-  color: var(--text-primary);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.weather-detail-forecast-icon {
-  font-size: 20px;
-  text-align: center;
 }
 
 /* Horizontal rule separator */

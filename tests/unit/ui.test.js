@@ -819,11 +819,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // ==============================================================================
 
   describe('Home Assistant feature helpers', () => {
-    it('formats forecast day labels from forecast datetimes', () => {
-      expect(ui.formatForecastDayLabel('2026-07-06T12:00:00')).toBe('Mon');
-      expect(ui.formatForecastDayLabel('not-a-date')).toBe('--');
-    });
-
     it('counts only needs_action todo items as active', () => {
       expect(ui.getTodoActiveCount([
         { uid: '1', summary: 'Milk', status: 'needs_action' },

@@ -60,8 +60,6 @@ const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
   { value: 'large', label: 'Large' },
   { value: 'extra-large', label: 'Extra Large' },
 ];
-const WEATHER_FORECAST_CACHE_TTL_MS = 30 * 60 * 1000;
-const WEATHER_FORECAST_REFRESH_THROTTLE_MS = 10 * 60 * 1000;
 const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
 const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
 const SENSOR_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -253,8 +251,6 @@ let lastMediaTileArtworkSrc = '';
 
 let weatherCardTemplate = null;
 let timeCardTemplate = null;
-const weatherForecastCacheByEntity = new Map();
-const weatherForecastPendingByEntity = new Map();
 const todoItemsCacheByEntity = new Map();
 const todoItemsPendingByEntity = new Map();
 
@@ -1216,26 +1212,6 @@ function escapeHtmlAttribute(value) {
   return utils.escapeHtmlAttribute(value);
 }
 
-function getWeatherConditionIcon(condition) {
-  const value = typeof condition === 'string' ? condition.toLowerCase() : '';
-  if (value.includes('sunny') || value === 'clear') return { icon: '☀️', className: 'sunny' };
-  if (value.includes('partly') || value.includes('cloudy')) return { icon: '⛅', className: 'cloudy' };
-  if (value.includes('rain') || value.includes('rainy')) return { icon: '🌧️', className: 'rain' };
-  if (value.includes('snow') || value.includes('snowy')) return { icon: '❄️', className: 'snow' };
-  if (value.includes('storm') || value.includes('thunder') || value.includes('lightning')) return { icon: '⛈️', className: 'storm' };
-  if (value.includes('fog') || value.includes('mist') || value.includes('haze')) return { icon: '🌫️', className: 'fog' };
-  if (value.includes('wind')) return { icon: '💨', className: 'wind' };
-  if (value.includes('cloud')) return { icon: '☁️', className: 'cloudy' };
-  if (value.includes('night') || value.includes('clear-night')) return { icon: '🌙', className: 'night' };
-  return { icon: '🌤️', className: '' };
-}
-
-function formatForecastDayLabel(datetime) {
-  const date = new Date(datetime);
-  if (Number.isNaN(date.getTime())) return '--';
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
-}
-
 function getTodoActiveCount(items = []) {
   if (!Array.isArray(items)) return 0;
   return items.filter((item) => item?.status === 'needs_action').length;
@@ -1246,14 +1222,6 @@ function getServiceEntityPayload(response, entityId) {
   if (entityId && response[entityId]) return response[entityId];
   const firstValue = Object.values(response)[0];
   return firstValue && typeof firstValue === 'object' ? firstValue : response;
-}
-
-function normalizeForecastItems(response, entityId) {
-  const entityPayload = getServiceEntityPayload(response, entityId);
-  const forecast = Array.isArray(entityPayload?.forecast)
-    ? entityPayload.forecast
-    : (Array.isArray(response?.forecast) ? response.forecast : []);
-  return forecast.filter((item) => item && typeof item === 'object');
 }
 
 function normalizeTodoItems(response, entityId) {
@@ -1270,29 +1238,6 @@ function normalizeCalendarEvents(response, entityId) {
     ? entityPayload.events
     : (Array.isArray(response?.events) ? response.events : []);
   return events.filter((event) => event && typeof event === 'object');
-}
-
-function getForecastTemperatureValue(forecast, keys) {
-  for (const key of keys) {
-    const value = forecast?.[key];
-    if (value != null && value !== '') return value;
-  }
-  return null;
-}
-
-function formatForecastTemperature(value, unit = '') {
-  const numberValue = Number(value);
-  const displayValue = Number.isFinite(numberValue) ? Math.round(numberValue) : value;
-  return value == null || value === '' ? '--' : `${displayValue}${unit}`;
-}
-
-function getForecastTemperatureParts(forecast, unit = '') {
-  const high = getForecastTemperatureValue(forecast, ['temperature', 'templow_high', 'high_temperature']);
-  const low = getForecastTemperatureValue(forecast, ['templow', 'low_temperature']);
-  return {
-    high: formatForecastTemperature(high, unit),
-    low: formatForecastTemperature(low, unit),
-  };
 }
 
 function getEventDateValue(value) {
@@ -6780,110 +6725,6 @@ function executeHotkeyAction(entity, action) {
 }
 
 // --- Weather ---
-function ensureWeatherForecastContainer() {
-  let forecastEl = document.getElementById('weather-forecast');
-  if (forecastEl) return forecastEl;
-
-  const weatherContent = document.querySelector('#weather-card .weather-content');
-  if (!weatherContent) return null;
-  forecastEl = document.createElement('div');
-  forecastEl.id = 'weather-forecast';
-  forecastEl.className = 'weather-forecast';
-  forecastEl.hidden = true;
-  weatherContent.appendChild(forecastEl);
-  return forecastEl;
-}
-
-function renderWeatherForecastRow(entityId) {
-  const forecastEl = ensureWeatherForecastContainer();
-  if (!forecastEl || !entityId) return;
-
-  const cached = weatherForecastCacheByEntity.get(entityId);
-  const forecastItems = Array.isArray(cached?.forecast) ? cached.forecast.slice(0, 5) : [];
-  forecastEl.innerHTML = '';
-
-  if (!forecastItems.length) {
-    forecastEl.hidden = true;
-    return;
-  }
-
-  const unit = state.UNIT_SYSTEM?.temperature || '°C';
-  forecastItems.forEach((forecast) => {
-    const item = document.createElement('div');
-    item.className = 'weather-forecast-day';
-
-    const label = document.createElement('div');
-    label.className = 'weather-forecast-label';
-    label.textContent = formatForecastDayLabel(forecast.datetime);
-
-    const icon = document.createElement('div');
-    icon.className = 'weather-forecast-icon';
-    icon.textContent = getWeatherConditionIcon(forecast.condition).icon;
-
-    const temps = document.createElement('div');
-    temps.className = 'weather-forecast-temps';
-    const { high, low } = getForecastTemperatureParts(forecast, unit);
-    temps.textContent = `${high} / ${low}`;
-
-    item.appendChild(label);
-    item.appendChild(icon);
-    item.appendChild(temps);
-    forecastEl.appendChild(item);
-  });
-
-  forecastEl.hidden = false;
-}
-
-function fetchWeatherForecast(entityId, { force = false } = {}) {
-  if (!entityId) return Promise.resolve([]);
-  const now = Date.now();
-  const cached = weatherForecastCacheByEntity.get(entityId);
-
-  if (!force && cached?.forecast && now - cached.fetchedAt < WEATHER_FORECAST_CACHE_TTL_MS) {
-    renderWeatherForecastRow(entityId);
-    return Promise.resolve(cached.forecast);
-  }
-  if (!force && cached && now - (cached.lastRequestedAt || cached.fetchedAt || 0) < WEATHER_FORECAST_REFRESH_THROTTLE_MS) {
-    renderWeatherForecastRow(entityId);
-    return Promise.resolve(cached.forecast || []);
-  }
-  if (weatherForecastPendingByEntity.has(entityId)) return weatherForecastPendingByEntity.get(entityId);
-
-  weatherForecastCacheByEntity.set(entityId, {
-    ...(cached || {}),
-    lastRequestedAt: now,
-  });
-
-  const request = callServiceWithResponse('weather', 'get_forecasts', {
-    entity_id: entityId,
-    type: 'daily',
-  })
-    .then((response) => {
-      const forecast = normalizeForecastItems(response, entityId).slice(0, 5);
-      weatherForecastCacheByEntity.set(entityId, {
-        forecast,
-        fetchedAt: Date.now(),
-        lastRequestedAt: Date.now(),
-      });
-      renderWeatherForecastRow(entityId);
-      return forecast;
-    })
-    .catch((error) => {
-      console.warn('Unable to fetch weather forecast:', error);
-      if (!cached?.forecast?.length) {
-        weatherForecastCacheByEntity.delete(entityId);
-        renderWeatherForecastRow(entityId);
-      }
-      return cached?.forecast || [];
-    })
-    .finally(() => {
-      weatherForecastPendingByEntity.delete(entityId);
-    });
-
-  weatherForecastPendingByEntity.set(entityId, request);
-  return request;
-}
-
 function updateWeatherFromHA() {
   try {
     const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
@@ -6932,117 +6773,44 @@ function updateWeatherFromHA() {
 
     // Update weather icon based on current condition
     if (iconEl) {
-      const icon = getWeatherConditionIcon(weatherEntity.state);
-      iconEl.textContent = icon.icon;
-      iconEl.className = ['weather-icon', icon.className].filter(Boolean).join(' ');
+      const condition = weatherEntity.state?.toLowerCase() || '';
+      let icon = '🌤️'; // default
+      let classes = 'weather-icon';
+
+      if (condition.includes('sunny') || condition === 'clear') {
+        icon = '☀️';
+        classes += ' sunny';
+      } else if (condition.includes('partly') || condition.includes('cloudy')) {
+        icon = '⛅';
+        classes += ' cloudy';
+      } else if (condition.includes('rain') || condition.includes('rainy')) {
+        icon = '🌧️';
+        classes += ' rain';
+      } else if (condition.includes('snow') || condition.includes('snowy')) {
+        icon = '❄️';
+        classes += ' snow';
+      } else if (condition.includes('storm') || condition.includes('thunder') || condition.includes('lightning')) {
+        icon = '⛈️';
+        classes += ' storm';
+      } else if (condition.includes('fog') || condition.includes('mist') || condition.includes('haze')) {
+        icon = '🌫️';
+      } else if (condition.includes('wind')) {
+        icon = '💨';
+        classes += ' wind';
+      } else if (condition.includes('cloud')) {
+        icon = '☁️';
+        classes += ' cloudy';
+      } else if (condition.includes('night') || condition.includes('clear-night')) {
+        icon = '🌙';
+      }
+
+      iconEl.textContent = icon;
+      iconEl.className = classes;
     }
 
-    renderWeatherForecastRow(selectedWeatherEntityId);
-    fetchWeatherForecast(selectedWeatherEntityId);
     updateWeatherEffects();
   } catch (error) {
     console.error('Error updating weather:', error);
-  }
-}
-
-function renderWeatherDetailForecast(container, entityId) {
-  if (!container) return;
-  container.innerHTML = '';
-  const cached = weatherForecastCacheByEntity.get(entityId);
-  const forecastItems = Array.isArray(cached?.forecast) ? cached.forecast.slice(0, 5) : [];
-
-  if (!forecastItems.length) {
-    const empty = document.createElement('div');
-    empty.className = 'entity-detail-empty';
-    empty.textContent = 'No forecast available';
-    container.appendChild(empty);
-    return;
-  }
-
-  const unit = state.UNIT_SYSTEM?.temperature || '°C';
-  forecastItems.forEach((forecast) => {
-    const row = document.createElement('div');
-    row.className = 'weather-detail-forecast-row';
-
-    const label = document.createElement('div');
-    label.className = 'weather-detail-forecast-day';
-    label.textContent = formatForecastDayLabel(forecast.datetime);
-
-    const icon = document.createElement('div');
-    icon.className = 'weather-detail-forecast-icon';
-    icon.textContent = getWeatherConditionIcon(forecast.condition).icon;
-
-    const condition = document.createElement('div');
-    condition.className = 'weather-detail-forecast-condition';
-    condition.textContent = forecast.condition || '--';
-
-    const temps = document.createElement('div');
-    temps.className = 'weather-detail-forecast-temps';
-    const { high, low } = getForecastTemperatureParts(forecast, unit);
-    temps.textContent = `${high} / ${low}`;
-
-    row.appendChild(label);
-    row.appendChild(icon);
-    row.appendChild(condition);
-    row.appendChild(temps);
-    container.appendChild(row);
-  });
-}
-
-function showWeatherDetails() {
-  try {
-    const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
-    const entity = selectedWeatherEntityId ? state.STATES?.[selectedWeatherEntityId] : null;
-    if (!entity) return;
-
-    const modal = createEntityDetailModal({
-      className: 'weather-detail-modal',
-      title: utils.getEntityDisplayName(entity),
-    });
-    const body = modal.querySelector('.modal-body');
-    if (!body) return;
-
-    const current = document.createElement('div');
-    current.className = 'weather-detail-current';
-
-    const icon = document.createElement('div');
-    icon.className = 'weather-detail-current-icon';
-    icon.textContent = getWeatherConditionIcon(entity.state).icon;
-
-    const summary = document.createElement('div');
-    summary.className = 'weather-detail-current-summary';
-
-    const temperature = document.createElement('div');
-    temperature.className = 'weather-detail-current-temp';
-    temperature.textContent = `${Math.round(entity.attributes?.temperature || 0)}${state.UNIT_SYSTEM?.temperature || '°C'}`;
-
-    const condition = document.createElement('div');
-    condition.className = 'weather-detail-current-condition';
-    condition.textContent = entity.state || '--';
-
-    summary.appendChild(temperature);
-    summary.appendChild(condition);
-    current.appendChild(icon);
-    current.appendChild(summary);
-
-    const forecastTitle = document.createElement('h3');
-    forecastTitle.className = 'entity-detail-section-title';
-    forecastTitle.textContent = '5-day forecast';
-
-    const forecastContainer = document.createElement('div');
-    forecastContainer.className = 'weather-detail-forecast';
-    forecastContainer.textContent = 'Loading...';
-
-    body.appendChild(current);
-    body.appendChild(forecastTitle);
-    body.appendChild(forecastContainer);
-
-    renderWeatherDetailForecast(forecastContainer, selectedWeatherEntityId);
-    fetchWeatherForecast(selectedWeatherEntityId, { force: true })
-      .then(() => renderWeatherDetailForecast(forecastContainer, selectedWeatherEntityId))
-      .catch(() => renderWeatherDetailForecast(forecastContainer, selectedWeatherEntityId));
-  } catch (error) {
-    console.error('Error showing weather details:', error);
   }
 }
 
@@ -8763,7 +8531,6 @@ export {
   updateWeatherEffects,
   populateWeatherEntitiesList,
   selectWeatherEntity,
-  showWeatherDetails,
   initUpdateUI,
   updateTimeDisplay,
   startTimeTicker,
@@ -8785,6 +8552,5 @@ export {
   callMediaTileService,
   callMediaPlayerService,
   getMediaSeekTarget,
-  formatForecastDayLabel,
   getTodoActiveCount,
 };

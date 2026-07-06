@@ -63,7 +63,6 @@ describe('Renderer UI tick scheduler', () => {
       updateWeatherFromHA: jest.fn(),
       populateWeatherEntitiesList: jest.fn(),
       selectWeatherEntity: jest.fn(),
-      showWeatherDetails: jest.fn(),
       updateTimeDisplay: jest.fn(),
       updateTimerDisplays: jest.fn(),
       updateMediaSeekBar: jest.fn(),
