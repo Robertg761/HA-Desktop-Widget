@@ -163,6 +163,11 @@
                             <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
                             <input type="password" id="ha-token" placeholder="Your long-lived access token" data-i18n-placeholder="Your long-lived access token">
                         </div>
+                        <div class="connection-test-row">
+                            <button type="button" id="test-ha-connection-btn" class="btn btn-secondary" data-i18n="Test connection">Test connection</button>
+                            <span id="test-ha-connection-spinner" class="connection-test-spinner hidden" aria-hidden="true"></span>
+                        </div>
+                        <div id="test-ha-connection-status" class="connection-test-status" role="status" aria-live="polite"></div>
                     </div>
 
                     <!-- Window & Behavior Card -->

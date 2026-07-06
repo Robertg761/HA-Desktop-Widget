@@ -30,6 +30,11 @@ import {
   getLocaleState,
   t,
 } from './i18n.js';
+import {
+  classifyConnectionError,
+  isPlaceholderOrEmptyToken,
+  normalizeBaseUrl,
+} from './connection.js';
 
 let previewState = null;
 let previewRaf = null;
@@ -3271,6 +3276,9 @@ async function openSettings(uiHooks) {
         uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
     }
+    bindConnectionTestUi();
+    setSettingsConnectionTestStatus('', '');
+    setSettingsConnectionTestBusy(false);
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
@@ -3511,6 +3519,90 @@ function closeSettings() {
   } catch (error) {
     log.error('Error closing settings:', error);
   }
+}
+
+function getConnectionTestMessage(resultOrError) {
+  if (resultOrError?.success) {
+    return {
+      type: 'success',
+      text: t('Connection test succeeded. Home Assistant is reachable.'),
+    };
+  }
+
+  const code = classifyConnectionError(resultOrError);
+  if (code === 'invalid-url') {
+    return {
+      type: 'error',
+      text: t('Enter a valid Home Assistant URL and token before testing.'),
+    };
+  }
+  if (code === 'auth-failed') {
+    return {
+      type: 'error',
+      text: t('Authentication failed. Check your Long-Lived Access Token.'),
+    };
+  }
+  return {
+    type: 'error',
+    text: t('Could not reach Home Assistant at that URL.'),
+  };
+}
+
+function setSettingsConnectionTestStatus(message = '', type = '') {
+  const status = document.getElementById('test-ha-connection-status');
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.status = type || '';
+  status.classList.toggle('hidden', !message);
+}
+
+function setSettingsConnectionTestBusy(isBusy) {
+  const button = document.getElementById('test-ha-connection-btn');
+  const spinner = document.getElementById('test-ha-connection-spinner');
+  if (button) {
+    button.disabled = !!isBusy;
+    button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  }
+  if (spinner) {
+    spinner.classList.toggle('hidden', !isBusy);
+  }
+}
+
+async function runSettingsConnectionTest() {
+  const haUrl = document.getElementById('ha-url');
+  const haToken = document.getElementById('ha-token');
+  const normalizedUrl = normalizeBaseUrl(haUrl?.value || '');
+  const token = (haToken?.value || '').trim();
+
+  if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
+    const message = getConnectionTestMessage({ code: 'invalid-url' });
+    setSettingsConnectionTestStatus(message.text, message.type);
+    return false;
+  }
+
+  setSettingsConnectionTestBusy(true);
+  setSettingsConnectionTestStatus(t('Testing Home Assistant connection...'), 'pending');
+  try {
+    const result = await window.electronAPI.testHaConnection(normalizedUrl, token);
+    const message = getConnectionTestMessage(result);
+    setSettingsConnectionTestStatus(message.text, message.type);
+    return !!result?.success;
+  } catch (error) {
+    const message = getConnectionTestMessage(error);
+    setSettingsConnectionTestStatus(message.text, message.type);
+    return false;
+  } finally {
+    setSettingsConnectionTestBusy(false);
+  }
+}
+
+function bindConnectionTestUi() {
+  const button = document.getElementById('test-ha-connection-btn');
+  if (!button || button.dataset.initialized === 'true') return;
+  button.addEventListener('click', () => {
+    void runSettingsConnectionTest();
+  });
+  button.dataset.initialized = 'true';
 }
 
 /**

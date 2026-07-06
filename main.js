@@ -3205,6 +3205,88 @@ ipcMain.handle('clear-token-reset-reason', (event) => {
   return sanitizeConfigForRenderer(config);
 });
 
+function normalizeHomeAssistantBaseUrlForIpc(rawUrl) {
+  const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  if (!trimmed) return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
+    return null;
+  }
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (!parsed.hostname) return null;
+    return parsed.origin.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    const normalizedBaseUrl = normalizeHomeAssistantBaseUrlForIpc(baseUrl);
+    const normalizedToken = typeof token === 'string' ? token.trim() : '';
+    if (!normalizedBaseUrl || isPlaceholderOrEmptyToken(normalizedToken)) {
+      resolve({ success: false, code: 'invalid-url' });
+      return;
+    }
+
+    let completed = false;
+    const request = net.request({
+      method: 'GET',
+      url: `${normalizedBaseUrl}/api/`,
+      redirect: 'follow',
+    });
+
+    const finish = (result) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      try { request.abort(); } catch { /* noop */ }
+      resolve(result);
+    };
+
+    const timeoutId = setTimeout(() => {
+      finish({ success: false, code: 'unreachable', error: 'Request timed out' });
+    }, timeoutMs);
+
+    request.setHeader('Authorization', `Bearer ${normalizedToken}`);
+    request.setHeader('Accept', 'application/json');
+
+    request.on('response', (response) => {
+      const statusCode = Number(response.statusCode || 0);
+      response.on('data', () => { });
+      response.on('end', () => {
+        if (statusCode >= 200 && statusCode < 300) {
+          finish({ success: true, code: 'ok', status: statusCode, url: normalizedBaseUrl });
+          return;
+        }
+        if (statusCode === 401 || statusCode === 403) {
+          finish({ success: false, code: 'auth-failed', status: statusCode });
+          return;
+        }
+        finish({ success: false, code: 'unreachable', status: statusCode });
+      });
+    });
+
+    request.on('error', (error) => {
+      finish({ success: false, code: 'unreachable', error: error?.message || String(error) });
+    });
+
+    try {
+      request.end();
+    } catch (error) {
+      finish({ success: false, code: 'unreachable', error: error?.message || String(error) });
+    }
+  });
+}
+
+ipcMain.handle('test-ha-connection', async (event, url, token) => {
+  const sender = authorizeIpcSender(event, 'test-ha-connection');
+  if (!sender) return rejectUnauthorizedIpc('test-ha-connection');
+  return testHomeAssistantApiRoot(url, token);
+});
+
 ipcMain.handle('pin-entity-to-desktop', (event, entityId, supportInfo = null) => {
   const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
   if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
