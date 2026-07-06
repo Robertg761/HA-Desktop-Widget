@@ -1,5 +1,5 @@
 jest.mock('../../src/ui.js', () => ({
-  executeEntityPrimaryAction: jest.fn(),
+  openEntityDetailModal: jest.fn(),
   getEntityDomain: entityId => String(entityId || '').split('.')[0],
 }));
 

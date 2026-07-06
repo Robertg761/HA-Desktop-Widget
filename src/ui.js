@@ -6621,6 +6621,59 @@ function executeEntityPrimaryAction(entity, options = {}) {
   }
 }
 
+// Open the richest detail/control modal for an entity — the same modal a Quick
+// Access tile shows on long-press. Domains without a dedicated modal
+// (switches, scenes, scripts, etc.) fall back to the entity's primary action.
+function openEntityDetailModal(entity, options = {}) {
+  try {
+    const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (!liveEntity?.entity_id) return;
+
+    const domain = getEntityDomain(liveEntity.entity_id);
+    const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
+
+    switch (domain) {
+      case 'camera':
+        camera.openCamera(liveEntity.entity_id);
+        return;
+      case 'light':
+        showBrightnessSlider(liveEntity);
+        return;
+      case 'climate':
+        showClimateControls(liveEntity);
+        return;
+      case 'fan':
+        showFanControls(liveEntity);
+        return;
+      case 'cover':
+        showCoverControls(liveEntity);
+        return;
+      case 'media_player':
+        showMediaDetail(liveEntity);
+        return;
+      case 'todo':
+        showTodoDetails(liveEntity);
+        return;
+      case 'calendar':
+        showCalendarDetails(liveEntity);
+        return;
+      case 'sensor':
+        if (!isTimer) {
+          showSensorDetails(liveEntity);
+          return;
+        }
+        break;
+      default:
+        break;
+    }
+
+    // No dedicated detail modal for this domain — fall back to primary action.
+    executeEntityPrimaryAction(liveEntity, options);
+  } catch (error) {
+    console.error('Error opening entity detail modal:', error);
+  }
+}
+
 function triggerActivationFeedback(entityId) {
   try {
     const tile = document.querySelector(`[data-entity-id="${entityId}"]`);
@@ -8544,6 +8597,7 @@ export {
   refreshVisibleEntityCache,
   executeHotkeyAction,
   executeEntityPrimaryAction,
+  openEntityDetailModal,
   getEntityDomain,
   handleDesktopPinActionRequest,
   renderDesktopPinnedTile,

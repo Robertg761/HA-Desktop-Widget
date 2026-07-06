@@ -1,6 +1,6 @@
 import state from './state.js';
 import * as utils from './utils.js';
-import { executeEntityPrimaryAction, getEntityDomain } from './ui.js';
+import { openEntityDetailModal, getEntityDomain } from './ui.js';
 
 const MAX_RESULTS = 20;
 
@@ -169,7 +169,7 @@ function executeHighlightedResult() {
   const selected = results[highlightedIndex];
   if (!selected?.entity) return;
   closeCommandPalette();
-  executeEntityPrimaryAction(selected.entity, { source: 'command-palette' });
+  openEntityDetailModal(selected.entity, { source: 'command-palette' });
 }
 
 function createResultRow(item, index) {
