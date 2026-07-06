@@ -121,7 +121,13 @@ function createPaletteShell() {
   input.setAttribute('aria-controls', 'command-palette-results');
   input.setAttribute('aria-autocomplete', 'list');
 
-  searchWrap.appendChild(input);
+  const closeButton = createElement('button', 'command-palette-close', '×');
+  closeButton.type = 'button';
+  closeButton.title = 'Close';
+  closeButton.setAttribute('aria-label', 'Close command palette');
+  closeButton.addEventListener('click', closeCommandPalette);
+
+  searchWrap.append(input, closeButton);
 
   list = createElement('div', 'command-palette-results');
   list.id = 'command-palette-results';
@@ -185,8 +191,7 @@ function createResultRow(item, index) {
 
   const main = createElement('span', 'command-palette-result-main');
   const name = createElement('span', 'command-palette-result-name', displayName);
-  const entityId = createElement('span', 'command-palette-result-id', entity.entity_id);
-  main.append(name, entityId);
+  main.append(name);
 
   const meta = createElement('span', 'command-palette-result-meta');
   const domain = createElement('span', 'command-palette-result-domain', getEntityDomain(entity.entity_id));

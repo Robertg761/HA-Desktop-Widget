@@ -10567,6 +10567,30 @@ label.disabled {
   color: var(--text-tertiary);
 }
 
+.command-palette-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.command-palette-close:hover,
+.command-palette-close:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--text-primary);
+  outline: none;
+}
+
 .command-palette-results {
   display: flex;
   flex-direction: column;
@@ -10576,14 +10600,14 @@ label.disabled {
 
 .command-palette-result {
   width: 100%;
-  min-height: 58px;
+  min-height: 44px;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: transparent;
   color: var(--text-primary);
   text-align: left;
@@ -10599,24 +10623,25 @@ label.disabled {
 }
 
 .command-palette-result-icon {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   background: var(--surface-2);
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
 }
 
+/* Only the friendly name is shown, so it takes the full width of the row. */
 .command-palette-result-main {
   min-width: 0;
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .command-palette-result-name,
-.command-palette-result-id,
 .command-palette-result-state {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10624,25 +10649,23 @@ label.disabled {
 }
 
 .command-palette-result-name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
 }
 
-.command-palette-result-id {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
+/* Domain pill + state sit inline at the end of the row. */
 .command-palette-result-meta {
-  min-width: 92px;
-  max-width: 180px;
-  display: grid;
-  justify-items: end;
-  gap: 5px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .command-palette-result-domain {
-  max-width: 100%;
+  flex: none;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   border: 1px solid var(--border-color);
@@ -10656,7 +10679,8 @@ label.disabled {
 }
 
 .command-palette-result-state {
-  max-width: 100%;
+  flex: none;
+  max-width: 140px;
   color: var(--text-secondary);
   font-size: 12px;
 }
@@ -10678,15 +10702,13 @@ label.disabled {
   }
 
   .command-palette-result {
-    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 10px;
   }
 
-  .command-palette-result-meta {
-    grid-column: 2;
-    min-width: 0;
-    max-width: 100%;
-    display: flex;
-    align-items: center;
-    justify-items: start;
+  .command-palette-result-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
   }
 }
