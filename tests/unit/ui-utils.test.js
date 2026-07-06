@@ -40,6 +40,41 @@ beforeEach(() => {
 
 describe('UI Utilities', () => {
 
+  describe('entity control helpers', () => {
+    it('should convert six-digit hex colors to RGB channels', () => {
+      expect(uiUtils.hexToRgb('#1A2B3C')).toEqual({ r: 26, g: 43, b: 60 });
+      expect(uiUtils.hexToRgb('ffffff')).toEqual({ r: 255, g: 255, b: 255 });
+    });
+
+    it('should convert short hex colors to RGB channels', () => {
+      expect(uiUtils.hexToRgb('#0f8')).toEqual({ r: 0, g: 255, b: 136 });
+    });
+
+    it('should reject invalid hex colors', () => {
+      expect(uiUtils.hexToRgb('#12')).toBeNull();
+      expect(uiUtils.hexToRgb('#zzzzzz')).toBeNull();
+      expect(uiUtils.hexToRgb(null)).toBeNull();
+    });
+
+    it('should convert mired values to rounded Kelvin values', () => {
+      expect(uiUtils.miredsToKelvin(500)).toBe(2000);
+      expect(uiUtils.miredsToKelvin(153)).toBe(6536);
+    });
+
+    it('should reject invalid mired values', () => {
+      expect(uiUtils.miredsToKelvin(0)).toBeNull();
+      expect(uiUtils.miredsToKelvin(-100)).toBeNull();
+      expect(uiUtils.miredsToKelvin('not-a-number')).toBeNull();
+    });
+
+    it('should check supported feature bitmasks', () => {
+      expect(uiUtils.hasSupportedFeature(12, 4)).toBe(true);
+      expect(uiUtils.hasSupportedFeature(12, 8)).toBe(true);
+      expect(uiUtils.hasSupportedFeature(4, 8)).toBe(false);
+      expect(uiUtils.hasSupportedFeature(undefined, 4)).toBe(false);
+    });
+  });
+
   describe('showToast', () => {
     let toastContainer;
 

@@ -24,6 +24,17 @@ const desktopPinControlTimers = new Map();
 const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
+const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
+const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
+const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
+const LIGHT_COLOR_PRESETS = [
+  '#FFB347',
+  '#FFD966',
+  '#FFFFFF',
+  '#9FD8FF',
+  '#7C83FF',
+  '#FF6B9D',
+];
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set(['auto', 'small', 'normal', 'large', 'extra-large']);
@@ -5059,6 +5070,12 @@ function canSeekMedia(entity) {
   return hasMediaSeekData(entity);
 }
 
+function clampRange(value, min, max) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return min;
+  return Math.max(min, Math.min(max, numericValue));
+}
+
 function getMediaSeekTarget(entity, deltaSeconds) {
   if (!hasMediaSeekData(entity)) return null;
 
@@ -5072,6 +5089,62 @@ function getMediaSeekTarget(entity, deltaSeconds) {
   return Math.round(nextPosition);
 }
 
+function rgbToHex(rgb) {
+  if (!Array.isArray(rgb) || rgb.length < 3) return '#FFFFFF';
+  const channels = rgb.slice(0, 3).map(channel => clampRange(Math.round(Number(channel) || 0), 0, 255));
+  return `#${channels.map(channel => channel.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+function getLightColorTempRange(attributes = {}) {
+  const minKelvinValue = Number(attributes.min_color_temp_kelvin);
+  const maxKelvinValue = Number(attributes.max_color_temp_kelvin);
+  if (Number.isFinite(minKelvinValue) && Number.isFinite(maxKelvinValue) && minKelvinValue > 0 && maxKelvinValue > 0) {
+    return {
+      min: Math.min(minKelvinValue, maxKelvinValue),
+      max: Math.max(minKelvinValue, maxKelvinValue),
+    };
+  }
+
+  const minFromMireds = uiUtils.miredsToKelvin(attributes.max_mireds);
+  const maxFromMireds = uiUtils.miredsToKelvin(attributes.min_mireds);
+  if (minFromMireds && maxFromMireds) {
+    return {
+      min: Math.min(minFromMireds, maxFromMireds),
+      max: Math.max(minFromMireds, maxFromMireds),
+    };
+  }
+
+  return { min: 2000, max: 6500 };
+}
+
+function getInitialLightColorTempKelvin(attributes = {}, range) {
+  const kelvinValue = Number(attributes.color_temp_kelvin);
+  if (Number.isFinite(kelvinValue) && kelvinValue > 0) {
+    return clampRange(Math.round(kelvinValue), range.min, range.max);
+  }
+
+  const kelvinFromMireds = uiUtils.miredsToKelvin(attributes.color_temp);
+  if (kelvinFromMireds) {
+    return clampRange(kelvinFromMireds, range.min, range.max);
+  }
+
+  return clampRange(Math.round((range.min + range.max) / 2), range.min, range.max);
+}
+
+function getSupportedLightColorModes(attributes = {}) {
+  return Array.isArray(attributes.supported_color_modes)
+    ? attributes.supported_color_modes.map(mode => String(mode))
+    : [];
+}
+
+function supportsLightColor(attributes = {}) {
+  return getSupportedLightColorModes(attributes).some(mode => LIGHT_COLOR_MODES.has(mode));
+}
+
+function supportsLightColorTemp(attributes = {}) {
+  return getSupportedLightColorModes(attributes).includes('color_temp');
+}
+
 function showMediaDetail(entity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
@@ -5079,6 +5152,41 @@ function showMediaDetail(entity) {
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
     const initialTimeline = getMediaTimeline(entity);
     const seekControlsDisabled = canSeekMedia(entity) ? '' : ' disabled aria-disabled="true"';
+    const mediaAttributes = entity.attributes || {};
+    const supportsVolumeSet = uiUtils.hasSupportedFeature(mediaAttributes.supported_features, MEDIA_PLAYER_SUPPORT_VOLUME_SET);
+    const supportsVolumeMute = uiUtils.hasSupportedFeature(mediaAttributes.supported_features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE);
+    const initialVolume = clampRange(Math.round(Number(mediaAttributes.volume_level ?? 0) * 100), 0, 100);
+    const initialMuted = mediaAttributes.is_volume_muted === true;
+    const volumeControlsMarkup = supportsVolumeSet || supportsVolumeMute
+      ? `
+          <div class="media-volume-controls">
+            ${supportsVolumeSet ? `
+              <div class="media-volume-row">
+                <label class="media-volume-label" for="media-volume-slider">Volume</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="${initialVolume}"
+                  id="media-volume-slider"
+                  class="media-volume-slider"
+                  aria-label="Volume"
+                />
+                <span class="media-volume-value" id="media-volume-value">${initialVolume}%</span>
+              </div>
+            ` : ''}
+            ${supportsVolumeMute ? `
+              <button
+                class="media-mute-toggle ${initialMuted ? 'active' : ''}"
+                id="media-mute-toggle"
+                type="button"
+                aria-pressed="${initialMuted ? 'true' : 'false'}"
+              >${initialMuted ? 'Muted' : 'Mute'}</button>
+            ` : ''}
+          </div>
+        `
+      : '';
 
     const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
 
@@ -5104,6 +5212,7 @@ function showMediaDetail(entity) {
               <div class="media-progress-fill" id="media-progress-fill" style="width: 0%"></div>
             </div>
           </div>
+          ${volumeControlsMarkup}
           <div class="media-detail-controls">
             <button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous"></button>
             <button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="Rewind 10 seconds" aria-label="Rewind 10 seconds"${seekControlsDisabled}>-10</button>
@@ -5138,10 +5247,29 @@ function showMediaDetail(entity) {
     const progressFill = modal.querySelector('#media-progress-fill');
     const curEl = modal.querySelector('#media-current');
     const totalEl = modal.querySelector('#media-total');
+    const volumeSlider = modal.querySelector('#media-volume-slider');
+    const volumeValue = modal.querySelector('#media-volume-value');
+    const muteToggle = modal.querySelector('#media-mute-toggle');
 
     const getLiveTimeline = () => {
       const currentEntity = state.STATES[entity.entity_id] || entity;
       return getMediaTimeline(currentEntity);
+    };
+
+    const updateVolumeControls = () => {
+      const currentEntity = state.STATES[entity.entity_id] || entity;
+      const attrs = currentEntity.attributes || {};
+      if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
+        const volume = clampRange(Math.round(Number(attrs.volume_level ?? 0) * 100), 0, 100);
+        volumeSlider.value = String(volume);
+        volumeValue.textContent = `${volume}%`;
+      }
+      if (muteToggle) {
+        const isMuted = attrs.is_volume_muted === true;
+        muteToggle.classList.toggle('active', isMuted);
+        muteToggle.setAttribute('aria-pressed', isMuted ? 'true' : 'false');
+        muteToggle.textContent = isMuted ? 'Muted' : 'Mute';
+      }
     };
 
     let tick;
@@ -5191,6 +5319,32 @@ function showMediaDetail(entity) {
       }
     });
 
+    let volumeDebounceTimer;
+    if (volumeSlider) {
+      volumeSlider.addEventListener('input', (e) => {
+        const value = clampRange(Math.round(Number(e.target.value)), 0, 100);
+        if (volumeValue) volumeValue.textContent = `${value}%`;
+        clearTimeout(volumeDebounceTimer);
+        volumeDebounceTimer = setTimeout(() => {
+          callMediaPlayerService(entity.entity_id, 'volume_set', {
+            volumeLevel: value / 100,
+          });
+        }, 150);
+      });
+    }
+
+    if (muteToggle) {
+      muteToggle.addEventListener('click', () => {
+        const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
+        muteToggle.classList.toggle('active', nextMuted);
+        muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
+        muteToggle.textContent = nextMuted ? 'Muted' : 'Mute';
+        callMediaPlayerService(entity.entity_id, 'volume_mute', {
+          isVolumeMuted: nextMuted,
+        });
+      });
+    }
+
     // Update button when entity state changes
     const updateInterval = setInterval(() => {
       if (!modal.isConnected) {
@@ -5198,6 +5352,7 @@ function showMediaDetail(entity) {
         return;
       }
       updatePlayPauseBtn();
+      updateVolumeControls();
     }, 500);
 
 
@@ -5206,6 +5361,7 @@ function showMediaDetail(entity) {
       modal.classList.add('modal-closing');
       if (tick) clearInterval(tick);
       if (updateInterval) clearInterval(updateInterval);
+      if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
       setTimeout(() => modal.remove(), 150);
     };
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
@@ -5221,6 +5377,7 @@ function showMediaDetail(entity) {
     } else if (progressFill) {
       progressFill.style.width = '0%';
     }
+    updateVolumeControls();
     startTick();
 
     // Animate in
@@ -5282,6 +5439,20 @@ function callMediaPlayerService(entityId, action, options = {}) {
         });
         break;
       }
+      case 'volume_set': {
+        const volumeLevel = clampRange(Number(options.volumeLevel), 0, 1);
+        serviceCall = websocket.callService('media_player', 'volume_set', {
+          entity_id: entityId,
+          volume_level: volumeLevel,
+        });
+        break;
+      }
+      case 'volume_mute':
+        serviceCall = websocket.callService('media_player', 'volume_mute', {
+          entity_id: entityId,
+          is_volume_muted: !!options.isVolumeMuted,
+        });
+        break;
       default:
         console.warn('Unknown media player action:', action);
         return;
@@ -6253,6 +6424,65 @@ function showBrightnessSlider(light) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(light));
     const currentBrightness = light.state === 'on' && light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 0;
+    const lightAttributes = light.attributes || {};
+    const showColorTempControl = supportsLightColorTemp(lightAttributes);
+    const showColorControl = supportsLightColor(lightAttributes);
+    const colorTempRange = getLightColorTempRange(lightAttributes);
+    const currentColorTemp = getInitialLightColorTempKelvin(lightAttributes, colorTempRange);
+    const currentColorHex = rgbToHex(lightAttributes.rgb_color);
+    const colorTempMarkup = showColorTempControl
+      ? `
+            <div class="brightness-color-temp">
+              <div class="brightness-control-heading">
+                <span>Color Temperature</span>
+                <span id="light-color-temp-value">${currentColorTemp}K</span>
+              </div>
+              <input
+                type="range"
+                min="${colorTempRange.min}"
+                max="${colorTempRange.max}"
+                step="50"
+                value="${currentColorTemp}"
+                id="light-color-temp-slider"
+                class="light-color-temp-slider"
+                aria-label="Color Temperature"
+              />
+              <div class="brightness-slider-labels">
+                <span>Warm</span>
+                <span>Cool</span>
+              </div>
+            </div>
+        `
+      : '';
+    const colorControlMarkup = showColorControl
+      ? `
+            <div class="brightness-color-picker">
+              <div class="brightness-control-heading">
+                <span>Color</span>
+              </div>
+              <div class="brightness-color-row">
+                <input
+                  type="color"
+                  value="${escapeHtmlAttribute(currentColorHex)}"
+                  id="light-color-picker"
+                  class="light-color-picker"
+                  aria-label="Light Color"
+                />
+                <div class="light-color-swatches">
+                  ${LIGHT_COLOR_PRESETS.map((color) => `
+                    <button
+                      class="light-color-swatch"
+                      type="button"
+                      data-color="${escapeHtmlAttribute(color)}"
+                      style="--swatch-color: ${escapeHtmlAttribute(color)}"
+                      aria-label="Set light color ${escapeHtmlAttribute(color)}"
+                    ></button>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+        `
+      : '';
 
     const modal = document.createElement('div');
     modal.className = 'modal brightness-modal';
@@ -6287,6 +6517,8 @@ function showBrightnessSlider(light) {
               <button class="brightness-preset-btn" data-preset="75">75%</button>
               <button class="brightness-preset-btn" data-preset="100">100%</button>
             </div>
+            ${colorTempMarkup}
+            ${colorControlMarkup}
           </div>
         </div>
         <div class="modal-footer">
@@ -6304,9 +6536,15 @@ function showBrightnessSlider(light) {
     const cancelBtn = modal.querySelector('#brightness-cancel');
     const turnOffBtn = modal.querySelector('#turn-off-btn');
     const presetButtons = modal.querySelectorAll('.brightness-preset-btn');
+    const colorTempSlider = modal.querySelector('#light-color-temp-slider');
+    const colorTempValue = modal.querySelector('#light-color-temp-value');
+    const colorPicker = modal.querySelector('#light-color-picker');
+    const colorSwatches = modal.querySelectorAll('.light-color-swatch');
 
     // Track current light state
     let lightIsOn = light.state === 'on';
+    let colorTempDebounceTimer;
+    let colorDebounceTimer;
 
     // Update turn off/on button text
     const updateTurnButton = () => {
@@ -6319,6 +6557,8 @@ function showBrightnessSlider(light) {
     // Close handlers
     const closeModal = () => {
       modal.classList.add('modal-closing');
+      if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
+      if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
       setTimeout(() => modal.remove(), 200);
     };
     if (closeBtn) closeBtn.onclick = closeModal;
@@ -6391,6 +6631,49 @@ function showBrightnessSlider(light) {
       });
     });
 
+    if (colorTempSlider) {
+      colorTempSlider.addEventListener('input', (e) => {
+        const kelvin = clampRange(Math.round(Number(e.target.value)), colorTempRange.min, colorTempRange.max);
+        if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
+        clearTimeout(colorTempDebounceTimer);
+        colorTempDebounceTimer = setTimeout(() => {
+          websocket.callService('light', 'turn_on', {
+            entity_id: light.entity_id,
+            color_temp_kelvin: kelvin,
+          });
+          lightIsOn = true;
+          updateTurnButton();
+        }, 150);
+      });
+    }
+
+    const applyColor = (hexColor) => {
+      const rgb = uiUtils.hexToRgb(hexColor);
+      if (!rgb) return;
+      if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
+      clearTimeout(colorDebounceTimer);
+      colorDebounceTimer = setTimeout(() => {
+        websocket.callService('light', 'turn_on', {
+          entity_id: light.entity_id,
+          rgb_color: [rgb.r, rgb.g, rgb.b],
+        });
+        lightIsOn = true;
+        updateTurnButton();
+      }, 150);
+    };
+
+    if (colorPicker) {
+      colorPicker.addEventListener('input', (e) => {
+        applyColor(e.target.value);
+      });
+    }
+
+    colorSwatches.forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyColor(btn.getAttribute('data-color'));
+      });
+    });
+
     // Turn off/on button
     if (turnOffBtn) {
       turnOffBtn.onclick = () => {
@@ -6434,9 +6717,22 @@ function showClimateControls(climateEntity) {
     const minTemp = Number.isFinite(minTempValue) ? minTempValue : 10;
     const maxTemp = Number.isFinite(maxTempValue) ? maxTempValue : 30;
     const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
+    const hasCurrentHumidity = climateEntity.attributes.current_humidity !== undefined &&
+      climateEntity.attributes.current_humidity !== null;
+    const currentHumidity = hasCurrentHumidity
+      ? utils.escapeHtml(String(climateEntity.attributes.current_humidity))
+      : '';
     const availableModes = Array.isArray(climateEntity.attributes.hvac_modes)
       ? climateEntity.attributes.hvac_modes
       : ['off', 'heat', 'cool', 'auto'];
+    const availableFanModes = Array.isArray(climateEntity.attributes.fan_modes)
+      ? climateEntity.attributes.fan_modes
+      : [];
+    const availablePresetModes = Array.isArray(climateEntity.attributes.preset_modes)
+      ? climateEntity.attributes.preset_modes
+      : [];
+    const currentFanMode = String(climateEntity.attributes.fan_mode || '');
+    const currentPresetMode = String(climateEntity.attributes.preset_mode || '');
 
     const modal = document.createElement('div');
     modal.className = 'modal climate-modal';
@@ -6458,6 +6754,14 @@ function showClimateControls(climateEntity) {
                 <div class="climate-temp-value-large" id="climate-target-value">${targetTemp}${tempUnit}</div>
               </div>
             </div>
+            ${hasCurrentHumidity ? `
+              <div class="climate-extra-stats">
+                <div class="climate-stat">
+                  <div class="climate-temp-label">Humidity</div>
+                  <div class="climate-temp-value">${currentHumidity}%</div>
+                </div>
+              </div>
+            ` : ''}
 
             <div class="climate-slider-wrapper">
               <input
@@ -6480,6 +6784,18 @@ function showClimateControls(climateEntity) {
               <div class="climate-modes-label">Mode</div>
               <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
             </div>
+            ${availableFanModes.length ? `
+              <div class="climate-modes">
+                <div class="climate-modes-label">Fan</div>
+                <div class="climate-option-buttons" id="climate-fan-buttons"></div>
+              </div>
+            ` : ''}
+            ${availablePresetModes.length ? `
+              <div class="climate-modes">
+                <div class="climate-modes-label">Preset</div>
+                <div class="climate-option-buttons" id="climate-preset-buttons"></div>
+              </div>
+            ` : ''}
           </div>
         </div>
         <div class="modal-footer">
@@ -6494,6 +6810,8 @@ function showClimateControls(climateEntity) {
     const closeBtn = modal.querySelector('#climate-close');
     const cancelBtn = modal.querySelector('#climate-cancel');
     const modeButtonsContainer = modal.querySelector('#climate-mode-buttons');
+    const fanButtonsContainer = modal.querySelector('#climate-fan-buttons');
+    const presetButtonsContainer = modal.querySelector('#climate-preset-buttons');
 
     // Helper function to get mode icons
     function getModeIcon(mode) {
@@ -6539,6 +6857,25 @@ function showClimateControls(climateEntity) {
     }
     const modeButtons = modal.querySelectorAll('.climate-mode-btn');
 
+    function createClimateOptionButtons(container, modes, currentValue, className) {
+      if (!container) return;
+      modes.forEach((mode) => {
+        const modeValue = String(mode ?? '');
+        const modeLabel = formatModeLabel(modeValue);
+        const button = document.createElement('button');
+        button.className = `${className} ${modeValue === currentValue ? 'active' : ''}`.trim();
+        button.dataset.mode = modeValue;
+        button.title = modeLabel;
+        button.textContent = modeLabel;
+        container.appendChild(button);
+      });
+    }
+
+    createClimateOptionButtons(fanButtonsContainer, availableFanModes, currentFanMode, 'climate-fan-mode-btn');
+    createClimateOptionButtons(presetButtonsContainer, availablePresetModes, currentPresetMode, 'climate-preset-mode-btn');
+    const fanModeButtons = modal.querySelectorAll('.climate-fan-mode-btn');
+    const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
+
     // Close handlers
     const closeModal = () => {
       modal.classList.add('modal-closing');
@@ -6581,6 +6918,30 @@ function showClimateControls(climateEntity) {
         websocket.callService('climate', 'set_hvac_mode', {
           entity_id: climateEntity.entity_id,
           hvac_mode: mode
+        });
+      });
+    });
+
+    fanModeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        fanModeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        websocket.callService('climate', 'set_fan_mode', {
+          entity_id: climateEntity.entity_id,
+          fan_mode: mode
+        });
+      });
+    });
+
+    presetModeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        presetModeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        websocket.callService('climate', 'set_preset_mode', {
+          entity_id: climateEntity.entity_id,
+          preset_mode: mode
         });
       });
     });
