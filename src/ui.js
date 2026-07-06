@@ -6,6 +6,7 @@ import * as uiUtils from './ui-utils.js';
 import { formatDate, formatTime, t } from './i18n.js';
 import { setIconContent } from './icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
+import { buildSparklinePoints } from './sparklines.js';
 import desktopPinSupport from './desktop-pin-support.cjs';
 import Sortable from 'sortablejs';
 
@@ -49,6 +50,13 @@ const WEATHER_FORECAST_CACHE_TTL_MS = 30 * 60 * 1000;
 const WEATHER_FORECAST_REFRESH_THROTTLE_MS = 10 * 60 * 1000;
 const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
 const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
+const SENSOR_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SENSOR_HISTORY_REFRESH_THROTTLE_MS = 5 * 60 * 1000;
+const SENSOR_SPARKLINE_SVG_NS = 'http://www.w3.org/2000/svg';
+const SENSOR_TILE_SPARKLINE_WIDTH = 96;
+const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
+const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
+const SENSOR_DETAIL_SPARKLINE_HEIGHT = 120;
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   off: 'Off',
@@ -75,6 +83,7 @@ const {
   resolveDesktopPinProfile,
 } = desktopPinSupport;
 const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
+const sensorHistoryCache = new Map();
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -1155,6 +1164,194 @@ function getQuickAccessSensorDisplayParts(entity) {
     unit,
     text: unit ? `${formattedValue} ${unit}` : formattedValue,
   };
+}
+
+function getSensorHistoryCacheEntry(entityId) {
+  if (!sensorHistoryCache.has(entityId)) {
+    sensorHistoryCache.set(entityId, {
+      series: [],
+      lastFetchAt: 0,
+      promise: null,
+    });
+  }
+  return sensorHistoryCache.get(entityId);
+}
+
+function parseSensorHistoryTimestamp(entry) {
+  if (typeof entry?.lu === 'number' && Number.isFinite(entry.lu)) {
+    return entry.lu * 1000;
+  }
+
+  const rawTimestamp = entry?.last_changed || entry?.last_updated;
+  if (typeof rawTimestamp === 'number' && Number.isFinite(rawTimestamp)) {
+    return rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000;
+  }
+
+  if (typeof rawTimestamp === 'string') {
+    const parsed = Date.parse(rawTimestamp);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return Date.now();
+}
+
+function normalizeSensorHistoryResponse(response, entityId) {
+  const result = response?.result ?? response;
+  const entries = Array.isArray(result)
+    ? result
+    : (Array.isArray(result?.[entityId]) ? result[entityId] : []);
+
+  return entries
+    .map((entry) => {
+      const rawValue = entry?.s ?? entry?.state;
+      const value = Number(typeof rawValue === 'string' ? rawValue.trim() : rawValue);
+      if (!Number.isFinite(value)) return null;
+      return {
+        value,
+        timestamp: parseSensorHistoryTimestamp(entry),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function pruneSensorHistorySeries(series, now = Date.now()) {
+  const cutoff = now - SENSOR_HISTORY_WINDOW_MS;
+  return Array.isArray(series)
+    ? series.filter((point) => point && Number.isFinite(point.value) && Number.isFinite(point.timestamp) && point.timestamp >= cutoff)
+    : [];
+}
+
+function fetchSensorHistory(entityId) {
+  if (!entityId) return Promise.resolve([]);
+
+  const entry = getSensorHistoryCacheEntry(entityId);
+  const now = Date.now();
+  if (entry.promise) return entry.promise;
+  if (entry.lastFetchAt && now - entry.lastFetchAt < SENSOR_HISTORY_REFRESH_THROTTLE_MS) {
+    return Promise.resolve(entry.series);
+  }
+  if (typeof websocket.request !== 'function') {
+    entry.lastFetchAt = now;
+    return Promise.resolve(entry.series);
+  }
+
+  const end = new Date(now);
+  const start = new Date(now - SENSOR_HISTORY_WINDOW_MS);
+  entry.promise = websocket.request({
+    type: 'history/history_during_period',
+    start_time: start.toISOString(),
+    end_time: end.toISOString(),
+    entity_ids: [entityId],
+    minimal_response: true,
+    no_attributes: true,
+  }).then((response) => {
+    entry.series = pruneSensorHistorySeries(normalizeSensorHistoryResponse(response, entityId), Date.now());
+    entry.lastFetchAt = Date.now();
+    return entry.series;
+  }).catch(() => {
+    entry.lastFetchAt = Date.now();
+    return entry.series;
+  }).finally(() => {
+    entry.promise = null;
+  });
+
+  return entry.promise;
+}
+
+function appendLiveSensorHistoryValue(entity) {
+  if (!entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
+  const entry = sensorHistoryCache.get(entity.entity_id);
+  if (!entry) return;
+
+  const value = Number(entity.state);
+  const timestamp = parseSensorHistoryTimestamp(entity);
+  const previous = entry.series[entry.series.length - 1];
+  if (previous && previous.timestamp === timestamp && previous.value === value) return;
+
+  entry.series = pruneSensorHistorySeries([
+    ...entry.series,
+    { value, timestamp },
+  ]);
+}
+
+function createSensorSparklineSvg(series, { width, height, className }) {
+  const values = Array.isArray(series) ? series.map((point) => point.value) : [];
+  const points = buildSparklinePoints(values, width, height);
+  if (!points) return null;
+
+  const svg = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'svg');
+  svg.setAttribute('class', className);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+
+  const polyline = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'polyline');
+  polyline.setAttribute('points', points);
+  polyline.setAttribute('fill', 'none');
+  polyline.setAttribute('stroke', 'currentColor');
+  polyline.setAttribute('stroke-width', values.length === 1 ? '0' : '2');
+  polyline.setAttribute('stroke-linecap', 'round');
+  polyline.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(polyline);
+
+  if (values.length === 1) {
+    const [x, y] = points.split(',').map(Number);
+    const dot = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'circle');
+    dot.setAttribute('cx', String(x));
+    dot.setAttribute('cy', String(y));
+    dot.setAttribute('r', '2');
+    dot.setAttribute('fill', 'currentColor');
+    svg.appendChild(dot);
+  }
+
+  return svg;
+}
+
+function renderSensorTileSparkline(tile, entityId, series) {
+  if (!tile || tile.dataset.entityId !== entityId) return;
+  const info = tile.querySelector('.control-info');
+  if (!info) return;
+
+  info.querySelector('.control-sensor-sparkline')?.remove();
+  const svg = createSensorSparklineSvg(series, {
+    width: SENSOR_TILE_SPARKLINE_WIDTH,
+    height: SENSOR_TILE_SPARKLINE_HEIGHT,
+    className: 'control-sensor-sparkline-svg',
+  });
+  if (!svg) return;
+
+  const sparkline = document.createElement('div');
+  sparkline.className = 'control-sensor-sparkline';
+  sparkline.appendChild(svg);
+  info.appendChild(sparkline);
+}
+
+function mountSensorTileSparkline(tile, entity) {
+  if (!tile || !entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
+  const entry = sensorHistoryCache.get(entity.entity_id);
+  if (entry?.series?.length) {
+    renderSensorTileSparkline(tile, entity.entity_id, entry.series);
+  }
+
+  fetchSensorHistory(entity.entity_id).then((series) => {
+    renderSensorTileSparkline(tile, entity.entity_id, series);
+  });
+}
+
+function renderSensorDetailSparkline(container, series) {
+  if (!container) return;
+  container.textContent = '';
+  const svg = createSensorSparklineSvg(series, {
+    width: SENSOR_DETAIL_SPARKLINE_WIDTH,
+    height: SENSOR_DETAIL_SPARKLINE_HEIGHT,
+    className: 'sensor-detail-sparkline-svg',
+  });
+  container.hidden = !svg;
+  if (svg) {
+    container.appendChild(svg);
+  }
 }
 
 function normalizeQuickAccessTileValueSize(value) {
@@ -4700,6 +4897,9 @@ function createControlElement(entity, options = {}) {
       setupMediaPlayerControls(div, entity);
       // Auto-fit removed - using CSS ellipsis and marquee instead
     }
+    if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
+      mountSensorTileSparkline(div, entity);
+    }
 
     return div;
   } catch (error) {
@@ -4821,8 +5021,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       if (value) value.textContent = sensorDisplay.value;
       const unit = div.querySelector('.control-sensor-unit');
       if (unit) unit.textContent = sensorDisplay.unit;
+      appendLiveSensorHistoryValue(displayEntity);
+      const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
+      if (cachedHistory?.series?.length) {
+        renderSensorTileSparkline(div, displayEntity.entity_id, cachedHistory.series);
+      }
     } else if (stateEl) {
       div.classList.remove('sensor-numeric-entity');
+      div.querySelector('.control-sensor-sparkline')?.remove();
       stateEl.textContent = utils.getEntityDisplayState(displayEntity);
     }
     return true;
@@ -4911,6 +5117,59 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
 function showSensorDetails(entity) {
   try {
+    if (entity?.entity_id && isFiniteNumericSensorState(entity)) {
+      const display = getQuickAccessSensorDisplayParts(entity);
+      const modal = createEntityDetailModal({
+        className: 'sensor-detail-modal',
+        title: utils.getEntityDisplayName(entity),
+      });
+      const body = modal.querySelector('.modal-body');
+      if (!body) return;
+
+      const summary = document.createElement('div');
+      summary.className = 'sensor-detail-summary';
+
+      const icon = document.createElement('div');
+      icon.className = 'sensor-detail-icon';
+      icon.textContent = utils.getEntityIcon(entity);
+
+      const readout = document.createElement('div');
+      readout.className = 'sensor-detail-readout';
+      readout.setAttribute('aria-label', display?.text || utils.getEntityDisplayState(entity));
+
+      const value = document.createElement('span');
+      value.className = 'sensor-detail-value';
+      value.textContent = display?.value || utils.getEntityDisplayState(entity);
+      readout.appendChild(value);
+
+      if (display?.unit) {
+        const unit = document.createElement('span');
+        unit.className = 'sensor-detail-unit';
+        unit.textContent = display.unit;
+        readout.appendChild(unit);
+      }
+
+      summary.appendChild(icon);
+      summary.appendChild(readout);
+      body.appendChild(summary);
+
+      const sparklineFrame = document.createElement('div');
+      sparklineFrame.className = 'sensor-detail-sparkline';
+      sparklineFrame.hidden = true;
+      const cachedHistory = sensorHistoryCache.get(entity.entity_id);
+      if (cachedHistory?.series?.length) {
+        renderSensorDetailSparkline(sparklineFrame, cachedHistory.series);
+      }
+      body.appendChild(sparklineFrame);
+
+      fetchSensorHistory(entity.entity_id).then((series) => {
+        if (modal.isConnected) {
+          renderSensorDetailSparkline(sparklineFrame, series);
+        }
+      });
+      return;
+    }
+
     uiUtils.showToast(`${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`, 'info', 3000);
   } catch (error) {
     console.error('Error showing sensor details:', error);
