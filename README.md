@@ -69,6 +69,12 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Media Tile**: Choose a primary media player or hide the tile
 - **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
 
+## Roadmap
+
+Planned for a future release:
+
+- **HA Assist voice**: A microphone button wired to Home Assistant's Assist pipeline (speech-to-text → intent → text-to-speech) so you can talk to your smart home from the desktop. Deferred as a standalone update because it needs the full HA server-side audio pipeline and real device testing.
+
 ## Quick Start
 
 ### Download & Install
