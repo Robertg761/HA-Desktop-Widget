@@ -256,14 +256,15 @@ jobs:
         run: |
           npm run dist:linux -- --publish never
 
-      - name: Verify Linux AppImage update metadata
+      - name: Verify Linux update artifacts
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
 
-          # electron-builder emits the AppImage .blockmap and blockMapSize itself;
-          # just verify they exist (app-builder-bin was dropped in electron-builder 26).
+          # electron-builder 26 no longer generates AppImage .blockmap files
+          # (AppImage differential updates were dropped upstream); just verify the
+          # AppImage and its update manifest are present.
           appimages=(dist/*.AppImage)
           if [[ "${#appimages[@]}" -ne 1 ]]; then
             echo "Expected exactly one Linux AppImage artifact, found ${#appimages[@]}." >&2
@@ -271,29 +272,14 @@ jobs:
             exit 1
           fi
 
-          appimage="${appimages[0]}"
-          if [[ ! -f "${appimage}.blockmap" ]]; then
-            echo "electron-builder did not emit ${appimage}.blockmap" >&2
+          updates=(dist/*-linux.yml)
+          if [[ "${#updates[@]}" -ne 1 ]]; then
+            echo "Expected exactly one Linux update manifest (*-linux.yml), found ${#updates[@]}." >&2
+            printf '%s\n' "${updates[@]}" >&2
             exit 1
           fi
 
-          node <<'NODE'
-          const fs = require('fs');
-
-          const linuxUpdateFiles = fs.readdirSync('dist')
-            .filter((name) => name.endsWith('-linux.yml'))
-            .map((name) => `dist/${name}`);
-          if (linuxUpdateFiles.length !== 1) {
-            throw new Error(`Expected one Linux update metadata file, found ${linuxUpdateFiles.length}: ${linuxUpdateFiles.join(', ')}`);
-          }
-
-          const latestPath = linuxUpdateFiles[0];
-          const latest = fs.readFileSync(latestPath, 'utf8');
-          if (!/blockMapSize:\s*\d+/.test(latest)) {
-            throw new Error(`${latestPath} is missing blockMapSize for the AppImage.`);
-          }
-          console.log(`Verified ${latestPath} contains an AppImage blockMapSize.`);
-          NODE
+          echo "Verified Linux AppImage (${appimages[0]}) and update manifest (${updates[0]})."
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v6
