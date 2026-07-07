@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
-## [3.6.0-beta.1] - 2026-07-06
+## [3.6.0] - 2026-07-07
 
 ### Added
 - Richer entity controls: light color and color-temperature pickers, media player volume and mute, and climate fan-mode/preset-mode (plus a read-only current-humidity readout), each gated on the entity's advertised capabilities.
