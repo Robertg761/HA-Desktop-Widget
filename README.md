@@ -5,6 +5,7 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 [![CI](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml)
 [![Release](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/Robertg761/HA-Desktop-Widget/total?color=blue&label=downloads)](https://github.com/Robertg761/HA-Desktop-Widget/releases)
 
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 
