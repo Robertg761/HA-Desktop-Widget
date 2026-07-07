@@ -256,32 +256,28 @@ jobs:
         run: |
           npm run dist:linux -- --publish never
 
-      - name: Generate Linux AppImage blockmap
+      - name: Verify Linux AppImage update metadata
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
 
+          # electron-builder emits the AppImage .blockmap and blockMapSize itself;
+          # just verify they exist (app-builder-bin was dropped in electron-builder 26).
           appimages=(dist/*.AppImage)
-          if [[ "${#appimages[@]}" -eq 0 ]]; then
-            echo "No Linux AppImage artifact found under dist." >&2
-            exit 1
-          fi
-
-          if [[ "${#appimages[@]}" -gt 1 ]]; then
-            echo "Expected one Linux AppImage artifact, found ${#appimages[@]}." >&2
+          if [[ "${#appimages[@]}" -ne 1 ]]; then
+            echo "Expected exactly one Linux AppImage artifact, found ${#appimages[@]}." >&2
             printf '%s\n' "${appimages[@]}" >&2
             exit 1
           fi
 
           appimage="${appimages[0]}"
-          blockmap="${appimage}.blockmap"
-          ./node_modules/app-builder-bin/linux/x64/app-builder blockmap \
-            --input "$appimage" \
-            --output "$blockmap"
+          if [[ ! -f "${appimage}.blockmap" ]]; then
+            echo "electron-builder did not emit ${appimage}.blockmap" >&2
+            exit 1
+          fi
 
-          blockmap_size="$(stat -c '%s' "$blockmap")"
-          BLOCKMAP_SIZE="$blockmap_size" node <<'NODE'
+          node <<'NODE'
           const fs = require('fs');
 
           const linuxUpdateFiles = fs.readdirSync('dist')
@@ -292,15 +288,11 @@ jobs:
           }
 
           const latestPath = linuxUpdateFiles[0];
-          const blockMapSize = process.env.BLOCKMAP_SIZE;
-          let latest = fs.readFileSync(latestPath, 'utf8');
-
+          const latest = fs.readFileSync(latestPath, 'utf8');
           if (!/blockMapSize:\s*\d+/.test(latest)) {
             throw new Error(`${latestPath} is missing blockMapSize for the AppImage.`);
           }
-
-          latest = latest.replace(/blockMapSize:\s*\d+/, `blockMapSize: ${blockMapSize}`);
-          fs.writeFileSync(latestPath, latest);
+          console.log(`Verified ${latestPath} contains an AppImage blockMapSize.`);
           NODE
 
       - name: Upload Linux artifacts
