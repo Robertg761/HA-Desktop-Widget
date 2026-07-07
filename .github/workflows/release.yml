@@ -237,6 +237,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libarchive-tools fakeroot dpkg libcrypt1
+          # X11 dev headers required to compile the native uiohook-napi module
+          # (electron-builder install-app-deps rebuilds it from source on Linux).
+          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev \
+            libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev
 
       - name: Align package versions to release tag
         shell: bash
