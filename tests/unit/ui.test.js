@@ -3596,6 +3596,138 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   // ==============================================================================
+  // Quick Access page management (reorganize mode)
+  // ==============================================================================
+
+  describe('Quick Access page management', () => {
+    let tabBar;
+
+    beforeEach(() => {
+      tabBar = document.createElement('div');
+      tabBar.id = 'quick-access-tabs';
+      tabBar.className = 'quick-access-tabs hidden';
+      document.body.appendChild(tabBar);
+    });
+
+    const setPages = (pages, activeTabId) => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: pages,
+        activeTabId: activeTabId || pages[0].id,
+        favoriteEntities: [],
+      });
+    };
+
+    it('hides the tab bar in normal mode with a single page', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.renderActiveTab();
+      expect(tabBar.classList.contains('hidden')).toBe(true);
+      expect(tabBar.classList.contains('reorganize')).toBe(false);
+    });
+
+    it('shows plain switch tabs in normal mode with multiple pages', () => {
+      setPages([
+        { id: 'default', name: 'All', entityIds: [] },
+        { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+      ], 'default');
+      ui.renderActiveTab();
+      expect(tabBar.classList.contains('hidden')).toBe(false);
+      expect(tabBar.querySelectorAll('.quick-access-tab-link')).toHaveLength(2);
+      // The active tab's .tab-link carries .active so the highlight/glow CSS applies.
+      const activeLinks = tabBar.querySelectorAll('.quick-access-tab-link.active');
+      expect(activeLinks).toHaveLength(1);
+      expect(activeLinks[0].dataset.tab).toBe('default');
+      // No page-management affordances outside reorganize mode.
+      expect(tabBar.querySelector('.qa-tab-add')).toBeNull();
+      expect(tabBar.querySelector('.qa-tab-rename')).toBeNull();
+    });
+
+    it('always shows the bar with an add-page control in reorganize mode', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      // Entering reorganize mode alone must reveal the page bar (no extra render).
+      ui.toggleReorganizeMode();
+
+      expect(tabBar.classList.contains('hidden')).toBe(false);
+      expect(tabBar.classList.contains('reorganize')).toBe(true);
+      expect(tabBar.querySelector('.qa-tab-add')).not.toBeNull();
+
+      // Active page exposes rename; delete is hidden while only one page exists.
+      const activeTab = tabBar.querySelector('.quick-access-tab.active');
+      expect(activeTab).not.toBeNull();
+      expect(activeTab.querySelector('.qa-tab-rename')).not.toBeNull();
+      expect(activeTab.querySelector('.qa-tab-delete')).toBeNull();
+    });
+
+    it('exposes a delete control on the active page when multiple pages exist', () => {
+      setPages([
+        { id: 'default', name: 'All', entityIds: [] },
+        { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+      ], 'bedroom');
+      ui.toggleReorganizeMode();
+
+      const activeTab = tabBar.querySelector('.quick-access-tab.active');
+      expect(activeTab.dataset.tab).toBe('bedroom');
+      expect(activeTab.querySelector('.qa-tab-delete')).not.toBeNull();
+      // Inactive pages carry no per-page controls.
+      const inactive = tabBar.querySelector('.quick-access-tab:not(.active)');
+      expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
+    });
+
+    it('opens a themed add-page modal and creates a page from a preset chip', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+
+      tabBar.querySelector('.qa-tab-add').click();
+
+      const modal = document.getElementById('add-page-modal');
+      expect(modal).not.toBeNull();
+      expect(modal.classList.contains('modal')).toBe(true);
+      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add Page');
+
+      const chipLabels = Array.from(modal.querySelectorAll('.qa-add-chip')).map(c => c.textContent);
+      expect(chipLabels).toEqual(expect.arrayContaining(['Living Room', 'Bedroom', 'Kitchen']));
+
+      // Clicking a preset chip fills the name input rather than instantly saving.
+      const input = modal.querySelector('#add-page-name');
+      Array.from(modal.querySelectorAll('.qa-add-chip'))
+        .find(c => c.textContent === 'Bedroom')
+        .click();
+      expect(input.value).toBe('Bedroom');
+      expect(document.getElementById('add-page-modal')).not.toBeNull();
+
+      // Saving creates the page and closes the modal.
+      modal.querySelector('#add-page-save-btn').click();
+      expect(document.getElementById('add-page-modal')).toBeNull();
+      expect((state.CONFIG.customTabs || []).map(p => p.name)).toContain('Bedroom');
+    });
+
+    it('closes the add-page modal when leaving reorganize mode', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+      tabBar.querySelector('.qa-tab-add').click();
+      expect(document.getElementById('add-page-modal')).not.toBeNull();
+
+      ui.toggleReorganizeMode();
+      expect(document.getElementById('add-page-modal')).toBeNull();
+    });
+
+    it('renders the active page hint in the manage modal without a per-entity view select', () => {
+      document.body.insertAdjacentHTML('beforeend', `
+        <input id="quick-controls-search" />
+        <div id="quick-controls-target-hint"></div>
+        <div id="quick-controls-list"></div>
+      `);
+      setPages([{ id: 'default', name: 'All', entityIds: [] }], 'default');
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+
+      ui.populateQuickControlsList();
+
+      expect(document.getElementById('quick-controls-target-hint').textContent).toContain('All');
+      expect(document.querySelector('.quick-access-entity-view-select')).toBeNull();
+    });
+  });
+
+  // ==============================================================================
   // Module Exports
   // ==============================================================================
 

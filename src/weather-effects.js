@@ -3,8 +3,12 @@
  * Draws subtle, elegant ambient animations on a canvas (rain, snow, clouds, warm sunlight)
  * behind the widget elements, showing through glassmorphic/frosted surfaces.
  */
-const TARGET_FRAME_INTERVAL_MS = 1000 / 30;
+const TARGET_FRAME_INTERVAL_MS = 1000 / 60;
 const BASELINE_FRAME_INTERVAL_MS = 1000 / 60;
+// Tolerance so displays refreshing at ~60Hz are not dropped toward ~30fps by
+// sub-millisecond requestAnimationFrame jitter, while higher-refresh displays
+// (120/144Hz) are still capped near the target rate.
+const FRAME_INTERVAL_TOLERANCE_MS = 2;
 
 export class WeatherEffectsManager {
   constructor(canvasId) {
@@ -200,7 +204,7 @@ export class WeatherEffectsManager {
     }
 
     const elapsedMs = timestamp - this.lastTime;
-    if (elapsedMs < TARGET_FRAME_INTERVAL_MS) {
+    if (elapsedMs < TARGET_FRAME_INTERVAL_MS - FRAME_INTERVAL_TOLERANCE_MS) {
       this.animationFrameId = requestAnimationFrame(this.loop);
       return;
     }

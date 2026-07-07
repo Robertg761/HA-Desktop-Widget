@@ -8,10 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Nothing yet
+- Manage Quick Access pages (rooms) directly from reorganize mode: add a page from a themed dialog with preset room-name quick-picks (Living Room, Bedroom, Kitchen, Office, Bathroom, Garage) or a custom name, rename a page inline by double-clicking its tab, and delete a page. The active page is highlighted while reorganizing, and clean switch tabs appear once you have more than one page.
 
 ### Changed
-- Nothing yet
+- Manage Quick Access now adds entities to the page you're currently on (with an "Adding to: <page>" hint) instead of a per-entity view dropdown.
 
 ### Fixed
 - Nothing yet

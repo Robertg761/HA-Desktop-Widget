@@ -112,16 +112,15 @@
 
         <!-- Quick Access -->
         <div class="controls-section">
-            <div class="section-header">
-                <span class="section-title" data-i18n="Quick Access">Quick Access</span>
+            <div class="section-header quick-access-header">
+                <div id="quick-access-tabs" class="quick-access-tabs hidden" role="tablist" aria-label="Quick Access views" data-i18n-aria-label="Quick Access views">
+                    <!-- Dynamic Quick Access views will be added here -->
+                </div>
                 <div class="section-buttons">
                     <button id="reorganize-quick-controls-btn" class="section-btn"
                         data-i18n-title="Reorganize Quick Access" title="Reorganize Quick Access">⋮⋮</button>
                     <button id="manage-quick-controls-btn" class="section-btn" data-i18n-title="Manage Quick Access" title="Manage Quick Access">➕</button>
                 </div>
-            </div>
-            <div id="quick-access-tabs" class="quick-access-tabs hidden" role="tablist" aria-label="Quick Access views" data-i18n-aria-label="Quick Access views">
-                <!-- Dynamic Quick Access views will be added here -->
             </div>
             <div id="quick-controls" class="controls-grid">
                 <!-- Dynamic controls will be added here -->
@@ -762,6 +761,7 @@
                 </div>
                 <div class="form-group">
                     <label>Available Entities for Quick Access:</label>
+                    <div id="quick-controls-target-hint" class="form-help quick-controls-target-hint"></div>
                     <div id="quick-controls-list" class="entity-selector-list">
                         <!-- Available entities will be loaded here -->
                     </div>

@@ -2942,15 +2942,184 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs .tab-link.active {
-  border-color: rgba(var(--accent-rgb), 0.36);
-  background: var(--accent-bg);
   color: var(--text-primary);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  border-color: transparent;
+  /* Subtle accent wash fading top-to-bottom (no hard fill, border, or underline). */
+  background: linear-gradient(
+    180deg,
+    rgba(var(--accent-rgb), 0.14) 0%,
+    rgba(var(--accent-rgb), 0.04) 55%,
+    transparent 100%
+  );
+  box-shadow: none;
 }
 
 .quick-access-tabs .tab-link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Quick Access header: the page tabs sit inline with the section buttons
+   (the "Quick Access" title has been removed from the main face). */
+.section-header.quick-access-header {
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+
+.quick-access-header .section-buttons {
+  flex: 0 0 auto;
+  margin-left: auto; /* keep the reorganize/manage buttons pinned to the right */
+}
+
+.quick-access-header .quick-access-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.quick-access-header .quick-access-tabs.reorganize {
+  flex-wrap: nowrap;
+  padding-bottom: 0;
+}
+
+/* --- Reorganize-mode page management on the Quick Access tab bar --- */
+.quick-access-tabs.reorganize {
+  flex-wrap: wrap;
+  align-items: center;
+  padding-bottom: var(--space-2);
+}
+
+.quick-access-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  border-radius: var(--radius-sm);
+}
+
+.quick-access-tabs.reorganize .quick-access-tab.active {
+  /* Same subtle accent wash as the normal-mode active tab. */
+  background: linear-gradient(
+    180deg,
+    rgba(var(--accent-rgb), 0.14) 0%,
+    rgba(var(--accent-rgb), 0.04) 55%,
+    transparent 100%
+  );
+  box-shadow: none;
+  padding-right: 2px;
+}
+
+/* In reorganize mode the wrapper owns the active highlight. */
+.quick-access-tabs.reorganize .quick-access-tab.active .tab-link.active {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.qa-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.qa-tab-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.qa-tab-delete:hover {
+  color: var(--error);
+  background: rgba(239, 83, 80, 0.15);
+}
+
+.qa-tab-btn svg {
+  display: block;
+}
+
+.qa-tab-rename-input {
+  min-width: 90px;
+  max-width: 160px;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.qa-tab-rename-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.35);
+}
+
+.qa-tab-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-hover);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.qa-tab-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.qa-tab-add svg {
+  display: block;
+}
+
+/* Add-page modal preset quick-pick chips */
+.add-page-modal .qa-add-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.add-page-modal .qa-add-chip {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--glass-surface);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.add-page-modal .qa-add-chip:hover,
+.add-page-modal .qa-add-chip:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  outline: none;
+}
+
+.quick-controls-target-hint {
+  margin-bottom: var(--space-3);
+  font-style: italic;
 }
 
 .controls-grid {

@@ -293,102 +293,12 @@ function getActiveQuickAccessEntityIds() {
   return getActiveQuickAccessTab(config)?.entityIds || [];
 }
 
-function findEntityAssignedQuickAccessTabId(config, entityId) {
-  if (!entityId) return '';
-  const tab = (config.customTabs || []).find(view => view.entityIds.includes(entityId));
-  return tab?.id || '';
-}
+// Preset page names offered when adding a Quick Access page in reorganize mode.
+const QUICK_ACCESS_PAGE_PRESETS = ['Living Room', 'Bedroom', 'Kitchen', 'Office', 'Bathroom', 'Garage'];
 
-function syncQuickAccessViewManager() {
-  const config = ensureQuickAccessConfig();
-  const activeTab = getActiveQuickAccessTab(config);
-  const tabs = config.customTabs || [];
-  const select = document.getElementById('quick-access-view-select');
-  const nameInput = document.getElementById('quick-access-view-name');
-  const renameBtn = document.getElementById('quick-access-rename-view-btn');
-  const deleteBtn = document.getElementById('quick-access-delete-view-btn');
-
-  if (select) {
-    select.innerHTML = '';
-    tabs.forEach((tab) => {
-      const option = document.createElement('option');
-      option.value = tab.id;
-      option.textContent = tab.name;
-      option.selected = tab.id === activeTab.id;
-      select.appendChild(option);
-    });
-  }
-
-  if (nameInput) {
-    nameInput.value = activeTab?.name || '';
-  }
-
-  if (renameBtn) {
-    renameBtn.disabled = !activeTab;
-  }
-
-  if (deleteBtn) {
-    deleteBtn.disabled = tabs.length <= 1;
-    deleteBtn.title = tabs.length <= 1
-      ? t('At least one Quick Access view is required')
-      : t('Delete current view');
-  }
-}
-
-function setupQuickAccessViewManager() {
-  const manager = document.getElementById('quick-access-view-manager');
-  if (!manager || manager.dataset.initialized === 'true') return;
-
-  const select = document.getElementById('quick-access-view-select');
-  const nameInput = document.getElementById('quick-access-view-name');
-  const addBtn = document.getElementById('quick-access-add-view-btn');
-  const renameBtn = document.getElementById('quick-access-rename-view-btn');
-  const deleteBtn = document.getElementById('quick-access-delete-view-btn');
-
-  if (select) {
-    select.addEventListener('change', () => {
-      const nextConfig = setActiveQuickAccessView(state.CONFIG, select.value);
-      setQuickAccessConfig(nextConfig);
-    });
-  }
-
-  if (addBtn) {
-    addBtn.addEventListener('click', () => {
-      const nextName = nameInput?.value || t('New View');
-      const nextConfig = addQuickAccessView(state.CONFIG, nextName, { idFactory: generateQuickAccessViewId });
-      setQuickAccessConfig(nextConfig);
-      uiUtils.showToast(t('Quick Access view added'), 'success', 1800);
-    });
-  }
-
-  if (renameBtn) {
-    renameBtn.addEventListener('click', () => {
-      const activeTab = getActiveQuickAccessTab(ensureQuickAccessConfig());
-      const nextName = nameInput?.value || '';
-      const nextConfig = renameQuickAccessView(state.CONFIG, activeTab?.id, nextName);
-      setQuickAccessConfig(nextConfig);
-      uiUtils.showToast(t('Quick Access view renamed'), 'success', 1800);
-    });
-  }
-
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', async () => {
-      const config = ensureQuickAccessConfig();
-      const activeTab = getActiveQuickAccessTab(config);
-      if (!activeTab || config.customTabs.length <= 1) return;
-      const confirmed = await uiUtils.showConfirm(
-        t('Delete Quick Access View'),
-        t('Delete "{{name}}"? Its entities will be removed from this view.', { name: activeTab.name }),
-        { confirmText: t('Delete'), confirmClass: 'btn-danger' }
-      );
-      if (!confirmed) return;
-      const nextConfig = deleteQuickAccessView(state.CONFIG, activeTab.id);
-      setQuickAccessConfig(nextConfig);
-      uiUtils.showToast(t('Quick Access view deleted'), 'info', 1800);
-    });
-  }
-
-  manager.dataset.initialized = 'true';
+function switchQuickAccessPage(tabId) {
+  const nextConfig = setActiveQuickAccessView(state.CONFIG, tabId);
+  setQuickAccessConfig(nextConfig);
 }
 
 function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
@@ -396,26 +306,255 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   if (!tabBar) return;
 
   const tabs = config.customTabs || [];
+  const reorganizing = isReorganizeMode;
+
   tabBar.innerHTML = '';
-  tabBar.classList.toggle('hidden', tabs.length <= 1);
-  if (tabs.length <= 1) return;
+  tabBar.classList.toggle('reorganize', reorganizing);
+
+  // In normal mode, only surface tabs once there is more than one page.
+  // In reorganize mode, always show the bar so pages can be created/renamed.
+  const shouldShow = reorganizing || tabs.length > 1;
+  tabBar.classList.toggle('hidden', !shouldShow);
+  if (!shouldShow) return;
 
   tabs.forEach((tab) => {
+    const isActive = tab.id === config.activeTabId;
+
+    const tabEl = document.createElement('div');
+    tabEl.className = 'quick-access-tab';
+    tabEl.classList.toggle('active', isActive);
+    tabEl.dataset.tab = tab.id;
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'tab-link quick-access-tab-link';
+    button.classList.toggle('active', isActive);
     button.setAttribute('role', 'tab');
     button.dataset.tab = tab.id;
     button.textContent = tab.name;
-    const isActive = tab.id === config.activeTabId;
-    button.classList.toggle('active', isActive);
     button.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    button.addEventListener('click', () => {
-      const nextConfig = setActiveQuickAccessView(state.CONFIG, tab.id);
-      setQuickAccessConfig(nextConfig);
-    });
-    tabBar.appendChild(button);
+    button.addEventListener('click', () => switchQuickAccessPage(tab.id));
+
+    if (reorganizing) {
+      button.title = t('Double-click to rename');
+      button.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginInlineTabRename(tab.id, button);
+      });
+    }
+
+    tabEl.appendChild(button);
+
+    if (reorganizing && isActive) {
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'qa-tab-btn qa-tab-rename';
+      renameBtn.title = t('Rename page');
+      renameBtn.setAttribute('aria-label', t('Rename page'));
+      setIconContent(renameBtn, 'edit', { size: 12 });
+      renameBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginInlineTabRename(tab.id, button);
+      });
+      tabEl.appendChild(renameBtn);
+
+      if (tabs.length > 1) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'qa-tab-btn qa-tab-delete';
+        deleteBtn.title = t('Delete page');
+        deleteBtn.setAttribute('aria-label', t('Delete page'));
+        setIconContent(deleteBtn, 'close', { size: 12 });
+        deleteBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          deleteQuickAccessPage(tab.id);
+        });
+        tabEl.appendChild(deleteBtn);
+      }
+    }
+
+    tabBar.appendChild(tabEl);
   });
+
+  if (reorganizing) {
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'qa-tab-add';
+    addBtn.title = t('Add page');
+    addBtn.setAttribute('aria-label', t('Add page'));
+    setIconContent(addBtn, 'add', { size: 14 });
+    const addLabel = document.createElement('span');
+    addLabel.textContent = t('Add page');
+    addBtn.appendChild(addLabel);
+    addBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showAddPageModal();
+    });
+    tabBar.appendChild(addBtn);
+  }
+}
+
+function beginInlineTabRename(tabId, buttonEl) {
+  if (!buttonEl || buttonEl.dataset.renaming === 'true') return;
+  const currentName = buttonEl.textContent || '';
+  buttonEl.dataset.renaming = 'true';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'qa-tab-rename-input';
+  input.value = currentName;
+  input.maxLength = 40;
+  input.setAttribute('aria-label', t('Rename page'));
+
+  buttonEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const value = input.value.trim();
+    if (save && value && value !== currentName) {
+      const nextConfig = renameQuickAccessView(state.CONFIG, tabId, value);
+      setQuickAccessConfig(nextConfig);
+      uiUtils.showToast(t('Page renamed'), 'success', 1600);
+    } else {
+      // Re-render to restore the tab label (revert or no-op change).
+      renderQuickAccessTabs();
+    }
+  };
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      finish(true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation(); // do not exit reorganize mode mid-edit
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (event) => event.stopPropagation());
+  input.addEventListener('dblclick', (event) => event.stopPropagation());
+}
+
+async function deleteQuickAccessPage(tabId) {
+  const config = ensureQuickAccessConfig();
+  if ((config.customTabs || []).length <= 1) return;
+  const tab = config.customTabs.find(view => view.id === tabId);
+  if (!tab) return;
+
+  const confirmed = await uiUtils.showConfirm(
+    t('Delete Page'),
+    t('Delete "{{name}}"? Its entities will be removed from this page.', { name: tab.name }),
+    { confirmText: t('Delete'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
+
+  const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
+  setQuickAccessConfig(nextConfig);
+  uiUtils.showToast(t('Page deleted'), 'info', 1600);
+}
+
+function createQuickAccessPage(name) {
+  const nextConfig = addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
+  setQuickAccessConfig(nextConfig);
+  uiUtils.showToast(t('Page added'), 'success', 1600);
+}
+
+function closeAddPageModal() {
+  const modal = document.getElementById('add-page-modal');
+  if (modal) modal.remove();
+}
+
+function showAddPageModal() {
+  closeAddPageModal();
+
+  const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS
+    .map(preset => `
+              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`)
+    .join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'add-page-modal';
+  modal.className = 'modal add-page-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>${utils.escapeHtml(t('Add Page'))}</h2>
+        <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="add-page-name">${utils.escapeHtml(t('Page name:'))}</label>
+          <input type="text" id="add-page-name" class="form-control" maxlength="40" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
+        </div>
+        <div class="form-group">
+          <label>${utils.escapeHtml(t('Quick picks:'))}</label>
+          <div class="qa-add-chips">${chipsMarkup}</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(t('Add Page'))}</button>
+        <button id="add-page-cancel-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const input = modal.querySelector('#add-page-name');
+  const saveBtn = modal.querySelector('#add-page-save-btn');
+  const cancelBtn = modal.querySelector('#add-page-cancel-btn');
+  const closeBtn = modal.querySelector('.close-btn');
+
+  if (input) input.focus();
+
+  const close = () => modal.remove();
+  const submit = () => {
+    const name = (input?.value || '').trim();
+    if (!name) {
+      if (input) input.focus();
+      return;
+    }
+    close();
+    createQuickAccessPage(name);
+  };
+
+  modal.querySelectorAll('.qa-add-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      if (!input) return;
+      input.value = chip.dataset.name || chip.textContent || '';
+      input.focus();
+    });
+  });
+
+  if (saveBtn) saveBtn.onclick = submit;
+  if (cancelBtn) cancelBtn.onclick = close;
+  if (closeBtn) closeBtn.onclick = close;
+
+  if (input) {
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submit();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation(); // close the modal without exiting reorganize mode
+        close();
+      }
+    });
+  }
+
+  modal.onclick = (event) => { if (event.target === modal) close(); };
 }
 
 function getQuickAccessTiles() {
@@ -749,6 +888,7 @@ function toggleReorganizeMode() {
         sortableInstance = null;
       }
 
+      closeAddPageModal();
       container.classList.remove('reorganize-mode');
       if (btn) {
         setIconContent(btn, 'dragHandle', { size: 18 });
@@ -763,6 +903,10 @@ function toggleReorganizeMode() {
       });
       uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
     }
+
+    // Refresh the tab bar so page-management affordances (or the plain tabs)
+    // reflect the new reorganize state.
+    renderQuickAccessTabs();
   } catch (error) {
     console.error('Error toggling reorganize mode:', error);
   }
@@ -4445,7 +4589,6 @@ function renderQuickControls() {
 
     const config = ensureQuickAccessConfig();
     renderQuickAccessTabs(config);
-    syncQuickAccessViewManager();
 
     const favorites = getActiveQuickAccessEntityIds();
     const desiredNodes = [];
@@ -8233,14 +8376,17 @@ function populateQuickControlsList() {
   try {
     const list = document.getElementById('quick-controls-list');
     const searchInput = document.getElementById('quick-controls-search');
+    const targetHint = document.getElementById('quick-controls-target-hint');
     if (!list) return;
-    setupQuickAccessViewManager();
-    syncQuickAccessViewManager();
 
     const renderList = () => {
       const filter = searchInput ? searchInput.value.toLowerCase() : '';
       const config = ensureQuickAccessConfig();
       const activeTab = getActiveQuickAccessTab(config);
+
+      if (targetHint) {
+        targetHint.textContent = t('Adding to: {{name}}', { name: activeTab?.name || '' });
+      }
 
       // Score and filter entities
       const scoredEntities = Object.values(state.STATES)
@@ -8269,7 +8415,6 @@ function populateQuickControlsList() {
         const item = document.createElement('div');
         item.className = 'entity-item';
 
-        const assignedTabId = findEntityAssignedQuickAccessTabId(config, entity.entity_id);
         const isInActiveView = activeTab?.entityIds.includes(entity.entity_id);
 
         const main = document.createElement('div');
@@ -8299,31 +8444,6 @@ function populateQuickControlsList() {
         const actions = document.createElement('div');
         actions.className = 'entity-item-actions quick-access-entity-actions';
 
-        const viewSelect = document.createElement('select');
-        viewSelect.className = 'form-control quick-access-entity-view-select';
-        viewSelect.setAttribute('aria-label', t('Quick Access view'));
-
-        const noneOption = document.createElement('option');
-        noneOption.value = '';
-        noneOption.textContent = t('No View');
-        noneOption.selected = !assignedTabId;
-        viewSelect.appendChild(noneOption);
-
-        (config.customTabs || []).forEach((tab) => {
-          const option = document.createElement('option');
-          option.value = tab.id;
-          option.textContent = tab.name;
-          option.selected = tab.id === assignedTabId;
-          viewSelect.appendChild(option);
-        });
-
-        viewSelect.addEventListener('change', () => {
-          const nextConfig = viewSelect.value
-            ? moveEntityToQuickAccessView(state.CONFIG, entity.entity_id, viewSelect.value)
-            : removeEntityFromQuickAccessViews(state.CONFIG, entity.entity_id);
-          setQuickAccessConfig(nextConfig);
-        });
-
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `entity-selector-btn ${isInActiveView ? 'remove' : 'add'}`;
@@ -8331,7 +8451,6 @@ function populateQuickControlsList() {
         button.textContent = isInActiveView ? t('Remove') : t('Add');
         button.onclick = () => toggleQuickAccess(entity.entity_id);
 
-        actions.appendChild(viewSelect);
         actions.appendChild(button);
 
         item.appendChild(main);
@@ -8561,11 +8680,15 @@ function initUpdateUI() {
 
 // ESC key handler for reorganize mode
 function handleEscapeKey(e) {
-  if (e.key === 'Escape' && isReorganizeMode) {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleReorganizeMode();
-  }
+  if (e.key !== 'Escape' || !isReorganizeMode) return;
+  // Let nested interactions own Escape instead of exiting reorganize mode.
+  if (document.getElementById('add-page-modal')) return;
+  if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
+  const confirmModal = document.getElementById('confirm-modal');
+  if (confirmModal && !confirmModal.classList.contains('hidden')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleReorganizeMode();
 }
 
 function addEscapeKeyListener() {
