@@ -8,13 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Manage Quick Access pages (rooms) directly from reorganize mode: add a page from a themed dialog with preset room-name quick-picks (Living Room, Bedroom, Kitchen, Office, Bathroom, Garage) or a custom name, rename a page inline by double-clicking its tab, and delete a page. The active page is highlighted while reorganizing, and clean switch tabs appear once you have more than one page.
+- Nothing yet
 
 ### Changed
-- Manage Quick Access now adds entities to the page you're currently on (with an "Adding to: <page>" hint) instead of a per-entity view dropdown.
+- Nothing yet
 
 ### Fixed
 - Nothing yet
+
+## [3.6.0-beta.1] - 2026-07-06
+
+### Added
+- Richer entity controls: light color and color-temperature pickers, media player volume and mute, and climate fan-mode/preset-mode (plus a read-only current-humidity readout), each gated on the entity's advertised capabilities.
+- To-do list support (view items, check/uncheck, add) and calendar support (next event plus a 7-day list).
+- Inline 24-hour history sparklines on numeric sensor tiles, throttled and cached.
+- Command palette (Ctrl/Cmd+K) to fuzzy-search any entity and open its detail/control modal.
+- Home Assistant persistent notifications: a websocket subscription with a header bell and panel, dismiss action, and desktop notifications.
+- Multi-page ("rooms") Quick Access managed from reorganize mode — add a page from a themed dialog with preset room-name quick-picks or a custom name, rename inline by double-clicking a tab, and delete a page; the active page is marked with a subtle accent wash and clean switch tabs appear once more than one page exists.
+- First-run onboarding wizard, a reusable Test Connection action, and empty/error states.
+- Accessibility and layout polish: prefers-reduced-motion handling for weather effects, full keyboard navigation of the Quick Access grid (roving tabindex), and Comfortable/Compact density modes.
+
+### Changed
+- Manage Quick Access now adds entities to the page you're currently on (with an "Adding to: <page>" hint) instead of a per-entity view dropdown.
+- Reduced idle CPU: removed the forced Electron `backgroundThrottling: false`, and replaced the always-on 1-second UI interval with an adaptive scheduler (1s only for active timers/media, next-minute cadence for a visible clock, low-frequency polling when idle).
+- Weather ambient effects render at up to 60 FPS with frame-scaled motion for consistent speed across refresh rates.
+- Deferred OS-keychain-backed secure config resolution until after the first window is created, so a stalling keychain no longer blocks startup.
+
+### Fixed
+- First-run setup now waits while saved encrypted credentials are unlocking, then starts the normal runtime once the resolved config arrives.
 
 ## [3.5.5-beta.1] - 2026-06-19
 
