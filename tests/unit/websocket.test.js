@@ -100,6 +100,10 @@ describe('WebSocket Manager', () => {
     }
     wsManager.wsId = 1000;
     wsManager.pendingWs.clear();
+    wsManager.messageSubscriptions.clear();
+    wsManager.messageSubscriptionHandlers.clear();
+    wsManager.nextMessageSubscriptionKey = 1;
+    wsManager.isAuthenticated = false;
     wsManager.removeAllListeners();
   });
 
@@ -457,6 +461,99 @@ describe('WebSocket Manager', () => {
     });
   });
 
+  describe('Message Subscriptions', () => {
+    beforeEach(async () => {
+      state.setConfig(sampleConfig);
+      wsManager.connect();
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+
+    test('should subscribe after auth_ok, route subscription events, and unsubscribe', async () => {
+      const onEvent = jest.fn();
+      const unsubscribe = wsManager.subscribeMessage(
+        { type: 'persistent_notification/subscribe' },
+        onEvent
+      );
+
+      expect(wsManager.ws.sentMessages).toHaveLength(0);
+
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      const subscribeMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(subscribeMessage).toEqual({
+        id: 1000,
+        type: 'persistent_notification/subscribe'
+      });
+
+      wsManager.ws.simulateMessage({
+        id: subscribeMessage.id,
+        type: 'result',
+        success: true,
+        result: null
+      });
+      await Promise.resolve();
+
+      const eventPayload = {
+        type: 'added',
+        notifications: {
+          test: {
+            notification_id: 'test',
+            title: 'Door',
+            message: 'Open'
+          }
+        }
+      };
+      wsManager.ws.simulateMessage({
+        id: subscribeMessage.id,
+        type: 'event',
+        event: eventPayload
+      });
+
+      expect(onEvent).toHaveBeenCalledWith(
+        eventPayload,
+        expect.objectContaining({
+          id: subscribeMessage.id,
+          type: 'event'
+        })
+      );
+
+      unsubscribe();
+      const unsubscribeMessage = JSON.parse(wsManager.ws.sentMessages[1]);
+      expect(unsubscribeMessage).toEqual({
+        id: 1001,
+        type: 'unsubscribe_events',
+        subscription: subscribeMessage.id
+      });
+    });
+
+    test('should resubscribe active message subscriptions after reconnect auth_ok', async () => {
+      wsManager.subscribeMessage(
+        { type: 'persistent_notification/subscribe' },
+        jest.fn()
+      );
+
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      const firstSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
+      wsManager.ws.simulateMessage({
+        id: firstSubscribe.id,
+        type: 'result',
+        success: true,
+        result: null
+      });
+      await Promise.resolve();
+
+      wsManager.ws.close();
+      wsManager.connect();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+
+      const secondSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(secondSubscribe).toEqual({
+        id: 1001,
+        type: 'persistent_notification/subscribe'
+      });
+    });
+  });
+
   describe('Service Calls', () => {
     beforeEach(async () => {
       state.setConfig(sampleConfig);
@@ -488,6 +585,60 @@ describe('WebSocket Manager', () => {
 
       const result = await promise;
       expect(result.success).toBe(true);
+    });
+
+    test('should request and return service response payloads', async () => {
+      const promise = wsManager.callServiceWithResponse('weather', 'get_forecasts', {
+        entity_id: 'weather.home',
+        type: 'daily'
+      });
+
+      const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(sentMessage.type).toBe('call_service');
+      expect(sentMessage.return_response).toBe(true);
+      expect(sentMessage.service_data).toEqual({
+        entity_id: 'weather.home',
+        type: 'daily'
+      });
+
+      const forecastResponse = {
+        'weather.home': {
+          forecast: [{ datetime: '2026-07-06T12:00:00', condition: 'sunny' }]
+        }
+      };
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        result: {
+          response: forecastResponse
+        }
+      });
+
+      await expect(promise).resolves.toEqual(forecastResponse);
+    });
+
+    test('should support top-level response payload fallback', async () => {
+      const promise = wsManager.callService('todo', 'get_items', {
+        entity_id: 'todo.shopping'
+      }, { returnResponse: true });
+
+      const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+      expect(sentMessage.return_response).toBe(true);
+
+      const todoResponse = {
+        'todo.shopping': {
+          items: [{ uid: '1', summary: 'Milk', status: 'needs_action' }]
+        }
+      };
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        response: todoResponse
+      });
+
+      await expect(promise).resolves.toEqual(todoResponse);
     });
 
     test('should handle service call errors', async () => {

@@ -6,7 +6,22 @@ import * as uiUtils from './ui-utils.js';
 import { formatDate, formatTime, t } from './i18n.js';
 import { setIconContent } from './icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
+import { buildSparklinePoints } from './sparklines.js';
 import desktopPinSupport from './desktop-pin-support.cjs';
+import {
+  addQuickAccessView,
+  deleteQuickAccessView,
+  getActiveQuickAccessTab,
+  moveEntityToQuickAccessView,
+  normalizeQuickAccessConfig,
+  removeEntityFromQuickAccessViews,
+  renameQuickAccessView,
+  reorderQuickAccessView,
+  setActiveQuickAccessView,
+} from './quick-access-tabs.js';
+import {
+  getNextQuickAccessFocusIndex,
+} from './quick-access-ui-helpers.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -24,6 +39,17 @@ const desktopPinControlTimers = new Map();
 const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
+const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
+const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
+const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
+const LIGHT_COLOR_PRESETS = [
+  '#FFB347',
+  '#FFD966',
+  '#FFFFFF',
+  '#9FD8FF',
+  '#7C83FF',
+  '#FF6B9D',
+];
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set(['auto', 'small', 'normal', 'large', 'extra-large']);
@@ -34,6 +60,15 @@ const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
   { value: 'large', label: 'Large' },
   { value: 'extra-large', label: 'Extra Large' },
 ];
+const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
+const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
+const SENSOR_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SENSOR_HISTORY_REFRESH_THROTTLE_MS = 5 * 60 * 1000;
+const SENSOR_SPARKLINE_SVG_NS = 'http://www.w3.org/2000/svg';
+const SENSOR_TILE_SPARKLINE_WIDTH = 96;
+const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
+const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
+const SENSOR_DETAIL_SPARKLINE_HEIGHT = 120;
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   off: 'Off',
@@ -60,6 +95,7 @@ const {
   resolveDesktopPinProfile,
 } = desktopPinSupport;
 const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
+const sensorHistoryCache = new Map();
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -203,6 +239,8 @@ function shouldBlockInteraction(el) {
 }
 
 let sortableInstance = null; // SortableJS instance for reorganize mode
+let quickAccessViewIdCounter = 0;
+let quickAccessRovingIndex = 0;
 
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
@@ -213,6 +251,384 @@ let lastMediaTileArtworkSrc = '';
 
 let weatherCardTemplate = null;
 let timeCardTemplate = null;
+const todoItemsCacheByEntity = new Map();
+const todoItemsPendingByEntity = new Map();
+
+function generateQuickAccessViewId() {
+  quickAccessViewIdCounter += 1;
+  const randomPart = Math.random().toString(36).slice(2, 8);
+  return `view-${Date.now().toString(36)}-${quickAccessViewIdCounter}-${randomPart}`;
+}
+
+function ensureQuickAccessConfig() {
+  const normalized = normalizeQuickAccessConfig(state.CONFIG || {}, { withChanged: true });
+  if (!state.CONFIG || normalized.changed) {
+    state.setConfig(normalized.config);
+    if (window?.electronAPI?.updateConfig) {
+      window.electronAPI.updateConfig(normalized.config).catch((error) => {
+        console.error('Failed to persist Quick Access view config:', error);
+      });
+    }
+  }
+  return normalized.config;
+}
+
+function setQuickAccessConfig(nextConfig, options = {}) {
+  const normalized = normalizeQuickAccessConfig(nextConfig || {});
+  state.setConfig(normalized);
+  if (window?.electronAPI?.updateConfig) {
+    window.electronAPI.updateConfig(normalized).catch((error) => {
+      console.error('Failed to persist Quick Access view config:', error);
+    });
+  }
+  if (options.render !== false) {
+    renderQuickControls();
+    populateQuickControlsList();
+  }
+  return normalized;
+}
+
+function getActiveQuickAccessEntityIds() {
+  const config = ensureQuickAccessConfig();
+  return getActiveQuickAccessTab(config)?.entityIds || [];
+}
+
+// Preset page names offered when adding a Quick Access page in reorganize mode.
+const QUICK_ACCESS_PAGE_PRESETS = ['Living Room', 'Bedroom', 'Kitchen', 'Office', 'Bathroom', 'Garage'];
+
+function switchQuickAccessPage(tabId) {
+  const nextConfig = setActiveQuickAccessView(state.CONFIG, tabId);
+  setQuickAccessConfig(nextConfig);
+}
+
+function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
+  const tabBar = document.getElementById('quick-access-tabs');
+  if (!tabBar) return;
+
+  const tabs = config.customTabs || [];
+  const reorganizing = isReorganizeMode;
+
+  tabBar.innerHTML = '';
+  tabBar.classList.toggle('reorganize', reorganizing);
+
+  // In normal mode, only surface tabs once there is more than one page.
+  // In reorganize mode, always show the bar so pages can be created/renamed.
+  const shouldShow = reorganizing || tabs.length > 1;
+  tabBar.classList.toggle('hidden', !shouldShow);
+  if (!shouldShow) return;
+
+  tabs.forEach((tab) => {
+    const isActive = tab.id === config.activeTabId;
+
+    const tabEl = document.createElement('div');
+    tabEl.className = 'quick-access-tab';
+    tabEl.classList.toggle('active', isActive);
+    tabEl.dataset.tab = tab.id;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'tab-link quick-access-tab-link';
+    button.classList.toggle('active', isActive);
+    button.setAttribute('role', 'tab');
+    button.dataset.tab = tab.id;
+    button.textContent = tab.name;
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    button.addEventListener('click', () => switchQuickAccessPage(tab.id));
+
+    if (reorganizing) {
+      button.title = t('Double-click to rename');
+      button.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginInlineTabRename(tab.id, button);
+      });
+    }
+
+    tabEl.appendChild(button);
+
+    if (reorganizing && isActive) {
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'qa-tab-btn qa-tab-rename';
+      renameBtn.title = t('Rename page');
+      renameBtn.setAttribute('aria-label', t('Rename page'));
+      setIconContent(renameBtn, 'edit', { size: 12 });
+      renameBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginInlineTabRename(tab.id, button);
+      });
+      tabEl.appendChild(renameBtn);
+
+      if (tabs.length > 1) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'qa-tab-btn qa-tab-delete';
+        deleteBtn.title = t('Delete page');
+        deleteBtn.setAttribute('aria-label', t('Delete page'));
+        setIconContent(deleteBtn, 'close', { size: 12 });
+        deleteBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          deleteQuickAccessPage(tab.id);
+        });
+        tabEl.appendChild(deleteBtn);
+      }
+    }
+
+    tabBar.appendChild(tabEl);
+  });
+
+  if (reorganizing) {
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'qa-tab-add';
+    addBtn.title = t('Add page');
+    addBtn.setAttribute('aria-label', t('Add page'));
+    setIconContent(addBtn, 'add', { size: 14 });
+    const addLabel = document.createElement('span');
+    addLabel.textContent = t('Add page');
+    addBtn.appendChild(addLabel);
+    addBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showAddPageModal();
+    });
+    tabBar.appendChild(addBtn);
+  }
+}
+
+function beginInlineTabRename(tabId, buttonEl) {
+  if (!buttonEl || buttonEl.dataset.renaming === 'true') return;
+  const currentName = buttonEl.textContent || '';
+  buttonEl.dataset.renaming = 'true';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'qa-tab-rename-input';
+  input.value = currentName;
+  input.maxLength = 40;
+  input.setAttribute('aria-label', t('Rename page'));
+
+  buttonEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const value = input.value.trim();
+    if (save && value && value !== currentName) {
+      const nextConfig = renameQuickAccessView(state.CONFIG, tabId, value);
+      setQuickAccessConfig(nextConfig);
+      uiUtils.showToast(t('Page renamed'), 'success', 1600);
+    } else {
+      // Re-render to restore the tab label (revert or no-op change).
+      renderQuickAccessTabs();
+    }
+  };
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      finish(true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation(); // do not exit reorganize mode mid-edit
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (event) => event.stopPropagation());
+  input.addEventListener('dblclick', (event) => event.stopPropagation());
+}
+
+async function deleteQuickAccessPage(tabId) {
+  const config = ensureQuickAccessConfig();
+  if ((config.customTabs || []).length <= 1) return;
+  const tab = config.customTabs.find(view => view.id === tabId);
+  if (!tab) return;
+
+  const confirmed = await uiUtils.showConfirm(
+    t('Delete Page'),
+    t('Delete "{{name}}"? Its entities will be removed from this page.', { name: tab.name }),
+    { confirmText: t('Delete'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
+
+  const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
+  setQuickAccessConfig(nextConfig);
+  uiUtils.showToast(t('Page deleted'), 'info', 1600);
+}
+
+function createQuickAccessPage(name) {
+  const nextConfig = addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
+  setQuickAccessConfig(nextConfig);
+  uiUtils.showToast(t('Page added'), 'success', 1600);
+}
+
+function closeAddPageModal() {
+  const modal = document.getElementById('add-page-modal');
+  if (modal) modal.remove();
+}
+
+function showAddPageModal() {
+  closeAddPageModal();
+
+  const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS
+    .map(preset => `
+              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`)
+    .join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'add-page-modal';
+  modal.className = 'modal add-page-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>${utils.escapeHtml(t('Add Page'))}</h2>
+        <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="add-page-name">${utils.escapeHtml(t('Page name:'))}</label>
+          <input type="text" id="add-page-name" class="form-control" maxlength="40" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
+        </div>
+        <div class="form-group">
+          <label>${utils.escapeHtml(t('Quick picks:'))}</label>
+          <div class="qa-add-chips">${chipsMarkup}</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(t('Add Page'))}</button>
+        <button id="add-page-cancel-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const input = modal.querySelector('#add-page-name');
+  const saveBtn = modal.querySelector('#add-page-save-btn');
+  const cancelBtn = modal.querySelector('#add-page-cancel-btn');
+  const closeBtn = modal.querySelector('.close-btn');
+
+  if (input) input.focus();
+
+  const close = () => modal.remove();
+  const submit = () => {
+    const name = (input?.value || '').trim();
+    if (!name) {
+      if (input) input.focus();
+      return;
+    }
+    close();
+    createQuickAccessPage(name);
+  };
+
+  modal.querySelectorAll('.qa-add-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      if (!input) return;
+      input.value = chip.dataset.name || chip.textContent || '';
+      input.focus();
+    });
+  });
+
+  if (saveBtn) saveBtn.onclick = submit;
+  if (cancelBtn) cancelBtn.onclick = close;
+  if (closeBtn) closeBtn.onclick = close;
+
+  if (input) {
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submit();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation(); // close the modal without exiting reorganize mode
+        close();
+      }
+    });
+  }
+
+  modal.onclick = (event) => { if (event.target === modal) close(); };
+}
+
+function getQuickAccessTiles() {
+  const container = document.getElementById('quick-controls');
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('.control-item[data-entity-id]'));
+}
+
+function getQuickAccessGridColumnCount(container) {
+  if (!container || typeof window?.getComputedStyle !== 'function') return 1;
+  const columns = window.getComputedStyle(container).gridTemplateColumns || '';
+  const count = columns.split(' ').filter(Boolean).length;
+  return count > 0 ? count : 1;
+}
+
+function syncQuickAccessRovingTabIndex(preferredTile = null) {
+  const visibleTiles = getQuickAccessTiles();
+  if (!visibleTiles.length) {
+    quickAccessRovingIndex = 0;
+    return;
+  }
+
+  const preferredIndex = preferredTile ? visibleTiles.indexOf(preferredTile) : -1;
+  if (preferredIndex >= 0) {
+    quickAccessRovingIndex = preferredIndex;
+  } else {
+    quickAccessRovingIndex = Math.min(Math.max(quickAccessRovingIndex, 0), visibleTiles.length - 1);
+  }
+
+  visibleTiles.forEach((tile, index) => {
+    tile.setAttribute('tabindex', index === quickAccessRovingIndex ? '0' : '-1');
+  });
+}
+
+function handleQuickAccessGridKeydown(event) {
+  if (isReorganizeMode) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const tile = event.target?.closest?.('#quick-controls .control-item');
+  if (!tile) return;
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    tile.click();
+    return;
+  }
+
+  const navigationKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+  if (!navigationKeys.includes(event.key)) return;
+
+  const container = document.getElementById('quick-controls');
+  const visibleTiles = getQuickAccessTiles();
+  const currentIndex = visibleTiles.indexOf(tile);
+  if (!container || currentIndex < 0) return;
+
+  event.preventDefault();
+  const nextIndex = getNextQuickAccessFocusIndex(
+    currentIndex,
+    visibleTiles.length,
+    event.key,
+    getQuickAccessGridColumnCount(container)
+  );
+  const nextTile = visibleTiles[nextIndex];
+  if (!nextTile) return;
+
+  syncQuickAccessRovingTabIndex(nextTile);
+  nextTile.focus();
+}
+
+function setupQuickAccessGridKeyboardNavigation() {
+  const container = document.getElementById('quick-controls');
+  if (!container || container.dataset.keyboardNavigationBound === 'true') return;
+  container.addEventListener('keydown', handleQuickAccessGridKeydown);
+  container.dataset.keyboardNavigationBound = 'true';
+}
 
 function cachePrimaryCardTemplates() {
   if (!weatherCardTemplate) {
@@ -472,6 +888,7 @@ function toggleReorganizeMode() {
         sortableInstance = null;
       }
 
+      closeAddPageModal();
       container.classList.remove('reorganize-mode');
       if (btn) {
         setIconContent(btn, 'dragHandle', { size: 18 });
@@ -486,6 +903,10 @@ function toggleReorganizeMode() {
       });
       uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
     }
+
+    // Refresh the tab bar so page-management affordances (or the plain tabs)
+    // reflect the new reorganize state.
+    renderQuickAccessTabs();
   } catch (error) {
     console.error('Error toggling reorganize mode:', error);
   }
@@ -721,13 +1142,8 @@ function showRenameModal(entityId) {
 
 function removeFromQuickAccess(entityId) {
   try {
-    // Note: Confirmation is handled by two-click pattern in the remove button itself
-    const favorites = state.CONFIG.favoriteEntities || [];
-    const newFavorites = favorites.filter(id => id !== entityId);
-    state.CONFIG.favoriteEntities = newFavorites;
-
-    // Save to config
-    window.electronAPI.updateConfig(state.CONFIG);
+    const nextConfig = removeEntityFromQuickAccessViews(state.CONFIG, entityId);
+    setQuickAccessConfig(nextConfig, { render: false });
 
     // Re-render
     renderQuickControls();
@@ -777,10 +1193,11 @@ function saveQuickAccessOrder(movedItem = null) {
       newOrder.push(entityId);
     });
 
-    state.CONFIG.favoriteEntities = newOrder;
+    const activeTab = getActiveQuickAccessTab(ensureQuickAccessConfig());
+    const nextConfig = reorderQuickAccessView(state.CONFIG, activeTab?.id, newOrder);
 
     // Save to config
-    window.electronAPI.updateConfig(state.CONFIG);
+    setQuickAccessConfig(nextConfig, { render: false });
   } catch (error) {
     console.error('Error saving quick access order:', error);
   }
@@ -888,6 +1305,7 @@ function updateEntityInUI(entity, options = {}) {
         addButtonsToElement(newControl);
       }
     });
+    syncQuickAccessRovingTabIndex(document.activeElement?.closest?.('#quick-controls .control-item'));
   } catch (error) {
     console.error('Error updating entity in UI:', error);
   }
@@ -936,6 +1354,64 @@ function getUnavailableControlSignature(entityId) {
 
 function escapeHtmlAttribute(value) {
   return utils.escapeHtmlAttribute(value);
+}
+
+function getTodoActiveCount(items = []) {
+  if (!Array.isArray(items)) return 0;
+  return items.filter((item) => item?.status === 'needs_action').length;
+}
+
+function getServiceEntityPayload(response, entityId) {
+  if (!response || typeof response !== 'object') return null;
+  if (entityId && response[entityId]) return response[entityId];
+  const firstValue = Object.values(response)[0];
+  return firstValue && typeof firstValue === 'object' ? firstValue : response;
+}
+
+function normalizeTodoItems(response, entityId) {
+  const entityPayload = getServiceEntityPayload(response, entityId);
+  const items = Array.isArray(entityPayload?.items)
+    ? entityPayload.items
+    : (Array.isArray(response?.items) ? response.items : []);
+  return items.filter((item) => item && typeof item === 'object');
+}
+
+function normalizeCalendarEvents(response, entityId) {
+  const entityPayload = getServiceEntityPayload(response, entityId);
+  const events = Array.isArray(entityPayload?.events)
+    ? entityPayload.events
+    : (Array.isArray(response?.events) ? response.events : []);
+  return events.filter((event) => event && typeof event === 'object');
+}
+
+function getEventDateValue(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return value.dateTime || value.date_time || value.date || null;
+  return null;
+}
+
+function formatDateTimeValue(value) {
+  const dateValue = getEventDateValue(value);
+  if (!dateValue) return '--';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return String(dateValue);
+  return `${formatDate(date)} ${formatTime(date)}`;
+}
+
+function formatCalendarTileStart(startTime) {
+  const dateValue = getEventDateValue(startTime);
+  if (!dateValue) return '';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return String(dateValue);
+  return formatTime(date);
+}
+
+function formatCalendarEventRange(event) {
+  const start = formatDateTimeValue(event?.start || event?.start_time);
+  const end = formatDateTimeValue(event?.end || event?.end_time);
+  if (!end || end === '--') return start;
+  return `${start} - ${end}`;
 }
 
 function isTimerLikeSensorEntity(entity) {
@@ -1029,6 +1505,194 @@ function getQuickAccessSensorDisplayParts(entity) {
   };
 }
 
+function getSensorHistoryCacheEntry(entityId) {
+  if (!sensorHistoryCache.has(entityId)) {
+    sensorHistoryCache.set(entityId, {
+      series: [],
+      lastFetchAt: 0,
+      promise: null,
+    });
+  }
+  return sensorHistoryCache.get(entityId);
+}
+
+function parseSensorHistoryTimestamp(entry) {
+  if (typeof entry?.lu === 'number' && Number.isFinite(entry.lu)) {
+    return entry.lu * 1000;
+  }
+
+  const rawTimestamp = entry?.last_changed || entry?.last_updated;
+  if (typeof rawTimestamp === 'number' && Number.isFinite(rawTimestamp)) {
+    return rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000;
+  }
+
+  if (typeof rawTimestamp === 'string') {
+    const parsed = Date.parse(rawTimestamp);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return Date.now();
+}
+
+function normalizeSensorHistoryResponse(response, entityId) {
+  const result = response?.result ?? response;
+  const entries = Array.isArray(result)
+    ? result
+    : (Array.isArray(result?.[entityId]) ? result[entityId] : []);
+
+  return entries
+    .map((entry) => {
+      const rawValue = entry?.s ?? entry?.state;
+      const value = Number(typeof rawValue === 'string' ? rawValue.trim() : rawValue);
+      if (!Number.isFinite(value)) return null;
+      return {
+        value,
+        timestamp: parseSensorHistoryTimestamp(entry),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function pruneSensorHistorySeries(series, now = Date.now()) {
+  const cutoff = now - SENSOR_HISTORY_WINDOW_MS;
+  return Array.isArray(series)
+    ? series.filter((point) => point && Number.isFinite(point.value) && Number.isFinite(point.timestamp) && point.timestamp >= cutoff)
+    : [];
+}
+
+function fetchSensorHistory(entityId) {
+  if (!entityId) return Promise.resolve([]);
+
+  const entry = getSensorHistoryCacheEntry(entityId);
+  const now = Date.now();
+  if (entry.promise) return entry.promise;
+  if (entry.lastFetchAt && now - entry.lastFetchAt < SENSOR_HISTORY_REFRESH_THROTTLE_MS) {
+    return Promise.resolve(entry.series);
+  }
+  if (typeof websocket.request !== 'function') {
+    entry.lastFetchAt = now;
+    return Promise.resolve(entry.series);
+  }
+
+  const end = new Date(now);
+  const start = new Date(now - SENSOR_HISTORY_WINDOW_MS);
+  entry.promise = websocket.request({
+    type: 'history/history_during_period',
+    start_time: start.toISOString(),
+    end_time: end.toISOString(),
+    entity_ids: [entityId],
+    minimal_response: true,
+    no_attributes: true,
+  }).then((response) => {
+    entry.series = pruneSensorHistorySeries(normalizeSensorHistoryResponse(response, entityId), Date.now());
+    entry.lastFetchAt = Date.now();
+    return entry.series;
+  }).catch(() => {
+    entry.lastFetchAt = Date.now();
+    return entry.series;
+  }).finally(() => {
+    entry.promise = null;
+  });
+
+  return entry.promise;
+}
+
+function appendLiveSensorHistoryValue(entity) {
+  if (!entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
+  const entry = sensorHistoryCache.get(entity.entity_id);
+  if (!entry) return;
+
+  const value = Number(entity.state);
+  const timestamp = parseSensorHistoryTimestamp(entity);
+  const previous = entry.series[entry.series.length - 1];
+  if (previous && previous.timestamp === timestamp && previous.value === value) return;
+
+  entry.series = pruneSensorHistorySeries([
+    ...entry.series,
+    { value, timestamp },
+  ]);
+}
+
+function createSensorSparklineSvg(series, { width, height, className }) {
+  const values = Array.isArray(series) ? series.map((point) => point.value) : [];
+  const points = buildSparklinePoints(values, width, height);
+  if (!points) return null;
+
+  const svg = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'svg');
+  svg.setAttribute('class', className);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+
+  const polyline = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'polyline');
+  polyline.setAttribute('points', points);
+  polyline.setAttribute('fill', 'none');
+  polyline.setAttribute('stroke', 'currentColor');
+  polyline.setAttribute('stroke-width', values.length === 1 ? '0' : '2');
+  polyline.setAttribute('stroke-linecap', 'round');
+  polyline.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(polyline);
+
+  if (values.length === 1) {
+    const [x, y] = points.split(',').map(Number);
+    const dot = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'circle');
+    dot.setAttribute('cx', String(x));
+    dot.setAttribute('cy', String(y));
+    dot.setAttribute('r', '2');
+    dot.setAttribute('fill', 'currentColor');
+    svg.appendChild(dot);
+  }
+
+  return svg;
+}
+
+function renderSensorTileSparkline(tile, entityId, series) {
+  if (!tile || tile.dataset.entityId !== entityId) return;
+  const info = tile.querySelector('.control-info');
+  if (!info) return;
+
+  info.querySelector('.control-sensor-sparkline')?.remove();
+  const svg = createSensorSparklineSvg(series, {
+    width: SENSOR_TILE_SPARKLINE_WIDTH,
+    height: SENSOR_TILE_SPARKLINE_HEIGHT,
+    className: 'control-sensor-sparkline-svg',
+  });
+  if (!svg) return;
+
+  const sparkline = document.createElement('div');
+  sparkline.className = 'control-sensor-sparkline';
+  sparkline.appendChild(svg);
+  info.appendChild(sparkline);
+}
+
+function mountSensorTileSparkline(tile, entity) {
+  if (!tile || !entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
+  const entry = sensorHistoryCache.get(entity.entity_id);
+  if (entry?.series?.length) {
+    renderSensorTileSparkline(tile, entity.entity_id, entry.series);
+  }
+
+  fetchSensorHistory(entity.entity_id).then((series) => {
+    renderSensorTileSparkline(tile, entity.entity_id, series);
+  });
+}
+
+function renderSensorDetailSparkline(container, series) {
+  if (!container) return;
+  container.textContent = '';
+  const svg = createSensorSparklineSvg(series, {
+    width: SENSOR_DETAIL_SPARKLINE_WIDTH,
+    height: SENSOR_DETAIL_SPARKLINE_HEIGHT,
+    className: 'sensor-detail-sparkline-svg',
+  });
+  container.hidden = !svg;
+  if (svg) {
+    container.appendChild(svg);
+  }
+}
+
 function normalizeQuickAccessTileValueSize(value) {
   if (typeof value !== 'string') return 'auto';
   const normalized = value.trim().toLowerCase();
@@ -1116,6 +1780,13 @@ function callEntityDomainService(entity, serviceName, serviceData = {}) {
     entity_id: entityId,
     ...(serviceData || {}),
   }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity || entity)));
+}
+
+function callServiceWithResponse(domain, service, serviceData = {}) {
+  if (typeof websocket.callServiceWithResponse === 'function') {
+    return websocket.callServiceWithResponse(domain, service, serviceData);
+  }
+  return websocket.callService(domain, service, serviceData, { returnResponse: true });
 }
 
 function clampDesktopPinMetric(value, min, max) {
@@ -3828,6 +4499,85 @@ function updateExistingMediaPlayerControl(item, entity) {
   return true;
 }
 
+function getCachedTodoItems(entityId) {
+  const cached = todoItemsCacheByEntity.get(entityId);
+  return Array.isArray(cached?.items) ? cached.items : null;
+}
+
+function getTodoTileCountLabel(entity) {
+  const cachedItems = getCachedTodoItems(entity?.entity_id);
+  if (cachedItems) return `${getTodoActiveCount(cachedItems)} active`;
+
+  const stateCount = Number(entity?.state);
+  if (Number.isFinite(stateCount)) return `${stateCount} active`;
+
+  return '-- active';
+}
+
+function updateTodoTileCount(entityId) {
+  const items = document.querySelectorAll(`.control-item.todo-entity[data-entity-id="${entityId}"]`);
+  items.forEach((item) => {
+    const entity = state.STATES?.[entityId];
+    const countEl = item.querySelector('.todo-active-count');
+    if (countEl && entity) countEl.textContent = getTodoTileCountLabel(entity);
+    item.title = entity ? `Click to view ${utils.getEntityDisplayName(entity)}` : item.title;
+  });
+}
+
+function fetchTodoItems(entityId, { force = false } = {}) {
+  if (!entityId || typeof callServiceWithResponse !== 'function') return Promise.resolve([]);
+  const now = Date.now();
+  const cached = todoItemsCacheByEntity.get(entityId);
+  if (!force && cached?.items && now - cached.fetchedAt < TODO_ITEMS_CACHE_TTL_MS) {
+    return Promise.resolve(cached.items);
+  }
+  if (!force && cached && now - (cached.lastRequestedAt || cached.fetchedAt || 0) < TODO_ITEMS_REFRESH_THROTTLE_MS) {
+    return Promise.resolve(cached.items || []);
+  }
+  if (todoItemsPendingByEntity.has(entityId)) return todoItemsPendingByEntity.get(entityId);
+
+  todoItemsCacheByEntity.set(entityId, {
+    ...(cached || {}),
+    lastRequestedAt: now,
+  });
+
+  const request = callServiceWithResponse('todo', 'get_items', { entity_id: entityId })
+    .then((response) => {
+      const items = normalizeTodoItems(response, entityId);
+      todoItemsCacheByEntity.set(entityId, {
+        items,
+        fetchedAt: Date.now(),
+        lastRequestedAt: Date.now(),
+      });
+      updateTodoTileCount(entityId);
+      return items;
+    })
+    .catch((error) => {
+      console.warn('Unable to fetch todo items:', error);
+      return cached?.items || [];
+    })
+    .finally(() => {
+      todoItemsPendingByEntity.delete(entityId);
+    });
+
+  todoItemsPendingByEntity.set(entityId, request);
+  return request;
+}
+
+function renderTodoTileStateMarkup(entity) {
+  return `<div class="control-state todo-active-count">${utils.escapeHtml(getTodoTileCountLabel(entity))}</div>`;
+}
+
+function getCalendarNextEventSummary(entity) {
+  const message = entity?.attributes?.message || 'No upcoming event';
+  const start = formatCalendarTileStart(entity?.attributes?.start_time || entity?.attributes?.start);
+  return start ? `${message} · ${start}` : message;
+}
+
+function renderCalendarTileStateMarkup(entity) {
+  return `<div class="control-state calendar-next-event">${utils.escapeHtml(getCalendarNextEventSummary(entity))}</div>`;
+}
+
 // --- Quick Controls ---
 function renderQuickControls() {
   try {
@@ -3837,8 +4587,10 @@ function renderQuickControls() {
       return;
     }
 
-    // Get favorite entities for quick access
-    const favorites = state.CONFIG.favoriteEntities || [];
+    const config = ensureQuickAccessConfig();
+    renderQuickAccessTabs(config);
+
+    const favorites = getActiveQuickAccessEntityIds();
     const desiredNodes = [];
     const existingNodesById = new Map();
     container.querySelectorAll('.control-item[data-entity-id]').forEach((node) => {
@@ -3909,6 +4661,8 @@ function renderQuickControls() {
       container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    setupQuickAccessGridKeyboardNavigation();
+    syncQuickAccessRovingTabIndex();
     refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering quick controls:', error, error.stack);
@@ -4348,21 +5102,22 @@ function createControlElement(entity, options = {}) {
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
     const isTimerSensor = isTimerLikeSensorEntity(entity);
     const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
+    const domain = getEntityDomain(entity.entity_id);
 
     // Handle different entity types (matching main branch)
-    if (entity.entity_id.startsWith('camera.')) {
+    if (domain === 'camera') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) camera.openCamera(entity.entity_id);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
-    } else if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+    } else if (domain === 'sensor' && !isTimerSensor) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) showSensorDetails(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
     } else if (isTimer) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('light.')) {
@@ -4379,14 +5134,25 @@ function createControlElement(entity, options = {}) {
       div.title = `Click to toggle, hold for position control`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = `Click to play/pause, hold for controls`;
+    } else if (domain === 'todo') {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, { source: 'quick-access-click' });
+      };
+      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
+      fetchTodoItems(entity.entity_id);
+    } else if (domain === 'calendar') {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, { source: 'quick-access-click' });
+      };
+      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('button.') || entity.entity_id.startsWith('input_button.')) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to press ${utils.getEntityDisplayName(entity)}`;
     } else {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) toggleEntity(entity);
+        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
@@ -4396,7 +5162,7 @@ function createControlElement(entity, options = {}) {
     const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
 
     let stateDisplay = '';
-    if (entity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+    if (domain === 'sensor' && !isTimerSensor) {
       const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(entity) : null;
 
       if (sensorDisplay) {
@@ -4430,6 +5196,12 @@ function createControlElement(entity, options = {}) {
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
+    } else if (domain === 'todo') {
+      div.classList.add('todo-entity');
+      stateDisplay = renderTodoTileStateMarkup(entity);
+    } else if (domain === 'calendar') {
+      div.classList.add('calendar-entity');
+      stateDisplay = renderCalendarTileStateMarkup(entity);
     }
 
     // Special layout for timer entities
@@ -4468,6 +5240,9 @@ function createControlElement(entity, options = {}) {
       setupMediaPlayerControls(div, entity);
       // Auto-fit removed - using CSS ellipsis and marquee instead
     }
+    if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
+      mountSensorTileSparkline(div, entity);
+    }
 
     return div;
   } catch (error) {
@@ -4487,14 +5262,12 @@ function createUnavailableElement(entityId) {
     div.className = 'control-item unavailable-entity';
     div.dataset.entityId = entityId;
     div.dataset.span = '1';
-    div.setAttribute('role', 'button');
-    div.setAttribute('tabindex', '0');
     div.style.gridColumn = 'span 1';
 
     // Get custom name if available, otherwise use entity ID
     const customName = state.CONFIG.customEntityNames?.[entityId];
     const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
-    div.setAttribute('aria-label', displayName);
+    applyQuickAccessTileAccessibility(div, { entity_id: entityId, attributes: { friendly_name: displayName } });
 
     div.innerHTML = `
       <div class="control-icon unavailable-icon">⚠️</div>
@@ -4517,16 +5290,8 @@ function createUnavailableElement(entityId) {
 function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
   div.setAttribute('role', 'button');
-  div.setAttribute('tabindex', '0');
+  div.setAttribute('tabindex', '-1');
   div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
-  if (div.dataset.keyboardActivationBound === 'true') return;
-  div.dataset.keyboardActivationBound = 'true';
-  div.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    if (shouldBlockInteraction(div)) return;
-    div.click();
-  });
 }
 
 function updateExistingUnavailableControl(div, entityId) {
@@ -4534,6 +5299,7 @@ function updateExistingUnavailableControl(div, entityId) {
   const customName = state.CONFIG.customEntityNames?.[entityId];
   const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
   div.dataset.entityId = entityId;
+  div.setAttribute('aria-label', displayName);
   const name = div.querySelector('.control-name');
   if (name) name.textContent = displayName;
   div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
@@ -4565,6 +5331,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   const isTimerSensor = isTimerLikeSensorEntity(displayEntity);
   const isTimer = displayEntity.entity_id.startsWith('timer.') || isTimerSensor;
+  const domain = getEntityDomain(displayEntity.entity_id);
   const icon = div.querySelector('.control-icon');
   if (icon) icon.textContent = utils.getEntityIcon(displayEntity);
 
@@ -4572,7 +5339,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (name) name.textContent = utils.getEntityDisplayName(displayEntity);
 
   const stateEl = div.querySelector('.control-state');
-  if (displayEntity.entity_id.startsWith('sensor.') && !isTimerSensor) {
+  if (domain === 'sensor' && !isTimerSensor) {
     const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(displayEntity) : null;
     div.classList.add('sensor-entity');
     div.onclick = () => {
@@ -4588,8 +5355,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       if (value) value.textContent = sensorDisplay.value;
       const unit = div.querySelector('.control-sensor-unit');
       if (unit) unit.textContent = sensorDisplay.unit;
+      appendLiveSensorHistoryValue(displayEntity);
+      const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
+      if (cachedHistory?.series?.length) {
+        renderSensorTileSparkline(div, displayEntity.entity_id, cachedHistory.series);
+      }
     } else if (stateEl) {
       div.classList.remove('sensor-numeric-entity');
+      div.querySelector('.control-sensor-sparkline')?.remove();
       stateEl.textContent = utils.getEntityDisplayState(displayEntity);
     }
     return true;
@@ -4639,15 +5412,36 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   if (displayEntity.entity_id.startsWith('camera.')) {
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) camera.openCamera(displayEntity.entity_id);
+      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(displayEntity, { source: 'quick-access-click' });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     return true;
   }
 
+  if (domain === 'todo') {
+    div.classList.add('todo-entity');
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, { source: 'quick-access-click' });
+    };
+    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    if (stateEl) stateEl.textContent = getTodoTileCountLabel(displayEntity);
+    fetchTodoItems(displayEntity.entity_id);
+    return true;
+  }
+
+  if (domain === 'calendar') {
+    div.classList.add('calendar-entity');
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, { source: 'quick-access-click' });
+    };
+    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    if (stateEl) stateEl.textContent = getCalendarNextEventSummary(displayEntity);
+    return true;
+  }
+
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
   div.onclick = () => {
-    if (!shouldBlockInteraction(div)) toggleEntity(liveEntity());
+    if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
   };
   div.title = (displayEntity.entity_id.startsWith('button.') || displayEntity.entity_id.startsWith('input_button.'))
     ? `Click to press ${utils.getEntityDisplayName(displayEntity)}`
@@ -4657,9 +5451,277 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
 function showSensorDetails(entity) {
   try {
+    if (entity?.entity_id && isFiniteNumericSensorState(entity)) {
+      const display = getQuickAccessSensorDisplayParts(entity);
+      const modal = createEntityDetailModal({
+        className: 'sensor-detail-modal',
+        title: utils.getEntityDisplayName(entity),
+      });
+      const body = modal.querySelector('.modal-body');
+      if (!body) return;
+
+      const summary = document.createElement('div');
+      summary.className = 'sensor-detail-summary';
+
+      const icon = document.createElement('div');
+      icon.className = 'sensor-detail-icon';
+      icon.textContent = utils.getEntityIcon(entity);
+
+      const readout = document.createElement('div');
+      readout.className = 'sensor-detail-readout';
+      readout.setAttribute('aria-label', display?.text || utils.getEntityDisplayState(entity));
+
+      const value = document.createElement('span');
+      value.className = 'sensor-detail-value';
+      value.textContent = display?.value || utils.getEntityDisplayState(entity);
+      readout.appendChild(value);
+
+      if (display?.unit) {
+        const unit = document.createElement('span');
+        unit.className = 'sensor-detail-unit';
+        unit.textContent = display.unit;
+        readout.appendChild(unit);
+      }
+
+      summary.appendChild(icon);
+      summary.appendChild(readout);
+      body.appendChild(summary);
+
+      const sparklineFrame = document.createElement('div');
+      sparklineFrame.className = 'sensor-detail-sparkline';
+      sparklineFrame.hidden = true;
+      const cachedHistory = sensorHistoryCache.get(entity.entity_id);
+      if (cachedHistory?.series?.length) {
+        renderSensorDetailSparkline(sparklineFrame, cachedHistory.series);
+      }
+      body.appendChild(sparklineFrame);
+
+      fetchSensorHistory(entity.entity_id).then((series) => {
+        if (modal.isConnected) {
+          renderSensorDetailSparkline(sparklineFrame, series);
+        }
+      });
+      return;
+    }
+
     uiUtils.showToast(`${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`, 'info', 3000);
   } catch (error) {
     console.error('Error showing sensor details:', error);
+  }
+}
+
+function createEntityDetailModal({ className, title }) {
+  const modal = document.createElement('div');
+  modal.className = `modal ${className}`;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `
+    <div class="modal-content entity-detail-modal-content">
+      <div class="modal-header">
+        <h2></h2>
+        <button class="close-btn" type="button">×</button>
+      </div>
+      <div class="modal-body"></div>
+    </div>
+  `;
+  const titleEl = modal.querySelector('h2');
+  if (titleEl) titleEl.textContent = title;
+
+  const closeModal = () => modal.remove();
+  const closeBtn = modal.querySelector('.close-btn');
+  if (closeBtn) closeBtn.onclick = closeModal;
+  modal.onclick = (event) => {
+    if (event.target === modal) closeModal();
+  };
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function renderTodoItemsInto(container, entity, items) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  const list = document.createElement('div');
+  list.className = 'todo-items-list';
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'entity-detail-empty';
+    empty.textContent = 'No active items';
+    list.appendChild(empty);
+  } else {
+    items.forEach((item) => {
+      const row = document.createElement('label');
+      row.className = 'todo-item-row';
+      row.dataset.status = item.status || 'needs_action';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = item.status === 'completed';
+      checkbox.disabled = !item.uid;
+
+      const summary = document.createElement('span');
+      summary.className = 'todo-item-summary';
+      summary.textContent = item.summary || 'Untitled item';
+
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        try {
+          await websocket.callService('todo', 'update_item', {
+            entity_id: entity.entity_id,
+            item: item.uid,
+            status: checkbox.checked ? 'completed' : 'needs_action',
+          });
+          const refreshedItems = await fetchTodoItems(entity.entity_id, { force: true });
+          renderTodoItemsInto(container, state.STATES?.[entity.entity_id] || entity, refreshedItems);
+        } catch (error) {
+          checkbox.checked = !checkbox.checked;
+          checkbox.disabled = false;
+          handleServiceError(error, utils.getEntityDisplayName(entity));
+        }
+      });
+
+      row.appendChild(checkbox);
+      row.appendChild(summary);
+      list.appendChild(row);
+    });
+  }
+
+  container.appendChild(list);
+}
+
+function showTodoDetails(entity) {
+  try {
+    if (!entity?.entity_id) return;
+    const modal = createEntityDetailModal({
+      className: 'todo-modal',
+      title: utils.getEntityDisplayName(entity),
+    });
+    const body = modal.querySelector('.modal-body');
+    if (!body) return;
+
+    const addForm = document.createElement('form');
+    addForm.className = 'todo-add-form';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    input.placeholder = 'Add item';
+    const addButton = document.createElement('button');
+    addButton.type = 'submit';
+    addButton.className = 'btn btn-primary';
+    addButton.textContent = 'Add';
+    addForm.appendChild(input);
+    addForm.appendChild(addButton);
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'todo-detail-list-container';
+    listContainer.textContent = 'Loading...';
+
+    addForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const summary = input.value.trim();
+      if (!summary) return;
+      input.disabled = true;
+      addButton.disabled = true;
+      try {
+        await websocket.callService('todo', 'add_item', {
+          entity_id: entity.entity_id,
+          item: summary,
+        });
+        input.value = '';
+        const refreshedItems = await fetchTodoItems(entity.entity_id, { force: true });
+        renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, refreshedItems);
+      } catch (error) {
+        handleServiceError(error, utils.getEntityDisplayName(entity));
+      } finally {
+        input.disabled = false;
+        addButton.disabled = false;
+        input.focus();
+      }
+    });
+
+    body.appendChild(addForm);
+    body.appendChild(listContainer);
+
+    fetchTodoItems(entity.entity_id, { force: true })
+      .then((items) => renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, items))
+      .catch(() => {
+        listContainer.textContent = 'Unable to load items';
+      });
+  } catch (error) {
+    console.error('Error showing todo details:', error);
+  }
+}
+
+function renderCalendarEventsInto(container, events) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!events.length) {
+    const empty = document.createElement('div');
+    empty.className = 'entity-detail-empty';
+    empty.textContent = 'No upcoming events';
+    container.appendChild(empty);
+    return;
+  }
+
+  events.forEach((event) => {
+    const item = document.createElement('div');
+    item.className = 'calendar-event-row';
+
+    const summary = document.createElement('div');
+    summary.className = 'calendar-event-summary';
+    summary.textContent = event.summary || event.message || 'Untitled event';
+
+    const time = document.createElement('div');
+    time.className = 'calendar-event-time';
+    time.textContent = formatCalendarEventRange(event);
+
+    item.appendChild(summary);
+    item.appendChild(time);
+
+    if (event.description) {
+      const description = document.createElement('div');
+      description.className = 'calendar-event-description';
+      description.textContent = event.description;
+      item.appendChild(description);
+    }
+
+    container.appendChild(item);
+  });
+}
+
+function showCalendarDetails(entity) {
+  try {
+    if (!entity?.entity_id) return;
+    const modal = createEntityDetailModal({
+      className: 'calendar-modal',
+      title: utils.getEntityDisplayName(entity),
+    });
+    const body = modal.querySelector('.modal-body');
+    if (!body) return;
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'calendar-events-list';
+    listContainer.textContent = 'Loading...';
+    body.appendChild(listContainer);
+
+    const start = new Date();
+    const end = new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000));
+    callServiceWithResponse('calendar', 'get_events', {
+      entity_id: entity.entity_id,
+      start_date_time: start.toISOString(),
+      end_date_time: end.toISOString(),
+    })
+      .then((response) => {
+        renderCalendarEventsInto(listContainer, normalizeCalendarEvents(response, entity.entity_id));
+      })
+      .catch((error) => {
+        console.warn('Unable to fetch calendar events:', error);
+        listContainer.textContent = 'Unable to load events';
+      });
+  } catch (error) {
+    console.error('Error showing calendar details:', error);
   }
 }
 
@@ -4738,7 +5800,7 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
         domain: entity.entity_id.split('.')[0],
         state: liveEntity().state,
       });
-      toggleEntity(liveEntity());
+      executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-short-press' });
       setTimeout(() => {
         shortPressHandled = false;
       }, 0);
@@ -4767,7 +5829,7 @@ function setupPressAndHoldToggle(div, entity, onLongPress) {
         domain: entity.entity_id.split('.')[0],
         state: liveEntity().state,
       });
-      toggleEntity(liveEntity());
+      executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
     });
   } catch (error) {
     console.error('Error setting up press/hold controls:', error);
@@ -4966,8 +6028,7 @@ function setupMediaPlayerControls(div, entity) {
         if (shouldBlockInteraction(div) || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
         const currentEntity = state.STATES[entity.entity_id];
         if (!currentEntity) return;
-        const nowPlaying = currentEntity.state === 'playing' || div.getAttribute('data-media-playing') === 'true';
-        callMediaPlayerService(currentEntity.entity_id, nowPlaying ? 'pause' : 'play');
+        executeEntityPrimaryAction(currentEntity, { source: 'quick-access-click' });
       });
     }
 
@@ -5059,6 +6120,12 @@ function canSeekMedia(entity) {
   return hasMediaSeekData(entity);
 }
 
+function clampRange(value, min, max) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return min;
+  return Math.max(min, Math.min(max, numericValue));
+}
+
 function getMediaSeekTarget(entity, deltaSeconds) {
   if (!hasMediaSeekData(entity)) return null;
 
@@ -5072,6 +6139,62 @@ function getMediaSeekTarget(entity, deltaSeconds) {
   return Math.round(nextPosition);
 }
 
+function rgbToHex(rgb) {
+  if (!Array.isArray(rgb) || rgb.length < 3) return '#FFFFFF';
+  const channels = rgb.slice(0, 3).map(channel => clampRange(Math.round(Number(channel) || 0), 0, 255));
+  return `#${channels.map(channel => channel.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+function getLightColorTempRange(attributes = {}) {
+  const minKelvinValue = Number(attributes.min_color_temp_kelvin);
+  const maxKelvinValue = Number(attributes.max_color_temp_kelvin);
+  if (Number.isFinite(minKelvinValue) && Number.isFinite(maxKelvinValue) && minKelvinValue > 0 && maxKelvinValue > 0) {
+    return {
+      min: Math.min(minKelvinValue, maxKelvinValue),
+      max: Math.max(minKelvinValue, maxKelvinValue),
+    };
+  }
+
+  const minFromMireds = uiUtils.miredsToKelvin(attributes.max_mireds);
+  const maxFromMireds = uiUtils.miredsToKelvin(attributes.min_mireds);
+  if (minFromMireds && maxFromMireds) {
+    return {
+      min: Math.min(minFromMireds, maxFromMireds),
+      max: Math.max(minFromMireds, maxFromMireds),
+    };
+  }
+
+  return { min: 2000, max: 6500 };
+}
+
+function getInitialLightColorTempKelvin(attributes = {}, range) {
+  const kelvinValue = Number(attributes.color_temp_kelvin);
+  if (Number.isFinite(kelvinValue) && kelvinValue > 0) {
+    return clampRange(Math.round(kelvinValue), range.min, range.max);
+  }
+
+  const kelvinFromMireds = uiUtils.miredsToKelvin(attributes.color_temp);
+  if (kelvinFromMireds) {
+    return clampRange(kelvinFromMireds, range.min, range.max);
+  }
+
+  return clampRange(Math.round((range.min + range.max) / 2), range.min, range.max);
+}
+
+function getSupportedLightColorModes(attributes = {}) {
+  return Array.isArray(attributes.supported_color_modes)
+    ? attributes.supported_color_modes.map(mode => String(mode))
+    : [];
+}
+
+function supportsLightColor(attributes = {}) {
+  return getSupportedLightColorModes(attributes).some(mode => LIGHT_COLOR_MODES.has(mode));
+}
+
+function supportsLightColorTemp(attributes = {}) {
+  return getSupportedLightColorModes(attributes).includes('color_temp');
+}
+
 function showMediaDetail(entity) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
@@ -5079,6 +6202,41 @@ function showMediaDetail(entity) {
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
     const initialTimeline = getMediaTimeline(entity);
     const seekControlsDisabled = canSeekMedia(entity) ? '' : ' disabled aria-disabled="true"';
+    const mediaAttributes = entity.attributes || {};
+    const supportsVolumeSet = uiUtils.hasSupportedFeature(mediaAttributes.supported_features, MEDIA_PLAYER_SUPPORT_VOLUME_SET);
+    const supportsVolumeMute = uiUtils.hasSupportedFeature(mediaAttributes.supported_features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE);
+    const initialVolume = clampRange(Math.round(Number(mediaAttributes.volume_level ?? 0) * 100), 0, 100);
+    const initialMuted = mediaAttributes.is_volume_muted === true;
+    const volumeControlsMarkup = supportsVolumeSet || supportsVolumeMute
+      ? `
+          <div class="media-volume-controls">
+            ${supportsVolumeSet ? `
+              <div class="media-volume-row">
+                <label class="media-volume-label" for="media-volume-slider">Volume</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="${initialVolume}"
+                  id="media-volume-slider"
+                  class="media-volume-slider"
+                  aria-label="Volume"
+                />
+                <span class="media-volume-value" id="media-volume-value">${initialVolume}%</span>
+              </div>
+            ` : ''}
+            ${supportsVolumeMute ? `
+              <button
+                class="media-mute-toggle ${initialMuted ? 'active' : ''}"
+                id="media-mute-toggle"
+                type="button"
+                aria-pressed="${initialMuted ? 'true' : 'false'}"
+              >${initialMuted ? 'Muted' : 'Mute'}</button>
+            ` : ''}
+          </div>
+        `
+      : '';
 
     const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
 
@@ -5104,6 +6262,7 @@ function showMediaDetail(entity) {
               <div class="media-progress-fill" id="media-progress-fill" style="width: 0%"></div>
             </div>
           </div>
+          ${volumeControlsMarkup}
           <div class="media-detail-controls">
             <button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous"></button>
             <button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="Rewind 10 seconds" aria-label="Rewind 10 seconds"${seekControlsDisabled}>-10</button>
@@ -5138,10 +6297,29 @@ function showMediaDetail(entity) {
     const progressFill = modal.querySelector('#media-progress-fill');
     const curEl = modal.querySelector('#media-current');
     const totalEl = modal.querySelector('#media-total');
+    const volumeSlider = modal.querySelector('#media-volume-slider');
+    const volumeValue = modal.querySelector('#media-volume-value');
+    const muteToggle = modal.querySelector('#media-mute-toggle');
 
     const getLiveTimeline = () => {
       const currentEntity = state.STATES[entity.entity_id] || entity;
       return getMediaTimeline(currentEntity);
+    };
+
+    const updateVolumeControls = () => {
+      const currentEntity = state.STATES[entity.entity_id] || entity;
+      const attrs = currentEntity.attributes || {};
+      if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
+        const volume = clampRange(Math.round(Number(attrs.volume_level ?? 0) * 100), 0, 100);
+        volumeSlider.value = String(volume);
+        volumeValue.textContent = `${volume}%`;
+      }
+      if (muteToggle) {
+        const isMuted = attrs.is_volume_muted === true;
+        muteToggle.classList.toggle('active', isMuted);
+        muteToggle.setAttribute('aria-pressed', isMuted ? 'true' : 'false');
+        muteToggle.textContent = isMuted ? 'Muted' : 'Mute';
+      }
     };
 
     let tick;
@@ -5191,6 +6369,32 @@ function showMediaDetail(entity) {
       }
     });
 
+    let volumeDebounceTimer;
+    if (volumeSlider) {
+      volumeSlider.addEventListener('input', (e) => {
+        const value = clampRange(Math.round(Number(e.target.value)), 0, 100);
+        if (volumeValue) volumeValue.textContent = `${value}%`;
+        clearTimeout(volumeDebounceTimer);
+        volumeDebounceTimer = setTimeout(() => {
+          callMediaPlayerService(entity.entity_id, 'volume_set', {
+            volumeLevel: value / 100,
+          });
+        }, 150);
+      });
+    }
+
+    if (muteToggle) {
+      muteToggle.addEventListener('click', () => {
+        const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
+        muteToggle.classList.toggle('active', nextMuted);
+        muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
+        muteToggle.textContent = nextMuted ? 'Muted' : 'Mute';
+        callMediaPlayerService(entity.entity_id, 'volume_mute', {
+          isVolumeMuted: nextMuted,
+        });
+      });
+    }
+
     // Update button when entity state changes
     const updateInterval = setInterval(() => {
       if (!modal.isConnected) {
@@ -5198,6 +6402,7 @@ function showMediaDetail(entity) {
         return;
       }
       updatePlayPauseBtn();
+      updateVolumeControls();
     }, 500);
 
 
@@ -5206,6 +6411,7 @@ function showMediaDetail(entity) {
       modal.classList.add('modal-closing');
       if (tick) clearInterval(tick);
       if (updateInterval) clearInterval(updateInterval);
+      if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
       setTimeout(() => modal.remove(), 150);
     };
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
@@ -5221,6 +6427,7 @@ function showMediaDetail(entity) {
     } else if (progressFill) {
       progressFill.style.width = '0%';
     }
+    updateVolumeControls();
     startTick();
 
     // Animate in
@@ -5282,6 +6489,20 @@ function callMediaPlayerService(entityId, action, options = {}) {
         });
         break;
       }
+      case 'volume_set': {
+        const volumeLevel = clampRange(Number(options.volumeLevel), 0, 1);
+        serviceCall = websocket.callService('media_player', 'volume_set', {
+          entity_id: entityId,
+          volume_level: volumeLevel,
+        });
+        break;
+      }
+      case 'volume_mute':
+        serviceCall = websocket.callService('media_player', 'volume_mute', {
+          entity_id: entityId,
+          is_volume_muted: !!options.isVolumeMuted,
+        });
+        break;
       default:
         console.warn('Unknown media player action:', action);
         return;
@@ -5491,6 +6712,111 @@ function toggleEntity(entity) {
   }
 }
 
+function executeEntityPrimaryAction(entity, options = {}) {
+  try {
+    const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (!liveEntity?.entity_id) return;
+
+    const domain = getEntityDomain(liveEntity.entity_id);
+    const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
+
+    emitUiDebug('entity.primary_action', {
+      entityId: liveEntity.entity_id,
+      domain,
+      source: options.source || 'unknown',
+      state: liveEntity.state,
+    });
+
+    if (domain === 'camera') {
+      camera.openCamera(liveEntity.entity_id);
+      return;
+    }
+
+    if (domain === 'media_player') {
+      showMediaDetail(liveEntity);
+      return;
+    }
+
+    if (domain === 'climate') {
+      showClimateControls(liveEntity);
+      return;
+    }
+
+    if (domain === 'sensor' && !isTimer) {
+      showSensorDetails(liveEntity);
+      return;
+    }
+
+    if (domain === 'todo') {
+      showTodoDetails(liveEntity);
+      return;
+    }
+
+    if (domain === 'calendar') {
+      showCalendarDetails(liveEntity);
+      return;
+    }
+
+    toggleEntity(liveEntity);
+  } catch (error) {
+    console.error('Error executing entity primary action:', error);
+    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
+  }
+}
+
+// Open the richest detail/control modal for an entity — the same modal a Quick
+// Access tile shows on long-press. Domains without a dedicated modal
+// (switches, scenes, scripts, etc.) fall back to the entity's primary action.
+function openEntityDetailModal(entity, options = {}) {
+  try {
+    const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (!liveEntity?.entity_id) return;
+
+    const domain = getEntityDomain(liveEntity.entity_id);
+    const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
+
+    switch (domain) {
+      case 'camera':
+        camera.openCamera(liveEntity.entity_id);
+        return;
+      case 'light':
+        showBrightnessSlider(liveEntity);
+        return;
+      case 'climate':
+        showClimateControls(liveEntity);
+        return;
+      case 'fan':
+        showFanControls(liveEntity);
+        return;
+      case 'cover':
+        showCoverControls(liveEntity);
+        return;
+      case 'media_player':
+        showMediaDetail(liveEntity);
+        return;
+      case 'todo':
+        showTodoDetails(liveEntity);
+        return;
+      case 'calendar':
+        showCalendarDetails(liveEntity);
+        return;
+      case 'sensor':
+        if (!isTimer) {
+          showSensorDetails(liveEntity);
+          return;
+        }
+        break;
+      default:
+        break;
+    }
+
+    // No dedicated detail modal for this domain — fall back to primary action.
+    executeEntityPrimaryAction(liveEntity, options);
+  } catch (error) {
+    console.error('Error opening entity detail modal:', error);
+  }
+}
+
 function triggerActivationFeedback(entityId) {
   try {
     const tile = document.querySelector(`[data-entity-id="${entityId}"]`);
@@ -5608,7 +6934,7 @@ function updateWeatherFromHA() {
     const iconEl = document.getElementById('weather-icon');
 
     // Use Home Assistant's global unit system (from config)
-    const tempUnit = state.UNIT_SYSTEM.temperature || '°C';
+    const tempUnit = state.UNIT_SYSTEM?.temperature || '°C';
 
     // Handle wind speed: trust entity's unit if provided, otherwise use HA system units
     let windSpeed = weatherEntity.attributes.wind_speed || 0;
@@ -5623,7 +6949,7 @@ function updateWeatherFromHA() {
       windUnit = entityWindUnit;
     } else {
       // Fall back to HA global unit system
-      const haWindUnit = state.UNIT_SYSTEM.wind_speed || 'm/s';
+      const haWindUnit = state.UNIT_SYSTEM?.wind_speed || 'm/s';
 
       if (haWindUnit === 'mph') {
         // Imperial: display as-is in mph
@@ -6253,6 +7579,65 @@ function showBrightnessSlider(light) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(light));
     const currentBrightness = light.state === 'on' && light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 0;
+    const lightAttributes = light.attributes || {};
+    const showColorTempControl = supportsLightColorTemp(lightAttributes);
+    const showColorControl = supportsLightColor(lightAttributes);
+    const colorTempRange = getLightColorTempRange(lightAttributes);
+    const currentColorTemp = getInitialLightColorTempKelvin(lightAttributes, colorTempRange);
+    const currentColorHex = rgbToHex(lightAttributes.rgb_color);
+    const colorTempMarkup = showColorTempControl
+      ? `
+            <div class="brightness-color-temp">
+              <div class="brightness-control-heading">
+                <span>Color Temperature</span>
+                <span id="light-color-temp-value">${currentColorTemp}K</span>
+              </div>
+              <input
+                type="range"
+                min="${colorTempRange.min}"
+                max="${colorTempRange.max}"
+                step="50"
+                value="${currentColorTemp}"
+                id="light-color-temp-slider"
+                class="light-color-temp-slider"
+                aria-label="Color Temperature"
+              />
+              <div class="brightness-slider-labels">
+                <span>Warm</span>
+                <span>Cool</span>
+              </div>
+            </div>
+        `
+      : '';
+    const colorControlMarkup = showColorControl
+      ? `
+            <div class="brightness-color-picker">
+              <div class="brightness-control-heading">
+                <span>Color</span>
+              </div>
+              <div class="brightness-color-row">
+                <input
+                  type="color"
+                  value="${escapeHtmlAttribute(currentColorHex)}"
+                  id="light-color-picker"
+                  class="light-color-picker"
+                  aria-label="Light Color"
+                />
+                <div class="light-color-swatches">
+                  ${LIGHT_COLOR_PRESETS.map((color) => `
+                    <button
+                      class="light-color-swatch"
+                      type="button"
+                      data-color="${escapeHtmlAttribute(color)}"
+                      style="--swatch-color: ${escapeHtmlAttribute(color)}"
+                      aria-label="Set light color ${escapeHtmlAttribute(color)}"
+                    ></button>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+        `
+      : '';
 
     const modal = document.createElement('div');
     modal.className = 'modal brightness-modal';
@@ -6287,6 +7672,8 @@ function showBrightnessSlider(light) {
               <button class="brightness-preset-btn" data-preset="75">75%</button>
               <button class="brightness-preset-btn" data-preset="100">100%</button>
             </div>
+            ${colorTempMarkup}
+            ${colorControlMarkup}
           </div>
         </div>
         <div class="modal-footer">
@@ -6304,9 +7691,15 @@ function showBrightnessSlider(light) {
     const cancelBtn = modal.querySelector('#brightness-cancel');
     const turnOffBtn = modal.querySelector('#turn-off-btn');
     const presetButtons = modal.querySelectorAll('.brightness-preset-btn');
+    const colorTempSlider = modal.querySelector('#light-color-temp-slider');
+    const colorTempValue = modal.querySelector('#light-color-temp-value');
+    const colorPicker = modal.querySelector('#light-color-picker');
+    const colorSwatches = modal.querySelectorAll('.light-color-swatch');
 
     // Track current light state
     let lightIsOn = light.state === 'on';
+    let colorTempDebounceTimer;
+    let colorDebounceTimer;
 
     // Update turn off/on button text
     const updateTurnButton = () => {
@@ -6319,6 +7712,8 @@ function showBrightnessSlider(light) {
     // Close handlers
     const closeModal = () => {
       modal.classList.add('modal-closing');
+      if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
+      if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
       setTimeout(() => modal.remove(), 200);
     };
     if (closeBtn) closeBtn.onclick = closeModal;
@@ -6391,6 +7786,49 @@ function showBrightnessSlider(light) {
       });
     });
 
+    if (colorTempSlider) {
+      colorTempSlider.addEventListener('input', (e) => {
+        const kelvin = clampRange(Math.round(Number(e.target.value)), colorTempRange.min, colorTempRange.max);
+        if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
+        clearTimeout(colorTempDebounceTimer);
+        colorTempDebounceTimer = setTimeout(() => {
+          websocket.callService('light', 'turn_on', {
+            entity_id: light.entity_id,
+            color_temp_kelvin: kelvin,
+          });
+          lightIsOn = true;
+          updateTurnButton();
+        }, 150);
+      });
+    }
+
+    const applyColor = (hexColor) => {
+      const rgb = uiUtils.hexToRgb(hexColor);
+      if (!rgb) return;
+      if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
+      clearTimeout(colorDebounceTimer);
+      colorDebounceTimer = setTimeout(() => {
+        websocket.callService('light', 'turn_on', {
+          entity_id: light.entity_id,
+          rgb_color: [rgb.r, rgb.g, rgb.b],
+        });
+        lightIsOn = true;
+        updateTurnButton();
+      }, 150);
+    };
+
+    if (colorPicker) {
+      colorPicker.addEventListener('input', (e) => {
+        applyColor(e.target.value);
+      });
+    }
+
+    colorSwatches.forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyColor(btn.getAttribute('data-color'));
+      });
+    });
+
     // Turn off/on button
     if (turnOffBtn) {
       turnOffBtn.onclick = () => {
@@ -6434,9 +7872,22 @@ function showClimateControls(climateEntity) {
     const minTemp = Number.isFinite(minTempValue) ? minTempValue : 10;
     const maxTemp = Number.isFinite(maxTempValue) ? maxTempValue : 30;
     const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
+    const hasCurrentHumidity = climateEntity.attributes.current_humidity !== undefined &&
+      climateEntity.attributes.current_humidity !== null;
+    const currentHumidity = hasCurrentHumidity
+      ? utils.escapeHtml(String(climateEntity.attributes.current_humidity))
+      : '';
     const availableModes = Array.isArray(climateEntity.attributes.hvac_modes)
       ? climateEntity.attributes.hvac_modes
       : ['off', 'heat', 'cool', 'auto'];
+    const availableFanModes = Array.isArray(climateEntity.attributes.fan_modes)
+      ? climateEntity.attributes.fan_modes
+      : [];
+    const availablePresetModes = Array.isArray(climateEntity.attributes.preset_modes)
+      ? climateEntity.attributes.preset_modes
+      : [];
+    const currentFanMode = String(climateEntity.attributes.fan_mode || '');
+    const currentPresetMode = String(climateEntity.attributes.preset_mode || '');
 
     const modal = document.createElement('div');
     modal.className = 'modal climate-modal';
@@ -6458,6 +7909,14 @@ function showClimateControls(climateEntity) {
                 <div class="climate-temp-value-large" id="climate-target-value">${targetTemp}${tempUnit}</div>
               </div>
             </div>
+            ${hasCurrentHumidity ? `
+              <div class="climate-extra-stats">
+                <div class="climate-stat">
+                  <div class="climate-temp-label">Humidity</div>
+                  <div class="climate-temp-value">${currentHumidity}%</div>
+                </div>
+              </div>
+            ` : ''}
 
             <div class="climate-slider-wrapper">
               <input
@@ -6480,6 +7939,18 @@ function showClimateControls(climateEntity) {
               <div class="climate-modes-label">Mode</div>
               <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
             </div>
+            ${availableFanModes.length ? `
+              <div class="climate-modes">
+                <div class="climate-modes-label">Fan</div>
+                <div class="climate-option-buttons" id="climate-fan-buttons"></div>
+              </div>
+            ` : ''}
+            ${availablePresetModes.length ? `
+              <div class="climate-modes">
+                <div class="climate-modes-label">Preset</div>
+                <div class="climate-option-buttons" id="climate-preset-buttons"></div>
+              </div>
+            ` : ''}
           </div>
         </div>
         <div class="modal-footer">
@@ -6494,6 +7965,8 @@ function showClimateControls(climateEntity) {
     const closeBtn = modal.querySelector('#climate-close');
     const cancelBtn = modal.querySelector('#climate-cancel');
     const modeButtonsContainer = modal.querySelector('#climate-mode-buttons');
+    const fanButtonsContainer = modal.querySelector('#climate-fan-buttons');
+    const presetButtonsContainer = modal.querySelector('#climate-preset-buttons');
 
     // Helper function to get mode icons
     function getModeIcon(mode) {
@@ -6539,6 +8012,25 @@ function showClimateControls(climateEntity) {
     }
     const modeButtons = modal.querySelectorAll('.climate-mode-btn');
 
+    function createClimateOptionButtons(container, modes, currentValue, className) {
+      if (!container) return;
+      modes.forEach((mode) => {
+        const modeValue = String(mode ?? '');
+        const modeLabel = formatModeLabel(modeValue);
+        const button = document.createElement('button');
+        button.className = `${className} ${modeValue === currentValue ? 'active' : ''}`.trim();
+        button.dataset.mode = modeValue;
+        button.title = modeLabel;
+        button.textContent = modeLabel;
+        container.appendChild(button);
+      });
+    }
+
+    createClimateOptionButtons(fanButtonsContainer, availableFanModes, currentFanMode, 'climate-fan-mode-btn');
+    createClimateOptionButtons(presetButtonsContainer, availablePresetModes, currentPresetMode, 'climate-preset-mode-btn');
+    const fanModeButtons = modal.querySelectorAll('.climate-fan-mode-btn');
+    const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
+
     // Close handlers
     const closeModal = () => {
       modal.classList.add('modal-closing');
@@ -6581,6 +8073,30 @@ function showClimateControls(climateEntity) {
         websocket.callService('climate', 'set_hvac_mode', {
           entity_id: climateEntity.entity_id,
           hvac_mode: mode
+        });
+      });
+    });
+
+    fanModeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        fanModeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        websocket.callService('climate', 'set_fan_mode', {
+          entity_id: climateEntity.entity_id,
+          fan_mode: mode
+        });
+      });
+    });
+
+    presetModeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        presetModeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        websocket.callService('climate', 'set_preset_mode', {
+          entity_id: climateEntity.entity_id,
+          preset_mode: mode
         });
       });
     });
@@ -6860,11 +8376,17 @@ function populateQuickControlsList() {
   try {
     const list = document.getElementById('quick-controls-list');
     const searchInput = document.getElementById('quick-controls-search');
+    const targetHint = document.getElementById('quick-controls-target-hint');
     if (!list) return;
 
     const renderList = () => {
       const filter = searchInput ? searchInput.value.toLowerCase() : '';
-      const favorites = state.CONFIG.favoriteEntities || [];
+      const config = ensureQuickAccessConfig();
+      const activeTab = getActiveQuickAccessTab(config);
+
+      if (targetHint) {
+        targetHint.textContent = t('Adding to: {{name}}', { name: activeTab?.name || '' });
+      }
 
       // Score and filter entities
       const scoredEntities = Object.values(state.STATES)
@@ -6893,23 +8415,46 @@ function populateQuickControlsList() {
         const item = document.createElement('div');
         item.className = 'entity-item';
 
-        const isFavorite = favorites.includes(entity.entity_id);
+        const isInActiveView = activeTab?.entityIds.includes(entity.entity_id);
 
-        item.innerHTML = `
-                    <div class="entity-item-main">
-                        <span class="entity-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
-                        <div class="entity-item-info">
-                            <span class="entity-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
-                            <span class="entity-id" title="${escapeHtmlAttribute(entity.entity_id)}">${utils.escapeHtml(entity.entity_id)}</span>
-                        </div>
-                    </div>
-                    <button class="entity-selector-btn ${isFavorite ? 'remove' : 'add'}" data-entity-id="${escapeHtmlAttribute(entity.entity_id)}">
-                        ${isFavorite ? 'Remove' : 'Add'}
-                    </button>
-                `;
+        const main = document.createElement('div');
+        main.className = 'entity-item-main';
 
-        const button = item.querySelector('button');
+        const icon = document.createElement('span');
+        icon.className = 'entity-icon';
+        icon.textContent = utils.getEntityIcon(entity);
+
+        const info = document.createElement('div');
+        info.className = 'entity-item-info';
+
+        const name = document.createElement('span');
+        name.className = 'entity-name';
+        name.textContent = utils.getEntityDisplayName(entity);
+
+        const id = document.createElement('span');
+        id.className = 'entity-id';
+        id.title = entity.entity_id;
+        id.textContent = entity.entity_id;
+
+        info.appendChild(name);
+        info.appendChild(id);
+        main.appendChild(icon);
+        main.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'entity-item-actions quick-access-entity-actions';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `entity-selector-btn ${isInActiveView ? 'remove' : 'add'}`;
+        button.dataset.entityId = entity.entity_id;
+        button.textContent = isInActiveView ? t('Remove') : t('Add');
         button.onclick = () => toggleQuickAccess(entity.entity_id);
+
+        actions.appendChild(button);
+
+        item.appendChild(main);
+        item.appendChild(actions);
 
         list.appendChild(item);
       });
@@ -6931,20 +8476,12 @@ function populateQuickControlsList() {
 
 function toggleQuickAccess(entityId) {
   try {
-    const favorites = state.CONFIG.favoriteEntities || [];
-
-    if (favorites.includes(entityId)) {
-      // Remove from favorites
-      state.CONFIG.favoriteEntities = favorites.filter(id => id !== entityId);
-    } else {
-      // Add to favorites
-      state.CONFIG.favoriteEntities = [...favorites, entityId];
-    }
-
-    // Save and update UI
-    window.electronAPI.updateConfig(state.CONFIG);
-    renderQuickControls();
-    populateQuickControlsList();
+    const config = ensureQuickAccessConfig();
+    const activeTab = getActiveQuickAccessTab(config);
+    const nextConfig = activeTab?.entityIds.includes(entityId)
+      ? removeEntityFromQuickAccessViews(config, entityId)
+      : moveEntityToQuickAccessView(config, entityId, activeTab?.id);
+    setQuickAccessConfig(nextConfig);
   } catch (error) {
     console.error('Error toggling quick access:', error);
   }
@@ -7143,11 +8680,15 @@ function initUpdateUI() {
 
 // ESC key handler for reorganize mode
 function handleEscapeKey(e) {
-  if (e.key === 'Escape' && isReorganizeMode) {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleReorganizeMode();
-  }
+  if (e.key !== 'Escape' || !isReorganizeMode) return;
+  // Let nested interactions own Escape instead of exiting reorganize mode.
+  if (document.getElementById('add-page-modal')) return;
+  if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
+  const confirmModal = document.getElementById('confirm-modal');
+  if (confirmModal && !confirmModal.classList.contains('hidden')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleReorganizeMode();
 }
 
 function addEscapeKeyListener() {
@@ -7178,6 +8719,9 @@ export {
   getTickTargets,
   refreshVisibleEntityCache,
   executeHotkeyAction,
+  executeEntityPrimaryAction,
+  openEntityDetailModal,
+  getEntityDomain,
   handleDesktopPinActionRequest,
   renderDesktopPinnedTile,
   updateMediaTile,
@@ -7185,4 +8729,5 @@ export {
   callMediaTileService,
   callMediaPlayerService,
   getMediaSeekTarget,
+  getTodoActiveCount,
 };

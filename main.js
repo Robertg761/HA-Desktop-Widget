@@ -779,11 +779,18 @@ function getProfileSyncConfig() {
   return config.profileSync;
 }
 
+function hasDeferredSecureConfigWork() {
+  return deferredHomeAssistantTokenDecryptPending
+    || deferredPlaintextTokenMigrationPending
+    || deferredProfileSyncPassphraseDecryptPending;
+}
+
 function sanitizeConfigForRenderer(inputConfig) {
   const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
   if (cloned.profileSync) {
     delete cloned.profileSync.storedPassphrase;
   }
+  cloned.secureStoragePending = hasDeferredSecureConfigWork();
   return cloned;
 }
 
@@ -1377,7 +1384,6 @@ function createDesktopPinWindow(entityId, options = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-      backgroundThrottling: false,
     }
   };
 
@@ -2022,6 +2028,7 @@ function loadConfig(options = {}) {
       background: 'original',
       language: 'auto',
       customColors: [],
+      density: 'comfortable',
       personalizationSectionsCollapsed: {},
       use24HourClock: false,
       weatherEffectsEnabled: false,
@@ -2029,6 +2036,9 @@ function loadConfig(options = {}) {
       enableInteractionDebugLogs: false
     },
     primaryCards: ['weather', 'time'],
+    favoriteEntities: [],
+    customTabs: [],
+    activeTabId: '',
     desktopPins: {},
     customEntityIcons: {},
     quickAccessTileOptions: {},
@@ -2235,9 +2245,7 @@ function loadConfig(options = {}) {
 function resolveDeferredSecureConfig(options = {}) {
   if (deferredSecureConfigResolutionInProgress) return false;
   const notifyRenderer = !!options.notifyRenderer;
-  const hasDeferredWork = deferredHomeAssistantTokenDecryptPending
-    || deferredPlaintextTokenMigrationPending
-    || deferredProfileSyncPassphraseDecryptPending;
+  const hasDeferredWork = hasDeferredSecureConfigWork();
   if (!hasDeferredWork) return false;
 
   deferredSecureConfigResolutionInProgress = true;
@@ -2836,7 +2844,6 @@ function createWindow() {
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true,
-      backgroundThrottling: false,
     }
   };
 
@@ -3076,7 +3083,6 @@ function schedulePostWindowStartupTasks() {
 ipcMain.handle('get-config', (event) => {
   const sender = authorizeIpcSender(event, 'get-config', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('get-config');
-  resolveDeferredSecureConfig();
   return sanitizeConfigForRenderer(config);
 });
 
@@ -3138,7 +3144,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   const prevConfig = config;
   const prevSyncEnabled = !!config?.profileSync?.enabled;
   pruneConfig(newConfig);
-  const customTabs = { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
+  const customTabs = Array.isArray(newConfig.customTabs)
+    ? newConfig.customTabs
+    : (Array.isArray(config.customTabs) ? config.customTabs : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) });
   const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
   const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
   config = { ...config, ...newConfig, customTabs, profileSync, updates };
@@ -3200,6 +3208,88 @@ ipcMain.handle('clear-token-reset-reason', (event) => {
   return sanitizeConfigForRenderer(config);
 });
 
+function normalizeHomeAssistantBaseUrlForIpc(rawUrl) {
+  const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  if (!trimmed) return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
+    return null;
+  }
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (!parsed.hostname) return null;
+    return parsed.origin.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    const normalizedBaseUrl = normalizeHomeAssistantBaseUrlForIpc(baseUrl);
+    const normalizedToken = typeof token === 'string' ? token.trim() : '';
+    if (!normalizedBaseUrl || isPlaceholderOrEmptyToken(normalizedToken)) {
+      resolve({ success: false, code: 'invalid-url' });
+      return;
+    }
+
+    let completed = false;
+    const request = net.request({
+      method: 'GET',
+      url: `${normalizedBaseUrl}/api/`,
+      redirect: 'follow',
+    });
+
+    const finish = (result) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      try { request.abort(); } catch { /* noop */ }
+      resolve(result);
+    };
+
+    const timeoutId = setTimeout(() => {
+      finish({ success: false, code: 'unreachable', error: 'Request timed out' });
+    }, timeoutMs);
+
+    request.setHeader('Authorization', `Bearer ${normalizedToken}`);
+    request.setHeader('Accept', 'application/json');
+
+    request.on('response', (response) => {
+      const statusCode = Number(response.statusCode || 0);
+      response.on('data', () => { });
+      response.on('end', () => {
+        if (statusCode >= 200 && statusCode < 300) {
+          finish({ success: true, code: 'ok', status: statusCode, url: normalizedBaseUrl });
+          return;
+        }
+        if (statusCode === 401 || statusCode === 403) {
+          finish({ success: false, code: 'auth-failed', status: statusCode });
+          return;
+        }
+        finish({ success: false, code: 'unreachable', status: statusCode });
+      });
+    });
+
+    request.on('error', (error) => {
+      finish({ success: false, code: 'unreachable', error: error?.message || String(error) });
+    });
+
+    try {
+      request.end();
+    } catch (error) {
+      finish({ success: false, code: 'unreachable', error: error?.message || String(error) });
+    }
+  });
+}
+
+ipcMain.handle('test-ha-connection', async (event, url, token) => {
+  const sender = authorizeIpcSender(event, 'test-ha-connection');
+  if (!sender) return rejectUnauthorizedIpc('test-ha-connection');
+  return testHomeAssistantApiRoot(url, token);
+});
+
 ipcMain.handle('pin-entity-to-desktop', (event, entityId, supportInfo = null) => {
   const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
   if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
@@ -3253,7 +3343,6 @@ ipcMain.handle('unpin-entity-from-desktop', (event, entityId) => {
 ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('get-desktop-pin-bootstrap');
-  resolveDeferredSecureConfig();
   const normalizedEntityId = normalizeEntityId(entityId);
   if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
@@ -4635,7 +4724,7 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
   }
 
-  loadConfig();
+  loadConfig({ deferSecureStorage: true });
   startDevLiveReloadWatchers();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)

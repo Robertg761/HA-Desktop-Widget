@@ -30,6 +30,11 @@ import {
   getLocaleState,
   t,
 } from './i18n.js';
+import {
+  classifyConnectionError,
+  isPlaceholderOrEmptyToken,
+  normalizeBaseUrl,
+} from './connection.js';
 
 let previewState = null;
 let previewRaf = null;
@@ -3158,6 +3163,44 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
+async function persistDensitySelection(nextDensity) {
+  const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
+  state.CONFIG.ui = state.CONFIG.ui || {};
+  const nextUiConfig = {
+    ...state.CONFIG.ui,
+    density: normalizedDensity,
+  };
+
+  state.CONFIG.ui = nextUiConfig;
+  applyUiPreferences(nextUiConfig);
+
+  if (!window?.electronAPI?.updateConfig) return null;
+  const updatedConfig = await window.electronAPI.updateConfig({
+    ui: nextUiConfig,
+  });
+
+  if (updatedConfig) {
+    state.setConfig(updatedConfig);
+  }
+
+  return updatedConfig;
+}
+
+function bindAppearanceSettingsUi() {
+  const densitySelect = document.getElementById('density-select');
+  if (!densitySelect) return;
+
+  densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
+  densitySelect.onchange = async () => {
+    try {
+      await persistDensitySelection(densitySelect.value);
+    } catch (error) {
+      log.error('Failed to save layout density:', error);
+      showToast(t('Failed to save layout density'), 'warning', 3000);
+    }
+  };
+}
+
 function bindLanguageSettingsUi() {
   const languageSelect = document.getElementById('language-select');
   if (languageSelect) {
@@ -3271,6 +3314,9 @@ async function openSettings(uiHooks) {
         uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
     }
+    bindConnectionTestUi();
+    setSettingsConnectionTestStatus('', '');
+    setSettingsConnectionTestBusy(false);
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
@@ -3290,6 +3336,7 @@ async function openSettings(uiHooks) {
     }
 
     bindLanguageSettingsUi();
+    bindAppearanceSettingsUi();
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
@@ -3513,6 +3560,90 @@ function closeSettings() {
   }
 }
 
+function getConnectionTestMessage(resultOrError) {
+  if (resultOrError?.success) {
+    return {
+      type: 'success',
+      text: t('Connection test succeeded. Home Assistant is reachable.'),
+    };
+  }
+
+  const code = classifyConnectionError(resultOrError);
+  if (code === 'invalid-url') {
+    return {
+      type: 'error',
+      text: t('Enter a valid Home Assistant URL and token before testing.'),
+    };
+  }
+  if (code === 'auth-failed') {
+    return {
+      type: 'error',
+      text: t('Authentication failed. Check your Long-Lived Access Token.'),
+    };
+  }
+  return {
+    type: 'error',
+    text: t('Could not reach Home Assistant at that URL.'),
+  };
+}
+
+function setSettingsConnectionTestStatus(message = '', type = '') {
+  const status = document.getElementById('test-ha-connection-status');
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.status = type || '';
+  status.classList.toggle('hidden', !message);
+}
+
+function setSettingsConnectionTestBusy(isBusy) {
+  const button = document.getElementById('test-ha-connection-btn');
+  const spinner = document.getElementById('test-ha-connection-spinner');
+  if (button) {
+    button.disabled = !!isBusy;
+    button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  }
+  if (spinner) {
+    spinner.classList.toggle('hidden', !isBusy);
+  }
+}
+
+async function runSettingsConnectionTest() {
+  const haUrl = document.getElementById('ha-url');
+  const haToken = document.getElementById('ha-token');
+  const normalizedUrl = normalizeBaseUrl(haUrl?.value || '');
+  const token = (haToken?.value || '').trim();
+
+  if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
+    const message = getConnectionTestMessage({ code: 'invalid-url' });
+    setSettingsConnectionTestStatus(message.text, message.type);
+    return false;
+  }
+
+  setSettingsConnectionTestBusy(true);
+  setSettingsConnectionTestStatus(t('Testing Home Assistant connection...'), 'pending');
+  try {
+    const result = await window.electronAPI.testHaConnection(normalizedUrl, token);
+    const message = getConnectionTestMessage(result);
+    setSettingsConnectionTestStatus(message.text, message.type);
+    return !!result?.success;
+  } catch (error) {
+    const message = getConnectionTestMessage(error);
+    setSettingsConnectionTestStatus(message.text, message.type);
+    return false;
+  } finally {
+    setSettingsConnectionTestBusy(false);
+  }
+}
+
+function bindConnectionTestUi() {
+  const button = document.getElementById('test-ha-connection-btn');
+  if (!button || button.dataset.initialized === 'true') return;
+  button.addEventListener('click', () => {
+    void runSettingsConnectionTest();
+  });
+  button.dataset.initialized = 'true';
+}
+
 /**
  * Persist current settings from the settings UI, apply them to the app, and update related subsystems.
  *
@@ -3540,6 +3671,7 @@ async function saveSettings() {
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
+    const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -3594,6 +3726,7 @@ async function saveSettings() {
       : false;
     state.CONFIG.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
+    state.CONFIG.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
     if (enableInteractionDebugLogs) {
       state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }

@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   openLogs: () => ipcRenderer.invoke('open-logs'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  testHaConnection: (url, token) => ipcRenderer.invoke('test-ha-connection', url, token),
   debugLog: (payload) => ipcRenderer.invoke('debug-log', payload),
 
   // Event listeners (one-way from main to renderer)

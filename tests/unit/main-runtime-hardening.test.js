@@ -48,15 +48,29 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('Blocked config save because it would replace an existing user config with default-like data.');
   });
 
-  it('loads secure Home Assistant config before the renderer can enter setup mode', () => {
-    expect(mainSource).toContain('loadConfig();');
-    expect(mainSource).not.toContain('loadConfig({ deferSecureStorage: true });');
+  it('defers secure config resolution until after the first window can render', () => {
+    expect(mainSource).toContain('loadConfig({ deferSecureStorage: true });');
+    expect(mainSource).toContain('resolveDeferredSecureConfig({ notifyRenderer: true });');
+
+    const getConfigStart = mainSource.indexOf("ipcMain.handle('get-config'");
+    const getConfigEnd = mainSource.indexOf("ipcMain.handle('get-locale-bootstrap'", getConfigStart);
+    const getConfigSource = mainSource.slice(getConfigStart, getConfigEnd);
+    expect(getConfigSource).not.toContain('resolveDeferredSecureConfig');
+
+    const desktopPinBootstrapStart = mainSource.indexOf("ipcMain.handle('get-desktop-pin-bootstrap'");
+    const desktopPinBootstrapEnd = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'", desktopPinBootstrapStart);
+    const desktopPinBootstrapSource = mainSource.slice(desktopPinBootstrapStart, desktopPinBootstrapEnd);
+    expect(desktopPinBootstrapSource).not.toContain('resolveDeferredSecureConfig');
   });
 
   it('loads electron-updater lazily so development startup is not coupled to updater detection', () => {
     expect(mainSource).toContain('function getAutoUpdater()');
     expect(mainSource).toContain("require('electron-updater')");
     expect(mainSource).not.toContain("const { autoUpdater } = require('electron-updater');");
+  });
+
+  it('allows Electron to throttle background renderers', () => {
+    expect(mainSource).not.toContain('backgroundThrottling: false');
   });
 
   it('supports opt-in prerelease update checks without moving stable users to prereleases', () => {

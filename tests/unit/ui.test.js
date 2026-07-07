@@ -22,7 +22,29 @@ jest.mock('../../src/ui-utils.js', () => ({
   showLoading: jest.fn(),
   setStatus: jest.fn(),
   applyTheme: jest.fn(),
-  applyUiPreferences: jest.fn()
+  applyUiPreferences: jest.fn(),
+  hexToRgb: jest.fn((hex) => {
+    if (!hex || typeof hex !== 'string') return null;
+    const normalized = hex.replace('#', '').trim();
+    if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
+    const value = normalized.length === 3
+      ? normalized.split('').map(ch => ch + ch).join('')
+      : normalized;
+    return {
+      r: Number.parseInt(value.slice(0, 2), 16),
+      g: Number.parseInt(value.slice(2, 4), 16),
+      b: Number.parseInt(value.slice(4, 6), 16)
+    };
+  }),
+  miredsToKelvin: jest.fn((mireds) => {
+    const value = Number(mireds);
+    return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
+  }),
+  hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
+    const features = Number(supportedFeatures);
+    const flag = Number(featureFlag);
+    return Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag;
+  })
 }));
 
 jest.mock('../../src/icons.js', () => ({
@@ -37,9 +59,11 @@ jest.mock('sortablejs', () => ({
 
 // Mock WebSocket callService method
 const mockCallService = jest.fn().mockResolvedValue({});
+const mockCallServiceWithResponse = jest.fn().mockResolvedValue({});
 
 jest.mock('../../src/websocket.js', () => ({
   callService: mockCallService,
+  callServiceWithResponse: mockCallServiceWithResponse,
   on: jest.fn(),
   emit: jest.fn()
 }));
@@ -72,6 +96,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     // Reset WebSocket mock
     mockCallService.mockClear();
     mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
+    mockCallServiceWithResponse.mockClear();
+    mockCallServiceWithResponse.mockResolvedValue({});
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -557,6 +583,45 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('Quick Access keyboard and filter polish', () => {
+    it('uses roving tabindex and arrow keys without duplicating activation logic', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['light.bedroom', 'switch.bedroom'];
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ['light.bedroom', 'switch.bedroom'] }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates({
+        'light.bedroom': sampleStates['light.bedroom'],
+        'switch.bedroom': sampleStates['switch.bedroom']
+      });
+
+      ui.renderActiveTab();
+
+      const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
+      expect(tiles).toHaveLength(2);
+      expect(tiles[0].getAttribute('tabindex')).toBe('0');
+      expect(tiles[1].getAttribute('tabindex')).toBe('-1');
+
+      tiles[0].dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true
+      }));
+
+      expect(document.activeElement).toBe(tiles[1]);
+      expect(tiles[0].getAttribute('tabindex')).toBe('-1');
+      expect(tiles[1].getAttribute('tabindex')).toBe('0');
+
+      tiles[1].dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true
+      }));
+
+      expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_off', {
+        entity_id: 'switch.bedroom'
+      });
+    });
+  });
+
   describe('callMediaTileService', () => {
     it('should call media_play service', () => {
       ui.callMediaTileService('play');
@@ -752,6 +817,17 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // ==============================================================================
   // GROUP 3: Data Transformation (15 tests)
   // ==============================================================================
+
+  describe('Home Assistant feature helpers', () => {
+    it('counts only needs_action todo items as active', () => {
+      expect(ui.getTodoActiveCount([
+        { uid: '1', summary: 'Milk', status: 'needs_action' },
+        { uid: '2', summary: 'Done', status: 'completed' },
+        { uid: '3', summary: 'Call', status: 'needs_action' },
+      ])).toBe(2);
+      expect(ui.getTodoActiveCount(null)).toBe(0);
+    });
+  });
 
   describe('updateWeatherFromHA', () => {
     beforeEach(() => {
@@ -1302,6 +1378,67 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('renders todo tiles with active item counts from get_items', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['todo.shopping'];
+      state.setConfig(config);
+      state.setStates({
+        'todo.shopping': {
+          entity_id: 'todo.shopping',
+          state: '0',
+          attributes: {
+            friendly_name: 'Shopping'
+          }
+        }
+      });
+      mockCallServiceWithResponse.mockResolvedValueOnce({
+        'todo.shopping': {
+          items: [
+            { uid: '1', summary: '<milk>', status: 'needs_action' },
+            { uid: '2', summary: 'Done', status: 'completed' },
+            { uid: '3', summary: 'Eggs', status: 'needs_action' }
+          ]
+        }
+      });
+
+      ui.renderActiveTab();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const todoTile = document.querySelector('.control-item.todo-entity[data-entity-id="todo.shopping"]');
+      expect(todoTile).toBeTruthy();
+      expect(todoTile.querySelector('.control-name').textContent).toBe('Shopping');
+      expect(todoTile.querySelector('.todo-active-count').textContent).toBe('2 active');
+      expect(mockCallServiceWithResponse).toHaveBeenCalledWith('todo', 'get_items', {
+        entity_id: 'todo.shopping'
+      });
+    });
+
+    it('renders calendar tiles with next event details from attributes', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['calendar.family'];
+      state.setConfig(config);
+      state.setStates({
+        'calendar.family': {
+          entity_id: 'calendar.family',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Family Calendar',
+            message: 'Dentist <checkup>',
+            start_time: '2026-07-06T09:30:00'
+          }
+        }
+      });
+
+      ui.renderActiveTab();
+
+      const calendarTile = document.querySelector('.control-item.calendar-entity[data-entity-id="calendar.family"]');
+      expect(calendarTile).toBeTruthy();
+      expect(calendarTile.querySelector('.control-name').textContent).toBe('Family Calendar');
+      expect(calendarTile.querySelector('.calendar-next-event').textContent).toContain('Dentist <checkup>');
+      expect(calendarTile.innerHTML).not.toContain('<checkup>');
     });
 
     it('presses input button helpers from quick access tiles', () => {
@@ -3455,6 +3592,138 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.updateWeatherEffects();
       expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
+    });
+  });
+
+  // ==============================================================================
+  // Quick Access page management (reorganize mode)
+  // ==============================================================================
+
+  describe('Quick Access page management', () => {
+    let tabBar;
+
+    beforeEach(() => {
+      tabBar = document.createElement('div');
+      tabBar.id = 'quick-access-tabs';
+      tabBar.className = 'quick-access-tabs hidden';
+      document.body.appendChild(tabBar);
+    });
+
+    const setPages = (pages, activeTabId) => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: pages,
+        activeTabId: activeTabId || pages[0].id,
+        favoriteEntities: [],
+      });
+    };
+
+    it('hides the tab bar in normal mode with a single page', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.renderActiveTab();
+      expect(tabBar.classList.contains('hidden')).toBe(true);
+      expect(tabBar.classList.contains('reorganize')).toBe(false);
+    });
+
+    it('shows plain switch tabs in normal mode with multiple pages', () => {
+      setPages([
+        { id: 'default', name: 'All', entityIds: [] },
+        { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+      ], 'default');
+      ui.renderActiveTab();
+      expect(tabBar.classList.contains('hidden')).toBe(false);
+      expect(tabBar.querySelectorAll('.quick-access-tab-link')).toHaveLength(2);
+      // The active tab's .tab-link carries .active so the highlight/glow CSS applies.
+      const activeLinks = tabBar.querySelectorAll('.quick-access-tab-link.active');
+      expect(activeLinks).toHaveLength(1);
+      expect(activeLinks[0].dataset.tab).toBe('default');
+      // No page-management affordances outside reorganize mode.
+      expect(tabBar.querySelector('.qa-tab-add')).toBeNull();
+      expect(tabBar.querySelector('.qa-tab-rename')).toBeNull();
+    });
+
+    it('always shows the bar with an add-page control in reorganize mode', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      // Entering reorganize mode alone must reveal the page bar (no extra render).
+      ui.toggleReorganizeMode();
+
+      expect(tabBar.classList.contains('hidden')).toBe(false);
+      expect(tabBar.classList.contains('reorganize')).toBe(true);
+      expect(tabBar.querySelector('.qa-tab-add')).not.toBeNull();
+
+      // Active page exposes rename; delete is hidden while only one page exists.
+      const activeTab = tabBar.querySelector('.quick-access-tab.active');
+      expect(activeTab).not.toBeNull();
+      expect(activeTab.querySelector('.qa-tab-rename')).not.toBeNull();
+      expect(activeTab.querySelector('.qa-tab-delete')).toBeNull();
+    });
+
+    it('exposes a delete control on the active page when multiple pages exist', () => {
+      setPages([
+        { id: 'default', name: 'All', entityIds: [] },
+        { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+      ], 'bedroom');
+      ui.toggleReorganizeMode();
+
+      const activeTab = tabBar.querySelector('.quick-access-tab.active');
+      expect(activeTab.dataset.tab).toBe('bedroom');
+      expect(activeTab.querySelector('.qa-tab-delete')).not.toBeNull();
+      // Inactive pages carry no per-page controls.
+      const inactive = tabBar.querySelector('.quick-access-tab:not(.active)');
+      expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
+    });
+
+    it('opens a themed add-page modal and creates a page from a preset chip', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+
+      tabBar.querySelector('.qa-tab-add').click();
+
+      const modal = document.getElementById('add-page-modal');
+      expect(modal).not.toBeNull();
+      expect(modal.classList.contains('modal')).toBe(true);
+      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add Page');
+
+      const chipLabels = Array.from(modal.querySelectorAll('.qa-add-chip')).map(c => c.textContent);
+      expect(chipLabels).toEqual(expect.arrayContaining(['Living Room', 'Bedroom', 'Kitchen']));
+
+      // Clicking a preset chip fills the name input rather than instantly saving.
+      const input = modal.querySelector('#add-page-name');
+      Array.from(modal.querySelectorAll('.qa-add-chip'))
+        .find(c => c.textContent === 'Bedroom')
+        .click();
+      expect(input.value).toBe('Bedroom');
+      expect(document.getElementById('add-page-modal')).not.toBeNull();
+
+      // Saving creates the page and closes the modal.
+      modal.querySelector('#add-page-save-btn').click();
+      expect(document.getElementById('add-page-modal')).toBeNull();
+      expect((state.CONFIG.customTabs || []).map(p => p.name)).toContain('Bedroom');
+    });
+
+    it('closes the add-page modal when leaving reorganize mode', () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+      tabBar.querySelector('.qa-tab-add').click();
+      expect(document.getElementById('add-page-modal')).not.toBeNull();
+
+      ui.toggleReorganizeMode();
+      expect(document.getElementById('add-page-modal')).toBeNull();
+    });
+
+    it('renders the active page hint in the manage modal without a per-entity view select', () => {
+      document.body.insertAdjacentHTML('beforeend', `
+        <input id="quick-controls-search" />
+        <div id="quick-controls-target-hint"></div>
+        <div id="quick-controls-list"></div>
+      `);
+      setPages([{ id: 'default', name: 'All', entityIds: [] }], 'default');
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+
+      ui.populateQuickControlsList();
+
+      expect(document.getElementById('quick-controls-target-hint').textContent).toContain('All');
+      expect(document.querySelector('.quick-access-entity-view-select')).toBeNull();
     });
   });
 

@@ -72,14 +72,7 @@ const sampleConfig = {
     weatherOverride: 'auto',
     enableInteractionDebugLogs: false
   },
-  customTabs: [
-    {
-      id: 'lights',
-      name: 'Lights',
-      icon: '💡',
-      entities: ['light.living_room', 'light.bedroom']
-    }
-  ],
+  customTabs: [],
   profileSync: {
     enabled: false,
     provider: 'cloudFile',

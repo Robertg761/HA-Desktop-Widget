@@ -38,6 +38,13 @@
             <div class="connection-indicator" id="connection-status"></div>
         </div>
         <div class="header-controls">
+            <button id="persistent-notifications-btn" class="control-btn notification-bell-btn hidden"
+                data-i18n-title="Home Assistant Notifications" title="Home Assistant Notifications"
+                data-i18n-aria-label="Home Assistant Notifications" aria-label="Home Assistant Notifications"
+                aria-hidden="true">
+                <span id="persistent-notifications-icon" class="notification-bell-icon">🔔</span>
+                <span id="persistent-notifications-count" class="notification-bell-count">0</span>
+            </button>
             <button id="settings-btn" class="control-btn" data-i18n-title="Settings" title="Settings">⚙️</button>
             <button id="minimize-btn" class="control-btn" data-i18n-title="Minimize" title="Minimize">➖</button>
             <button id="close-btn" class="control-btn" data-i18n-title="Close" title="Close">❌</button>
@@ -105,8 +112,10 @@
 
         <!-- Quick Access -->
         <div class="controls-section">
-            <div class="section-header">
-                <span class="section-title" data-i18n="Quick Access">Quick Access</span>
+            <div class="section-header quick-access-header">
+                <div id="quick-access-tabs" class="quick-access-tabs hidden" role="tablist" aria-label="Quick Access views" data-i18n-aria-label="Quick Access views">
+                    <!-- Dynamic Quick Access views will be added here -->
+                </div>
                 <div class="section-buttons">
                     <button id="reorganize-quick-controls-btn" class="section-btn"
                         data-i18n-title="Reorganize Quick Access" title="Reorganize Quick Access">⋮⋮</button>
@@ -152,6 +161,11 @@
                             <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
                             <input type="password" id="ha-token" placeholder="Your long-lived access token" data-i18n-placeholder="Your long-lived access token">
                         </div>
+                        <div class="connection-test-row">
+                            <button type="button" id="test-ha-connection-btn" class="btn btn-secondary" data-i18n="Test connection">Test connection</button>
+                            <span id="test-ha-connection-spinner" class="connection-test-spinner hidden" aria-hidden="true"></span>
+                        </div>
+                        <div id="test-ha-connection-status" class="connection-test-status" role="status" aria-live="polite"></div>
                     </div>
 
                     <!-- Window & Behavior Card -->
@@ -453,6 +467,14 @@
                         </button>
                         <div id="window-effects-body" class="section-body">
                             <div class="form-group">
+                                <label for="density-select" data-i18n="Layout density">Layout density</label>
+                                <select id="density-select">
+                                    <option value="comfortable" data-i18n="Comfortable">Comfortable</option>
+                                    <option value="compact" data-i18n="Compact">Compact</option>
+                                </select>
+                                <div class="form-help" data-i18n="Compact mode tightens Quick Access tiles and spacing.">Compact mode tightens Quick Access tiles and spacing.</div>
+                            </div>
+                            <div class="form-group">
                                 <label for="opacity-slider">Window Opacity:</label>
                                 <input type="range" id="opacity-slider" min="1" max="100" step="1" value="90">
                                 <span id="opacity-value">90</span>
@@ -739,6 +761,7 @@
                 </div>
                 <div class="form-group">
                     <label>Available Entities for Quick Access:</label>
+                    <div id="quick-controls-target-hint" class="form-help quick-controls-target-hint"></div>
                     <div id="quick-controls-list" class="entity-selector-list">
                         <!-- Available entities will be loaded here -->
                     </div>
@@ -880,6 +903,22 @@
     </div>
 
     <!-- Camera Viewer Modal (created dynamically by openCamera) -->
+
+    <!-- Home Assistant Persistent Notifications Modal -->
+    <div id="persistent-notifications-modal" class="modal hidden" role="dialog" aria-modal="true"
+        aria-labelledby="persistent-notifications-title">
+        <div class="modal-content persistent-notifications-modal-content">
+            <div class="modal-header">
+                <h2 id="persistent-notifications-title" data-i18n="Persistent Notifications">Persistent Notifications</h2>
+                <button id="close-persistent-notifications" class="close-btn" data-i18n-title="Close" title="Close">×</button>
+            </div>
+            <div class="modal-body persistent-notifications-body">
+                <div id="persistent-notifications-list" class="persistent-notifications-list"></div>
+                <div id="persistent-notifications-empty" class="persistent-notifications-empty hidden"
+                    data-i18n="No active notifications">No active notifications</div>
+            </div>
+        </div>
+    </div>
 
     <!-- Alert Configuration Modal -->
     <div id="alert-config-modal" class="modal hidden" role="dialog" aria-modal="true"

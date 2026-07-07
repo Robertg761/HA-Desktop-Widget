@@ -55,6 +55,10 @@ class WebSocketManager extends EventEmitter {
     this.ws = null;
     this.wsId = WS_INITIAL_ID;
     this.pendingWs = new Map();
+    this.messageSubscriptions = new Map();
+    this.messageSubscriptionHandlers = new Map();
+    this.nextMessageSubscriptionKey = 1;
+    this.isAuthenticated = false;
   }
 
   connect() {
@@ -89,6 +93,7 @@ class WebSocketManager extends EventEmitter {
       const ws = new WebSocket(wsUrl);
       ws.__intentionalClose = false;
       this.ws = ws;
+      this.isAuthenticated = false;
 
       ws.onopen = () => {
         log.debug('WebSocket connection established');
@@ -110,6 +115,12 @@ class WebSocketManager extends EventEmitter {
         if (this.ws === ws) {
           this.ws = null;
         }
+        this.isAuthenticated = false;
+        this.messageSubscriptionHandlers.clear();
+        this.messageSubscriptions.forEach((subscription) => {
+          subscription.subscriptionId = null;
+          subscription.subscribeRequestId = null;
+        });
         log.debug('WebSocket connection closed');
         this.emit('close', { intentional });
       };
@@ -131,12 +142,28 @@ class WebSocketManager extends EventEmitter {
         }
         return; // don't emit ping to consumers
       }
+      if (msg.type === 'auth_ok') {
+        this.isAuthenticated = true;
+      } else if (msg.type === 'auth_invalid') {
+        this.isAuthenticated = false;
+      }
       this.emit('message', msg);
 
       if (msg.type === 'result' && this.pendingWs.has(msg.id)) {
         const pending = this.pendingWs.get(msg.id);
         this.pendingWs.delete(msg.id);
         pending.resolve(msg);
+      }
+      if (msg.type === 'event' && this.messageSubscriptionHandlers.has(msg.id)) {
+        const subscription = this.messageSubscriptionHandlers.get(msg.id);
+        try {
+          subscription.onEvent(msg.event, msg);
+        } catch (callbackError) {
+          log.error('Error handling WebSocket subscription event:', callbackError);
+        }
+      }
+      if (msg.type === 'auth_ok') {
+        this.resubscribeMessages();
       }
     } catch (error) {
       log.error('Error processing WebSocket message:', error);
@@ -175,6 +202,92 @@ class WebSocketManager extends EventEmitter {
     return promise;
   }
 
+  sendMessageSubscription(subscription) {
+    if (!subscription?.active) return;
+    if (subscription.subscriptionId || subscription.subscribeRequestId) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.isAuthenticated) return;
+
+    const requestPromise = this.request(subscription.payload);
+    subscription.subscribeRequestId = requestPromise.id;
+    requestPromise.then((response) => {
+      if (subscription.subscribeRequestId !== response.id) return;
+      subscription.subscribeRequestId = null;
+      if (!response.success) {
+        log.warn('WebSocket subscription request was not successful:', response);
+        return;
+      }
+
+      if (!subscription.active) {
+        this.sendMessageUnsubscribe(response.id);
+        return;
+      }
+
+      subscription.subscriptionId = response.id;
+      this.messageSubscriptionHandlers.set(response.id, subscription);
+    }).catch((error) => {
+      if (subscription.subscribeRequestId === requestPromise.id) {
+        subscription.subscribeRequestId = null;
+      }
+      if (subscription.active) {
+        log.warn('WebSocket subscription request failed:', error);
+      }
+    });
+  }
+
+  sendMessageUnsubscribe(subscriptionId) {
+    if (!subscriptionId) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.isAuthenticated) return;
+    this.request({
+      type: 'unsubscribe_events',
+      subscription: subscriptionId,
+    }).catch((error) => {
+      log.warn('WebSocket unsubscribe request failed:', error);
+    });
+  }
+
+  resubscribeMessages() {
+    this.messageSubscriptions.forEach((subscription) => {
+      if (!subscription.active) return;
+      this.sendMessageSubscription(subscription);
+    });
+  }
+
+  subscribeMessage(payload, onEvent) {
+    if (!payload || typeof payload.type !== 'string') {
+      throw new Error('WebSocket subscription payload requires a type');
+    }
+    if (typeof onEvent !== 'function') {
+      throw new Error('WebSocket subscription requires an event handler');
+    }
+
+    const key = this.nextMessageSubscriptionKey++;
+    const subscription = {
+      key,
+      payload: { ...payload },
+      onEvent,
+      subscriptionId: null,
+      subscribeRequestId: null,
+      active: true,
+    };
+    this.messageSubscriptions.set(key, subscription);
+    this.sendMessageSubscription(subscription);
+
+    return () => {
+      const current = this.messageSubscriptions.get(key);
+      if (!current) return;
+
+      current.active = false;
+      this.messageSubscriptions.delete(key);
+
+      if (current.subscriptionId) {
+        this.messageSubscriptionHandlers.delete(current.subscriptionId);
+        this.sendMessageUnsubscribe(current.subscriptionId);
+      }
+      current.subscriptionId = null;
+      current.subscribeRequestId = null;
+    };
+  }
+
   close() {
     try {
       if (this.ws) {
@@ -182,13 +295,16 @@ class WebSocketManager extends EventEmitter {
         this.ws.close();
         this.ws = null;
       }
+      this.isAuthenticated = false;
+      this.messageSubscriptionHandlers.clear();
     } catch (error) {
       log.error('Error closing WebSocket:', error);
     }
   }
 
-  callService(domain, service, serviceData) {
+  callService(domain, service, serviceData, options = {}) {
     try {
+      const shouldReturnResponse = options?.returnResponse === true;
       const proxyContext = getDesktopPinServiceProxyContext(serviceData);
       if ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && proxyContext) {
         const proxiedPromise = window.electronAPI.requestDesktopPinAction(
@@ -198,6 +314,7 @@ class WebSocketManager extends EventEmitter {
             domain,
             service,
             serviceData: serviceData || {},
+            ...(shouldReturnResponse ? { returnResponse: true } : {}),
           }
         ).then((response) => {
           if (
@@ -208,22 +325,29 @@ class WebSocketManager extends EventEmitter {
           ) {
             throw new Error(`${domain}.${service} was forwarded without a service result`);
           }
-          return throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+          const checkedResponse = throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+          if (!shouldReturnResponse) return checkedResponse;
+          return checkedResponse?.result?.response ?? checkedResponse?.response ?? checkedResponse?.result ?? checkedResponse;
         });
         proxiedPromise.id = null;
         return proxiedPromise;
       }
 
-      const requestPromise = this.request({
+      const payload = {
         type: 'call_service',
         domain,
         service,
         service_data: serviceData,
-      });
+      };
+      if (shouldReturnResponse) payload.return_response = true;
 
-      const servicePromise = requestPromise.then((response) => (
-        throwForFailedServiceResponse(response, `${domain}.${service} failed`)
-      ));
+      const requestPromise = this.request(payload);
+
+      const servicePromise = requestPromise.then((response) => {
+        const checkedResponse = throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+        if (!shouldReturnResponse) return checkedResponse;
+        return checkedResponse?.result?.response ?? checkedResponse?.response ?? checkedResponse?.result ?? checkedResponse;
+      });
 
       // Preserve request ID for tests and callers that correlate responses
       servicePromise.id = requestPromise.id;
@@ -232,6 +356,10 @@ class WebSocketManager extends EventEmitter {
       log.error('Error calling service:', error);
       return Promise.reject(error);
     }
+  }
+
+  callServiceWithResponse(domain, service, serviceData) {
+    return this.callService(domain, service, serviceData, { returnResponse: true });
   }
 }
 

@@ -204,6 +204,12 @@ function createSettingsModalDOM() {
       <input type="range" id="opacity-slider" min="1" max="100" />
       <span id="opacity-value">90</span>
 
+      <label for="density-select">Layout density</label>
+      <select id="density-select">
+        <option value="comfortable">Comfortable</option>
+        <option value="compact">Compact</option>
+      </select>
+
       <label for="global-hotkeys-enabled">
         <input type="checkbox" id="global-hotkeys-enabled" />
         Enable Global Hotkeys
@@ -1673,6 +1679,34 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
         expect.objectContaining({ highContrast: true })
       );
+    });
+
+    test('loads, previews, and saves layout density from personalization settings', async () => {
+      state.CONFIG.ui.density = 'compact';
+      await settings.openSettings();
+
+      const densitySelect = document.getElementById('density-select');
+      expect(densitySelect.value).toBe('compact');
+
+      densitySelect.value = 'comfortable';
+      densitySelect.dispatchEvent(new Event('change'));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.ui.density).toBe('comfortable');
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
+        expect.objectContaining({ density: 'comfortable' })
+      );
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({ density: 'comfortable' })
+        })
+      );
+
+      densitySelect.value = 'compact';
+      await settings.saveSettings();
+
+      expect(state.CONFIG.ui.density).toBe('compact');
     });
   });
 

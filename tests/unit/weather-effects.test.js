@@ -10,14 +10,17 @@ describe('WeatherEffectsManager', () => {
   let mockGradient;
   let originalRAF;
   let originalCAF;
+  let originalMatchMedia;
 
   beforeEach(() => {
     // Save original animation frame methods
     originalRAF = window.requestAnimationFrame;
     originalCAF = window.cancelAnimationFrame;
+    originalMatchMedia = window.matchMedia;
 
     window.requestAnimationFrame = jest.fn((cb) => setTimeout(cb, 16));
     window.cancelAnimationFrame = jest.fn((id) => clearTimeout(id));
+    window.matchMedia = undefined;
 
     // Set up mock canvas and context
     mockGradient = {
@@ -56,6 +59,7 @@ describe('WeatherEffectsManager', () => {
   afterEach(() => {
     window.requestAnimationFrame = originalRAF;
     window.cancelAnimationFrame = originalCAF;
+    window.matchMedia = originalMatchMedia;
     jest.restoreAllMocks();
     jest.useRealTimers();
   });
@@ -115,37 +119,85 @@ describe('WeatherEffectsManager', () => {
     manager.destroy();
   });
 
+  it('renders a static frame without requesting animation when reduced motion is preferred', () => {
+    const mediaQuery = {
+      matches: true,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn()
+    };
+    window.matchMedia = jest.fn().mockReturnValue(mediaQuery);
+
+    const manager = new WeatherEffectsManager('weather-effects-canvas');
+    manager.setEffect('rainy');
+
+    expect(window.matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    expect(mockContext.clearRect).toHaveBeenCalled();
+    expect(mockContext.stroke).toHaveBeenCalled();
+
+    manager.destroy();
+    expect(mediaQuery.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+  });
+
+  it('stops and restarts animation when the reduced-motion media query changes', () => {
+    let changeHandler;
+    const mediaQuery = {
+      matches: false,
+      addEventListener: jest.fn((event, handler) => {
+        if (event === 'change') changeHandler = handler;
+      }),
+      removeEventListener: jest.fn()
+    };
+    window.matchMedia = jest.fn().mockReturnValue(mediaQuery);
+
+    const manager = new WeatherEffectsManager('weather-effects-canvas');
+    manager.setEffect('sunny');
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    const frameId = manager.animationFrameId;
+
+    mediaQuery.matches = true;
+    changeHandler();
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(frameId);
+    expect(manager.animationFrameId).toBeNull();
+
+    mediaQuery.matches = false;
+    changeHandler();
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(2);
+
+    manager.destroy();
+  });
+
   it('should run loop and invoke draw functions without error', () => {
     jest.useFakeTimers();
     const manager = new WeatherEffectsManager('weather-effects-canvas');
     
     // Test rainy
     manager.setEffect('rainy');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     expect(mockContext.stroke).toHaveBeenCalled();
 
     // Test stormy (lightning)
     mockContext.clearRect.mockClear();
     manager.setEffect('stormy');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     // Simulate lightning timer triggering
     manager.lightningTime = performance.now() - 100;
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(manager.lightningOpacity).toBeGreaterThanOrEqual(0);
 
     // Test cloudy
     mockContext.clearRect.mockClear();
     manager.setEffect('cloudy');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     expect(mockContext.fill).toHaveBeenCalled();
 
     // Test sunny
     mockContext.clearRect.mockClear();
     manager.setEffect('sunny');
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(60);
     expect(mockContext.clearRect).toHaveBeenCalled();
     expect(mockContext.fill).toHaveBeenCalled();
 

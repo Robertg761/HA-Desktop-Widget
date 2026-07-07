@@ -87,6 +87,19 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
+function miredsToKelvin(mireds) {
+  const value = Number(mireds);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.round(1000000 / value);
+}
+
+function hasSupportedFeature(supportedFeatures, featureFlag) {
+  const features = Number(supportedFeatures);
+  const flag = Number(featureFlag);
+  if (!Number.isFinite(features) || !Number.isFinite(flag) || flag <= 0) return false;
+  return (features & flag) === flag;
+}
+
 /**
  * Interpolate two RGB colors by a given fraction.
  *
@@ -973,4 +986,7 @@ export {
   initializeConnectionStatusTooltip,
   setStatus,
   showConfirm,
+  hexToRgb,
+  miredsToKelvin,
+  hasSupportedFeature,
 };

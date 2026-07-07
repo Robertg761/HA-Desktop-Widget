@@ -12,6 +12,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'quickAccessTileOptions',
     'primaryCards',
     'customTabs',
+    'activeTabId',
   ],
   visualPersonalization: [
     'alwaysOnTop',
