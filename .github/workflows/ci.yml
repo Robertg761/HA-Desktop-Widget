@@ -28,6 +28,12 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Package Windows app
+        run: npx electron-builder --dir --win --x64 --publish never
+
   lint-and-test-linux:
     runs-on: ubuntu-latest
     steps:
@@ -53,3 +59,42 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Package Linux app
+        run: npx electron-builder --dir --linux --x64 --publish never
+
+  package-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Package universal macOS app
+        run: npx electron-builder --dir --mac --universal --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Verify universal macOS app
+        shell: bash
+        run: |
+          executable="dist/mac-universal/HA Desktop Widget.app/Contents/MacOS/HA Desktop Widget"
+          architectures="$(lipo -archs "$executable")"
+          if [[ " $architectures " != *" x86_64 "* || " $architectures " != *" arm64 "* ]]; then
+            echo "Expected a universal macOS executable; found architectures: $architectures" >&2
+            exit 1
+          fi
