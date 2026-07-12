@@ -61,7 +61,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Start at Login**: Optional OS login startup control
 - **Configuration**: Easy setup with Home Assistant URL and token
 - **Performance**: Optimized rendering and memory management
-- **Cross-Platform**: Windows, macOS, and Linux support with transparency effects where available
+- **Cross-Platform**: Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64 support with transparency effects where available
 - **Personalization**: Accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
 - **Localization**: Auto/system language mode with downloadable offline language packs
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
@@ -80,7 +80,7 @@ Planned for a future release:
 
 ### Download & Install
 1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest available build for your OS.
-2. Windows: run the `.exe` installer or portable build. macOS: open the `.dmg` or `.zip`. Linux: use the `.AppImage` or install the `.deb` package.
+2. Windows: run the `.exe` installer or portable build. macOS: open the universal `.dmg` or `.zip` (older releases may be Apple Silicon-only). Linux: use the `.AppImage` or install the `.deb` package.
 3. Run the app and click the Settings button to configure your Home Assistant connection.
 
 ### First-Time Setup

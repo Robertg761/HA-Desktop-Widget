@@ -200,6 +200,13 @@ jobs:
           while IFS= read -r -d '' app; do
             found_app=1
             codesign --verify --deep --strict --verbose=4 "$app"
+
+            executable="$app/Contents/MacOS/HA Desktop Widget"
+            architectures="$(lipo -archs "$executable")"
+            if [[ " $architectures " != *" x86_64 "* || " $architectures " != *" arm64 "* ]]; then
+              echo "Expected a universal macOS executable; found architectures: $architectures" >&2
+              exit 1
+            fi
           done < <(find dist -type d -name '*.app' -print0)
 
           if [[ "$found_app" -eq 0 ]]; then

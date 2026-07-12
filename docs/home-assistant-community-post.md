@@ -38,7 +38,7 @@ Some highlights:
 - Global hotkeys for entities and a popup hotkey to bring the widget forward
 - Desktop notifications for entity state changes
 - System tray support and optional start-at-login
-- Cross-platform builds for Windows, macOS, and Linux
+- Cross-platform builds for Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64
 - Optional profile sync through a cloud-folder JSON file, with local-only connection/token data
 
 ## Screenshots
