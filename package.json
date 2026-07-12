@@ -134,17 +134,17 @@
   "devDependencies": {
     "@babel/core": "^7.28.6",
     "@babel/preset-env": "^7.28.6",
-    "@eslint/js": "^9.13.0",
+    "@eslint/js": "^9.39.5",
     "babel-jest": "^30.2.0",
-    "concurrently": "^9.2.1",
-    "electron": "^43.0.0",
+    "concurrently": "^9.2.4",
+    "electron": "^43.1.0",
     "electron-builder": "^26.15.6",
-    "eslint": "^9.10.0",
+    "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.9.0",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
-    "prettier": "^3.3.3",
+    "prettier": "^3.9.5",
     "vite": "^7.3.1"
   },
   "dependencies": {
