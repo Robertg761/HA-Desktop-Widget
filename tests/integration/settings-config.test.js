@@ -2,12 +2,16 @@
  * @jest-environment jsdom
  */
 
-const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  getMockConfig,
+} = require('../mocks/electron.js');
 const { sampleStates, sampleConfig } = require('../fixtures/ha-data.js');
 
 // Mock dependencies that settings.js requires
 const mockWebsocket = {
-  connect: jest.fn()
+  connect: jest.fn(),
 };
 
 const BASE_THEMES = [
@@ -16,21 +20,21 @@ const BASE_THEMES = [
     name: 'Original',
     color: '#64b5f6',
     description: 'Mock theme',
-    rgb: '100, 181, 246'
+    rgb: '100, 181, 246',
   },
   {
     id: 'slate',
     name: 'Slate',
     color: '#94a3b8',
     description: 'Mock theme',
-    rgb: '148, 163, 184'
+    rgb: '148, 163, 184',
   },
   {
     id: 'rose',
     name: 'Rose',
     color: '#f43f5e',
     description: 'Mock theme',
-    rgb: '244, 63, 94'
+    rgb: '244, 63, 94',
   },
 ];
 let mockCustomThemes = [];
@@ -39,7 +43,13 @@ function normalizeHex(hex) {
   if (!hex || typeof hex !== 'string') return null;
   const raw = hex.trim().replace('#', '');
   if (![3, 6].includes(raw.length) || !/^[0-9a-fA-F]+$/.test(raw)) return null;
-  const value = raw.length === 3 ? raw.split('').map(ch => ch + ch).join('') : raw;
+  const value =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((ch) => ch + ch)
+          .join('')
+      : raw;
   return `#${value.toUpperCase()}`;
 }
 
@@ -59,29 +69,31 @@ const mockUiUtils = {
   applyUiPreferences: jest.fn(),
   applyWindowEffects: jest.fn(),
   setCustomThemes: jest.fn((customColors = []) => {
-    mockCustomThemes = (Array.isArray(customColors) ? customColors : []).map(entry => ({
-      ...entry,
-      color: normalizeHex(entry.color),
-      description: 'Saved custom color',
-      rgb: hexToRgbString(entry.color),
-      isCustom: true,
-    })).filter(entry => entry.color && entry.rgb);
+    mockCustomThemes = (Array.isArray(customColors) ? customColors : [])
+      .map((entry) => ({
+        ...entry,
+        color: normalizeHex(entry.color),
+        description: 'Saved custom color',
+        rgb: hexToRgbString(entry.color),
+        isCustom: true,
+      }))
+      .filter((entry) => entry.color && entry.rgb);
   }),
-  getAccentThemes: jest.fn(() => ([...BASE_THEMES, ...mockCustomThemes])),
+  getAccentThemes: jest.fn(() => [...BASE_THEMES, ...mockCustomThemes]),
   trapFocus: jest.fn(),
   releaseFocusTrap: jest.fn(),
   showToast: jest.fn(),
-  showConfirm: jest.fn().mockResolvedValue(true)
+  showConfirm: jest.fn().mockResolvedValue(true),
 };
 
 const mockHotkeys = {
-  cleanupHotkeyEventListeners: jest.fn()
+  cleanupHotkeyEventListeners: jest.fn(),
 };
 
 const mockUI = {
   updateMediaTile: jest.fn(),
   renderPrimaryCards: jest.fn(),
-  renderActiveTab: jest.fn()
+  renderActiveTab: jest.fn(),
 };
 
 // Mock all dependencies before requiring settings.js
@@ -117,7 +129,7 @@ beforeEach(() => {
   const testConfig = getMockConfig();
   testConfig.homeAssistant = {
     url: 'http://homeassistant.local:8123',
-    token: 'test-token-123'
+    token: 'test-token-123',
   };
   testConfig.opacity = 0.95;
   testConfig.alwaysOnTop = true;
@@ -133,7 +145,7 @@ beforeEach(() => {
     density: 'comfortable',
     customColors: [],
     personalizationSectionsCollapsed: {},
-    enableInteractionDebugLogs: false
+    enableInteractionDebugLogs: false,
   };
   state.setConfig(testConfig);
 
@@ -143,13 +155,13 @@ beforeEach(() => {
     'media_player.spotify': {
       entity_id: 'media_player.spotify',
       state: 'playing',
-      attributes: { friendly_name: 'Spotify' }
+      attributes: { friendly_name: 'Spotify' },
     },
     'media_player.bedroom_speaker': {
       entity_id: 'media_player.bedroom_speaker',
       state: 'idle',
-      attributes: { friendly_name: 'Bedroom Speaker' }
-    }
+      attributes: { friendly_name: 'Bedroom Speaker' },
+    },
   };
   state.setStates(mockStates);
 });
@@ -403,9 +415,9 @@ describe('Settings + Config Integration', () => {
       syncScope: {
         ...profileSyncFixture.syncScope,
         sections: {
-          ...profileSyncFixture.syncScope.sections
-        }
-      }
+          ...profileSyncFixture.syncScope.sections,
+        },
+      },
     };
     if (overrides.syncScope) {
       next.syncScope = {
@@ -413,8 +425,8 @@ describe('Settings + Config Integration', () => {
         ...overrides.syncScope,
         sections: {
           ...profileSyncFixture.syncScope.sections,
-          ...(overrides.syncScope.sections || {})
-        }
+          ...(overrides.syncScope.sections || {}),
+        },
       };
     }
     return next;
@@ -424,7 +436,7 @@ describe('Settings + Config Integration', () => {
       cloudFilePath: '',
       lastSyncAt: null,
       lastSyncStatus: 'idle',
-      lastSyncError: ''
+      lastSyncError: '',
     }),
     passphraseEncrypted: false,
     passphraseStored: false,
@@ -433,21 +445,21 @@ describe('Settings + Config Integration', () => {
     ...overrides,
     syncScope: overrides.syncScope
       ? {
-        ...profileSyncFixture.syncScope,
-        ...overrides.syncScope,
-        sections: {
-          ...profileSyncFixture.syncScope.sections,
-          ...(overrides.syncScope.sections || {})
+          ...profileSyncFixture.syncScope,
+          ...overrides.syncScope,
+          sections: {
+            ...profileSyncFixture.syncScope.sections,
+            ...(overrides.syncScope.sections || {}),
+          },
         }
-      }
-      : buildProfileSync().syncScope
+      : buildProfileSync().syncScope,
   });
   const openSettingsWithCustomIconsExpanded = async (uiHooks = undefined) => {
     const config = state.CONFIG;
     config.ui = config.ui || {};
     config.ui.personalizationSectionsCollapsed = {
       ...(config.ui.personalizationSectionsCollapsed || {}),
-      'custom-entity-icons-section': false
+      'custom-entity-icons-section': false,
     };
     state.setConfig(config);
 
@@ -462,7 +474,7 @@ describe('Settings + Config Integration', () => {
     config.ui = config.ui || {};
     config.ui.personalizationSectionsCollapsed = {
       ...(config.ui.personalizationSectionsCollapsed || {}),
-      'desktop-pins-section': false
+      'desktop-pins-section': false,
     };
     state.setConfig(config);
 
@@ -477,7 +489,7 @@ describe('Settings + Config Integration', () => {
     test('opening settings populates fields from config', async () => {
       const mockUiHooks = {
         exitReorganizeMode: jest.fn(),
-        initUpdateUI: jest.fn()
+        initUpdateUI: jest.fn(),
       };
 
       await settings.openSettings(mockUiHooks);
@@ -519,7 +531,7 @@ describe('Settings + Config Integration', () => {
     test('opening settings exits reorganize mode', async () => {
       const mockUiHooks = {
         exitReorganizeMode: jest.fn(),
-        initUpdateUI: jest.fn()
+        initUpdateUI: jest.fn(),
       };
 
       await settings.openSettings(mockUiHooks);
@@ -531,7 +543,7 @@ describe('Settings + Config Integration', () => {
       state.CONFIG.ui.personalizationSectionsCollapsed = {
         'color-themes-section': true,
         'window-effects-section': false,
-        'custom-entity-icons-section': true
+        'custom-entity-icons-section': true,
       };
 
       await settings.openSettings();
@@ -563,13 +575,17 @@ describe('Settings + Config Integration', () => {
         windowEffectsToggle.click();
 
         expect(windowEffectsSection.classList.contains('collapsed')).toBe(false);
-        expect(state.CONFIG.ui.personalizationSectionsCollapsed).not.toHaveProperty('window-effects-section');
+        expect(state.CONFIG.ui.personalizationSectionsCollapsed).not.toHaveProperty(
+          'window-effects-section'
+        );
         expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
 
         // Collapse should persist as an explicit saved state.
         windowEffectsToggle.click();
         expect(windowEffectsSection.classList.contains('collapsed')).toBe(true);
-        expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(true);
+        expect(state.CONFIG.ui.personalizationSectionsCollapsed['window-effects-section']).toBe(
+          true
+        );
 
         jest.advanceTimersByTime(260);
         await Promise.resolve();
@@ -578,9 +594,9 @@ describe('Settings + Config Integration', () => {
           expect.objectContaining({
             ui: expect.objectContaining({
               personalizationSectionsCollapsed: expect.objectContaining({
-                'window-effects-section': true
-              })
-            })
+                'window-effects-section': true,
+              }),
+            }),
           })
         );
       } finally {
@@ -616,9 +632,9 @@ describe('Settings + Config Integration', () => {
             ui: expect.objectContaining({
               personalizationSectionsCollapsed: expect.objectContaining({
                 'window-effects-section': true,
-                'color-themes-section': true
-              })
-            })
+                'color-themes-section': true,
+              }),
+            }),
           })
         );
       } finally {
@@ -650,15 +666,18 @@ describe('Settings + Config Integration', () => {
   describe('Desktop Pins', () => {
     test('desktop pins section hydrates from saved config and allows focusing a saved pin', async () => {
       state.CONFIG.desktopPins = {
-        'light.living_room': { x: 10, y: 20, width: 176, height: 176 }
+        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
       };
 
       await openSettingsWithDesktopPinsExpanded();
 
       expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
-      expect(document.getElementById('desktop-pins-summary').textContent)
-        .toContain('persisted when you save settings');
-      expect(document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent).toBe('Unpin');
+      expect(document.getElementById('desktop-pins-summary').textContent).toContain(
+        'persisted when you save settings'
+      );
+      expect(
+        document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent
+      ).toBe('Unpin');
 
       const focusButton = document.querySelector('[data-desktop-pin-focus="light.living_room"]');
       expect(focusButton).toBeTruthy();
@@ -673,7 +692,7 @@ describe('Settings + Config Integration', () => {
       state.CONFIG.favoriteEntities = ['light.living_room', 'switch.bedroom'];
       state.CONFIG.desktopPins = {
         'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
-        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 }
+        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
       };
 
       await openSettingsWithDesktopPinsExpanded();
@@ -685,21 +704,25 @@ describe('Settings + Config Integration', () => {
       document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').click();
 
       expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
-      expect(document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent).toBe('Pin');
-      expect(document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').textContent).toBe('Unpin');
+      expect(
+        document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent
+      ).toBe('Pin');
+      expect(document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').textContent).toBe(
+        'Unpin'
+      );
 
       await settings.saveSettings();
 
       expect(state.CONFIG.desktopPins).toEqual({
         'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-        'switch.bedroom': {}
+        'switch.bedroom': {},
       });
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           desktopPins: {
             'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-            'switch.bedroom': {}
-          }
+            'switch.bedroom': {},
+          },
         })
       );
     });
@@ -707,7 +730,7 @@ describe('Settings + Config Integration', () => {
     test('desktop pins save preserves live bounds updates that happen while settings is open', async () => {
       state.CONFIG.favoriteEntities = ['light.living_room'];
       state.CONFIG.desktopPins = {
-        'light.living_room': { x: 10, y: 20, width: 176, height: 176 }
+        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
       };
 
       await openSettingsWithDesktopPinsExpanded();
@@ -715,20 +738,20 @@ describe('Settings + Config Integration', () => {
       state.setConfig({
         ...state.CONFIG,
         desktopPins: {
-          'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
-        }
+          'light.living_room': { x: 240, y: 160, width: 188, height: 152 },
+        },
       });
 
       await settings.saveSettings();
 
       expect(state.CONFIG.desktopPins).toEqual({
-        'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
+        'light.living_room': { x: 240, y: 160, width: 188, height: 152 },
       });
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           desktopPins: {
-            'light.living_room': { x: 240, y: 160, width: 188, height: 152 }
-          }
+            'light.living_room': { x: 240, y: 160, width: 188, height: 152 },
+          },
         })
       );
     });
@@ -782,8 +805,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           ui: expect.objectContaining({
-            enableInteractionDebugLogs: false
-          })
+            enableInteractionDebugLogs: false,
+          }),
         })
       );
     });
@@ -803,8 +826,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           updates: expect.objectContaining({
-            allowPrerelease: false
-          })
+            allowPrerelease: false,
+          }),
         })
       );
     });
@@ -824,8 +847,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           ui: expect.objectContaining({
-            use24HourClock: false
-          })
+            use24HourClock: false,
+          }),
         })
       );
     });
@@ -849,17 +872,23 @@ describe('Settings + Config Integration', () => {
           latestVersion: '1.0.0',
           installed: true,
           updateAvailable: false,
-        }
+        },
       ]);
 
       await settings.openSettings();
       await waitForLanguagePackRefresh();
 
       const languageSelect = document.getElementById('language-select');
-      const spanishOption = Array.from(languageSelect.options).find((option) => option.value === 'es');
-      const frenchOption = Array.from(languageSelect.options).find((option) => option.value === 'fr');
+      const spanishOption = Array.from(languageSelect.options).find(
+        (option) => option.value === 'es'
+      );
+      const frenchOption = Array.from(languageSelect.options).find(
+        (option) => option.value === 'fr'
+      );
 
-      expect(document.getElementById('language-select-help').textContent).toBe('Download a language pack below to enable it in the selector.');
+      expect(document.getElementById('language-select-help').textContent).toBe(
+        'Download a language pack below to enable it in the selector.'
+      );
       expect(spanishOption).toBeTruthy();
       expect(spanishOption.disabled).toBe(true);
       expect(spanishOption.textContent).toContain('Download first');
@@ -878,7 +907,7 @@ describe('Settings + Config Integration', () => {
           latestVersion: '1.0.0',
           installed: true,
           updateAvailable: false,
-        }
+        },
       ]);
 
       await settings.openSettings();
@@ -894,8 +923,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           ui: expect.objectContaining({
-            language: 'en'
-          })
+            language: 'en',
+          }),
         })
       );
       expect(state.CONFIG.ui.language).toBe('en');
@@ -912,15 +941,19 @@ describe('Settings + Config Integration', () => {
           latestVersion: '1.0.0',
           installed: true,
           updateAvailable: false,
-        }
+        },
       ];
       window.electronAPI.getLocalePacks.mockRejectedValueOnce(error);
 
       await settings.openSettings();
       await waitForLanguagePackRefresh();
 
-      expect(document.getElementById('language-pack-status').textContent).toBe('Unable to load language packs right now.');
-      expect(document.getElementById('language-pack-status').classList.contains('hidden')).toBe(false);
+      expect(document.getElementById('language-pack-status').textContent).toBe(
+        'Unable to load language packs right now.'
+      );
+      expect(document.getElementById('language-pack-status').classList.contains('hidden')).toBe(
+        false
+      );
       expect(document.getElementById('language-packs-list').textContent).toContain('Français');
       expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
     });
@@ -941,8 +974,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           homeAssistant: expect.objectContaining({
-            token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
-          })
+            token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          }),
         })
       );
     });
@@ -961,8 +994,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           homeAssistant: expect.objectContaining({
-            token: 'replacement-token-789'
-          })
+            token: 'replacement-token-789',
+          }),
         })
       );
     });
@@ -1060,9 +1093,9 @@ describe('Settings + Config Integration', () => {
 
       // Set opacity slider to specific values and verify conversion
       const testCases = [
-        { slider: 1, expected: 0.5 },    // Minimum
-        { slider: 50, expected: 0.747 },  // Middle
-        { slider: 100, expected: 1.0 }   // Maximum
+        { slider: 1, expected: 0.5 }, // Minimum
+        { slider: 50, expected: 0.747 }, // Middle
+        { slider: 100, expected: 1.0 }, // Maximum
       ];
 
       for (const testCase of testCases) {
@@ -1134,7 +1167,9 @@ describe('Settings + Config Integration', () => {
       applyBtn.click();
 
       // Assert
-      const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
+      const refreshedApplyBtn = document.querySelector(
+        '[data-custom-icon-apply="light.living_room"]'
+      );
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
       const actionBadge = row.querySelector('.custom-entity-icon-action-badge');
@@ -1152,14 +1187,18 @@ describe('Settings + Config Integration', () => {
     test('should show the full emoji catalog in the picker', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
-      const chooseBtn = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
+      const chooseBtn = document.querySelector(
+        '[data-custom-icon-picker-toggle="light.living_room"]'
+      );
       expect(chooseBtn).toBeTruthy();
 
       // Act
       chooseBtn.click();
 
       // Assert
-      const allChoices = document.querySelectorAll('[data-custom-icon-choice-entity="light.living_room"]');
+      const allChoices = document.querySelectorAll(
+        '[data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(allChoices.length).toBeGreaterThan(1000);
     });
 
@@ -1216,12 +1255,16 @@ describe('Settings + Config Integration', () => {
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
       const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
       expect(picker).toBeTruthy();
-      const iconChoiceBtn = document.querySelector('[data-custom-icon-choice="⏲️"][data-custom-icon-choice-entity="light.living_room"]');
+      const iconChoiceBtn = document.querySelector(
+        '[data-custom-icon-choice="⏲️"][data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(iconChoiceBtn).toBeTruthy();
       iconChoiceBtn.click();
 
       // Assert
-      const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
+      const refreshedApplyBtn = document.querySelector(
+        '[data-custom-icon-apply="light.living_room"]'
+      );
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
       expect(preview.textContent).toBe('⏲️');
@@ -1239,7 +1282,9 @@ describe('Settings + Config Integration', () => {
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
 
       // Assert
-      const treeChoice = document.querySelector('[data-custom-icon-choice="🌲"][data-custom-icon-choice-entity="light.living_room"]');
+      const treeChoice = document.querySelector(
+        '[data-custom-icon-choice="🌲"][data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(treeChoice).toBeTruthy();
     });
 
@@ -1254,12 +1299,17 @@ describe('Settings + Config Integration', () => {
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
 
       // Assert
-      const ratChoice = document.querySelector('[data-custom-icon-choice="🐀"][data-custom-icon-choice-entity="light.living_room"]');
+      const ratChoice = document.querySelector(
+        '[data-custom-icon-choice="🐀"][data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(ratChoice).toBeTruthy();
-      const ratSummary = document.querySelector('[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta');
+      const ratSummary = document.querySelector(
+        '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta'
+      );
       expect(ratSummary).toBeTruthy();
       expect(ratSummary.textContent).toMatch(/Showing \d+ of \d+ icons for "rat"\./);
-      const [, ratShown, ratTotal] = ratSummary.textContent.match(/Showing (\d+) of (\d+) icons for "rat"\./) || [];
+      const [, ratShown, ratTotal] =
+        ratSummary.textContent.match(/Showing (\d+) of (\d+) icons for "rat"\./) || [];
       expect(Number(ratShown)).toBeLessThan(Number(ratTotal));
 
       // Act
@@ -1267,7 +1317,9 @@ describe('Settings + Config Integration', () => {
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
 
       // Assert
-      const mouseChoice = document.querySelector('[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]');
+      const mouseChoice = document.querySelector(
+        '[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(mouseChoice).toBeTruthy();
     });
 
@@ -1282,24 +1334,32 @@ describe('Settings + Config Integration', () => {
       iconInput.dispatchEvent(new Event('input', { bubbles: true }));
 
       // Assert
-      const mouseChoice = document.querySelector('[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]');
+      const mouseChoice = document.querySelector(
+        '[data-custom-icon-choice="🐭"][data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(mouseChoice).toBeTruthy();
     });
 
     test('should allow choosing icons from picker instead of manual typing', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
-      const chooseBtn = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
+      const chooseBtn = document.querySelector(
+        '[data-custom-icon-picker-toggle="light.living_room"]'
+      );
       expect(chooseBtn).toBeTruthy();
 
       // Act
       chooseBtn.click();
-      const iconChoiceBtn = document.querySelector('[data-custom-icon-choice="⭐"][data-custom-icon-choice-entity="light.living_room"]');
+      const iconChoiceBtn = document.querySelector(
+        '[data-custom-icon-choice="⭐"][data-custom-icon-choice-entity="light.living_room"]'
+      );
       expect(iconChoiceBtn).toBeTruthy();
       iconChoiceBtn.click();
 
       // Assert
-      const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
+      const refreshedApplyBtn = document.querySelector(
+        '[data-custom-icon-apply="light.living_room"]'
+      );
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
       expect(preview.textContent).toBe('⭐');
@@ -1324,7 +1384,9 @@ describe('Settings + Config Integration', () => {
         'error',
         expect.any(Number)
       );
-      const refreshedApplyBtn = document.querySelector('[data-custom-icon-apply="light.living_room"]');
+      const refreshedApplyBtn = document.querySelector(
+        '[data-custom-icon-apply="light.living_room"]'
+      );
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
       expect(preview.textContent).toBe('💡');
@@ -1351,14 +1413,14 @@ describe('Settings + Config Integration', () => {
       // Assert
       expect(state.CONFIG.customEntityIcons).toEqual(
         expect.objectContaining({
-          'light.living_room': '🔥'
+          'light.living_room': '🔥',
         })
       );
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           customEntityIcons: expect.objectContaining({
-            'light.living_room': '🔥'
-          })
+            'light.living_room': '🔥',
+          }),
         })
       );
       expect(mockUI.renderActiveTab).toHaveBeenCalled();
@@ -1368,7 +1430,7 @@ describe('Settings + Config Integration', () => {
       // Arrange
       state.CONFIG.customEntityIcons = {
         'light.living_room': '🔥',
-        'switch.bedroom': '⚡'
+        'switch.bedroom': '⚡',
       };
       await openSettingsWithCustomIconsExpanded();
       const resetSingleBtn = document.querySelector('[data-custom-icon-reset="light.living_room"]');
@@ -1380,7 +1442,9 @@ describe('Settings + Config Integration', () => {
       resetSingleBtn.click();
 
       // Assert
-      const roomInputAfterReset = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      const roomInputAfterReset = document.querySelector(
+        '[data-custom-icon-input="light.living_room"]'
+      );
       const summaryAfterSingleReset = document.getElementById('custom-entity-icons-summary');
       expect(roomInputAfterReset.value).toBe('');
       expect(summaryAfterSingleReset.textContent).toContain('1 custom icon');
@@ -1429,8 +1493,8 @@ describe('Settings + Config Integration', () => {
           name: 'Ocean',
           color: '#336699',
           createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z'
-        }
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
       ];
 
       // Act
@@ -1491,7 +1555,7 @@ describe('Settings + Config Integration', () => {
 
       // Act
       haUrl.focus();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Assert
       expect(mainSave.disabled).toBe(false);
@@ -1574,10 +1638,12 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(state.CONFIG.ui.customColors).toHaveLength(1);
-      expect(state.CONFIG.ui.customColors[0]).toEqual(expect.objectContaining({
-        color: '#112233',
-        name: 'Custom #112233'
-      }));
+      expect(state.CONFIG.ui.customColors[0]).toEqual(
+        expect.objectContaining({
+          color: '#112233',
+          name: 'Custom #112233',
+        })
+      );
     });
 
     test('should prompt for unsaved custom color draft and save when confirmed', async () => {
@@ -1597,13 +1663,11 @@ describe('Settings + Config Integration', () => {
         expect.stringContaining('unsaved custom color edits'),
         expect.objectContaining({
           confirmText: 'Save and Continue',
-          cancelText: 'Continue Without Saving'
+          cancelText: 'Continue Without Saving',
         })
       );
       expect(state.CONFIG.ui.customColors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ color: '#13579B' })
-        ])
+        expect.arrayContaining([expect.objectContaining({ color: '#13579B' })])
       );
     });
 
@@ -1636,7 +1700,9 @@ describe('Settings + Config Integration', () => {
       saveCustomBtn.click();
 
       // Assert
-      const customOptions = document.querySelectorAll('.color-theme-option[data-custom-theme="true"]');
+      const customOptions = document.querySelectorAll(
+        '.color-theme-option[data-custom-theme="true"]'
+      );
       expect(customOptions).toHaveLength(1);
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
         expect.stringContaining('already saved'),
@@ -1671,7 +1737,9 @@ describe('Settings + Config Integration', () => {
       removeButton.click();
 
       // Assert
-      const customOptions = document.querySelectorAll('.color-theme-option[data-custom-theme="true"]');
+      const customOptions = document.querySelectorAll(
+        '.color-theme-option[data-custom-theme="true"]'
+      );
       expect(customOptions).toHaveLength(0);
 
       const selected = document.querySelector('.color-theme-option.selected');
@@ -1696,11 +1764,11 @@ describe('Settings + Config Integration', () => {
       const options = menu.querySelectorAll('.custom-dropdown-option');
 
       // First remove 'selected' class from all options
-      options.forEach(opt => opt.classList.remove('selected'));
+      options.forEach((opt) => opt.classList.remove('selected'));
 
       // Then add 'selected' class to the Spotify option
-      const spotifyOption = Array.from(options).find(opt =>
-        opt.getAttribute('data-value') === 'media_player.spotify'
+      const spotifyOption = Array.from(options).find(
+        (opt) => opt.getAttribute('data-value') === 'media_player.spotify'
       );
 
       expect(spotifyOption).toBeDefined();
@@ -1749,7 +1817,7 @@ describe('Settings + Config Integration', () => {
       );
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
-          ui: expect.objectContaining({ density: 'comfortable' })
+          ui: expect.objectContaining({ density: 'comfortable' }),
         })
       );
 
@@ -1773,39 +1841,41 @@ describe('Settings + Config Integration', () => {
             quickAccessLayout: false,
             visualPersonalization: true,
             automationAlerts: false,
-            connectionMediaPreferences: false
-          }
-        },
-        intervalMinutes: 15,
-        encryptionEnabled: true,
-        rememberPassphrase: true
-      });
-      state.setConfig(config);
-
-      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(buildProfileSyncStatus({
-        enabled: true,
-        provider: 'googleDrive',
-        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
-        syncScope: {
-          preset: 'visual',
-          sections: {
-            quickAccessLayout: false,
-            visualPersonalization: true,
-            automationAlerts: false,
-            connectionMediaPreferences: false
-          }
+            connectionMediaPreferences: false,
+          },
         },
         intervalMinutes: 15,
         encryptionEnabled: true,
         rememberPassphrase: true,
-        passphraseEncrypted: true,
-        passphraseStored: true,
-        lastSyncAt: '2026-02-23T10:00:00.000Z',
-        lastSyncStatus: 'success',
-        lastSyncError: '',
-        needsResolution: false,
-        inFlight: false
-      }));
+      });
+      state.setConfig(config);
+
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'googleDrive',
+          cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+          syncScope: {
+            preset: 'visual',
+            sections: {
+              quickAccessLayout: false,
+              visualPersonalization: true,
+              automationAlerts: false,
+              connectionMediaPreferences: false,
+            },
+          },
+          intervalMinutes: 15,
+          encryptionEnabled: true,
+          rememberPassphrase: true,
+          passphraseEncrypted: true,
+          passphraseStored: true,
+          lastSyncAt: '2026-02-23T10:00:00.000Z',
+          lastSyncStatus: 'success',
+          lastSyncError: '',
+          needsResolution: false,
+          inFlight: false,
+        })
+      );
 
       await settings.openSettings();
 
@@ -1814,8 +1884,12 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('profile-sync-folder-path').value).toBe('/tmp/shared-folder');
       expect(document.getElementById('profile-sync-scope-preset').value).toBe('visual');
       expect(document.getElementById('profile-sync-interval').value).toBe('15');
-      expect(document.getElementById('profile-sync-settings').classList.contains('hidden')).toBe(false);
-      expect(document.getElementById('profile-sync-status').textContent).toContain('Status: success');
+      expect(document.getElementById('profile-sync-settings').classList.contains('hidden')).toBe(
+        false
+      );
+      expect(document.getElementById('profile-sync-status').textContent).toContain(
+        'Status: success'
+      );
     });
 
     test('should derive root folder when sync file is at POSIX root', async () => {
@@ -1823,14 +1897,16 @@ describe('Settings + Config Integration', () => {
       config.profileSync = buildProfileSync({
         enabled: true,
         provider: 'cloudFile',
-        cloudFilePath: '/ha-widget-profile-sync.json'
+        cloudFilePath: '/ha-widget-profile-sync.json',
       });
       state.setConfig(config);
-      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(buildProfileSyncStatus({
-        enabled: true,
-        provider: 'cloudFile',
-        cloudFilePath: '/ha-widget-profile-sync.json'
-      }));
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'cloudFile',
+          cloudFilePath: '/ha-widget-profile-sync.json',
+        })
+      );
 
       await settings.openSettings();
 
@@ -1842,14 +1918,16 @@ describe('Settings + Config Integration', () => {
       config.profileSync = buildProfileSync({
         enabled: true,
         provider: 'cloudFile',
-        cloudFilePath: 'C:\\ha-widget-profile-sync.json'
+        cloudFilePath: 'C:\\ha-widget-profile-sync.json',
       });
       state.setConfig(config);
-      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(buildProfileSyncStatus({
-        enabled: true,
-        provider: 'cloudFile',
-        cloudFilePath: 'C:\\ha-widget-profile-sync.json'
-      }));
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'cloudFile',
+          cloudFilePath: 'C:\\ha-widget-profile-sync.json',
+        })
+      );
 
       await settings.openSettings();
 
@@ -1860,7 +1938,7 @@ describe('Settings + Config Integration', () => {
       mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
         success: true,
         remembered: true,
-        encrypted: true
+        encrypted: true,
       });
 
       await settings.openSettings();
@@ -1881,23 +1959,25 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
-        enabled: true,
-        provider: 'icloudDrive',
-        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
-        syncScope: {
-          preset: 'custom',
-          sections: {
-            quickAccessLayout: true,
-            visualPersonalization: false,
-            automationAlerts: false,
-            connectionMediaPreferences: true
-          }
-        },
-        intervalMinutes: 5,
-        encryptionEnabled: true,
-        rememberPassphrase: true
-      }));
+      expect(state.CONFIG.profileSync).toEqual(
+        expect.objectContaining({
+          enabled: true,
+          provider: 'icloudDrive',
+          cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+          syncScope: {
+            preset: 'custom',
+            sections: {
+              quickAccessLayout: true,
+              visualPersonalization: false,
+              automationAlerts: false,
+              connectionMediaPreferences: true,
+            },
+          },
+          intervalMinutes: 5,
+          encryptionEnabled: true,
+          rememberPassphrase: true,
+        })
+      );
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
     });
 
@@ -1905,7 +1985,7 @@ describe('Settings + Config Integration', () => {
       mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
         success: true,
         remembered: true,
-        encrypted: true
+        encrypted: true,
       });
 
       await settings.openSettings();
@@ -1918,12 +1998,15 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(mockElectronAPI.setProfileSyncPassphrase.mock.invocationCallOrder[0])
-        .toBeLessThan(mockElectronAPI.updateConfig.mock.invocationCallOrder[0]);
-      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
-        rememberPassphrase: true,
-        passphraseEncrypted: true
-      }));
+      expect(mockElectronAPI.setProfileSyncPassphrase.mock.invocationCallOrder[0]).toBeLessThan(
+        mockElectronAPI.updateConfig.mock.invocationCallOrder[0]
+      );
+      expect(state.CONFIG.profileSync).toEqual(
+        expect.objectContaining({
+          rememberPassphrase: true,
+          passphraseEncrypted: true,
+        })
+      );
     });
 
     test('should abort save when passphrase persistence fails', async () => {
@@ -1931,7 +2014,7 @@ describe('Settings + Config Integration', () => {
 
       mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
         success: false,
-        error: 'Passphrase persistence failed'
+        error: 'Passphrase persistence failed',
       });
 
       document.getElementById('profile-sync-enabled').checked = true;
@@ -1946,14 +2029,18 @@ describe('Settings + Config Integration', () => {
 
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith('Passphrase persistence failed', 'error', 3600);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Passphrase persistence failed',
+        'error',
+        3600
+      );
     });
 
     test('should fall back to session-only passphrase storage when remember is unavailable', async () => {
       mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
         success: true,
         remembered: false,
-        encrypted: false
+        encrypted: false,
       });
 
       await settings.openSettings();
@@ -1966,10 +2053,12 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
-        rememberPassphrase: false,
-        passphraseEncrypted: false
-      }));
+      expect(state.CONFIG.profileSync).toEqual(
+        expect.objectContaining({
+          rememberPassphrase: false,
+          passphraseEncrypted: false,
+        })
+      );
     });
 
     test('should keep profile sync path valid when folder is root', async () => {
@@ -2021,18 +2110,20 @@ describe('Settings + Config Integration', () => {
         provider: 'cloudFile',
         cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
         encryptionEnabled: true,
-        rememberPassphrase: true
+        rememberPassphrase: true,
       });
       state.setConfig(config);
 
-      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(buildProfileSyncStatus({
-        enabled: true,
-        provider: 'cloudFile',
-        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
-        encryptionEnabled: true,
-        rememberPassphrase: true,
-        passphraseStored: true
-      }));
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'cloudFile',
+          cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+          encryptionEnabled: true,
+          rememberPassphrase: true,
+          passphraseStored: true,
+        })
+      );
 
       await settings.openSettings();
 
@@ -2082,13 +2173,15 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(state.CONFIG.profileSync).toEqual(expect.objectContaining({
-        enabled: true,
-        provider: 'syncthing',
-        cloudFilePath: '/tmp/syncthing-folder/ha-widget-profile-sync.json',
-        intervalMinutes: 5,
-        encryptionEnabled: false
-      }));
+      expect(state.CONFIG.profileSync).toEqual(
+        expect.objectContaining({
+          enabled: true,
+          provider: 'syncthing',
+          cloudFilePath: '/tmp/syncthing-folder/ha-widget-profile-sync.json',
+          intervalMinutes: 5,
+          encryptionEnabled: false,
+        })
+      );
     });
 
     test('should coerce invalid sync intervals back to the default', async () => {
@@ -2112,24 +2205,26 @@ describe('Settings + Config Integration', () => {
         cloudFilePath: '',
         intervalMinutes: 5,
         encryptionEnabled: false,
-        rememberPassphrase: false
+        rememberPassphrase: false,
       });
       state.setConfig(config);
-      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(buildProfileSyncStatus({
-        enabled: true,
-        provider: 'cloudFile',
-        cloudFilePath: '/tmp/default-sync/ha-widget-profile-sync.json',
-        intervalMinutes: 5,
-        encryptionEnabled: false,
-        rememberPassphrase: false,
-        passphraseEncrypted: false,
-        passphraseStored: false,
-        lastSyncAt: null,
-        lastSyncStatus: 'idle',
-        lastSyncError: '',
-        needsResolution: false,
-        inFlight: false
-      }));
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'cloudFile',
+          cloudFilePath: '/tmp/default-sync/ha-widget-profile-sync.json',
+          intervalMinutes: 5,
+          encryptionEnabled: false,
+          rememberPassphrase: false,
+          passphraseEncrypted: false,
+          passphraseStored: false,
+          lastSyncAt: null,
+          lastSyncStatus: 'idle',
+          lastSyncError: '',
+          needsResolution: false,
+          inFlight: false,
+        })
+      );
 
       await settings.openSettings();
 
@@ -2155,7 +2250,7 @@ describe('Settings + Config Integration', () => {
         enabled: true,
         cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
         intervalMinutes: 5,
-        encryptionEnabled: false
+        encryptionEnabled: false,
       });
       state.setConfig(config);
       mockUiUtils.showConfirm.mockResolvedValueOnce(false);
@@ -2166,7 +2261,9 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-encryption-enabled').checked = false;
       await settings.saveSettings();
 
-      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/old-sync/ha-widget-profile-sync.json');
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe(
+        '/tmp/old-sync/ha-widget-profile-sync.json'
+      );
       expect(mockElectronAPI.copyProfileSyncFile).not.toHaveBeenCalled();
     });
 
@@ -2177,7 +2274,7 @@ describe('Settings + Config Integration', () => {
         enabled: true,
         cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
         intervalMinutes: 5,
-        encryptionEnabled: false
+        encryptionEnabled: false,
       });
       state.setConfig(config);
       mockUiUtils.showConfirm.mockResolvedValueOnce(true);
@@ -2185,7 +2282,7 @@ describe('Settings + Config Integration', () => {
         ok: true,
         status: 'copied',
         copied: true,
-        overwritten: false
+        overwritten: false,
       });
 
       await settings.openSettings();
@@ -2199,7 +2296,9 @@ describe('Settings + Config Integration', () => {
         '/tmp/new-sync/ha-widget-profile-sync.json',
         false
       );
-      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/new-sync/ha-widget-profile-sync.json');
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe(
+        '/tmp/new-sync/ha-widget-profile-sync.json'
+      );
     });
 
     test('should prompt overwrite when destination exists on folder change', async () => {
@@ -2209,12 +2308,10 @@ describe('Settings + Config Integration', () => {
         enabled: true,
         cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
         intervalMinutes: 5,
-        encryptionEnabled: false
+        encryptionEnabled: false,
       });
       state.setConfig(config);
-      mockUiUtils.showConfirm
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(true);
+      mockUiUtils.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
       mockElectronAPI.copyProfileSyncFile
         .mockResolvedValueOnce({ ok: false, status: 'destination_exists' })
         .mockResolvedValueOnce({ ok: true, status: 'copied', copied: true, overwritten: true });
@@ -2237,7 +2334,9 @@ describe('Settings + Config Integration', () => {
         '/tmp/new-sync/ha-widget-profile-sync.json',
         true
       );
-      expect(state.CONFIG.profileSync.cloudFilePath).toBe('/tmp/new-sync/ha-widget-profile-sync.json');
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe(
+        '/tmp/new-sync/ha-widget-profile-sync.json'
+      );
     });
   });
 });

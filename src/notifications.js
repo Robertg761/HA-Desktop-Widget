@@ -34,9 +34,8 @@ function normalizeNotificationCollection(notifications = {}) {
 }
 
 function applyPersistentNotificationEvent(currentNotifications, event = {}) {
-  const nextNotifications = event.type === 'current'
-    ? new Map()
-    : new Map(currentNotifications || []);
+  const nextNotifications =
+    event.type === 'current' ? new Map() : new Map(currentNotifications || []);
   const added = [];
 
   if (event.type === 'current' || event.type === 'added' || event.type === 'updated') {
@@ -125,12 +124,14 @@ function dismissPersistentNotification(notificationId, button) {
   if (!notificationId) return;
   if (button) button.disabled = true;
 
-  websocket.callService('persistent_notification', 'dismiss', {
-    notification_id: notificationId,
-  }).catch((error) => {
-    if (button) button.disabled = false;
-    console.error('Error dismissing persistent notification:', error);
-  });
+  websocket
+    .callService('persistent_notification', 'dismiss', {
+      notification_id: notificationId,
+    })
+    .catch((error) => {
+      if (button) button.disabled = false;
+      console.error('Error dismissing persistent notification:', error);
+    });
 }
 
 function createNotificationListItem(notification) {
@@ -244,8 +245,4 @@ function initializePersistentNotifications() {
   );
 }
 
-export {
-  applyPersistentNotificationEvent,
-  formatRelativeTime,
-  initializePersistentNotifications,
-};
+export { applyPersistentNotificationEvent, formatRelativeTime, initializePersistentNotifications };

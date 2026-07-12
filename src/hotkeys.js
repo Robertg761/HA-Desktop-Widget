@@ -4,90 +4,95 @@ import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { t } from './i18n.js';
 
 let globalHotkeys = {};
-const HOTKEY_SUPPORTED_DOMAINS = new Set(['light', 'switch', 'scene', 'script', 'automation', 'button', 'input_button', 'input_boolean', 'fan']);
+const HOTKEY_SUPPORTED_DOMAINS = new Set([
+  'light',
+  'switch',
+  'scene',
+  'script',
+  'automation',
+  'button',
+  'input_button',
+  'input_boolean',
+  'fan',
+]);
 
 // Helper function to escape HTML
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function escapeHtmlAttribute(text) {
-    return String(escapeHtml(String(text ?? '')))
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+  return String(escapeHtml(String(text ?? '')))
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function initializeHotkeys() {
-    try {
-        if (state.CONFIG && state.CONFIG.globalHotkeys) {
-            globalHotkeys = state.CONFIG.globalHotkeys;
-        }
-    } catch (error) {
-        console.error('Error initializing hotkeys:', error);
+  try {
+    if (state.CONFIG && state.CONFIG.globalHotkeys) {
+      globalHotkeys = state.CONFIG.globalHotkeys;
     }
+  } catch (error) {
+    console.error('Error initializing hotkeys:', error);
+  }
 }
 
 function getActionOptionsForDomain(domain) {
-    const options = {
-        light: [
-            { value: 'toggle', label: 'Toggle' },
-            { value: 'turn_on', label: 'Turn On' },
-            { value: 'turn_off', label: 'Turn Off' },
-            { value: 'brightness_up', label: 'Brightness Up' },
-            { value: 'brightness_down', label: 'Brightness Down' }
-        ],
-        switch: [
-            { value: 'toggle', label: 'Toggle' },
-            { value: 'turn_on', label: 'Turn On' },
-            { value: 'turn_off', label: 'Turn Off' }
-        ],
-        scene: [
-            { value: 'turn_on', label: 'Activate' }
-        ],
-        script: [
-            { value: 'turn_on', label: 'Run' }
-        ],
-        automation: [
-            { value: 'trigger', label: 'Trigger' },
-            { value: 'toggle', label: 'Toggle' },
-            { value: 'turn_on', label: 'Enable' },
-            { value: 'turn_off', label: 'Disable' }
-        ],
-        button: [
-            { value: 'press', label: 'Press' }
-        ],
-        input_button: [
-            { value: 'press', label: 'Press' }
-        ],
-        input_boolean: [
-            { value: 'toggle', label: 'Toggle' },
-            { value: 'turn_on', label: 'Turn On' },
-            { value: 'turn_off', label: 'Turn Off' }
-        ],
-        fan: [
-            { value: 'toggle', label: 'Toggle' },
-            { value: 'turn_on', label: 'Turn On' },
-            { value: 'turn_off', label: 'Turn Off' },
-            { value: 'increase_speed', label: 'Increase Speed' },
-            { value: 'decrease_speed', label: 'Decrease Speed' }
-        ]
-    };
+  const options = {
+    light: [
+      { value: 'toggle', label: 'Toggle' },
+      { value: 'turn_on', label: 'Turn On' },
+      { value: 'turn_off', label: 'Turn Off' },
+      { value: 'brightness_up', label: 'Brightness Up' },
+      { value: 'brightness_down', label: 'Brightness Down' },
+    ],
+    switch: [
+      { value: 'toggle', label: 'Toggle' },
+      { value: 'turn_on', label: 'Turn On' },
+      { value: 'turn_off', label: 'Turn Off' },
+    ],
+    scene: [{ value: 'turn_on', label: 'Activate' }],
+    script: [{ value: 'turn_on', label: 'Run' }],
+    automation: [
+      { value: 'trigger', label: 'Trigger' },
+      { value: 'toggle', label: 'Toggle' },
+      { value: 'turn_on', label: 'Enable' },
+      { value: 'turn_off', label: 'Disable' },
+    ],
+    button: [{ value: 'press', label: 'Press' }],
+    input_button: [{ value: 'press', label: 'Press' }],
+    input_boolean: [
+      { value: 'toggle', label: 'Toggle' },
+      { value: 'turn_on', label: 'Turn On' },
+      { value: 'turn_off', label: 'Turn Off' },
+    ],
+    fan: [
+      { value: 'toggle', label: 'Toggle' },
+      { value: 'turn_on', label: 'Turn On' },
+      { value: 'turn_off', label: 'Turn Off' },
+      { value: 'increase_speed', label: 'Increase Speed' },
+      { value: 'decrease_speed', label: 'Decrease Speed' },
+    ],
+  };
 
-    return options[domain] || options.switch;
+  return options[domain] || options.switch;
 }
 
 function createCustomDropdownHTML(options, selectedAction, entityId) {
-    const selectedOption = options.find(opt => opt.value === selectedAction) || options[0];
-    const selectedLabel = escapeHtml(selectedOption.label);
-    const escapedEntityId = escapeHtmlAttribute(entityId);
+  const selectedOption = options.find((opt) => opt.value === selectedAction) || options[0];
+  const selectedLabel = escapeHtml(selectedOption.label);
+  const escapedEntityId = escapeHtmlAttribute(entityId);
 
-    const optionsHTML = options.map(opt =>
+  const optionsHTML = options
+    .map(
+      (opt) =>
         `<div class="custom-dropdown-option ${opt.value === selectedAction ? 'selected' : ''}" role="option" data-value="${opt.value}">${escapeHtml(opt.label)}</div>`
-    ).join('');
+    )
+    .join('');
 
-    return `
+  return `
         <div class="custom-dropdown hotkey-action-dropdown" data-entity-id="${escapedEntityId}">
             <button type="button" class="custom-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
                 <span class="custom-dropdown-value">${selectedLabel}</span>
@@ -103,37 +108,41 @@ function createCustomDropdownHTML(options, selectedAction, entityId) {
 }
 
 function renderHotkeysTab() {
-    try {
-        const container = document.getElementById('hotkeys-list');
-        if (!container) return;
+  try {
+    const container = document.getElementById('hotkeys-list');
+    if (!container) return;
 
-        const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
-        const hotkeyEntities = Object.values(state.STATES)
-            .filter(e => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
-            .map(entity => {
-                const score = filter ? getSearchScore(getEntityDisplayName(entity), filter) + getSearchScore(entity.entity_id, filter) : 1;
-                return { entity, score };
-            })
-            .filter(item => item.score > 0)
-            .sort((a, b) => b.score - a.score);
+    const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
+    const hotkeyEntities = Object.values(state.STATES)
+      .filter((e) => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
+      .map((entity) => {
+        const score = filter
+          ? getSearchScore(getEntityDisplayName(entity), filter) +
+            getSearchScore(entity.entity_id, filter)
+          : 1;
+        return { entity, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
 
-        container.innerHTML = '';
-        hotkeyEntities.forEach(({ entity }) => {
-            const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
-            const hotkey = (typeof hotkeyConfig === 'string') ? hotkeyConfig : hotkeyConfig.hotkey;
-            const action = (typeof hotkeyConfig === 'object' && hotkeyConfig.action) ? hotkeyConfig.action : 'toggle';
-            const domain = entity.entity_id.split('.')[0];
+    container.innerHTML = '';
+    hotkeyEntities.forEach(({ entity }) => {
+      const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
+      const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
+      const action =
+        typeof hotkeyConfig === 'object' && hotkeyConfig.action ? hotkeyConfig.action : 'toggle';
+      const domain = entity.entity_id.split('.')[0];
 
-            // Get action options based on entity type
-            const actionOptions = getActionOptionsForDomain(domain);
-            const dropdownHTML = createCustomDropdownHTML(actionOptions, action, entity.entity_id);
+      // Get action options based on entity type
+      const actionOptions = getActionOptionsForDomain(domain);
+      const dropdownHTML = createCustomDropdownHTML(actionOptions, action, entity.entity_id);
 
-            const item = document.createElement('div');
-            item.className = 'hotkey-item';
-            const displayName = escapeHtml(getEntityDisplayName(entity));
-            const escapedHotkey = escapeHtmlAttribute(hotkey || '');
-            const escapedEntityId = escapeHtmlAttribute(entity.entity_id);
-            item.innerHTML = `
+      const item = document.createElement('div');
+      item.className = 'hotkey-item';
+      const displayName = escapeHtml(getEntityDisplayName(entity));
+      const escapedHotkey = escapeHtmlAttribute(hotkey || '');
+      const escapedEntityId = escapeHtmlAttribute(entity.entity_id);
+      item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
                     <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('No hotkey set'))}" data-entity-id="${escapedEntityId}">
@@ -141,210 +150,231 @@ function renderHotkeysTab() {
                     <button class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
                 </div>
             `;
-            container.appendChild(item);
-        });
+      container.appendChild(item);
+    });
 
-        // Set up event listeners after rendering
-        setupHotkeyEventListenersInternal();
-    } catch (error) {
-        console.error('Error rendering hotkeys tab:', error);
-    }
+    // Set up event listeners after rendering
+    setupHotkeyEventListenersInternal();
+  } catch (error) {
+    console.error('Error rendering hotkeys tab:', error);
+  }
 }
 
 function getDefaultActionForEntity(entity) {
-    const domain = entity?.entity_id?.split('.')?.[0] || '';
-    const options = getActionOptionsForDomain(domain);
-    return options[0]?.value || 'toggle';
+  const domain = entity?.entity_id?.split('.')?.[0] || '';
+  const options = getActionOptionsForDomain(domain);
+  return options[0]?.value || 'toggle';
 }
 
 async function assignHotkeyToEntity(entityId, options = {}) {
-    try {
-        const entity = state.STATES?.[entityId];
-        if (!entity) {
-            showToast(t('Entity not found'), 'error', 2500);
-            return { success: false, error: 'Entity not found' };
-        }
-
-        if (!state.CONFIG.globalHotkeys) {
-            state.CONFIG.globalHotkeys = { enabled: false, hotkeys: {} };
-        }
-        if (!state.CONFIG.globalHotkeys.hotkeys) {
-            state.CONFIG.globalHotkeys.hotkeys = {};
-        }
-
-        const currentConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
-        const currentAction = (typeof currentConfig === 'object' && currentConfig?.action)
-            ? currentConfig.action
-            : null;
-        const action = options.action || currentAction || getDefaultActionForEntity(entity);
-        const hotkey = await captureHotkey();
-
-        if (!hotkey) {
-            return { success: false, canceled: true };
-        }
-
-        const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
-        if (result?.success) {
-            state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
-            renderHotkeysTab();
-            showToast(t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }), 'success', 2200);
-            return { success: true, hotkey, action };
-        }
-
-        const error = result?.error || t('Failed to set hotkey');
-        showToast(error, 'error', 3000);
-        return { success: false, error };
-    } catch (error) {
-        console.error('Error assigning hotkey to entity:', error);
-        showToast(t('Failed to set hotkey'), 'error', 3000);
-        return { success: false, error };
+  try {
+    const entity = state.STATES?.[entityId];
+    if (!entity) {
+      showToast(t('Entity not found'), 'error', 2500);
+      return { success: false, error: 'Entity not found' };
     }
+
+    if (!state.CONFIG.globalHotkeys) {
+      state.CONFIG.globalHotkeys = { enabled: false, hotkeys: {} };
+    }
+    if (!state.CONFIG.globalHotkeys.hotkeys) {
+      state.CONFIG.globalHotkeys.hotkeys = {};
+    }
+
+    const currentConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
+    const currentAction =
+      typeof currentConfig === 'object' && currentConfig?.action ? currentConfig.action : null;
+    const action = options.action || currentAction || getDefaultActionForEntity(entity);
+    const hotkey = await captureHotkey();
+
+    if (!hotkey) {
+      return { success: false, canceled: true };
+    }
+
+    const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
+    if (result?.success) {
+      state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+      renderHotkeysTab();
+      showToast(
+        t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }),
+        'success',
+        2200
+      );
+      return { success: true, hotkey, action };
+    }
+
+    const error = result?.error || t('Failed to set hotkey');
+    showToast(error, 'error', 3000);
+    return { success: false, error };
+  } catch (error) {
+    console.error('Error assigning hotkey to entity:', error);
+    showToast(t('Failed to set hotkey'), 'error', 3000);
+    return { success: false, error };
+  }
 }
 
 async function toggleHotkeys(enabled) {
-    try {
-        const result = await window.electronAPI.toggleHotkeys(enabled);
-        if (result.success) {
-            if (state.CONFIG.globalHotkeys) {
-                state.CONFIG.globalHotkeys.enabled = enabled;
-            }
-            globalHotkeys.enabled = enabled;
-            showToast(enabled ? t('Global hotkeys enabled') : t('Global hotkeys disabled'), 'success', 2000);
-            return true;
-        }
-    } catch (error) {
-        console.error('Error toggling hotkeys:', error);
-        showToast(t('Error toggling hotkeys'), 'error', 2000);
+  try {
+    const result = await window.electronAPI.toggleHotkeys(enabled);
+    if (result.success) {
+      if (state.CONFIG.globalHotkeys) {
+        state.CONFIG.globalHotkeys.enabled = enabled;
+      }
+      globalHotkeys.enabled = enabled;
+      showToast(
+        enabled ? t('Global hotkeys enabled') : t('Global hotkeys disabled'),
+        'success',
+        2000
+      );
+      return true;
     }
-    return false;
+  } catch (error) {
+    console.error('Error toggling hotkeys:', error);
+    showToast(t('Error toggling hotkeys'), 'error', 2000);
+  }
+  return false;
 }
 
 function getAcceleratorString(e) {
-    const parts = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.altKey) parts.push('Alt');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.metaKey) parts.push('Super');
+  const parts = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.metaKey) parts.push('Super');
 
-    const keyMap = {
-        'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right',
-        'Space': 'Space', 'Enter': 'Enter', 'Escape': 'Esc', 'Tab': 'Tab',
-        'Home': 'Home', 'End': 'End', 'PageUp': 'PageUp', 'PageDown': 'PageDown',
-        'Delete': 'Delete', 'Insert': 'Insert',
-    };
+  const keyMap = {
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    Space: 'Space',
+    Enter: 'Enter',
+    Escape: 'Esc',
+    Tab: 'Tab',
+    Home: 'Home',
+    End: 'End',
+    PageUp: 'PageUp',
+    PageDown: 'PageDown',
+    Delete: 'Delete',
+    Insert: 'Insert',
+  };
 
-    const code = e.code;
-    let key = '';
+  const code = e.code;
+  let key = '';
 
-    if (keyMap[code]) {
-        key = keyMap[code];
-    } else if (code.startsWith('Key')) {
-        key = code.substring(3);
-    } else if (code.startsWith('Digit')) {
-        key = code.substring(5);
-    } else if (code.startsWith('Numpad')) {
-        key = 'num' + code.substring(6);
-    } else if (code.startsWith('F') && !isNaN(parseInt(code.substring(1)))) {
-        key = code;
-    } else {
-        const keyIdentifier = e.key.toUpperCase();
-        if (keyIdentifier.length === 1 && !['CONTROL', 'ALT', 'SHIFT', 'META'].includes(keyIdentifier)) {
-            key = keyIdentifier;
-        }
+  if (keyMap[code]) {
+    key = keyMap[code];
+  } else if (code.startsWith('Key')) {
+    key = code.substring(3);
+  } else if (code.startsWith('Digit')) {
+    key = code.substring(5);
+  } else if (code.startsWith('Numpad')) {
+    key = 'num' + code.substring(6);
+  } else if (code.startsWith('F') && !isNaN(parseInt(code.substring(1)))) {
+    key = code;
+  } else {
+    const keyIdentifier = e.key.toUpperCase();
+    if (
+      keyIdentifier.length === 1 &&
+      !['CONTROL', 'ALT', 'SHIFT', 'META'].includes(keyIdentifier)
+    ) {
+      key = keyIdentifier;
     }
+  }
 
-    const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
-    if (!isModifier && key) {
-        parts.push(key);
-    }
+  const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
+  if (!isModifier && key) {
+    parts.push(key);
+  }
 
-    return parts.join('+');
+  return parts.join('+');
 }
 
 function captureHotkey() {
-    return new Promise(resolve => {
-        try {
-            const modal = document.createElement('div');
-            modal.className = 'hotkey-capture-modal';
-            modal.innerHTML = `
+  return new Promise((resolve) => {
+    try {
+      const modal = document.createElement('div');
+      modal.className = 'hotkey-capture-modal';
+      modal.innerHTML = `
                 <div class="modal-content">
                     <p>${escapeHtml(t('Press the desired key combination...'))}</p>
                     <div id="hotkey-preview" class="hotkey-preview-box"></div>
                     <p><small>${escapeHtml(t('Press Esc to cancel.'))}</small></p>
                 </div>
             `;
-            document.body.appendChild(modal);
-            const previewBox = document.getElementById('hotkey-preview');
+      document.body.appendChild(modal);
+      const previewBox = document.getElementById('hotkey-preview');
 
-            const onKeyDown = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+      const onKeyDown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-                if (e.key === 'Escape') {
-                    cleanup();
-                    resolve(null);
-                    return;
-                }
-
-                const accelerator = getAcceleratorString(e);
-                const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
-
-                if (!isModifier) {
-                    // Check if at least one modifier is held
-                    if (accelerator.includes('+')) {
-                        previewBox.textContent = accelerator;
-                        cleanup();
-                        resolve(accelerator);
-                    } else {
-                        // Show feedback that a modifier is required
-                        previewBox.textContent = t('{{hotkey}} (add Ctrl/Alt/Shift)', { hotkey: accelerator });
-                    }
-                } else {
-                    // Just show the modifiers being pressed
-                    previewBox.textContent = accelerator;
-                }
-            };
-
-            const cleanup = () => {
-                document.removeEventListener('keydown', onKeyDown, true);
-                document.body.removeChild(modal);
-            };
-
-            document.addEventListener('keydown', onKeyDown, true);
-        } catch (error) {
-            console.error('Error capturing hotkey:', error);
-            resolve(null);
+        if (e.key === 'Escape') {
+          cleanup();
+          resolve(null);
+          return;
         }
-    });
+
+        const accelerator = getAcceleratorString(e);
+        const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
+
+        if (!isModifier) {
+          // Check if at least one modifier is held
+          if (accelerator.includes('+')) {
+            previewBox.textContent = accelerator;
+            cleanup();
+            resolve(accelerator);
+          } else {
+            // Show feedback that a modifier is required
+            previewBox.textContent = t('{{hotkey}} (add Ctrl/Alt/Shift)', { hotkey: accelerator });
+          }
+        } else {
+          // Just show the modifiers being pressed
+          previewBox.textContent = accelerator;
+        }
+      };
+
+      const cleanup = () => {
+        document.removeEventListener('keydown', onKeyDown, true);
+        document.body.removeChild(modal);
+      };
+
+      document.addEventListener('keydown', onKeyDown, true);
+    } catch (error) {
+      console.error('Error capturing hotkey:', error);
+      resolve(null);
+    }
+  });
 }
 
 function renderExistingHotkeys() {
-    try {
-        const container = document.getElementById('existing-hotkeys-list');
-        if (!container) return;
+  try {
+    const container = document.getElementById('existing-hotkeys-list');
+    if (!container) return;
 
-        container.innerHTML = '';
-        const hotkeys = state.CONFIG.globalHotkeys?.hotkeys || {};
+    container.innerHTML = '';
+    const hotkeys = state.CONFIG.globalHotkeys?.hotkeys || {};
 
-        Object.entries(hotkeys).forEach(([entityId, hotkey]) => {
-            const entity = state.STATES[entityId];
-            if (!entity) return;
+    Object.entries(hotkeys).forEach(([entityId, hotkey]) => {
+      const entity = state.STATES[entityId];
+      if (!entity) return;
 
-            const item = document.createElement('div');
-            item.className = 'existing-hotkey-item';
-            const displayName = escapeHtml(getEntityDisplayName(entity));
-            const hotkeyDisplay = typeof hotkey === 'string' ? escapeHtml(hotkey) : escapeHtml(hotkey.hotkey || '');
-            const escapedEntityId = escapeHtmlAttribute(entityId);
-            item.innerHTML = `
+      const item = document.createElement('div');
+      item.className = 'existing-hotkey-item';
+      const displayName = escapeHtml(getEntityDisplayName(entity));
+      const hotkeyDisplay =
+        typeof hotkey === 'string' ? escapeHtml(hotkey) : escapeHtml(hotkey.hotkey || '');
+      const escapedEntityId = escapeHtmlAttribute(entityId);
+      item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <span class="hotkey-display">${hotkeyDisplay}</span>
                 <button class="btn-remove-hotkey" data-entity-id="${escapedEntityId}">Remove</button>
             `;
-            container.appendChild(item);
-        });
-    } catch (error) {
-        console.error('Error rendering existing hotkeys:', error);
-    }
+      container.appendChild(item);
+    });
+  } catch (error) {
+    console.error('Error rendering existing hotkeys:', error);
+  }
 }
 
 // Flag to track if listeners have been set up
@@ -357,168 +387,168 @@ let containerKeydownHandler = null;
 let activeContainer = null;
 
 function setupHotkeyEventListenersInternal() {
-    try {
-        // Prevent duplicate event listeners
-        if (listenersSetUp) return;
+  try {
+    // Prevent duplicate event listeners
+    if (listenersSetUp) return;
 
-        const container = document.getElementById('hotkeys-list');
-        if (!container) return;
-        activeContainer = container;
+    const container = document.getElementById('hotkeys-list');
+    if (!container) return;
+    activeContainer = container;
 
-        // Handle custom dropdown toggle
-        containerClickHandler = (e) => {
-            const trigger = e.target.closest('.custom-dropdown-trigger');
-            if (trigger) {
-                e.stopPropagation();
-                const dropdown = trigger.closest('.custom-dropdown');
-                const isOpen = dropdown.classList.contains('open');
+    // Handle custom dropdown toggle
+    containerClickHandler = (e) => {
+      const trigger = e.target.closest('.custom-dropdown-trigger');
+      if (trigger) {
+        e.stopPropagation();
+        const dropdown = trigger.closest('.custom-dropdown');
+        const isOpen = dropdown.classList.contains('open');
 
-                // Close all other dropdowns first
-                container.querySelectorAll('.custom-dropdown.open').forEach(dd => {
-                    dd.classList.remove('open');
-                    dd.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
-                });
+        // Close all other dropdowns first
+        container.querySelectorAll('.custom-dropdown.open').forEach((dd) => {
+          dd.classList.remove('open');
+          dd.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
+        });
 
-                // Toggle current dropdown
-                if (!isOpen) {
-                    dropdown.classList.add('open');
-                    trigger.setAttribute('aria-expanded', 'true');
-                }
-            }
-        };
-        container.addEventListener('click', containerClickHandler);
+        // Toggle current dropdown
+        if (!isOpen) {
+          dropdown.classList.add('open');
+          trigger.setAttribute('aria-expanded', 'true');
+        }
+      }
+    };
+    container.addEventListener('click', containerClickHandler);
 
-        // Handle custom dropdown option selection
-        containerOptionHandler = async (e) => {
-            const option = e.target.closest('.custom-dropdown-option');
-            if (option) {
-                const dropdown = option.closest('.custom-dropdown');
-                const entityId = dropdown.dataset.entityId;
-                const action = option.dataset.value;
-                const actionLabel = option.textContent;
+    // Handle custom dropdown option selection
+    containerOptionHandler = async (e) => {
+      const option = e.target.closest('.custom-dropdown-option');
+      if (option) {
+        const dropdown = option.closest('.custom-dropdown');
+        const entityId = dropdown.dataset.entityId;
+        const action = option.dataset.value;
+        const actionLabel = option.textContent;
 
-                // Update dropdown display
-                const valueSpan = dropdown.querySelector('.custom-dropdown-value');
-                if (valueSpan) {
-                    valueSpan.textContent = actionLabel;
-                }
+        // Update dropdown display
+        const valueSpan = dropdown.querySelector('.custom-dropdown-value');
+        if (valueSpan) {
+          valueSpan.textContent = actionLabel;
+        }
 
-                // Update selected state
-                dropdown.querySelectorAll('.custom-dropdown-option').forEach(opt => {
-                    opt.classList.remove('selected');
-                });
-                option.classList.add('selected');
+        // Update selected state
+        dropdown.querySelectorAll('.custom-dropdown-option').forEach((opt) => {
+          opt.classList.remove('selected');
+        });
+        option.classList.add('selected');
 
-                // Close dropdown
-                dropdown.classList.remove('open');
-                dropdown.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
+        // Close dropdown
+        dropdown.classList.remove('open');
+        dropdown.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
 
-                // Save to config
-                const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
-                if (hotkeyConfig) {
-                    // Update the action in the config
-                    if (typeof hotkeyConfig === 'string') {
-                        // Convert old format to new format
-                        state.CONFIG.globalHotkeys.hotkeys[entityId] = {
-                            hotkey: hotkeyConfig,
-                            action: action
-                        };
-                    } else {
-                        hotkeyConfig.action = action;
-                    }
+        // Save to config
+        const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
+        if (hotkeyConfig) {
+          // Update the action in the config
+          if (typeof hotkeyConfig === 'string') {
+            // Convert old format to new format
+            state.CONFIG.globalHotkeys.hotkeys[entityId] = {
+              hotkey: hotkeyConfig,
+              action: action,
+            };
+          } else {
+            hotkeyConfig.action = action;
+          }
 
-                    // Save the updated config
-                    await window.electronAPI.updateConfig(state.CONFIG);
+          // Save the updated config
+          await window.electronAPI.updateConfig(state.CONFIG);
 
-                    // Re-register hotkeys to apply the new action
-                    await window.electronAPI.registerHotkeys();
+          // Re-register hotkeys to apply the new action
+          await window.electronAPI.registerHotkeys();
 
-                    showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
-                }
-            }
-        };
-        container.addEventListener('click', containerOptionHandler);
+          showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
+        }
+      }
+    };
+    container.addEventListener('click', containerOptionHandler);
 
-        // Close dropdowns when clicking outside - store handler reference for cleanup
-        documentClickHandler = (e) => {
-            const container = document.getElementById('hotkeys-list');
-            if (!container) return; // Container was removed
+    // Close dropdowns when clicking outside - store handler reference for cleanup
+    documentClickHandler = (e) => {
+      const container = document.getElementById('hotkeys-list');
+      if (!container) return; // Container was removed
 
-            if (!e.target.closest('.custom-dropdown')) {
-                container.querySelectorAll('.custom-dropdown.open').forEach(dropdown => {
-                    dropdown.classList.remove('open');
-                    const trigger = dropdown.querySelector('.custom-dropdown-trigger');
-                    if (trigger) {
-                        trigger.setAttribute('aria-expanded', 'false');
-                    }
-                });
-            }
-        };
-        document.addEventListener('click', documentClickHandler);
+      if (!e.target.closest('.custom-dropdown')) {
+        container.querySelectorAll('.custom-dropdown.open').forEach((dropdown) => {
+          dropdown.classList.remove('open');
+          const trigger = dropdown.querySelector('.custom-dropdown-trigger');
+          if (trigger) {
+            trigger.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+    };
+    document.addEventListener('click', documentClickHandler);
 
-        // Handle keyboard navigation
-        containerKeydownHandler = (e) => {
-            const trigger = e.target.closest('.custom-dropdown-trigger');
-            if (trigger) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    trigger.click();
-                } else if (e.key === 'Escape') {
-                    const dropdown = trigger.closest('.custom-dropdown');
-                    dropdown.classList.remove('open');
-                    trigger.setAttribute('aria-expanded', 'false');
-                }
-            }
-        };
-        container.addEventListener('keydown', containerKeydownHandler);
+    // Handle keyboard navigation
+    containerKeydownHandler = (e) => {
+      const trigger = e.target.closest('.custom-dropdown-trigger');
+      if (trigger) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          trigger.click();
+        } else if (e.key === 'Escape') {
+          const dropdown = trigger.closest('.custom-dropdown');
+          dropdown.classList.remove('open');
+          trigger.setAttribute('aria-expanded', 'false');
+        }
+      }
+    };
+    container.addEventListener('keydown', containerKeydownHandler);
 
-        listenersSetUp = true;
-    } catch (error) {
-        console.error('Error setting up hotkey event listeners:', error);
-    }
+    listenersSetUp = true;
+  } catch (error) {
+    console.error('Error setting up hotkey event listeners:', error);
+  }
 }
 
 // Cleanup function to remove event listeners
 function cleanupHotkeyEventListeners() {
-    try {
-        if (activeContainer) {
-            if (containerClickHandler) {
-                activeContainer.removeEventListener('click', containerClickHandler);
-            }
-            if (containerOptionHandler) {
-                activeContainer.removeEventListener('click', containerOptionHandler);
-            }
-            if (containerKeydownHandler) {
-                activeContainer.removeEventListener('keydown', containerKeydownHandler);
-            }
-        }
-        containerClickHandler = null;
-        containerOptionHandler = null;
-        containerKeydownHandler = null;
-        activeContainer = null;
-        if (documentClickHandler) {
-            document.removeEventListener('click', documentClickHandler);
-            documentClickHandler = null;
-        }
-        listenersSetUp = false;
-    } catch (error) {
-        console.error('Error cleaning up hotkey event listeners:', error);
+  try {
+    if (activeContainer) {
+      if (containerClickHandler) {
+        activeContainer.removeEventListener('click', containerClickHandler);
+      }
+      if (containerOptionHandler) {
+        activeContainer.removeEventListener('click', containerOptionHandler);
+      }
+      if (containerKeydownHandler) {
+        activeContainer.removeEventListener('keydown', containerKeydownHandler);
+      }
     }
+    containerClickHandler = null;
+    containerOptionHandler = null;
+    containerKeydownHandler = null;
+    activeContainer = null;
+    if (documentClickHandler) {
+      document.removeEventListener('click', documentClickHandler);
+      documentClickHandler = null;
+    }
+    listenersSetUp = false;
+  } catch (error) {
+    console.error('Error cleaning up hotkey event listeners:', error);
+  }
 }
 
 // Public function that can be called from outside
 function setupHotkeyEventListeners() {
-    // This is now a no-op since listeners are set up during rendering
-    // Keeping it for backward compatibility
+  // This is now a no-op since listeners are set up during rendering
+  // Keeping it for backward compatibility
 }
 
 export {
-    initializeHotkeys,
-    renderHotkeysTab,
-    toggleHotkeys,
-    captureHotkey,
-    renderExistingHotkeys,
-    assignHotkeyToEntity,
-    setupHotkeyEventListeners,
-    cleanupHotkeyEventListeners,
+  initializeHotkeys,
+  renderHotkeysTab,
+  toggleHotkeys,
+  captureHotkey,
+  renderExistingHotkeys,
+  assignHotkeyToEntity,
+  setupHotkeyEventListeners,
+  cleanupHotkeyEventListeners,
 };

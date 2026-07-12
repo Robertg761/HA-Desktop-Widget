@@ -25,10 +25,13 @@ describe('main localization service', () => {
     userDataDir = path.join(rootDir, 'user');
     fs.mkdirSync(bundledDir, { recursive: true });
     fs.mkdirSync(userDataDir, { recursive: true });
-    fs.writeFileSync(path.join(bundledDir, 'en.json'), JSON.stringify({
-      Hello: 'Hello',
-      'Selected language: {{language}}': 'Selected language: {{language}}',
-    }));
+    fs.writeFileSync(
+      path.join(bundledDir, 'en.json'),
+      JSON.stringify({
+        Hello: 'Hello',
+        'Selected language: {{language}}': 'Selected language: {{language}}',
+      })
+    );
   });
 
   it('falls back to bundled English when the detected locale pack is unavailable', () => {
@@ -166,19 +169,23 @@ describe('main localization service', () => {
     const packPath = path.join(rootDir, 'es.json');
 
     fs.writeFileSync(packPath, serializedPack, 'utf8');
-    fs.writeFileSync(manifestPath, JSON.stringify({
-      packs: [
-        {
-          locale: 'es',
-          displayName: 'Español',
-          englishName: 'Spanish',
-          version: '1.0.0',
-          minAppVersion: '1.0.0',
-          downloadUrl: 'https://example.test/es.json',
-          sha256,
-        },
-      ],
-    }), 'utf8');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        packs: [
+          {
+            locale: 'es',
+            displayName: 'Español',
+            englishName: 'Spanish',
+            version: '1.0.0',
+            minAppVersion: '1.0.0',
+            downloadUrl: 'https://example.test/es.json',
+            sha256,
+          },
+        ],
+      }),
+      'utf8'
+    );
 
     const service = createLocalizationService({
       bundledDir,
@@ -202,16 +209,20 @@ describe('main localization service', () => {
   it('propagates manifest fetch failures while preserving installed packs for the UI', async () => {
     const installedDir = path.join(userDataDir, 'locales');
     fs.mkdirSync(installedDir, { recursive: true });
-    fs.writeFileSync(path.join(installedDir, 'fr.json'), JSON.stringify({
-      locale: 'fr',
-      displayName: 'Français',
-      englishName: 'French',
-      version: '1.0.0',
-      minAppVersion: '1.0.0',
-      messages: {
-        Hello: 'Bonjour',
-      },
-    }), 'utf8');
+    fs.writeFileSync(
+      path.join(installedDir, 'fr.json'),
+      JSON.stringify({
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.0.0',
+        minAppVersion: '1.0.0',
+        messages: {
+          Hello: 'Bonjour',
+        },
+      }),
+      'utf8'
+    );
 
     axios.get.mockRejectedValue(new Error('manifest unavailable'));
 

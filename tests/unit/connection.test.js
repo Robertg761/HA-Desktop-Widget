@@ -1,13 +1,11 @@
-const {
-  classifyConnectionError,
-  isConfigured,
-  normalizeBaseUrl,
-} = require('../../src/connection');
+const { classifyConnectionError, isConfigured, normalizeBaseUrl } = require('../../src/connection');
 
 describe('connection helpers', () => {
   describe('normalizeBaseUrl', () => {
     test('normalizes http and https origins', () => {
-      expect(normalizeBaseUrl('http://homeassistant.local:8123/')).toBe('http://homeassistant.local:8123');
+      expect(normalizeBaseUrl('http://homeassistant.local:8123/')).toBe(
+        'http://homeassistant.local:8123'
+      );
       expect(normalizeBaseUrl('https://ha.example.com/profile')).toBe('https://ha.example.com');
     });
 
@@ -24,26 +22,32 @@ describe('connection helpers', () => {
 
   describe('isConfigured', () => {
     test('requires a valid URL and non-placeholder token', () => {
-      expect(isConfigured({
-        homeAssistant: {
-          url: 'http://homeassistant.local:8123',
-          token: 'real-token',
-        },
-      })).toBe(true);
+      expect(
+        isConfigured({
+          homeAssistant: {
+            url: 'http://homeassistant.local:8123',
+            token: 'real-token',
+          },
+        })
+      ).toBe(true);
 
-      expect(isConfigured({
-        homeAssistant: {
-          url: 'http://homeassistant.local:8123',
-          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
-        },
-      })).toBe(false);
+      expect(
+        isConfigured({
+          homeAssistant: {
+            url: 'http://homeassistant.local:8123',
+            token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          },
+        })
+      ).toBe(false);
 
-      expect(isConfigured({
-        homeAssistant: {
-          url: '',
-          token: 'real-token',
-        },
-      })).toBe(false);
+      expect(
+        isConfigured({
+          homeAssistant: {
+            url: '',
+            token: 'real-token',
+          },
+        })
+      ).toBe(false);
     });
   });
 

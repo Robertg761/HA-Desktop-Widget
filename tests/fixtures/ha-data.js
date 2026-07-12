@@ -17,14 +17,14 @@ const sampleConfig = {
   homeAssistant: {
     url: 'http://homeassistant.local:8123',
     token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock_token',
-    tokenEncrypted: false
+    tokenEncrypted: false,
   },
   globalHotkeys: {
     enabled: true,
     hotkeys: {
       'light.living_room': { hotkey: 'CommandOrControl+Shift+L', action: 'toggle' },
-      'switch.bedroom': { hotkey: 'CommandOrControl+Shift+B', action: 'toggle' }
-    }
+      'switch.bedroom': { hotkey: 'CommandOrControl+Shift+B', action: 'toggle' },
+    },
   },
   entityAlerts: {
     enabled: true,
@@ -32,14 +32,14 @@ const sampleConfig = {
       'sensor.temperature': {
         condition: 'greater_than',
         value: 25,
-        message: 'Temperature is too high!'
+        message: 'Temperature is too high!',
       },
       'binary_sensor.motion': {
         condition: 'equals',
         value: 'on',
-        message: 'Motion detected!'
-      }
-    }
+        message: 'Motion detected!',
+      },
+    },
   },
   popupHotkey: 'F9',
   favoriteEntities: [
@@ -49,12 +49,12 @@ const sampleConfig = {
     'sensor.temperature',
     'binary_sensor.motion',
     'weather.home',
-    'media_player.spotify'
+    'media_player.spotify',
   ],
   desktopPins: {},
   customEntityNames: {
     'light.living_room': 'Main Light',
-    'sensor.temperature': 'Room Temp'
+    'sensor.temperature': 'Room Temp',
   },
   customEntityIcons: {},
   quickAccessTileOptions: {},
@@ -70,7 +70,7 @@ const sampleConfig = {
     use24HourClock: false,
     weatherEffectsEnabled: false,
     weatherOverride: 'auto',
-    enableInteractionDebugLogs: false
+    enableInteractionDebugLogs: false,
   },
   customTabs: [],
   profileSync: {
@@ -83,8 +83,8 @@ const sampleConfig = {
         quickAccessLayout: true,
         visualPersonalization: true,
         automationAlerts: true,
-        connectionMediaPreferences: true
-      }
+        connectionMediaPreferences: true,
+      },
     },
     intervalMinutes: 5,
     encryptionEnabled: false,
@@ -93,8 +93,8 @@ const sampleConfig = {
     lastSyncAt: null,
     lastSyncStatus: 'idle',
     lastSyncError: '',
-    deviceId: 'fixture-device-1'
-  }
+    deviceId: 'fixture-device-1',
+  },
 };
 
 /**
@@ -109,11 +109,11 @@ const sampleStates = {
       brightness: 200,
       color_mode: 'brightness',
       supported_color_modes: ['brightness'],
-      supported_features: 40
+      supported_features: 40,
     },
     last_changed: '2025-01-15T10:30:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_1', parent_id: null, user_id: null }
+    context: { id: 'context_1', parent_id: null, user_id: null },
   },
   'light.bedroom': {
     entity_id: 'light.bedroom',
@@ -121,22 +121,22 @@ const sampleStates = {
     attributes: {
       friendly_name: 'Bedroom Light',
       supported_color_modes: ['brightness', 'color_temp'],
-      supported_features: 44
+      supported_features: 44,
     },
     last_changed: '2025-01-15T08:00:00.000Z',
     last_updated: '2025-01-15T08:00:00.000Z',
-    context: { id: 'context_2', parent_id: null, user_id: null }
+    context: { id: 'context_2', parent_id: null, user_id: null },
   },
   'switch.bedroom': {
     entity_id: 'switch.bedroom',
     state: 'on',
     attributes: {
       friendly_name: 'Bedroom Switch',
-      icon: 'mdi:power-socket'
+      icon: 'mdi:power-socket',
     },
     last_changed: '2025-01-15T09:00:00.000Z',
     last_updated: '2025-01-15T09:00:00.000Z',
-    context: { id: 'context_3', parent_id: null, user_id: null }
+    context: { id: 'context_3', parent_id: null, user_id: null },
   },
   'sensor.temperature': {
     entity_id: 'sensor.temperature',
@@ -145,22 +145,22 @@ const sampleStates = {
       friendly_name: 'Temperature Sensor',
       unit_of_measurement: '°C',
       device_class: 'temperature',
-      state_class: 'measurement'
+      state_class: 'measurement',
     },
     last_changed: '2025-01-15T10:25:00.000Z',
     last_updated: '2025-01-15T10:25:00.000Z',
-    context: { id: 'context_4', parent_id: null, user_id: null }
+    context: { id: 'context_4', parent_id: null, user_id: null },
   },
   'binary_sensor.motion': {
     entity_id: 'binary_sensor.motion',
     state: 'off',
     attributes: {
       friendly_name: 'Motion Sensor',
-      device_class: 'motion'
+      device_class: 'motion',
     },
     last_changed: '2025-01-15T10:20:00.000Z',
     last_updated: '2025-01-15T10:20:00.000Z',
-    context: { id: 'context_5', parent_id: null, user_id: null }
+    context: { id: 'context_5', parent_id: null, user_id: null },
   },
   'weather.home': {
     entity_id: 'weather.home',
@@ -180,19 +180,19 @@ const sampleStates = {
           condition: 'sunny',
           datetime: '2025-01-15T12:00:00.000Z',
           temperature: 24,
-          templow: 18
+          templow: 18,
         },
         {
           condition: 'cloudy',
           datetime: '2025-01-16T12:00:00.000Z',
           temperature: 20,
-          templow: 15
-        }
-      ]
+          templow: 15,
+        },
+      ],
     },
     last_changed: '2025-01-15T10:00:00.000Z',
     last_updated: '2025-01-15T10:15:00.000Z',
-    context: { id: 'context_6', parent_id: null, user_id: null }
+    context: { id: 'context_6', parent_id: null, user_id: null },
   },
   'media_player.spotify': {
     entity_id: 'media_player.spotify',
@@ -209,11 +209,11 @@ const sampleStates = {
       media_position_updated_at: '2025-01-15T10:30:00.000Z',
       volume_level: 0.5,
       is_volume_muted: false,
-      supported_features: 152463
+      supported_features: 152463,
     },
     last_changed: '2025-01-15T10:28:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_7', parent_id: null, user_id: null }
+    context: { id: 'context_7', parent_id: null, user_id: null },
   },
   'camera.front_door': {
     entity_id: 'camera.front_door',
@@ -221,11 +221,11 @@ const sampleStates = {
     attributes: {
       friendly_name: 'Front Door Camera',
       entity_picture: '/api/camera_proxy/camera.front_door?token=xyz789',
-      supported_features: 1
+      supported_features: 1,
     },
     last_changed: '2025-01-15T08:00:00.000Z',
     last_updated: '2025-01-15T10:00:00.000Z',
-    context: { id: 'context_8', parent_id: null, user_id: null }
+    context: { id: 'context_8', parent_id: null, user_id: null },
   },
   'climate.thermostat': {
     entity_id: 'climate.thermostat',
@@ -240,31 +240,31 @@ const sampleStates = {
       hvac_action: 'heating',
       fan_mode: 'auto',
       fan_modes: ['auto', 'on'],
-      supported_features: 27
+      supported_features: 27,
     },
     last_changed: '2025-01-15T09:00:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_9', parent_id: null, user_id: null }
+    context: { id: 'context_9', parent_id: null, user_id: null },
   },
   'button.refresh_router': {
     entity_id: 'button.refresh_router',
     state: 'unknown',
     attributes: {
-      friendly_name: 'Refresh Router'
+      friendly_name: 'Refresh Router',
     },
     last_changed: '2025-01-15T09:40:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_10', parent_id: null, user_id: null }
+    context: { id: 'context_10', parent_id: null, user_id: null },
   },
   'input_button.tv_rewind': {
     entity_id: 'input_button.tv_rewind',
     state: '2025-01-15T10:30:00.000Z',
     attributes: {
-      friendly_name: 'TV Rewind'
+      friendly_name: 'TV Rewind',
     },
     last_changed: '2025-01-15T10:30:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_input_button', parent_id: null, user_id: null }
+    context: { id: 'context_input_button', parent_id: null, user_id: null },
   },
   'number.water_heater_target': {
     entity_id: 'number.water_heater_target',
@@ -274,75 +274,75 @@ const sampleStates = {
       min: 40,
       max: 60,
       step: 1,
-      unit_of_measurement: '°C'
+      unit_of_measurement: '°C',
     },
     last_changed: '2025-01-15T09:45:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_11', parent_id: null, user_id: null }
+    context: { id: 'context_11', parent_id: null, user_id: null },
   },
   'input_number.night_brightness': {
     entity_id: 'input_number.night_brightness',
     state: '2',
     attributes: {
       friendly_name: 'Night Brightness',
-      step: 1
+      step: 1,
     },
     last_changed: '2025-01-15T09:46:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_12', parent_id: null, user_id: null }
+    context: { id: 'context_12', parent_id: null, user_id: null },
   },
   'select.air_purifier_mode': {
     entity_id: 'select.air_purifier_mode',
     state: 'auto',
     attributes: {
       friendly_name: 'Air Purifier Mode',
-      options: ['sleep', 'auto', 'boost']
+      options: ['sleep', 'auto', 'boost'],
     },
     last_changed: '2025-01-15T09:47:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_13', parent_id: null, user_id: null }
+    context: { id: 'context_13', parent_id: null, user_id: null },
   },
   'input_select.bedtime_scene': {
     entity_id: 'input_select.bedtime_scene',
     state: 'Reading',
     attributes: {
       friendly_name: 'Bedtime Scene',
-      options: ['Reading', 'Relax', 'Sleep']
+      options: ['Reading', 'Relax', 'Sleep'],
     },
     last_changed: '2025-01-15T09:48:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_14', parent_id: null, user_id: null }
+    context: { id: 'context_14', parent_id: null, user_id: null },
   },
   'person.robert': {
     entity_id: 'person.robert',
     state: 'home',
     attributes: {
-      friendly_name: 'Robert'
+      friendly_name: 'Robert',
     },
     last_changed: '2025-01-15T09:49:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_15', parent_id: null, user_id: null }
+    context: { id: 'context_15', parent_id: null, user_id: null },
   },
   'device_tracker.robert_phone': {
     entity_id: 'device_tracker.robert_phone',
     state: 'not_home',
     attributes: {
-      friendly_name: 'Robert Phone'
+      friendly_name: 'Robert Phone',
     },
     last_changed: '2025-01-15T09:50:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_16', parent_id: null, user_id: null }
+    context: { id: 'context_16', parent_id: null, user_id: null },
   },
   'vacuum.roomba': {
     entity_id: 'vacuum.roomba',
     state: 'docked',
     attributes: {
-      friendly_name: 'Robot Vacuum'
+      friendly_name: 'Robot Vacuum',
     },
     last_changed: '2025-01-15T09:51:00.000Z',
     last_updated: '2025-01-15T10:30:00.000Z',
-    context: { id: 'context_17', parent_id: null, user_id: null }
-  }
+    context: { id: 'context_17', parent_id: null, user_id: null },
+  },
 };
 
 /**
@@ -352,21 +352,22 @@ const sampleServices = {
   light: {
     turn_on: {
       name: 'Turn on',
-      description: 'Turn on one or more lights and adjust properties of the light, even when they are turned on already.',
+      description:
+        'Turn on one or more lights and adjust properties of the light, even when they are turned on already.',
       fields: {
         transition: {
           description: 'Duration it takes to get to next state',
-          example: 60
+          example: 60,
         },
         brightness: {
           description: 'Number indicating brightness',
-          example: 120
+          example: 120,
         },
         brightness_pct: {
           description: 'Number indicating percentage of full brightness',
-          example: 47
-        }
-      }
+          example: 47,
+        },
+      },
     },
     turn_off: {
       name: 'Turn off',
@@ -374,64 +375,64 @@ const sampleServices = {
       fields: {
         transition: {
           description: 'Duration it takes to get to next state',
-          example: 60
-        }
-      }
+          example: 60,
+        },
+      },
     },
     toggle: {
       name: 'Toggle',
       description: 'Toggle one or more lights.',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   switch: {
     turn_on: {
       name: 'Turn on',
       description: 'Turn on a switch',
-      fields: {}
+      fields: {},
     },
     turn_off: {
       name: 'Turn off',
       description: 'Turn off a switch',
-      fields: {}
+      fields: {},
     },
     toggle: {
       name: 'Toggle',
       description: 'Toggle a switch',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   automation: {
     trigger: {
       name: 'Trigger',
       description: 'Trigger an automation.',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   button: {
     press: {
       name: 'Press',
       description: 'Press a button entity.',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   input_button: {
     press: {
       name: 'Press',
       description: 'Press an input button helper.',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   climate: {
     turn_on: {
       name: 'Turn on',
       description: 'Turn on climate device',
-      fields: {}
+      fields: {},
     },
     turn_off: {
       name: 'Turn off',
       description: 'Turn off climate device',
-      fields: {}
+      fields: {},
     },
     set_temperature: {
       name: 'Set temperature',
@@ -439,10 +440,10 @@ const sampleServices = {
       fields: {
         temperature: {
           description: 'Target temperature',
-          example: 22
-        }
-      }
-    }
+          example: 22,
+        },
+      },
+    },
   },
   number: {
     set_value: {
@@ -451,10 +452,10 @@ const sampleServices = {
       fields: {
         value: {
           description: 'Target value',
-          example: 42
-        }
-      }
-    }
+          example: 42,
+        },
+      },
+    },
   },
   input_number: {
     set_value: {
@@ -463,80 +464,80 @@ const sampleServices = {
       fields: {
         value: {
           description: 'Target value',
-          example: 42
-        }
-      }
-    }
+          example: 42,
+        },
+      },
+    },
   },
   select: {
     select_option: {
       name: 'Select option',
       description: 'Select a specific option.',
-      fields: {}
+      fields: {},
     },
     select_next: {
       name: 'Next option',
       description: 'Select the next option.',
-      fields: {}
+      fields: {},
     },
     select_previous: {
       name: 'Previous option',
       description: 'Select the previous option.',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   input_select: {
     select_option: {
       name: 'Select option',
       description: 'Select a specific option.',
-      fields: {}
+      fields: {},
     },
     select_next: {
       name: 'Next option',
       description: 'Select the next option.',
-      fields: {}
+      fields: {},
     },
     select_previous: {
       name: 'Previous option',
       description: 'Select the previous option.',
-      fields: {}
-    }
+      fields: {},
+    },
   },
   media_player: {
     turn_on: {
       name: 'Turn on',
       description: 'Turn on media player',
-      fields: {}
+      fields: {},
     },
     turn_off: {
       name: 'Turn off',
       description: 'Turn off media player',
-      fields: {}
+      fields: {},
     },
     media_play: {
       name: 'Play',
       description: 'Play media',
-      fields: {}
+      fields: {},
     },
     media_pause: {
       name: 'Pause',
       description: 'Pause media',
-      fields: {}
+      fields: {},
     },
     media_play_pause: {
       name: 'Play/Pause',
       description: 'Toggle play/pause',
-      fields: {}
+      fields: {},
     },
     media_next_track: {
       name: 'Next track',
       description: 'Skip to next track',
-      fields: {}
+      fields: {},
     },
     media_previous_track: {
       name: 'Previous track',
       description: 'Skip to previous track',
-      fields: {}
+      fields: {},
     },
     media_seek: {
       name: 'Seek',
@@ -544,9 +545,9 @@ const sampleServices = {
       fields: {
         seek_position: {
           description: 'Position to seek to',
-          example: 30
-        }
-      }
+          example: 30,
+        },
+      },
     },
     volume_set: {
       name: 'Set volume',
@@ -554,58 +555,57 @@ const sampleServices = {
       fields: {
         volume_level: {
           description: 'Volume level (0-1)',
-          example: 0.5
-        }
-      }
-    }
-  }
-  ,
+          example: 0.5,
+        },
+      },
+    },
+  },
   vacuum: {
     start: {
       name: 'Start',
       description: 'Start cleaning.',
-      fields: {}
+      fields: {},
     },
     pause: {
       name: 'Pause',
       description: 'Pause cleaning.',
-      fields: {}
+      fields: {},
     },
     stop: {
       name: 'Stop',
       description: 'Stop cleaning.',
-      fields: {}
+      fields: {},
     },
     return_to_base: {
       name: 'Return to base',
       description: 'Return vacuum to base.',
-      fields: {}
-    }
-  }
+      fields: {},
+    },
+  },
 };
 
 /**
  * Sample AREAS array
  */
 const sampleAreas = {
-  'living_room': {
+  living_room: {
     area_id: 'living_room',
     name: 'Living Room',
     picture: null,
-    aliases: ['lounge', 'sitting room']
+    aliases: ['lounge', 'sitting room'],
   },
-  'bedroom': {
+  bedroom: {
     area_id: 'bedroom',
     name: 'Bedroom',
     picture: null,
-    aliases: ['master bedroom']
+    aliases: ['master bedroom'],
   },
-  'kitchen': {
+  kitchen: {
     area_id: 'kitchen',
     name: 'Kitchen',
     picture: null,
-    aliases: []
-  }
+    aliases: [],
+  },
 };
 
 /**
@@ -618,7 +618,7 @@ const sampleUnitSystemMetric = {
   pressure: 'hPa',
   precipitation: 'mm',
   volume: 'L',
-  mass: 'kg'
+  mass: 'kg',
 };
 
 /**
@@ -631,7 +631,7 @@ const sampleUnitSystemImperial = {
   pressure: 'inHg',
   precipitation: 'in',
   volume: 'gal',
-  mass: 'lb'
+  mass: 'lb',
 };
 
 /**
@@ -641,41 +641,41 @@ const sampleWebSocketMessages = {
   // Auth messages
   authRequest: {
     type: 'auth',
-    access_token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock_token'
+    access_token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock_token',
   },
   authOk: {
     type: 'auth_ok',
-    ha_version: '2025.1.0'
+    ha_version: '2025.1.0',
   },
   authInvalid: {
     type: 'auth_invalid',
-    message: 'Invalid access token'
+    message: 'Invalid access token',
   },
 
   // Request messages
   getStatesRequest: {
     id: 1000,
-    type: 'get_states'
+    type: 'get_states',
   },
   getStatesResponse: {
     id: 1000,
     type: 'result',
     success: true,
-    result: Object.values(sampleStates)
+    result: Object.values(sampleStates),
   },
   getServicesRequest: {
     id: 1001,
-    type: 'get_services'
+    type: 'get_services',
   },
   getServicesResponse: {
     id: 1001,
     type: 'result',
     success: true,
-    result: sampleServices
+    result: sampleServices,
   },
   getConfigRequest: {
     id: 1002,
-    type: 'get_config'
+    type: 'get_config',
   },
   getConfigResponse: {
     id: 1002,
@@ -687,31 +687,31 @@ const sampleWebSocketMessages = {
       latitude: 52.3676,
       longitude: 4.9041,
       elevation: 0,
-      time_zone: 'Europe/Amsterdam'
-    }
+      time_zone: 'Europe/Amsterdam',
+    },
   },
   getAreasRequest: {
     id: 1003,
-    type: 'config/area_registry/list'
+    type: 'config/area_registry/list',
   },
   getAreasResponse: {
     id: 1003,
     type: 'result',
     success: true,
-    result: Object.values(sampleAreas)
+    result: Object.values(sampleAreas),
   },
 
   // Subscription messages
   subscribeEventsRequest: {
     id: 1004,
     type: 'subscribe_events',
-    event_type: 'state_changed'
+    event_type: 'state_changed',
   },
   subscribeEventsResponse: {
     id: 1004,
     type: 'result',
     success: true,
-    result: null
+    result: null,
   },
 
   // State changed event
@@ -728,7 +728,7 @@ const sampleWebSocketMessages = {
           attributes: { friendly_name: 'Living Room Light' },
           last_changed: '2025-01-15T10:00:00.000Z',
           last_updated: '2025-01-15T10:00:00.000Z',
-          context: { id: 'old_context', parent_id: null, user_id: null }
+          context: { id: 'old_context', parent_id: null, user_id: null },
         },
         new_state: {
           entity_id: 'light.living_room',
@@ -736,13 +736,13 @@ const sampleWebSocketMessages = {
           attributes: { friendly_name: 'Living Room Light', brightness: 255 },
           last_changed: '2025-01-15T10:30:00.000Z',
           last_updated: '2025-01-15T10:30:00.000Z',
-          context: { id: 'new_context', parent_id: null, user_id: null }
-        }
+          context: { id: 'new_context', parent_id: null, user_id: null },
+        },
       },
       origin: 'LOCAL',
       time_fired: '2025-01-15T10:30:00.000Z',
-      context: { id: 'event_context', parent_id: null, user_id: null }
-    }
+      context: { id: 'event_context', parent_id: null, user_id: null },
+    },
   },
 
   // Service call
@@ -753,25 +753,25 @@ const sampleWebSocketMessages = {
     service: 'turn_on',
     service_data: {
       entity_id: 'light.living_room',
-      brightness: 200
-    }
+      brightness: 200,
+    },
   },
   callServiceResponse: {
     id: 1005,
     type: 'result',
     success: true,
     result: {
-      context: { id: 'service_context', parent_id: null, user_id: null }
-    }
+      context: { id: 'service_context', parent_id: null, user_id: null },
+    },
   },
 
   // Ping/Pong
   ping: {
-    type: 'ping'
+    type: 'ping',
   },
   pong: {
-    type: 'pong'
-  }
+    type: 'pong',
+  },
 };
 
 module.exports = {
@@ -781,5 +781,5 @@ module.exports = {
   sampleAreas,
   sampleUnitSystemMetric,
   sampleUnitSystemImperial,
-  sampleWebSocketMessages
+  sampleWebSocketMessages,
 };

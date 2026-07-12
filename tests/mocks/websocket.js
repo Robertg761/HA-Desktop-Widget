@@ -89,7 +89,7 @@ class MockWebSocketManager extends EventEmitter {
             id: message.id,
             type: 'result',
             success: true,
-            result: typeof mockResponse === 'function' ? mockResponse(message) : mockResponse
+            result: typeof mockResponse === 'function' ? mockResponse(message) : mockResponse,
           });
         }
       }, 10);
@@ -130,7 +130,7 @@ class MockWebSocketManager extends EventEmitter {
       type: 'call_service',
       domain,
       service,
-      service_data: serviceData
+      service_data: serviceData,
     });
   }
 
@@ -140,7 +140,7 @@ class MockWebSocketManager extends EventEmitter {
   subscribeEvents(eventType) {
     return this.request({
       type: 'subscribe_events',
-      event_type: eventType
+      event_type: eventType,
     }).then((result) => {
       // Store subscription ID
       this.subscriptions.set(eventType, result.id);
@@ -183,8 +183,8 @@ class MockWebSocketManager extends EventEmitter {
           data: eventData,
           origin: 'LOCAL',
           time_fired: new Date().toISOString(),
-          context: { id: 'mock_context_id', parent_id: null, user_id: null }
-        }
+          context: { id: 'mock_context_id', parent_id: null, user_id: null },
+        },
       });
     }
   }
@@ -196,7 +196,7 @@ class MockWebSocketManager extends EventEmitter {
     this.simulateEvent('state_changed', {
       entity_id: entityId,
       new_state: newState,
-      old_state: oldState
+      old_state: oldState,
     });
   }
 
@@ -303,5 +303,5 @@ MockWebSocket.CLOSED = 3;
 module.exports = {
   MockWebSocketManager,
   createMockWebSocketManager,
-  MockWebSocket
+  MockWebSocket,
 };

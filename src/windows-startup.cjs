@@ -22,12 +22,16 @@ function normalizeWindowsExecutablePath(executablePath) {
 
 function isEnabledLaunchItemForExecutable(item, executablePath) {
   if (!item || item.enabled === false) return false;
-  return normalizeWindowsExecutablePath(item.path) === normalizeWindowsExecutablePath(executablePath);
+  return (
+    normalizeWindowsExecutablePath(item.path) === normalizeWindowsExecutablePath(executablePath)
+  );
 }
 
 function hasEnabledLaunchItemForExecutable(settings, executablePath) {
   if (!settings || !Array.isArray(settings.launchItems)) return false;
-  return settings.launchItems.some((item) => isEnabledLaunchItemForExecutable(item, executablePath));
+  return settings.launchItems.some((item) =>
+    isEnabledLaunchItemForExecutable(item, executablePath)
+  );
 }
 
 function isWindowsLoginItemEnabled(settings, executablePath) {

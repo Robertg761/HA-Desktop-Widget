@@ -2,12 +2,16 @@
  * @jest-environment jsdom
  */
 
-const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  getMockConfig,
+} = require('../mocks/electron.js');
 const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
-  showToast: jest.fn()
+  showToast: jest.fn(),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -21,13 +25,13 @@ jest.mock('../../src/utils.js', () => ({
     if (lowerText.startsWith(lowerFilter)) return 2;
     if (lowerText.includes(lowerFilter)) return 1;
     return 0;
-  })
+  }),
 }));
 
 // Mock state module
 const mockState = {
   CONFIG: null,
-  STATES: {}
+  STATES: {},
 };
 
 const state = require('../../src/state.js').default;
@@ -67,8 +71,8 @@ describe('hotkeys module', () => {
       config.globalHotkeys = {
         enabled: true,
         hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' }
-        }
+          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
+        },
       };
       state.setConfig(config);
 
@@ -113,7 +117,7 @@ describe('hotkeys module', () => {
       const config = getMockConfig();
       config.globalHotkeys = {
         enabled: false,
-        hotkeys: {}
+        hotkeys: {},
       };
       state.setConfig(config);
     });
@@ -156,8 +160,8 @@ describe('hotkeys module', () => {
       config.globalHotkeys = {
         enabled: true,
         hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' }
-        }
+          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
+        },
       };
       state.setConfig(config);
       state.setStates(sampleStates);
@@ -199,9 +203,9 @@ describe('hotkeys module', () => {
           entity_id: 'script.tv_fast_forward',
           state: 'off',
           attributes: {
-            friendly_name: 'TV Fast Forward'
-          }
-        }
+            friendly_name: 'TV Fast Forward',
+          },
+        },
       });
 
       hotkeys.renderHotkeysTab();
@@ -209,8 +213,14 @@ describe('hotkeys module', () => {
       expect(container.querySelector('[data-entity-id="script.tv_fast_forward"]')).toBeTruthy();
       expect(container.querySelector('[data-entity-id="button.refresh_router"]')).toBeTruthy();
       expect(container.querySelector('[data-entity-id="input_button.tv_rewind"]')).toBeTruthy();
-      expect(container.querySelector('[data-entity-id="input_button.tv_rewind"] .custom-dropdown-value')?.textContent).toBe('Press');
-      expect(container.querySelector('[data-entity-id="script.tv_fast_forward"] .custom-dropdown-value')?.textContent).toBe('Run');
+      expect(
+        container.querySelector('[data-entity-id="input_button.tv_rewind"] .custom-dropdown-value')
+          ?.textContent
+      ).toBe('Press');
+      expect(
+        container.querySelector('[data-entity-id="script.tv_fast_forward"] .custom-dropdown-value')
+          ?.textContent
+      ).toBe('Run');
 
       document.body.removeChild(container);
       document.body.removeChild(searchInput);
@@ -253,8 +263,8 @@ describe('hotkeys module', () => {
         enabled: true,
         hotkeys: {
           'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'switch.bedroom': 'Ctrl+Shift+B'
-        }
+          'switch.bedroom': 'Ctrl+Shift+B',
+        },
       };
       state.setConfig(config);
       state.setStates(sampleStates);
@@ -283,8 +293,8 @@ describe('hotkeys module', () => {
         enabled: true,
         hotkeys: {
           'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'light.nonexistent': 'Ctrl+Shift+N'
-        }
+          'light.nonexistent': 'Ctrl+Shift+N',
+        },
       };
       state.setConfig(config);
 
@@ -306,7 +316,10 @@ describe('hotkeys module', () => {
       });
 
       expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith('Error rendering existing hotkeys:', expect.any(Error));
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error rendering existing hotkeys:',
+        expect.any(Error)
+      );
 
       consoleError.mockRestore();
     });
@@ -325,7 +338,7 @@ describe('hotkeys module', () => {
       const config = getMockConfig();
       config.globalHotkeys = {
         enabled: true,
-        hotkeys: {}
+        hotkeys: {},
       };
       state.setConfig(config);
       state.setStates({
@@ -333,29 +346,37 @@ describe('hotkeys module', () => {
           entity_id: 'light.living_room',
           state: 'off',
           attributes: {
-            friendly_name: 'Living Room'
-          }
-        }
+            friendly_name: 'Living Room',
+          },
+        },
       });
 
       const assignment = hotkeys.assignHotkeyToEntity('light.living_room');
-      document.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'A',
-        code: 'KeyA',
-        ctrlKey: true,
-        bubbles: true
-      }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'A',
+          code: 'KeyA',
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
       const result = await assignment;
 
-      expect(result).toEqual(expect.objectContaining({
-        success: true,
-        hotkey: 'Ctrl+A',
-        action: 'toggle'
-      }));
-      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('light.living_room', 'Ctrl+A', 'toggle');
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hotkey: 'Ctrl+A',
+          action: 'toggle',
+        })
+      );
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'light.living_room',
+        'Ctrl+A',
+        'toggle'
+      );
       expect(state.CONFIG.globalHotkeys.hotkeys['light.living_room']).toEqual({
         hotkey: 'Ctrl+A',
-        action: 'toggle'
+        action: 'toggle',
       });
       expect(showToast).toHaveBeenCalledWith('Hotkey set for Living Room', 'success', 2200);
     });
@@ -364,7 +385,7 @@ describe('hotkeys module', () => {
       const config = getMockConfig();
       config.globalHotkeys = {
         enabled: true,
-        hotkeys: {}
+        hotkeys: {},
       };
       state.setConfig(config);
       state.setStates({
@@ -372,54 +393,70 @@ describe('hotkeys module', () => {
           entity_id: 'scene.movie',
           state: 'scening',
           attributes: {
-            friendly_name: 'Movie'
-          }
-        }
+            friendly_name: 'Movie',
+          },
+        },
       });
 
       const assignment = hotkeys.assignHotkeyToEntity('scene.movie');
-      document.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'M',
-        code: 'KeyM',
-        altKey: true,
-        bubbles: true
-      }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'M',
+          code: 'KeyM',
+          altKey: true,
+          bubbles: true,
+        })
+      );
       const result = await assignment;
 
-      expect(result).toEqual(expect.objectContaining({
-        success: true,
-        hotkey: 'Alt+M',
-        action: 'turn_on'
-      }));
-      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('scene.movie', 'Alt+M', 'turn_on');
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hotkey: 'Alt+M',
+          action: 'turn_on',
+        })
+      );
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'scene.movie',
+        'Alt+M',
+        'turn_on'
+      );
     });
 
     it('uses press as the default action when assigning an input_button hotkey', async () => {
       const config = getMockConfig();
       config.globalHotkeys = {
         enabled: true,
-        hotkeys: {}
+        hotkeys: {},
       };
       state.setConfig(config);
       state.setStates({
-        'input_button.tv_rewind': sampleStates['input_button.tv_rewind']
+        'input_button.tv_rewind': sampleStates['input_button.tv_rewind'],
       });
 
       const assignment = hotkeys.assignHotkeyToEntity('input_button.tv_rewind');
-      document.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'R',
-        code: 'KeyR',
-        ctrlKey: true,
-        bubbles: true
-      }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'R',
+          code: 'KeyR',
+          ctrlKey: true,
+          bubbles: true,
+        })
+      );
       const result = await assignment;
 
-      expect(result).toEqual(expect.objectContaining({
-        success: true,
-        hotkey: 'Ctrl+R',
-        action: 'press'
-      }));
-      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('input_button.tv_rewind', 'Ctrl+R', 'press');
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hotkey: 'Ctrl+R',
+          action: 'press',
+        })
+      );
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'input_button.tv_rewind',
+        'Ctrl+R',
+        'press'
+      );
     });
   });
 

@@ -16,21 +16,30 @@ let UNIT_SYSTEM = {
   pressure: 'hPa',
   precipitation: 'mm',
   volume: 'L',
-  mass: 'kg'
+  mass: 'kg',
 };
 
 // Setter functions
 export function setConfig(newConfig) {
-  try { CONFIG = newConfig; }
-  catch (error) { console.error('Error setting config:', error); }
+  try {
+    CONFIG = newConfig;
+  } catch (error) {
+    console.error('Error setting config:', error);
+  }
 }
 export function setWs(newWs) {
-  try { WS = newWs; }
-  catch (error) { console.error('Error setting WebSocket:', error); }
+  try {
+    WS = newWs;
+  } catch (error) {
+    console.error('Error setting WebSocket:', error);
+  }
 }
 export function setStates(newStates) {
-  try { STATES = newStates; }
-  catch (error) { console.error('Error setting states:', error); }
+  try {
+    STATES = newStates;
+  } catch (error) {
+    console.error('Error setting states:', error);
+  }
 }
 export function setEntityState(entity) {
   try {
@@ -41,28 +50,49 @@ export function setEntityState(entity) {
   }
 }
 export function setServices(newServices) {
-  try { SERVICES = newServices; }
-  catch (error) { console.error('Error setting services:', error); }
+  try {
+    SERVICES = newServices;
+  } catch (error) {
+    console.error('Error setting services:', error);
+  }
 }
 export function setAreas(newAreas) {
-  try { AREAS = newAreas; }
-  catch (error) { console.error('Error setting areas:', error); }
+  try {
+    AREAS = newAreas;
+  } catch (error) {
+    console.error('Error setting areas:', error);
+  }
 }
 export function setUnitSystem(newUnitSystem) {
-  try { UNIT_SYSTEM = newUnitSystem; }
-  catch (error) { console.error('Error setting unit system:', error); }
+  try {
+    UNIT_SYSTEM = newUnitSystem;
+  } catch (error) {
+    console.error('Error setting unit system:', error);
+  }
 }
 
 // State object with getters for reactive access
 // This pattern allows other modules to always get the current value
 const state = {
-  get CONFIG() { return CONFIG; },
-  get WS() { return WS; },
-  get STATES() { return STATES; },
-  get SERVICES() { return SERVICES; },
-  get AREAS() { return AREAS; },
+  get CONFIG() {
+    return CONFIG;
+  },
+  get WS() {
+    return WS;
+  },
+  get STATES() {
+    return STATES;
+  },
+  get SERVICES() {
+    return SERVICES;
+  },
+  get AREAS() {
+    return AREAS;
+  },
   ACTIVE_HLS,
-  get UNIT_SYSTEM() { return UNIT_SYSTEM; },
+  get UNIT_SYSTEM() {
+    return UNIT_SYSTEM;
+  },
   setConfig,
   setWs,
   setStates,

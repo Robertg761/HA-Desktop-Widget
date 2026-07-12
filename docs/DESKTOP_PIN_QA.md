@@ -29,13 +29,13 @@ changes to pinned desktop tiles.
 
 ## Size And Layout Expectations
 
-| Size class | Tile types | Minimum target | Default/open size |
-| --- | --- | --- | --- |
-| Tiny display tiles | `script.`, `sensor.`, `binary_sensor.`, timer | `140x110` | `168x148` |
-| Scene nano tile | `scene.` | `36x56` | `168x148` |
-| Small action tiles | toggle, `camera.`, fallback | `156x122` | `168x148` |
-| Dense control tiles | `light.`, `fan.`, `climate.`, `cover.` | `168x148` | `168x148` |
-| Wide media tiles | `media_player.` | `260x148` | `328x156` |
+| Size class          | Tile types                                    | Minimum target | Default/open size |
+| ------------------- | --------------------------------------------- | -------------- | ----------------- |
+| Tiny display tiles  | `script.`, `sensor.`, `binary_sensor.`, timer | `140x110`      | `168x148`         |
+| Scene nano tile     | `scene.`                                      | `36x56`        | `168x148`         |
+| Small action tiles  | toggle, `camera.`, fallback                   | `156x122`      | `168x148`         |
+| Dense control tiles | `light.`, `fan.`, `climate.`, `cover.`        | `168x148`      | `168x148`         |
+| Wide media tiles    | `media_player.`                               | `260x148`      | `328x156`         |
 
 - Shared panel and light tiles should promote to larger layouts only when both
   width and height clear the relevant thresholds.
@@ -72,10 +72,10 @@ npm run lint
 These checks need a packaged Electron build and a real close/relaunch cycle:
 
 - [ ] Packaged edit-mode desktop pin drag/resize smoke pass: verify drag handles,
-  resize handles, clamping, and content layout while edit mode is active.
+      resize handles, clamping, and content layout while edit mode is active.
 - [ ] Packaged restart persistence smoke pass: resize and move representative
-  desktop pins, fully quit/relaunch the app, and confirm restored position, size,
-  minimum bounds, and selected entity.
+      desktop pins, fully quit/relaunch the app, and confirm restored position, size,
+      minimum bounds, and selected entity.
 
 Remaining risk: automated tests cover the renderer, bounds, and config paths, but
 they do not prove the native packaged window lifecycle end to end.

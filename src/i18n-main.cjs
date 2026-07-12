@@ -37,10 +37,11 @@ function formatTemplate(template, vars = {}) {
 }
 
 function compareVersions(a = '', b = '') {
-  const toParts = (value) => String(value || '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10))
-    .map((part) => (Number.isNaN(part) ? 0 : part));
+  const toParts = (value) =>
+    String(value || '')
+      .split('.')
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isNaN(part) ? 0 : part));
   const aParts = toParts(a);
   const bParts = toParts(b);
   const length = Math.max(aParts.length, bParts.length);
@@ -113,9 +114,7 @@ function createLocalizationService(options = {}) {
       timeout: 20000,
       validateStatus: (status) => status >= 200 && status < 300,
     });
-    return typeof response.data === 'string'
-      ? response.data
-      : JSON.stringify(response.data);
+    return typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
   }
 
   function getBundledMessages(locale) {
@@ -175,7 +174,8 @@ function createLocalizationService(options = {}) {
   function listInstalledLocalePacks() {
     const installedDir = getInstalledLocaleDir();
     if (!fs.existsSync(installedDir)) return [];
-    return fs.readdirSync(installedDir)
+    return fs
+      .readdirSync(installedDir)
       .filter((fileName) => fileName.endsWith('.json'))
       .map((fileName) => {
         const packPath = path.join(installedDir, fileName);
@@ -200,14 +200,13 @@ function createLocalizationService(options = {}) {
 
   function resolveActiveMessages(languageSetting = 'auto') {
     const englishMessages = getEnglishMessages();
-    const requestedSetting = languageSetting === 'auto' ? 'auto' : normalizeLocaleCode(languageSetting) || 'auto';
+    const requestedSetting =
+      languageSetting === 'auto' ? 'auto' : normalizeLocaleCode(languageSetting) || 'auto';
     const detectedLocale = normalizeLocaleCode(getDetectedLocale()) || 'en';
     const requestedLocale = getRequestedLocale(languageSetting);
-    const candidates = Array.from(new Set([
-      requestedLocale,
-      getBaseLocale(requestedLocale),
-      'en',
-    ].filter(Boolean)));
+    const candidates = Array.from(
+      new Set([requestedLocale, getBaseLocale(requestedLocale), 'en'].filter(Boolean))
+    );
 
     let activeLocale = 'en';
     let localeSource = 'bundled';
@@ -267,7 +266,7 @@ function createLocalizationService(options = {}) {
 
   async function fetchAvailableLocaleManifest(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && manifestCache.packs && (now - manifestCache.fetchedAt) < 5 * 60 * 1000) {
+    if (!forceRefresh && manifestCache.packs && now - manifestCache.fetchedAt < 5 * 60 * 1000) {
       return manifestCache.packs;
     }
     if (!manifestUrl) return [];
@@ -285,7 +284,10 @@ function createLocalizationService(options = {}) {
       minAppVersion: pack.minAppVersion || '0.0.0',
       downloadUrl: (() => {
         if (localManifestDir) {
-          const localPackPath = path.join(localManifestDir, `${normalizeLocaleCode(pack.locale)}.json`);
+          const localPackPath = path.join(
+            localManifestDir,
+            `${normalizeLocaleCode(pack.locale)}.json`
+          );
           if (fs.existsSync(localPackPath)) {
             return pathToFileURL(localPackPath).toString();
           }
@@ -318,7 +320,8 @@ function createLocalizationService(options = {}) {
         ...(installedPack || {}),
         installed: installedMap.has(pack.locale),
         latestVersion: pack.version || installedPack?.version || '0.0.0',
-        updateAvailable: !!installedPack && compareVersions(pack.version, installedPack.version) > 0,
+        updateAvailable:
+          !!installedPack && compareVersions(pack.version, installedPack.version) > 0,
       };
     });
     installed.forEach((pack) => {
@@ -365,8 +368,9 @@ function createLocalizationService(options = {}) {
     }
 
     const availablePacks = await fetchAvailableLocaleManifest(true);
-    const manifestEntry = availablePacks.find((pack) => pack.locale === normalizedLocale)
-      || availablePacks.find((pack) => getBaseLocale(pack.locale) === getBaseLocale(normalizedLocale));
+    const manifestEntry =
+      availablePacks.find((pack) => pack.locale === normalizedLocale) ||
+      availablePacks.find((pack) => getBaseLocale(pack.locale) === getBaseLocale(normalizedLocale));
     if (!manifestEntry?.downloadUrl) {
       throw new Error('Language pack is not available for download.');
     }

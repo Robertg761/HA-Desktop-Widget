@@ -490,7 +490,13 @@ body.frosted-glass .modal-content {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   background: var(--bg-color);
   color: var(--text-color);
   overflow: hidden;
@@ -820,8 +826,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-control {
   --desktop-pin-tint-rgb: 255, 203, 104;
-  --desktop-pin-control-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --desktop-pin-control-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -850,14 +855,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background:
-    linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.08),
-      transparent 30%,
-      transparent 70%,
-      rgba(var(--desktop-pin-tint-rgb), 0.1)
-    );
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08),
+    transparent 30%,
+    transparent 70%,
+    rgba(var(--desktop-pin-tint-rgb), 0.1)
+  );
   opacity: 0.85;
   pointer-events: none;
 }
@@ -1046,7 +1050,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   -webkit-appearance: none;
   width: var(--desktop-pin-light-slider-thumb-size);
   height: var(--desktop-pin-light-slider-thumb-size);
-  margin-top: calc((var(--desktop-pin-light-slider-track-size) - var(--desktop-pin-light-slider-thumb-size)) / 2);
+  margin-top: calc(
+    (var(--desktop-pin-light-slider-track-size) - var(--desktop-pin-light-slider-thumb-size)) / 2
+  );
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.95);
   border: none;
@@ -1070,7 +1076,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-slider::-moz-range-progress {
   height: var(--desktop-pin-light-slider-track-size);
-  background: linear-gradient(90deg, rgba(var(--desktop-pin-tint-rgb), 0.7), rgba(var(--desktop-pin-tint-rgb), 1));
+  background: linear-gradient(
+    90deg,
+    rgba(var(--desktop-pin-tint-rgb), 0.7),
+    rgba(var(--desktop-pin-tint-rgb), 1)
+  );
   border-radius: 999px;
 }
 
@@ -1321,8 +1331,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-panel-control {
-  --desktop-pin-control-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --desktop-pin-control-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --desktop-pin-panel-pad: 12px;
   --desktop-pin-panel-gap: 10px;
   --desktop-pin-panel-radius: 20px;
@@ -1375,14 +1384,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-panel-control::before {
-  background:
-    linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.08),
-      transparent 30%,
-      transparent 70%,
-      rgba(var(--desktop-pin-tint-rgb), 0.1)
-    );
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08),
+    transparent 30%,
+    transparent 70%,
+    rgba(var(--desktop-pin-tint-rgb), 0.1)
+  );
   opacity: 0.86;
 }
 
@@ -2091,14 +2099,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   content: '';
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.06),
-      transparent 30%,
-      transparent 70%,
-      rgba(var(--desktop-pin-empty-accent-rgb), 0.08)
-    );
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06),
+    transparent 30%,
+    transparent 70%,
+    rgba(var(--desktop-pin-empty-accent-rgb), 0.08)
+  );
   pointer-events: none;
 }
 
@@ -2272,7 +2279,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 @keyframes pulseDisconnected {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 2px var(--danger);
     opacity: 0.8;
   }
@@ -2289,7 +2297,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 @keyframes pulseConnected {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 3px var(--success);
     opacity: 0.85;
   }
@@ -2684,7 +2693,9 @@ body.first-run-active .widget-content > * {
   height: 8px;
   background: var(--text-primary);
   border-radius: 50%;
-  box-shadow: 0 0 8px var(--accent), var(--shadow-sm);
+  box-shadow:
+    0 0 8px var(--accent),
+    var(--shadow-sm);
   transition: transform 0.2s ease;
   pointer-events: none;
 }
@@ -2797,7 +2808,11 @@ body.first-run-active .widget-content > * {
   box-shadow:
     var(--shadow-md),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: transform var(--transition-slow), border-color var(--transition-slow), background-color var(--transition-slow), box-shadow var(--transition-slow);
+  transition:
+    transform var(--transition-slow),
+    border-color var(--transition-slow),
+    background-color var(--transition-slow),
+    box-shadow var(--transition-slow);
   position: relative;
   overflow: hidden;
   will-change: transform, box-shadow;
@@ -3205,15 +3220,23 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item.active {
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.22) 0%, rgba(var(--accent-rgb), 0.08) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.22) 0%,
+    rgba(var(--accent-rgb), 0.08) 100%
+  );
   color: var(--text-primary);
   border-color: rgba(var(--accent-rgb), 0.6);
-  box-shadow: 0 0 15px rgba(var(--accent-rgb), 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 15px rgba(var(--accent-rgb), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .control-item.active:hover {
   border-color: rgba(var(--accent-rgb), 0.8);
-  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 0 20px rgba(var(--accent-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .control-item.active::before {
@@ -3225,9 +3248,15 @@ body.first-run-active .widget-content > * {
 .control-item[data-state='open'],
 .control-item[data-state='unlocked'],
 .control-item[data-state='home'] {
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.16) 0%, rgba(var(--accent-rgb), 0.05) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.16) 0%,
+    rgba(var(--accent-rgb), 0.05) 100%
+  );
   border-color: rgba(var(--accent-rgb), 0.45);
-  box-shadow: 0 0 15px rgba(var(--accent-rgb), 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 15px rgba(var(--accent-rgb), 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .control-item[data-state='on']:hover,
@@ -3235,19 +3264,25 @@ body.first-run-active .widget-content > * {
 .control-item[data-state='unlocked']:hover,
 .control-item[data-state='home']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
-  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 20px rgba(var(--accent-rgb), 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* Locked state styling */
 .control-item[data-state='locked'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.16) 0%, rgba(255, 152, 0, 0.05) 100%);
   border-color: rgba(255, 152, 0, 0.45);
-  box-shadow: 0 0 15px rgba(255, 152, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 15px rgba(255, 152, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .control-item[data-state='locked']:hover {
   border-color: rgba(255, 152, 0, 0.7);
-  box-shadow: 0 0 20px rgba(255, 152, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 20px rgba(255, 152, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* Climate active state */
@@ -3255,37 +3290,53 @@ body.first-run-active .widget-content > * {
 .control-item[data-state='cool'],
 .control-item[data-state='heat_cool'],
 .control-item[data-state='auto'] {
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.16) 0%, rgba(var(--accent-rgb), 0.05) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.16) 0%,
+    rgba(var(--accent-rgb), 0.05) 100%
+  );
   border-color: rgba(var(--accent-rgb), 0.45);
-  box-shadow: 0 0 15px rgba(var(--accent-rgb), 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 15px rgba(var(--accent-rgb), 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .control-item[data-state='heat_cool']:hover,
 .control-item[data-state='auto']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
-  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 20px rgba(var(--accent-rgb), 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .control-item[data-state='heat'] {
   background: linear-gradient(135deg, rgba(255, 110, 64, 0.16) 0%, rgba(255, 110, 64, 0.05) 100%);
   border-color: rgba(255, 110, 64, 0.45);
-  box-shadow: 0 0 15px rgba(255, 110, 64, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 15px rgba(255, 110, 64, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .control-item[data-state='heat']:hover {
   border-color: rgba(255, 110, 64, 0.7);
-  box-shadow: 0 0 20px rgba(255, 110, 64, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 20px rgba(255, 110, 64, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .control-item[data-state='cool'] {
   background: linear-gradient(135deg, rgba(3, 169, 244, 0.16) 0%, rgba(3, 169, 244, 0.05) 100%);
   border-color: rgba(3, 169, 244, 0.45);
-  box-shadow: 0 0 15px rgba(3, 169, 244, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 15px rgba(3, 169, 244, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .control-item[data-state='cool']:hover {
   border-color: rgba(3, 169, 244, 0.7);
-  box-shadow: 0 0 20px rgba(3, 169, 244, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 20px rgba(3, 169, 244, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* Unavailable entity styling */
@@ -3333,7 +3384,10 @@ body.first-run-active .widget-content > * {
   justify-content: center;
   min-height: 18px;
   line-height: 1;
-  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.25s ease, color 0.25s ease;
+  transition:
+    transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    filter 0.25s ease,
+    color 0.25s ease;
 }
 
 .control-item:hover .control-icon {
@@ -4094,7 +4148,9 @@ body.first-run-active .widget-content > * {
   border-radius: 99px;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-sm);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-sm);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -4103,7 +4159,9 @@ body.first-run-active .widget-content > * {
   border-color: rgba(var(--accent-rgb), 0.35);
   color: var(--text-primary);
   transform: translateY(-1px) scale(1.05);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15), 0 0 10px rgba(var(--accent-rgb), 0.15);
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.15),
+    0 0 10px rgba(var(--accent-rgb), 0.15);
 }
 
 .theme-light .weather-detail {
@@ -4197,7 +4255,13 @@ body.first-run-active .widget-content > * {
   inset: 10px;
   border-radius: calc(var(--radius-lg) - 10px);
   background:
-    radial-gradient(circle at 50% 24%, rgba(255, 210, 110, 0.34) 0, rgba(255, 186, 64, 0.2) 18%, rgba(255, 167, 38, 0.1) 34%, transparent 64%),
+    radial-gradient(
+      circle at 50% 24%,
+      rgba(255, 210, 110, 0.34) 0,
+      rgba(255, 186, 64, 0.2) 18%,
+      rgba(255, 167, 38, 0.1) 34%,
+      transparent 64%
+    ),
     radial-gradient(circle at 50% 72%, rgba(255, 184, 77, 0.14) 0, transparent 58%);
   filter: blur(18px);
   opacity: 0.85;
@@ -4209,8 +4273,12 @@ body.first-run-active .widget-content > * {
 .status-card.primary-entity-card.primary-light-card[data-state='unavailable']::after,
 .status-card.primary-entity-card.primary-light-card:not([data-state='on'])::after {
   opacity: 0.35;
-  background:
-    radial-gradient(circle at 50% 24%, rgba(255, 205, 120, 0.18) 0, rgba(255, 170, 70, 0.08) 20%, transparent 58%);
+  background: radial-gradient(
+    circle at 50% 24%,
+    rgba(255, 205, 120, 0.18) 0,
+    rgba(255, 170, 70, 0.08) 20%,
+    transparent 58%
+  );
 }
 
 .status-card.primary-entity-card::before {
@@ -5888,7 +5956,9 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   font-size: 10px;
 }
 
-#quick-controls .control-item[data-value-size='normal'] .control-state:not(.control-sensor-readout) {
+#quick-controls
+  .control-item[data-value-size='normal']
+  .control-state:not(.control-sensor-readout) {
   font-size: 12px;
 }
 
@@ -5897,7 +5967,9 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   font-weight: 600;
 }
 
-#quick-controls .control-item[data-value-size='extra-large'] .control-state:not(.control-sensor-readout) {
+#quick-controls
+  .control-item[data-value-size='extra-large']
+  .control-state:not(.control-sensor-readout) {
   font-size: 18px;
   font-weight: 700;
 }
@@ -5914,7 +5986,9 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   font-size: 9px;
 }
 
-#quick-controls .control-item.sensor-numeric-entity[data-value-size='normal'] .control-sensor-value {
+#quick-controls
+  .control-item.sensor-numeric-entity[data-value-size='normal']
+  .control-sensor-value {
   font-size: 18px;
 }
 
@@ -5934,11 +6008,15 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   min-height: 80px;
 }
 
-#quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-value {
+#quick-controls
+  .control-item.sensor-numeric-entity[data-value-size='extra-large']
+  .control-sensor-value {
   font-size: 26px;
 }
 
-#quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-unit {
+#quick-controls
+  .control-item.sensor-numeric-entity[data-value-size='extra-large']
+  .control-sensor-unit {
   font-size: 12px;
 }
 
@@ -6233,7 +6311,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   margin-bottom: var(--space-5);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    transform var(--transition-base);
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
@@ -6256,7 +6337,9 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 
 .settings-card:hover {
   border-color: rgba(var(--accent-rgb), 0.35);
-  box-shadow: var(--shadow-md), 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow:
+    var(--shadow-md),
+    0 4px 20px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px) scale(1.005);
 }
 
@@ -6297,21 +6380,24 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 }
 
 /* Tactile enhancements for inputs/dropdowns inside settings */
-#settings-modal input[type="text"],
-#settings-modal input[type="password"],
+#settings-modal input[type='text'],
+#settings-modal input[type='password'],
 #settings-modal select {
-  transition: border-color var(--transition-base), box-shadow var(--transition-base), background-color var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background-color var(--transition-base);
 }
 
-#settings-modal input[type="text"]:hover,
-#settings-modal input[type="password"]:hover,
+#settings-modal input[type='text']:hover,
+#settings-modal input[type='password']:hover,
 #settings-modal select:hover {
   border-color: var(--border-hover);
   background-color: var(--surface-hover);
 }
 
-#settings-modal input[type="text"]:focus-visible,
-#settings-modal input[type="password"]:focus-visible,
+#settings-modal input[type='text']:focus-visible,
+#settings-modal input[type='password']:focus-visible,
 #settings-modal select:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
@@ -8615,23 +8701,33 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
     font-size: 10px;
   }
 
-  #quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] .control-sensor-value {
+  #quick-controls
+    .control-item.sensor-numeric-entity[data-value-size='small']
+    .control-sensor-value {
     font-size: 15px;
   }
 
-  #quick-controls .control-item.sensor-numeric-entity[data-value-size='normal'] .control-sensor-value {
+  #quick-controls
+    .control-item.sensor-numeric-entity[data-value-size='normal']
+    .control-sensor-value {
     font-size: 18px;
   }
 
-  #quick-controls .control-item.sensor-numeric-entity[data-value-size='large'] .control-sensor-value {
+  #quick-controls
+    .control-item.sensor-numeric-entity[data-value-size='large']
+    .control-sensor-value {
     font-size: 20px;
   }
 
-  #quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-value {
+  #quick-controls
+    .control-item.sensor-numeric-entity[data-value-size='extra-large']
+    .control-sensor-value {
     font-size: 22px;
   }
 
-  #quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] .control-sensor-unit {
+  #quick-controls
+    .control-item.sensor-numeric-entity[data-value-size='extra-large']
+    .control-sensor-unit {
     font-size: 11px;
   }
 }
@@ -10749,7 +10845,10 @@ label.disabled {
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .command-palette-close:hover,

@@ -19,9 +19,7 @@ import {
   reorderQuickAccessView,
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
-import {
-  getNextQuickAccessFocusIndex,
-} from './quick-access-ui-helpers.js';
+import { getNextQuickAccessFocusIndex } from './quick-access-ui-helpers.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -42,17 +40,16 @@ const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
-const LIGHT_COLOR_PRESETS = [
-  '#FFB347',
-  '#FFD966',
-  '#FFFFFF',
-  '#9FD8FF',
-  '#7C83FF',
-  '#FF6B9D',
-];
+const LIGHT_COLOR_PRESETS = ['#FFB347', '#FFD966', '#FFFFFF', '#9FD8FF', '#7C83FF', '#FF6B9D'];
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
-const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set(['auto', 'small', 'normal', 'large', 'extra-large']);
+const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
+  'auto',
+  'small',
+  'normal',
+  'large',
+  'extra-large',
+]);
 const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
   { value: 'auto', label: 'Auto (Default)' },
   { value: 'small', label: 'Small' },
@@ -69,7 +66,16 @@ const SENSOR_TILE_SPARKLINE_WIDTH = 96;
 const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
 const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
 const SENSOR_DETAIL_SPARKLINE_HEIGHT = 120;
-const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = ['off', 'heat', 'cool', 'auto', 'heat_cool', 'fan_only', 'dry', 'eco'];
+const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = [
+  'off',
+  'heat',
+  'cool',
+  'auto',
+  'heat_cool',
+  'fan_only',
+  'dry',
+  'eco',
+];
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   off: 'Off',
   heat: 'Heat',
@@ -91,9 +97,7 @@ const DESKTOP_PIN_FAN_PRESETS_TIGHT = [
   { value: 66, label: 'Mid' },
   { value: 100, label: 'High' },
 ];
-const {
-  resolveDesktopPinProfile,
-} = desktopPinSupport;
+const { resolveDesktopPinProfile } = desktopPinSupport;
 const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
 const sensorHistoryCache = new Map();
 
@@ -124,7 +128,9 @@ function emitUiDebug(event, details = {}) {
 
     console.info('[UI DEBUG]', event, payload.details);
     if (window?.electronAPI?.debugLog) {
-      window.electronAPI.debugLog(payload).catch(() => { /* no-op */ });
+      window.electronAPI.debugLog(payload).catch(() => {
+        /* no-op */
+      });
     }
   } catch {
     // no-op: debug logging must never break UI execution
@@ -196,9 +202,8 @@ function handleServiceError(error, entityName = null) {
 }
 
 function serializeDesktopPinActionError(error, fallbackMessage = 'Desktop pin action failed') {
-  const message = (typeof error?.message === 'string' && error.message.trim())
-    ? error.message
-    : fallbackMessage;
+  const message =
+    typeof error?.message === 'string' && error.message.trim() ? error.message : fallbackMessage;
   const serialized = { message };
 
   if (error?.code) serialized.code = error.code;
@@ -226,7 +231,7 @@ function respondToDesktopPinActionRequest(requestId, response) {
  * Called when reorganize mode changes to prevent inconsistent state
  */
 function clearAllPressTimers() {
-  activePressTimers.forEach(timer => clearTimeout(timer));
+  activePressTimers.forEach((timer) => clearTimeout(timer));
   activePressTimers.clear();
 }
 
@@ -294,7 +299,14 @@ function getActiveQuickAccessEntityIds() {
 }
 
 // Preset page names offered when adding a Quick Access page in reorganize mode.
-const QUICK_ACCESS_PAGE_PRESETS = ['Living Room', 'Bedroom', 'Kitchen', 'Office', 'Bathroom', 'Garage'];
+const QUICK_ACCESS_PAGE_PRESETS = [
+  'Living Room',
+  'Bedroom',
+  'Kitchen',
+  'Office',
+  'Bathroom',
+  'Garage',
+];
 
 function switchQuickAccessPage(tabId) {
   const nextConfig = setActiveQuickAccessView(state.CONFIG, tabId);
@@ -448,7 +460,7 @@ function beginInlineTabRename(tabId, buttonEl) {
 async function deleteQuickAccessPage(tabId) {
   const config = ensureQuickAccessConfig();
   if ((config.customTabs || []).length <= 1) return;
-  const tab = config.customTabs.find(view => view.id === tabId);
+  const tab = config.customTabs.find((view) => view.id === tabId);
   if (!tab) return;
 
   const confirmed = await uiUtils.showConfirm(
@@ -464,7 +476,9 @@ async function deleteQuickAccessPage(tabId) {
 }
 
 function createQuickAccessPage(name) {
-  const nextConfig = addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
+  const nextConfig = addQuickAccessView(state.CONFIG, name, {
+    idFactory: generateQuickAccessViewId,
+  });
   setQuickAccessConfig(nextConfig);
   uiUtils.showToast(t('Page added'), 'success', 1600);
 }
@@ -477,10 +491,10 @@ function closeAddPageModal() {
 function showAddPageModal() {
   closeAddPageModal();
 
-  const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS
-    .map(preset => `
-              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`)
-    .join('');
+  const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
+    (preset) => `
+              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`
+  ).join('');
 
   const modal = document.createElement('div');
   modal.id = 'add-page-modal';
@@ -554,7 +568,9 @@ function showAddPageModal() {
     });
   }
 
-  modal.onclick = (event) => { if (event.target === modal) close(); };
+  modal.onclick = (event) => {
+    if (event.target === modal) close();
+  };
 }
 
 function getQuickAccessTiles() {
@@ -658,7 +674,12 @@ function isTimerEntityForLiveUpdates(entity) {
   if (!entity.entity_id.startsWith('sensor.')) return false;
 
   const attributes = entity.attributes || {};
-  if (attributes.finishes_at || attributes.end_time || attributes.finish_time || attributes.duration) {
+  if (
+    attributes.finishes_at ||
+    attributes.end_time ||
+    attributes.finish_time ||
+    attributes.duration
+  ) {
     return true;
   }
 
@@ -666,10 +687,13 @@ function isTimerEntityForLiveUpdates(entity) {
 }
 
 function getDefaultWeatherEntity() {
-  const weatherEntities = Object.values(state.STATES || {})
-    .filter((entity) => entity?.entity_id?.startsWith('weather.'));
+  const weatherEntities = Object.values(state.STATES || {}).filter((entity) =>
+    entity?.entity_id?.startsWith('weather.')
+  );
   if (!weatherEntities.length) return null;
-  weatherEntities.sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+  weatherEntities.sort((a, b) =>
+    utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b))
+  );
   return weatherEntities[0];
 }
 
@@ -686,9 +710,9 @@ function resolveSelectedWeatherEntityId() {
 }
 
 function refreshVisibleTimerEntityFlag() {
-  hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) => (
+  hasVisibleTimerEntities = Array.from(visibleEntityIds).some((entityId) =>
     isTimerEntityForLiveUpdates(state.STATES?.[entityId])
-  ));
+  );
 }
 
 function refreshVisibleEntityCache() {
@@ -701,7 +725,12 @@ function refreshVisibleEntityCache() {
 
     const [slotOne, slotTwo] = getPrimaryCardSelections();
     [slotOne, slotTwo].forEach((selection) => {
-      if (selection && selection !== PRIMARY_CARD_NONE && selection !== 'weather' && selection !== 'time') {
+      if (
+        selection &&
+        selection !== PRIMARY_CARD_NONE &&
+        selection !== 'weather' &&
+        selection !== 'time'
+      ) {
         addVisibleEntityCandidate(nextVisibleIds, selection);
       }
     });
@@ -738,7 +767,7 @@ function getTickTargets() {
   return {
     timeVisible: isTimeCardVisible,
     hasVisibleTimers: hasVisibleTimerEntities,
-    mediaEntity: (isMediaTileVisible && mediaEntity?.state === 'playing') ? mediaEntity : null,
+    mediaEntity: isMediaTileVisible && mediaEntity?.state === 'playing' ? mediaEntity : null,
   };
 }
 
@@ -774,7 +803,15 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (!cardEl) return;
 
   cardEl.dataset.primarySlot = String(slotIndex);
-  cardEl.classList.remove('weather-card', 'time-card', 'entity-card', 'primary-entity-card', 'primary-light-card', 'unavailable-entity', 'primary-card-hidden');
+  cardEl.classList.remove(
+    'weather-card',
+    'time-card',
+    'entity-card',
+    'primary-entity-card',
+    'primary-light-card',
+    'unavailable-entity',
+    'primary-card-hidden'
+  );
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
   cardEl.title = '';
@@ -819,7 +856,9 @@ function renderPrimaryCards() {
     renderPrimaryCard(timeCard, slotTwo, 2);
 
     if (grid) {
-      const visibleCount = [slotOne, slotTwo].filter(selection => selection !== PRIMARY_CARD_NONE).length;
+      const visibleCount = [slotOne, slotTwo].filter(
+        (selection) => selection !== PRIMARY_CARD_NONE
+      ).length;
       grid.classList.toggle('single-card', visibleCount === 1);
       grid.classList.toggle('primary-cards-hidden', visibleCount === 0);
       grid.classList.remove('primary-cards-weather-only');
@@ -872,7 +911,7 @@ function toggleReorganizeMode() {
           // SortableJS has already reordered the DOM
           // Just save the new order (pass moved item for duplicate cleanup)
           saveQuickAccessOrder(evt?.item || null);
-        }
+        },
       });
 
       addRemoveButtons();
@@ -880,7 +919,11 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(true).catch((error) => {
         console.error('Failed to enable desktop pin edit mode:', error);
       });
-      uiUtils.showToast(t('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit'), 'info', 3000);
+      uiUtils.showToast(
+        t('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit'),
+        'info',
+        3000
+      );
     } else {
       // Destroy Sortable instance
       if (sortableInstance) {
@@ -915,7 +958,7 @@ function toggleReorganizeMode() {
 function addRemoveButtons() {
   try {
     const controls = document.querySelectorAll('#quick-controls .control-item');
-    controls.forEach(item => {
+    controls.forEach((item) => {
       addButtonsToElement(item);
     });
   } catch (error) {
@@ -925,9 +968,11 @@ function addRemoveButtons() {
 
 function removeRemoveButtons() {
   try {
-    document.querySelectorAll('#quick-controls .remove-btn').forEach(btn => btn.remove());
-    document.querySelectorAll('#quick-controls .rename-btn').forEach(btn => btn.remove());
-    document.querySelectorAll('#quick-controls .desktop-pin-quick-toggle').forEach(btn => btn.remove());
+    document.querySelectorAll('#quick-controls .remove-btn').forEach((btn) => btn.remove());
+    document.querySelectorAll('#quick-controls .rename-btn').forEach((btn) => btn.remove());
+    document
+      .querySelectorAll('#quick-controls .desktop-pin-quick-toggle')
+      .forEach((btn) => btn.remove());
   } catch (error) {
     console.error('Error removing remove buttons:', error);
   }
@@ -944,19 +989,31 @@ function addButtonsToElement(item) {
       setIconContent(renameBtn, 'edit', { size: 14 });
       renameBtn.title = t('Edit Tile Settings');
       renameBtn.setAttribute('draggable', 'false');
-      renameBtn.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-      }, true);
-      renameBtn.addEventListener('dragstart', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }, true);
-      renameBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        showRenameModal(item.dataset.entityId);
-      }, true);
+      renameBtn.addEventListener(
+        'mousedown',
+        (e) => {
+          e.stopPropagation();
+        },
+        true
+      );
+      renameBtn.addEventListener(
+        'dragstart',
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        },
+        true
+      );
+      renameBtn.addEventListener(
+        'click',
+        (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          showRenameModal(item.dataset.entityId);
+        },
+        true
+      );
       item.appendChild(renameBtn);
     }
 
@@ -967,32 +1024,44 @@ function addButtonsToElement(item) {
       setIconContent(removeBtn, 'close', { size: 16 });
       removeBtn.title = 'Remove from Quick Access';
       removeBtn.setAttribute('draggable', 'false');
-      removeBtn.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-      }, true);
-      removeBtn.addEventListener('dragstart', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }, true);
-      removeBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        e.preventDefault();
+      removeBtn.addEventListener(
+        'mousedown',
+        (e) => {
+          e.stopPropagation();
+        },
+        true
+      );
+      removeBtn.addEventListener(
+        'dragstart',
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        },
+        true
+      );
+      removeBtn.addEventListener(
+        'click',
+        async (e) => {
+          e.stopPropagation();
+          e.preventDefault();
 
-        const entityId = item.dataset.entityId;
-        const entity = state.STATES[entityId];
-        const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
+          const entityId = item.dataset.entityId;
+          const entity = state.STATES[entityId];
+          const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
-        const confirmed = await uiUtils.showConfirm(
-          'Remove from Quick Access',
-          `Remove "${entityName}" from Quick Access?`,
-          { confirmText: 'Remove', confirmClass: 'btn-danger' }
-        );
+          const confirmed = await uiUtils.showConfirm(
+            'Remove from Quick Access',
+            `Remove "${entityName}" from Quick Access?`,
+            { confirmText: 'Remove', confirmClass: 'btn-danger' }
+          );
 
-        if (confirmed) {
-          removeFromQuickAccess(entityId);
-        }
-      }, true);
+          if (confirmed) {
+            removeFromQuickAccess(entityId);
+          }
+        },
+        true
+      );
       item.appendChild(removeBtn);
     }
 
@@ -1007,21 +1076,24 @@ function showRenameModal(entityId) {
     const entity = state.STATES[entityId];
     if (!entity) return;
 
-    const currentName = state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
+    const currentName =
+      state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
     const hasValueSizeControl = isQuickAccessTileValueSizeApplicable(entity);
     const currentValueSize = getQuickAccessTileValueSize(entityId);
-    const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS
-      .map(option => `
-                <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`)
-      .join('');
-    const valueSizeControlMarkup = hasValueSizeControl ? `
+    const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS.map(
+      (option) => `
+                <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
+    ).join('');
+    const valueSizeControlMarkup = hasValueSizeControl
+      ? `
           <div class="form-group">
             <label for="tile-value-size-select">${utils.escapeHtml(t('Value Font Size:'))}</label>
             <select id="tile-value-size-select" class="form-control">
               ${valueSizeOptionsMarkup}
             </select>
             <div class="form-help">${utils.escapeHtml(t('Adjusts the state or readout text size for this Quick Access tile.'))}</div>
-          </div>` : '';
+          </div>`
+      : '';
 
     const modal = document.createElement('div');
     modal.className = 'modal rename-modal';
@@ -1110,7 +1182,8 @@ function showRenameModal(entityId) {
           changed = true;
         }
 
-        const hadValueSizeOverride = state.CONFIG.quickAccessTileOptions?.[entityId]?.valueSize !== undefined;
+        const hadValueSizeOverride =
+          state.CONFIG.quickAccessTileOptions?.[entityId]?.valueSize !== undefined;
         if (hadValueSizeOverride) {
           setQuickAccessTileValueSize(entityId, 'auto');
           changed = true;
@@ -1134,7 +1207,9 @@ function showRenameModal(entityId) {
       closeBtn.onclick = () => modal.remove();
     }
 
-    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    modal.onclick = (e) => {
+      if (e.target === modal) modal.remove();
+    };
   } catch (error) {
     console.error('Error showing rename modal:', error);
   }
@@ -1168,7 +1243,7 @@ function saveQuickAccessOrder(movedItem = null) {
     const movedId = movedItem?.dataset?.entityId || null;
 
     // Remove any leftover sortable ghost/duplicate elements before saving order
-    items.forEach(item => {
+    items.forEach((item) => {
       const entityId = item.dataset.entityId;
       if (item.classList.contains('sortable-ghost')) {
         item.remove();
@@ -1182,7 +1257,7 @@ function saveQuickAccessOrder(movedItem = null) {
     const seen = new Set();
     const newOrder = [];
 
-    items.forEach(item => {
+    items.forEach((item) => {
       if (!item.isConnected) return;
       const entityId = item.dataset.entityId;
       if (!entityId || seen.has(entityId)) {
@@ -1265,8 +1340,10 @@ function updateEntityInUI(entity, options = {}) {
       updateMediaTile();
     }
 
-    const items = document.querySelectorAll(`.control-item[data-entity-id="${renderEntity.entity_id}"]`);
-    items.forEach(item => {
+    const items = document.querySelectorAll(
+      `.control-item[data-entity-id="${renderEntity.entity_id}"]`
+    );
+    items.forEach((item) => {
       const isDesktopPin = item.dataset.desktopPin === 'true';
       if (isDesktopPin && updateExistingDesktopPinPanelControl(item, renderEntity)) {
         return;
@@ -1277,16 +1354,19 @@ function updateEntityInUI(entity, options = {}) {
       const isPrimary = item.dataset.primaryCard === 'true';
       const isQuickAccessTile = !isDesktopPin && !isPrimary && !!item.closest('#quick-controls');
       const nextSignature = getControlRenderSignature(renderEntity);
-      if (item.dataset.renderSignature === nextSignature && updateExistingQuickAccessControl(item, renderEntity, {
-        context: isQuickAccessTile ? 'quick-access' : 'default',
-      })) {
+      if (
+        item.dataset.renderSignature === nextSignature &&
+        updateExistingQuickAccessControl(item, renderEntity, {
+          context: isQuickAccessTile ? 'quick-access' : 'default',
+        })
+      ) {
         return;
       }
       const newControl = isDesktopPin
         ? createDesktopPinControlElement(renderEntity)
         : createControlElement(renderEntity, {
-          context: isQuickAccessTile ? 'quick-access' : 'default',
-        });
+            context: isQuickAccessTile ? 'quick-access' : 'default',
+          });
       if (!isDesktopPin) {
         newControl.dataset.renderSignature = nextSignature;
       }
@@ -1305,7 +1385,9 @@ function updateEntityInUI(entity, options = {}) {
         addButtonsToElement(newControl);
       }
     });
-    syncQuickAccessRovingTabIndex(document.activeElement?.closest?.('#quick-controls .control-item'));
+    syncQuickAccessRovingTabIndex(
+      document.activeElement?.closest?.('#quick-controls .control-item')
+    );
   } catch (error) {
     console.error('Error updating entity in UI:', error);
   }
@@ -1317,9 +1399,10 @@ function getControlRenderSignature(entity) {
   const domain = getEntityDomain(entity.entity_id);
   const isTimerSensor = isTimerLikeSensorEntity(entity);
   const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
-  const sensorDisplay = entity.entity_id.startsWith('sensor.') && !isTimerSensor
-    ? getQuickAccessSensorDisplayParts(entity)
-    : null;
+  const sensorDisplay =
+    entity.entity_id.startsWith('sensor.') && !isTimerSensor
+      ? getQuickAccessSensorDisplayParts(entity)
+      : null;
   let contentKind = 'default';
   if (isTimer) {
     contentKind = 'timer';
@@ -1328,7 +1411,12 @@ function getControlRenderSignature(entity) {
   } else if (domain === 'media_player') {
     contentKind = 'media';
   } else if (domain === 'light') {
-    contentKind = entity.state === 'on' && attrs.brightness ? 'light-brightness' : (entity.state !== 'on' ? 'light-off' : 'light-empty');
+    contentKind =
+      entity.state === 'on' && attrs.brightness
+        ? 'light-brightness'
+        : entity.state !== 'on'
+          ? 'light-off'
+          : 'light-empty';
   } else if (domain === 'climate') {
     contentKind = attrs.current_temperature || attrs.temperature ? 'climate-temp' : 'climate-empty';
   }
@@ -1340,7 +1428,9 @@ function getControlRenderSignature(entity) {
     sensorHasUnit: !!sensorDisplay?.unit,
     span: getTileSpan(entity),
     desktopPinned: !!state.CONFIG?.desktopPins?.[entity.entity_id],
-    quickAccessValueSize: hasQuickAccessValueSize ? getQuickAccessTileValueSize(entity.entity_id) : null,
+    quickAccessValueSize: hasQuickAccessValueSize
+      ? getQuickAccessTileValueSize(entity.entity_id)
+      : null,
   });
 }
 
@@ -1372,7 +1462,9 @@ function normalizeTodoItems(response, entityId) {
   const entityPayload = getServiceEntityPayload(response, entityId);
   const items = Array.isArray(entityPayload?.items)
     ? entityPayload.items
-    : (Array.isArray(response?.items) ? response.items : []);
+    : Array.isArray(response?.items)
+      ? response.items
+      : [];
   return items.filter((item) => item && typeof item === 'object');
 }
 
@@ -1380,7 +1472,9 @@ function normalizeCalendarEvents(response, entityId) {
   const entityPayload = getServiceEntityPayload(response, entityId);
   const events = Array.isArray(entityPayload?.events)
     ? entityPayload.events
-    : (Array.isArray(response?.events) ? response.events : []);
+    : Array.isArray(response?.events)
+      ? response.events
+      : [];
   return events.filter((event) => event && typeof event === 'object');
 }
 
@@ -1417,12 +1511,12 @@ function formatCalendarEventRange(event) {
 function isTimerLikeSensorEntity(entity) {
   if (!entity?.entity_id?.startsWith('sensor.')) return false;
 
-  const hasTimerAttributes = entity.attributes && (
-    entity.attributes.finishes_at ||
-    entity.attributes.end_time ||
-    entity.attributes.finish_time ||
-    entity.attributes.duration
-  );
+  const hasTimerAttributes =
+    entity.attributes &&
+    (entity.attributes.finishes_at ||
+      entity.attributes.end_time ||
+      entity.attributes.finish_time ||
+      entity.attributes.duration);
   if (hasTimerAttributes) return true;
 
   if (entity.entity_id.toLowerCase().includes('timer')) return true;
@@ -1449,7 +1543,9 @@ function isQuickAccessTileValueSizeApplicable(entity) {
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    return !!(displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature);
+    return !!(
+      displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature
+    );
   }
 
   return false;
@@ -1465,15 +1561,18 @@ function isFiniteNumericSensorState(entity) {
 function getQuickAccessSensorPrecision(entity) {
   const attrs = entity?.attributes || {};
   const deviceClass = attrs.device_class;
-  const unit = typeof attrs.unit_of_measurement === 'string'
-    ? attrs.unit_of_measurement.trim()
-    : attrs.unit_of_measurement;
+  const unit =
+    typeof attrs.unit_of_measurement === 'string'
+      ? attrs.unit_of_measurement.trim()
+      : attrs.unit_of_measurement;
 
-  if (deviceClass === 'temperature'
-    || deviceClass === 'humidity'
-    || unit === '%'
-    || unit === '°C'
-    || unit === '°F') {
+  if (
+    deviceClass === 'temperature' ||
+    deviceClass === 'humidity' ||
+    unit === '%' ||
+    unit === '°C' ||
+    unit === '°F'
+  ) {
     return 1;
   }
 
@@ -1493,9 +1592,10 @@ function getQuickAccessSensorDisplayParts(entity) {
 
   const value = Number(entity.state);
   const precision = getQuickAccessSensorPrecision(entity);
-  const unit = typeof entity.attributes?.unit_of_measurement === 'string'
-    ? entity.attributes.unit_of_measurement.trim()
-    : '';
+  const unit =
+    typeof entity.attributes?.unit_of_measurement === 'string'
+      ? entity.attributes.unit_of_measurement.trim()
+      : '';
   const formattedValue = formatQuickAccessSensorNumber(value, precision);
 
   return {
@@ -1538,7 +1638,9 @@ function normalizeSensorHistoryResponse(response, entityId) {
   const result = response?.result ?? response;
   const entries = Array.isArray(result)
     ? result
-    : (Array.isArray(result?.[entityId]) ? result[entityId] : []);
+    : Array.isArray(result?.[entityId])
+      ? result[entityId]
+      : [];
 
   return entries
     .map((entry) => {
@@ -1557,7 +1659,13 @@ function normalizeSensorHistoryResponse(response, entityId) {
 function pruneSensorHistorySeries(series, now = Date.now()) {
   const cutoff = now - SENSOR_HISTORY_WINDOW_MS;
   return Array.isArray(series)
-    ? series.filter((point) => point && Number.isFinite(point.value) && Number.isFinite(point.timestamp) && point.timestamp >= cutoff)
+    ? series.filter(
+        (point) =>
+          point &&
+          Number.isFinite(point.value) &&
+          Number.isFinite(point.timestamp) &&
+          point.timestamp >= cutoff
+      )
     : [];
 }
 
@@ -1577,23 +1685,30 @@ function fetchSensorHistory(entityId) {
 
   const end = new Date(now);
   const start = new Date(now - SENSOR_HISTORY_WINDOW_MS);
-  entry.promise = websocket.request({
-    type: 'history/history_during_period',
-    start_time: start.toISOString(),
-    end_time: end.toISOString(),
-    entity_ids: [entityId],
-    minimal_response: true,
-    no_attributes: true,
-  }).then((response) => {
-    entry.series = pruneSensorHistorySeries(normalizeSensorHistoryResponse(response, entityId), Date.now());
-    entry.lastFetchAt = Date.now();
-    return entry.series;
-  }).catch(() => {
-    entry.lastFetchAt = Date.now();
-    return entry.series;
-  }).finally(() => {
-    entry.promise = null;
-  });
+  entry.promise = websocket
+    .request({
+      type: 'history/history_during_period',
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      entity_ids: [entityId],
+      minimal_response: true,
+      no_attributes: true,
+    })
+    .then((response) => {
+      entry.series = pruneSensorHistorySeries(
+        normalizeSensorHistoryResponse(response, entityId),
+        Date.now()
+      );
+      entry.lastFetchAt = Date.now();
+      return entry.series;
+    })
+    .catch(() => {
+      entry.lastFetchAt = Date.now();
+      return entry.series;
+    })
+    .finally(() => {
+      entry.promise = null;
+    });
 
   return entry.promise;
 }
@@ -1608,10 +1723,7 @@ function appendLiveSensorHistoryValue(entity) {
   const previous = entry.series[entry.series.length - 1];
   if (previous && previous.timestamp === timestamp && previous.value === value) return;
 
-  entry.series = pruneSensorHistorySeries([
-    ...entry.series,
-    { value, timestamp },
-  ]);
+  entry.series = pruneSensorHistorySeries([...entry.series, { value, timestamp }]);
 }
 
 function createSensorSparklineSvg(series, { width, height, className }) {
@@ -1709,7 +1821,11 @@ function getQuickAccessTileValueSize(entityId) {
 }
 
 function ensureQuickAccessTileOptionsConfig() {
-  if (!state.CONFIG.quickAccessTileOptions || typeof state.CONFIG.quickAccessTileOptions !== 'object' || Array.isArray(state.CONFIG.quickAccessTileOptions)) {
+  if (
+    !state.CONFIG.quickAccessTileOptions ||
+    typeof state.CONFIG.quickAccessTileOptions !== 'object' ||
+    Array.isArray(state.CONFIG.quickAccessTileOptions)
+  ) {
     state.CONFIG.quickAccessTileOptions = {};
   }
   return state.CONFIG.quickAccessTileOptions;
@@ -1747,7 +1863,9 @@ function getDesktopPinSupportProfile(entityOrEntityId = null) {
 function getDesktopPinSupportInfo(entityOrEntityId = null) {
   const profile = getDesktopPinSupportProfile(entityOrEntityId);
   return {
-    entityId: profile.entityId || (typeof entityOrEntityId === 'string' ? entityOrEntityId : entityOrEntityId?.entity_id || ''),
+    entityId:
+      profile.entityId ||
+      (typeof entityOrEntityId === 'string' ? entityOrEntityId : entityOrEntityId?.entity_id || ''),
     supported: !!profile.supported,
     interactive: !!profile.interactive,
     family: profile.family || 'unsupported',
@@ -1776,10 +1894,14 @@ function callEntityDomainService(entity, serviceName, serviceData = {}) {
   const domain = getEntityDomain(entityId);
   if (!entityId || !domain || !serviceName) return Promise.resolve();
   const currentEntity = state.STATES?.[entityId] || entity;
-  return websocket.callService(domain, serviceName, {
-    entity_id: entityId,
-    ...(serviceData || {}),
-  }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity || entity)));
+  return websocket
+    .callService(domain, serviceName, {
+      entity_id: entityId,
+      ...(serviceData || {}),
+    })
+    .catch((error) =>
+      handleServiceError(error, utils.getEntityDisplayName(currentEntity || entity))
+    );
 }
 
 function callServiceWithResponse(domain, service, serviceData = {}) {
@@ -1796,10 +1918,14 @@ function clampDesktopPinMetric(value, min, max) {
 function getDesktopPinLayoutProfile(domain = '', size = {}) {
   const width = Number.isFinite(Number(size?.width))
     ? Math.round(Number(size.width))
-    : (typeof window !== 'undefined' ? (window.innerWidth || 168) : 168);
+    : typeof window !== 'undefined'
+      ? window.innerWidth || 168
+      : 168;
   const height = Number.isFinite(Number(size?.height))
     ? Math.round(Number(size.height))
-    : (typeof window !== 'undefined' ? (window.innerHeight || 148) : 148);
+    : typeof window !== 'undefined'
+      ? window.innerHeight || 148
+      : 148;
   const normalizedDomain = typeof domain === 'string' ? domain.trim() : '';
   const area = width * height;
   const isMedia = normalizedDomain === 'media_player';
@@ -1808,13 +1934,13 @@ function getDesktopPinLayoutProfile(domain = '', size = {}) {
   if (width <= 155 || height <= 122) {
     layout = 'micro';
   } else if (
-    (width >= 260 && height >= 190 && area >= (260 * 190))
-    || (isMedia && width >= 320 && height >= 156 && area >= (320 * 156))
+    (width >= 260 && height >= 190 && area >= 260 * 190) ||
+    (isMedia && width >= 320 && height >= 156 && area >= 320 * 156)
   ) {
     layout = 'roomy';
   } else if (
-    (width >= 195 && height >= 160 && area >= (195 * 160))
-    || (isMedia && width >= 260 && height >= 148 && area >= (260 * 148))
+    (width >= 195 && height >= 160 && area >= 195 * 160) ||
+    (isMedia && width >= 260 && height >= 148 && area >= 260 * 148)
   ) {
     layout = 'balanced';
   }
@@ -1841,9 +1967,10 @@ function getDesktopPinSceneLayoutProfile(domain = 'scene', size = {}) {
 }
 
 function getDesktopPinSceneSizingMetrics(width, height, domain = 'scene') {
-  const layoutProfile = domain === 'scene'
-    ? getDesktopPinSceneLayoutProfile(domain, { width, height })
-    : getDesktopPinLayoutProfile(domain, { width, height });
+  const layoutProfile =
+    domain === 'scene'
+      ? getDesktopPinSceneLayoutProfile(domain, { width, height })
+      : getDesktopPinLayoutProfile(domain, { width, height });
   const safeWidth = Math.max(1, Number(width) || DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.width);
   const safeHeight = Math.max(1, Number(height) || DESKTOP_PIN_SCENE_DEFAULT_BOUNDS.height);
   const vmin = Math.min(safeWidth, safeHeight);
@@ -1942,7 +2069,7 @@ function getDesktopPinClimateModesToShow(modes, activeMode, maxCount) {
 function getDesktopPinClimateRenderProfile(entity) {
   const layoutProfile = getDesktopPinDenseRenderProfile('climate');
   const climateValue = getDesktopPinClimateValue(entity);
-  const maxModes = layoutProfile.isDenseMicro ? 2 : (layoutProfile.isDenseTight ? 3 : 4);
+  const maxModes = layoutProfile.isDenseMicro ? 2 : layoutProfile.isDenseTight ? 3 : 4;
   return {
     ...layoutProfile,
     climateValue,
@@ -1960,9 +2087,10 @@ function getDesktopPinFanRenderProfile() {
     ...layoutProfile,
     showHeaderKpi: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
     showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
-    presets: layoutProfile.isDenseTight || layoutProfile.isDenseMicro
-      ? DESKTOP_PIN_FAN_PRESETS_TIGHT
-      : DESKTOP_PIN_FAN_PRESETS_FULL,
+    presets:
+      layoutProfile.isDenseTight || layoutProfile.isDenseMicro
+        ? DESKTOP_PIN_FAN_PRESETS_TIGHT
+        : DESKTOP_PIN_FAN_PRESETS_FULL,
   };
 }
 
@@ -1980,8 +2108,12 @@ function getDesktopPinMediaRenderProfile() {
   return {
     ...layoutProfile,
     showArtist: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
-    statusText: layoutProfile.isDenseTight ? { playing: 'Playing', paused: 'Paused' } : { playing: 'Playing now', paused: 'Paused' },
-    headerKpi: layoutProfile.isDenseTight ? { playing: 'On', paused: 'Idle' } : { playing: 'Live', paused: 'Idle' },
+    statusText: layoutProfile.isDenseTight
+      ? { playing: 'Playing', paused: 'Paused' }
+      : { playing: 'Playing now', paused: 'Paused' },
+    headerKpi: layoutProfile.isDenseTight
+      ? { playing: 'On', paused: 'Idle' }
+      : { playing: 'Live', paused: 'Idle' },
   };
 }
 
@@ -2054,40 +2186,58 @@ function bindDesktopPinButton(button, handler, options = {}) {
   const pointerEvents = options.pointerEvents || ['pointerdown', 'mousedown'];
 
   pointerEvents.forEach((eventName) => {
-    button.addEventListener(eventName, (event) => {
-      stopDesktopPinEvent(event, true);
-    }, true);
+    button.addEventListener(
+      eventName,
+      (event) => {
+        stopDesktopPinEvent(event, true);
+      },
+      true
+    );
   });
 
-  button.addEventListener('click', (event) => {
-    stopDesktopPinEvent(event, true);
-    handler(event);
-  }, true);
+  button.addEventListener(
+    'click',
+    (event) => {
+      stopDesktopPinEvent(event, true);
+      handler(event);
+    },
+    true
+  );
 }
 
-function bindDesktopPinSlider(slider, {
-  entityId,
-  getImmediateValue,
-  applyVisualValue,
-  queueValue,
-  releaseDelayMs = 320,
-}) {
-  if (!slider || !entityId || typeof getImmediateValue !== 'function' || typeof queueValue !== 'function') {
+function bindDesktopPinSlider(
+  slider,
+  { entityId, getImmediateValue, applyVisualValue, queueValue, releaseDelayMs = 320 }
+) {
+  if (
+    !slider ||
+    !entityId ||
+    typeof getImmediateValue !== 'function' ||
+    typeof queueValue !== 'function'
+  ) {
     return;
   }
 
-  slider.addEventListener('pointerdown', (event) => {
-    stopDesktopPinEvent(event, false);
-    setDesktopPinControlInteraction(entityId, {
-      active: true,
-      value: getImmediateValue(slider),
-    });
-  }, true);
+  slider.addEventListener(
+    'pointerdown',
+    (event) => {
+      stopDesktopPinEvent(event, false);
+      setDesktopPinControlInteraction(entityId, {
+        active: true,
+        value: getImmediateValue(slider),
+      });
+    },
+    true
+  );
 
   ['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
-    slider.addEventListener(eventName, (event) => {
-      stopDesktopPinEvent(event, false);
-    }, true);
+    slider.addEventListener(
+      eventName,
+      (event) => {
+        stopDesktopPinEvent(event, false);
+      },
+      true
+    );
   });
 
   slider.addEventListener('input', (event) => {
@@ -2104,9 +2254,13 @@ function bindDesktopPinSlider(slider, {
   });
 
   ['change', 'pointerup', 'pointercancel'].forEach((eventName) => {
-    slider.addEventListener(eventName, () => {
-      scheduleDesktopPinControlInteractionRelease(entityId, releaseDelayMs);
-    }, true);
+    slider.addEventListener(
+      eventName,
+      () => {
+        scheduleDesktopPinControlInteractionRelease(entityId, releaseDelayMs);
+      },
+      true
+    );
   });
 }
 
@@ -2170,7 +2324,10 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty('--desktop-pin-light-level', String(safePct / 100));
-  root.style.setProperty('--desktop-pin-light-glow-opacity', isOn ? String((0.14 + ((safePct / 100) * 0.28)).toFixed(3)) : '0.06');
+  root.style.setProperty(
+    '--desktop-pin-light-glow-opacity',
+    isOn ? String((0.14 + (safePct / 100) * 0.28).toFixed(3)) : '0.06'
+  );
 
   const meterValue = root.querySelector('.desktop-pin-light-meter-value');
   if (meterValue) {
@@ -2184,9 +2341,7 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
 
   const status = root.querySelector('.desktop-pin-light-status');
   if (status) {
-    status.textContent = isOn
-      ? `${safePct}% brightness`
-      : 'Use slider or a preset';
+    status.textContent = isOn ? `${safePct}% brightness` : 'Use slider or a preset';
   }
 
   const powerButton = root.querySelector('.desktop-pin-light-power');
@@ -2200,7 +2355,6 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (slider && slider.value !== String(safePct)) {
     slider.value = String(safePct);
   }
-
 }
 
 function updateExistingDesktopPinLightControl(root, entity) {
@@ -2214,9 +2368,7 @@ function updateExistingDesktopPinLightControl(root, entity) {
   const brightnessPct = Number.isFinite(interactionBrightness)
     ? Math.max(0, Math.min(100, Math.round(interactionBrightness)))
     : getLightBrightnessPercent(entity);
-  const isOn = interaction?.active
-    ? brightnessPct > 0
-    : entity.state === 'on' || brightnessPct > 0;
+  const isOn = interaction?.active ? brightnessPct > 0 : entity.state === 'on' || brightnessPct > 0;
 
   root.dataset.layout = layout;
   root.dataset.entityId = entity.entity_id;
@@ -2245,12 +2397,12 @@ function queueDesktopPinLightBrightness(entity, brightnessPct) {
 
     const currentEntity = state.STATES?.[entityId] || entity;
     const entityName = utils.getEntityDisplayName(currentEntity || entity);
-    const serviceData = safePct <= 0
-      ? { entity_id: entityId }
-      : { entity_id: entityId, brightness_pct: safePct };
+    const serviceData =
+      safePct <= 0 ? { entity_id: entityId } : { entity_id: entityId, brightness_pct: safePct };
     const serviceName = safePct <= 0 ? 'turn_off' : 'turn_on';
 
-    websocket.callService('light', serviceName, serviceData)
+    websocket
+      .callService('light', serviceName, serviceData)
       .catch((error) => handleServiceError(error, entityName));
   }, 110);
 
@@ -2315,18 +2467,26 @@ function createDesktopPinLightControlElement(entity) {
 
   const slider = div.querySelector('.desktop-pin-light-slider');
   if (slider) {
-    slider.addEventListener('pointerdown', (event) => {
-      event.stopPropagation();
-      setDesktopPinLightInteraction(entity.entity_id, {
-        active: true,
-        brightnessPct: Number(slider.value),
-      });
-    }, true);
+    slider.addEventListener(
+      'pointerdown',
+      (event) => {
+        event.stopPropagation();
+        setDesktopPinLightInteraction(entity.entity_id, {
+          active: true,
+          brightnessPct: Number(slider.value),
+        });
+      },
+      true
+    );
 
     ['pointerdown', 'mousedown', 'click'].forEach((eventName) => {
-      slider.addEventListener(eventName, (event) => {
-        event.stopPropagation();
-      }, true);
+      slider.addEventListener(
+        eventName,
+        (event) => {
+          event.stopPropagation();
+        },
+        true
+      );
     });
 
     slider.addEventListener('input', (event) => {
@@ -2341,9 +2501,13 @@ function createDesktopPinLightControlElement(entity) {
     });
 
     ['change', 'pointerup', 'pointercancel'].forEach((eventName) => {
-      slider.addEventListener(eventName, () => {
-        scheduleDesktopPinLightInteractionRelease(entity.entity_id);
-      }, true);
+      slider.addEventListener(
+        eventName,
+        () => {
+          scheduleDesktopPinLightInteractionRelease(entity.entity_id);
+        },
+        true
+      );
     });
   }
 
@@ -2351,38 +2515,49 @@ function createDesktopPinLightControlElement(entity) {
     ['pointerdown', 'mousedown'].forEach((eventName) => {
       button.addEventListener(eventName, stopEvent, true);
     });
-    button.addEventListener('click', (event) => {
-      stopEvent(event);
-      const nextPct = Number(button.dataset.brightness || 0);
-      setDesktopPinLightInteraction(entity.entity_id, {
-        active: false,
-        brightnessPct: nextPct,
-      });
-      scheduleDesktopPinLightInteractionRelease(entity.entity_id);
-      applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
-      queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
-    }, true);
+    button.addEventListener(
+      'click',
+      (event) => {
+        stopEvent(event);
+        const nextPct = Number(button.dataset.brightness || 0);
+        setDesktopPinLightInteraction(entity.entity_id, {
+          active: false,
+          brightnessPct: nextPct,
+        });
+        scheduleDesktopPinLightInteractionRelease(entity.entity_id);
+        applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
+        queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
+      },
+      true
+    );
   });
 
   bindDesktopPinButton(div.querySelector('.desktop-pin-light-power'), () => {
     toggleEntity(state.STATES?.[entity.entity_id] || entity);
   });
 
-  div.addEventListener('click', (event) => {
-    if (typeof event.button === 'number' && event.button !== 0) return;
-    if (shouldBlockInteraction(div)) {
+  div.addEventListener(
+    'click',
+    (event) => {
+      if (typeof event.button === 'number' && event.button !== 0) return;
+      if (shouldBlockInteraction(div)) {
+        stopDesktopPinEvent(event, true);
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('.desktop-pin-light-slider, .desktop-pin-light-preset')
+      ) {
+        return;
+      }
+
       stopDesktopPinEvent(event, true);
-      return;
-    }
-
-    const target = event.target;
-    if (target instanceof Element && target.closest('.desktop-pin-light-slider, .desktop-pin-light-preset')) {
-      return;
-    }
-
-    stopDesktopPinEvent(event, true);
-    toggleEntity(state.STATES?.[entity.entity_id] || entity);
-  }, true);
+      toggleEntity(state.STATES?.[entity.entity_id] || entity);
+    },
+    true
+  );
 
   return div;
 }
@@ -2391,7 +2566,12 @@ function createDesktopPinPanelRoot(entity, extraClassNames = [], options = {}) {
   const resolvedEntity = getEntityForDisplay(entity);
   const domain = options.domain || getEntityDomain(resolvedEntity.entity_id);
   const layout = getDesktopPinLayoutProfile(domain).layout;
-  const classNames = ['control-item', 'desktop-pin-control', 'desktop-pin-panel-control', ...extraClassNames]
+  const classNames = [
+    'control-item',
+    'desktop-pin-control',
+    'desktop-pin-panel-control',
+    ...extraClassNames,
+  ]
     .filter(Boolean)
     .join(' ');
   const div = document.createElement('div');
@@ -2462,14 +2642,23 @@ function getDesktopPinClimateValue(entity) {
     currentTemp: Number.isFinite(currentTemp) ? currentTemp : null,
     targetTemp: Number.isFinite(targetValue)
       ? targetValue
-      : (Number.isFinite(targetTemp) ? targetTemp : (Number.isFinite(currentTemp) ? currentTemp : 20)),
+      : Number.isFinite(targetTemp)
+        ? targetTemp
+        : Number.isFinite(currentTemp)
+          ? currentTemp
+          : 20,
     mode: interaction?.mode || entity?.state || 'off',
     unit: entity?.attributes?.unit_of_measurement || '°',
-    minTemp: Number.isFinite(Number(entity?.attributes?.min_temp)) ? Number(entity.attributes.min_temp) : 10,
-    maxTemp: Number.isFinite(Number(entity?.attributes?.max_temp)) ? Number(entity.attributes.max_temp) : 30,
-    modes: Array.isArray(entity?.attributes?.hvac_modes) && entity.attributes.hvac_modes.length
-      ? entity.attributes.hvac_modes
-      : ['off', 'heat', 'cool', 'auto'],
+    minTemp: Number.isFinite(Number(entity?.attributes?.min_temp))
+      ? Number(entity.attributes.min_temp)
+      : 10,
+    maxTemp: Number.isFinite(Number(entity?.attributes?.max_temp))
+      ? Number(entity.attributes.max_temp)
+      : 30,
+    modes:
+      Array.isArray(entity?.attributes?.hvac_modes) && entity.attributes.hvac_modes.length
+        ? entity.attributes.hvac_modes
+        : ['off', 'heat', 'cool', 'auto'],
   };
 }
 
@@ -2479,7 +2668,19 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   const denseVariant = root.dataset.denseVariant || 'standard';
   const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = mode || 'off';
-  root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, (targetTemp - climateValue.minTemp) / Math.max(1, climateValue.maxTemp - climateValue.minTemp)))));
+  root.style.setProperty(
+    '--desktop-pin-progress',
+    String(
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (targetTemp - climateValue.minTemp) /
+            Math.max(1, climateValue.maxTemp - climateValue.minTemp)
+        )
+      )
+    )
+  );
 
   const target = root.querySelector('.desktop-pin-climate-target-value');
   if (target) target.textContent = `${targetTemp}${unit}`;
@@ -2489,7 +2690,8 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
 
   const compactCurrent = root.querySelector('.desktop-pin-climate-inline-copy');
   if (compactCurrent) {
-    compactCurrent.textContent = currentTemp == null ? 'No live room temperature' : `Now ${currentTemp}${unit}`;
+    compactCurrent.textContent =
+      currentTemp == null ? 'No live room temperature' : `Now ${currentTemp}${unit}`;
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
@@ -2524,9 +2726,10 @@ function createDesktopPinClimateControlElement(entity) {
   const climateStatus = renderProfile.showCompactCurrent
     ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
     : `${formatDesktopPinClimateModeLabel(climateValue.mode || 'off')} mode`;
-  const currentSummary = climateValue.currentTemp == null
-    ? 'No live room temperature'
-    : `Now ${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`;
+  const currentSummary =
+    climateValue.currentTemp == null
+      ? 'No live room temperature'
+      : `Now ${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`;
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
 
@@ -2537,7 +2740,9 @@ function createDesktopPinClimateControlElement(entity) {
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</div>`,
       })}
       <div class="desktop-pin-panel-body">
-        ${renderProfile.showCurrentStat ? `
+        ${
+          renderProfile.showCurrentStat
+            ? `
           <div class="desktop-pin-climate-summary">
             <div class="desktop-pin-panel-stat">
               <span class="desktop-pin-panel-stat-label">Current</span>
@@ -2548,12 +2753,14 @@ function createDesktopPinClimateControlElement(entity) {
               <span class="desktop-pin-climate-target-value">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</span>
             </div>
           </div>
-        ` : `
+        `
+            : `
           <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis desktop-pin-climate-target-stat">
             <span class="desktop-pin-panel-stat-label">Target</span>
             <span class="desktop-pin-climate-target-value">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</span>
           </div>
-        `}
+        `
+        }
         ${renderProfile.showCompactCurrent ? `<div class="desktop-pin-panel-caption desktop-pin-climate-inline-copy">${currentSummary}</div>` : ''}
         <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Cool</span>' : ''}
@@ -2561,14 +2768,18 @@ function createDesktopPinClimateControlElement(entity) {
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Warm</span>' : ''}
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-climate-modes">
-          ${renderProfile.modesToShow.map((mode) => createDesktopPinButtonMarkup({
-            className: 'desktop-pin-panel-button desktop-pin-climate-mode',
-            label: formatDesktopPinClimateModeLabel(mode),
-            ariaLabel: `Set mode to ${mode}`,
-            action: mode,
-            active: mode === climateValue.mode,
-            title: formatDesktopPinClimateModeLabel(mode),
-          })).join('')}
+          ${renderProfile.modesToShow
+            .map((mode) =>
+              createDesktopPinButtonMarkup({
+                className: 'desktop-pin-panel-button desktop-pin-climate-mode',
+                label: formatDesktopPinClimateModeLabel(mode),
+                ariaLabel: `Set mode to ${mode}`,
+                action: mode,
+                active: mode === climateValue.mode,
+                title: formatDesktopPinClimateModeLabel(mode),
+              })
+            )
+            .join('')}
         </div>
       </div>
     </div>
@@ -2580,18 +2791,28 @@ function createDesktopPinClimateControlElement(entity) {
   const slider = root.querySelector('.desktop-pin-climate-slider');
   bindDesktopPinSlider(slider, {
     entityId: entity.entity_id,
-    getImmediateValue: (input) => Math.round((Number(input?.value) || climateValue.targetTemp) * 10) / 10,
+    getImmediateValue: (input) =>
+      Math.round((Number(input?.value) || climateValue.targetTemp) * 10) / 10,
     applyVisualValue: (nextValue) => {
-      applyDesktopPinClimateVisualState(root, { ...getDesktopPinClimateValue(liveEntity()), targetTemp: nextValue });
+      applyDesktopPinClimateVisualState(root, {
+        ...getDesktopPinClimateValue(liveEntity()),
+        targetTemp: nextValue,
+      });
     },
     queueValue: (nextValue) => {
-      queueDesktopPinServiceCall(`climate:${entity.entity_id}:temperature`, () => {
-        const currentEntity = liveEntity();
-        websocket.callService('climate', 'set_temperature', {
-          entity_id: entity.entity_id,
-          temperature: nextValue,
-        }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity)));
-      }, 180);
+      queueDesktopPinServiceCall(
+        `climate:${entity.entity_id}:temperature`,
+        () => {
+          const currentEntity = liveEntity();
+          websocket
+            .callService('climate', 'set_temperature', {
+              entity_id: entity.entity_id,
+              temperature: nextValue,
+            })
+            .catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity)));
+        },
+        180
+      );
     },
   });
 
@@ -2602,10 +2823,12 @@ function createDesktopPinClimateControlElement(entity) {
       setDesktopPinControlInteraction(entity.entity_id, { mode, active: false });
       applyDesktopPinClimateVisualState(root, { ...getDesktopPinClimateValue(liveEntity()), mode });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 700);
-      websocket.callService('climate', 'set_hvac_mode', {
-        entity_id: entity.entity_id,
-        hvac_mode: mode,
-      }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(liveEntity())));
+      websocket
+        .callService('climate', 'set_hvac_mode', {
+          entity_id: entity.entity_id,
+          hvac_mode: mode,
+        })
+        .catch((error) => handleServiceError(error, utils.getEntityDisplayName(liveEntity())));
     });
   });
 
@@ -2635,8 +2858,10 @@ function getDesktopPinFanValue(entity) {
   const rawPercent = Number(entity?.attributes?.percentage);
   const percentage = Number.isFinite(interactionValue)
     ? Math.max(0, Math.min(100, Math.round(interactionValue)))
-    : (Number.isFinite(rawPercent) ? Math.max(0, Math.min(100, Math.round(rawPercent))) : 0);
-  const isOn = interaction?.active ? percentage > 0 : ((entity?.state === 'on') || percentage > 0);
+    : Number.isFinite(rawPercent)
+      ? Math.max(0, Math.min(100, Math.round(rawPercent)))
+      : 0;
+  const isOn = interaction?.active ? percentage > 0 : entity?.state === 'on' || percentage > 0;
   return { percentage, isOn };
 }
 
@@ -2646,7 +2871,10 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   const denseVariant = root.dataset.denseVariant || 'standard';
   const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = isOn ? 'on' : 'off';
-  root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, percentage / 100))));
+  root.style.setProperty(
+    '--desktop-pin-progress',
+    String(Math.max(0, Math.min(1, percentage / 100)))
+  );
 
   const headerKpi = root.querySelector('.desktop-pin-fan-kpi');
   if (headerKpi) headerKpi.textContent = isOn ? `${percentage}%` : 'Off';
@@ -2658,7 +2886,12 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = isOn ? `${percentage}% airflow` : (compactStatus ? 'Ready' : 'Ready to start');
+  if (status)
+    status.textContent = isOn
+      ? `${percentage}% airflow`
+      : compactStatus
+        ? 'Ready'
+        : 'Ready to start';
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -2674,21 +2907,29 @@ function applyDesktopPinFanVisualState(root, fanValue) {
 }
 
 function queueDesktopPinFanPercentage(entity, percentage) {
-  queueDesktopPinServiceCall(`fan:${entity.entity_id}:percentage`, () => {
-    const currentEntity = state.STATES?.[entity.entity_id] || entity;
-    const entityName = utils.getEntityDisplayName(currentEntity);
-    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percentage) || 0)));
-    if (safePercent <= 0) {
-      websocket.callService('fan', 'turn_off', {
-        entity_id: entity.entity_id,
-      }).catch((error) => handleServiceError(error, entityName));
-      return;
-    }
-    websocket.callService('fan', 'set_percentage', {
-      entity_id: entity.entity_id,
-      percentage: safePercent,
-    }).catch((error) => handleServiceError(error, entityName));
-  }, 140);
+  queueDesktopPinServiceCall(
+    `fan:${entity.entity_id}:percentage`,
+    () => {
+      const currentEntity = state.STATES?.[entity.entity_id] || entity;
+      const entityName = utils.getEntityDisplayName(currentEntity);
+      const safePercent = Math.max(0, Math.min(100, Math.round(Number(percentage) || 0)));
+      if (safePercent <= 0) {
+        websocket
+          .callService('fan', 'turn_off', {
+            entity_id: entity.entity_id,
+          })
+          .catch((error) => handleServiceError(error, entityName));
+        return;
+      }
+      websocket
+        .callService('fan', 'set_percentage', {
+          entity_id: entity.entity_id,
+          percentage: safePercent,
+        })
+        .catch((error) => handleServiceError(error, entityName));
+    },
+    140
+  );
 }
 
 function createDesktopPinFanControlElement(entity) {
@@ -2705,7 +2946,11 @@ function createDesktopPinFanControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: fanValue.isOn ? `${fanValue.percentage}% airflow` : (renderProfile.isDenseTight || renderProfile.isDenseMicro ? 'Ready' : 'Ready to start'),
+        statusText: fanValue.isOn
+          ? `${fanValue.percentage}% airflow`
+          : renderProfile.isDenseTight || renderProfile.isDenseMicro
+            ? 'Ready'
+            : 'Ready to start',
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             ${createDesktopPinButtonMarkup({
@@ -2730,9 +2975,13 @@ function createDesktopPinFanControlElement(entity) {
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Fast</span>' : ''}
         </div>
         <div class="desktop-pin-panel-actions">
-          ${renderProfile.presets.map(({ value, label }) => `
+          ${renderProfile.presets
+            .map(
+              ({ value, label }) => `
             <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="${value}">${label}</button>
-          `).join('')}
+          `
+            )
+            .join('')}
         </div>
       </div>
     </div>
@@ -2791,7 +3040,11 @@ function getDesktopPinCoverValue(entity) {
   const rawPosition = Number(entity?.attributes?.current_position);
   const position = Number.isFinite(interactionValue)
     ? Math.max(0, Math.min(100, Math.round(interactionValue)))
-    : (Number.isFinite(rawPosition) ? Math.max(0, Math.min(100, Math.round(rawPosition))) : (entity?.state === 'open' ? 100 : 0));
+    : Number.isFinite(rawPosition)
+      ? Math.max(0, Math.min(100, Math.round(rawPosition)))
+      : entity?.state === 'open'
+        ? 100
+        : 0;
   return {
     position,
     state: interaction?.mode || entity?.state || (position > 0 ? 'open' : 'closed'),
@@ -2801,13 +3054,22 @@ function getDesktopPinCoverValue(entity) {
 function applyDesktopPinCoverVisualState(root, coverValue) {
   if (!root || !coverValue) return;
   root.dataset.state = coverValue.state || 'closed';
-  root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, coverValue.position / 100))));
+  root.style.setProperty(
+    '--desktop-pin-progress',
+    String(Math.max(0, Math.min(1, coverValue.position / 100)))
+  );
 
   const value = root.querySelector('.desktop-pin-cover-position');
   if (value) value.textContent = `${coverValue.position}%`;
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = coverValue.position <= 0 ? 'Closed' : (coverValue.position >= 100 ? 'Open' : `${coverValue.position}% open`);
+  if (status)
+    status.textContent =
+      coverValue.position <= 0
+        ? 'Closed'
+        : coverValue.position >= 100
+          ? 'Open'
+          : `${coverValue.position}% open`;
 
   const slider = root.querySelector('.desktop-pin-cover-slider');
   if (slider && slider.value !== String(coverValue.position)) {
@@ -2821,13 +3083,19 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
 }
 
 function queueDesktopPinCoverPosition(entity, position) {
-  queueDesktopPinServiceCall(`cover:${entity.entity_id}:position`, () => {
-    const currentEntity = state.STATES?.[entity.entity_id] || entity;
-    websocket.callService('cover', 'set_cover_position', {
-      entity_id: entity.entity_id,
-      position: Math.max(0, Math.min(100, Math.round(Number(position) || 0))),
-    }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity)));
-  }, 180);
+  queueDesktopPinServiceCall(
+    `cover:${entity.entity_id}:position`,
+    () => {
+      const currentEntity = state.STATES?.[entity.entity_id] || entity;
+      websocket
+        .callService('cover', 'set_cover_position', {
+          entity_id: entity.entity_id,
+          position: Math.max(0, Math.min(100, Math.round(Number(position) || 0))),
+        })
+        .catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity)));
+    },
+    180
+  );
 }
 
 function createDesktopPinCoverControlElement(entity) {
@@ -2844,17 +3112,26 @@ function createDesktopPinCoverControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: coverValue.position <= 0 ? 'Closed' : (coverValue.position >= 100 ? 'Open' : `${coverValue.position}% open`),
+        statusText:
+          coverValue.position <= 0
+            ? 'Closed'
+            : coverValue.position >= 100
+              ? 'Open'
+              : `${coverValue.position}% open`,
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>`,
       })}
       <div class="desktop-pin-panel-body">
-        ${renderProfile.showVisual ? `
+        ${
+          renderProfile.showVisual
+            ? `
           <div class="desktop-pin-cover-visual">
             <div class="desktop-pin-cover-frame">
               <div class="desktop-pin-cover-shade" style="height: ${100 - coverValue.position}%"></div>
             </div>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
         <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Closed</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-cover-slider" type="range" min="0" max="100" step="1" value="${coverValue.position}" aria-label="Cover position" />
@@ -2875,7 +3152,10 @@ function createDesktopPinCoverControlElement(entity) {
     entityId: entity.entity_id,
     getImmediateValue: (input) => Math.max(0, Math.min(100, Math.round(Number(input?.value) || 0))),
     applyVisualValue: (nextValue) => {
-      applyDesktopPinCoverVisualState(root, { position: nextValue, state: nextValue > 0 ? 'open' : 'closed' });
+      applyDesktopPinCoverVisualState(root, {
+        position: nextValue,
+        state: nextValue > 0 ? 'open' : 'closed',
+      });
     },
     queueValue: (nextValue) => {
       queueDesktopPinCoverPosition(state.STATES?.[entity.entity_id] || entity, nextValue);
@@ -2885,20 +3165,32 @@ function createDesktopPinCoverControlElement(entity) {
   root.querySelectorAll('.desktop-pin-cover-action').forEach((button) => {
     bindDesktopPinButton(button, () => {
       const action = button.dataset.action;
-      const optimisticPosition = action === 'open_cover' ? 100 : (action === 'close_cover' ? 0 : getDesktopPinCoverValue(state.STATES?.[entity.entity_id] || entity).position);
+      const optimisticPosition =
+        action === 'open_cover'
+          ? 100
+          : action === 'close_cover'
+            ? 0
+            : getDesktopPinCoverValue(state.STATES?.[entity.entity_id] || entity).position;
       setDesktopPinControlInteraction(entity.entity_id, {
         value: optimisticPosition,
-        mode: action === 'stop_cover' ? 'stopped' : (optimisticPosition > 0 ? 'open' : 'closed'),
+        mode: action === 'stop_cover' ? 'stopped' : optimisticPosition > 0 ? 'open' : 'closed',
         active: false,
       });
       applyDesktopPinCoverVisualState(root, {
         position: optimisticPosition,
-        state: action === 'stop_cover' ? 'stopped' : (optimisticPosition > 0 ? 'open' : 'closed'),
+        state: action === 'stop_cover' ? 'stopped' : optimisticPosition > 0 ? 'open' : 'closed',
       });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 700);
-      websocket.callService('cover', action, {
-        entity_id: entity.entity_id,
-      }).catch((error) => handleServiceError(error, utils.getEntityDisplayName(state.STATES?.[entity.entity_id] || entity)));
+      websocket
+        .callService('cover', action, {
+          entity_id: entity.entity_id,
+        })
+        .catch((error) =>
+          handleServiceError(
+            error,
+            utils.getEntityDisplayName(state.STATES?.[entity.entity_id] || entity)
+          )
+        );
     });
   });
 
@@ -2926,9 +3218,16 @@ function getDesktopPinMediaValue(entity) {
   const timeline = getMediaTimeline(entity);
   return {
     title: entity?.attributes?.media_title || utils.getEntityDisplayState(entity),
-    artist: entity?.attributes?.media_artist || entity?.attributes?.media_album_name || entity?.state || '',
+    artist:
+      entity?.attributes?.media_artist ||
+      entity?.attributes?.media_album_name ||
+      entity?.state ||
+      '',
     playing: entity?.state === 'playing',
-    progress: timeline.duration > 0 ? Math.max(0, Math.min(100, (timeline.currentPosition / timeline.duration) * 100)) : 0,
+    progress:
+      timeline.duration > 0
+        ? Math.max(0, Math.min(100, (timeline.currentPosition / timeline.duration) * 100))
+        : 0,
   };
 }
 
@@ -2936,7 +3235,10 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
   if (!root || !mediaValue) return;
   const renderProfile = getDesktopPinMediaRenderProfile();
   root.dataset.state = mediaValue.playing ? 'playing' : 'paused';
-  root.style.setProperty('--desktop-pin-progress', String(Math.max(0, Math.min(1, mediaValue.progress / 100))));
+  root.style.setProperty(
+    '--desktop-pin-progress',
+    String(Math.max(0, Math.min(1, mediaValue.progress / 100)))
+  );
 
   const title = root.querySelector('.desktop-pin-media-title');
   if (title) title.textContent = mediaValue.title || 'Nothing playing';
@@ -2953,11 +3255,16 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
   }
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = mediaValue.playing ? renderProfile.statusText.playing : renderProfile.statusText.paused;
+  if (status)
+    status.textContent = mediaValue.playing
+      ? renderProfile.statusText.playing
+      : renderProfile.statusText.paused;
 
   const kpi = root.querySelector('.desktop-pin-media-kpi');
   if (kpi) {
-    kpi.textContent = mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused;
+    kpi.textContent = mediaValue.playing
+      ? renderProfile.headerKpi.playing
+      : renderProfile.headerKpi.paused;
   }
 
   const bar = root.querySelector('.desktop-pin-panel-progress-fill');
@@ -2978,7 +3285,9 @@ function createDesktopPinMediaControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: mediaValue.playing ? renderProfile.statusText.playing : renderProfile.statusText.paused,
+        statusText: mediaValue.playing
+          ? renderProfile.statusText.playing
+          : renderProfile.statusText.paused,
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-media-kpi">${mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused}</div>`,
       })}
       <div class="desktop-pin-panel-body">
@@ -3079,11 +3388,12 @@ function estimateDesktopPinSceneLineCount(text, availableWidth, fontSize) {
 
 function estimateDesktopPinSceneRequiredHeight(width, height, text, domain = 'scene') {
   const metrics = getDesktopPinSceneSizingMetrics(width, height, domain);
-  const labelWidth = Math.max(1, width - (metrics.bodyPad * 2) - (metrics.namePadX * 2));
+  const labelWidth = Math.max(1, width - metrics.bodyPad * 2 - metrics.namePadX * 2);
   const lineCount = estimateDesktopPinSceneLineCount(text, labelWidth, metrics.nameFontSize);
-  const nameHeight = (lineCount * metrics.nameFontSize * metrics.nameLineHeight) + (metrics.namePadY * 2);
-  const heroHeight = (metrics.heroPad * 2) + metrics.emojiSize;
-  return Math.ceil((metrics.bodyPad * 2) + metrics.bodyGap + nameHeight + heroHeight);
+  const nameHeight =
+    lineCount * metrics.nameFontSize * metrics.nameLineHeight + metrics.namePadY * 2;
+  const heroHeight = metrics.heroPad * 2 + metrics.emojiSize;
+  return Math.ceil(metrics.bodyPad * 2 + metrics.bodyGap + nameHeight + heroHeight);
 }
 
 function doesDesktopPinSceneCandidateFit(root, width, height, domain = 'scene') {
@@ -3104,9 +3414,10 @@ function doesDesktopPinSceneCandidateFit(root, width, height, domain = 'scene') 
   measurementRoot.style.minHeight = `${height}px`;
   measurementRoot.style.maxWidth = `${width}px`;
   measurementRoot.style.maxHeight = `${height}px`;
-  measurementRoot.dataset.layout = (domain === 'scene'
-    ? getDesktopPinSceneLayoutProfile(domain, { width, height })
-    : getDesktopPinLayoutProfile(domain, { width, height })
+  measurementRoot.dataset.layout = (
+    domain === 'scene'
+      ? getDesktopPinSceneLayoutProfile(domain, { width, height })
+      : getDesktopPinLayoutProfile(domain, { width, height })
   ).layout;
   applyDesktopPinSceneSizing(measurementRoot, width, height, domain);
   document.body.appendChild(measurementRoot);
@@ -3115,10 +3426,10 @@ function doesDesktopPinSceneCandidateFit(root, width, height, domain = 'scene') 
   const name = measurementRoot.querySelector('.desktop-pin-scene-name');
   const canUseDomMetrics = measurementRoot.clientHeight > 0 && measurementRoot.clientWidth > 0;
   const fitsDom = canUseDomMetrics
-    ? measurementRoot.scrollHeight <= measurementRoot.clientHeight + 1
-      && measurementRoot.scrollWidth <= measurementRoot.clientWidth + 1
-      && (!measurementBody || measurementBody.scrollHeight <= measurementBody.clientHeight + 1)
-      && (!name || name.scrollWidth <= name.clientWidth + 1)
+    ? measurementRoot.scrollHeight <= measurementRoot.clientHeight + 1 &&
+      measurementRoot.scrollWidth <= measurementRoot.clientWidth + 1 &&
+      (!measurementBody || measurementBody.scrollHeight <= measurementBody.clientHeight + 1) &&
+      (!name || name.scrollWidth <= name.clientWidth + 1)
     : false;
   measurementRoot.remove();
 
@@ -3214,13 +3525,23 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
   const runSync = async () => {
     const latest = desktopPinSceneMinSyncState.get(entityId) || {};
     if (!root.isConnected || !root.closest('#desktop-pin-content')) {
-      desktopPinSceneMinSyncState.set(entityId, { ...latest, pending: false, rafId: null, timeoutId: null });
+      desktopPinSceneMinSyncState.set(entityId, {
+        ...latest,
+        pending: false,
+        rafId: null,
+        timeoutId: null,
+      });
       return;
     }
 
     const minBounds = measureDesktopPinSceneMinBounds(root, entity);
     if (!minBounds) {
-      desktopPinSceneMinSyncState.set(entityId, { ...latest, pending: false, rafId: null, timeoutId: null });
+      desktopPinSceneMinSyncState.set(entityId, {
+        ...latest,
+        pending: false,
+        rafId: null,
+        timeoutId: null,
+      });
       return;
     }
 
@@ -3288,9 +3609,10 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
 
 function createDesktopPinSceneControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
-  const layoutProfile = domain === 'scene'
-    ? getDesktopPinSceneLayoutProfile(domain)
-    : getDesktopPinLayoutProfile(domain);
+  const layoutProfile =
+    domain === 'scene'
+      ? getDesktopPinSceneLayoutProfile(domain)
+      : getDesktopPinLayoutProfile(domain);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-scene-control'], {
     domain,
     state: entity.state,
@@ -3310,10 +3632,14 @@ function createDesktopPinSceneControlElement(entity) {
   `;
   applyDesktopPinSceneSizing(root, layoutProfile.width, layoutProfile.height, domain);
 
-  root.addEventListener('click', (event) => {
-    stopDesktopPinEvent(event, true);
-    toggleEntity(state.STATES?.[entity.entity_id] || entity);
-  }, true);
+  root.addEventListener(
+    'click',
+    (event) => {
+      stopDesktopPinEvent(event, true);
+      toggleEntity(state.STATES?.[entity.entity_id] || entity);
+    },
+    true
+  );
 
   scheduleDesktopPinSceneMinBoundsSync(root, entity);
 
@@ -3324,9 +3650,10 @@ function syncDesktopPinPanelRootState(root, entity, { domain, title = '' } = {})
   if (!root || !entity?.entity_id) return;
 
   const resolvedDomain = domain || getEntityDomain(entity.entity_id);
-  const layout = resolvedDomain === 'scene'
-    ? getDesktopPinSceneLayoutProfile(resolvedDomain).layout
-    : getDesktopPinLayoutProfile(resolvedDomain).layout;
+  const layout =
+    resolvedDomain === 'scene'
+      ? getDesktopPinSceneLayoutProfile(resolvedDomain).layout
+      : getDesktopPinLayoutProfile(resolvedDomain).layout;
 
   root.dataset.entityId = entity.entity_id;
   root.dataset.domain = resolvedDomain;
@@ -3349,9 +3676,10 @@ function updateExistingDesktopPinSceneControl(root, entity) {
   }
 
   const domain = getEntityDomain(entity.entity_id);
-  const layoutProfile = domain === 'scene'
-    ? getDesktopPinSceneLayoutProfile(domain)
-    : getDesktopPinLayoutProfile(domain);
+  const layoutProfile =
+    domain === 'scene'
+      ? getDesktopPinSceneLayoutProfile(domain)
+      : getDesktopPinLayoutProfile(domain);
   syncDesktopPinPanelRootState(root, entity, {
     domain,
     title: 'Compact scene tile',
@@ -3373,7 +3701,7 @@ function createDesktopPinToggleEntityControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
   const isSceneLike = domain === 'scene' || domain === 'script';
   const isLock = domain === 'lock';
-  const isOn = isLock ? entity.state === 'locked' : (entity.state === 'on');
+  const isOn = isLock ? entity.state === 'locked' : entity.state === 'on';
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-toggle-control'], {
     domain,
     state: entity.state,
@@ -3382,7 +3710,13 @@ function createDesktopPinToggleEntityControlElement(entity) {
   const icon = utils.escapeHtml(utils.getEntityIcon(entity));
   const actionLabel = isSceneLike
     ? 'Run'
-    : (isLock ? (isOn ? 'Unlock' : 'Lock') : (isOn ? 'On' : 'Off'));
+    : isLock
+      ? isOn
+        ? 'Unlock'
+        : 'Lock'
+      : isOn
+        ? 'On'
+        : 'Off';
   const statusText = isSceneLike ? 'Tap to trigger' : utils.getEntityDisplayState(entity);
 
   root.innerHTML = `
@@ -3418,10 +3752,16 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   const domain = getEntityDomain(entity.entity_id);
   const isSceneLike = domain === 'scene' || domain === 'script';
   const isLock = domain === 'lock';
-  const isOn = isLock ? entity.state === 'locked' : (entity.state === 'on');
+  const isOn = isLock ? entity.state === 'locked' : entity.state === 'on';
   const actionLabel = isSceneLike
     ? 'Run'
-    : (isLock ? (isOn ? 'Unlock' : 'Lock') : (isOn ? 'On' : 'Off'));
+    : isLock
+      ? isOn
+        ? 'Unlock'
+        : 'Lock'
+      : isOn
+        ? 'On'
+        : 'Off';
   const displayState = utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
@@ -3563,7 +3903,9 @@ function updateExistingDesktopPinSensorControl(root, entity) {
 }
 
 function createDesktopPinTimerControlElement(entity) {
-  const timerDisplay = utils.getTimerDisplay ? utils.getTimerDisplay(entity) : utils.getEntityDisplayState(entity);
+  const timerDisplay = utils.getTimerDisplay
+    ? utils.getTimerDisplay(entity)
+    : utils.getEntityDisplayState(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-timer-control'], {
     domain: 'timer',
     state: entity.state,
@@ -3612,7 +3954,9 @@ function updateExistingDesktopPinTimerControl(root, entity) {
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) {
-    value.textContent = utils.getTimerDisplay ? utils.getTimerDisplay(entity) : utils.getEntityDisplayState(entity);
+    value.textContent = utils.getTimerDisplay
+      ? utils.getTimerDisplay(entity)
+      : utils.getEntityDisplayState(entity);
   }
 
   return true;
@@ -3658,7 +4002,9 @@ function createDesktopPinActionControlElement(entity) {
 
   bindDesktopPinButton(root.querySelector('.desktop-pin-action-primary'), () => {
     triggerActivationFeedback(entity.entity_id);
-    const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id)) ? 'press' : 'trigger';
+    const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id))
+      ? 'press'
+      : 'trigger';
     callEntityDomainService(state.STATES?.[entity.entity_id] || entity, serviceName);
   });
 
@@ -3705,9 +4051,7 @@ function getDesktopPinNumericSpec(entity) {
   const rawMax = Number(attrs.max);
   const rawStep = Number(attrs.step);
   const hasBounds = Number.isFinite(rawMin) && Number.isFinite(rawMax) && rawMax > rawMin;
-  const fallbackStep = hasBounds
-    ? Math.max((rawMax - rawMin) / 20, 1)
-    : 1;
+  const fallbackStep = hasBounds ? Math.max((rawMax - rawMin) / 20, 1) : 1;
   const step = Number.isFinite(rawStep) && rawStep > 0 ? rawStep : fallbackStep;
   const liveValue = Number(entity?.state);
   const interactionValue = Number(interaction?.value);
@@ -3751,9 +4095,15 @@ function queueDesktopPinNumericValue(entity, nextValue) {
   const safeValue = spec.hasBounds
     ? Math.max(spec.min, Math.min(spec.max, Number(nextValue)))
     : Number(nextValue);
-  queueDesktopPinServiceCall(`${entityId}:numeric`, () => {
-    callEntityDomainService(state.STATES?.[entityId] || entity, 'set_value', { value: safeValue });
-  }, 120);
+  queueDesktopPinServiceCall(
+    `${entityId}:numeric`,
+    () => {
+      callEntityDomainService(state.STATES?.[entityId] || entity, 'set_value', {
+        value: safeValue,
+      });
+    },
+    120
+  );
 }
 
 function createDesktopPinNumericControlElement(entity) {
@@ -3893,7 +4243,8 @@ function getDesktopPinEnumOptions(entity) {
 
 function getDesktopPinEnumState(entity) {
   const interaction = getDesktopPinControlInteraction(entity?.entity_id);
-  const selectedOption = typeof interaction?.option === 'string' ? interaction.option : entity?.state;
+  const selectedOption =
+    typeof interaction?.option === 'string' ? interaction.option : entity?.state;
   const options = getDesktopPinEnumOptions(entity);
   const currentIndex = Math.max(0, options.indexOf(selectedOption));
   return {
@@ -3910,25 +4261,32 @@ function queueDesktopPinEnumSelection(entity, direction) {
   if (!enumState.options.length) return;
 
   const directionOffset = direction === 'previous' ? -1 : 1;
-  const nextIndex = Math.max(0, Math.min(enumState.options.length - 1, enumState.currentIndex + directionOffset));
+  const nextIndex = Math.max(
+    0,
+    Math.min(enumState.options.length - 1, enumState.currentIndex + directionOffset)
+  );
   const nextOption = enumState.options[nextIndex];
   if (!nextOption || nextOption === enumState.currentOption) return;
 
   setDesktopPinControlInteraction(entityId, { option: nextOption, active: false });
   scheduleDesktopPinControlInteractionRelease(entityId, 520);
 
-  queueDesktopPinServiceCall(`${entityId}:enum`, () => {
-    const liveEntity = state.STATES?.[entityId] || entity;
-    if (direction === 'previous' && hasEntityService(liveEntity, 'select_previous')) {
-      callEntityDomainService(liveEntity, 'select_previous');
-      return;
-    }
-    if (direction === 'next' && hasEntityService(liveEntity, 'select_next')) {
-      callEntityDomainService(liveEntity, 'select_next');
-      return;
-    }
-    callEntityDomainService(liveEntity, 'select_option', { option: nextOption });
-  }, 100);
+  queueDesktopPinServiceCall(
+    `${entityId}:enum`,
+    () => {
+      const liveEntity = state.STATES?.[entityId] || entity;
+      if (direction === 'previous' && hasEntityService(liveEntity, 'select_previous')) {
+        callEntityDomainService(liveEntity, 'select_previous');
+        return;
+      }
+      if (direction === 'next' && hasEntityService(liveEntity, 'select_next')) {
+        callEntityDomainService(liveEntity, 'select_next');
+        return;
+      }
+      callEntityDomainService(liveEntity, 'select_option', { option: nextOption });
+    },
+    100
+  );
 }
 
 function createDesktopPinEnumControlElement(entity) {
@@ -4093,10 +4451,10 @@ function getDesktopPinWeatherStats(entity) {
 function createDesktopPinWeatherControlElement(entity) {
   const stats = getDesktopPinWeatherStats(entity);
   const temperature = entity?.attributes?.temperature;
-  const temperatureUnit = entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
-  const temperatureValue = temperature != null
-    ? `${temperature}${temperatureUnit}`
-    : utils.getEntityDisplayState(entity);
+  const temperatureUnit =
+    entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
+  const temperatureValue =
+    temperature != null ? `${temperature}${temperatureUnit}` : utils.getEntityDisplayState(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-weather-control'], {
     domain: 'weather',
     state: entity.state,
@@ -4142,10 +4500,10 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
 
   const stats = getDesktopPinWeatherStats(entity);
   const temperature = entity?.attributes?.temperature;
-  const temperatureUnit = entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
-  const temperatureValue = temperature != null
-    ? `${temperature}${temperatureUnit}`
-    : utils.getEntityDisplayState(entity);
+  const temperatureUnit =
+    entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
+  const temperatureValue =
+    temperature != null ? `${temperature}${temperatureUnit}` : utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: 'weather',
@@ -4169,7 +4527,12 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
 
   const statsContainer = root.querySelector('.desktop-pin-weather-stats');
   if (statsContainer) {
-    statsContainer.innerHTML = stats.map((stat) => `<div class="desktop-pin-panel-stat"><div class="desktop-pin-panel-stat-label">${utils.escapeHtml(stat)}</div></div>`).join('');
+    statsContainer.innerHTML = stats
+      .map(
+        (stat) =>
+          `<div class="desktop-pin-panel-stat"><div class="desktop-pin-panel-stat-label">${utils.escapeHtml(stat)}</div></div>`
+      )
+      .join('');
   }
 
   return true;
@@ -4208,7 +4571,9 @@ function getDesktopPinVacuumActionConfig(entity) {
 
   if (stateValue === 'returning') {
     return {
-      primary: hasStop ? makeServiceAction('Stop', hasEntityService(entity, 'stop') ? 'stop' : 'turn_off') : focusAction,
+      primary: hasStop
+        ? makeServiceAction('Stop', hasEntityService(entity, 'stop') ? 'stop' : 'turn_off')
+        : focusAction,
       secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
     };
   }
@@ -4254,12 +4619,16 @@ function createDesktopPinVacuumControlElement(entity) {
             ariaLabel: `${actionConfig.primary?.label || 'Focus Main'} ${utils.getEntityDisplayName(entity)}`,
             action: 'primary',
           })}
-          ${actionConfig.secondary ? createDesktopPinButtonMarkup({
-            className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-            label: actionConfig.secondary.label,
-            ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
-            action: 'secondary',
-          }) : ''}
+          ${
+            actionConfig.secondary
+              ? createDesktopPinButtonMarkup({
+                  className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+                  label: actionConfig.secondary.label,
+                  ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
+                  action: 'secondary',
+                })
+              : ''
+          }
         </div>
       </div>
     </div>
@@ -4267,7 +4636,8 @@ function createDesktopPinVacuumControlElement(entity) {
 
   root.querySelectorAll('.desktop-pin-vacuum-action').forEach((button) => {
     bindDesktopPinButton(button, () => {
-      const config = button.dataset.action === 'secondary' ? actionConfig.secondary : actionConfig.primary;
+      const config =
+        button.dataset.action === 'secondary' ? actionConfig.secondary : actionConfig.primary;
       runDesktopPinVacuumAction(entity, config);
     });
   });
@@ -4311,16 +4681,21 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
         ariaLabel: `${actionConfig.primary?.label || 'Focus Main'} ${utils.getEntityDisplayName(entity)}`,
         action: 'primary',
       })}
-      ${actionConfig.secondary ? createDesktopPinButtonMarkup({
-        className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-        label: actionConfig.secondary.label,
-        ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
-        action: 'secondary',
-      }) : ''}
+      ${
+        actionConfig.secondary
+          ? createDesktopPinButtonMarkup({
+              className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+              label: actionConfig.secondary.label,
+              ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
+              action: 'secondary',
+            })
+          : ''
+      }
     `;
     actions.querySelectorAll('.desktop-pin-vacuum-action').forEach((button) => {
       bindDesktopPinButton(button, () => {
-        const config = button.dataset.action === 'secondary' ? actionConfig.secondary : actionConfig.primary;
+        const config =
+          button.dataset.action === 'secondary' ? actionConfig.secondary : actionConfig.primary;
         runDesktopPinVacuumAction(entity, config);
       });
     });
@@ -4361,23 +4736,40 @@ function updateExistingDesktopPinFallbackControl(root, entity) {
 
 function updateExistingDesktopPinPanelControl(root, entity) {
   if (!root || !entity?.entity_id) return false;
-  if (root.classList.contains('desktop-pin-light-control')) return updateExistingDesktopPinLightControl(root, entity);
-  if (root.classList.contains('desktop-pin-climate-control')) return updateExistingDesktopPinClimateControl(root, entity);
-  if (root.classList.contains('desktop-pin-fan-control')) return updateExistingDesktopPinFanControl(root, entity);
-  if (root.classList.contains('desktop-pin-cover-control')) return updateExistingDesktopPinCoverControl(root, entity);
-  if (root.classList.contains('desktop-pin-media-control')) return updateExistingDesktopPinMediaControl(root, entity);
-  if (root.classList.contains('desktop-pin-scene-control')) return updateExistingDesktopPinSceneControl(root, entity);
-  if (root.classList.contains('desktop-pin-toggle-control')) return updateExistingDesktopPinToggleEntityControl(root, entity);
-  if (root.classList.contains('desktop-pin-action-control')) return updateExistingDesktopPinActionControl(root, entity);
-  if (root.classList.contains('desktop-pin-numeric-control')) return updateExistingDesktopPinNumericControl(root, entity);
-  if (root.classList.contains('desktop-pin-enum-control')) return updateExistingDesktopPinEnumControl(root, entity);
-  if (root.classList.contains('desktop-pin-presence-control')) return updateExistingDesktopPinPresenceControl(root, entity);
-  if (root.classList.contains('desktop-pin-weather-control')) return updateExistingDesktopPinWeatherControl(root, entity);
-  if (root.classList.contains('desktop-pin-vacuum-control')) return updateExistingDesktopPinVacuumControl(root, entity);
-  if (root.classList.contains('desktop-pin-camera-control')) return updateExistingDesktopPinCameraControl(root, entity);
-  if (root.classList.contains('desktop-pin-sensor-control')) return updateExistingDesktopPinSensorControl(root, entity);
-  if (root.classList.contains('desktop-pin-timer-control')) return updateExistingDesktopPinTimerControl(root, entity);
-  if (root.classList.contains('desktop-pin-fallback-control')) return updateExistingDesktopPinFallbackControl(root, entity);
+  if (root.classList.contains('desktop-pin-light-control'))
+    return updateExistingDesktopPinLightControl(root, entity);
+  if (root.classList.contains('desktop-pin-climate-control'))
+    return updateExistingDesktopPinClimateControl(root, entity);
+  if (root.classList.contains('desktop-pin-fan-control'))
+    return updateExistingDesktopPinFanControl(root, entity);
+  if (root.classList.contains('desktop-pin-cover-control'))
+    return updateExistingDesktopPinCoverControl(root, entity);
+  if (root.classList.contains('desktop-pin-media-control'))
+    return updateExistingDesktopPinMediaControl(root, entity);
+  if (root.classList.contains('desktop-pin-scene-control'))
+    return updateExistingDesktopPinSceneControl(root, entity);
+  if (root.classList.contains('desktop-pin-toggle-control'))
+    return updateExistingDesktopPinToggleEntityControl(root, entity);
+  if (root.classList.contains('desktop-pin-action-control'))
+    return updateExistingDesktopPinActionControl(root, entity);
+  if (root.classList.contains('desktop-pin-numeric-control'))
+    return updateExistingDesktopPinNumericControl(root, entity);
+  if (root.classList.contains('desktop-pin-enum-control'))
+    return updateExistingDesktopPinEnumControl(root, entity);
+  if (root.classList.contains('desktop-pin-presence-control'))
+    return updateExistingDesktopPinPresenceControl(root, entity);
+  if (root.classList.contains('desktop-pin-weather-control'))
+    return updateExistingDesktopPinWeatherControl(root, entity);
+  if (root.classList.contains('desktop-pin-vacuum-control'))
+    return updateExistingDesktopPinVacuumControl(root, entity);
+  if (root.classList.contains('desktop-pin-camera-control'))
+    return updateExistingDesktopPinCameraControl(root, entity);
+  if (root.classList.contains('desktop-pin-sensor-control'))
+    return updateExistingDesktopPinSensorControl(root, entity);
+  if (root.classList.contains('desktop-pin-timer-control'))
+    return updateExistingDesktopPinTimerControl(root, entity);
+  if (root.classList.contains('desktop-pin-fallback-control'))
+    return updateExistingDesktopPinFallbackControl(root, entity);
   return false;
 }
 
@@ -4393,10 +4785,14 @@ function syncQuickAccessControlButton(control, entityId) {
     button.setAttribute('draggable', 'false');
 
     ['pointerdown', 'mousedown', 'dblclick', 'contextmenu'].forEach((eventName) => {
-      button.addEventListener(eventName, (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }, true);
+      button.addEventListener(
+        eventName,
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        },
+        true
+      );
     });
 
     button.addEventListener('click', async (event) => {
@@ -4416,11 +4812,13 @@ function syncQuickAccessControlButton(control, entityId) {
   button.dataset.active = isPinned ? 'true' : 'false';
   button.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
   button.disabled = !isPinned && !supportProfile.supported;
-  button.setAttribute('aria-disabled', (!isPinned && !supportProfile.supported) ? 'true' : 'false');
+  button.setAttribute('aria-disabled', !isPinned && !supportProfile.supported ? 'true' : 'false');
   button.title = isPinned
     ? 'Unpin from desktop'
-    : (supportProfile.supported ? 'Pin to desktop' : (supportProfile.reason || 'Desktop pin not supported yet'));
-  button.textContent = isPinned ? 'Pinned' : (supportProfile.supported ? 'Pin' : 'Unsupported');
+    : supportProfile.supported
+      ? 'Pin to desktop'
+      : supportProfile.reason || 'Desktop pin not supported yet';
+  button.textContent = isPinned ? 'Pinned' : supportProfile.supported ? 'Pin' : 'Unsupported';
 }
 
 async function toggleDesktopPinFromQuickAccess(entityId) {
@@ -4488,7 +4886,8 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
 }
 
 function updateExistingMediaPlayerControl(item, entity) {
-  if (!item || !entity || !entity.entity_id || !entity.entity_id.startsWith('media_player.')) return false;
+  if (!item || !entity || !entity.entity_id || !entity.entity_id.startsWith('media_player.'))
+    return false;
   if (item.dataset.desktopPin === 'true') return false;
   if (!item.classList.contains('media-player-entity')) return false;
   if (!item.querySelector('.control-icon') || !item.querySelector('.control-info')) return false;
@@ -4515,7 +4914,9 @@ function getTodoTileCountLabel(entity) {
 }
 
 function updateTodoTileCount(entityId) {
-  const items = document.querySelectorAll(`.control-item.todo-entity[data-entity-id="${entityId}"]`);
+  const items = document.querySelectorAll(
+    `.control-item.todo-entity[data-entity-id="${entityId}"]`
+  );
   items.forEach((item) => {
     const entity = state.STATES?.[entityId];
     const countEl = item.querySelector('.todo-active-count');
@@ -4531,7 +4932,11 @@ function fetchTodoItems(entityId, { force = false } = {}) {
   if (!force && cached?.items && now - cached.fetchedAt < TODO_ITEMS_CACHE_TTL_MS) {
     return Promise.resolve(cached.items);
   }
-  if (!force && cached && now - (cached.lastRequestedAt || cached.fetchedAt || 0) < TODO_ITEMS_REFRESH_THROTTLE_MS) {
+  if (
+    !force &&
+    cached &&
+    now - (cached.lastRequestedAt || cached.fetchedAt || 0) < TODO_ITEMS_REFRESH_THROTTLE_MS
+  ) {
     return Promise.resolve(cached.items || []);
   }
   if (todoItemsPendingByEntity.has(entityId)) return todoItemsPendingByEntity.get(entityId);
@@ -4570,7 +4975,9 @@ function renderTodoTileStateMarkup(entity) {
 
 function getCalendarNextEventSummary(entity) {
   const message = entity?.attributes?.message || 'No upcoming event';
-  const start = formatCalendarTileStart(entity?.attributes?.start_time || entity?.attributes?.start);
+  const start = formatCalendarTileStart(
+    entity?.attributes?.start_time || entity?.attributes?.start
+  );
   return start ? `${message} · ${start}` : message;
 }
 
@@ -4602,49 +5009,47 @@ function renderQuickControls() {
 
     // Iterate through ALL favorited entity IDs (not just those in STATES)
     // This ensures unavailable entities are still shown with an error state
-    favorites
-      .slice(0, 12)
-      .forEach(entityId => {
-        const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
-        const entity = state.STATES[resolvedEntityId];
-        emitUiDebug('quick_access.render_tile', {
-          requestedEntityId: entityId,
-          resolvedEntityId,
-          entityFound: !!entity,
-          state: entity?.state || null,
-          domain: resolvedEntityId.includes('.') ? resolvedEntityId.split('.')[0] : null,
-        });
-
-        const renderedEntityId = entity ? resolvedEntityId : entityId;
-        const existingNode = existingNodesById.get(renderedEntityId);
-        const nextSignature = entity
-          ? getControlRenderSignature(entity)
-          : getUnavailableControlSignature(entityId);
-
-        if (
-          existingNode &&
-          existingNode.dataset.renderSignature === nextSignature &&
-          (entity
-            ? updateExistingQuickAccessControl(existingNode, entity, { context: 'quick-access' })
-            : updateExistingUnavailableControl(existingNode, entityId))
-        ) {
-          desiredNodes.push(existingNode);
-          existingNodesById.delete(renderedEntityId);
-          return;
-        }
-
-        if (entity) {
-          // Entity exists in STATES - render normally
-          const control = createControlElement(entity, { context: 'quick-access' });
-          control.dataset.renderSignature = nextSignature;
-          desiredNodes.push(control);
-        } else {
-          // Entity does not exist in STATES - render unavailable state
-          const control = createUnavailableElement(entityId);
-          control.dataset.renderSignature = nextSignature;
-          desiredNodes.push(control);
-        }
+    favorites.slice(0, 12).forEach((entityId) => {
+      const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+      const entity = state.STATES[resolvedEntityId];
+      emitUiDebug('quick_access.render_tile', {
+        requestedEntityId: entityId,
+        resolvedEntityId,
+        entityFound: !!entity,
+        state: entity?.state || null,
+        domain: resolvedEntityId.includes('.') ? resolvedEntityId.split('.')[0] : null,
       });
+
+      const renderedEntityId = entity ? resolvedEntityId : entityId;
+      const existingNode = existingNodesById.get(renderedEntityId);
+      const nextSignature = entity
+        ? getControlRenderSignature(entity)
+        : getUnavailableControlSignature(entityId);
+
+      if (
+        existingNode &&
+        existingNode.dataset.renderSignature === nextSignature &&
+        (entity
+          ? updateExistingQuickAccessControl(existingNode, entity, { context: 'quick-access' })
+          : updateExistingUnavailableControl(existingNode, entityId))
+      ) {
+        desiredNodes.push(existingNode);
+        existingNodesById.delete(renderedEntityId);
+        return;
+      }
+
+      if (entity) {
+        // Entity exists in STATES - render normally
+        const control = createControlElement(entity, { context: 'quick-access' });
+        control.dataset.renderSignature = nextSignature;
+        desiredNodes.push(control);
+      } else {
+        // Entity does not exist in STATES - render unavailable state
+        const control = createUnavailableElement(entityId);
+        control.dataset.renderSignature = nextSignature;
+        desiredNodes.push(control);
+      }
+    });
 
     desiredNodes.forEach((node, index) => {
       const currentAtIndex = container.children[index];
@@ -4720,7 +5125,8 @@ function createDesktopPinControlElement(entity) {
 }
 
 function isDesktopPinUnavailableState(entity) {
-  const normalizedState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+  const normalizedState =
+    typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
   if (normalizedState === 'unavailable') {
     return true;
   }
@@ -4731,25 +5137,31 @@ function isDesktopPinUnavailableState(entity) {
 
   const domain = getEntityDomain(entity?.entity_id);
   const supportProfile = getDesktopPinSupportProfile(entity || '');
-  return domain !== 'scene'
-    && domain !== 'script'
-    && supportProfile.family !== 'action'
-    && supportProfile.family !== 'presence';
+  return (
+    domain !== 'scene' &&
+    domain !== 'script' &&
+    supportProfile.family !== 'action' &&
+    supportProfile.family !== 'presence'
+  );
 }
 
-function getDesktopPinFallbackDescriptor(entityId, entity, {
-  hasSnapshot = false,
-  waitingMessage = 'Waiting for live Home Assistant data...',
-  connectionIssue = '',
-} = {}) {
+function getDesktopPinFallbackDescriptor(
+  entityId,
+  entity,
+  {
+    hasSnapshot = false,
+    waitingMessage = 'Waiting for live Home Assistant data...',
+    connectionIssue = '',
+  } = {}
+) {
   const customName = entityId ? state.CONFIG?.customEntityNames?.[entityId] : '';
-  const fallbackName = customName
-    || (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '')
-    || 'Pinned Tile';
+  const fallbackName =
+    customName ||
+    (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '') ||
+    'Pinned Tile';
   const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
-  const normalizedConnectionIssue = typeof connectionIssue === 'string'
-    ? connectionIssue.trim()
-    : '';
+  const normalizedConnectionIssue =
+    typeof connectionIssue === 'string' ? connectionIssue.trim() : '';
   const supportProfile = getDesktopPinSupportProfile(entity || entityId);
 
   if (!entityId) {
@@ -4782,7 +5194,9 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
       label,
       kicker: 'Unsupported',
       title: 'Desktop pin not supported yet',
-      detail: supportProfile.reason || `The ${supportProfile.domain || 'selected'} entity type does not have a desktop-pin experience yet.`,
+      detail:
+        supportProfile.reason ||
+        `The ${supportProfile.domain || 'selected'} entity type does not have a desktop-pin experience yet.`,
       showFocusMain: true,
       canOpen: false,
     };
@@ -4795,7 +5209,8 @@ function getDesktopPinFallbackDescriptor(entityId, entity, {
         label,
         kicker: 'Missing entity',
         title: 'Pinned entity not found',
-        detail: 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
+        detail:
+          'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
         showFocusMain: true,
         canOpen: false,
       };
@@ -4897,7 +5312,7 @@ function renderDesktopPinTileInto({
       const liveEntity = entity || state.STATES?.[entityId];
       label.textContent = liveEntity
         ? utils.getEntityDisplayName(liveEntity)
-        : (entityId || 'Pinned Tile');
+        : entityId || 'Pinned Tile';
     }
   }
 
@@ -4956,13 +5371,15 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
 
     switch (action) {
       case 'service-call': {
-        const domain = typeof payload?.domain === 'string' && payload.domain.trim()
-          ? payload.domain.trim()
-          : getEntityDomain(entity.entity_id);
+        const domain =
+          typeof payload?.domain === 'string' && payload.domain.trim()
+            ? payload.domain.trim()
+            : getEntityDomain(entity.entity_id);
         const serviceName = typeof payload?.service === 'string' ? payload.service.trim() : '';
-        const serviceData = payload?.serviceData && typeof payload.serviceData === 'object'
-          ? payload.serviceData
-          : {};
+        const serviceData =
+          payload?.serviceData && typeof payload.serviceData === 'object'
+            ? payload.serviceData
+            : {};
 
         if (!domain || !serviceName) {
           sendResponse({
@@ -4972,18 +5389,21 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
           return;
         }
 
-        websocket.callService(domain, serviceName, {
-          ...serviceData,
-          entity_id: resolvedEntityId,
-        }).then((result) => {
-          sendResponse(normalizeDesktopPinActionResult(result));
-        }).catch((error) => {
-          handleServiceError(error, utils.getEntityDisplayName(entity));
-          sendResponse({
-            success: false,
-            error: serializeDesktopPinActionError(error, `${domain}.${serviceName} failed`),
+        websocket
+          .callService(domain, serviceName, {
+            ...serviceData,
+            entity_id: resolvedEntityId,
+          })
+          .then((result) => {
+            sendResponse(normalizeDesktopPinActionResult(result));
+          })
+          .catch((error) => {
+            handleServiceError(error, utils.getEntityDisplayName(entity));
+            sendResponse({
+              success: false,
+              error: serializeDesktopPinActionError(error, `${domain}.${serviceName} failed`),
+            });
           });
-        });
         return;
       }
       case 'toggle':
@@ -4991,7 +5411,9 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
         break;
       case 'trigger':
         if (supportProfile.family === 'action') {
-          const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id)) ? 'press' : 'trigger';
+          const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id))
+            ? 'press'
+            : 'trigger';
           callEntityDomainService(entity, serviceName);
         }
         break;
@@ -5079,9 +5501,11 @@ function createControlElement(entity, options = {}) {
       if (div.dataset.desktopPin === 'true') return;
       event.preventDefault();
       event.stopPropagation();
-      window.electronAPI.showEntityTileMenu(entity.entity_id, getDesktopPinSupportInfo(entity)).catch((error) => {
-        console.error('Error opening entity tile menu:', error);
-      });
+      window.electronAPI
+        .showEntityTileMenu(entity.entity_id, getDesktopPinSupportInfo(entity))
+        .catch((error) => {
+          console.error('Error opening entity tile menu:', error);
+        });
     });
     emitUiDebug('quick_access.create_control', {
       entityId: entity.entity_id,
@@ -5096,7 +5520,11 @@ function createControlElement(entity, options = {}) {
     // Per-entity column span (default 2 for media, 1 otherwise)
     const span = getTileSpan(entity);
     div.dataset.span = String(span);
-    try { div.style.gridColumn = `span ${span}`; } catch { /* no-op */ }
+    try {
+      div.style.gridColumn = `span ${span}`;
+    } catch {
+      /* no-op */
+    }
 
     // Check if sensor is a timer (has finishes_at, end_time, finish_time, or duration attribute)
     // Google Kitchen Timer and other timer sensors might use different attribute names or have timestamp as state
@@ -5107,17 +5535,20 @@ function createControlElement(entity, options = {}) {
     // Handle different entity types (matching main branch)
     if (domain === 'camera') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (domain === 'sensor' && !isTimerSensor) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
     } else if (isTimer) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     } else if (entity.entity_id.startsWith('light.')) {
@@ -5136,23 +5567,34 @@ function createControlElement(entity, options = {}) {
       div.title = `Click to play/pause, hold for controls`;
     } else if (domain === 'todo') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, {
+            source: 'quick-access-click',
+          });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
       fetchTodoItems(entity.entity_id);
     } else if (domain === 'calendar') {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(state.STATES?.[entity.entity_id] || entity, {
+            source: 'quick-access-click',
+          });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
-    } else if (entity.entity_id.startsWith('button.') || entity.entity_id.startsWith('input_button.')) {
+    } else if (
+      entity.entity_id.startsWith('button.') ||
+      entity.entity_id.startsWith('input_button.')
+    ) {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to press ${utils.getEntityDisplayName(entity)}`;
     } else {
       div.onclick = () => {
-        if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
+        if (!shouldBlockInteraction(div))
+          executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
@@ -5180,9 +5622,15 @@ function createControlElement(entity, options = {}) {
         stateDisplay = `<div class="control-state">${state}</div>`;
       }
     } else if (isTimer) {
-      const timerDisplay = utils.escapeHtml(utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state);
+      const timerDisplay = utils.escapeHtml(
+        utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state
+      );
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
-    } else if (entity.entity_id.startsWith('light.') && entity.state === 'on' && entity.attributes.brightness) {
+    } else if (
+      entity.entity_id.startsWith('light.') &&
+      entity.state === 'on' &&
+      entity.attributes.brightness
+    ) {
       const brightnessValue = Number(entity.attributes.brightness);
       if (!isNaN(brightnessValue) && brightnessValue >= 0) {
         const brightness = Math.round((brightnessValue / 255) * 100);
@@ -5192,7 +5640,8 @@ function createControlElement(entity, options = {}) {
       stateDisplay = `<div class="control-state">Off</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
-      if (temp) stateDisplay = `<div class="control-state">${utils.escapeHtml(String(temp))}°</div>`;
+      if (temp)
+        stateDisplay = `<div class="control-state">${utils.escapeHtml(String(temp))}°</div>`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
@@ -5267,7 +5716,10 @@ function createUnavailableElement(entityId) {
     // Get custom name if available, otherwise use entity ID
     const customName = state.CONFIG.customEntityNames?.[entityId];
     const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
-    applyQuickAccessTileAccessibility(div, { entity_id: entityId, attributes: { friendly_name: displayName } });
+    applyQuickAccessTileAccessibility(div, {
+      entity_id: entityId,
+      attributes: { friendly_name: displayName },
+    });
 
     div.innerHTML = `
       <div class="control-icon unavailable-icon">⚠️</div>
@@ -5340,10 +5792,13 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   const stateEl = div.querySelector('.control-state');
   if (domain === 'sensor' && !isTimerSensor) {
-    const sensorDisplay = isQuickAccessContext ? getQuickAccessSensorDisplayParts(displayEntity) : null;
+    const sensorDisplay = isQuickAccessContext
+      ? getQuickAccessSensorDisplayParts(displayEntity)
+      : null;
     div.classList.add('sensor-entity');
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) showSensorDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
+      if (!shouldBlockInteraction(div))
+        showSensorDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
     };
     div.title = sensorDisplay
       ? `${utils.getEntityDisplayName(displayEntity)}: ${sensorDisplay.text}`
@@ -5372,7 +5827,10 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     div.classList.add('timer-entity');
     div.dataset.state = displayEntity.state;
     div.title = `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
-    if (stateEl) stateEl.textContent = utils.getTimerDisplay ? utils.getTimerDisplay(displayEntity) : utils.getEntityDisplayState(displayEntity);
+    if (stateEl)
+      stateEl.textContent = utils.getTimerDisplay
+        ? utils.getTimerDisplay(displayEntity)
+        : utils.getEntityDisplayState(displayEntity);
     return true;
   }
 
@@ -5381,9 +5839,10 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     if (stateEl) {
       if (displayEntity.state === 'on' && displayEntity.attributes?.brightness) {
         const brightnessValue = Number(displayEntity.attributes.brightness);
-        stateEl.textContent = !isNaN(brightnessValue) && brightnessValue >= 0
-          ? `${Math.round((brightnessValue / 255) * 100)}%`
-          : '';
+        stateEl.textContent =
+          !isNaN(brightnessValue) && brightnessValue >= 0
+            ? `${Math.round((brightnessValue / 255) * 100)}%`
+            : '';
       } else {
         stateEl.textContent = 'Off';
       }
@@ -5394,7 +5853,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (displayEntity.entity_id.startsWith('climate.')) {
     div.title = 'Click to toggle, hold for temperature control';
     if (stateEl) {
-      const temp = displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature;
+      const temp =
+        displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature;
       stateEl.textContent = temp ? `${temp}°` : '';
     }
     return true;
@@ -5412,7 +5872,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   if (displayEntity.entity_id.startsWith('camera.')) {
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(displayEntity, { source: 'quick-access-click' });
+      if (!shouldBlockInteraction(div))
+        executeEntityPrimaryAction(displayEntity, { source: 'quick-access-click' });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     return true;
@@ -5421,7 +5882,10 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (domain === 'todo') {
     div.classList.add('todo-entity');
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, { source: 'quick-access-click' });
+      if (!shouldBlockInteraction(div))
+        executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, {
+          source: 'quick-access-click',
+        });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     if (stateEl) stateEl.textContent = getTodoTileCountLabel(displayEntity);
@@ -5432,7 +5896,10 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (domain === 'calendar') {
     div.classList.add('calendar-entity');
     div.onclick = () => {
-      if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, { source: 'quick-access-click' });
+      if (!shouldBlockInteraction(div))
+        executeEntityPrimaryAction(state.STATES?.[displayEntity.entity_id] || displayEntity, {
+          source: 'quick-access-click',
+        });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     if (stateEl) stateEl.textContent = getCalendarNextEventSummary(displayEntity);
@@ -5441,11 +5908,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
   div.onclick = () => {
-    if (!shouldBlockInteraction(div)) executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
+    if (!shouldBlockInteraction(div))
+      executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
   };
-  div.title = (displayEntity.entity_id.startsWith('button.') || displayEntity.entity_id.startsWith('input_button.'))
-    ? `Click to press ${utils.getEntityDisplayName(displayEntity)}`
-    : `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
+  div.title =
+    displayEntity.entity_id.startsWith('button.') ||
+    displayEntity.entity_id.startsWith('input_button.')
+      ? `Click to press ${utils.getEntityDisplayName(displayEntity)}`
+      : `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
   return true;
 }
 
@@ -5504,7 +5974,11 @@ function showSensorDetails(entity) {
       return;
     }
 
-    uiUtils.showToast(`${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`, 'info', 3000);
+    uiUtils.showToast(
+      `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`,
+      'info',
+      3000
+    );
   } catch (error) {
     console.error('Error showing sensor details:', error);
   }
@@ -5573,7 +6047,11 @@ function renderTodoItemsInto(container, entity, items) {
             status: checkbox.checked ? 'completed' : 'needs_action',
           });
           const refreshedItems = await fetchTodoItems(entity.entity_id, { force: true });
-          renderTodoItemsInto(container, state.STATES?.[entity.entity_id] || entity, refreshedItems);
+          renderTodoItemsInto(
+            container,
+            state.STATES?.[entity.entity_id] || entity,
+            refreshedItems
+          );
         } catch (error) {
           checkbox.checked = !checkbox.checked;
           checkbox.disabled = false;
@@ -5630,7 +6108,11 @@ function showTodoDetails(entity) {
         });
         input.value = '';
         const refreshedItems = await fetchTodoItems(entity.entity_id, { force: true });
-        renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, refreshedItems);
+        renderTodoItemsInto(
+          listContainer,
+          state.STATES?.[entity.entity_id] || entity,
+          refreshedItems
+        );
       } catch (error) {
         handleServiceError(error, utils.getEntityDisplayName(entity));
       } finally {
@@ -5644,7 +6126,9 @@ function showTodoDetails(entity) {
     body.appendChild(listContainer);
 
     fetchTodoItems(entity.entity_id, { force: true })
-      .then((items) => renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, items))
+      .then((items) =>
+        renderTodoItemsInto(listContainer, state.STATES?.[entity.entity_id] || entity, items)
+      )
       .catch(() => {
         listContainer.textContent = 'Unable to load items';
       });
@@ -5707,14 +6191,17 @@ function showCalendarDetails(entity) {
     body.appendChild(listContainer);
 
     const start = new Date();
-    const end = new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000));
+    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
     callServiceWithResponse('calendar', 'get_events', {
       entity_id: entity.entity_id,
       start_date_time: start.toISOString(),
       end_date_time: end.toISOString(),
     })
       .then((response) => {
-        renderCalendarEventsInto(listContainer, normalizeCalendarEvents(response, entity.entity_id));
+        renderCalendarEventsInto(
+          listContainer,
+          normalizeCalendarEvents(response, entity.entity_id)
+        );
       })
       .catch((error) => {
         console.warn('Unable to fetch calendar events:', error);
@@ -5918,7 +6405,8 @@ function setupMediaPlayerControls(div, entity) {
         controlIcon.dataset.defaultIcon = controlIcon.innerHTML;
       }
 
-      const artworkUrl = entity.attributes?.entity_picture ||
+      const artworkUrl =
+        entity.attributes?.entity_picture ||
         entity.attributes?.media_image_url ||
         entity.attributes?.media_content_id;
 
@@ -5954,7 +6442,10 @@ function setupMediaPlayerControls(div, entity) {
 
         const existingImg = controlIcon.querySelector('.media-player-artwork');
         const existingSrc = existingImg ? existingImg.getAttribute('src') : null;
-        if (!skipForRecentFailure && (existingSrc !== proxyUrl || !controlIcon.classList.contains('has-artwork'))) {
+        if (
+          !skipForRecentFailure &&
+          (existingSrc !== proxyUrl || !controlIcon.classList.contains('has-artwork'))
+        ) {
           // Replace icon with album art image only when the source changed.
           const img = document.createElement('img');
           img.src = proxyUrl;
@@ -5975,7 +6466,12 @@ function setupMediaPlayerControls(div, entity) {
           controlIcon.innerHTML = '';
           controlIcon.appendChild(img);
           controlIcon.classList.add('has-artwork');
-        } else if (skipForRecentFailure && controlIcon.classList.contains('has-artwork') && existingSrc !== proxyUrl && controlIcon.dataset.defaultIcon) {
+        } else if (
+          skipForRecentFailure &&
+          controlIcon.classList.contains('has-artwork') &&
+          existingSrc !== proxyUrl &&
+          controlIcon.dataset.defaultIcon
+        ) {
           // Avoid rapid fallback/restore churn while an artwork URL is failing repeatedly.
           controlIcon.innerHTML = controlIcon.dataset.defaultIcon;
           controlIcon.classList.remove('has-artwork');
@@ -6025,7 +6521,11 @@ function setupMediaPlayerControls(div, entity) {
       div.addEventListener('mouseleave', cancelPress);
 
       div.addEventListener('click', (e) => {
-        if (shouldBlockInteraction(div) || longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+        if (shouldBlockInteraction(div) || longPressTriggered) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const currentEntity = state.STATES[entity.entity_id];
         if (!currentEntity) return;
         executeEntityPrimaryAction(currentEntity, { source: 'quick-access-click' });
@@ -6035,7 +6535,6 @@ function setupMediaPlayerControls(div, entity) {
     // Update data attributes for styling (always update these)
     div.setAttribute('data-state', entity.state);
     div.setAttribute('data-media-playing', isPlaying ? 'true' : 'false');
-
   } catch (error) {
     console.error('Error setting up media player controls:', error);
   }
@@ -6071,16 +6570,17 @@ function parseMediaSeconds(value) {
 
   const parts = trimmed.split(':');
   if (parts.length < 2 || parts.length > 3) return null;
-  if (!parts.every(part => /^\d+$/.test(part))) return null;
+  if (!parts.every((part) => /^\d+$/.test(part))) return null;
 
-  const [hours, minutes, seconds] = parts.length === 3
-    ? [Number(parts[0]), Number(parts[1]), Number(parts[2])]
-    : [0, Number(parts[0]), Number(parts[1])];
+  const [hours, minutes, seconds] =
+    parts.length === 3
+      ? [Number(parts[0]), Number(parts[1]), Number(parts[2])]
+      : [0, Number(parts[0]), Number(parts[1])];
 
   if (seconds > 59) return null;
   if (parts.length === 3 && minutes > 59) return null;
 
-  return (hours * 3600) + (minutes * 60) + seconds;
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
 function getMediaTimeline(entity) {
@@ -6141,14 +6641,24 @@ function getMediaSeekTarget(entity, deltaSeconds) {
 
 function rgbToHex(rgb) {
   if (!Array.isArray(rgb) || rgb.length < 3) return '#FFFFFF';
-  const channels = rgb.slice(0, 3).map(channel => clampRange(Math.round(Number(channel) || 0), 0, 255));
-  return `#${channels.map(channel => channel.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+  const channels = rgb
+    .slice(0, 3)
+    .map((channel) => clampRange(Math.round(Number(channel) || 0), 0, 255));
+  return `#${channels
+    .map((channel) => channel.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`;
 }
 
 function getLightColorTempRange(attributes = {}) {
   const minKelvinValue = Number(attributes.min_color_temp_kelvin);
   const maxKelvinValue = Number(attributes.max_color_temp_kelvin);
-  if (Number.isFinite(minKelvinValue) && Number.isFinite(maxKelvinValue) && minKelvinValue > 0 && maxKelvinValue > 0) {
+  if (
+    Number.isFinite(minKelvinValue) &&
+    Number.isFinite(maxKelvinValue) &&
+    minKelvinValue > 0 &&
+    maxKelvinValue > 0
+  ) {
     return {
       min: Math.min(minKelvinValue, maxKelvinValue),
       max: Math.max(minKelvinValue, maxKelvinValue),
@@ -6183,12 +6693,12 @@ function getInitialLightColorTempKelvin(attributes = {}, range) {
 
 function getSupportedLightColorModes(attributes = {}) {
   return Array.isArray(attributes.supported_color_modes)
-    ? attributes.supported_color_modes.map(mode => String(mode))
+    ? attributes.supported_color_modes.map((mode) => String(mode))
     : [];
 }
 
 function supportsLightColor(attributes = {}) {
-  return getSupportedLightColorModes(attributes).some(mode => LIGHT_COLOR_MODES.has(mode));
+  return getSupportedLightColorModes(attributes).some((mode) => LIGHT_COLOR_MODES.has(mode));
 }
 
 function supportsLightColorTemp(attributes = {}) {
@@ -6203,14 +6713,27 @@ function showMediaDetail(entity) {
     const initialTimeline = getMediaTimeline(entity);
     const seekControlsDisabled = canSeekMedia(entity) ? '' : ' disabled aria-disabled="true"';
     const mediaAttributes = entity.attributes || {};
-    const supportsVolumeSet = uiUtils.hasSupportedFeature(mediaAttributes.supported_features, MEDIA_PLAYER_SUPPORT_VOLUME_SET);
-    const supportsVolumeMute = uiUtils.hasSupportedFeature(mediaAttributes.supported_features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE);
-    const initialVolume = clampRange(Math.round(Number(mediaAttributes.volume_level ?? 0) * 100), 0, 100);
+    const supportsVolumeSet = uiUtils.hasSupportedFeature(
+      mediaAttributes.supported_features,
+      MEDIA_PLAYER_SUPPORT_VOLUME_SET
+    );
+    const supportsVolumeMute = uiUtils.hasSupportedFeature(
+      mediaAttributes.supported_features,
+      MEDIA_PLAYER_SUPPORT_VOLUME_MUTE
+    );
+    const initialVolume = clampRange(
+      Math.round(Number(mediaAttributes.volume_level ?? 0) * 100),
+      0,
+      100
+    );
     const initialMuted = mediaAttributes.is_volume_muted === true;
-    const volumeControlsMarkup = supportsVolumeSet || supportsVolumeMute
-      ? `
+    const volumeControlsMarkup =
+      supportsVolumeSet || supportsVolumeMute
+        ? `
           <div class="media-volume-controls">
-            ${supportsVolumeSet ? `
+            ${
+              supportsVolumeSet
+                ? `
               <div class="media-volume-row">
                 <label class="media-volume-label" for="media-volume-slider">Volume</label>
                 <input
@@ -6225,18 +6748,24 @@ function showMediaDetail(entity) {
                 />
                 <span class="media-volume-value" id="media-volume-value">${initialVolume}%</span>
               </div>
-            ` : ''}
-            ${supportsVolumeMute ? `
+            `
+                : ''
+            }
+            ${
+              supportsVolumeMute
+                ? `
               <button
                 class="media-mute-toggle ${initialMuted ? 'active' : ''}"
                 id="media-mute-toggle"
                 type="button"
                 aria-pressed="${initialMuted ? 'true' : 'false'}"
               >${initialMuted ? 'Muted' : 'Mute'}</button>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
         `
-      : '';
+        : '';
 
     const fmt = (s) => utils.formatDuration(Math.max(0, Math.floor(s)) * 1000);
 
@@ -6330,7 +6859,10 @@ function showMediaDetail(entity) {
         curEl.textContent = fmt(timeline.currentPosition);
         if (totalEl) totalEl.textContent = timeline.duration ? fmt(timeline.duration) : '--:--';
         if (progressFill && timeline.duration > 0) {
-          const pct = Math.max(0, Math.min(100, (timeline.currentPosition / timeline.duration) * 100));
+          const pct = Math.max(
+            0,
+            Math.min(100, (timeline.currentPosition / timeline.duration) * 100)
+          );
           progressFill.style.width = pct + '%';
         } else if (progressFill) {
           progressFill.style.width = '0%';
@@ -6359,7 +6891,7 @@ function showMediaDetail(entity) {
         callMediaPlayerService(entity.entity_id, action);
       } else if (action === 'seek_relative') {
         callMediaPlayerService(entity.entity_id, 'seek_relative', {
-          deltaSeconds: Number(btn.dataset.seekDelta)
+          deltaSeconds: Number(btn.dataset.seekDelta),
         });
       } else if (action === 'play_pause') {
         const nowPlaying = updatePlayPauseBtn();
@@ -6405,7 +6937,6 @@ function showMediaDetail(entity) {
       updateVolumeControls();
     }, 500);
 
-
     // Close handlers
     const closeModal = () => {
       modal.classList.add('modal-closing');
@@ -6415,14 +6946,22 @@ function showMediaDetail(entity) {
       setTimeout(() => modal.remove(), 150);
     };
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
-    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
-    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
 
     // Init
     if (curEl) curEl.textContent = fmt(initialTimeline.currentPosition);
-    if (totalEl) totalEl.textContent = initialTimeline.duration ? fmt(initialTimeline.duration) : '--:--';
+    if (totalEl)
+      totalEl.textContent = initialTimeline.duration ? fmt(initialTimeline.duration) : '--:--';
     if (progressFill && initialTimeline.duration > 0) {
-      const pct = Math.max(0, Math.min(100, (initialTimeline.currentPosition / initialTimeline.duration) * 100));
+      const pct = Math.max(
+        0,
+        Math.min(100, (initialTimeline.currentPosition / initialTimeline.duration) * 100)
+      );
       progressFill.style.width = pct + '%';
     } else if (progressFill) {
       progressFill.style.width = '0%';
@@ -6472,21 +7011,27 @@ function callMediaPlayerService(entityId, action, options = {}) {
         serviceCall = websocket.callService('media_player', 'media_pause', { entity_id: entityId });
         break;
       case 'next_track':
-        serviceCall = websocket.callService('media_player', 'media_next_track', { entity_id: entityId });
+        serviceCall = websocket.callService('media_player', 'media_next_track', {
+          entity_id: entityId,
+        });
         break;
       case 'previous_track':
-        serviceCall = websocket.callService('media_player', 'media_previous_track', { entity_id: entityId });
+        serviceCall = websocket.callService('media_player', 'media_previous_track', {
+          entity_id: entityId,
+        });
         break;
       case 'seek_relative': {
         const seekPosition = getMediaSeekTarget(entity, options.deltaSeconds);
         if (seekPosition == null) return;
-        serviceCall = websocket.callService('media_player', 'media_seek', {
-          entity_id: entityId,
-          seek_position: seekPosition,
-        }).then((response) => {
-          updateMediaEntityPosition(entityId, seekPosition);
-          return response;
-        });
+        serviceCall = websocket
+          .callService('media_player', 'media_seek', {
+            entity_id: entityId,
+            seek_position: seekPosition,
+          })
+          .then((response) => {
+            updateMediaEntityPosition(entityId, seekPosition);
+            return response;
+          });
         break;
       }
       case 'volume_set': {
@@ -6509,7 +7054,7 @@ function callMediaPlayerService(entityId, action, options = {}) {
     }
 
     if (serviceCall) {
-      serviceCall.catch(error => handleServiceError(error, entityName));
+      serviceCall.catch((error) => handleServiceError(error, entityName));
     }
   } catch (error) {
     console.error('Error calling media player service:', error);
@@ -6559,9 +7104,10 @@ async function processPendingOnOffToggle(entityId, domain) {
     if (latestDesiredState === desiredState) {
       const currentEntity = state.STATES?.[entityId];
       if (currentEntity) {
-        const committedEntity = currentEntity.state === desiredState
-          ? currentEntity
-          : { ...currentEntity, state: desiredState };
+        const committedEntity =
+          currentEntity.state === desiredState
+            ? currentEntity
+            : { ...currentEntity, state: desiredState };
         state.setEntityState(committedEntity);
         clearPendingOnOffToggle(entityId);
         updateEntityInUI(committedEntity, { skipQueueReconcile: true });
@@ -6643,7 +7189,6 @@ function queueOnOffToggle(entity) {
   processPendingOnOffToggle(entityId, domain);
 }
 
-
 function toggleEntity(entity) {
   try {
     const domain = entity.entity_id.split('.')[0];
@@ -6690,7 +7235,8 @@ function toggleEntity(entity) {
       state: entity.state,
       serviceData: service_data,
     });
-    websocket.callService(domain, service, service_data)
+    websocket
+      .callService(domain, service, service_data)
       .then((response) => {
         emitUiDebug('entity.toggle_success', {
           entityId: entity.entity_id,
@@ -6701,7 +7247,7 @@ function toggleEntity(entity) {
         });
         return response;
       })
-      .catch(error => handleServiceError(error, utils.getEntityDisplayName(entity)));
+      .catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
   } catch (error) {
     console.error('Error toggling entity:', error);
     emitUiDebug('entity.toggle_exception', {
@@ -6837,7 +7383,7 @@ function executeHotkeyAction(entity, action) {
 
     // Validate numeric attributes to prevent NaN
     const brightnessValue = Number(entity.attributes?.brightness);
-    const currentBrightness = (!isNaN(brightnessValue) && brightnessValue >= 0) ? brightnessValue : 0;
+    const currentBrightness = !isNaN(brightnessValue) && brightnessValue >= 0 ? brightnessValue : 0;
 
     const entityName = utils.getEntityDisplayName(entity);
 
@@ -6846,68 +7392,82 @@ function executeHotkeyAction(entity, action) {
         toggleEntity(entity);
         break;
       case 'turn_on':
-        websocket.callService(domain, 'turn_on', { entity_id: entity.entity_id })
-          .catch(error => handleServiceError(error, entityName));
+        websocket
+          .callService(domain, 'turn_on', { entity_id: entity.entity_id })
+          .catch((error) => handleServiceError(error, entityName));
         break;
       case 'turn_off':
-        websocket.callService(domain, 'turn_off', { entity_id: entity.entity_id })
-          .catch(error => handleServiceError(error, entityName));
+        websocket
+          .callService(domain, 'turn_off', { entity_id: entity.entity_id })
+          .catch((error) => handleServiceError(error, entityName));
         break;
       case 'brightness_up':
         // Increase brightness by 20% (51 units out of 255)
         if (domain === 'light') {
           const newBrightness = Math.min(255, currentBrightness + 51);
-          websocket.callService('light', 'turn_on', {
-            entity_id: entity.entity_id,
-            brightness: newBrightness
-          }).catch(error => handleServiceError(error, entityName));
+          websocket
+            .callService('light', 'turn_on', {
+              entity_id: entity.entity_id,
+              brightness: newBrightness,
+            })
+            .catch((error) => handleServiceError(error, entityName));
         }
         break;
       case 'brightness_down':
         // Decrease brightness by 20% (51 units out of 255)
         if (domain === 'light') {
           const newBrightness = Math.max(0, currentBrightness - 51);
-          websocket.callService('light', 'turn_on', {
-            entity_id: entity.entity_id,
-            brightness: newBrightness
-          }).catch(error => handleServiceError(error, entityName));
+          websocket
+            .callService('light', 'turn_on', {
+              entity_id: entity.entity_id,
+              brightness: newBrightness,
+            })
+            .catch((error) => handleServiceError(error, entityName));
         }
         break;
       case 'trigger':
         // For automations
         if (domain === 'automation') {
-          websocket.callService('automation', 'trigger', { entity_id: entity.entity_id })
-            .catch(error => handleServiceError(error, entityName));
+          websocket
+            .callService('automation', 'trigger', { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
         }
         break;
       case 'press':
         if (isPressActionDomain(domain)) {
-          websocket.callService(domain, 'press', { entity_id: entity.entity_id })
-            .catch(error => handleServiceError(error, entityName));
+          websocket
+            .callService(domain, 'press', { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
         }
         break;
       case 'increase_speed':
         // For fans - increase percentage by 33%
         if (domain === 'fan') {
           const percentageValue = Number(entity.attributes?.percentage);
-          const currentPercentage = (!isNaN(percentageValue) && percentageValue >= 0) ? percentageValue : 0;
+          const currentPercentage =
+            !isNaN(percentageValue) && percentageValue >= 0 ? percentageValue : 0;
           const newPercentage = Math.min(100, currentPercentage + 33);
-          websocket.callService('fan', 'set_percentage', {
-            entity_id: entity.entity_id,
-            percentage: newPercentage
-          }).catch(error => handleServiceError(error, entityName));
+          websocket
+            .callService('fan', 'set_percentage', {
+              entity_id: entity.entity_id,
+              percentage: newPercentage,
+            })
+            .catch((error) => handleServiceError(error, entityName));
         }
         break;
       case 'decrease_speed':
         // For fans - decrease percentage by 33%
         if (domain === 'fan') {
           const percentageValue = Number(entity.attributes?.percentage);
-          const currentPercentage = (!isNaN(percentageValue) && percentageValue >= 0) ? percentageValue : 0;
+          const currentPercentage =
+            !isNaN(percentageValue) && percentageValue >= 0 ? percentageValue : 0;
           const newPercentage = Math.max(0, currentPercentage - 33);
-          websocket.callService('fan', 'set_percentage', {
-            entity_id: entity.entity_id,
-            percentage: newPercentage
-          }).catch(error => handleServiceError(error, entityName));
+          websocket
+            .callService('fan', 'set_percentage', {
+              entity_id: entity.entity_id,
+              percentage: newPercentage,
+            })
+            .catch((error) => handleServiceError(error, entityName));
         }
         break;
       default:
@@ -6915,7 +7475,10 @@ function executeHotkeyAction(entity, action) {
         toggleEntity(entity);
     }
   } catch (error) {
-    console.error(`Error executing hotkey action '${action}' for entity ${entity.entity_id}:`, error);
+    console.error(
+      `Error executing hotkey action '${action}' for entity ${entity.entity_id}:`,
+      error
+    );
     uiUtils.showToast(t('Failed to execute hotkey action'), 'error', 3000);
   }
 }
@@ -6962,7 +7525,8 @@ function updateWeatherFromHA() {
       }
     }
 
-    if (tempEl) tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
+    if (tempEl)
+      tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
     if (conditionEl) conditionEl.textContent = weatherEntity.state || '--';
     if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
     if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
@@ -6985,10 +7549,18 @@ function updateWeatherFromHA() {
       } else if (condition.includes('snow') || condition.includes('snowy')) {
         icon = '❄️';
         classes += ' snow';
-      } else if (condition.includes('storm') || condition.includes('thunder') || condition.includes('lightning')) {
+      } else if (
+        condition.includes('storm') ||
+        condition.includes('thunder') ||
+        condition.includes('lightning')
+      ) {
         icon = '⛈️';
         classes += ' storm';
-      } else if (condition.includes('fog') || condition.includes('mist') || condition.includes('haze')) {
+      } else if (
+        condition.includes('fog') ||
+        condition.includes('mist') ||
+        condition.includes('haze')
+      ) {
         icon = '🌫️';
       } else if (condition.includes('wind')) {
         icon = '💨';
@@ -7013,43 +7585,27 @@ function updateWeatherFromHA() {
 function getWeatherEffectForState(condition) {
   if (!condition) return null;
   const cond = condition.toLowerCase();
-  if (
-    cond.includes('storm') || 
-    cond.includes('thunder') || 
-    cond.includes('lightning')
-  ) {
+  if (cond.includes('storm') || cond.includes('thunder') || cond.includes('lightning')) {
     return 'stormy';
-  } else if (
-    cond.includes('rain') || 
-    cond.includes('drizzle') || 
-    cond.includes('pouring')
-  ) {
+  } else if (cond.includes('rain') || cond.includes('drizzle') || cond.includes('pouring')) {
     return 'rainy';
-  } else if (
-    cond.includes('snow') || 
-    cond.includes('hail') || 
-    cond.includes('sleet')
-  ) {
+  } else if (cond.includes('snow') || cond.includes('hail') || cond.includes('sleet')) {
     return 'snowy';
   } else if (
-    cond.includes('cloud') || 
-    cond.includes('fog') || 
-    cond.includes('mist') || 
-    cond.includes('haze') || 
-    cond.includes('wind') || 
-    cond.includes('dust') || 
-    cond.includes('sand') || 
-    cond.includes('smoke') || 
-    cond.includes('ash') || 
-    cond.includes('squall') || 
+    cond.includes('cloud') ||
+    cond.includes('fog') ||
+    cond.includes('mist') ||
+    cond.includes('haze') ||
+    cond.includes('wind') ||
+    cond.includes('dust') ||
+    cond.includes('sand') ||
+    cond.includes('smoke') ||
+    cond.includes('ash') ||
+    cond.includes('squall') ||
     cond.includes('exceptional')
   ) {
     return 'cloudy';
-  } else if (
-    cond.includes('sun') || 
-    cond.includes('clear') || 
-    cond.includes('stable')
-  ) {
+  } else if (cond.includes('sun') || cond.includes('clear') || cond.includes('stable')) {
     return 'sunny';
   }
   return 'sunny';
@@ -7059,10 +7615,12 @@ function updateWeatherEffects(previewEnabled, previewOverride) {
   if (!window.weatherEffects) return;
 
   const uiConfig = state.CONFIG?.ui || {};
-  
-  const enabled = state.CONFIG?.frostedGlass
-    && (previewEnabled !== undefined ? !!previewEnabled : !!uiConfig.weatherEffectsEnabled);
-  const override = previewOverride !== undefined ? previewOverride : (uiConfig.weatherOverride || 'auto');
+
+  const enabled =
+    state.CONFIG?.frostedGlass &&
+    (previewEnabled !== undefined ? !!previewEnabled : !!uiConfig.weatherEffectsEnabled);
+  const override =
+    previewOverride !== undefined ? previewOverride : uiConfig.weatherOverride || 'auto';
 
   if (!enabled) {
     window.weatherEffects.setEffect(null);
@@ -7094,13 +7652,14 @@ function populateWeatherEntitiesList() {
     if (!list) return;
 
     const weatherEntities = Object.values(state.STATES || {})
-      .filter(e => e.entity_id.startsWith('weather.'))
+      .filter((e) => e.entity_id.startsWith('weather.'))
       .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
 
     list.innerHTML = '';
 
     if (weatherEntities.length === 0) {
-      list.innerHTML = '<div class="no-entities-message">No weather entities available. Make sure you\'re connected to Home Assistant.</div>';
+      list.innerHTML =
+        '<div class="no-entities-message">No weather entities available. Make sure you\'re connected to Home Assistant.</div>';
       return;
     }
 
@@ -7109,18 +7668,22 @@ function populateWeatherEntitiesList() {
     // Update current weather name display
     if (currentNameEl) {
       if (selectedEntityId && state.STATES[selectedEntityId]) {
-        currentNameEl.textContent = utils.getEntityDisplayName(state.STATES[selectedEntityId]) + ' ✓ (selected)';
+        currentNameEl.textContent =
+          utils.getEntityDisplayName(state.STATES[selectedEntityId]) + ' ✓ (selected)';
         currentNameEl.style.fontWeight = '600';
         currentNameEl.style.color = 'var(--primary-color)';
         currentNameEl.style.fontStyle = 'normal';
       } else {
         // Find the actual fallback entity being used (alphabetically first)
         const fallbackEntity = Object.values(state.STATES)
-          .filter(e => e.entity_id.startsWith('weather.'))
-          .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)))[0];
+          .filter((e) => e.entity_id.startsWith('weather.'))
+          .sort((a, b) =>
+            utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b))
+          )[0];
 
         if (fallbackEntity) {
-          currentNameEl.textContent = utils.getEntityDisplayName(fallbackEntity) + ' (auto-detected)';
+          currentNameEl.textContent =
+            utils.getEntityDisplayName(fallbackEntity) + ' (auto-detected)';
           currentNameEl.style.fontWeight = '400';
           currentNameEl.style.color = 'var(--text-secondary)';
           currentNameEl.style.fontStyle = 'italic';
@@ -7133,7 +7696,7 @@ function populateWeatherEntitiesList() {
       }
     }
 
-    weatherEntities.forEach(entity => {
+    weatherEntities.forEach((entity) => {
       const entityId = entity.entity_id;
       const isSelected = entityId === selectedEntityId;
 
@@ -7173,7 +7736,7 @@ async function selectWeatherEntity(entityId) {
     // Update config
     const updatedConfig = {
       ...state.CONFIG,
-      selectedWeatherEntity: entityId
+      selectedWeatherEntity: entityId,
     };
 
     // Persist to disk
@@ -7192,7 +7755,11 @@ async function selectWeatherEntity(entityId) {
     // Show success toast
     const entity = state.STATES[entityId];
     if (entity) {
-      uiUtils.showToast(t('Weather entity set to {{name}}', { name: utils.getEntityDisplayName(entity) }), 'success', 2000);
+      uiUtils.showToast(
+        t('Weather entity set to {{name}}', { name: utils.getEntityDisplayName(entity) }),
+        'success',
+        2000
+      );
     }
   } catch (error) {
     console.error('Error selecting weather entity:', error);
@@ -7251,7 +7818,8 @@ function updateMediaTile() {
     isMediaTileVisible = true;
 
     // Try multiple artwork sources (smart speakers might use different attributes)
-    let artworkUrl = entity.attributes?.entity_picture ||
+    let artworkUrl =
+      entity.attributes?.entity_picture ||
       entity.attributes?.media_image_url ||
       entity.attributes?.media_content_id;
 
@@ -7366,14 +7934,22 @@ function callMediaTileService(action) {
     const entityName = entity ? utils.getEntityDisplayName(entity) : 'Media Player';
 
     const serviceCalls = {
-      'play': () => websocket.callService('media_player', 'media_play', { entity_id: primaryPlayer })
-        .catch(error => handleServiceError(error, entityName)),
-      'pause': () => websocket.callService('media_player', 'media_pause', { entity_id: primaryPlayer })
-        .catch(error => handleServiceError(error, entityName)),
-      'previous': () => websocket.callService('media_player', 'media_previous_track', { entity_id: primaryPlayer })
-        .catch(error => handleServiceError(error, entityName)),
-      'next': () => websocket.callService('media_player', 'media_next_track', { entity_id: primaryPlayer })
-        .catch(error => handleServiceError(error, entityName))
+      play: () =>
+        websocket
+          .callService('media_player', 'media_play', { entity_id: primaryPlayer })
+          .catch((error) => handleServiceError(error, entityName)),
+      pause: () =>
+        websocket
+          .callService('media_player', 'media_pause', { entity_id: primaryPlayer })
+          .catch((error) => handleServiceError(error, entityName)),
+      previous: () =>
+        websocket
+          .callService('media_player', 'media_previous_track', { entity_id: primaryPlayer })
+          .catch((error) => handleServiceError(error, entityName)),
+      next: () =>
+        websocket
+          .callService('media_player', 'media_next_track', { entity_id: primaryPlayer })
+          .catch((error) => handleServiceError(error, entityName)),
     };
 
     if (serviceCalls[action]) {
@@ -7391,9 +7967,11 @@ function showNoConnectionMessage() {
     const container = document.getElementById('quick-controls');
     if (container) {
       // Check if configuration needs setup
-      if (!state.CONFIG ||
+      if (
+        !state.CONFIG ||
         !state.CONFIG.homeAssistant ||
-        state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
+        state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN'
+      ) {
         container.innerHTML = `
           <div class="status-message">
             <h3>⚙️ Setup Required</h3>
@@ -7434,7 +8012,8 @@ function updateTimeDisplay() {
     }
 
     if (timeEl) timeEl.textContent = formatTime(now, timeOptions);
-    if (dateEl) dateEl.textContent = formatDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
+    if (dateEl)
+      dateEl.textContent = formatDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
   } catch (error) {
     console.error('Error updating time display:', error);
   }
@@ -7476,7 +8055,7 @@ function updateTimerDisplays() {
     // Find all timer entities AND sensor entities with timer attributes in Quick Access
     const timerElements = document.querySelectorAll('.control-item.timer-entity');
 
-    timerElements.forEach(timerEl => {
+    timerElements.forEach((timerEl) => {
       const entityId = timerEl.dataset.entityId;
       const entity = state.STATES[entityId];
 
@@ -7515,12 +8094,18 @@ function updateTimerDisplays() {
       // Handle sensor.* entities that are timers (like Google Kitchen Timer)
       else if (entityId.startsWith('sensor.')) {
         // Check for various timer end time attributes
-        let finishesAt = entity.attributes?.finishes_at ||
+        let finishesAt =
+          entity.attributes?.finishes_at ||
           entity.attributes?.end_time ||
           entity.attributes?.finish_time;
 
         // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
-        if (!finishesAt && entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
+        if (
+          !finishesAt &&
+          entity.state &&
+          entity.state !== 'unavailable' &&
+          entity.state !== 'unknown'
+        ) {
           // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
           // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
           // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
@@ -7578,7 +8163,10 @@ function updateTimerDisplays() {
 function showBrightnessSlider(light) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(light));
-    const currentBrightness = light.state === 'on' && light.attributes.brightness ? Math.round((light.attributes.brightness / 255) * 100) : 0;
+    const currentBrightness =
+      light.state === 'on' && light.attributes.brightness
+        ? Math.round((light.attributes.brightness / 255) * 100)
+        : 0;
     const lightAttributes = light.attributes || {};
     const showColorTempControl = supportsLightColorTemp(lightAttributes);
     const showColorControl = supportsLightColor(lightAttributes);
@@ -7624,7 +8212,8 @@ function showBrightnessSlider(light) {
                   aria-label="Light Color"
                 />
                 <div class="light-color-swatches">
-                  ${LIGHT_COLOR_PRESETS.map((color) => `
+                  ${LIGHT_COLOR_PRESETS.map(
+                    (color) => `
                     <button
                       class="light-color-swatch"
                       type="button"
@@ -7632,7 +8221,8 @@ function showBrightnessSlider(light) {
                       style="--swatch-color: ${escapeHtmlAttribute(color)}"
                       aria-label="Set light color ${escapeHtmlAttribute(color)}"
                     ></button>
-                  `).join('')}
+                  `
+                  ).join('')}
                 </div>
               </div>
             </div>
@@ -7718,7 +8308,9 @@ function showBrightnessSlider(light) {
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -7775,7 +8367,7 @@ function showBrightnessSlider(light) {
     }
 
     // Presets
-    presetButtons.forEach(btn => {
+    presetButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const preset = parseInt(btn.getAttribute('data-preset'), 10) || 0;
         const sliderEl = modal.querySelector('#brightness-slider');
@@ -7788,7 +8380,11 @@ function showBrightnessSlider(light) {
 
     if (colorTempSlider) {
       colorTempSlider.addEventListener('input', (e) => {
-        const kelvin = clampRange(Math.round(Number(e.target.value)), colorTempRange.min, colorTempRange.max);
+        const kelvin = clampRange(
+          Math.round(Number(e.target.value)),
+          colorTempRange.min,
+          colorTempRange.max
+        );
         if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
         clearTimeout(colorTempDebounceTimer);
         colorTempDebounceTimer = setTimeout(() => {
@@ -7823,7 +8419,7 @@ function showBrightnessSlider(light) {
       });
     }
 
-    colorSwatches.forEach(btn => {
+    colorSwatches.forEach((btn) => {
       btn.addEventListener('click', () => {
         applyColor(btn.getAttribute('data-color'));
       });
@@ -7840,7 +8436,8 @@ function showBrightnessSlider(light) {
           updateIconAndAccent(0);
         } else {
           // Turn on to last brightness or 100%
-          const brightness = currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
+          const brightness =
+            currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
           websocket.callService('light', 'turn_on', { entity_id: light.entity_id, brightness });
           lightIsOn = true;
           const targetValue = currentBrightness > 0 ? currentBrightness : 100;
@@ -7853,7 +8450,9 @@ function showBrightnessSlider(light) {
     }
 
     // Close on backdrop click only when clicking the overlay
-    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
   } catch (error) {
     console.error('Error showing brightness slider:', error);
   }
@@ -7872,7 +8471,8 @@ function showClimateControls(climateEntity) {
     const minTemp = Number.isFinite(minTempValue) ? minTempValue : 10;
     const maxTemp = Number.isFinite(maxTempValue) ? maxTempValue : 30;
     const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
-    const hasCurrentHumidity = climateEntity.attributes.current_humidity !== undefined &&
+    const hasCurrentHumidity =
+      climateEntity.attributes.current_humidity !== undefined &&
       climateEntity.attributes.current_humidity !== null;
     const currentHumidity = hasCurrentHumidity
       ? utils.escapeHtml(String(climateEntity.attributes.current_humidity))
@@ -7909,14 +8509,18 @@ function showClimateControls(climateEntity) {
                 <div class="climate-temp-value-large" id="climate-target-value">${targetTemp}${tempUnit}</div>
               </div>
             </div>
-            ${hasCurrentHumidity ? `
+            ${
+              hasCurrentHumidity
+                ? `
               <div class="climate-extra-stats">
                 <div class="climate-stat">
                   <div class="climate-temp-label">Humidity</div>
                   <div class="climate-temp-value">${currentHumidity}%</div>
                 </div>
               </div>
-            ` : ''}
+            `
+                : ''
+            }
 
             <div class="climate-slider-wrapper">
               <input
@@ -7939,18 +8543,26 @@ function showClimateControls(climateEntity) {
               <div class="climate-modes-label">Mode</div>
               <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
             </div>
-            ${availableFanModes.length ? `
+            ${
+              availableFanModes.length
+                ? `
               <div class="climate-modes">
                 <div class="climate-modes-label">Fan</div>
                 <div class="climate-option-buttons" id="climate-fan-buttons"></div>
               </div>
-            ` : ''}
-            ${availablePresetModes.length ? `
+            `
+                : ''
+            }
+            ${
+              availablePresetModes.length
+                ? `
               <div class="climate-modes">
                 <div class="climate-modes-label">Preset</div>
                 <div class="climate-option-buttons" id="climate-preset-buttons"></div>
               </div>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
         </div>
         <div class="modal-footer">
@@ -7971,13 +8583,13 @@ function showClimateControls(climateEntity) {
     // Helper function to get mode icons
     function getModeIcon(mode) {
       const icons = {
-        'off': '⏻',
-        'heat': '🔥',
-        'cool': '❄️',
-        'auto': '🔄',
-        'heat_cool': '🔄',
-        'fan_only': '💨',
-        'dry': '💧'
+        off: '⏻',
+        heat: '🔥',
+        cool: '❄️',
+        auto: '🔄',
+        heat_cool: '🔄',
+        fan_only: '💨',
+        dry: '💧',
       };
       return icons[mode] || '⚙️';
     }
@@ -8026,8 +8638,18 @@ function showClimateControls(climateEntity) {
       });
     }
 
-    createClimateOptionButtons(fanButtonsContainer, availableFanModes, currentFanMode, 'climate-fan-mode-btn');
-    createClimateOptionButtons(presetButtonsContainer, availablePresetModes, currentPresetMode, 'climate-preset-mode-btn');
+    createClimateOptionButtons(
+      fanButtonsContainer,
+      availableFanModes,
+      currentFanMode,
+      'climate-fan-mode-btn'
+    );
+    createClimateOptionButtons(
+      presetButtonsContainer,
+      availablePresetModes,
+      currentPresetMode,
+      'climate-preset-mode-btn'
+    );
     const fanModeButtons = modal.querySelectorAll('.climate-fan-mode-btn');
     const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
 
@@ -8038,7 +8660,9 @@ function showClimateControls(climateEntity) {
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -8054,55 +8678,57 @@ function showClimateControls(climateEntity) {
         debounceTimer = setTimeout(() => {
           websocket.callService('climate', 'set_temperature', {
             entity_id: climateEntity.entity_id,
-            temperature: value
+            temperature: value,
           });
         }, 300);
       });
     }
 
     // Mode button handlers
-    modeButtons.forEach(btn => {
+    modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
 
         // Update UI immediately
-        modeButtons.forEach(b => b.classList.remove('active'));
+        modeButtons.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
 
         // Call service
         websocket.callService('climate', 'set_hvac_mode', {
           entity_id: climateEntity.entity_id,
-          hvac_mode: mode
+          hvac_mode: mode,
         });
       });
     });
 
-    fanModeButtons.forEach(btn => {
+    fanModeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
-        fanModeButtons.forEach(b => b.classList.remove('active'));
+        fanModeButtons.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         websocket.callService('climate', 'set_fan_mode', {
           entity_id: climateEntity.entity_id,
-          fan_mode: mode
+          fan_mode: mode,
         });
       });
     });
 
-    presetModeButtons.forEach(btn => {
+    presetModeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
-        presetModeButtons.forEach(b => b.classList.remove('active'));
+        presetModeButtons.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         websocket.callService('climate', 'set_preset_mode', {
           entity_id: climateEntity.entity_id,
-          preset_mode: mode
+          preset_mode: mode,
         });
       });
     });
 
     // Close on backdrop click
-    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
   } catch (error) {
     console.error('Error showing climate controls:', error);
   }
@@ -8175,7 +8801,9 @@ function showFanControls(fanEntity) {
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -8203,11 +8831,11 @@ function showFanControls(fanEntity) {
           if (speed > 0) {
             websocket.callService('fan', 'set_percentage', {
               entity_id: fanEntity.entity_id,
-              percentage: speed
+              percentage: speed,
             });
           } else {
             websocket.callService('fan', 'turn_off', {
-              entity_id: fanEntity.entity_id
+              entity_id: fanEntity.entity_id,
             });
           }
         }, 200);
@@ -8215,7 +8843,7 @@ function showFanControls(fanEntity) {
     }
 
     // Preset buttons
-    presetButtons.forEach(btn => {
+    presetButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const speed = parseInt(btn.getAttribute('data-speed'), 10);
         if (slider) {
@@ -8226,7 +8854,9 @@ function showFanControls(fanEntity) {
     });
 
     // Close on backdrop click
-    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
   } catch (error) {
     console.error('Error showing fan controls:', error);
   }
@@ -8314,7 +8944,9 @@ function showCoverControls(coverEntity) {
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -8338,18 +8970,18 @@ function showCoverControls(coverEntity) {
         debounceTimer = setTimeout(() => {
           websocket.callService('cover', 'set_cover_position', {
             entity_id: coverEntity.entity_id,
-            position: position
+            position: position,
           });
         }, 300);
       });
     }
 
     // Action buttons
-    actionButtons.forEach(btn => {
+    actionButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const action = btn.getAttribute('data-action');
         websocket.callService('cover', action, {
-          entity_id: coverEntity.entity_id
+          entity_id: coverEntity.entity_id,
         });
 
         // Visual feedback
@@ -8366,7 +8998,9 @@ function showCoverControls(coverEntity) {
     });
 
     // Close on backdrop click
-    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
   } catch (error) {
     console.error('Error showing cover controls:', error);
   }
@@ -8390,8 +9024,8 @@ function populateQuickControlsList() {
 
       // Score and filter entities
       const scoredEntities = Object.values(state.STATES)
-        .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
-        .map(entity => {
+        .filter((e) => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
+        .map((entity) => {
           if (!filter) {
             return { entity, score: 1 };
           }
@@ -8400,13 +9034,15 @@ function populateQuickControlsList() {
           const idScore = utils.getSearchScore(entity.entity_id, filter);
           return { entity, score: nameScore + idScore };
         })
-        .filter(item => item.score > 0)
+        .filter((item) => item.score > 0)
         .sort((a, b) => {
           // Sort by score first, then alphabetically
           if (b.score !== a.score) {
             return b.score - a.score;
           }
-          return utils.getEntityDisplayName(a.entity).localeCompare(utils.getEntityDisplayName(b.entity));
+          return utils
+            .getEntityDisplayName(a.entity)
+            .localeCompare(utils.getEntityDisplayName(b.entity));
         });
 
       list.innerHTML = '';
@@ -8519,18 +9155,21 @@ function initUpdateUI() {
           const result = await window.electronAPI.checkForUpdates();
           if (result.status === 'dev') {
             // In development mode, auto-updater doesn't work
-            if (updateStatusText) updateStatusText.textContent = t('Auto-updates only work in packaged builds');
+            if (updateStatusText)
+              updateStatusText.textContent = t('Auto-updates only work in packaged builds');
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
           } else if (result.status === 'portable' || result.status === 'manual') {
             portableDownloadUrl = result.downloadUrl || null;
             if (updateStatusText) {
-              const baseMessage = result.message || t('Portable builds do not support in-app updates.');
+              const baseMessage =
+                result.message || t('Portable builds do not support in-app updates.');
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent = result.status === 'manual' ? t('Download Update') : t('Download Portable Update');
+                installUpdateBtn.textContent =
+                  result.status === 'manual' ? t('Download Update') : t('Download Portable Update');
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');
@@ -8549,7 +9188,9 @@ function initUpdateUI() {
           } else if (result.status === 'error') {
             portableDownloadUrl = null;
             if (updateStatusText) {
-              const baseMessage = t('Error: {{error}}', { error: result.error || t('Unknown error') });
+              const baseMessage = t('Error: {{error}}', {
+                error: result.error || t('Unknown error'),
+              });
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
@@ -8638,7 +9279,9 @@ function initUpdateUI() {
           case 'error':
             portableDownloadUrl = null;
             if (updateStatusText) {
-              updateStatusText.textContent = t('Error: {{error}}', { error: data.error || t('Unknown error') });
+              updateStatusText.textContent = t('Error: {{error}}', {
+                error: data.error || t('Unknown error'),
+              });
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
@@ -8649,13 +9292,15 @@ function initUpdateUI() {
           case 'manual':
             portableDownloadUrl = data.downloadUrl || null;
             if (updateStatusText) {
-              const baseMessage = data.message || t('Portable builds do not support in-app updates.');
+              const baseMessage =
+                data.message || t('Portable builds do not support in-app updates.');
               updateStatusText.textContent = baseMessage;
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent = data.status === 'manual' ? t('Download Update') : t('Download Portable Update');
+                installUpdateBtn.textContent =
+                  data.status === 'manual' ? t('Download Update') : t('Download Portable Update');
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');
@@ -8671,12 +9316,10 @@ function initUpdateUI() {
 
     // Initialize with ready status
     if (updateStatusText) updateStatusText.textContent = t('Ready to check for updates');
-
   } catch (error) {
     console.error('Error initializing update UI:', error);
   }
 }
-
 
 // ESC key handler for reorganize mode
 function handleEscapeKey(e) {
@@ -8698,7 +9341,6 @@ function addEscapeKeyListener() {
 function removeEscapeKeyListener() {
   document.removeEventListener('keydown', handleEscapeKey);
 }
-
 
 export {
   renderActiveTab,

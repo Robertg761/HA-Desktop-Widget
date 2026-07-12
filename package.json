@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "jest",
     "test:coverage": "jest --coverage"
   },

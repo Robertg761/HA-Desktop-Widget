@@ -21,10 +21,17 @@ async function loadHls() {
 
 async function getHlsStreamUrl(entityId) {
   try {
-    const res = await websocket.request({ type: 'camera/stream', entity_id: entityId, format: 'hls' });
+    const res = await websocket.request({
+      type: 'camera/stream',
+      entity_id: entityId,
+      format: 'hls',
+    });
     if (res && res.success && res.result && (res.result.url || res.result)) {
       const rawUrl = typeof res.result === 'string' ? res.result : res.result.url;
-      const abs = new URL(rawUrl, (state.CONFIG && state.CONFIG.homeAssistant && state.CONFIG.homeAssistant.url) || '');
+      const abs = new URL(
+        rawUrl,
+        (state.CONFIG && state.CONFIG.homeAssistant && state.CONFIG.homeAssistant.url) || ''
+      );
       // Proxy through ha://hls to keep Authorization header handling in main
       return `ha://hls${abs.pathname}${abs.search || ''}`;
     }
@@ -110,7 +117,9 @@ async function openCamera(cameraId) {
         img.style.display = 'block';
       }
       isLive = false;
-      if (liveBtn) { liveBtn.textContent = t('Live'); }
+      if (liveBtn) {
+        liveBtn.textContent = t('Live');
+      }
     };
 
     const loadSnapshot = async () => {
@@ -200,7 +209,9 @@ async function openCamera(cameraId) {
       }
 
       isLive = true;
-      if (liveBtn) { liveBtn.textContent = t('Stop'); }
+      if (liveBtn) {
+        liveBtn.textContent = t('Stop');
+      }
     };
 
     // Button handlers
@@ -222,7 +233,9 @@ async function openCamera(cameraId) {
       stopLive();
       modal.remove();
       // Ensure any tile visuals tied to this entity are refreshed after modal closes
-      document.dispatchEvent(new CustomEvent('camera-modal-closed', { detail: { entityId: cameraId } }));
+      document.dispatchEvent(
+        new CustomEvent('camera-modal-closed', { detail: { entityId: cameraId } })
+      );
     };
 
     if (closeBtn) {
@@ -238,15 +251,10 @@ async function openCamera(cameraId) {
 
     // Load initial snapshot
     loadSnapshot();
-
   } catch (error) {
     console.error('Error opening camera:', error);
     showToast(t('Failed to open camera viewer'), 'error', 2000);
   }
 }
 
-export {
-  getHlsStreamUrl,
-  stopHlsStream,
-  openCamera,
-};
+export { getHlsStreamUrl, stopHlsStream, openCamera };

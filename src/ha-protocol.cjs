@@ -65,12 +65,7 @@ function sniffMediaArtworkContentType(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
 
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47
-  ) {
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
     return 'image/png';
   }
   if (buffer.slice(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
@@ -287,9 +282,7 @@ function createHaProtocolHandler({
         const response = await fetchStream(upstream, {
           headers: { Authorization: `Bearer ${token}` },
           redirect: 'follow',
-          signal: request.signal
-            ? AbortSignal.any([request.signal, timeoutSignal])
-            : timeoutSignal,
+          signal: request.signal ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal,
         });
         return streamResponse(response, 'image/jpeg');
       }
@@ -313,9 +306,7 @@ function createHaProtocolHandler({
           return errorResponse(response.status || 502);
         }
 
-        const buffer = Buffer.isBuffer(response.data)
-          ? response.data
-          : Buffer.from(response.data);
+        const buffer = Buffer.isBuffer(response.data) ? response.data : Buffer.from(response.data);
         const contentType = resolveMediaArtworkContentType(response.headers, buffer);
         if (!contentType) return errorResponse(415);
 

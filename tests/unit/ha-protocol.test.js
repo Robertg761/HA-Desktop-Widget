@@ -12,11 +12,12 @@ const {
 const { isAllowedHlsProxyPath } = require('../../src/main-security.cjs');
 
 function createHandler(overrides = {}) {
-  const fetchStream = jest.fn(async () =>
-    new Response('upstream data', {
-      status: 200,
-      headers: { 'Content-Type': 'image/jpeg' },
-    })
+  const fetchStream = jest.fn(
+    async () =>
+      new Response('upstream data', {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg' },
+      })
   );
   const fetchBinary = jest.fn(async () => ({
     status: 200,
@@ -186,10 +187,15 @@ describe('Electron net binary fetcher', () => {
     });
     const fetchBinary = createElectronNetBinaryFetcher(net);
 
-    const result = await fetchBinary('https://ha.example.test/image', { Authorization: 'Bearer x' }, 1000, {
-      maxBytes: 4,
-      validateContentType: (value) => value === 'image/png',
-    });
+    const result = await fetchBinary(
+      'https://ha.example.test/image',
+      { Authorization: 'Bearer x' },
+      1000,
+      {
+        maxBytes: 4,
+        validateContentType: (value) => value === 'image/png',
+      }
+    );
 
     expect(result.status).toBe(200);
     expect(result.data).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));

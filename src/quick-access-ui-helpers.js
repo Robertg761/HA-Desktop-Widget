@@ -24,6 +24,4 @@ function getNextQuickAccessFocusIndex(currentIndex, itemCount, key, columns = 1)
   }
 }
 
-export {
-  getNextQuickAccessFocusIndex,
-};
+export { getNextQuickAccessFocusIndex };

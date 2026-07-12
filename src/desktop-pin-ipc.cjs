@@ -1,8 +1,5 @@
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-const HOME_ASSISTANT_URL_PLACEHOLDERS = new Set([
-  'YOUR_HOME_ASSISTANT_URL',
-  'HOME_ASSISTANT_URL',
-]);
+const HOME_ASSISTANT_URL_PLACEHOLDERS = new Set(['YOUR_HOME_ASSISTANT_URL', 'HOME_ASSISTANT_URL']);
 const DESKTOP_PIN_ALLOWED_ACTIONS = new Set(['focus-main', 'service-call']);
 
 function isPlainObject(value) {
@@ -69,11 +66,7 @@ function normalizeDesktopPinActionRequest(entityId, action, payload = {}) {
   const expectedDomain = normalizedEntityId.split('.')[0];
   const requestedDomain = typeof payload.domain === 'string' ? payload.domain.trim() : '';
   const service = typeof payload.service === 'string' ? payload.service.trim() : '';
-  if (
-    !expectedDomain ||
-    requestedDomain !== expectedDomain ||
-    !/^[a-z0-9_]+$/.test(service)
-  ) {
+  if (!expectedDomain || requestedDomain !== expectedDomain || !/^[a-z0-9_]+$/.test(service)) {
     return { success: false, error: 'Invalid desktop pin service request' };
   }
 

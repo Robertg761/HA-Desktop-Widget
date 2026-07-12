@@ -124,7 +124,7 @@ describe('WebSocket Manager', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid configuration. Please check settings.'
+          message: 'Invalid configuration. Please check settings.',
         })
       );
     });
@@ -139,7 +139,7 @@ describe('WebSocket Manager', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid configuration. Please check settings.'
+          message: 'Invalid configuration. Please check settings.',
         })
       );
     });
@@ -154,7 +154,7 @@ describe('WebSocket Manager', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid configuration. Please check settings.'
+          message: 'Invalid configuration. Please check settings.',
         })
       );
     });
@@ -163,8 +163,8 @@ describe('WebSocket Manager', () => {
       state.setConfig({
         homeAssistant: {
           url: 'http://test.local:8123',
-          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
-        }
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        },
       });
 
       const errorHandler = jest.fn();
@@ -174,7 +174,7 @@ describe('WebSocket Manager', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Configuration contains default token. Please update settings.'
+          message: 'Configuration contains default token. Please update settings.',
         })
       );
     });
@@ -188,7 +188,7 @@ describe('WebSocket Manager', () => {
       wsManager.connect();
 
       // Wait for connection to open
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(wsManager.ws).toBeTruthy();
       expect(wsManager.ws.url).toBe('ws://homeassistant.local:8123/api/websocket');
@@ -199,13 +199,13 @@ describe('WebSocket Manager', () => {
       state.setConfig({
         homeAssistant: {
           url: 'https://test.local:8123',
-          token: 'test-token'
-        }
+          token: 'test-token',
+        },
       });
 
       wsManager.connect();
 
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(wsManager.ws.url).toBe('wss://test.local:8123/api/websocket');
     });
@@ -214,13 +214,13 @@ describe('WebSocket Manager', () => {
       state.setConfig({
         homeAssistant: {
           url: 'https://test.local:8123///',
-          token: 'test-token'
-        }
+          token: 'test-token',
+        },
       });
 
       wsManager.connect();
 
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(wsManager.ws.url).toBe('wss://test.local:8123/api/websocket');
     });
@@ -229,13 +229,13 @@ describe('WebSocket Manager', () => {
       state.setConfig(sampleConfig);
 
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       const firstWs = wsManager.ws;
       const closeSpy = jest.spyOn(firstWs, 'close');
 
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(closeSpy).toHaveBeenCalled();
     });
@@ -247,7 +247,7 @@ describe('WebSocket Manager', () => {
       wsManager.on('close', closeHandler);
 
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       wsManager.ws.close();
 
@@ -261,13 +261,13 @@ describe('WebSocket Manager', () => {
       wsManager.on('error', errorHandler);
 
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       wsManager.ws.simulateError(new Error('Connection failed'));
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Connection failed'
+          message: 'Connection failed',
         })
       );
     });
@@ -279,7 +279,7 @@ describe('WebSocket Manager', () => {
       wsManager.on('error', errorHandler);
 
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       if (wsManager.ws.onerror) {
         wsManager.ws.onerror({ target: { readyState: MockWebSocket.CONNECTING } });
@@ -287,7 +287,7 @@ describe('WebSocket Manager', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Could not establish WebSocket connection'
+          message: 'Could not establish WebSocket connection',
         })
       );
     });
@@ -297,7 +297,7 @@ describe('WebSocket Manager', () => {
     beforeEach(async () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
     test('should emit message event on incoming message', () => {
@@ -314,7 +314,7 @@ describe('WebSocket Manager', () => {
       wsManager.ws.simulateMessage({ type: 'ping' });
 
       const sentMessages = wsManager.ws.sentMessages;
-      const pongMessage = sentMessages.find(msg => {
+      const pongMessage = sentMessages.find((msg) => {
         const parsed = JSON.parse(msg);
         return parsed.type === 'pong';
       });
@@ -340,7 +340,7 @@ describe('WebSocket Manager', () => {
         id: promise.id,
         type: 'result',
         success: true,
-        result: []
+        result: [],
       });
 
       const result = await promise;
@@ -363,7 +363,7 @@ describe('WebSocket Manager', () => {
     beforeEach(async () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
     test('should send request with incremented ID', () => {
@@ -386,7 +386,7 @@ describe('WebSocket Manager', () => {
         id: promise.id,
         type: 'result',
         success: true,
-        result: testResult
+        result: testResult,
       });
 
       const result = await promise;
@@ -396,9 +396,9 @@ describe('WebSocket Manager', () => {
     test('should reject if WebSocket is not connected', async () => {
       wsManager.ws.readyState = MockWebSocket.CLOSED;
 
-      await expect(
-        wsManager.request({ type: 'get_states' })
-      ).rejects.toThrow('WebSocket not connected');
+      await expect(wsManager.request({ type: 'get_states' })).rejects.toThrow(
+        'WebSocket not connected'
+      );
     });
 
     test('should timeout after 15 seconds', async () => {
@@ -445,7 +445,7 @@ describe('WebSocket Manager', () => {
         id: requestId,
         type: 'result',
         success: true,
-        result: []
+        result: [],
       });
 
       await promise;
@@ -465,7 +465,7 @@ describe('WebSocket Manager', () => {
     beforeEach(async () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
     test('should subscribe after auth_ok, route subscription events, and unsubscribe', async () => {
@@ -481,14 +481,14 @@ describe('WebSocket Manager', () => {
       const subscribeMessage = JSON.parse(wsManager.ws.sentMessages[0]);
       expect(subscribeMessage).toEqual({
         id: 1000,
-        type: 'persistent_notification/subscribe'
+        type: 'persistent_notification/subscribe',
       });
 
       wsManager.ws.simulateMessage({
         id: subscribeMessage.id,
         type: 'result',
         success: true,
-        result: null
+        result: null,
       });
       await Promise.resolve();
 
@@ -498,21 +498,21 @@ describe('WebSocket Manager', () => {
           test: {
             notification_id: 'test',
             title: 'Door',
-            message: 'Open'
-          }
-        }
+            message: 'Open',
+          },
+        },
       };
       wsManager.ws.simulateMessage({
         id: subscribeMessage.id,
         type: 'event',
-        event: eventPayload
+        event: eventPayload,
       });
 
       expect(onEvent).toHaveBeenCalledWith(
         eventPayload,
         expect.objectContaining({
           id: subscribeMessage.id,
-          type: 'event'
+          type: 'event',
         })
       );
 
@@ -521,15 +521,12 @@ describe('WebSocket Manager', () => {
       expect(unsubscribeMessage).toEqual({
         id: 1001,
         type: 'unsubscribe_events',
-        subscription: subscribeMessage.id
+        subscription: subscribeMessage.id,
       });
     });
 
     test('should resubscribe active message subscriptions after reconnect auth_ok', async () => {
-      wsManager.subscribeMessage(
-        { type: 'persistent_notification/subscribe' },
-        jest.fn()
-      );
+      wsManager.subscribeMessage({ type: 'persistent_notification/subscribe' }, jest.fn());
 
       wsManager.ws.simulateMessage({ type: 'auth_ok' });
       const firstSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
@@ -537,19 +534,19 @@ describe('WebSocket Manager', () => {
         id: firstSubscribe.id,
         type: 'result',
         success: true,
-        result: null
+        result: null,
       });
       await Promise.resolve();
 
       wsManager.ws.close();
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
       wsManager.ws.simulateMessage({ type: 'auth_ok' });
 
       const secondSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
       expect(secondSubscribe).toEqual({
         id: 1001,
-        type: 'persistent_notification/subscribe'
+        type: 'persistent_notification/subscribe',
       });
     });
   });
@@ -558,7 +555,7 @@ describe('WebSocket Manager', () => {
     beforeEach(async () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
     test('should call service with correct parameters', () => {
@@ -573,14 +570,14 @@ describe('WebSocket Manager', () => {
 
     test('should return promise that resolves on success', async () => {
       const promise = wsManager.callService('light', 'turn_on', {
-        entity_id: 'light.living_room'
+        entity_id: 'light.living_room',
       });
 
       wsManager.ws.simulateMessage({
         id: promise.id,
         type: 'result',
         success: true,
-        result: {}
+        result: {},
       });
 
       const result = await promise;
@@ -590,7 +587,7 @@ describe('WebSocket Manager', () => {
     test('should request and return service response payloads', async () => {
       const promise = wsManager.callServiceWithResponse('weather', 'get_forecasts', {
         entity_id: 'weather.home',
-        type: 'daily'
+        type: 'daily',
       });
 
       const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
@@ -598,44 +595,49 @@ describe('WebSocket Manager', () => {
       expect(sentMessage.return_response).toBe(true);
       expect(sentMessage.service_data).toEqual({
         entity_id: 'weather.home',
-        type: 'daily'
+        type: 'daily',
       });
 
       const forecastResponse = {
         'weather.home': {
-          forecast: [{ datetime: '2026-07-06T12:00:00', condition: 'sunny' }]
-        }
+          forecast: [{ datetime: '2026-07-06T12:00:00', condition: 'sunny' }],
+        },
       };
       wsManager.ws.simulateMessage({
         id: promise.id,
         type: 'result',
         success: true,
         result: {
-          response: forecastResponse
-        }
+          response: forecastResponse,
+        },
       });
 
       await expect(promise).resolves.toEqual(forecastResponse);
     });
 
     test('should support top-level response payload fallback', async () => {
-      const promise = wsManager.callService('todo', 'get_items', {
-        entity_id: 'todo.shopping'
-      }, { returnResponse: true });
+      const promise = wsManager.callService(
+        'todo',
+        'get_items',
+        {
+          entity_id: 'todo.shopping',
+        },
+        { returnResponse: true }
+      );
 
       const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
       expect(sentMessage.return_response).toBe(true);
 
       const todoResponse = {
         'todo.shopping': {
-          items: [{ uid: '1', summary: 'Milk', status: 'needs_action' }]
-        }
+          items: [{ uid: '1', summary: 'Milk', status: 'needs_action' }],
+        },
       };
       wsManager.ws.simulateMessage({
         id: promise.id,
         type: 'result',
         success: true,
-        response: todoResponse
+        response: todoResponse,
       });
 
       await expect(promise).resolves.toEqual(todoResponse);
@@ -657,30 +659,30 @@ describe('WebSocket Manager', () => {
     test('should proxy desktop-pin service calls through the main window when disconnected', async () => {
       const requestDesktopPinAction = jest.fn().mockResolvedValue({
         success: true,
-        result: { context: { id: 'service-context' } }
+        result: { context: { id: 'service-context' } },
       });
       window.electronAPI = { requestDesktopPinAction };
-      window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
+      window.history.replaceState(
+        {},
+        '',
+        'http://localhost/?mode=desktop-pin&entityId=light.living_room'
+      );
       wsManager.ws.readyState = MockWebSocket.CLOSED;
 
       const result = await wsManager.callService('light', 'turn_on', {
-        entity_id: 'light.living_room'
+        entity_id: 'light.living_room',
       });
 
-      expect(requestDesktopPinAction).toHaveBeenCalledWith(
-        'light.living_room',
-        'service-call',
-        {
-          domain: 'light',
-          service: 'turn_on',
-          serviceData: {
-            entity_id: 'light.living_room'
-          }
-        }
-      );
+      expect(requestDesktopPinAction).toHaveBeenCalledWith('light.living_room', 'service-call', {
+        domain: 'light',
+        service: 'turn_on',
+        serviceData: {
+          entity_id: 'light.living_room',
+        },
+      });
       expect(result).toEqual({
         success: true,
-        result: { context: { id: 'service-context' } }
+        result: { context: { id: 'service-context' } },
       });
     });
 
@@ -689,11 +691,15 @@ describe('WebSocket Manager', () => {
         success: false,
         error: {
           message: 'Light failed',
-          code: 'service_error'
-        }
+          code: 'service_error',
+        },
       });
       window.electronAPI = { requestDesktopPinAction };
-      window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
+      window.history.replaceState(
+        {},
+        '',
+        'http://localhost/?mode=desktop-pin&entityId=light.living_room'
+      );
       wsManager.ws.readyState = MockWebSocket.CLOSED;
 
       await expect(
@@ -703,15 +709,21 @@ describe('WebSocket Manager', () => {
         code: 'service_error',
         details: {
           message: 'Light failed',
-          code: 'service_error'
-        }
+          code: 'service_error',
+        },
       });
     });
 
     test('should reject forwarded-only desktop-pin service responses', async () => {
-      const requestDesktopPinAction = jest.fn().mockResolvedValue({ success: true, forwarded: true });
+      const requestDesktopPinAction = jest
+        .fn()
+        .mockResolvedValue({ success: true, forwarded: true });
       window.electronAPI = { requestDesktopPinAction };
-      window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.living_room');
+      window.history.replaceState(
+        {},
+        '',
+        'http://localhost/?mode=desktop-pin&entityId=light.living_room'
+      );
       wsManager.ws.readyState = MockWebSocket.CLOSED;
 
       await expect(
@@ -724,7 +736,7 @@ describe('WebSocket Manager', () => {
     test('should close WebSocket connection', async () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       const closeSpy = jest.spyOn(wsManager.ws, 'close');
 
@@ -743,7 +755,7 @@ describe('WebSocket Manager', () => {
     test('should handle errors during close gracefully', async () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Make close throw an error
       wsManager.ws.close = jest.fn(() => {

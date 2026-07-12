@@ -2,7 +2,12 @@
  * @jest-environment jsdom
  */
 
-const { sampleStates, sampleServices: _sampleServices, sampleAreas: _sampleAreas, sampleUnitSystemMetric } = require('../fixtures/ha-data.js');
+const {
+  sampleStates,
+  sampleServices: _sampleServices,
+  sampleAreas: _sampleAreas,
+  sampleUnitSystemMetric,
+} = require('../fixtures/ha-data.js');
 const { getMockConfig } = require('../mocks/electron.js');
 
 // Mock electron-log
@@ -10,7 +15,7 @@ jest.mock('electron-log', () => ({
   debug: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
-  info: jest.fn()
+  info: jest.fn(),
 }));
 
 // Mock WebSocket class with synchronous connection for testing
@@ -87,7 +92,7 @@ describe('WebSocket + State Integration', () => {
     const config = getMockConfig();
     config.homeAssistant = {
       url: 'http://homeassistant.local:8123',
-      token: 'valid-token-123'
+      token: 'valid-token-123',
     };
     state.setConfig(config);
   });
@@ -103,7 +108,7 @@ describe('WebSocket + State Integration', () => {
 
   describe('Initial Connection Flow', () => {
     test('complete connection and data fetch', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -114,9 +119,9 @@ describe('WebSocket + State Integration', () => {
 
       const statesRequest = websocket.request({ type: 'get_states' });
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const statesMsg = ws.getSentMessages().find(m => m.type === 'get_states');
+      const statesMsg = ws.getSentMessages().find((m) => m.type === 'get_states');
       expect(statesMsg).toBeDefined();
       expect(statesMsg.id).toBeGreaterThan(0);
 
@@ -124,7 +129,7 @@ describe('WebSocket + State Integration', () => {
         id: statesMsg.id,
         type: 'result',
         success: true,
-        result: Object.values(sampleStates)
+        result: Object.values(sampleStates),
       });
 
       const statesResult = await statesRequest;
@@ -134,7 +139,7 @@ describe('WebSocket + State Integration', () => {
 
     test('authentication failure handling', async () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-      const errorPromise = new Promise(resolve => websocket.on('error', resolve));
+      const errorPromise = new Promise((resolve) => websocket.on('error', resolve));
 
       const config = state.CONFIG;
       config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
@@ -149,7 +154,7 @@ describe('WebSocket + State Integration', () => {
     });
 
     test('concurrent request handling', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -160,12 +165,12 @@ describe('WebSocket + State Integration', () => {
       const req2 = websocket.request({ type: 'get_services' });
       const req3 = websocket.request({ type: 'get_config' });
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const sentMessages = ws.getSentMessages();
-      const statesMsg = sentMessages.find(m => m.type === 'get_states');
-      const servicesMsg = sentMessages.find(m => m.type === 'get_services');
-      const configMsg = sentMessages.find(m => m.type === 'get_config');
+      const statesMsg = sentMessages.find((m) => m.type === 'get_states');
+      const servicesMsg = sentMessages.find((m) => m.type === 'get_services');
+      const configMsg = sentMessages.find((m) => m.type === 'get_config');
 
       expect(statesMsg).toBeDefined();
       expect(servicesMsg).toBeDefined();
@@ -176,7 +181,12 @@ describe('WebSocket + State Integration', () => {
 
       ws.simulateMessage({ id: statesMsg.id, type: 'result', success: true, result: [] });
       ws.simulateMessage({ id: servicesMsg.id, type: 'result', success: true, result: {} });
-      ws.simulateMessage({ id: configMsg.id, type: 'result', success: true, result: { unit_system: sampleUnitSystemMetric } });
+      ws.simulateMessage({
+        id: configMsg.id,
+        type: 'result',
+        success: true,
+        result: { unit_system: sampleUnitSystemMetric },
+      });
 
       const [res1, res2, res3] = await Promise.all([req1, req2, req3]);
       expect(res1.success).toBe(true);
@@ -194,8 +204,8 @@ describe('WebSocket + State Integration', () => {
         'sensor.new_sensor': {
           entity_id: 'sensor.new_sensor',
           state: '42',
-          attributes: { unit_of_measurement: 'units' }
-        }
+          attributes: { unit_of_measurement: 'units' },
+        },
       };
 
       state.setStates({ ...state.STATES, ...newEntity });
@@ -206,7 +216,7 @@ describe('WebSocket + State Integration', () => {
     });
 
     test('state updates via WebSocket events', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -215,25 +225,25 @@ describe('WebSocket + State Integration', () => {
       state.setStates(sampleStates);
 
       let receivedMessage = null;
-      websocket.once('message', msg => {
+      websocket.once('message', (msg) => {
         receivedMessage = msg;
       });
 
       const updatedEntity = {
         entity_id: 'light.living_room',
         state: 'on',
-        attributes: { friendly_name: 'Living Room Light', brightness: 200 }
+        attributes: { friendly_name: 'Living Room Light', brightness: 200 },
       };
 
       ws.simulateMessage({
         type: 'event',
         event: {
           event_type: 'state_changed',
-          data: { entity_id: 'light.living_room', new_state: updatedEntity }
-        }
+          data: { entity_id: 'light.living_room', new_state: updatedEntity },
+        },
       });
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(receivedMessage).not.toBeNull();
       expect(receivedMessage.type).toBe('event');
@@ -242,7 +252,7 @@ describe('WebSocket + State Integration', () => {
 
   describe('Service Calls', () => {
     test('service call with success response', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -251,13 +261,13 @@ describe('WebSocket + State Integration', () => {
 
       const servicePromise = websocket.callService('light', 'turn_on', {
         entity_id: 'light.living_room',
-        brightness: 255
+        brightness: 255,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const sentMessages = ws.getSentMessages();
-      const serviceMsg = sentMessages.find(m => m.type === 'call_service');
+      const serviceMsg = sentMessages.find((m) => m.type === 'call_service');
 
       expect(serviceMsg).toBeDefined();
       expect(serviceMsg.domain).toBe('light');
@@ -268,7 +278,7 @@ describe('WebSocket + State Integration', () => {
         id: serviceMsg.id,
         type: 'result',
         success: true,
-        result: {}
+        result: {},
       });
 
       const result = await servicePromise;
@@ -276,7 +286,7 @@ describe('WebSocket + State Integration', () => {
     });
 
     test('service call with error response', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -284,29 +294,29 @@ describe('WebSocket + State Integration', () => {
       const ws = MockWebSocket.lastInstance;
 
       const servicePromise = websocket.callService('light', 'turn_on', {
-        entity_id: 'light.nonexistent'
+        entity_id: 'light.nonexistent',
       });
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const sentMessages = ws.getSentMessages();
-      const serviceMsg = sentMessages.find(m => m.type === 'call_service');
+      const serviceMsg = sentMessages.find((m) => m.type === 'call_service');
 
       ws.simulateMessage({
         id: serviceMsg.id,
         type: 'result',
         success: false,
-        error: { code: 'not_found', message: 'Entity not found' }
+        error: { code: 'not_found', message: 'Entity not found' },
       });
 
       await expect(servicePromise).rejects.toMatchObject({
         message: 'Entity not found',
-        code: 'not_found'
+        code: 'not_found',
       });
     });
 
     test('multiple concurrent service calls', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -315,29 +325,32 @@ describe('WebSocket + State Integration', () => {
 
       const call1 = websocket.callService('light', 'turn_on', { entity_id: 'light.living_room' });
       const call2 = websocket.callService('switch', 'turn_off', { entity_id: 'switch.fan' });
-      const call3 = websocket.callService('climate', 'set_temperature', { entity_id: 'climate.thermostat', temperature: 22 });
+      const call3 = websocket.callService('climate', 'set_temperature', {
+        entity_id: 'climate.thermostat',
+        temperature: 22,
+      });
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const sentMessages = ws.getSentMessages();
-      const serviceMsgs = sentMessages.filter(m => m.type === 'call_service');
+      const serviceMsgs = sentMessages.filter((m) => m.type === 'call_service');
 
       expect(serviceMsgs.length).toBe(3);
 
-      const ids = serviceMsgs.map(m => m.id);
+      const ids = serviceMsgs.map((m) => m.id);
       expect(new Set(ids).size).toBe(3);
 
-      serviceMsgs.forEach(msg => {
+      serviceMsgs.forEach((msg) => {
         ws.simulateMessage({
           id: msg.id,
           type: 'result',
           success: true,
-          result: {}
+          result: {},
         });
       });
 
       const results = await Promise.all([call1, call2, call3]);
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result.success).toBe(true);
       });
     });
@@ -345,7 +358,7 @@ describe('WebSocket + State Integration', () => {
 
   describe('Reconnection', () => {
     test('automatic reconnection creates new WebSocket', async () => {
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
@@ -353,11 +366,11 @@ describe('WebSocket + State Integration', () => {
       const ws1 = MockWebSocket.lastInstance;
       expect(ws1).toBeDefined();
 
-      const closePromise = new Promise(resolve => websocket.on('close', resolve));
+      const closePromise = new Promise((resolve) => websocket.on('close', resolve));
       ws1.close();
       await closePromise;
 
-      const reopenPromise = new Promise(resolve => websocket.on('open', resolve));
+      const reopenPromise = new Promise((resolve) => websocket.on('open', resolve));
       websocket.connect();
       await reopenPromise;
 
@@ -370,20 +383,20 @@ describe('WebSocket + State Integration', () => {
       state.setStates(sampleStates);
       const initialStatesCount = Object.keys(state.STATES).length;
 
-      const openPromise = new Promise(resolve => websocket.on('open', resolve));
+      const openPromise = new Promise((resolve) => websocket.on('open', resolve));
 
       websocket.connect();
       await openPromise;
 
       const ws = MockWebSocket.lastInstance;
 
-      const closePromise = new Promise(resolve => websocket.on('close', resolve));
+      const closePromise = new Promise((resolve) => websocket.on('close', resolve));
       ws.close();
       await closePromise;
 
       expect(Object.keys(state.STATES).length).toBe(initialStatesCount);
 
-      const reopenPromise = new Promise(resolve => websocket.on('open', resolve));
+      const reopenPromise = new Promise((resolve) => websocket.on('open', resolve));
       websocket.connect();
       await reopenPromise;
 

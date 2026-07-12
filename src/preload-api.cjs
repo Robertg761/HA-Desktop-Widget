@@ -4,9 +4,7 @@ function createElectronApi(ipcRenderer, platform) {
     if (typeof callback !== 'function') {
       throw new TypeError(`${channel} listener requires a callback`);
     }
-    const handler = includeData
-      ? (_event, data) => callback(data)
-      : () => callback();
+    const handler = includeData ? (_event, data) => callback(data) : () => callback();
     ipcRenderer.on(channel, handler);
     return () => ipcRenderer.removeListener(channel, handler);
   };
@@ -72,8 +70,7 @@ function createElectronApi(ipcRenderer, platform) {
     getPopupHotkey: () => invoke('get-popup-hotkey'),
     isPopupHotkeyAvailable: () => invoke('is-popup-hotkey-available'),
 
-    setEntityAlert: (entityId, alertConfig) =>
-      invoke('set-entity-alert', entityId, alertConfig),
+    setEntityAlert: (entityId, alertConfig) => invoke('set-entity-alert', entityId, alertConfig),
     removeEntityAlert: (entityId) => invoke('remove-entity-alert', entityId),
     toggleAlerts: (enabled) => invoke('toggle-alerts', enabled),
 
@@ -87,17 +84,14 @@ function createElectronApi(ipcRenderer, platform) {
     debugLog: (payload) => invoke('debug-log', payload),
 
     onHotkeyTriggered: (callback) => subscribe('hotkey-triggered', callback),
-    onHotkeyRegistrationFailed: (callback) =>
-      subscribe('hotkey-registration-failed', callback),
+    onHotkeyRegistrationFailed: (callback) => subscribe('hotkey-registration-failed', callback),
     onAutoUpdate: (callback) => subscribe('auto-update', callback),
     onOpenSettings: (callback) => subscribe('open-settings', callback, { includeData: false }),
     onProfileSyncStatus: (callback) => subscribe('profile-sync-status', callback),
     onConfigUpdated: (callback) => subscribe('config-updated', callback),
     onDesktopPinUpdate: (callback) => subscribe('desktop-pin-update', callback),
-    onDesktopPinActionRequested: (callback) =>
-      subscribe('desktop-pin-action-requested', callback),
-    onEntityTileHotkeyRequested: (callback) =>
-      subscribe('entity-tile-hotkey-requested', callback),
+    onDesktopPinActionRequested: (callback) => subscribe('desktop-pin-action-requested', callback),
+    onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),
   };
 }
 

@@ -83,8 +83,8 @@ describe('Utils Module', () => {
       state.CONFIG = {
         ...sampleConfig,
         customEntityIcons: {
-          'light.test': '🛋️'
-        }
+          'light.test': '🛋️',
+        },
       };
       const entity = { entity_id: 'light.test', state: 'on', attributes: {} };
       expect(utils.getEntityIcon(entity)).toBe('🛋️');
@@ -94,8 +94,8 @@ describe('Utils Module', () => {
       state.CONFIG = {
         ...sampleConfig,
         customEntityIcons: {
-          'light.test': 'AB'
-        }
+          'light.test': 'AB',
+        },
       };
       const entity = { entity_id: 'light.test', state: 'on', attributes: {} };
       expect(utils.getEntityIcon(entity)).toBe('💡');
@@ -120,7 +120,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.temperature',
         state: '22',
-        attributes: { device_class: 'temperature' }
+        attributes: { device_class: 'temperature' },
       };
       expect(utils.getEntityIcon(entity)).toBe('🌡️');
     });
@@ -129,7 +129,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.humidity',
         state: '60',
-        attributes: { device_class: 'humidity' }
+        attributes: { device_class: 'humidity' },
       };
       expect(utils.getEntityIcon(entity)).toBe('💧');
     });
@@ -138,7 +138,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.battery',
         state: '85',
-        attributes: { device_class: 'battery' }
+        attributes: { device_class: 'battery' },
       };
       expect(utils.getEntityIcon(entity)).toBe('🔋');
     });
@@ -152,7 +152,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'binary_sensor.motion',
         state: 'on',
-        attributes: { device_class: 'motion' }
+        attributes: { device_class: 'motion' },
       };
       expect(utils.getEntityIcon(entity)).toBe('🏃');
     });
@@ -161,7 +161,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'binary_sensor.motion',
         state: 'off',
-        attributes: { device_class: 'motion' }
+        attributes: { device_class: 'motion' },
       };
       expect(utils.getEntityIcon(entity)).toBe('🧍');
     });
@@ -239,7 +239,7 @@ describe('Utils Module', () => {
       const futureTime = new Date(Date.now() + 60000).toISOString();
       const entity = {
         entity_id: 'timer.test',
-        attributes: { finishes_at: futureTime }
+        attributes: { finishes_at: futureTime },
       };
       const result = utils.getTimerEnd(entity);
       expect(result).toBeGreaterThan(Date.now());
@@ -248,7 +248,7 @@ describe('Utils Module', () => {
     test('should calculate from remaining attribute', () => {
       const entity = {
         entity_id: 'timer.test',
-        attributes: { remaining: '0:05:30' } // 5:30 remaining
+        attributes: { remaining: '0:05:30' }, // 5:30 remaining
       };
       const result = utils.getTimerEnd(entity);
       expect(result).toBeGreaterThan(Date.now());
@@ -258,7 +258,7 @@ describe('Utils Module', () => {
     test('should handle remaining with hours', () => {
       const entity = {
         entity_id: 'timer.test',
-        attributes: { remaining: '1:30:00' } // 1:30:00 remaining
+        attributes: { remaining: '1:30:00' }, // 1:30:00 remaining
       };
       const result = utils.getTimerEnd(entity);
       expect(result).toBeGreaterThan(Date.now());
@@ -267,7 +267,7 @@ describe('Utils Module', () => {
     test('should return null for invalid finishes_at', () => {
       const entity = {
         entity_id: 'timer.test',
-        attributes: { finishes_at: 'invalid-date' }
+        attributes: { finishes_at: 'invalid-date' },
       };
       expect(utils.getTimerEnd(entity)).toBeNull();
     });
@@ -275,7 +275,7 @@ describe('Utils Module', () => {
     test('should return null for invalid remaining format', () => {
       const entity = {
         entity_id: 'timer.test',
-        attributes: { remaining: 'invalid' }
+        attributes: { remaining: 'invalid' },
       };
       expect(utils.getTimerEnd(entity)).toBeNull();
     });
@@ -337,7 +337,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'light.living_room',
         state: 'on',
-        attributes: { brightness: 128 }
+        attributes: { brightness: 128 },
       };
       expect(utils.getEntityDisplayState(entity)).toBe('50%');
     });
@@ -346,7 +346,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'light.living_room',
         state: 'off',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getEntityDisplayState(entity)).toBe('Off');
     });
@@ -355,7 +355,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.temperature',
         state: '22.5',
-        attributes: { unit_of_measurement: '°C' }
+        attributes: { unit_of_measurement: '°C' },
       };
       expect(utils.getEntityDisplayState(entity)).toBe('22.5 °C');
     });
@@ -364,7 +364,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.count',
         state: '42',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getEntityDisplayState(entity)).toBe('42');
     });
@@ -373,7 +373,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'binary_sensor.motion',
         state: 'on',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getEntityDisplayState(entity)).toBe('Detected');
     });
@@ -382,7 +382,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'binary_sensor.motion',
         state: 'off',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getEntityDisplayState(entity)).toBe('Clear');
     });
@@ -391,7 +391,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'scene.movie_time',
         state: 'scening',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getEntityDisplayState(entity)).toBe('Ready');
     });
@@ -400,7 +400,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'climate.living_room',
         state: 'heat',
-        attributes: { current_temperature: 22 }
+        attributes: { current_temperature: 22 },
       };
       expect(utils.getEntityDisplayState(entity)).toBe('22°');
     });
@@ -415,7 +415,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'timer.kitchen',
         state: 'idle',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getTimerDisplay(entity)).toBe('Idle');
     });
@@ -424,7 +424,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'timer.kitchen',
         state: 'paused',
-        attributes: { remaining: '05:30:15' }
+        attributes: { remaining: '05:30:15' },
       };
       expect(utils.getTimerDisplay(entity)).toBe('⏸ 05:30');
     });
@@ -433,7 +433,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'timer.kitchen',
         state: 'active',
-        attributes: { remaining: '1:30:45' }
+        attributes: { remaining: '1:30:45' },
       };
       expect(utils.getTimerDisplay(entity)).toBe('1:30:45');
     });
@@ -442,7 +442,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'timer.kitchen',
         state: 'active',
-        attributes: { remaining: '0:05:30' }
+        attributes: { remaining: '0:05:30' },
       };
       expect(utils.getTimerDisplay(entity)).toBe('5:30');
     });
@@ -452,7 +452,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.kitchen_timer',
         state: 'active',
-        attributes: { finishes_at: futureTime }
+        attributes: { finishes_at: futureTime },
       };
       const result = utils.getTimerDisplay(entity);
       expect(result).toMatch(/^1:\d{2}$/); // Should be ~1:30
@@ -463,7 +463,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.kitchen_timer',
         state: 'active',
-        attributes: { finishes_at: pastTime }
+        attributes: { finishes_at: pastTime },
       };
       expect(utils.getTimerDisplay(entity)).toBe('Finished');
     });
@@ -473,7 +473,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.kitchen_timer',
         state: 'active',
-        attributes: { finishes_at: futureTime }
+        attributes: { finishes_at: futureTime },
       };
       const result = utils.getTimerDisplay(entity);
       expect(result).toMatch(/^1:\d{2}:\d{2}$/); // Should be ~1:30:00
@@ -484,7 +484,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.kitchen_timer',
         state: futureTime,
-        attributes: {}
+        attributes: {},
       };
       const result = utils.getTimerDisplay(entity);
       expect(result).toMatch(/^[01]:\d{2}$/); // Should be ~1:00
@@ -494,7 +494,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'sensor.other',
         state: 'some_value',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getTimerDisplay(entity)).toBe('some_value');
     });
@@ -507,7 +507,7 @@ describe('Utils Module', () => {
       const entity = {
         entity_id: 'timer.kitchen',
         state: 'unknown',
-        attributes: {}
+        attributes: {},
       };
       expect(utils.getTimerDisplay(entity)).toBe('Unknown');
     });
@@ -516,28 +516,28 @@ describe('Utils Module', () => {
   describe('resolveEntityId', () => {
     test('should resolve exact entity IDs', () => {
       const states = {
-        'light.closet_light': { entity_id: 'light.closet_light' }
+        'light.closet_light': { entity_id: 'light.closet_light' },
       };
       expect(utils.resolveEntityId('light.closet_light', states)).toBe('light.closet_light');
     });
 
     test('should resolve space-separated IDs to existing underscore IDs', () => {
       const states = {
-        'light.closet_light': { entity_id: 'light.closet_light' }
+        'light.closet_light': { entity_id: 'light.closet_light' },
       };
       expect(utils.resolveEntityId('light.closet light', states)).toBe('light.closet_light');
     });
 
     test('should return null when no matching entity exists', () => {
       const states = {
-        'light.closet_light': { entity_id: 'light.closet_light' }
+        'light.closet_light': { entity_id: 'light.closet_light' },
       };
       expect(utils.resolveEntityId('light.nonexistent light', states)).toBeNull();
     });
 
     test('should return null for null, undefined, and empty entity IDs', () => {
       const states = {
-        'light.closet_light': { entity_id: 'light.closet_light' }
+        'light.closet_light': { entity_id: 'light.closet_light' },
       };
       expect(utils.resolveEntityId(null, states)).toBeNull();
       expect(utils.resolveEntityId(undefined, states)).toBeNull();
@@ -560,19 +560,19 @@ describe('Utils Module', () => {
         'light.closet_light': { entity_id: 'light.closet_light' },
         'switch.kettle': { entity_id: 'switch.kettle' },
         'weather.home': { entity_id: 'weather.home' },
-        'media_player.living_room': { entity_id: 'media_player.living_room' }
+        'media_player.living_room': { entity_id: 'media_player.living_room' },
       };
       const config = {
         favoriteEntities: ['light.closet light', 'light.closet_light', 'switch.kettle'],
         customTabs: [
           { id: 'main', name: 'Main', entities: ['light.closet light', 'switch.kettle'] },
-          { id: 'empty', name: 'Empty', entityIds: ['light.unknown'] }
+          { id: 'empty', name: 'Empty', entityIds: ['light.unknown'] },
         ],
         primaryMediaPlayer: 'media_player.living room',
         selectedWeatherEntity: 'weather.home',
         primaryCards: ['weather', 'light.closet light'],
         desktopPins: {
-          'light.closet light': { x: 12, y: 24, width: 176, height: 176 }
+          'light.closet light': { x: 12, y: 24, width: 176, height: 176 },
         },
         customEntityNames: { 'light.closet light': 'Closet Light' },
         customEntityIcons: { 'light.closet light': '🧰' },
@@ -581,15 +581,15 @@ describe('Utils Module', () => {
         globalHotkeys: {
           enabled: true,
           hotkeys: {
-            'light.closet light': { hotkey: 'Ctrl+1', action: 'toggle' }
-          }
+            'light.closet light': { hotkey: 'Ctrl+1', action: 'toggle' },
+          },
         },
         entityAlerts: {
           enabled: true,
           alerts: {
-            'light.closet light': { onStateChange: true }
-          }
-        }
+            'light.closet light': { onStateChange: true },
+          },
+        },
       };
 
       const result = utils.reconcileConfigEntityIds(config, states);
@@ -598,25 +598,37 @@ describe('Utils Module', () => {
       expect(result.config.favoriteEntities).toEqual(['light.closet_light', 'switch.kettle']);
       expect(result.config.customTabs).toEqual([
         { id: 'main', name: 'Main', entityIds: ['light.closet_light', 'switch.kettle'] },
-        { id: 'empty', name: 'Empty', entityIds: ['light.unknown'] }
+        { id: 'empty', name: 'Empty', entityIds: ['light.unknown'] },
       ]);
       expect(result.config.primaryMediaPlayer).toBe('media_player.living_room');
       expect(result.config.primaryCards).toEqual(['weather', 'light.closet_light']);
-      expect(result.config.desktopPins['light.closet_light']).toEqual({ x: 12, y: 24, width: 176, height: 176 });
+      expect(result.config.desktopPins['light.closet_light']).toEqual({
+        x: 12,
+        y: 24,
+        width: 176,
+        height: 176,
+      });
       expect(result.config.customEntityNames['light.closet_light']).toBe('Closet Light');
       expect(result.config.customEntityIcons['light.closet_light']).toBe('🧰');
       expect(result.config.tileSpans['light.closet_light']).toBe(2);
-      expect(result.config.quickAccessTileOptions['light.closet_light']).toEqual({ valueSize: 'large' });
-      expect(result.config.globalHotkeys.hotkeys['light.closet_light']).toEqual({ hotkey: 'Ctrl+1', action: 'toggle' });
-      expect(result.config.entityAlerts.alerts['light.closet_light']).toEqual({ onStateChange: true });
+      expect(result.config.quickAccessTileOptions['light.closet_light']).toEqual({
+        valueSize: 'large',
+      });
+      expect(result.config.globalHotkeys.hotkeys['light.closet_light']).toEqual({
+        hotkey: 'Ctrl+1',
+        action: 'toggle',
+      });
+      expect(result.config.entityAlerts.alerts['light.closet_light']).toEqual({
+        onStateChange: true,
+      });
     });
 
     test('should not change config when no IDs can be safely remapped', () => {
       const states = {
-        'light.kitchen': { entity_id: 'light.kitchen' }
+        'light.kitchen': { entity_id: 'light.kitchen' },
       };
       const config = {
-        favoriteEntities: ['light.unknown_light']
+        favoriteEntities: ['light.unknown_light'],
       };
 
       const result = utils.reconcileConfigEntityIds(config, states);
@@ -631,35 +643,35 @@ describe('Utils Module', () => {
         favoriteEntities: [null, undefined, ''],
         primaryCards: ['weather', null, ''],
         desktopPins: {
-          '': { x: 0, y: 0, width: 100, height: 100 }
+          '': { x: 0, y: 0, width: 100, height: 100 },
         },
         customEntityNames: {
-          '': 'Empty key'
+          '': 'Empty key',
         },
         customEntityIcons: {
-          '': '🛋️'
+          '': '🛋️',
         },
         tileSpans: {
-          '': 2
+          '': 2,
         },
         quickAccessTileOptions: {
-          '': { valueSize: 'large' }
+          '': { valueSize: 'large' },
         },
         globalHotkeys: {
           enabled: true,
           hotkeys: {
-            '': { hotkey: 'Ctrl+1', action: 'toggle' }
-          }
+            '': { hotkey: 'Ctrl+1', action: 'toggle' },
+          },
         },
         entityAlerts: {
           enabled: true,
           alerts: {
-            '': { onStateChange: true }
-          }
-        }
+            '': { onStateChange: true },
+          },
+        },
       };
 
-      [null, undefined, {}].forEach(states => {
+      [null, undefined, {}].forEach((states) => {
         const result = utils.reconcileConfigEntityIds(config, states);
         expect(result.changed).toBe(false);
         expect(result.config).toBe(config);
@@ -670,7 +682,7 @@ describe('Utils Module', () => {
     test('should not remap when states are valid but do not contain matching entity IDs', () => {
       const states = {
         'light.kitchen': { entity_id: 'light.kitchen' },
-        'switch.fan': { entity_id: 'switch.fan' }
+        'switch.fan': { entity_id: 'switch.fan' },
       };
       const config = {
         favoriteEntities: ['light.missing room', '', null],
@@ -678,7 +690,7 @@ describe('Utils Module', () => {
         selectedWeatherEntity: 'weather.missing city',
         primaryCards: ['weather', 'light.missing room'],
         desktopPins: {
-          'light.missing room': { x: 30, y: 40, width: 180, height: 180 }
+          'light.missing room': { x: 30, y: 40, width: 180, height: 180 },
         },
         customEntityNames: { 'light.missing room': 'Missing Light', '': 'Empty key' },
         customEntityIcons: { 'light.missing room': '🔥' },
@@ -687,15 +699,15 @@ describe('Utils Module', () => {
         globalHotkeys: {
           enabled: true,
           hotkeys: {
-            'light.missing room': { hotkey: 'Ctrl+1', action: 'toggle' }
-          }
+            'light.missing room': { hotkey: 'Ctrl+1', action: 'toggle' },
+          },
         },
         entityAlerts: {
           enabled: true,
           alerts: {
-            'light.missing room': { onStateChange: true }
-          }
-        }
+            'light.missing room': { onStateChange: true },
+          },
+        },
       };
 
       const result = utils.reconcileConfigEntityIds(config, states);
@@ -707,8 +719,9 @@ describe('Utils Module', () => {
 
   describe('escapeHtml', () => {
     test('should escape < and >', () => {
-      expect(utils.escapeHtml('<script>alert("xss")</script>'))
-        .toBe('&lt;script&gt;alert("xss")&lt;/script&gt;');
+      expect(utils.escapeHtml('<script>alert("xss")</script>')).toBe(
+        '&lt;script&gt;alert("xss")&lt;/script&gt;'
+      );
     });
 
     test('should escape ampersands', () => {
@@ -721,7 +734,7 @@ describe('Utils Module', () => {
     });
 
     test('should handle single quotes', () => {
-      expect(utils.escapeHtml("It's working")).toBe('It\'s working');
+      expect(utils.escapeHtml("It's working")).toBe("It's working");
     });
 
     test('should handle mixed content', () => {

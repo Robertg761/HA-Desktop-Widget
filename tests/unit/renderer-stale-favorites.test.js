@@ -232,9 +232,11 @@ describe('Renderer stale favorite state handling', () => {
       [favoriteEntity.entity_id]: favoriteEntity,
       [otherEntity.entity_id]: otherEntity,
     });
-    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith(expect.objectContaining({
-      [favoriteEntity.entity_id]: favoriteEntity,
-    }));
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        [favoriteEntity.entity_id]: favoriteEntity,
+      })
+    );
   });
 
   it('drops a missing favorite after the stale grace window expires', async () => {

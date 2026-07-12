@@ -63,8 +63,8 @@ function scoreCommandPaletteMatch(text, query) {
 function rankCommandPaletteEntities(entities, query, options = {}) {
   const getDisplayName = options.getDisplayName || utils.getEntityDisplayName;
   return Array.from(entities || [])
-    .filter(entity => entity?.entity_id)
-    .map(entity => {
+    .filter((entity) => entity?.entity_id)
+    .map((entity) => {
       const displayName = getDisplayName(entity);
       const nameScore = scoreCommandPaletteMatch(displayName, query);
       const idScore = scoreCommandPaletteMatch(entity.entity_id, query);
@@ -74,7 +74,7 @@ function rankCommandPaletteEntities(entities, query, options = {}) {
         score: Math.max(nameScore, idScore),
       };
     })
-    .filter(item => item.score > 0)
+    .filter((item) => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.displayName.localeCompare(b.displayName);
@@ -88,10 +88,12 @@ function isPaletteOpen() {
 function isTypingTarget(target) {
   if (!target || target === document.body) return false;
   const tagName = target.tagName?.toLowerCase();
-  return tagName === 'input'
-    || tagName === 'textarea'
-    || tagName === 'select'
-    || target.isContentEditable === true;
+  return (
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select' ||
+    target.isContentEditable === true
+  );
 }
 
 function createElement(tagName, className, text = '') {
@@ -194,8 +196,16 @@ function createResultRow(item, index) {
   main.append(name);
 
   const meta = createElement('span', 'command-palette-result-meta');
-  const domain = createElement('span', 'command-palette-result-domain', getEntityDomain(entity.entity_id));
-  const value = createElement('span', 'command-palette-result-state', utils.getEntityDisplayState(entity));
+  const domain = createElement(
+    'span',
+    'command-palette-result-domain',
+    getEntityDomain(entity.entity_id)
+  );
+  const value = createElement(
+    'span',
+    'command-palette-result-state',
+    utils.getEntityDisplayState(entity)
+  );
   meta.append(domain, value);
 
   row.append(icon, main, meta);
@@ -209,7 +219,10 @@ function createResultRow(item, index) {
 
 function renderResults() {
   const query = input?.value || '';
-  results = rankCommandPaletteEntities(Object.values(state.STATES || {}), query).slice(0, MAX_RESULTS);
+  results = rankCommandPaletteEntities(Object.values(state.STATES || {}), query).slice(
+    0,
+    MAX_RESULTS
+  );
   highlightedIndex = results.length ? 0 : -1;
   list.replaceChildren();
 
@@ -242,7 +255,8 @@ function closeCommandPalette() {
 
 function handleGlobalKeydown(event) {
   const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
-  const isCommandPaletteShortcut = key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+  const isCommandPaletteShortcut =
+    key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
   if (!isCommandPaletteShortcut) return;
   if (isTypingTarget(event.target) && !isPaletteOpen()) return;
 

@@ -42,14 +42,16 @@ function emitRendererDebug(event, details = {}) {
   try {
     if (!state.CONFIG?.ui?.enableInteractionDebugLogs) return;
     if (!window?.electronAPI?.debugLog) return;
-    window.electronAPI.debugLog({
-      scope: 'renderer',
-      event,
-      details: {
-        timestamp: new Date().toISOString(),
-        ...details,
-      },
-    }).catch(() => { });
+    window.electronAPI
+      .debugLog({
+        scope: 'renderer',
+        event,
+        details: {
+          timestamp: new Date().toISOString(),
+          ...details,
+        },
+      })
+      .catch(() => {});
   } catch {
     // no-op: debug logging must never break renderer flow
   }
@@ -71,7 +73,7 @@ websocket.on('open', () => {
     if (websocket.ws && websocket.ws.readyState === WebSocket.OPEN) {
       const authMessage = {
         type: 'auth',
-        access_token: state.CONFIG.homeAssistant.token
+        access_token: state.CONFIG.homeAssistant.token,
       };
       websocket.ws.send(JSON.stringify(authMessage));
     }
@@ -122,7 +124,10 @@ function setDisconnectedStatus(detailMessage = '') {
   if (normalizedDetail) {
     lastDisconnectReason = normalizedDetail;
   }
-  uiUtils.setStatus(false, lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.'));
+  uiUtils.setStatus(
+    false,
+    lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.')
+  );
 }
 
 function setConnectedStatus(detailMessage = t('Real-time updates active.')) {
@@ -131,9 +136,7 @@ function setConnectedStatus(detailMessage = t('Real-time updates active.')) {
 }
 
 function setDesktopPinConnectionIssue(detailMessage = '') {
-  desktopPinConnectionIssue = typeof detailMessage === 'string'
-    ? detailMessage.trim()
-    : '';
+  desktopPinConnectionIssue = typeof detailMessage === 'string' ? detailMessage.trim() : '';
 }
 
 function applyDesktopPinConnectionState(connection = {}) {
@@ -142,7 +145,9 @@ function applyDesktopPinConnectionState(connection = {}) {
   } else if (connection.hasUrl !== true) {
     setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
   } else if (connection.hasToken !== true) {
-    setDesktopPinConnectionIssue(t('Please configure your Home Assistant token in Settings (gear icon).'));
+    setDesktopPinConnectionIssue(
+      t('Please configure your Home Assistant token in Settings (gear icon).')
+    );
   } else {
     setDesktopPinConnectionIssue('');
   }
@@ -189,11 +194,15 @@ function queueStateChangedEntity(entity) {
 
 function reconcileFavoriteStalePreservation(newStates) {
   const oldStates = state.STATES || {};
-  const favoriteEntityIds = [...new Set(
-    Array.isArray(state.CONFIG?.favoriteEntities)
-      ? state.CONFIG.favoriteEntities.filter(entityId => typeof entityId === 'string' && entityId)
-      : []
-  )];
+  const favoriteEntityIds = [
+    ...new Set(
+      Array.isArray(state.CONFIG?.favoriteEntities)
+        ? state.CONFIG.favoriteEntities.filter(
+            (entityId) => typeof entityId === 'string' && entityId
+          )
+        : []
+    ),
+  ];
   const favoriteEntityIdSet = new Set(favoriteEntityIds);
 
   Array.from(favoriteStalePreservation.keys()).forEach((entityId) => {
@@ -283,8 +292,9 @@ function createActionButton(label, className, onClick) {
 
 function getActiveQuickAccessCount() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {});
-  const activeTab = normalized.customTabs.find(tab => tab.id === normalized.activeTabId)
-    || normalized.customTabs[0];
+  const activeTab =
+    normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
+    normalized.customTabs[0];
   return Array.isArray(activeTab?.entityIds) ? activeTab.entityIds.length : 0;
 }
 
@@ -329,10 +339,12 @@ function renderMainWidgetState() {
   if (mainConnectionState === 'auth-failed' || mainConnectionState === 'disconnected') {
     renderWidgetStatePanel({
       tone: 'error',
-      title: mainConnectionState === 'auth-failed'
-        ? t('Authentication failed')
-        : t('Home Assistant is disconnected'),
-      message: lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.'),
+      title:
+        mainConnectionState === 'auth-failed'
+          ? t('Authentication failed')
+          : t('Home Assistant is disconnected'),
+      message:
+        lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.'),
       actions: [
         {
           label: t('Open Settings'),
@@ -438,18 +450,37 @@ function renderWizardStep() {
   content.appendChild(stepLabel);
 
   if (stepIndex === 0) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Welcome to Home Assistant Widget')));
-    content.appendChild(createTextElement('p', 'first-run-copy', t('Connect your Home Assistant server to start building a compact control panel for your desktop.')));
+    content.appendChild(
+      createTextElement('h2', 'first-run-title', t('Welcome to Home Assistant Widget'))
+    );
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t(
+          'Connect your Home Assistant server to start building a compact control panel for your desktop.'
+        )
+      )
+    );
   } else if (stepIndex === 1) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Enter your Home Assistant URL')));
-    content.appendChild(createTextElement('p', 'first-run-copy', t('Use the address you normally open in your browser.')));
+    content.appendChild(
+      createTextElement('h2', 'first-run-title', t('Enter your Home Assistant URL'))
+    );
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t('Use the address you normally open in your browser.')
+      )
+    );
     const label = createTextElement('label', 'first-run-label', t('Home Assistant URL'));
     label.setAttribute('for', 'first-run-ha-url');
     const input = document.createElement('input');
     input.id = 'first-run-ha-url';
     input.type = 'text';
     input.placeholder = t('http://homeassistant.local:8123');
-    input.value = firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
+    input.value =
+      firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
       firstRunWizard.urlInput = input;
       updateWizardTokenButtonState();
@@ -458,8 +489,18 @@ function renderWizardStep() {
     content.appendChild(label);
     content.appendChild(input);
   } else if (stepIndex === 2) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Create a Long-Lived Access Token')));
-    content.appendChild(createTextElement('p', 'first-run-copy', t('In Home Assistant, open your profile security page, create a Long-Lived Access Token, then return here.')));
+    content.appendChild(
+      createTextElement('h2', 'first-run-title', t('Create a Long-Lived Access Token'))
+    );
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t(
+          'In Home Assistant, open your profile security page, create a Long-Lived Access Token, then return here.'
+        )
+      )
+    );
     const button = createActionButton(t('Open token page'), 'btn btn-secondary', async () => {
       const securityUrl = buildHomeAssistantPathUrl(getWizardUrl(), '/profile/security');
       const profileUrl = buildHomeAssistantPathUrl(getWizardUrl(), '/profile');
@@ -474,7 +515,13 @@ function renderWizardStep() {
     updateWizardTokenButtonState();
   } else if (stepIndex === 3) {
     content.appendChild(createTextElement('h2', 'first-run-title', t('Paste your access token')));
-    content.appendChild(createTextElement('p', 'first-run-copy', t('The token is stored by the app and used only to connect to your Home Assistant server.')));
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t('The token is stored by the app and used only to connect to your Home Assistant server.')
+      )
+    );
     const label = createTextElement('label', 'first-run-label', t('Long-Lived Access Token'));
     label.setAttribute('for', 'first-run-ha-token');
     const input = document.createElement('input');
@@ -490,7 +537,13 @@ function renderWizardStep() {
     content.appendChild(input);
   } else if (stepIndex === 4) {
     content.appendChild(createTextElement('h2', 'first-run-title', t('Test your connection')));
-    content.appendChild(createTextElement('p', 'first-run-copy', t('Make sure the URL and token work before finishing setup.')));
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t('Make sure the URL and token work before finishing setup.')
+      )
+    );
     const testRow = document.createElement('div');
     testRow.className = 'first-run-test-row';
     const testButton = createActionButton(t('Test connection'), 'btn btn-primary', () => {
@@ -506,7 +559,13 @@ function renderWizardStep() {
     content.appendChild(testRow);
   } else {
     content.appendChild(createTextElement('h2', 'first-run-title', t('Ready to connect')));
-    content.appendChild(createTextElement('p', 'first-run-copy', t('Finish setup to save these settings and start live updates.')));
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t('Finish setup to save these settings and start live updates.')
+      )
+    );
   }
 
   if (firstRunWizard.backButton) {
@@ -637,7 +696,11 @@ function ensureFirstRunWizard() {
   const actions = document.createElement('div');
   actions.className = 'first-run-actions';
 
-  const skipButton = createActionButton(t('Full Settings'), 'btn btn-secondary', skipWizardToSettings);
+  const skipButton = createActionButton(
+    t('Full Settings'),
+    'btn btn-secondary',
+    skipWizardToSettings
+  );
   const backButton = createActionButton(t('Back'), 'btn btn-secondary', () => {
     firstRunWizard.step = Math.max(0, firstRunWizard.step - 1);
     renderWizardStep();
@@ -818,7 +881,9 @@ function classifyConnectionError(error) {
   if (browserOffline) {
     return {
       key: OFFLINE_CONNECTION_ERROR_KEY,
-      message: t('No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'),
+      message: t(
+        'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
+      ),
       persistUntilOnline: true,
     };
   }
@@ -890,7 +955,9 @@ function scheduleReconnect() {
   const jitter = Math.random() * 1000;
   reconnectAttempts++;
 
-  log.debug(`WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`);
+  log.debug(
+    `WebSocket closed. Reconnecting in ${Math.round((delay + jitter) / 1000)}s (attempt ${reconnectAttempts})`
+  );
   reconnectTimerId = setTimeout(() => {
     reconnectTimerId = null;
     connectWebSocket();
@@ -992,7 +1059,9 @@ window.addEventListener('offline', () => {
   browserReportedOffline = true;
   clearReconnectTimer();
   mainConnectionState = 'disconnected';
-  const disconnectedMessage = t('No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.');
+  const disconnectedMessage = t(
+    'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
+  );
   setDisconnectedStatus(disconnectedMessage);
   setDesktopPinConnectionIssue(disconnectedMessage);
   uiUtils.showLoading(false);
@@ -1047,9 +1116,9 @@ websocket.on('message', (msg) => {
       });
 
       // Prevent unhandled rejections from surfacing as global errors
-      statesReq.catch(() => { });
-      servicesReq.catch(() => { });
-      areasReq.catch(() => { });
+      statesReq.catch(() => {});
+      servicesReq.catch(() => {});
+      areasReq.catch(() => {});
       configReq.catch((err) => {
         log.error('get_config request failed:', err);
       });
@@ -1057,7 +1126,9 @@ websocket.on('message', (msg) => {
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
       mainConnectionState = 'auth-failed';
-      const authFailureMessage = t('Authentication failed. Please check your Home Assistant token in Settings.');
+      const authFailureMessage = t(
+        'Authentication failed. Please check your Home Assistant token in Settings.'
+      );
       setDisconnectedStatus(authFailureMessage);
       setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
@@ -1073,20 +1144,22 @@ websocket.on('message', (msg) => {
     } else if (msg.type === 'result') {
       log.debug(`Received result for message ID: ${msg.id}`);
       if (msg.result) {
-        if (msg.id === getStatesId) { // get_states response
+        if (msg.id === getStatesId) {
+          // get_states response
           const newStates = {};
           if (Array.isArray(msg.result)) {
             log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
-            msg.result.forEach(entity => { newStates[entity.entity_id] = entity; });
+            msg.result.forEach((entity) => {
+              newStates[entity.entity_id] = entity;
+            });
 
-            const {
-              favoriteCount,
-              preservedFavorites,
-              droppedStaleFavorites,
-            } = reconcileFavoriteStalePreservation(newStates);
+            const { favoriteCount, preservedFavorites, droppedStaleFavorites } =
+              reconcileFavoriteStalePreservation(newStates);
 
             const mergedStates = { ...newStates, ...preservedFavorites };
-            log.debug(`State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites - ${droppedStaleFavorites.length} stale favorites = ${Object.keys(mergedStates).length} total`);
+            log.debug(
+              `State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites - ${droppedStaleFavorites.length} stale favorites = ${Object.keys(mergedStates).length} total`
+            );
             emitRendererDebug('ws.get_states.received', {
               fetchedEntities: Object.keys(newStates).length,
               preservedFavorites: Object.keys(preservedFavorites),
@@ -1115,7 +1188,9 @@ websocket.on('message', (msg) => {
               });
               state.setConfig(reconciliation.config);
               if (IS_DESKTOP_PIN_MODE) {
-                log.debug('Skipping entity ID reconciliation config write in desktop pin mode; main window will persist it.');
+                log.debug(
+                  'Skipping entity ID reconciliation config write in desktop pin mode; main window will persist it.'
+                );
                 emitRendererDebug('config.entity_id_reconciliation.skip_pin_persist', {
                   reason: 'desktop-pin-mode',
                 });
@@ -1148,15 +1223,20 @@ websocket.on('message', (msg) => {
               alerts.initializeEntityAlerts();
             }
           }
-        } else if (msg.id === getServicesId) { // get_services response
+        } else if (msg.id === getServicesId) {
+          // get_services response
           state.setServices(msg.result);
-        } else if (msg.id === getAreasId) { // get_areas response
+        } else if (msg.id === getAreasId) {
+          // get_areas response
           const newAreas = {};
           if (Array.isArray(msg.result)) {
-            msg.result.forEach(area => { newAreas[area.area_id] = area; });
+            msg.result.forEach((area) => {
+              newAreas[area.area_id] = area;
+            });
             state.setAreas(newAreas);
           }
-        } else if (msg.id === getConfigId) { // get_config response
+        } else if (msg.id === getConfigId) {
+          // get_config response
           log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
@@ -1215,7 +1295,9 @@ websocket.on('error', (error) => {
     // Show user-friendly error message
     const errorMessage = String(error?.message || '');
     if (errorMessage.includes('default token')) {
-      desktopPinIssueMessage = t('Please configure your Home Assistant token in Settings (gear icon).');
+      desktopPinIssueMessage = t(
+        'Please configure your Home Assistant token in Settings (gear icon).'
+      );
       setDisconnectedStatus(desktopPinIssueMessage);
       uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
     } else if (errorMessage.includes('Invalid configuration')) {
@@ -1257,7 +1339,6 @@ websocket.on('connect-attempt', () => {
   renderMainWidgetState();
 });
 
-
 // --- IPC Event Handlers ---
 window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
   const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
@@ -1296,7 +1377,11 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     applyRendererConfig(nextConfig);
     renderCurrentMode();
     const wizardShown = maybeShowFirstRunWizard();
-    if (!wizardShown && isConfigured(state.CONFIG) && (!wasConfigured || wasSecureStoragePending || !configuredRuntimeStarted)) {
+    if (
+      !wizardShown &&
+      isConfigured(state.CONFIG) &&
+      (!wasConfigured || wasSecureStoragePending || !configuredRuntimeStarted)
+    ) {
       startConfiguredRuntime();
     }
   } catch (error) {
@@ -1331,7 +1416,8 @@ function replaceEmojiIcons() {
     if (settingsBtn) setIconContent(settingsBtn, 'settings', { size: 18 });
 
     const persistentNotificationsIcon = document.getElementById('persistent-notifications-icon');
-    if (persistentNotificationsIcon) setIconContent(persistentNotificationsIcon, 'notifications', { size: 16 });
+    if (persistentNotificationsIcon)
+      setIconContent(persistentNotificationsIcon, 'notifications', { size: 16 });
 
     const minimizeBtn = document.getElementById('minimize-btn');
     if (minimizeBtn) setIconContent(minimizeBtn, 'minimize', { size: 18 });
@@ -1358,7 +1444,7 @@ function replaceEmojiIcons() {
 
     // Modal Close Buttons (with × emoji)
     const closeButtons = document.querySelectorAll('.close-btn');
-    closeButtons.forEach(btn => {
+    closeButtons.forEach((btn) => {
       if (btn.textContent.includes('×')) {
         setIconContent(btn, 'close', { size: 20 });
       }
@@ -1409,7 +1495,9 @@ async function initializeDesktopPinMode() {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);
     wireDesktopPinUI();
-    setDesktopPinConnectionIssue(t('Unable to initialize the desktop tile. Focus the main widget to review your settings.'));
+    setDesktopPinConnectionIssue(
+      t('Unable to initialize the desktop tile. Focus the main widget to review your settings.')
+    );
     renderCurrentMode();
   }
 }
@@ -1478,10 +1566,14 @@ async function init() {
       let detailMessage = '';
       if (reason === 'encryption_unavailable') {
         message += t('Token encryption is not available on this system.');
-        detailMessage = t('Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.');
+        detailMessage = t(
+          'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.'
+        );
       } else if (reason === 'decryption_failed') {
         message += t('The stored token could not be decrypted.');
-        detailMessage = t('The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.');
+        detailMessage = t(
+          'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.'
+        );
       }
 
       log.warn('[Init] Token reset:', message);
@@ -1510,7 +1602,6 @@ async function init() {
     }
 
     startConfiguredRuntime();
-
   } catch (error) {
     log.error('Initialization error:', error);
     uiUtils.showLoading(false);
@@ -1550,11 +1641,17 @@ function wireUI() {
             log.info('Log file opened successfully');
           } else {
             log.error('Failed to open log file:', result.error);
-            uiUtils.showToast(t('Failed to open log file: {{error}}', { error: result.error }), 'error');
+            uiUtils.showToast(
+              t('Failed to open log file: {{error}}', { error: result.error }),
+              'error'
+            );
           }
         } catch (error) {
           log.error('Error opening log file:', error);
-          uiUtils.showToast(t('Error opening log file: {{error}}', { error: error.message }), 'error');
+          uiUtils.showToast(
+            t('Error opening log file: {{error}}', { error: error.message }),
+            'error'
+          );
         }
       };
     }
@@ -1597,7 +1694,8 @@ function wireUI() {
           ? settings.syncWeatherEffectsAvailability({ showWarning: true })
           : true;
         if (weatherOverrideGroup) {
-          weatherOverrideGroup.style.display = canEnableWeatherEffects && weatherEffectsToggle.checked ? 'block' : 'none';
+          weatherOverrideGroup.style.display =
+            canEnableWeatherEffects && weatherEffectsToggle.checked ? 'block' : 'none';
         }
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
@@ -1654,13 +1752,14 @@ function wireUI() {
     // Wire up weather card long press
     const statusCards = [
       document.getElementById('weather-card'),
-      document.getElementById('time-card')
+      document.getElementById('time-card'),
     ];
     statusCards.forEach((card) => {
       if (!card) return;
       let pressTimer = null;
       const startPress = () => {
-        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card')) return;
+        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card'))
+          return;
         pressTimer = setTimeout(() => {
           const modal = document.getElementById('weather-config-modal');
           if (modal) {
@@ -1740,7 +1839,7 @@ function wireUI() {
           // Clear the selected weather entity (revert to default)
           const updatedConfig = {
             ...state.CONFIG,
-            selectedWeatherEntity: undefined
+            selectedWeatherEntity: undefined,
           };
 
           await window.electronAPI.updateConfig(updatedConfig);
@@ -1786,16 +1885,18 @@ function wireUI() {
       };
     }
 
-    document.querySelectorAll('.modal-tabs .tab-link').forEach(button => {
+    document.querySelectorAll('.modal-tabs .tab-link').forEach((button) => {
       button.addEventListener('click', () => {
         const tab = button.dataset.tab;
-        document.querySelectorAll('.modal-tabs .tab-link').forEach(btn => {
+        document.querySelectorAll('.modal-tabs .tab-link').forEach((btn) => {
           btn.classList.remove('active');
           btn.setAttribute('aria-selected', 'false');
         });
         button.classList.add('active');
         button.setAttribute('aria-selected', 'true');
-        document.querySelectorAll('.modal-body .tab-content').forEach(content => content.classList.remove('active'));
+        document
+          .querySelectorAll('.modal-body .tab-content')
+          .forEach((content) => content.classList.remove('active'));
         document.getElementById(`${tab}-tab`).classList.add('active');
         if (tab === 'personalization') {
           requestAnimationFrame(() => {
@@ -1819,7 +1920,7 @@ function wireUI() {
       widgetContent.addEventListener('mousedown', () => {
         if (document.hasFocus()) return;
         // Request window focus when clicking on content
-        window.electronAPI.focusWindow().catch(err => {
+        window.electronAPI.focusWindow().catch((err) => {
           log.error('Failed to focus window:', err);
         });
       });
@@ -1845,11 +1946,13 @@ function wireUI() {
             } else {
               uiUtils.showToast(result.error, 'error');
               const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-              target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
+              target.value =
+                typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
             }
           } else {
             const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-            target.value = (typeof currentConfig === 'string') ? currentConfig : (currentConfig?.hotkey || '');
+            target.value =
+              typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
           }
         } else if (target.classList.contains('btn-clear-hotkey')) {
           const container = target.parentElement;
@@ -1873,125 +1976,134 @@ function wireDesktopPinUI() {
     if (focusBtn) {
       focusBtn.onclick = () => {
         if (focusBtn.disabled) return;
-        window.electronAPI.requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'focus-main').catch((error) => {
-          log.error('Failed to focus main widget from desktop pin:', error);
-        });
+        window.electronAPI
+          .requestDesktopPinAction(DESKTOP_PIN_ENTITY_ID, 'focus-main')
+          .catch((error) => {
+            log.error('Failed to focus main widget from desktop pin:', error);
+          });
       };
     }
 
     document.querySelectorAll('.desktop-pin-resize-handle').forEach((resizeHandle) => {
       if (resizeHandle.dataset.bound) return;
       resizeHandle.dataset.bound = 'true';
-      resizeHandle.addEventListener('pointerdown', (event) => {
-        if (!desktopPinEditMode) return;
+      resizeHandle.addEventListener(
+        'pointerdown',
+        (event) => {
+          if (!desktopPinEditMode) return;
 
-        event.preventDefault();
-        event.stopPropagation();
+          event.preventDefault();
+          event.stopPropagation();
 
-        const startX = event.screenX;
-        const startY = event.screenY;
-        const startBounds = desktopPinBounds || {
-          x: window.screenX || 0,
-          y: window.screenY || 0,
-          width: window.outerWidth || window.innerWidth,
-          height: window.outerHeight || window.innerHeight,
-        };
-        const corner = resizeHandle.dataset.corner || 'bottom-right';
+          const startX = event.screenX;
+          const startY = event.screenY;
+          const startBounds = desktopPinBounds || {
+            x: window.screenX || 0,
+            y: window.screenY || 0,
+            width: window.outerWidth || window.innerWidth,
+            height: window.outerHeight || window.innerHeight,
+          };
+          const corner = resizeHandle.dataset.corner || 'bottom-right';
 
-        let pendingBounds = null;
-        let resizeInFlight = false;
-        let frameScheduled = false;
-        const pointerId = event.pointerId;
-
-        try {
-          resizeHandle.setPointerCapture(pointerId);
-        } catch {
-          // Ignore pointer capture failures and continue with window listeners.
-        }
-
-        const flushResize = async () => {
-          frameScheduled = false;
-          if (resizeInFlight || !pendingBounds) return;
-          resizeInFlight = true;
-          const nextBounds = pendingBounds;
-          pendingBounds = null;
+          let pendingBounds = null;
+          let resizeInFlight = false;
+          let frameScheduled = false;
+          const pointerId = event.pointerId;
 
           try {
-            const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, nextBounds);
-            if (result?.success && result.pinBounds) {
-              desktopPinBounds = result.pinBounds;
+            resizeHandle.setPointerCapture(pointerId);
+          } catch {
+            // Ignore pointer capture failures and continue with window listeners.
+          }
+
+          const flushResize = async () => {
+            frameScheduled = false;
+            if (resizeInFlight || !pendingBounds) return;
+            resizeInFlight = true;
+            const nextBounds = pendingBounds;
+            pendingBounds = null;
+
+            try {
+              const result = await window.electronAPI.updateDesktopPinBounds(
+                DESKTOP_PIN_ENTITY_ID,
+                nextBounds
+              );
+              if (result?.success && result.pinBounds) {
+                desktopPinBounds = result.pinBounds;
+              }
+            } catch (error) {
+              log.error('Failed to resize desktop tile:', error);
+            } finally {
+              resizeInFlight = false;
+              if (pendingBounds) {
+                requestAnimationFrame(flushResize);
+                frameScheduled = true;
+              }
             }
-          } catch (error) {
-            log.error('Failed to resize desktop tile:', error);
-          } finally {
-            resizeInFlight = false;
-            if (pendingBounds) {
+          };
+
+          const scheduleResize = (nextBounds) => {
+            pendingBounds = nextBounds;
+            if (!frameScheduled) {
               requestAnimationFrame(flushResize);
               frameScheduled = true;
             }
-          }
-        };
-
-        const scheduleResize = (nextBounds) => {
-          pendingBounds = nextBounds;
-          if (!frameScheduled) {
-            requestAnimationFrame(flushResize);
-            frameScheduled = true;
-          }
-        };
-
-        const handlePointerMove = (moveEvent) => {
-          const deltaX = moveEvent.screenX - startX;
-          const deltaY = moveEvent.screenY - startY;
-          const nextBounds = {
-            x: startBounds.x,
-            y: startBounds.y,
-            width: startBounds.width,
-            height: startBounds.height,
           };
 
-          switch (corner) {
-            case 'top-left':
-              nextBounds.x = Math.round(startBounds.x + deltaX);
-              nextBounds.y = Math.round(startBounds.y + deltaY);
-              nextBounds.width = Math.round(startBounds.width - deltaX);
-              nextBounds.height = Math.round(startBounds.height - deltaY);
-              break;
-            case 'top-right':
-              nextBounds.y = Math.round(startBounds.y + deltaY);
-              nextBounds.width = Math.round(startBounds.width + deltaX);
-              nextBounds.height = Math.round(startBounds.height - deltaY);
-              break;
-            case 'bottom-left':
-              nextBounds.x = Math.round(startBounds.x + deltaX);
-              nextBounds.width = Math.round(startBounds.width - deltaX);
-              nextBounds.height = Math.round(startBounds.height + deltaY);
-              break;
-            case 'bottom-right':
-            default:
-              nextBounds.width = Math.round(startBounds.width + deltaX);
-              nextBounds.height = Math.round(startBounds.height + deltaY);
-              break;
-          }
+          const handlePointerMove = (moveEvent) => {
+            const deltaX = moveEvent.screenX - startX;
+            const deltaY = moveEvent.screenY - startY;
+            const nextBounds = {
+              x: startBounds.x,
+              y: startBounds.y,
+              width: startBounds.width,
+              height: startBounds.height,
+            };
 
-          scheduleResize(nextBounds);
-        };
+            switch (corner) {
+              case 'top-left':
+                nextBounds.x = Math.round(startBounds.x + deltaX);
+                nextBounds.y = Math.round(startBounds.y + deltaY);
+                nextBounds.width = Math.round(startBounds.width - deltaX);
+                nextBounds.height = Math.round(startBounds.height - deltaY);
+                break;
+              case 'top-right':
+                nextBounds.y = Math.round(startBounds.y + deltaY);
+                nextBounds.width = Math.round(startBounds.width + deltaX);
+                nextBounds.height = Math.round(startBounds.height - deltaY);
+                break;
+              case 'bottom-left':
+                nextBounds.x = Math.round(startBounds.x + deltaX);
+                nextBounds.width = Math.round(startBounds.width - deltaX);
+                nextBounds.height = Math.round(startBounds.height + deltaY);
+                break;
+              case 'bottom-right':
+              default:
+                nextBounds.width = Math.round(startBounds.width + deltaX);
+                nextBounds.height = Math.round(startBounds.height + deltaY);
+                break;
+            }
 
-        const finishResize = () => {
-          window.removeEventListener('pointermove', handlePointerMove, true);
-          window.removeEventListener('pointerup', finishResize, true);
-          window.removeEventListener('pointercancel', finishResize, true);
-          try {
-            resizeHandle.releasePointerCapture(pointerId);
-          } catch {
-            // no-op
-          }
-        };
+            scheduleResize(nextBounds);
+          };
 
-        window.addEventListener('pointermove', handlePointerMove, true);
-        window.addEventListener('pointerup', finishResize, true);
-        window.addEventListener('pointercancel', finishResize, true);
-      }, true);
+          const finishResize = () => {
+            window.removeEventListener('pointermove', handlePointerMove, true);
+            window.removeEventListener('pointerup', finishResize, true);
+            window.removeEventListener('pointercancel', finishResize, true);
+            try {
+              resizeHandle.releasePointerCapture(pointerId);
+            } catch {
+              // no-op
+            }
+          };
+
+          window.addEventListener('pointermove', handlePointerMove, true);
+          window.addEventListener('pointerup', finishResize, true);
+          window.addEventListener('pointercancel', finishResize, true);
+        },
+        true
+      );
     });
   } catch (error) {
     log.error('Error wiring desktop pin UI:', error);

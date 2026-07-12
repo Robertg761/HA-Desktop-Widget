@@ -8,17 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Nothing yet
 
 ### Changed
+
 - Nothing yet
 
 ### Fixed
+
 - Nothing yet
 
 ## [3.6.0] - 2026-07-07
 
 ### Added
+
 - Richer entity controls: light color and color-temperature pickers, media player volume and mute, and climate fan-mode/preset-mode (plus a read-only current-humidity readout), each gated on the entity's advertised capabilities.
 - To-do list support (view items, check/uncheck, add) and calendar support (next event plus a 7-day list).
 - Inline 24-hour history sparklines on numeric sensor tiles, throttled and cached.
@@ -29,29 +33,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Accessibility and layout polish: prefers-reduced-motion handling for weather effects, full keyboard navigation of the Quick Access grid (roving tabindex), and Comfortable/Compact density modes.
 
 ### Changed
+
 - Manage Quick Access now adds entities to the page you're currently on (with an "Adding to: <page>" hint) instead of a per-entity view dropdown.
 - Reduced idle CPU: removed the forced Electron `backgroundThrottling: false`, and replaced the always-on 1-second UI interval with an adaptive scheduler (1s only for active timers/media, next-minute cadence for a visible clock, low-frequency polling when idle).
 - Weather ambient effects render at up to 60 FPS with frame-scaled motion for consistent speed across refresh rates.
 - Deferred OS-keychain-backed secure config resolution until after the first window is created, so a stalling keychain no longer blocks startup.
 
 ### Fixed
+
 - First-run setup now waits while saved encrypted credentials are unlocking, then starts the normal runtime once the resolved config arrives.
 
 ## [3.5.5-beta.1] - 2026-06-19
 
 ### Fixed
+
 - Reapplied Windows acrylic after focus, blur, restore, and fullscreen transitions so frosted glass does not disappear after switching into games.
 
 ## [3.5.4] - 2026-06-16
 
 ### Added
+
 - Added beta update opt-in support so testers can receive prerelease builds.
 
 ### Changed
+
 - Configured the updater channel before update checks so prerelease selection is honored.
 - Refreshed README feature coverage and screenshots for the current effects and UI states.
 
 ### Fixed
+
 - Removed the Windows frosted-glass restart requirement by keeping the transparent window path enabled.
 - Fixed native Windows frosted-glass rendering and restart logic.
 - Fixed updater channel tests on Windows.
@@ -61,30 +71,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.5.3] - 2026-06-01
 
 ### Added
+
 - Added Quick Access tile settings for per-tile display options.
 
 ## [3.5.2] - 2026-05-23
 
 ### Changed
+
 - Gated weather effects behind frosted glass to avoid unsupported visual combinations.
 - Generated Linux AppImage blockmaps for release metadata.
 
 ### Fixed
+
 - Hardened main-process logging so broken pipes do not crash or spam logs.
 
 ## [3.5.1] - 2026-05-22
 
 ### Added
+
 - Added ambient weather background effects.
 - Added widget build icons.
 - Added a 24-hour clock option for primary cards.
 
 ### Changed
+
 - Refreshed desktop UI typography, controls, and settings card organization.
 - Improved Linux startup performance and opacity handling.
 - Normalized release asset filenames and publish flow across platforms.
 
 ### Fixed
+
 - Preserved config during update migrations.
 - Loaded the Home Assistant token before renderer setup.
 - Hardened desktop pin actions and media artwork proxying.
@@ -92,137 +108,166 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.4.11] - 2026-05-15
 
 ### Fixed
+
 - Kept UI ticks running while the window is unfocused.
 
 ## [3.4.10] - 2026-05-15
 
 ### Added
+
 - Added native 10-second rewind and fast-forward controls to the media detail modal using Home Assistant `media_player.media_seek`.
 
 ### Changed
+
 - Improved Linux glass performance and settings modal styling.
 
 ## [3.4.9] - 2026-05-11
 
 ### Changed
+
 - Tightened window opacity scaling.
 - Improved hotkey dropdown layout.
 
 ## [3.4.8] - 2026-05-11
 
 ### Added
+
 - Added `input_button` support for Quick Access tiles, desktop pins, and global hotkeys.
 - Added script entities to the global hotkey picker, using `script.turn_on` as the default action.
 - Added hotkey actions to tile menus.
 
 ### Fixed
+
 - Improved Linux opacity behavior and frosted-glass fallback handling.
 
 ## [3.4.7] - 2026-05-09
 
 ### Added
+
 - Added Linux release build support.
 
 ## [3.4.6] - 2026-04-30
 
 ### Fixed
+
 - Fixed Windows startup registration.
 
 ## [3.4.5] - 2026-04-28
 
 ### Fixed
+
 - Localized settings color labels.
 
 ## [3.4.4] - 2026-04-28
 
 ### Added
+
 - Added responsive breakpoints for the main widget.
 
 ### Changed
+
 - Reworked the settings modal into a sidebar layout.
 - Refined the personalization color target picker.
 
 ## [3.4.3] - 2026-04-26
 
 ### Added
+
 - Added offline language pack localization.
 
 ## [3.4.2] - 2026-04-20
 
 ### Fixed
+
 - Included `src` modules in packaged app builds.
 
 ## [3.4.1] - 2026-04-19
 
 ### Added
+
 - Added desktop pin support, including pin creation, desktop tile windows, drag/resize controls, bounds handling, visibility toggles, and connection propagation.
 
 ### Changed
+
 - Automated release version bumps from tags.
 - Refined desktop pin styling, light controls, fallback states, and review documentation.
 
 ### Fixed
+
 - Preserved token recovery state across config saves.
 - Avoided release builds when the package version is unchanged.
 
 ## [3.4.0] - 2026-03-06
 
 ### Added
+
 - Added opt-in cloud-folder profile sync across devices.
 - Added Google Drive, iCloud Drive, and Syncthing profile sync provider presets.
 - Added scoped sync controls, folder copying, defaults, and encrypted passphrase handling for profile sync.
 
 ### Changed
+
 - Improved connection status details and tooltip UX.
 
 ### Fixed
+
 - Fixed Windows startup login-item handling for portable builds.
 - Improved offline network error handling.
 
 ## [3.3.0] - 2026-02-12
 
 ### Added
+
 - Added custom entity icons, including picker UI, emoji search synonyms, and fuzzy matching.
 - Added custom color editor and custom theme support.
 - Added interaction debug logging and build profile improvements.
 
 ### Changed
+
 - Enabled renderer code splitting and module entry loading.
 - Improved media artwork fetching, personalization UI persistence, weather entity resolution, timers, and config-save reliability.
 
 ### Fixed
+
 - Fixed personalization persistence and artwork retry behavior.
 - Fixed config save races and shutdown-time config writes.
 
 ## [3.2.3] - 2026-02-07
 
 ### Changed
+
 - Persisted personalization section collapse state.
 - Added deeper Quick Access debug logging for Windows tile investigation.
 
 ### Fixed
+
 - Fixed Windows entity tile interactions.
 - Added tests for null and empty entity ID handling.
 
 ## [3.2.2] - 2026-02-05
 
 ### Added
+
 - Portable update check now fetches the latest GitHub release and surfaces a direct Portable download link.
 
 ### Changed
+
 - Portable builds no longer attempt in-app auto-updates and instead guide users to the Portable download.
 
 ### Fixed
+
 - Prevented Portable installs from accidentally running the NSIS installer update path.
 
 ## [3.2.1] - 2026-02-05
 
 ### Changed
+
 - Maintenance release metadata update; this tag points at the same commit as `3.2.0`.
 
 ## [3.2.0] - 2026-02-05
 
 ### Added
+
 - Added macOS release builds.
 - Added customizable primary status cards, including an interactive Primary Cards settings UI and a `None` option.
 - Added customizable accent and background color themes.
@@ -231,38 +276,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Start with Windows support in Settings.
 
 ### Changed
+
 - Simplified frosted glass to a toggle.
 - Refactored popup hotkey state, constants, JSDoc types, and event listener cleanup.
 - Collapsed personalization sections and synchronized layout heights.
 - Organized docs and images, removing obsolete upgrade-note files.
 
 ### Fixed
+
 - Removed deprecated config keys and legacy camera features.
 - Updated camera modal close behavior, layout sync, and related styles.
 
 ## [3.1.2] - 2025-12-16
 
 ### Added
+
 - Added smart toggle behavior for the popup hotkey.
 
 ### Fixed
+
 - Debounced popup hotkey handling to prevent immediate hide after showing.
 - Prevented popup hotkey behavior from overriding the `alwaysOnTop` preference.
 
 ## [3.1.1] - 2025-12-16
 
 ### Added
+
 - Added toggle mode for the popup hotkey.
 
 ## [3.1.0] - 2025-12-15
 
 ### Added
+
 - Added a popup hotkey hide-on-release toggle.
 
 ### Changed
+
 - Refactored window position and size saving.
 
 ### Fixed
+
 - Fixed hotkey registration not saving.
 
 ## [3.0.0] - 2025-11-17
@@ -292,6 +345,7 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 ### ✨ New Features
 
 #### Media Player Integration
+
 - **Primary Media Player Tile**: Dedicated tile in main area showing now playing information
 - **Album Artwork Display**: Full album art with proxy support for Spotify, YouTube, and other services
 - **Advanced Media Controls**:
@@ -303,12 +357,14 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **Media Detail Modal**: Full-screen media information with visual-only progress bar and large control buttons
 
 #### Security Enhancements
+
 - **Token Encryption**: Home Assistant tokens now encrypted at rest using Electron's `safeStorage` API
 - **Automatic Migration**: Seamless upgrade from plaintext tokens to encrypted storage
 - **Graceful Fallback**: Platform-aware encryption with appropriate warnings when unavailable
 - **Secure IPC**: All renderer IPC calls whitelisted through explicit `window.electronAPI` interface
 
 #### Global Hotkeys System
+
 - **Hold-to-Popup Hotkey**: Optional feature using `uiohook-napi` for press/release detection
   - Hold configured key to bring window to front, release to hide
   - Platform-aware with graceful fallback when unavailable
@@ -317,12 +373,14 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **Hotkey Validation**: Prevents conflicts with system shortcuts
 
 #### Entity Alert System
+
 - **Redesigned UI**: Inline list with entity picker modal for better organization
 - **Condition Types**: Equals, greater than, less than, between, contains
 - **Desktop Notifications**: System notifications when alert conditions are met
 - **Toggle Control**: Easily enable/disable alerts globally from settings
 
 #### UI Customization
+
 - **Weather Entity Selector**: Long-press weather card to choose preferred weather entity or use auto-detect
 - **Unit System Support**: Respects Home Assistant's configured units (metric/imperial) for temperature, wind speed, etc.
 - **Custom Glassmorphism Dropdowns**: Replaced native selects with styled dropdowns matching app aesthetic
@@ -330,6 +388,7 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **High Contrast Mode**: Enhanced visibility for accessibility
 
 #### Logging System
+
 - **electron-log Integration**: Comprehensive logging for troubleshooting
 - **Log Viewer**: Access logs directly from Settings → Advanced → "View Logs"
 - **Structured Logging**: Timestamped logs with levels (info/warn/error/debug)
@@ -338,6 +397,7 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 ### 🎨 UI/UX Improvements
 
 #### Drag-and-Drop System
+
 - **Transform-Based Architecture**: Complete rewrite using GPU-accelerated CSS transforms for smooth 60fps movement
 - **Eliminated Thrashing**: DOM stays stable during drag, only reorders on drop
 - **iOS/Android-Style Movement**: Smooth, deliberate tile animations with improved easing
@@ -345,6 +405,7 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **Visual Feedback**: Clear drag indicators and drop target highlighting
 
 #### Entity Tiles
+
 - **Hover Glow Effects**: Subtle glow on quick access entity tiles
 - **Advanced Controls**:
   - Brightness sliders for lights
@@ -356,11 +417,13 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **Text Handling**: Proper overflow handling with ellipsis and marquee scrolling on hover
 
 #### Window Management
+
 - **Improved Icon**: Custom application icon properly embedded in executable and shown in taskbar/desktop
 - **Opacity Range**: Enforced minimum 50% opacity (0.5-1.0 range) for better visibility
 - **Window State Persistence**: Remembers position, size, and transparency settings
 
 #### Settings Modal
+
 - **Reorganized Tabs**:
   - General (connection, theme, updates)
   - Quick Access (favorites management)
@@ -375,6 +438,7 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 ### 🔧 Additional Bug Fixes
 
 #### UI Fixes
+
 - **Quick Access Remove Button**: Fixed regression from SortableJS refactor that broke entity removal
 - **Reorganize Mode**: Resolved 5 critical bugs in drag-and-drop system
   - Fixed grid position calculation
@@ -389,6 +453,7 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **Weather Card**: Removed dead camera code and completed entity selector implementation
 
 #### Connection & Performance
+
 - **Unnecessary Reconnects**: Prevented WebSocket reconnections when connection parameters haven't changed
 - **WebSocket Stability**: Improved reconnection logic with exponential backoff (1s → 30s max with jitter)
 - **Timeout Handling**: Better WebSocket timeout handling to prevent log spam
@@ -397,12 +462,14 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 ### 🔧 Code Quality & Maintenance
 
 #### Refactoring
+
 - **Dead Code Removal**: Removed unused dependencies, UI elements, and functions to reduce bundle size
 - **Module Organization**: Better separation of concerns with new `src/icons.js` module
 - **State Management**: Improved centralized state management with proper getter/setter functions
 - **Error Handling**: Comprehensive error handling with structured logging throughout codebase
 
 #### Documentation
+
 - **CLAUDE.md**: Comprehensive project documentation (655 lines)
 - **TESTING.md**: Complete testing documentation (140 lines)
 - **MIGRATION.md**: Upgrade guide from v2.x to v3.0.0 (73 lines)
@@ -410,11 +477,13 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 - **UPGRADE-TEST-PLAN.md**: Comprehensive test plan for upgrade scenarios (314 lines)
 
 #### Dependencies
+
 - **Updated**: axios (1.11.0), electron-log (5.4.3), electron-updater (6.6.2)
 - **Added**: sortablejs (1.15.6), hls.js (1.4.12), uiohook-napi (1.5.4, optional)
 - **Removed**: Cleaned up unused dependencies to reduce bundle size
 
 #### Testing Infrastructure (Developer)
+
 - **Comprehensive Test Suite**: 403 automated tests across 11 test suites (~5,500 lines of test code)
   - Unit tests for all core modules (state, utils, websocket, alerts, hotkeys, camera, ui-utils)
   - Integration tests for settings/config and websocket/state interactions
@@ -438,10 +507,12 @@ This release represents months of development focused on stability, testing, and
 ## [2.3.6] - 2025-10-21
 
 ### Changed
+
 - **Tray Icon Handling**: The app now uses the packaged executable icon (or bundled `build/icon.*`) for both the tray and desktop shortcuts, with automatic fallbacks for development builds.
 - **Icon Assets**: Added `build/icon.png`/`icon.ico` so electron-builder packages the correct branding by default.
 
 ### Fixed
+
 - **Setup Screen Controls**: Settings, minimize, and close buttons now work on first launch even when Home Assistant credentials are missing.
 - **Minimize Behavior**: Minimizing the widget now consistently hides it to the system tray instead of leaving it in the taskbar.
 - **Tray Visibility**: Tray icon toggles the window on click, ensuring easy restore after hiding.
@@ -449,6 +520,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.3.5] - 2025-10-12
 
 ### Added
+
 - **Advanced Hotkey Actions**: Entity-specific action options in hotkey configuration
   - Lights: Toggle, Turn On, Turn Off, Brightness Up, Brightness Down
   - Switches: Toggle, Turn On, Turn Off
@@ -459,6 +531,7 @@ This release represents months of development focused on stability, testing, and
 - **Action Dropdown UI**: New dropdown menu in hotkeys settings to select specific actions per entity
 
 ### Changed
+
 - **Hotkey System Enhancements**:
   - Hotkeys now support action-specific commands beyond simple toggling
   - Brightness controls adjust lights by 20% increments
@@ -466,6 +539,7 @@ This release represents months of development focused on stability, testing, and
   - Improved hotkey configuration UI with better styling and spacing
 
 ### Fixed
+
 - **Hotkey Execution**: Fixed critical bug where hotkeys were not executing any actions
   - Added missing `executeHotkeyAction` export from `ui.js`
   - Fixed event listener setup timing to occur after hotkeys list is rendered
@@ -481,6 +555,7 @@ This release represents months of development focused on stability, testing, and
   - Updated `.gitignore` to prevent future build artifact commits
 
 ### Technical
+
 - Implemented `getActionOptionsForDomain()` to dynamically generate appropriate actions per entity type
 - Enhanced `executeHotkeyAction()` to handle all entity-specific actions
 - Improved hotkey action dropdown styling with custom SVG arrow and theme-consistent colors
@@ -490,6 +565,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.3.4] - 2025-10-05
 
 ### Fixed
+
 - **Reorganize Mode Button Persistence**: Fixed critical bug where pencil (✏️) and X (×) icons disappeared from entities that received state updates while in reorganize mode
   - Created targeted helper functions `addButtonsToElement()` and `addDragListenersToElement()` to restore edit functionality to updated elements
   - Ensures all entities maintain their edit buttons regardless of real-time state changes from Home Assistant
@@ -503,6 +579,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.3.3] - 2025-10-02
 
 ### Fixed
+
 - **Edit Mode Pencil Icon**: Fixed critical bug where the pencil (✏️) icon in reorganize/edit mode was not clickable due to drag-and-drop interference
   - Clicking the pencil icon would trigger a drag operation instead of opening the rename modal
   - Implemented multi-layer fix with event handling, CSS, and drag prevention
@@ -512,6 +589,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.3.2] - 2025-10-02
 
 ### Fixed
+
 - **Timer Sensors**: Fixed Google Kitchen Timer and other sensor-based timers to display live countdowns
   - Added support for timers that use state as timestamp instead of attributes
   - Added support for multiple timer attribute formats (finishes_at, end_time, finish_time)
@@ -532,6 +610,7 @@ This release represents months of development focused on stability, testing, and
   - Searches both entity display names and entity IDs simultaneously
 
 ### Technical
+
 - Enhanced `getSearchScore()` with text normalization for better search results
 - Added `populateQuickControlsList()` and `toggleQuickAccess()` functions
 - Improved timer detection across createControlElement, getEntityDisplayState, and getTimerDisplay
@@ -540,6 +619,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.3.1] - 2025-10-01
 
 ### Added
+
 - **Global Hotkeys**: OS-level keyboard shortcuts for controlling entities
   - Assign custom hotkey combinations (Ctrl, Alt, Shift + key) to any light, switch, scene, or automation
   - Visual hotkey capture modal for easy configuration
@@ -569,6 +649,7 @@ This release represents months of development focused on stability, testing, and
   - Custom entity renaming functionality
 
 ### Changed
+
 - **Modular Architecture**: Refactored codebase into organized `src/` directory
   - Separated concerns: state management, WebSocket handling, UI rendering, utilities
   - Improved code maintainability and readability
@@ -592,6 +673,7 @@ This release represents months of development focused on stability, testing, and
   - Cleaner event handling with EventEmitter pattern
 
 ### Fixed
+
 - **Critical Module Scoping Bug**: Fixed `require()` statements being inside try-catch block, which made modules undefined
 - **WebSocket ID Mismatch**: Fixed request ID tracking for proper message handling
 - **Loading Spinner Stuck**: Fixed initialization flow to show UI immediately instead of waiting for WebSocket connection
@@ -610,6 +692,7 @@ This release represents months of development focused on stability, testing, and
 - **Memory Leaks**: Proper cleanup of intervals, event listeners, and HLS instances
 
 ### Technical Improvements
+
 - Zero linter errors across all files
 - Consistent error handling with try-catch blocks
 - Proper resource management (intervals, event listeners, HLS instances)
@@ -620,11 +703,13 @@ This release represents months of development focused on stability, testing, and
 ## [2.2.1] - 2024-12-19
 
 ### Changed
+
 - **Settings Window**: Improved settings window sizing and layout
 - **Project Cleanup**: Removed unnecessary release notes files (RELEASE_NOTES_v2.1.0.md, RELEASE_NOTES_v2.2.0.md)
 - **File Organization**: Streamlined project structure by removing redundant documentation files
 
 ### Fixed
+
 - **Opacity Settings**: Fixed opacity slider and window transparency controls
 - **Weather Icon**: Fixed current weather icon display and rendering
 - **Settings UI**: Improved settings window responsiveness and usability
@@ -633,18 +718,21 @@ This release represents months of development focused on stability, testing, and
 ## [2.2.0] - 2024-09-15
 
 ### Added
+
 - **Entity Rename Functionality**: Click the pencil icon (✏️) in reorganize mode to rename any entity
 - **Custom Display Names**: Set custom names that persist across app restarts
 - **Reset to Default**: Option to restore original entity names
 - **Clean Modal Interface**: Modern rename dialog with keyboard shortcuts (Enter to save, Escape to cancel)
 
 ### Changed
+
 - **Consistent Tile Sizing**: All Quick Access tiles now have uniform dimensions
 - **Auto-sizing Layout**: Tiles automatically adjust to fit content without clipping
 - **Improved Icon Display**: Icons now fit properly within tiles with better spacing
 - **Enhanced Reorganize Mode**: Red X buttons persist after removing items (no need to re-enter mode)
 
 ### Fixed
+
 - **Timer Updates**: Timer entities now reliably update countdowns after app restart
 - **WebSocket Reconnection**: Timer updates properly restart when connection is restored
 - **Reorganize Mode**: Fixed buttons disappearing after entity removal
@@ -655,6 +743,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.1.0] - 2024-09-15
 
 ### Added
+
 - **Drag & Drop Reorganize**: Click the reorganize button (⋮⋮) to enter reorganize mode
 - **Wiggle Animation**: Entities shake gently when in reorganize mode, similar to mobile apps
 - **Drag & Drop**: Drag entities to reorder them in Quick Access
@@ -662,11 +751,13 @@ This release represents months of development focused on stability, testing, and
 - **Visual Feedback**: Smooth animations for drag operations and hover effects
 
 ### Changed
+
 - **Button Layout**: Reorganize and add buttons are now properly aligned in the header
 - **Animation Timing**: Improved wiggle animation to be more noticeable but not distracting
 - **Drag Experience**: Enhanced drag and drop with better visual feedback
 
 ### Fixed
+
 - **Button Alignment**: Fixed vertical alignment issues with header buttons
 - **Animation Performance**: Optimized animations for better performance
 - **Drag State**: Improved drag state management and cleanup
@@ -674,6 +765,7 @@ This release represents months of development focused on stability, testing, and
 ## [2.0.0] - 2024-09-15
 
 ### Added
+
 - **Complete GUI Overhaul**: Modern, clean Rainmeter-style desktop widget design
 - **Quick Access Section**: Main focus area for frequently used entities
 - **Entity Search**: Robust search functionality for finding and adding entities
@@ -685,12 +777,14 @@ This release represents months of development focused on stability, testing, and
 - **Timer Support**: Real-time countdown displays for timer entities
 
 ### Changed
+
 - **UI Design**: Complete redesign with modern, minimalist aesthetic
 - **Layout**: Single-view design focusing on Quick Access
 - **Performance**: Optimized rendering and memory management
 - **User Experience**: Streamlined interface with intuitive controls
 
 ### Fixed
+
 - **Connection Issues**: Improved Home Assistant connection reliability
 - **Entity Display**: Better handling of various entity types
 - **Camera Feeds**: Improved camera streaming and fallback handling
@@ -699,6 +793,7 @@ This release represents months of development focused on stability, testing, and
 ## [1.4.1] - 2024-09-14
 
 ### Fixed
+
 - **Security**: Updated axios dependency to fix security vulnerability
 - **Dependencies**: Updated all dependencies to latest versions
 - **Linting**: Fixed ESLint errors and warnings
@@ -706,18 +801,21 @@ This release represents months of development focused on stability, testing, and
 ## [1.4.0] - 2024-09-14
 
 ### Added
+
 - **Auto-updater**: Automatic updates from GitHub releases
 - **Update Notifications**: Toast notifications for available updates
 - **Background Downloads**: Updates download in the background
 - **Install on Quit**: Updates install when the app is closed
 
 ### Changed
+
 - **Update Process**: Streamlined update experience
 - **User Feedback**: Better notifications for update status
 
 ## [1.3.0] - 2024-09-14
 
 ### Added
+
 - **Design System**: Consistent design tokens and layout rhythm
 - **Responsive Grid**: Auto-fill dashboard grid with minimum card width
 - **Enhanced Toolbar**: Consistent header structure with essential controls
@@ -725,6 +823,7 @@ This release represents months of development focused on stability, testing, and
 - **Theming**: Auto/Light/Dark theme support with OS preference detection
 
 ### Changed
+
 - **Visual Design**: Improved spacing, radius, shadows, and surface colors
 - **Layout**: Better responsive behavior and grid system
 - **Performance**: Optimized rendering and update cycles
@@ -732,12 +831,14 @@ This release represents months of development focused on stability, testing, and
 ## [1.2.0] - 2024-09-13
 
 ### Added
+
 - **Camera Feeds**: Live camera streaming with refresh handling
 - **Toast Notifications**: Real-time feedback for user actions
 - **Error Handling**: Improved error handling and user feedback
 - **Performance**: Various performance improvements
 
 ### Fixed
+
 - **Memory Leaks**: Fixed camera feed memory leaks
 - **Connection Issues**: Improved WebSocket connection handling
 - **UI Responsiveness**: Better UI responsiveness during updates
@@ -745,18 +846,21 @@ This release represents months of development focused on stability, testing, and
 ## [1.1.0] - 2024-09-13
 
 ### Added
+
 - **Quick Controls**: Enhanced quick controls for lights, switches, media players
 - **Filter System**: Filter by domain and area with hide functionality
 - **Favorites**: Favorites section on default dashboard
 - **Entity Management**: Better entity organization and management
 
 ### Changed
+
 - **Dashboard**: Improved dashboard layout and organization
 - **Controls**: Enhanced control interfaces for different entity types
 
 ## [1.0.0] - 2024-09-12
 
 ### Added
+
 - **Initial Release**: First public release of HA Desktop Widget
 - **Basic Functionality**: Core Home Assistant integration
 - **Entity Display**: Basic entity display and control
@@ -768,6 +872,7 @@ This release represents months of development focused on stability, testing, and
 ## Version Numbering
 
 This project uses [Semantic Versioning](https://semver.org/):
+
 - **MAJOR** version for incompatible API changes
 - **MINOR** version for functionality added in a backwards compatible manner
 - **PATCH** version for backwards compatible bug fixes

@@ -12,7 +12,7 @@ window.electronAPI = mockElectronAPI;
 // Mock matchMedia for theme detection
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation(query => ({
+  value: jest.fn().mockImplementation((query) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -39,7 +39,6 @@ beforeEach(() => {
 });
 
 describe('UI Utilities', () => {
-
   describe('entity control helpers', () => {
     it('should convert six-digit hex colors to RGB channels', () => {
       expect(uiUtils.hexToRgb('#1A2B3C')).toEqual({ r: 26, g: 43, b: 60 });
@@ -203,7 +202,7 @@ describe('UI Utilities', () => {
     });
 
     it('should detect dark system preference in auto mode', () => {
-      window.matchMedia = jest.fn().mockImplementation(query => ({
+      window.matchMedia = jest.fn().mockImplementation((query) => ({
         matches: query === '(prefers-color-scheme: dark)',
         media: query,
         onchange: null,
@@ -221,7 +220,7 @@ describe('UI Utilities', () => {
     });
 
     it('should detect light system preference in auto mode', () => {
-      window.matchMedia = jest.fn().mockImplementation(query => ({
+      window.matchMedia = jest.fn().mockImplementation((query) => ({
         matches: false,
         media: query,
         onchange: null,
@@ -250,8 +249,9 @@ describe('UI Utilities', () => {
     it('should default to auto mode', () => {
       uiUtils.applyTheme();
 
-      const hasTheme = document.body.classList.contains('theme-dark') ||
-                       document.body.classList.contains('theme-light');
+      const hasTheme =
+        document.body.classList.contains('theme-dark') ||
+        document.body.classList.contains('theme-light');
       expect(hasTheme).toBe(true);
     });
 
@@ -270,14 +270,17 @@ describe('UI Utilities', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       // Save original classList
-      const originalClassList = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(document.body), 'classList');
+      const originalClassList = Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(document.body),
+        'classList'
+      );
 
       // Make classList operations throw
       Object.defineProperty(document.body, 'classList', {
         get: () => {
           throw new Error('DOM error');
         },
-        configurable: true
+        configurable: true,
       });
 
       uiUtils.applyTheme('dark');
@@ -350,7 +353,7 @@ describe('UI Utilities', () => {
       uiUtils.applyUiPreferences({
         highContrast: true,
         opaquePanels: true,
-        density: 'compact'
+        density: 'compact',
       });
 
       expect(document.body.classList.contains('high-contrast')).toBe(true);
@@ -368,18 +371,24 @@ describe('UI Utilities', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       // Save original classList
-      const originalClassList = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(document.body), 'classList');
+      const originalClassList = Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(document.body),
+        'classList'
+      );
 
       Object.defineProperty(document.body, 'classList', {
         get: () => {
           throw new Error('DOM error');
         },
-        configurable: true
+        configurable: true,
       });
 
       uiUtils.applyUiPreferences({ highContrast: true });
 
-      expect(consoleError).toHaveBeenCalledWith('Error applying UI preferences:', expect.any(Error));
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error applying UI preferences:',
+        expect.any(Error)
+      );
 
       // Restore original classList
       if (originalClassList) {
@@ -460,7 +469,7 @@ describe('UI Utilities', () => {
       const shiftTabEvent = new KeyboardEvent('keydown', {
         key: 'Tab',
         shiftKey: true,
-        bubbles: true
+        bubbles: true,
       });
       const preventDefaultSpy = jest.spyOn(shiftTabEvent, 'preventDefault');
 
@@ -636,14 +645,15 @@ describe('UI Utilities', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       // Save original classList
-      const originalClassList = Object.getOwnPropertyDescriptor(loadingOverlay, 'classList') ||
-                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(loadingOverlay), 'classList');
+      const originalClassList =
+        Object.getOwnPropertyDescriptor(loadingOverlay, 'classList') ||
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(loadingOverlay), 'classList');
 
       Object.defineProperty(loadingOverlay, 'classList', {
         get: () => {
           throw new Error('DOM error');
         },
-        configurable: true
+        configurable: true,
       });
 
       uiUtils.showLoading(true);
@@ -712,8 +722,12 @@ describe('UI Utilities', () => {
 
       expect(statusIndicator.dataset.statusSummary).toBe('Disconnected from Home Assistant');
       expect(statusIndicator.dataset.statusDetail).toBe('No network connection detected.');
-      expect(statusIndicator.title).toBe('Disconnected from Home Assistant: No network connection detected.');
-      expect(statusIndicator.getAttribute('aria-label')).toBe('Disconnected from Home Assistant. No network connection detected.');
+      expect(statusIndicator.title).toBe(
+        'Disconnected from Home Assistant: No network connection detected.'
+      );
+      expect(statusIndicator.getAttribute('aria-label')).toBe(
+        'Disconnected from Home Assistant. No network connection detected.'
+      );
     });
 
     it('should handle missing status indicator gracefully', () => {
@@ -728,15 +742,16 @@ describe('UI Utilities', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
       // Save original className descriptor
-      const originalClassName = Object.getOwnPropertyDescriptor(statusIndicator, 'className') ||
-                               Object.getOwnPropertyDescriptor(Object.getPrototypeOf(statusIndicator), 'className');
+      const originalClassName =
+        Object.getOwnPropertyDescriptor(statusIndicator, 'className') ||
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(statusIndicator), 'className');
 
       Object.defineProperty(statusIndicator, 'className', {
         set: () => {
           throw new Error('DOM error');
         },
         get: () => '',
-        configurable: true
+        configurable: true,
       });
 
       uiUtils.setStatus(true);
@@ -779,8 +794,12 @@ describe('UI Utilities', () => {
 
       const tooltip = document.getElementById('connection-status-tooltip');
       expect(tooltip.classList.contains('visible')).toBe(true);
-      expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe('Disconnected from Home Assistant');
-      expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe('Disconnected from Home Assistant. Retrying automatically.');
+      expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe(
+        'Disconnected from Home Assistant'
+      );
+      expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe(
+        'Disconnected from Home Assistant. Retrying automatically.'
+      );
 
       statusIndicator.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
       expect(tooltip.classList.contains('visible')).toBe(false);
@@ -864,7 +883,10 @@ describe('UI Utilities', () => {
     });
 
     it('should display modal with title and message', async () => {
-      const promise = uiUtils.showConfirm('Delete Item', 'Are you sure you want to delete this item?');
+      const promise = uiUtils.showConfirm(
+        'Delete Item',
+        'Are you sure you want to delete this item?'
+      );
 
       expect(titleEl.textContent).toBe('Delete Item');
       expect(messageEl.textContent).toBe('Are you sure you want to delete this item?');
@@ -946,7 +968,7 @@ describe('UI Utilities', () => {
     it('should apply custom button text', async () => {
       const promise = uiUtils.showConfirm('Delete', 'Delete this?', {
         confirmText: 'Delete',
-        cancelText: 'Keep'
+        cancelText: 'Keep',
       });
 
       expect(okBtn.textContent).toBe('Delete');
@@ -959,7 +981,7 @@ describe('UI Utilities', () => {
 
     it('should apply custom button class', async () => {
       const promise = uiUtils.showConfirm('Warning', 'Continue?', {
-        confirmClass: 'btn-warning'
+        confirmClass: 'btn-warning',
       });
 
       expect(okBtn.className).toContain('btn-warning');
@@ -1030,18 +1052,20 @@ describe('UI Utilities', () => {
           name: 'Ocean',
           color: '#336699',
           createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z'
-        }
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
       ]);
 
       const themes = uiUtils.getAccentThemes();
       expect(themes[0].id).toBe('original');
-      expect(themes[themes.length - 1]).toEqual(expect.objectContaining({
-        id: 'custom-ocean',
-        name: 'Ocean',
-        color: '#336699',
-        isCustom: true
-      }));
+      expect(themes[themes.length - 1]).toEqual(
+        expect.objectContaining({
+          id: 'custom-ocean',
+          name: 'Ocean',
+          color: '#336699',
+          isCustom: true,
+        })
+      );
     });
 
     it('filters invalid and duplicate custom colors by normalized hex', () => {
@@ -1051,18 +1075,18 @@ describe('UI Utilities', () => {
         { id: 'dup', name: 'Duplicate', color: '#123456' },
       ]);
 
-      const customThemes = uiUtils.getAccentThemes().filter(theme => theme.isCustom);
+      const customThemes = uiUtils.getAccentThemes().filter((theme) => theme.isCustom);
       expect(customThemes).toHaveLength(1);
-      expect(customThemes[0]).toEqual(expect.objectContaining({
-        id: 'one',
-        color: '#123456'
-      }));
+      expect(customThemes[0]).toEqual(
+        expect.objectContaining({
+          id: 'one',
+          color: '#123456',
+        })
+      );
     });
 
     it('applies a registered custom accent theme', () => {
-      uiUtils.setCustomThemes([
-        { id: 'custom-night', name: 'Night', color: '#224466' },
-      ]);
+      uiUtils.setCustomThemes([{ id: 'custom-night', name: 'Night', color: '#224466' }]);
 
       uiUtils.applyAccentTheme('custom-night');
 
@@ -1110,7 +1134,9 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
       expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('0.080');
       expect(document.body.style.getPropertyValue('--software-acrylic-bg-alpha')).toBe('0.190');
-      expect(Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))).toBeLessThan(0.3);
+      expect(
+        Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))
+      ).toBeLessThan(0.3);
     });
 
     it('treats 100 percent opacity as a fully opaque window surface', () => {
@@ -1124,7 +1150,9 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('software-glass')).toBe(true);
       expect(document.body.classList.contains('native-glass')).toBe(false);
       expect(document.body.style.getPropertyValue('--software-acrylic-bg-alpha')).toBe('0.760');
-      expect(Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))).toBeGreaterThan(0.5);
+      expect(
+        Number(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha'))
+      ).toBeGreaterThan(0.5);
     });
 
     it('applies Windows non-glass opacity to background surfaces only', () => {

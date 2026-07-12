@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   lint-and-test:
@@ -24,6 +24,9 @@ jobs:
 
       - name: Run linter
         run: npx eslint . --max-warnings=0
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Run tests
         run: npm test

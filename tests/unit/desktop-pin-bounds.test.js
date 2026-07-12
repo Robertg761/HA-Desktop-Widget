@@ -33,17 +33,20 @@ describe('desktop pin bounds helpers', () => {
   });
 
   test('keeps the right edge anchored when a left-handle resize hits the domain minimum width', () => {
-    const nextBounds = clampDesktopPinBounds({
-      x: 182,
-      y: 40,
-      width: 118,
-      height: 160,
-    }, {
-      entityId: 'light.bedroom',
-      previousBounds: { x: 100, y: 40, width: 200, height: 160 },
-      fallbackOrigin: { x: 24, y: 24 },
-      workArea: { x: 0, y: 0, width: 1200, height: 900 },
-    });
+    const nextBounds = clampDesktopPinBounds(
+      {
+        x: 182,
+        y: 40,
+        width: 118,
+        height: 160,
+      },
+      {
+        entityId: 'light.bedroom',
+        previousBounds: { x: 100, y: 40, width: 200, height: 160 },
+        fallbackOrigin: { x: 24, y: 24 },
+        workArea: { x: 0, y: 0, width: 1200, height: 900 },
+      }
+    );
 
     expect(nextBounds).toEqual({
       x: 132,
@@ -55,17 +58,20 @@ describe('desktop pin bounds helpers', () => {
   });
 
   test('keeps the bottom edge anchored when a top-handle resize hits the domain minimum height', () => {
-    const nextBounds = clampDesktopPinBounds({
-      x: 120,
-      y: 114,
-      width: 168,
-      height: 86,
-    }, {
-      entityId: 'switch.kettle',
-      previousBounds: { x: 120, y: 40, width: 168, height: 160 },
-      fallbackOrigin: { x: 24, y: 24 },
-      workArea: { x: 0, y: 0, width: 1200, height: 900 },
-    });
+    const nextBounds = clampDesktopPinBounds(
+      {
+        x: 120,
+        y: 114,
+        width: 168,
+        height: 86,
+      },
+      {
+        entityId: 'switch.kettle',
+        previousBounds: { x: 120, y: 40, width: 168, height: 160 },
+        fallbackOrigin: { x: 24, y: 24 },
+        workArea: { x: 0, y: 0, width: 1200, height: 900 },
+      }
+    );
 
     expect(nextBounds).toEqual({
       x: 120,
@@ -77,16 +83,19 @@ describe('desktop pin bounds helpers', () => {
   });
 
   test('clamps wide media tiles to their validated minimum width and height', () => {
-    const nextBounds = clampDesktopPinBounds({
-      x: 80,
-      y: 60,
-      width: 220,
-      height: 130,
-    }, {
-      entityId: 'media_player.spotify',
-      fallbackOrigin: { x: 24, y: 24 },
-      workArea: { x: 0, y: 0, width: 1200, height: 900 },
-    });
+    const nextBounds = clampDesktopPinBounds(
+      {
+        x: 80,
+        y: 60,
+        width: 220,
+        height: 130,
+      },
+      {
+        entityId: 'media_player.spotify',
+        fallbackOrigin: { x: 24, y: 24 },
+        workArea: { x: 0, y: 0, width: 1200, height: 900 },
+      }
+    );
 
     expect(nextBounds).toEqual({
       x: 80,
@@ -97,18 +106,21 @@ describe('desktop pin bounds helpers', () => {
   });
 
   test('clamps scene tiles against runtime content minimums when resizing', () => {
-    const nextBounds = clampDesktopPinBounds({
-      x: 120,
-      y: 72,
-      width: 118,
-      height: 92,
-    }, {
-      entityId: 'scene.relax',
-      contentMinBounds: { width: 132, height: 118 },
-      previousBounds: { x: 120, y: 72, width: 168, height: 148 },
-      fallbackOrigin: { x: 24, y: 24 },
-      workArea: { x: 0, y: 0, width: 1200, height: 900 },
-    });
+    const nextBounds = clampDesktopPinBounds(
+      {
+        x: 120,
+        y: 72,
+        width: 118,
+        height: 92,
+      },
+      {
+        entityId: 'scene.relax',
+        contentMinBounds: { width: 132, height: 118 },
+        previousBounds: { x: 120, y: 72, width: 168, height: 148 },
+        fallbackOrigin: { x: 24, y: 24 },
+        workArea: { x: 0, y: 0, width: 1200, height: 900 },
+      }
+    );
 
     expect(nextBounds).toEqual({
       x: 120,

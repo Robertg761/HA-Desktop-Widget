@@ -27,10 +27,10 @@ describe('profile-sync-core', () => {
       customTabs: [{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }],
       activeTabId: 'kitchen',
       desktopPins: {
-        'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
+        'light.kitchen': { x: 10, y: 20, width: 176, height: 176 },
       },
       quickAccessTileOptions: {
-        'sensor.office_temperature': { valueSize: 'extra-large' }
+        'sensor.office_temperature': { valueSize: 'extra-large' },
       },
       primaryMediaPlayer: 'media_player.office',
       profileSync: { enabled: true, syncScope: { preset: 'custom' } },
@@ -41,13 +41,15 @@ describe('profile-sync-core', () => {
     expect(projected.windowSize).toBeUndefined();
     expect(projected.profileSync).toBeUndefined();
     expect(projected.favoriteEntities).toEqual(['light.kitchen']);
-    expect(projected.customTabs).toEqual([{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }]);
+    expect(projected.customTabs).toEqual([
+      { id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] },
+    ]);
     expect(projected.activeTabId).toBe('kitchen');
     expect(projected.desktopPins).toEqual({
-      'light.kitchen': { x: 10, y: 20, width: 176, height: 176 }
+      'light.kitchen': { x: 10, y: 20, width: 176, height: 176 },
     });
     expect(projected.quickAccessTileOptions).toEqual({
-      'sensor.office_temperature': { valueSize: 'extra-large' }
+      'sensor.office_temperature': { valueSize: 'extra-large' },
     });
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
   });
@@ -59,10 +61,10 @@ describe('profile-sync-core', () => {
         customTabs: [{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }],
         activeTabId: 'kitchen',
         desktopPins: {
-          'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
+          'light.kitchen': { x: 1, y: 2, width: 176, height: 176 },
         },
         quickAccessTileOptions: {
-          'sensor.office_temperature': { valueSize: 'large' }
+          'sensor.office_temperature': { valueSize: 'large' },
         },
         ui: { theme: 'dark' },
         globalHotkeys: { enabled: true, hotkeys: {} },
@@ -80,13 +82,15 @@ describe('profile-sync-core', () => {
     );
 
     expect(projected.favoriteEntities).toEqual(['light.kitchen']);
-    expect(projected.customTabs).toEqual([{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }]);
+    expect(projected.customTabs).toEqual([
+      { id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] },
+    ]);
     expect(projected.activeTabId).toBe('kitchen');
     expect(projected.desktopPins).toEqual({
-      'light.kitchen': { x: 1, y: 2, width: 176, height: 176 }
+      'light.kitchen': { x: 1, y: 2, width: 176, height: 176 },
     });
     expect(projected.quickAccessTileOptions).toEqual({
-      'sensor.office_temperature': { valueSize: 'large' }
+      'sensor.office_temperature': { valueSize: 'large' },
     });
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
     expect(projected.ui).toBeUndefined();
@@ -104,10 +108,10 @@ describe('profile-sync-core', () => {
         customTabs: [{ id: 'local', name: 'Local', entityIds: ['light.local'] }],
         activeTabId: 'local',
         desktopPins: {
-          'light.local': { x: 3, y: 4, width: 176, height: 176 }
+          'light.local': { x: 3, y: 4, width: 176, height: 176 },
         },
         quickAccessTileOptions: {
-          'sensor.local': { valueSize: 'small' }
+          'sensor.local': { valueSize: 'small' },
         },
       },
       {
@@ -117,10 +121,10 @@ describe('profile-sync-core', () => {
         customTabs: [{ id: 'remote', name: 'Remote', entityIds: ['light.remote'] }],
         activeTabId: 'remote',
         desktopPins: {
-          'light.remote': { x: 30, y: 40, width: 352, height: 176 }
+          'light.remote': { x: 30, y: 40, width: 352, height: 176 },
         },
         quickAccessTileOptions: {
-          'sensor.remote': { valueSize: 'extra-large' }
+          'sensor.remote': { valueSize: 'extra-large' },
         },
       },
       {
@@ -140,13 +144,15 @@ describe('profile-sync-core', () => {
     expect(merged.alwaysOnTop).toBe(true);
     expect(merged.ui).toEqual({ theme: 'dark' });
     expect(merged.favoriteEntities).toEqual(['light.remote']);
-    expect(merged.customTabs).toEqual([{ id: 'remote', name: 'Remote', entityIds: ['light.remote'] }]);
+    expect(merged.customTabs).toEqual([
+      { id: 'remote', name: 'Remote', entityIds: ['light.remote'] },
+    ]);
     expect(merged.activeTabId).toBe('remote');
     expect(merged.desktopPins).toEqual({
-      'light.remote': { x: 30, y: 40, width: 352, height: 176 }
+      'light.remote': { x: 30, y: 40, width: 352, height: 176 },
     });
     expect(merged.quickAccessTileOptions).toEqual({
-      'sensor.remote': { valueSize: 'extra-large' }
+      'sensor.remote': { valueSize: 'extra-large' },
     });
   });
 
@@ -162,7 +168,10 @@ describe('profile-sync-core', () => {
       },
       null
     );
-    expect(mergedFromNullProfile.homeAssistant).toEqual({ url: 'http://local', token: 'local-token' });
+    expect(mergedFromNullProfile.homeAssistant).toEqual({
+      url: 'http://local',
+      token: 'local-token',
+    });
     expect(mergedFromNullProfile.windowPosition).toEqual({ x: 2, y: 3 });
     expect(mergedFromNullProfile.favoriteEntities).toEqual(['light.local']);
 
@@ -212,7 +221,9 @@ describe('profile-sync-core', () => {
       syncScope: { preset: 'custom' },
       payload: {},
     };
-    expect(extractSyncScopeFromEnvelope(envelopeWithMissingCustomSections)).toEqual(customWithoutSections);
+    expect(extractSyncScopeFromEnvelope(envelopeWithMissingCustomSections)).toEqual(
+      customWithoutSections
+    );
   });
 
   test('should produce a stable hash for semantically identical objects', () => {
@@ -261,7 +272,9 @@ describe('profile-sync-core', () => {
       passphrase: 'correct-passphrase',
     });
 
-    expect(() => decodeEnvelopeProfile(envelope, 'wrong-passphrase')).toThrow('Failed to decrypt synced profile payload');
+    expect(() => decodeEnvelopeProfile(envelope, 'wrong-passphrase')).toThrow(
+      'Failed to decrypt synced profile payload'
+    );
   });
 
   test('should fail gracefully when parsing malformed JSON and invalid v1 envelopes', () => {
@@ -272,14 +285,18 @@ describe('profile-sync-core', () => {
       updatedByDeviceId: 'legacy-device',
       payload: { alwaysOnTop: true },
     });
-    expect(() => parseSyncEnvelope(missingUpdatedAt)).toThrow('Sync envelope has invalid updatedAt');
+    expect(() => parseSyncEnvelope(missingUpdatedAt)).toThrow(
+      'Sync envelope has invalid updatedAt'
+    );
 
     const missingUpdatedByDeviceId = JSON.stringify({
       schemaVersion: 1,
       updatedAt: '2026-02-23T08:00:00.000Z',
       payload: { alwaysOnTop: true },
     });
-    expect(() => parseSyncEnvelope(missingUpdatedByDeviceId)).toThrow('Sync envelope has invalid updatedByDeviceId');
+    expect(() => parseSyncEnvelope(missingUpdatedByDeviceId)).toThrow(
+      'Sync envelope has invalid updatedByDeviceId'
+    );
   });
 
   test('should validate decode behavior for missing passphrase and invalid payload fields', () => {
@@ -290,8 +307,12 @@ describe('profile-sync-core', () => {
       passphrase: 'correct-passphrase',
     });
 
-    expect(() => decodeEnvelopeProfile(encryptedEnvelope)).toThrow('Passphrase is required to decrypt profile payload');
-    expect(() => decodeEnvelopeProfile(encryptedEnvelope, '')).toThrow('Passphrase is required to decrypt profile payload');
+    expect(() => decodeEnvelopeProfile(encryptedEnvelope)).toThrow(
+      'Passphrase is required to decrypt profile payload'
+    );
+    expect(() => decodeEnvelopeProfile(encryptedEnvelope, '')).toThrow(
+      'Passphrase is required to decrypt profile payload'
+    );
 
     const envelopeWithEmptyPayload = {
       schemaVersion: 2,
@@ -300,11 +321,15 @@ describe('profile-sync-core', () => {
       syncScope: getDefaultSyncScope(),
       payload: '',
     };
-    expect(() => decodeEnvelopeProfile(envelopeWithEmptyPayload)).toThrow('Sync payload must be an object');
+    expect(() => decodeEnvelopeProfile(envelopeWithEmptyPayload)).toThrow(
+      'Sync payload must be an object'
+    );
 
     const encryptedEnvelopeMissingCiphertext = JSON.parse(JSON.stringify(encryptedEnvelope));
     encryptedEnvelopeMissingCiphertext.payload.ciphertext = '';
-    expect(() => decodeEnvelopeProfile(encryptedEnvelopeMissingCiphertext, 'correct-passphrase')).toThrow('Failed to decrypt synced profile payload');
+    expect(() =>
+      decodeEnvelopeProfile(encryptedEnvelopeMissingCiphertext, 'correct-passphrase')
+    ).toThrow('Failed to decrypt synced profile payload');
   });
 
   test('should prefer newer side in timestamp comparison and choose direction', () => {
@@ -312,9 +337,27 @@ describe('profile-sync-core', () => {
     expect(compareIsoTimestamps('2026-02-23T09:00:00.000Z', '2026-02-23T10:00:00.000Z')).toBe(-1);
     expect(compareIsoTimestamps('2026-02-23T10:00:00.000Z', '2026-02-23T10:00:00.000Z')).toBe(0);
 
-    expect(chooseSyncDirection({ localUpdatedAt: '2026-02-23T10:00:00.000Z', remoteUpdatedAt: '2026-02-23T09:00:00.000Z', remoteExists: true })).toBe('push');
-    expect(chooseSyncDirection({ localUpdatedAt: '2026-02-23T09:00:00.000Z', remoteUpdatedAt: '2026-02-23T10:00:00.000Z', remoteExists: true })).toBe('pull');
-    expect(chooseSyncDirection({ localUpdatedAt: '2026-02-23T09:00:00.000Z', remoteUpdatedAt: null, remoteExists: false })).toBe('push');
+    expect(
+      chooseSyncDirection({
+        localUpdatedAt: '2026-02-23T10:00:00.000Z',
+        remoteUpdatedAt: '2026-02-23T09:00:00.000Z',
+        remoteExists: true,
+      })
+    ).toBe('push');
+    expect(
+      chooseSyncDirection({
+        localUpdatedAt: '2026-02-23T09:00:00.000Z',
+        remoteUpdatedAt: '2026-02-23T10:00:00.000Z',
+        remoteExists: true,
+      })
+    ).toBe('pull');
+    expect(
+      chooseSyncDirection({
+        localUpdatedAt: '2026-02-23T09:00:00.000Z',
+        remoteUpdatedAt: null,
+        remoteExists: false,
+      })
+    ).toBe('push');
   });
 
   test('should handle null, invalid, and empty timestamp inputs consistently', () => {
@@ -323,10 +366,26 @@ describe('profile-sync-core', () => {
     expect(compareIsoTimestamps('invalid', '2026-02-23T10:00:00.000Z')).toBe(-1);
     expect(compareIsoTimestamps('2026-02-23T10:00:00.000Z', 'invalid')).toBe(1);
 
-    expect(chooseSyncDirection({ localUpdatedAt: 'invalid', remoteUpdatedAt: '2026-02-23T10:00:00.000Z', remoteExists: true })).toBe('pull');
-    expect(chooseSyncDirection({ localUpdatedAt: '2026-02-23T10:00:00.000Z', remoteUpdatedAt: 'invalid', remoteExists: true })).toBe('push');
-    expect(chooseSyncDirection({ localUpdatedAt: '', remoteUpdatedAt: null, remoteExists: true })).toBe('none');
-    expect(chooseSyncDirection({ localUpdatedAt: null, remoteUpdatedAt: 'invalid', remoteExists: false })).toBe('push');
+    expect(
+      chooseSyncDirection({
+        localUpdatedAt: 'invalid',
+        remoteUpdatedAt: '2026-02-23T10:00:00.000Z',
+        remoteExists: true,
+      })
+    ).toBe('pull');
+    expect(
+      chooseSyncDirection({
+        localUpdatedAt: '2026-02-23T10:00:00.000Z',
+        remoteUpdatedAt: 'invalid',
+        remoteExists: true,
+      })
+    ).toBe('push');
+    expect(
+      chooseSyncDirection({ localUpdatedAt: '', remoteUpdatedAt: null, remoteExists: true })
+    ).toBe('none');
+    expect(
+      chooseSyncDirection({ localUpdatedAt: null, remoteUpdatedAt: 'invalid', remoteExists: false })
+    ).toBe('push');
   });
 
   test('should parse v1 envelopes and default to all sync scope', () => {

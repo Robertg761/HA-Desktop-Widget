@@ -1,6 +1,4 @@
-const {
-  getNextQuickAccessFocusIndex,
-} = require('../../src/quick-access-ui-helpers.js');
+const { getNextQuickAccessFocusIndex } = require('../../src/quick-access-ui-helpers.js');
 
 describe('quick access UI helpers', () => {
   describe('getNextQuickAccessFocusIndex', () => {

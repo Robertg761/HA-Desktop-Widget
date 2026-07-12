@@ -9,7 +9,7 @@ module.exports = {
     'renderer.js',
     'preload.js',
     'profile-sync-core.js',
-    'src/**/*.{js,cjs}'
+    'src/**/*.{js,cjs}',
   ],
   roots: ['<rootDir>'],
   testPathIgnorePatterns: [
@@ -18,14 +18,12 @@ module.exports = {
     '/.vscode/',
     '/.cursor/',
     '/dist/',
-    '/build/'
+    '/build/',
   ],
   transform: {
-    '^.+\\.js$': 'babel-jest'
+    '^.+\\.js$': 'babel-jest',
   },
-  transformIgnorePatterns: [
-    '/node_modules/(?!(sortablejs|hls.js)/)'
-  ],
+  transformIgnorePatterns: ['/node_modules/(?!(sortablejs|hls.js)/)'],
   coverageThreshold: {
     global: {
       statements: 60,

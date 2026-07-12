@@ -26,6 +26,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 ## Features
 
 ### Smart Home Control
+
 - **Real-time Updates**: WebSocket connection for instant entity state changes
 - **Quick Access Dashboard**: Customizable grid of your most-used entities
 - **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
@@ -35,6 +36,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Interactive Controls**: Toggle lights, switches, scenes, and more with a single click
 
 ### Modern Interface
+
 - **Rainmeter-style Design**: Clean, transparent desktop widget aesthetic
 - **Responsive Layout**: Auto-sizing tiles that adapt to content
 - **Dark/Light Themes**: Automatic theme switching based on system preferences
@@ -44,6 +46,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Toast Notifications**: Real-time feedback for all actions
 
 ### Entity Support
+
 - **Lights**: Toggle on/off, brightness control, and desktop-pin brightness presets
 - **Switches, Fans & Input Booleans**: Simple on/off controls, with fan speed controls where available
 - **Covers & Locks**: Open/close and lock/unlock controls
@@ -56,6 +59,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Automations**: Trigger, toggle, enable, or disable from configured hotkeys
 
 ### Advanced Features
+
 - **Auto-Updates**: GitHub release checks for packaged builds, with manual download flow for portable builds
 - **System Tray**: Minimize to tray with quick access menu
 - **Start at Login**: Optional OS login startup control
@@ -79,11 +83,13 @@ Planned for a future release:
 ## Quick Start
 
 ### Download & Install
+
 1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest available build for your OS.
 2. Windows: run the `.exe` installer or portable build. macOS: open the universal `.dmg` or `.zip` (older releases may be Apple Silicon-only). Linux: use the `.AppImage` or install the `.deb` package.
 3. Run the app and click the Settings button to configure your Home Assistant connection.
 
 ### First-Time Setup
+
 1. **Get your Home Assistant URL**: Usually `http://your-ha-ip:8123` or `https://your-ha-domain.com`
 2. **Create a Long-Lived Access Token**:
    - Go to your Home Assistant profile (click your avatar)
@@ -98,6 +104,7 @@ Planned for a future release:
 ## How to Use
 
 ### Quick Access Management
+
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
 - **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
@@ -105,6 +112,7 @@ Planned for a future release:
 - **Pin to Desktop**: In reorganize mode or the tile context menu, pin supported Quick Access entities as standalone desktop tiles
 
 ### Entity Interactions
+
 - **Lights**: Click to toggle, long-press for brightness slider
 - **Fans**: Click to toggle, long-press for speed controls
 - **Covers**: Click to open/close, long-press for open/stop/close controls
@@ -116,12 +124,14 @@ Planned for a future release:
 - **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
 
 ### System Integration
+
 - **Minimize to Tray**: Click the minimize button to hide to system tray
 - **Auto-Updates**: Supported packaged builds check for updates in the background; portable builds offer a GitHub download link
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Settings**: Access via the Settings button or right-click the tray icon
 
 ### Settings Highlights
+
 - **General**: Configure Home Assistant connection, always-on-top, startup behavior, language packs, profile sync, and updates
 - **Themes**: Choose built-in or custom accent and background colors
 - **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects
@@ -135,6 +145,7 @@ Planned for a future release:
 ## Advanced Usage
 
 ### Build from Source
+
 ```bash
 git clone https://github.com/Robertg761/HA-Desktop-Widget.git
 cd HA-Desktop-Widget
@@ -150,11 +161,13 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
 
 ### Release Channels
+
 - **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release, and existing users receive it through the standard update path.
 - **Tester prereleases**: Push a SemVer prerelease tag like `v3.5.4-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings -> Application Updates are offered these builds.
 - **Portable builds**: Portable users still update manually, but the update checker will show prerelease portable downloads when beta updates are enabled.
 
 ### Configuration
+
 - **Config Location**: Stored as `config.json` in Electron's userData directory.
   - **Windows (packaged)**: `%AppData%/Home Assistant Widget/config.json`
   - **macOS (packaged)**: `~/Library/Application Support/HA Desktop Widget/config.json`
@@ -169,6 +182,7 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
 
 ### Profile Sync (Opt-in)
+
 - **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
 - **Default sync folder**: Starts in the app's local data folder (`userData`) and stores profile data in `ha-widget-profile-sync.json`.
 - **Folder changes**: When switching folders, the app can copy the existing sync file to the new location or keep the current folder.
@@ -183,16 +197,19 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
 ## Troubleshooting
 
 ### Connection Issues
+
 - **Verify URL**: Ensure your Home Assistant URL is accessible from your computer
 - **Check Token**: Make sure your long-lived access token is valid and not expired
 - **Firewall**: Ensure your OS firewall allows the app to connect to your network
 - **Network**: Test connectivity by opening your HA URL in a web browser
 
 ### Performance Issues
+
 - **Reduce Entities**: Limit the number of entities in Quick Access
 - **Visual Effects**: Disable transparency if experiencing performance issues
 
 ### Common Solutions
+
 - **Restart**: Close and reopen the app if entities aren't updating
 - **Reconnect**: Go to Settings and click "Save" to reconnect to Home Assistant
 - **Check Logs**: Use Settings > View Logs to open the log file location
@@ -202,17 +219,20 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
 We welcome contributions! Here's how you can help:
 
 ### Reporting Issues
+
 - **Bug Reports**: Use the [Issues](https://github.com/Robertg761/HA-Desktop-Widget/issues) page
 - **Feature Requests**: Submit enhancement ideas with detailed descriptions
 - **Documentation**: Help improve this README or add usage examples
 
 ### Development
+
 - **Fork & Clone**: Fork the repository and clone your fork
 - **Create Branch**: Make changes in a feature branch
 - **Test**: Ensure your changes work and don't break existing functionality
 - **Submit PR**: Create a pull request with a clear description of your changes
 
 ### Code Style
+
 - **ESLint**: Follow the existing code style (run `npm run lint`)
 - **Comments**: Add comments for complex logic
 - **Testing**: Add tests for new features when possible

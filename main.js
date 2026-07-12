@@ -1,4 +1,18 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen: electronScreen, shell, protocol, globalShortcut, nativeImage, safeStorage, net, dialog } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  Tray,
+  screen: electronScreen,
+  shell,
+  protocol,
+  globalShortcut,
+  nativeImage,
+  safeStorage,
+  net,
+  dialog,
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -63,7 +77,8 @@ function getAutoUpdater() {
 }
 
 const DESKTOP_PIN_WINDOW_CORNER_RADIUS = 24;
-const LOCALE_PACK_MANIFEST_URL = 'https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/manifest.json';
+const LOCALE_PACK_MANIFEST_URL =
+  'https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/manifest.json';
 const DESKTOP_PIN_ACTION_RESPONSE_TIMEOUT_MS = 30000;
 const EXTERNAL_LINK_PROTOCOLS = new Set(['http:', 'https:']);
 
@@ -142,7 +157,10 @@ try {
   uiohookAvailable = true;
   log.info('uiohook-napi loaded successfully');
 } catch (error) {
-  log.warn('uiohook-napi is not available on this platform. Popup hotkey feature will be disabled.', error.message);
+  log.warn(
+    'uiohook-napi is not available on this platform. Popup hotkey feature will be disabled.',
+    error.message
+  );
 }
 
 // Log the app starting up
@@ -173,7 +191,12 @@ const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
-const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set(['cloudFile', 'googleDrive', 'icloudDrive', 'syncthing']);
+const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
+  'cloudFile',
+  'googleDrive',
+  'icloudDrive',
+  'syncthing',
+]);
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decryption_failed']);
@@ -254,7 +277,13 @@ function getWindowTransparencyOptions(currentConfig = config) {
   // has configured an opacity less than 1.0, we must enable transparent window
   // to allow CSS-based transparency to render. Otherwise, the window is opaque
   // and native opacity adjustments are ignored/unsupported by the compositor.
-  if (process.platform === 'linux' && !transparent && currentConfig && typeof currentConfig.opacity === 'number' && currentConfig.opacity < 1) {
+  if (
+    process.platform === 'linux' &&
+    !transparent &&
+    currentConfig &&
+    typeof currentConfig.opacity === 'number' &&
+    currentConfig.opacity < 1
+  ) {
     transparent = true;
   }
 
@@ -283,7 +312,8 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   const activeScope = getActiveProfileSyncScope();
   const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
-  profileSyncRuntime.localProfileUpdatedAt = config?.profileSync?.lastSyncAt || new Date().toISOString();
+  profileSyncRuntime.localProfileUpdatedAt =
+    config?.profileSync?.lastSyncAt || new Date().toISOString();
 }
 
 function mainT(key, vars = {}) {
@@ -349,9 +379,7 @@ function scheduleDevWindowReload(triggerPath = '') {
     clearTimeout(devReloadTimer);
   }
 
-  const triggerLabel = triggerPath
-    ? path.relative(__dirname, triggerPath)
-    : 'file watcher';
+  const triggerLabel = triggerPath ? path.relative(__dirname, triggerPath) : 'file watcher';
 
   devReloadTimer = setTimeout(() => {
     attemptDevWindowReload(triggerLabel);
@@ -363,9 +391,7 @@ function watchDevReloadTarget(targetPath, options = {}) {
 
   try {
     const watcher = fs.watch(targetPath, options, (_eventType, fileName) => {
-      const changedPath = fileName
-        ? path.join(targetPath, String(fileName))
-        : targetPath;
+      const changedPath = fileName ? path.join(targetPath, String(fileName)) : targetPath;
       scheduleDevWindowReload(changedPath);
     });
     watcher.on('error', (error) => {
@@ -411,7 +437,11 @@ function getDefaultProfileSyncFolderPath(_provider, existingPath = '') {
 function isPortableBuild() {
   if (!app.isPackaged) return false;
   const env = process.env || {};
-  return Boolean(env.PORTABLE_EXECUTABLE_DIR || env.PORTABLE_EXECUTABLE_FILE || env.PORTABLE_EXECUTABLE_APP_FILENAME);
+  return Boolean(
+    env.PORTABLE_EXECUTABLE_DIR ||
+    env.PORTABLE_EXECUTABLE_FILE ||
+    env.PORTABLE_EXECUTABLE_APP_FILENAME
+  );
 }
 
 /**
@@ -435,12 +465,14 @@ function getWindowsStartupRegistrationTarget(options = {}) {
       path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
       args: [],
       name: getWindowsStartupRegistryName(pkg, app.getName()),
-      executablePath
+      executablePath,
     };
   }
 
   if (portableBuild && !portableExecutable) {
-    log.warn('Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath(\'exe\') which may be an ephemeral path.');
+    log.warn(
+      "Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath('exe') which may be an ephemeral path."
+    );
   }
 
   const executablePath = app.getPath('exe');
@@ -448,14 +480,14 @@ function getWindowsStartupRegistrationTarget(options = {}) {
     path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
     args: [],
     name: getWindowsStartupRegistryName(pkg, app.getName()),
-    executablePath
+    executablePath,
   };
 }
 
 function getWindowsStartupLookupOptions(target) {
   return {
     path: target.path,
-    args: target.args
+    args: target.args,
   };
 }
 
@@ -520,7 +552,12 @@ function isPrereleaseVersion(value) {
 function generateProfileSyncDeviceId() {
   const host = (os.hostname && os.hostname()) || 'unknown-host';
   const raw = `${host}-${process.platform}-${process.arch}-${Date.now()}-${Math.random()}`;
-  return Buffer.from(raw).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'device';
+  return (
+    Buffer.from(raw)
+      .toString('base64')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 20) || 'device'
+  );
 }
 
 function getDefaultProfileSyncFilePath() {
@@ -557,9 +594,10 @@ function ensureProfileSyncConfigDefaults(target) {
     ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
     : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
   target.profileSync.provider = normalizeProfileSyncProvider(target.profileSync.provider);
-  target.profileSync.cloudFilePath = (typeof target.profileSync.cloudFilePath === 'string' && target.profileSync.cloudFilePath.trim())
-    ? target.profileSync.cloudFilePath.trim()
-    : getDefaultProfileSyncFilePath();
+  target.profileSync.cloudFilePath =
+    typeof target.profileSync.cloudFilePath === 'string' && target.profileSync.cloudFilePath.trim()
+      ? target.profileSync.cloudFilePath.trim()
+      : getDefaultProfileSyncFilePath();
   target.profileSync.syncScope = getNormalizedProfileSyncScopeValue(target.profileSync.syncScope);
   if (!target.profileSync.deviceId || typeof target.profileSync.deviceId !== 'string') {
     target.profileSync.deviceId = generateProfileSyncDeviceId();
@@ -586,9 +624,11 @@ function getProfileSyncConfig() {
 }
 
 function hasDeferredSecureConfigWork() {
-  return deferredHomeAssistantTokenDecryptPending
-    || deferredPlaintextTokenMigrationPending
-    || deferredProfileSyncPassphraseDecryptPending;
+  return (
+    deferredHomeAssistantTokenDecryptPending ||
+    deferredPlaintextTokenMigrationPending ||
+    deferredProfileSyncPassphraseDecryptPending
+  );
 }
 
 function sanitizeConfigForRenderer(inputConfig) {
@@ -616,12 +656,22 @@ function getAuthorizedIpcSender(event) {
     return null;
   }
 
-  if (mainWindow && !mainWindow.isDestroyed() && sender === mainWindow.webContents && senderWindow === mainWindow) {
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    sender === mainWindow.webContents &&
+    senderWindow === mainWindow
+  ) {
     return { type: 'main', window: mainWindow };
   }
 
   for (const [entityId, pinWindow] of desktopPinWindows.entries()) {
-    if (pinWindow && !pinWindow.isDestroyed() && sender === pinWindow.webContents && senderWindow === pinWindow) {
+    if (
+      pinWindow &&
+      !pinWindow.isDestroyed() &&
+      sender === pinWindow.webContents &&
+      senderWindow === pinWindow
+    ) {
       return { type: 'desktop-pin', entityId, window: pinWindow };
     }
   }
@@ -651,9 +701,10 @@ function normalizeDesktopPinActionError(error) {
   if (isPlainObject(error)) {
     return {
       ...error,
-      message: typeof error.message === 'string' && error.message.trim()
-        ? error.message
-        : 'Desktop pin action failed',
+      message:
+        typeof error.message === 'string' && error.message.trim()
+          ? error.message
+          : 'Desktop pin action failed',
     };
   }
   if (typeof error === 'string' && error.trim()) {
@@ -739,12 +790,17 @@ function getDesktopPinCascadeOrigin(index = 0) {
   const primaryDisplay = electronScreen.getPrimaryDisplay();
   const workArea = primaryDisplay?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
   return {
-    x: workArea.x + 24 + ((index % 4) * 28),
-    y: workArea.y + 24 + ((index % 6) * 28),
+    x: workArea.x + 24 + (index % 4) * 28,
+    y: workArea.y + 24 + (index % 6) * 28,
   };
 }
 
-function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0, previousBounds = null) {
+function clampDesktopPinBounds(
+  bounds = {},
+  entityId = '',
+  fallbackIndex = 0,
+  previousBounds = null
+) {
   const baseBounds = getDesktopPinBaseBounds(entityId);
   const cascadeOrigin = getDesktopPinCascadeOrigin(fallbackIndex);
 
@@ -754,15 +810,12 @@ function clampDesktopPinBounds(bounds = {}, entityId = '', fallbackIndex = 0, pr
   const height = Number.isFinite(Number(bounds.height))
     ? Math.round(Number(bounds.height))
     : baseBounds.height;
-  const x = Number.isFinite(Number(bounds.x))
-    ? Math.round(Number(bounds.x))
-    : cascadeOrigin.x;
-  const y = Number.isFinite(Number(bounds.y))
-    ? Math.round(Number(bounds.y))
-    : cascadeOrigin.y;
+  const x = Number.isFinite(Number(bounds.x)) ? Math.round(Number(bounds.x)) : cascadeOrigin.x;
+  const y = Number.isFinite(Number(bounds.y)) ? Math.round(Number(bounds.y)) : cascadeOrigin.y;
 
   const display = electronScreen.getDisplayMatching({ x, y, width, height });
-  const workArea = display?.workArea || electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
+  const workArea = display?.workArea ||
+    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
   return clampDesktopPinBoundsWithWorkArea(bounds, {
     entityId,
     contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
@@ -807,16 +860,12 @@ function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
   desktopPinContentMinBounds.set(normalizedEntityId, normalizedMinBounds);
 
   const currentBounds = config.desktopPins[normalizedEntityId];
-  const clampedBounds = clampDesktopPinBounds(
-    currentBounds,
-    normalizedEntityId,
-    0,
-    currentBounds,
-  );
-  const boundsChanged = clampedBounds.x !== currentBounds.x
-    || clampedBounds.y !== currentBounds.y
-    || clampedBounds.width !== currentBounds.width
-    || clampedBounds.height !== currentBounds.height;
+  const clampedBounds = clampDesktopPinBounds(currentBounds, normalizedEntityId, 0, currentBounds);
+  const boundsChanged =
+    clampedBounds.x !== currentBounds.x ||
+    clampedBounds.y !== currentBounds.y ||
+    clampedBounds.width !== currentBounds.width ||
+    clampedBounds.height !== currentBounds.height;
 
   if (boundsChanged) {
     config.desktopPins[normalizedEntityId] = clampedBounds;
@@ -884,12 +933,19 @@ function pinEntityToDesktopInternal(entityId, supportInfo = null) {
 
   const favorites = new Set((config.favoriteEntities || []).map(normalizeEntityId).filter(Boolean));
   if (!favorites.has(normalizedEntityId)) {
-    return { success: false, error: 'Only Quick Access entities can be pinned in this version', supportProfile };
+    return {
+      success: false,
+      error: 'Only Quick Access entities can be pinned in this version',
+      supportProfile,
+    };
   }
 
   const existed = !!config?.desktopPins?.[normalizedEntityId];
   config.desktopPins = config.desktopPins || {};
-  config.desktopPins[normalizedEntityId] = getDesktopPinBounds(normalizedEntityId, config.desktopPins[normalizedEntityId]);
+  config.desktopPins[normalizedEntityId] = getDesktopPinBounds(
+    normalizedEntityId,
+    config.desktopPins[normalizedEntityId]
+  );
   normalizeDesktopPinsConfig(config);
   saveConfig();
   syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId });
@@ -944,9 +1000,8 @@ function wireWindowEffectsRefresh(targetWindow, currentConfigProvider, overrideF
   if (!targetWindow || process.platform !== 'win32') return;
 
   const refreshEffects = () => {
-    const currentConfig = typeof currentConfigProvider === 'function'
-      ? currentConfigProvider()
-      : currentConfigProvider;
+    const currentConfig =
+      typeof currentConfigProvider === 'function' ? currentConfigProvider() : currentConfigProvider;
     applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass);
   };
 
@@ -956,9 +1011,11 @@ function wireWindowEffectsRefresh(targetWindow, currentConfigProvider, overrideF
     setTimeout(refreshEffects, 250);
   };
 
-  ['focus', 'blur', 'show', 'restore', 'enter-full-screen', 'leave-full-screen'].forEach((eventName) => {
-    targetWindow.on(eventName, scheduleRefresh);
-  });
+  ['focus', 'blur', 'show', 'restore', 'enter-full-screen', 'leave-full-screen'].forEach(
+    (eventName) => {
+      targetWindow.on(eventName, scheduleRefresh);
+    }
+  );
 }
 
 function applyDesktopPinWindowEffects(targetWindow, currentConfig) {
@@ -985,7 +1042,10 @@ function applyDesktopPinDesktopBehavior(targetWindow) {
 function buildRoundedRectShape(width, height, radius = DESKTOP_PIN_WINDOW_CORNER_RADIUS) {
   const safeWidth = Math.max(1, Math.floor(Number(width) || 0));
   const safeHeight = Math.max(1, Math.floor(Number(height) || 0));
-  const safeRadius = Math.max(0, Math.min(Math.floor(radius), Math.floor(safeWidth / 2), Math.floor(safeHeight / 2)));
+  const safeRadius = Math.max(
+    0,
+    Math.min(Math.floor(radius), Math.floor(safeWidth / 2), Math.floor(safeHeight / 2))
+  );
 
   if (safeRadius <= 0) {
     return [{ x: 0, y: 0, width: safeWidth, height: safeHeight }];
@@ -994,20 +1054,26 @@ function buildRoundedRectShape(width, height, radius = DESKTOP_PIN_WINDOW_CORNER
   const rects = [];
   for (let y = 0; y < safeHeight; y += 1) {
     const topDistance = y;
-    const bottomDistance = (safeHeight - 1) - y;
+    const bottomDistance = safeHeight - 1 - y;
     let inset = 0;
 
     if (topDistance < safeRadius) {
       const dy = safeRadius - topDistance - 1;
-      inset = Math.max(inset, Math.ceil(safeRadius - Math.sqrt(Math.max(0, (safeRadius * safeRadius) - (dy * dy)))));
+      inset = Math.max(
+        inset,
+        Math.ceil(safeRadius - Math.sqrt(Math.max(0, safeRadius * safeRadius - dy * dy)))
+      );
     }
 
     if (bottomDistance < safeRadius) {
       const dy = safeRadius - bottomDistance - 1;
-      inset = Math.max(inset, Math.ceil(safeRadius - Math.sqrt(Math.max(0, (safeRadius * safeRadius) - (dy * dy)))));
+      inset = Math.max(
+        inset,
+        Math.ceil(safeRadius - Math.sqrt(Math.max(0, safeRadius * safeRadius - dy * dy)))
+      );
     }
 
-    const rowWidth = Math.max(1, safeWidth - (inset * 2));
+    const rowWidth = Math.max(1, safeWidth - inset * 2);
     rects.push({ x: inset, y, width: rowWidth, height: 1 });
   }
 
@@ -1015,10 +1081,15 @@ function buildRoundedRectShape(width, height, radius = DESKTOP_PIN_WINDOW_CORNER
 }
 
 function applyDesktopPinWindowShape(targetWindow, bounds = null) {
-  if (!targetWindow || targetWindow.isDestroyed() || typeof targetWindow.setShape !== 'function') return;
+  if (!targetWindow || targetWindow.isDestroyed() || typeof targetWindow.setShape !== 'function')
+    return;
 
   const nextBounds = bounds || targetWindow.getBounds();
-  const shape = buildRoundedRectShape(nextBounds.width, nextBounds.height, DESKTOP_PIN_WINDOW_CORNER_RADIUS);
+  const shape = buildRoundedRectShape(
+    nextBounds.width,
+    nextBounds.height,
+    DESKTOP_PIN_WINDOW_CORNER_RADIUS
+  );
 
   try {
     targetWindow.setShape(shape);
@@ -1133,10 +1204,15 @@ function updateDesktopPinBounds(entityId, nextBounds = {}) {
     return { success: false, error: 'Desktop pin does not exist' };
   }
 
-  const clampedBounds = clampDesktopPinBounds({
-    ...config.desktopPins[normalizedEntityId],
-    ...(isPlainObject(nextBounds) ? nextBounds : {}),
-  }, normalizedEntityId, 0, config.desktopPins[normalizedEntityId]);
+  const clampedBounds = clampDesktopPinBounds(
+    {
+      ...config.desktopPins[normalizedEntityId],
+      ...(isPlainObject(nextBounds) ? nextBounds : {}),
+    },
+    normalizedEntityId,
+    0,
+    config.desktopPins[normalizedEntityId]
+  );
 
   config.desktopPins[normalizedEntityId] = clampedBounds;
   saveConfig();
@@ -1164,7 +1240,10 @@ function createDesktopPinWindow(entityId, options = {}) {
     return existingWindow;
   }
 
-  const pinBounds = getDesktopPinBounds(normalizedEntityId, config?.desktopPins?.[normalizedEntityId]);
+  const pinBounds = getDesktopPinBounds(
+    normalizedEntityId,
+    config?.desktopPins?.[normalizedEntityId]
+  );
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = pinBounds;
 
@@ -1193,7 +1272,7 @@ function createDesktopPinWindow(entityId, options = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-    }
+    },
   };
 
   if (process.platform === 'linux') {
@@ -1263,7 +1342,9 @@ function createDesktopPinWindow(entityId, options = {}) {
     }
   });
 
-  pinWindow.loadFile('index.html', { query: { mode: 'desktop-pin', entityId: normalizedEntityId } });
+  pinWindow.loadFile('index.html', {
+    query: { mode: 'desktop-pin', entityId: normalizedEntityId },
+  });
   pinWindow.webContents.on('did-finish-load', () => {
     sendDesktopPinUpdate(normalizedEntityId, { type: 'bootstrap' });
     applyDesktopPinDesktopBehavior(pinWindow);
@@ -1296,15 +1377,18 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
     config.desktopPins[entityId] = bounds;
     const window = desktopPinWindows.get(entityId);
     if (!window || window.isDestroyed()) {
-      createDesktopPinWindow(entityId, { focus: !!options.focusEntityId && options.focusEntityId === entityId });
+      createDesktopPinWindow(entityId, {
+        focus: !!options.focusEntityId && options.focusEntityId === entityId,
+      });
       return;
     }
 
     const currentBounds = window.getBounds();
-    const boundsChanged = currentBounds.x !== bounds.x
-      || currentBounds.y !== bounds.y
-      || currentBounds.width !== bounds.width
-      || currentBounds.height !== bounds.height;
+    const boundsChanged =
+      currentBounds.x !== bounds.x ||
+      currentBounds.y !== bounds.y ||
+      currentBounds.width !== bounds.width ||
+      currentBounds.height !== bounds.height;
 
     if (boundsChanged) {
       applyDesktopPinBoundsToWindow(window, bounds);
@@ -1340,7 +1424,8 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
     try {
       if (
         typeof nextConfig?.opacity === 'number' &&
-        (previousConfig?.opacity !== nextConfig.opacity || previousConfig?.frostedGlass !== nextConfig?.frostedGlass)
+        (previousConfig?.opacity !== nextConfig.opacity ||
+          previousConfig?.frostedGlass !== nextConfig?.frostedGlass)
       ) {
         applyWindowOpacity(mainWindow, nextConfig.opacity, nextConfig);
       }
@@ -1411,7 +1496,8 @@ function decodeStoredProfileSyncPassphrase() {
 
   if (profileSync.passphraseEncrypted) {
     if (!safeStorage.isEncryptionAvailable()) {
-      profileSyncRuntime.passphraseWarning = 'Stored passphrase could not be decrypted on this system.';
+      profileSyncRuntime.passphraseWarning =
+        'Stored passphrase could not be decrypted on this system.';
       return '';
     }
     try {
@@ -1439,7 +1525,10 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
     return { remembered: false, encrypted: false };
   }
 
-  const hadPersistedPassphrase = !!profileSync.storedPassphrase || profileSync.rememberPassphrase || profileSync.passphraseEncrypted;
+  const hadPersistedPassphrase =
+    !!profileSync.storedPassphrase ||
+    profileSync.rememberPassphrase ||
+    profileSync.passphraseEncrypted;
   profileSync.rememberPassphrase = true;
   profileSyncRuntime.passphraseSession = passphrase || '';
   profileSyncRuntime.passphraseWarning = '';
@@ -1459,7 +1548,8 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
   profileSync.rememberPassphrase = false;
   profileSync.passphraseEncrypted = false;
   profileSync.storedPassphrase = '';
-  profileSyncRuntime.passphraseWarning = 'Passphrase will only be kept for this session because OS encryption is unavailable.';
+  profileSyncRuntime.passphraseWarning =
+    'Passphrase will only be kept for this session because OS encryption is unavailable.';
   if (hadPersistedPassphrase) {
     saveConfig();
   }
@@ -1592,7 +1682,9 @@ function computeScopedProfileHash(profile, syncScope) {
   });
 }
 
-function buildLocalProfileEnvelope(updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()) {
+function buildLocalProfileEnvelope(
+  updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()
+) {
   const profileSync = getProfileSyncConfig();
   const syncScope = getActiveProfileSyncScope();
   const profile = profileSyncCore.projectSyncProfile(config, syncScope);
@@ -1620,7 +1712,9 @@ function decodeEnvelopeProfile(envelope) {
 
 function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
   const previous = config;
-  const nextScope = getNormalizedProfileSyncScopeValue(syncScopeValue || previous?.profileSync?.syncScope);
+  const nextScope = getNormalizedProfileSyncScopeValue(
+    syncScopeValue || previous?.profileSync?.syncScope
+  );
   const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
   ensureProfileSyncConfigDefaults(merged);
   merged.profileSync = {
@@ -1634,7 +1728,10 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
   applyMainWindowSettingSideEffects(previous, config);
 
   const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
-  profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, getActiveProfileSyncScope());
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(
+    projected,
+    getActiveProfileSyncScope()
+  );
   profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
   profileSyncRuntime.suppressNextAutoPush = true;
 
@@ -1693,10 +1790,7 @@ function resolveTrayIcon() {
   const preferIco = process.platform === 'win32';
   const traySize = preferIco ? 16 : 24;
   const names = preferIco ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico'];
-  const searchRoots = [
-    path.join(__dirname, 'build'),
-    __dirname,
-  ];
+  const searchRoots = [path.join(__dirname, 'build'), __dirname];
 
   if (app && app.isPackaged) {
     const resourcesPath = process.resourcesPath;
@@ -1749,7 +1843,9 @@ function resolveTrayIcon() {
 
   log.info('Tray icon not found. Using generated fallback icon.');
   return nativeImage
-    .createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAPCAYAAADJViUEAAAAGElEQVQ4T2NkwAT/Gf4zjIGBoRAjGAgjGAgADt4C24gldLoAAAAASUVORK5CYII=')
+    .createFromDataURL(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAPCAYAAADJViUEAAAAGElEQVQ4T2NkwAT/Gf4zjIGBoRAjGAgjGAgADt4C24gldLoAAAAASUVORK5CYII='
+    )
     .resize({ width: traySize, height: traySize });
 }
 
@@ -1821,15 +1917,15 @@ function loadConfig(options = {}) {
     frostedGlass: true,
     homeAssistant: {
       url: 'http://homeassistant.local:8123',
-      token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
+      token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
     },
     globalHotkeys: {
       enabled: false,
-      hotkeys: {} // entityId -> hotkey combination
+      hotkeys: {}, // entityId -> hotkey combination
     },
     entityAlerts: {
       enabled: false,
-      alerts: {} // entityId -> alert configuration
+      alerts: {}, // entityId -> alert configuration
     },
     ui: {
       theme: 'auto',
@@ -1842,7 +1938,7 @@ function loadConfig(options = {}) {
       use24HourClock: false,
       weatherEffectsEnabled: false,
       weatherOverride: 'auto',
-      enableInteractionDebugLogs: false
+      enableInteractionDebugLogs: false,
     },
     primaryCards: ['weather', 'time'],
     favoriteEntities: [],
@@ -1864,7 +1960,8 @@ function loadConfig(options = {}) {
     if (fs.existsSync(configPath)) {
       const userConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       config = {
-        ...defaultConfig, ...userConfig,
+        ...defaultConfig,
+        ...userConfig,
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
         ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) },
@@ -1886,115 +1983,131 @@ function loadConfig(options = {}) {
           config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
           deferredHomeAssistantTokenDecryptPending = true;
         } else {
-        // Token is marked as encrypted, decrypt it
-        log.debug('Attempting to decrypt stored token...');
-        try {
-          log.debug('Checking if encryption is available...');
-          const encryptionAvailable = safeStorage.isEncryptionAvailable();
-          log.debug(`Encryption available: ${encryptionAvailable}`);
+          // Token is marked as encrypted, decrypt it
+          log.debug('Attempting to decrypt stored token...');
+          try {
+            log.debug('Checking if encryption is available...');
+            const encryptionAvailable = safeStorage.isEncryptionAvailable();
+            log.debug(`Encryption available: ${encryptionAvailable}`);
 
-          if (encryptionAvailable) {
-            log.debug('Decrypting token...');
-            const encryptedBuffer = Buffer.from(config.homeAssistant.token, 'base64');
-            config.homeAssistant.token = safeStorage.decryptString(encryptedBuffer);
-            preservedEncryptedTokenForRecovery = null;
-            log.info('Token decrypted successfully');
-          } else {
-            // Encryption not available - preserve encrypted token on disk but set in-memory token to default
-            log.warn('Encryption not available on this system. Encrypted token cannot be decrypted.');
-            log.warn('Token preserved on disk. User must re-enter token or use on a system with encryption support.');
+            if (encryptionAvailable) {
+              log.debug('Decrypting token...');
+              const encryptedBuffer = Buffer.from(config.homeAssistant.token, 'base64');
+              config.homeAssistant.token = safeStorage.decryptString(encryptedBuffer);
+              preservedEncryptedTokenForRecovery = null;
+              log.info('Token decrypted successfully');
+            } else {
+              // Encryption not available - preserve encrypted token on disk but set in-memory token to default
+              log.warn(
+                'Encryption not available on this system. Encrypted token cannot be decrypted.'
+              );
+              log.warn(
+                'Token preserved on disk. User must re-enter token or use on a system with encryption support.'
+              );
+              preservedEncryptedTokenForRecovery = config.homeAssistant.token;
+              config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER; // In-memory default for UI
+              config.tokenResetReason = 'encryption_unavailable';
+              // Don't save config here - this preserves the encrypted token on disk as a backup
+              log.info(
+                'Encrypted token preserved in config file. If encryption becomes available, it can be decrypted.'
+              );
+            }
+          } catch (error) {
+            // Decryption failed - token may be corrupted or encryption API failed
+            log.error('Exception during token decryption:', error);
+            log.warn('Encrypted token preserved on disk. User must re-enter token.');
             preservedEncryptedTokenForRecovery = config.homeAssistant.token;
             config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER; // In-memory default for UI
-            config.tokenResetReason = 'encryption_unavailable';
-            // Don't save config here - this preserves the encrypted token on disk as a backup
-            log.info('Encrypted token preserved in config file. If encryption becomes available, it can be decrypted.');
+            config.tokenResetReason = 'decryption_failed';
+            // Don't save config here - this preserves the encrypted token on disk
+            log.info('Encrypted token preserved in config file for recovery attempts.');
           }
-        } catch (error) {
-          // Decryption failed - token may be corrupted or encryption API failed
-          log.error('Exception during token decryption:', error);
-          log.warn('Encrypted token preserved on disk. User must re-enter token.');
-          preservedEncryptedTokenForRecovery = config.homeAssistant.token;
-          config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER; // In-memory default for UI
-          config.tokenResetReason = 'decryption_failed';
-          // Don't save config here - this preserves the encrypted token on disk
-          log.info('Encrypted token preserved in config file for recovery attempts.');
         }
-        }
-      } else if (config.homeAssistant?.token &&
+      } else if (
+        config.homeAssistant?.token &&
         config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER &&
-        !config.homeAssistant?.tokenEncrypted) {
+        !config.homeAssistant?.tokenEncrypted
+      ) {
         if (deferSecureStorage) {
           deferredPlaintextTokenMigrationPending = true;
         } else {
-        // Migration: existing plaintext token from pre-encryption version
-        log.info('Detected plaintext token from pre-encryption version - attempting migration...');
+          // Migration: existing plaintext token from pre-encryption version
+          log.info(
+            'Detected plaintext token from pre-encryption version - attempting migration...'
+          );
 
-        // Create backup before migration
-        backupConfig();
+          // Create backup before migration
+          backupConfig();
 
-        try {
-          log.debug('Checking if encryption is available for migration...');
-          const encryptionAvailable = safeStorage.isEncryptionAvailable();
-          log.debug(`Encryption available for migration: ${encryptionAvailable}`);
+          try {
+            log.debug('Checking if encryption is available for migration...');
+            const encryptionAvailable = safeStorage.isEncryptionAvailable();
+            log.debug(`Encryption available for migration: ${encryptionAvailable}`);
 
-          if (encryptionAvailable) {
-            log.info('Migrating plaintext token to encrypted storage...');
-            const plainToken = config.homeAssistant.token;
-            try {
-              log.debug('Encrypting token...');
-              const encryptedBuffer = safeStorage.encryptString(plainToken);
-              config.homeAssistant.token = encryptedBuffer.toString('base64');
-              config.homeAssistant.tokenEncrypted = true;
-              config.migrationInfo = {
-                version: app.getVersion(),
-                date: new Date().toISOString(),
-                tokenEncrypted: true
-              };
-              log.debug('Saving encrypted config...');
-              saveConfig();
-              // Restore decrypted token for runtime use
-              config.homeAssistant.token = plainToken;
-              log.info('Token migration complete - token is now encrypted at rest');
-            } catch (error) {
-              log.error('Exception during token encryption:', error);
-              log.warn('Token encryption failed; token will stay in memory for this session and be omitted from saved config');
+            if (encryptionAvailable) {
+              log.info('Migrating plaintext token to encrypted storage...');
+              const plainToken = config.homeAssistant.token;
+              try {
+                log.debug('Encrypting token...');
+                const encryptedBuffer = safeStorage.encryptString(plainToken);
+                config.homeAssistant.token = encryptedBuffer.toString('base64');
+                config.homeAssistant.tokenEncrypted = true;
+                config.migrationInfo = {
+                  version: app.getVersion(),
+                  date: new Date().toISOString(),
+                  tokenEncrypted: true,
+                };
+                log.debug('Saving encrypted config...');
+                saveConfig();
+                // Restore decrypted token for runtime use
+                config.homeAssistant.token = plainToken;
+                log.info('Token migration complete - token is now encrypted at rest');
+              } catch (error) {
+                log.error('Exception during token encryption:', error);
+                log.warn(
+                  'Token encryption failed; token will stay in memory for this session and be omitted from saved config'
+                );
+                // Keep the in-memory token for this session and set a flag to prevent retry.
+                config.homeAssistant.tokenEncrypted = false;
+                config.migrationInfo = {
+                  version: app.getVersion(),
+                  date: new Date().toISOString(),
+                  tokenEncrypted: false,
+                  reason: 'encryption_failed',
+                };
+                saveConfig(); // Persist the flag without writing the plaintext token.
+                log.info('Token omitted from saved config until it can be re-entered or encrypted');
+              }
+            } else {
+              log.info(
+                'Encryption not available; token will stay in memory for this session and be omitted from saved config'
+              );
               // Keep the in-memory token for this session and set a flag to prevent retry.
               config.homeAssistant.tokenEncrypted = false;
               config.migrationInfo = {
                 version: app.getVersion(),
                 date: new Date().toISOString(),
                 tokenEncrypted: false,
-                reason: 'encryption_failed'
+                reason: 'encryption_unavailable',
               };
               saveConfig(); // Persist the flag without writing the plaintext token.
               log.info('Token omitted from saved config until it can be re-entered or encrypted');
             }
-          } else {
-            log.info('Encryption not available; token will stay in memory for this session and be omitted from saved config');
-            // Keep the in-memory token for this session and set a flag to prevent retry.
+          } catch (error) {
+            // Catch any unexpected errors during migration check
+            log.error('Unexpected error during migration check:', error);
+            log.warn(
+              'Migration aborted; token will stay in memory for this session and be omitted from saved config'
+            );
             config.homeAssistant.tokenEncrypted = false;
             config.migrationInfo = {
               version: app.getVersion(),
               date: new Date().toISOString(),
               tokenEncrypted: false,
-              reason: 'encryption_unavailable'
+              reason: 'migration_error',
             };
-            saveConfig(); // Persist the flag without writing the plaintext token.
-            log.info('Token omitted from saved config until it can be re-entered or encrypted');
+            saveConfig();
           }
-        } catch (error) {
-          // Catch any unexpected errors during migration check
-          log.error('Unexpected error during migration check:', error);
-          log.warn('Migration aborted; token will stay in memory for this session and be omitted from saved config');
-          config.homeAssistant.tokenEncrypted = false;
-          config.migrationInfo = {
-            version: app.getVersion(),
-            date: new Date().toISOString(),
-            tokenEncrypted: false,
-            reason: 'migration_error'
-          };
-          saveConfig();
-        }
         }
       }
     } else {
@@ -2075,7 +2188,9 @@ function resolveDeferredSecureConfig(options = {}) {
             changed = true;
             log.info('Token decrypted after initial window startup');
           } else {
-            log.warn('Encryption not available on this system. Encrypted token cannot be decrypted.');
+            log.warn(
+              'Encryption not available on this system. Encrypted token cannot be decrypted.'
+            );
             config.homeAssistant = config.homeAssistant || {};
             config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
             config.tokenResetReason = 'encryption_unavailable';
@@ -2093,9 +2208,11 @@ function resolveDeferredSecureConfig(options = {}) {
 
     if (deferredPlaintextTokenMigrationPending) {
       deferredPlaintextTokenMigrationPending = false;
-      if (config.homeAssistant?.token &&
+      if (
+        config.homeAssistant?.token &&
         config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER &&
-        !config.homeAssistant?.tokenEncrypted) {
+        !config.homeAssistant?.tokenEncrypted
+      ) {
         log.info('Detected plaintext token after startup - attempting migration...');
         backupConfig();
 
@@ -2109,7 +2226,7 @@ function resolveDeferredSecureConfig(options = {}) {
               config.migrationInfo = {
                 version: app.getVersion(),
                 date: new Date().toISOString(),
-                tokenEncrypted: true
+                tokenEncrypted: true,
               };
               saveConfig();
               config.homeAssistant.token = plainToken;
@@ -2122,7 +2239,7 @@ function resolveDeferredSecureConfig(options = {}) {
                 version: app.getVersion(),
                 date: new Date().toISOString(),
                 tokenEncrypted: false,
-                reason: 'encryption_failed'
+                reason: 'encryption_failed',
               };
               saveConfig();
               changed = true;
@@ -2133,7 +2250,7 @@ function resolveDeferredSecureConfig(options = {}) {
               version: app.getVersion(),
               date: new Date().toISOString(),
               tokenEncrypted: false,
-              reason: 'encryption_unavailable'
+              reason: 'encryption_unavailable',
             };
             saveConfig();
             changed = true;
@@ -2145,7 +2262,7 @@ function resolveDeferredSecureConfig(options = {}) {
             version: app.getVersion(),
             date: new Date().toISOString(),
             tokenEncrypted: false,
-            reason: 'migration_error'
+            reason: 'migration_error',
           };
           saveConfig();
           changed = true;
@@ -2175,7 +2292,12 @@ function resolveDeferredSecureConfig(options = {}) {
 
 function getSafeConfigBackupLabel(reason) {
   const label = typeof reason === 'string' && reason.trim() ? reason.trim() : 'backup';
-  return label.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'backup';
+  return (
+    label
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'backup'
+  );
 }
 
 // Backup configuration before migration or first write in a process.
@@ -2212,15 +2334,35 @@ function hasMeaningfulConfigData(inputConfig) {
   const url = typeof homeAssistant.url === 'string' ? homeAssistant.url.trim() : '';
   if (token && token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) return true;
   if (url && url !== 'http://homeassistant.local:8123') return true;
-  if (Array.isArray(inputConfig.favoriteEntities) && inputConfig.favoriteEntities.length > 0) return true;
-  if (isPlainObject(inputConfig.desktopPins) && Object.keys(inputConfig.desktopPins).length > 0) return true;
-  if (isPlainObject(inputConfig.customTabs) && Object.keys(inputConfig.customTabs).length > 0) return true;
+  if (Array.isArray(inputConfig.favoriteEntities) && inputConfig.favoriteEntities.length > 0)
+    return true;
+  if (isPlainObject(inputConfig.desktopPins) && Object.keys(inputConfig.desktopPins).length > 0)
+    return true;
+  if (isPlainObject(inputConfig.customTabs) && Object.keys(inputConfig.customTabs).length > 0)
+    return true;
   if (Array.isArray(inputConfig.customTabs) && inputConfig.customTabs.length > 0) return true;
-  if (isPlainObject(inputConfig.customEntityIcons) && Object.keys(inputConfig.customEntityIcons).length > 0) return true;
-  if (isPlainObject(inputConfig.quickAccessTileOptions) && Object.keys(inputConfig.quickAccessTileOptions).length > 0) return true;
-  if (isPlainObject(inputConfig.globalHotkeys?.hotkeys) && Object.keys(inputConfig.globalHotkeys.hotkeys).length > 0) return true;
-  if (isPlainObject(inputConfig.entityAlerts?.alerts) && Object.keys(inputConfig.entityAlerts.alerts).length > 0) return true;
-  if (typeof inputConfig.primaryMediaPlayer === 'string' && inputConfig.primaryMediaPlayer.trim()) return true;
+  if (
+    isPlainObject(inputConfig.customEntityIcons) &&
+    Object.keys(inputConfig.customEntityIcons).length > 0
+  )
+    return true;
+  if (
+    isPlainObject(inputConfig.quickAccessTileOptions) &&
+    Object.keys(inputConfig.quickAccessTileOptions).length > 0
+  )
+    return true;
+  if (
+    isPlainObject(inputConfig.globalHotkeys?.hotkeys) &&
+    Object.keys(inputConfig.globalHotkeys.hotkeys).length > 0
+  )
+    return true;
+  if (
+    isPlainObject(inputConfig.entityAlerts?.alerts) &&
+    Object.keys(inputConfig.entityAlerts.alerts).length > 0
+  )
+    return true;
+  if (typeof inputConfig.primaryMediaPlayer === 'string' && inputConfig.primaryMediaPlayer.trim())
+    return true;
   if (typeof inputConfig.popupHotkey === 'string' && inputConfig.popupHotkey.trim()) return true;
   return false;
 }
@@ -2233,10 +2375,15 @@ function shouldBlockPotentialConfigClobber(snapshot) {
     try {
       existingConfig = JSON.parse(existingConfigContent);
     } catch (error) {
-      log.error('Blocked config save because the existing config could not be parsed:', error.message);
+      log.error(
+        'Blocked config save because the existing config could not be parsed:',
+        error.message
+      );
       return existingConfigContent.trim().length > 0;
     }
-    return hasMeaningfulConfigData(existingConfig) && !hasMeaningfulConfigData(snapshot.configToSave);
+    return (
+      hasMeaningfulConfigData(existingConfig) && !hasMeaningfulConfigData(snapshot.configToSave)
+    );
   } catch (error) {
     log.warn('Unable to compare existing config before save:', error.message);
     return false;
@@ -2287,8 +2434,10 @@ function buildConfigSnapshotForSave() {
 
   // Encrypt token before saving
   // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
-  if (configToSave.homeAssistant?.token &&
-    configToSave.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) {
+  if (
+    configToSave.homeAssistant?.token &&
+    configToSave.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
+  ) {
     if (preserveRecoveryToken) {
       log.debug('Preserving encrypted recovery token for storage');
     } else if (safeStorage.isEncryptionAvailable()) {
@@ -2326,13 +2475,15 @@ function buildConfigSnapshotForSave() {
 
 async function writeConfigSnapshotAsync(snapshot) {
   if (shouldBlockPotentialConfigClobber(snapshot)) {
-    log.error('Blocked config save because it would replace an existing user config with default-like data.');
+    log.error(
+      'Blocked config save because it would replace an existing user config with default-like data.'
+    );
     return;
   }
   await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
   await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
   if (configShutdownPending || snapshot.epoch !== configWriteEpoch) {
-    await fs.promises.unlink(snapshot.tempPath).catch(() => { });
+    await fs.promises.unlink(snapshot.tempPath).catch(() => {});
     return;
   }
   await fs.promises.rename(snapshot.tempPath, snapshot.configPath);
@@ -2382,7 +2533,9 @@ function flushPendingConfigWriteSync() {
 
   try {
     if (shouldBlockPotentialConfigClobber(snapshot)) {
-      log.error('Blocked synchronous config save because it would replace an existing user config with default-like data.');
+      log.error(
+        'Blocked synchronous config save because it would replace an existing user config with default-like data.'
+      );
       return;
     }
     fs.mkdirSync(snapshot.userDataDir, { recursive: true });
@@ -2433,7 +2586,10 @@ function setupProfileSyncInterval() {
     return;
   }
 
-  const intervalMs = Math.max(1, Number(profileSync.intervalMinutes) || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES) * 60 * 1000;
+  const intervalMs =
+    Math.max(1, Number(profileSync.intervalMinutes) || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES) *
+    60 *
+    1000;
   profileSyncRuntime.intervalTimer = setInterval(() => {
     runProfileSync('auto', 'interval').catch((error) => {
       log.warn('Profile sync interval run failed:', error.message);
@@ -2465,7 +2621,10 @@ async function prepareProfileSyncFirstEnableResolution() {
 
   profileSyncRuntime.needsResolution = true;
   profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
-  updateProfileSyncStatus('needs_resolution', 'Choose how to resolve initial profile sync conflict.');
+  updateProfileSyncStatus(
+    'needs_resolution',
+    'Choose how to resolve initial profile sync conflict.'
+  );
   emitProfileSyncStatus();
   return { needsResolution: true };
 }
@@ -2511,7 +2670,9 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
   emitProfileSyncStatus();
 
   try {
-    const localEnvelope = buildLocalProfileEnvelope(profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString());
+    const localEnvelope = buildLocalProfileEnvelope(
+      profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()
+    );
     const remoteResult = await readConfiguredSyncEnvelope();
     let finalDirection = direction;
 
@@ -2538,7 +2699,9 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
         return { ok: true, action: 'none', status };
       }
 
-      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(remoteResult.envelope);
+      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(
+        remoteResult.envelope
+      );
       const localProfile = profileSyncCore.projectSyncProfile(config, remoteSyncScope);
       const localHash = computeScopedProfileHash(localProfile, remoteSyncScope);
       const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
@@ -2653,7 +2816,7 @@ function createWindow() {
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true,
-    }
+    },
   };
 
   mainWindow = new BrowserWindow(windowOptions);
@@ -2730,7 +2893,7 @@ function buildTrayContextMenu() {
           mainWindow.setSize(config.windowSize.width, config.windowSize.height);
           mainWindow.show();
         }
-      }
+      },
     },
     {
       label: mainT('Always on Top'),
@@ -2740,7 +2903,7 @@ function buildTrayContextMenu() {
         config.alwaysOnTop = menuItem.checked;
         mainWindow.setAlwaysOnTop(config.alwaysOnTop);
         saveConfig();
-      }
+      },
     },
     {
       label: mainT('Reset Position'),
@@ -2748,20 +2911,20 @@ function buildTrayContextMenu() {
         mainWindow.setPosition(100, 100);
         config.windowPosition = { x: 100, y: 100 };
         saveConfig();
-      }
+      },
     },
     { type: 'separator' },
     {
       label: mainT('DevTools'),
       click: () => {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
-      }
+      },
     },
     {
       label: mainT('Reload'),
       click: () => {
         mainWindow.reload();
-      }
+      },
     },
     { type: 'separator' },
     {
@@ -2773,22 +2936,27 @@ function buildTrayContextMenu() {
           mainWindow.show();
           mainWindow.webContents.send('open-settings');
         }
-      }
+      },
     },
     {
       label: mainT('Check for Updates'),
       click: () => {
         if (app.isPackaged) {
           if (isPortableBuild()) {
-            checkPortableUpdate().then((result) => {
-              if (mainWindow && result) {
-                mainWindow.webContents.send('auto-update', result);
-              }
-            }).catch((error) => {
-              if (mainWindow) {
-                mainWindow.webContents.send('auto-update', { status: 'error', error: error?.message || String(error) });
-              }
-            });
+            checkPortableUpdate()
+              .then((result) => {
+                if (mainWindow && result) {
+                  mainWindow.webContents.send('auto-update', result);
+                }
+              })
+              .catch((error) => {
+                if (mainWindow) {
+                  mainWindow.webContents.send('auto-update', {
+                    status: 'error',
+                    error: error?.message || String(error),
+                  });
+                }
+              });
           } else {
             const autoUpdater = getAutoUpdater();
             configureAutoUpdaterChannel(autoUpdater);
@@ -2803,14 +2971,15 @@ function buildTrayContextMenu() {
         } else {
           log.info('Update check is only available in packaged builds.');
         }
-      }
+      },
     },
     {
       label: mainT('Report Issue'),
       click: () => {
-        const url = (pkg && pkg.bugs && pkg.bugs.url) || (pkg && pkg.homepage) || 'https://github.com/';
+        const url =
+          (pkg && pkg.bugs && pkg.bugs.url) || (pkg && pkg.homepage) || 'https://github.com/';
         shell.openExternal(url);
-      }
+      },
     },
     { type: 'separator' },
     {
@@ -2818,8 +2987,8 @@ function buildTrayContextMenu() {
       click: () => {
         isQuitting = true;
         app.quit();
-      }
-    }
+      },
+    },
   ]);
 }
 
@@ -2955,7 +3124,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   pruneConfig(newConfig);
   const customTabs = Array.isArray(newConfig.customTabs)
     ? newConfig.customTabs
-    : (Array.isArray(config.customTabs) ? config.customTabs : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) });
+    : Array.isArray(config.customTabs)
+      ? config.customTabs
+      : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
   const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
   const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
   config = { ...config, ...newConfig, customTabs, profileSync, updates };
@@ -2969,7 +3140,10 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   ) {
     delete config.tokenResetReason;
   }
-  if (config.homeAssistant?.token && config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) {
+  if (
+    config.homeAssistant?.token &&
+    config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
+  ) {
     preservedEncryptedTokenForRecovery = null;
   }
   applyMainWindowSettingSideEffects(prevConfig, config);
@@ -2996,7 +3170,10 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
     createTray();
   }
-  if (prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease && autoUpdaterInstance) {
+  if (
+    prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease &&
+    autoUpdaterInstance
+  ) {
     configureAutoUpdaterChannel(autoUpdaterInstance);
   }
   syncDesktopPinWindowsWithConfig();
@@ -3054,7 +3231,11 @@ function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
       if (completed) return;
       completed = true;
       clearTimeout(timeoutId);
-      try { request.abort(); } catch { /* noop */ }
+      try {
+        request.abort();
+      } catch {
+        /* noop */
+      }
       resolve(result);
     };
 
@@ -3067,7 +3248,7 @@ function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
 
     request.on('response', (response) => {
       const statusCode = Number(response.statusCode || 0);
-      response.on('data', () => { });
+      response.on('data', () => {});
       response.on('end', () => {
         if (statusCode >= 200 && statusCode < 300) {
           finish({ success: true, code: 'ok', status: statusCode, url: normalizedBaseUrl });
@@ -3121,7 +3302,9 @@ ipcMain.handle('update-desktop-pin-bounds', (event, entityId, nextBounds = {}) =
 });
 
 ipcMain.handle('sync-desktop-pin-content-min-bounds', (event, entityId, minBounds = {}) => {
-  const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', { allowDesktopPin: true });
+  const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', {
+    allowDesktopPin: true,
+  });
   if (!sender) return rejectUnauthorizedIpc('sync-desktop-pin-content-min-bounds');
   if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
@@ -3291,9 +3474,10 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   const supportProfile = resolveDesktopPinSupportDecision(normalizedEntityId, supportInfo);
   const canPinToDesktop = supportProfile.supported;
   const existingHotkeyConfig = config?.globalHotkeys?.hotkeys?.[normalizedEntityId];
-  const existingHotkey = (typeof existingHotkeyConfig === 'object' && existingHotkeyConfig?.hotkey)
-    ? existingHotkeyConfig.hotkey
-    : existingHotkeyConfig;
+  const existingHotkey =
+    typeof existingHotkeyConfig === 'object' && existingHotkeyConfig?.hotkey
+      ? existingHotkeyConfig.hotkey
+      : existingHotkeyConfig;
   const hasHotkey = typeof existingHotkey === 'string' && existingHotkey.trim().length > 0;
   const menu = Menu.buildFromTemplate([
     {
@@ -3303,13 +3487,15 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
         senderWindow.webContents.send('entity-tile-hotkey-requested', {
           entityId: normalizedEntityId,
         });
-      }
+      },
     },
     { type: 'separator' },
     {
       label: isPinned
         ? mainT('Unpin from Desktop')
-        : (canPinToDesktop ? mainT('Pin to Desktop') : mainT('Desktop Pin Not Supported Yet')),
+        : canPinToDesktop
+          ? mainT('Pin to Desktop')
+          : mainT('Desktop Pin Not Supported Yet'),
       enabled: isPinned || canPinToDesktop,
       click: () => {
         if (isPinned) {
@@ -3323,8 +3509,8 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
         } else {
           pinEntityToDesktopInternal(normalizedEntityId, supportProfile);
         }
-      }
-    }
+      },
+    },
   ]);
 
   menu.popup({ window: senderWindow });
@@ -3411,7 +3597,11 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider) => {
 ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwrite = false) => {
   const sender = authorizeIpcSender(event, 'copy-profile-sync-file');
   if (!sender) {
-    return rejectUnauthorizedIpc('copy-profile-sync-file', { ok: false, status: 'error', error: 'Unauthorized' });
+    return rejectUnauthorizedIpc('copy-profile-sync-file', {
+      ok: false,
+      status: 'error',
+      error: 'Unauthorized',
+    });
   }
   return copyProfileSyncFile(fromPath, toPath, overwrite);
 });
@@ -3482,7 +3672,11 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (event, choice) => {
       clearProfileSyncTimers();
       saveConfig();
       emitProfileSyncStatus();
-      return { success: true, status: buildProfileSyncStatus(), config: sanitizeConfigForRenderer(config) };
+      return {
+        success: true,
+        status: buildProfileSyncStatus(),
+        config: sanitizeConfigForRenderer(config),
+      };
     }
 
     if (choice === 'upload_local') {
@@ -3490,22 +3684,33 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (event, choice) => {
       profileSyncRuntime.pendingRemoteEnvelope = null;
       const result = await runProfileSync('push', 'first_enable_resolution');
       setupProfileSyncInterval();
-      return { success: true, ...result, status: buildProfileSyncStatus(), config: sanitizeConfigForRenderer(config) };
+      return {
+        success: true,
+        ...result,
+        status: buildProfileSyncStatus(),
+        config: sanitizeConfigForRenderer(config),
+      };
     }
 
     if (choice === 'use_remote') {
-      const envelope = profileSyncRuntime.pendingRemoteEnvelope || (await readConfiguredSyncEnvelope()).envelope;
+      const envelope =
+        profileSyncRuntime.pendingRemoteEnvelope || (await readConfiguredSyncEnvelope()).envelope;
       if (!envelope) {
         throw new Error('Remote profile is no longer available');
       }
-      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(envelope);
+      const { profile: remoteProfile, syncScope: remoteSyncScope } =
+        decodeEnvelopeProfile(envelope);
       profileSyncRuntime.needsResolution = false;
       profileSyncRuntime.pendingRemoteEnvelope = null;
       applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
       updateProfileSyncStatus('success', '');
       setupProfileSyncInterval();
       emitProfileSyncStatus();
-      return { success: true, status: buildProfileSyncStatus(), config: sanitizeConfigForRenderer(config) };
+      return {
+        success: true,
+        status: buildProfileSyncStatus(),
+        config: sanitizeConfigForRenderer(config),
+      };
     }
   } catch (error) {
     updateProfileSyncStatus('error', error.message);
@@ -3527,7 +3732,9 @@ ipcMain.handle('get-login-item-settings', (event) => {
       let legacySettings = null;
 
       if (!openAtLogin && legacyStartupTarget.path !== startupTarget.path) {
-        legacySettings = app.getLoginItemSettings(getWindowsStartupLookupOptions(legacyStartupTarget));
+        legacySettings = app.getLoginItemSettings(
+          getWindowsStartupLookupOptions(legacyStartupTarget)
+        );
         openAtLogin = isWindowsLoginItemEnabled(legacySettings, startupTarget.executablePath);
       }
 
@@ -3578,18 +3785,16 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
       return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
     }
 
-    const startupTarget = process.platform === 'win32'
-      ? getWindowsStartupRegistrationTarget()
-      : {};
+    const startupTarget = process.platform === 'win32' ? getWindowsStartupRegistrationTarget() : {};
     const loginItemSettings = {
       openAtLogin: normalizedOpenAtLogin,
       ...(process.platform === 'win32'
         ? {
-          path: startupTarget.path,
-          args: startupTarget.args,
-          name: startupTarget.name
-        }
-        : startupTarget)
+            path: startupTarget.path,
+            args: startupTarget.args,
+            name: startupTarget.name,
+          }
+        : startupTarget),
     };
 
     if (process.platform === 'win32') {
@@ -3598,12 +3803,18 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
     }
 
     const withWindowsSuffix = process.platform === 'win32' ? ' with Windows' : '';
-    log.info(`Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`, loginItemSettings);
+    log.info(
+      `Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`,
+      loginItemSettings
+    );
     app.setLoginItemSettings(loginItemSettings);
 
     if (process.platform === 'win32') {
       const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
-      const confirmedOpenAtLogin = isWindowsLoginItemEnabled(settings, startupTarget.executablePath);
+      const confirmedOpenAtLogin = isWindowsLoginItemEnabled(
+        settings,
+        startupTarget.executablePath
+      );
       if (confirmedOpenAtLogin !== normalizedOpenAtLogin) {
         const error = `Windows startup setting did not persist as ${normalizedOpenAtLogin ? 'enabled' : 'disabled'}`;
         log.warn(error, settings);
@@ -3663,7 +3874,9 @@ ipcMain.handle('check-for-updates', async (event) => {
   if (!supportsAutoUpdater(process.platform, process.env)) {
     return {
       status: 'manual',
-      message: mainT('This package does not support in-app updates. Open Releases to download the latest build.'),
+      message: mainT(
+        'This package does not support in-app updates. Open Releases to download the latest build.'
+      ),
       downloadUrl: pkg.homepage ? `${pkg.homepage}/releases/latest` : '',
     };
   }
@@ -3715,7 +3928,10 @@ ipcMain.handle('open-logs', (event) => {
   try {
     let logFilePath = null;
     try {
-      if (log?.transports?.file?.resolvePath && typeof log.transports.file.resolvePath === 'function') {
+      if (
+        log?.transports?.file?.resolvePath &&
+        typeof log.transports.file.resolvePath === 'function'
+      ) {
         logFilePath = log.transports.file.resolvePath();
       }
     } catch (error) {
@@ -3786,9 +4002,10 @@ ipcMain.handle('debug-log', (event, payload) => {
       }
 
       const maxLength = 6000;
-      const safeDetails = serializedDetails.length > maxLength
-        ? `${serializedDetails.slice(0, maxLength)}...[truncated]`
-        : serializedDetails;
+      const safeDetails =
+        serializedDetails.length > maxLength
+          ? `${serializedDetails.slice(0, maxLength)}...[truncated]`
+          : serializedDetails;
 
       log.info(`[RendererDebug][${scope}] ${eventName} ${safeDetails}`);
       return { success: true };
@@ -3812,7 +4029,10 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
   }
 
   if (!validateHotkey(hotkey)) {
-    return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
+    return {
+      success: false,
+      error: 'Invalid hotkey format or conflicts with common system shortcuts',
+    };
   }
 
   // Check for conflicts with existing hotkeys first
@@ -3821,12 +4041,15 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
     if (id === normalizedEntityId) return false; // Skip the entity we're currently updating
 
     // Extract hotkey from either format: string or object
-    const existingHotkey = (typeof hotkeyConfig === 'object' && hotkeyConfig.hotkey)
-      ? hotkeyConfig.hotkey
-      : hotkeyConfig;
+    const existingHotkey =
+      typeof hotkeyConfig === 'object' && hotkeyConfig.hotkey ? hotkeyConfig.hotkey : hotkeyConfig;
 
     // Only compare if we have a valid hotkey string
-    return existingHotkey && typeof existingHotkey === 'string' && existingHotkey.toLowerCase() === hotkey.toLowerCase();
+    return (
+      existingHotkey &&
+      typeof existingHotkey === 'string' &&
+      existingHotkey.toLowerCase() === hotkey.toLowerCase()
+    );
   });
 
   if (existingEntity) {
@@ -3843,7 +4066,9 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
 
     // Final check to see if Electron successfully registered it
     if (!globalShortcut.isRegistered(hotkey)) {
-      log.warn(`Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`);
+      log.warn(
+        `Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`
+      );
       // Unset it from config so the user can try again
       delete config.globalHotkeys.hotkeys[normalizedEntityId];
       saveConfig();
@@ -3963,7 +4188,10 @@ ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
 
   // Validate the hotkey
   if (!validateHotkey(hotkey)) {
-    return { success: false, error: 'Invalid hotkey format or conflicts with common system shortcuts' };
+    return {
+      success: false,
+      error: 'Invalid hotkey format or conflicts with common system shortcuts',
+    };
   }
 
   // Unregister old hotkey if exists
@@ -4011,7 +4239,8 @@ function registerGlobalHotkeys() {
 
   // Register each configured hotkey
   Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
-    const { hotkey, action } = (typeof hotkeyConfig === 'object') ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
+    const { hotkey, action } =
+      typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
     if (hotkey && hotkey.trim()) {
       try {
         const success = globalShortcut.register(hotkey, () => {
@@ -4045,19 +4274,49 @@ function validateHotkey(hotkey) {
 
   // A valid hotkey must have at least one non-modifier key.
   // Support multiple modifier name variants: Ctrl/Control, Alt/Option, Shift, Meta/Cmd/Command/Super
-  const modifiers = ['ctrl', 'control', 'alt', 'option', 'shift', 'meta', 'cmd', 'command', 'super', 'commandorcontrol', 'cmdorctrl'];
+  const modifiers = [
+    'ctrl',
+    'control',
+    'alt',
+    'option',
+    'shift',
+    'meta',
+    'cmd',
+    'command',
+    'super',
+    'commandorcontrol',
+    'cmdorctrl',
+  ];
   const keys = hotkey.split('+');
-  const nonModifiers = keys.filter(key => !modifiers.includes(key.toLowerCase()));
+  const nonModifiers = keys.filter((key) => !modifiers.includes(key.toLowerCase()));
   if (nonModifiers.length === 0) {
     return false;
   }
 
   // Check for conflicts with system shortcuts
   const systemShortcuts = [
-    'ctrl+alt+del', 'alt+f4', 'ctrl+c', 'ctrl+v', 'ctrl+x', 'ctrl+z',
-    'ctrl+a', 'ctrl+s', 'ctrl+o', 'ctrl+n', 'ctrl+w', 'ctrl+r',
-    'alt+tab', 'ctrl+tab', 'ctrl+shift+tab', 'alt+shift+tab',
-    'win+l', 'win+r', 'win+e', 'win+d', 'win+m', 'win+tab'
+    'ctrl+alt+del',
+    'alt+f4',
+    'ctrl+c',
+    'ctrl+v',
+    'ctrl+x',
+    'ctrl+z',
+    'ctrl+a',
+    'ctrl+s',
+    'ctrl+o',
+    'ctrl+n',
+    'ctrl+w',
+    'ctrl+r',
+    'alt+tab',
+    'ctrl+tab',
+    'ctrl+shift+tab',
+    'alt+shift+tab',
+    'win+l',
+    'win+r',
+    'win+e',
+    'win+d',
+    'win+m',
+    'win+tab',
   ];
 
   return !systemShortcuts.includes(hotkey.toLowerCase());
@@ -4068,88 +4327,108 @@ function acceleratorToUIOhookKey(accelerator) {
   if (!uiohookAvailable) return null;
   if (!accelerator || typeof accelerator !== 'string') return null;
 
-  const parts = accelerator.split('+').map(p => p.trim().toLowerCase());
+  const parts = accelerator.split('+').map((p) => p.trim().toLowerCase());
 
   // Extract modifiers - support all variants
   const config = {
-    ctrl: parts.includes('ctrl') || parts.includes('control') || parts.includes('commandorcontrol') || parts.includes('cmdorctrl'),
+    ctrl:
+      parts.includes('ctrl') ||
+      parts.includes('control') ||
+      parts.includes('commandorcontrol') ||
+      parts.includes('cmdorctrl'),
     alt: parts.includes('alt') || parts.includes('option'),
     shift: parts.includes('shift'),
-    meta: parts.includes('meta') || parts.includes('cmd') || parts.includes('command') || parts.includes('super')
+    meta:
+      parts.includes('meta') ||
+      parts.includes('cmd') ||
+      parts.includes('command') ||
+      parts.includes('super'),
   };
 
   // Get the main key (non-modifier) - include all possible modifier name variants
-  const modifiers = ['ctrl', 'control', 'commandorcontrol', 'cmdorctrl', 'alt', 'option', 'shift', 'meta', 'cmd', 'command', 'super'];
-  const mainKey = parts.find(p => !modifiers.includes(p));
+  const modifiers = [
+    'ctrl',
+    'control',
+    'commandorcontrol',
+    'cmdorctrl',
+    'alt',
+    'option',
+    'shift',
+    'meta',
+    'cmd',
+    'command',
+    'super',
+  ];
+  const mainKey = parts.find((p) => !modifiers.includes(p));
 
   if (!mainKey) return null;
 
   // Map common keys to UiohookKey codes
   const keyMap = {
-    'space': UiohookKey.Space,
-    'enter': UiohookKey.Enter,
-    'return': UiohookKey.Return,
-    'tab': UiohookKey.Tab,
-    'backspace': UiohookKey.Backspace,
-    'delete': UiohookKey.Delete,
-    'escape': UiohookKey.Escape,
-    'esc': UiohookKey.Escape,
-    'home': UiohookKey.Home,
-    'end': UiohookKey.End,
-    'pageup': UiohookKey.PageUp,
-    'pagedown': UiohookKey.PageDown,
-    'up': UiohookKey.Up,
-    'down': UiohookKey.Down,
-    'left': UiohookKey.Left,
-    'right': UiohookKey.Right,
-    'f1': UiohookKey.F1,
-    'f2': UiohookKey.F2,
-    'f3': UiohookKey.F3,
-    'f4': UiohookKey.F4,
-    'f5': UiohookKey.F5,
-    'f6': UiohookKey.F6,
-    'f7': UiohookKey.F7,
-    'f8': UiohookKey.F8,
-    'f9': UiohookKey.F9,
-    'f10': UiohookKey.F10,
-    'f11': UiohookKey.F11,
-    'f12': UiohookKey.F12,
-    '0': UiohookKey.Digit0,
-    '1': UiohookKey.Digit1,
-    '2': UiohookKey.Digit2,
-    '3': UiohookKey.Digit3,
-    '4': UiohookKey.Digit4,
-    '5': UiohookKey.Digit5,
-    '6': UiohookKey.Digit6,
-    '7': UiohookKey.Digit7,
-    '8': UiohookKey.Digit8,
-    '9': UiohookKey.Digit9,
-    'a': UiohookKey.A,
-    'b': UiohookKey.B,
-    'c': UiohookKey.C,
-    'd': UiohookKey.D,
-    'e': UiohookKey.E,
-    'f': UiohookKey.F,
-    'g': UiohookKey.G,
-    'h': UiohookKey.H,
-    'i': UiohookKey.I,
-    'j': UiohookKey.J,
-    'k': UiohookKey.K,
-    'l': UiohookKey.L,
-    'm': UiohookKey.M,
-    'n': UiohookKey.N,
-    'o': UiohookKey.O,
-    'p': UiohookKey.P,
-    'q': UiohookKey.Q,
-    'r': UiohookKey.R,
-    's': UiohookKey.S,
-    't': UiohookKey.T,
-    'u': UiohookKey.U,
-    'v': UiohookKey.V,
-    'w': UiohookKey.W,
-    'x': UiohookKey.X,
-    'y': UiohookKey.Y,
-    'z': UiohookKey.Z
+    space: UiohookKey.Space,
+    enter: UiohookKey.Enter,
+    return: UiohookKey.Return,
+    tab: UiohookKey.Tab,
+    backspace: UiohookKey.Backspace,
+    delete: UiohookKey.Delete,
+    escape: UiohookKey.Escape,
+    esc: UiohookKey.Escape,
+    home: UiohookKey.Home,
+    end: UiohookKey.End,
+    pageup: UiohookKey.PageUp,
+    pagedown: UiohookKey.PageDown,
+    up: UiohookKey.Up,
+    down: UiohookKey.Down,
+    left: UiohookKey.Left,
+    right: UiohookKey.Right,
+    f1: UiohookKey.F1,
+    f2: UiohookKey.F2,
+    f3: UiohookKey.F3,
+    f4: UiohookKey.F4,
+    f5: UiohookKey.F5,
+    f6: UiohookKey.F6,
+    f7: UiohookKey.F7,
+    f8: UiohookKey.F8,
+    f9: UiohookKey.F9,
+    f10: UiohookKey.F10,
+    f11: UiohookKey.F11,
+    f12: UiohookKey.F12,
+    0: UiohookKey.Digit0,
+    1: UiohookKey.Digit1,
+    2: UiohookKey.Digit2,
+    3: UiohookKey.Digit3,
+    4: UiohookKey.Digit4,
+    5: UiohookKey.Digit5,
+    6: UiohookKey.Digit6,
+    7: UiohookKey.Digit7,
+    8: UiohookKey.Digit8,
+    9: UiohookKey.Digit9,
+    a: UiohookKey.A,
+    b: UiohookKey.B,
+    c: UiohookKey.C,
+    d: UiohookKey.D,
+    e: UiohookKey.E,
+    f: UiohookKey.F,
+    g: UiohookKey.G,
+    h: UiohookKey.H,
+    i: UiohookKey.I,
+    j: UiohookKey.J,
+    k: UiohookKey.K,
+    l: UiohookKey.L,
+    m: UiohookKey.M,
+    n: UiohookKey.N,
+    o: UiohookKey.O,
+    p: UiohookKey.P,
+    q: UiohookKey.Q,
+    r: UiohookKey.R,
+    s: UiohookKey.S,
+    t: UiohookKey.T,
+    u: UiohookKey.U,
+    v: UiohookKey.V,
+    w: UiohookKey.W,
+    x: UiohookKey.X,
+    y: UiohookKey.Y,
+    z: UiohookKey.Z,
   };
 
   const keycode = keyMap[mainKey];
@@ -4205,16 +4484,21 @@ function registerPopupHotkey() {
       const { keycode, ctrl, alt, shift, meta } = popupHotkeyConfig;
 
       // Debug logging
-      log.debug(`Popup hotkey event: keycode=${event.keycode}, ctrl=${event.ctrlKey}, alt=${event.altKey}, shift=${event.shiftKey}, meta=${event.metaKey}`);
-      log.debug(`Expected config: keycode=${keycode}, ctrl=${ctrl}, alt=${alt}, shift=${shift}, meta=${meta}`);
+      log.debug(
+        `Popup hotkey event: keycode=${event.keycode}, ctrl=${event.ctrlKey}, alt=${event.altKey}, shift=${event.shiftKey}, meta=${event.metaKey}`
+      );
+      log.debug(
+        `Expected config: keycode=${keycode}, ctrl=${ctrl}, alt=${alt}, shift=${shift}, meta=${meta}`
+      );
 
       // Check if this is our hotkey - use Boolean coercion to handle undefined values
-      if (event.keycode === keycode &&
+      if (
+        event.keycode === keycode &&
         Boolean(event.ctrlKey) === ctrl &&
         Boolean(event.altKey) === alt &&
         Boolean(event.shiftKey) === shift &&
-        Boolean(event.metaKey) === meta) {
-
+        Boolean(event.metaKey) === meta
+      ) {
         if (config.popupHotkeyToggleMode) {
           // Smart toggle mode: only hide if window is visible AND focused, otherwise bring to top
           if (mainWindow && !mainWindow.isDestroyed()) {
@@ -4224,9 +4508,11 @@ function registerPopupHotkey() {
 
             // Use timestamp to prevent hiding immediately after showing (debounce 300ms)
             // This handles edge cases where focus detection is unreliable
-            const recentlyShown = popupHotkeyLastShownTime && (now - popupHotkeyLastShownTime) < 300;
+            const recentlyShown = popupHotkeyLastShownTime && now - popupHotkeyLastShownTime < 300;
 
-            log.debug(`Popup hotkey: visible=${isVisible}, focused=${isFocused}, recentlyShown=${recentlyShown}`);
+            log.debug(
+              `Popup hotkey: visible=${isVisible}, focused=${isFocused}, recentlyShown=${recentlyShown}`
+            );
 
             if (isVisible && isFocused && !recentlyShown) {
               // Window is already visible and focused (and not recently shown) - hide it
@@ -4256,7 +4542,9 @@ function registerPopupHotkey() {
 
               _popupHotkeyWindowVisible = true;
               popupHotkeyLastShownTime = now;
-              log.debug('Popup hotkey toggle - window shown and focused, alwaysOnTop restored to user preference');
+              log.debug(
+                'Popup hotkey toggle - window shown and focused, alwaysOnTop restored to user preference'
+              );
             }
           }
         } else {
@@ -4399,19 +4687,21 @@ function configureAutoUpdaterChannel(autoUpdater = getAutoUpdater()) {
 
 function selectPortableRelease(releases, allowPrerelease) {
   const currentVersion = normalizeVersion(app.getVersion());
-  return (Array.isArray(releases) ? releases : [])
-    .filter((release) => release && !release.draft)
-    .filter((release) => allowPrerelease || !release.prerelease)
-    .filter((release) => {
-      const version = normalizeVersion(release.tag_name || release.name || '');
-      if (!version) return false;
-      return !currentVersion || compareVersions(version, currentVersion) > 0;
-    })
-    .sort((left, right) => {
-      const leftVersion = normalizeVersion(left.tag_name || left.name || '');
-      const rightVersion = normalizeVersion(right.tag_name || right.name || '');
-      return compareVersions(rightVersion, leftVersion);
-    })[0] || null;
+  return (
+    (Array.isArray(releases) ? releases : [])
+      .filter((release) => release && !release.draft)
+      .filter((release) => allowPrerelease || !release.prerelease)
+      .filter((release) => {
+        const version = normalizeVersion(release.tag_name || release.name || '');
+        if (!version) return false;
+        return !currentVersion || compareVersions(version, currentVersion) > 0;
+      })
+      .sort((left, right) => {
+        const leftVersion = normalizeVersion(left.tag_name || left.name || '');
+        const rightVersion = normalizeVersion(right.tag_name || right.name || '');
+        return compareVersions(rightVersion, leftVersion);
+      })[0] || null
+  );
 }
 
 async function checkPortableUpdate() {
@@ -4424,14 +4714,14 @@ async function checkPortableUpdate() {
     const response = await axios.get(apiUrl, {
       headers: {
         'User-Agent': 'HA-Desktop-Widget',
-        'Accept': 'application/vnd.github+json'
+        Accept: 'application/vnd.github+json',
       },
-      timeout: 10000
+      timeout: 10000,
     });
 
     const release = allowPrerelease
       ? selectPortableRelease(response?.data, allowPrerelease)
-      : (response?.data || {});
+      : response?.data || {};
     if (!release) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
@@ -4443,7 +4733,11 @@ async function checkPortableUpdate() {
       return name.includes('portable') && name.includes(archToken);
     });
     if (!portableAsset) {
-      portableAsset = assets.find((asset) => String(asset?.name || '').toLowerCase().includes('portable'));
+      portableAsset = assets.find((asset) =>
+        String(asset?.name || '')
+          .toLowerCase()
+          .includes('portable')
+      );
     }
 
     const latestVersion = normalizeVersion(release.tag_name || release.name || '');
@@ -4453,7 +4747,7 @@ async function checkPortableUpdate() {
       return {
         status: 'error',
         error: 'Unable to determine the latest Portable release version.',
-        downloadUrl
+        downloadUrl,
       };
     }
 
@@ -4464,10 +4758,16 @@ async function checkPortableUpdate() {
     return {
       status: 'portable',
       message: isPrereleaseVersion(latestVersion)
-        ? mainT('Portable beta update available: v{{version}}. Click "Download Portable Update" to get the Portable build.', { version: latestVersion })
-        : mainT('Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.', { version: latestVersion }),
+        ? mainT(
+            'Portable beta update available: v{{version}}. Click "Download Portable Update" to get the Portable build.',
+            { version: latestVersion }
+          )
+        : mainT(
+            'Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.',
+            { version: latestVersion }
+          ),
       version: latestVersion,
-      downloadUrl
+      downloadUrl,
     };
   } catch (error) {
     return { status: 'error', error: error?.message || String(error) };
@@ -4518,7 +4818,7 @@ function setupAutoUpdates() {
     });
 
     // Keep the first packaged-launch window responsive before doing network/update work.
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => { }), 30000);
+    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 30000);
   } catch (error) {
     log.error('Auto-update setup failed:', error);
   }

@@ -2,7 +2,11 @@
  * @jest-environment jsdom
  */
 
-const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  getMockConfig,
+} = require('../mocks/electron.js');
 const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Create mock electronAPI instance
@@ -13,20 +17,20 @@ const mockHlsInstance = {
   loadSource: jest.fn(),
   attachMedia: jest.fn(),
   on: jest.fn(),
-  destroy: jest.fn()
+  destroy: jest.fn(),
 };
 
 const mockHls = jest.fn(() => mockHlsInstance);
 mockHls.isSupported = jest.fn(() => true);
 mockHls.Events = {
-  ERROR: 'hlsError'
+  ERROR: 'hlsError',
 };
 
 jest.mock('hls.js', () => mockHls, { virtual: true });
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
-  showToast: jest.fn()
+  showToast: jest.fn(),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -51,26 +55,32 @@ jest.mock('../../src/utils.js', () => ({
   getEntityDisplayName: jest.fn((entity) => {
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
-  })
+  }),
 }));
 
 // Mock WebSocket
 const mockWebSocketRequest = jest.fn();
 jest.mock('../../src/websocket.js', () => ({
-  request: mockWebSocketRequest
+  request: mockWebSocketRequest,
 }));
 
 // Mock state module
 const mockState = {
   CONFIG: null,
   STATES: {},
-  ACTIVE_HLS: new Map()
+  ACTIVE_HLS: new Map(),
 };
 
 jest.mock('../../src/state.js', () => ({
-  get CONFIG() { return mockState.CONFIG; },
-  get STATES() { return mockState.STATES; },
-  get ACTIVE_HLS() { return mockState.ACTIVE_HLS; }
+  get CONFIG() {
+    return mockState.CONFIG;
+  },
+  get STATES() {
+    return mockState.STATES;
+  },
+  get ACTIVE_HLS() {
+    return mockState.ACTIVE_HLS;
+  },
 }));
 
 // Mock console methods
@@ -106,7 +116,7 @@ beforeEach(() => {
   // Restore isSupported after mockClear
   mockHls.isSupported = jest.fn(() => true);
   mockHls.Events = {
-    ERROR: 'hlsError'
+    ERROR: 'hlsError',
   };
 
   // Reset WebSocket mock
@@ -134,7 +144,7 @@ describe('Camera Module', () => {
     it('should request HLS stream URL from WebSocket', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       await camera.getHlsStreamUrl('camera.front_door');
@@ -142,14 +152,14 @@ describe('Camera Module', () => {
       expect(mockWebSocketRequest).toHaveBeenCalledWith({
         type: 'camera/stream',
         entity_id: 'camera.front_door',
-        format: 'hls'
+        format: 'hls',
       });
     });
 
     it('should return proxied ha://hls URL on success', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       const result = await camera.getHlsStreamUrl('camera.front_door');
@@ -160,7 +170,7 @@ describe('Camera Module', () => {
     it('should handle string result for backward compatibility', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: '/api/hls/master_playlist.m3u8'
+        result: '/api/hls/master_playlist.m3u8',
       });
 
       const result = await camera.getHlsStreamUrl('camera.front_door');
@@ -171,7 +181,7 @@ describe('Camera Module', () => {
     it('should handle object result with url property', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       const result = await camera.getHlsStreamUrl('camera.front_door');
@@ -182,7 +192,7 @@ describe('Camera Module', () => {
     it('should convert relative URL to absolute using CONFIG.homeAssistant.url', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8?token=abc' }
+        result: { url: '/api/hls/master_playlist.m3u8?token=abc' },
       });
 
       const result = await camera.getHlsStreamUrl('camera.front_door');
@@ -200,7 +210,7 @@ describe('Camera Module', () => {
 
     it('should return null when result.success is false', async () => {
       mockWebSocketRequest.mockResolvedValue({
-        success: false
+        success: false,
       });
 
       const result = await camera.getHlsStreamUrl('camera.front_door');
@@ -240,7 +250,7 @@ describe('Camera Module', () => {
 
     afterEach(() => {
       // Clean up any modals created during tests
-      document.querySelectorAll('.camera-modal').forEach(modal => modal.remove());
+      document.querySelectorAll('.camera-modal').forEach((modal) => modal.remove());
 
       // Restore Date.now spy
       if (dateNowSpy) {
@@ -360,7 +370,7 @@ describe('Camera Module', () => {
 
     it('should toggle Live button text to Stop when live started', async () => {
       mockWebSocketRequest.mockResolvedValue({
-        success: false // Make HLS fail to avoid complexity
+        success: false, // Make HLS fail to avoid complexity
       });
 
       camera.openCamera('camera.front_door');
@@ -371,14 +381,14 @@ describe('Camera Module', () => {
       await liveBtn.click();
 
       // Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(liveBtn.textContent).toBe('Stop');
     });
 
     it('should toggle Live button back to Live when stopped', async () => {
       mockWebSocketRequest.mockResolvedValue({
-        success: false
+        success: false,
       });
 
       camera.openCamera('camera.front_door');
@@ -387,7 +397,7 @@ describe('Camera Module', () => {
 
       // Start live
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Stop live
       await liveBtn.click();
@@ -418,7 +428,7 @@ describe('Camera Module', () => {
     });
 
     afterEach(() => {
-      document.querySelectorAll('.camera-modal').forEach(modal => modal.remove());
+      document.querySelectorAll('.camera-modal').forEach((modal) => modal.remove());
 
       // Restore Date.now spy
       if (dateNowSpy) {
@@ -429,7 +439,7 @@ describe('Camera Module', () => {
     it('should attempt HLS stream when Live button clicked', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       camera.openCamera('camera.front_door');
@@ -443,26 +453,26 @@ describe('Camera Module', () => {
       await liveBtn.click();
 
       // Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockWebSocketRequest).toHaveBeenCalledWith({
         type: 'camera/stream',
         entity_id: 'camera.front_door',
-        format: 'hls'
+        format: 'hls',
       });
     });
 
     it('should create video element for HLS', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const video = document.querySelector('video.camera-video');
       expect(video).toBeTruthy();
@@ -471,32 +481,32 @@ describe('Camera Module', () => {
     it('should initialize HLS with correct configuration', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockHls).toHaveBeenCalledWith({
         lowLatencyMode: true,
-        backBufferLength: 90
+        backBufferLength: 90,
       });
     });
 
     it('should set video attributes correctly', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const video = document.querySelector('video.camera-video');
       expect(video.muted).toBe(true);
@@ -508,14 +518,14 @@ describe('Camera Module', () => {
     it('should show video and hide img on HLS success', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const video = document.querySelector('video.camera-video');
       const img = document.querySelector('.camera-img');
@@ -526,14 +536,14 @@ describe('Camera Module', () => {
 
     it('should fallback to MJPEG if HLS not available', async () => {
       mockWebSocketRequest.mockResolvedValue({
-        success: false
+        success: false,
       });
 
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const img = document.querySelector('.camera-img');
       expect(img.src).toBe('ha://camera_stream/camera.front_door?t=1234567890');
@@ -543,7 +553,7 @@ describe('Camera Module', () => {
     it('should handle Safari native HLS support', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       // Mock HLS.js not supported but video.canPlayType returns true (Safari)
@@ -553,7 +563,7 @@ describe('Camera Module', () => {
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Create video element with canPlayType mock
       const video = document.querySelector('video.camera-video');
@@ -568,14 +578,14 @@ describe('Camera Module', () => {
     it('should destroy HLS when modal is closed', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
-        result: { url: '/api/hls/master_playlist.m3u8' }
+        result: { url: '/api/hls/master_playlist.m3u8' },
       });
 
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
       await liveBtn.click();
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Close modal
       const closeBtn = document.querySelector('.close-btn');

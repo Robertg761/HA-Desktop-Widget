@@ -15,15 +15,15 @@ let mockConfig = {
   homeAssistant: {
     url: 'http://homeassistant.local:8123',
     token: 'mock_long_lived_access_token',
-    tokenEncrypted: false
+    tokenEncrypted: false,
   },
   globalHotkeys: {
     enabled: false,
-    hotkeys: {}
+    hotkeys: {},
   },
   entityAlerts: {
     enabled: false,
-    alerts: {}
+    alerts: {},
   },
   popupHotkey: '',
   favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
@@ -42,7 +42,7 @@ let mockConfig = {
     customColors: [],
     personalizationSectionsCollapsed: {},
     use24HourClock: false,
-    enableInteractionDebugLogs: false
+    enableInteractionDebugLogs: false,
   },
   customTabs: [],
   profileSync: {
@@ -55,8 +55,8 @@ let mockConfig = {
         quickAccessLayout: true,
         visualPersonalization: true,
         automationAlerts: true,
-        connectionMediaPreferences: true
-      }
+        connectionMediaPreferences: true,
+      },
     },
     intervalMinutes: 5,
     encryptionEnabled: false,
@@ -65,8 +65,8 @@ let mockConfig = {
     lastSyncAt: null,
     lastSyncStatus: 'idle',
     lastSyncError: '',
-    deviceId: 'test-device-1'
-  }
+    deviceId: 'test-device-1',
+  },
 };
 
 // Event listeners storage
@@ -79,71 +79,92 @@ const eventListeners = {
   configUpdated: [],
   desktopPinUpdate: [],
   desktopPinActionRequested: [],
-  entityTileHotkeyRequested: []
+  entityTileHotkeyRequested: [],
 };
 
 /**
  * Creates a mock window.electronAPI object
  */
 function createMockElectronAPI() {
-  const chooseProfileSyncFolder = jest.fn((provider = 'cloudFile') => Promise.resolve({
-    canceled: false,
-    folderPath: '/tmp/profile-sync',
-    filePath: '/tmp/profile-sync/ha-widget-profile-sync.json',
-    provider
-  }));
-  const copyProfileSyncFile = jest.fn((_fromPath, _toPath, _overwrite = false) => Promise.resolve({
-    ok: true,
-    status: 'copied',
-    copied: true,
-    overwritten: false
-  }));
+  const chooseProfileSyncFolder = jest.fn((provider = 'cloudFile') =>
+    Promise.resolve({
+      canceled: false,
+      folderPath: '/tmp/profile-sync',
+      filePath: '/tmp/profile-sync/ha-widget-profile-sync.json',
+      provider,
+    })
+  );
+  const copyProfileSyncFile = jest.fn((_fromPath, _toPath, _overwrite = false) =>
+    Promise.resolve({
+      ok: true,
+      status: 'copied',
+      copied: true,
+      overwritten: false,
+    })
+  );
 
   return {
     // Config Operations
     getConfig: jest.fn(() => Promise.resolve({ ...mockConfig })),
-    getLocaleBootstrap: jest.fn(() => Promise.resolve({
-      languageSetting: mockConfig.ui?.language || 'auto',
-      detectedLocale: 'en',
-      requestedLocale: mockConfig.ui?.language === 'auto' ? 'en' : (mockConfig.ui?.language || 'en'),
-      activeLocale: 'en',
-      fallbackLocale: 'en',
-      localeSource: 'bundled',
-      packInstalled: true,
-      usingEnglishFallback: false,
-      messages: {},
-      installedPacks: [],
-    })),
-    getLocalePacks: jest.fn(() => Promise.resolve([
-      {
-        locale: 'fr',
-        displayName: 'Français',
-        englishName: 'French',
-        version: '1.0.0',
-        latestVersion: '1.0.0',
-        installed: false,
-        updateAvailable: false,
-      }
-    ])),
-    downloadLocalePack: jest.fn((locale) => Promise.resolve({
-      success: true,
-      pack: { locale, displayName: locale, englishName: locale, version: '1.0.0', installed: true },
-      packs: [{
+    getLocaleBootstrap: jest.fn(() =>
+      Promise.resolve({
+        languageSetting: mockConfig.ui?.language || 'auto',
+        detectedLocale: 'en',
+        requestedLocale:
+          mockConfig.ui?.language === 'auto' ? 'en' : mockConfig.ui?.language || 'en',
+        activeLocale: 'en',
+        fallbackLocale: 'en',
+        localeSource: 'bundled',
+        packInstalled: true,
+        usingEnglishFallback: false,
+        messages: {},
+        installedPacks: [],
+      })
+    ),
+    getLocalePacks: jest.fn(() =>
+      Promise.resolve([
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          englishName: 'French',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: false,
+          updateAvailable: false,
+        },
+      ])
+    ),
+    downloadLocalePack: jest.fn((locale) =>
+      Promise.resolve({
+        success: true,
+        pack: {
+          locale,
+          displayName: locale,
+          englishName: locale,
+          version: '1.0.0',
+          installed: true,
+        },
+        packs: [
+          {
+            locale,
+            displayName: locale,
+            englishName: locale,
+            version: '1.0.0',
+            latestVersion: '1.0.0',
+            installed: true,
+            updateAvailable: false,
+          },
+        ],
+      })
+    ),
+    removeLocalePack: jest.fn((locale) =>
+      Promise.resolve({
+        success: true,
+        removed: true,
         locale,
-        displayName: locale,
-        englishName: locale,
-        version: '1.0.0',
-        latestVersion: '1.0.0',
-        installed: true,
-        updateAvailable: false,
-      }],
-    })),
-    removeLocalePack: jest.fn((locale) => Promise.resolve({
-      success: true,
-      removed: true,
-      locale,
-      packs: [],
-    })),
+        packs: [],
+      })
+    ),
     updateConfig: jest.fn((config) => {
       mockConfig = {
         ...mockConfig,
@@ -171,33 +192,37 @@ function createMockElectronAPI() {
     chooseProfileSyncFolder,
     copyProfileSyncFile,
     chooseProfileSyncFile: chooseProfileSyncFolder,
-    getProfileSyncStatus: jest.fn(() => Promise.resolve({
-      enabled: !!mockConfig.profileSync?.enabled,
-      provider: mockConfig.profileSync?.provider || 'cloudFile',
-      cloudFilePath: mockConfig.profileSync?.cloudFilePath || '',
-      syncScope: mockConfig.profileSync?.syncScope || {
-        preset: 'all',
-        sections: {
-          quickAccessLayout: true,
-          visualPersonalization: true,
-          automationAlerts: true,
-          connectionMediaPreferences: true
-        }
-      },
-      intervalMinutes: mockConfig.profileSync?.intervalMinutes || 5,
-      encryptionEnabled: !!mockConfig.profileSync?.encryptionEnabled,
-      rememberPassphrase: !!mockConfig.profileSync?.rememberPassphrase,
-      passphraseEncrypted: !!mockConfig.profileSync?.passphraseEncrypted,
-      passphraseStored: false,
-      passphraseWarning: '',
-      lastSyncAt: mockConfig.profileSync?.lastSyncAt || null,
-      lastSyncStatus: mockConfig.profileSync?.lastSyncStatus || 'idle',
-      lastSyncError: mockConfig.profileSync?.lastSyncError || '',
-      inFlight: false,
-      needsResolution: false
-    })),
+    getProfileSyncStatus: jest.fn(() =>
+      Promise.resolve({
+        enabled: !!mockConfig.profileSync?.enabled,
+        provider: mockConfig.profileSync?.provider || 'cloudFile',
+        cloudFilePath: mockConfig.profileSync?.cloudFilePath || '',
+        syncScope: mockConfig.profileSync?.syncScope || {
+          preset: 'all',
+          sections: {
+            quickAccessLayout: true,
+            visualPersonalization: true,
+            automationAlerts: true,
+            connectionMediaPreferences: true,
+          },
+        },
+        intervalMinutes: mockConfig.profileSync?.intervalMinutes || 5,
+        encryptionEnabled: !!mockConfig.profileSync?.encryptionEnabled,
+        rememberPassphrase: !!mockConfig.profileSync?.rememberPassphrase,
+        passphraseEncrypted: !!mockConfig.profileSync?.passphraseEncrypted,
+        passphraseStored: false,
+        passphraseWarning: '',
+        lastSyncAt: mockConfig.profileSync?.lastSyncAt || null,
+        lastSyncStatus: mockConfig.profileSync?.lastSyncStatus || 'idle',
+        lastSyncError: mockConfig.profileSync?.lastSyncError || '',
+        inFlight: false,
+        needsResolution: false,
+      })
+    ),
     runProfileSync: jest.fn((_direction) => Promise.resolve({ ok: true, action: 'none' })),
-    setProfileSyncPassphrase: jest.fn((_passphrase, _remember) => Promise.resolve({ success: true })),
+    setProfileSyncPassphrase: jest.fn((_passphrase, _remember) =>
+      Promise.resolve({ success: true })
+    ),
     clearProfileSyncPassphrase: jest.fn(() => Promise.resolve({ success: true })),
     resolveProfileSyncFirstEnable: jest.fn((_choice) => Promise.resolve({ success: true })),
 
@@ -205,29 +230,52 @@ function createMockElectronAPI() {
     setOpacity: jest.fn((_opacity) => Promise.resolve()),
     setAlwaysOnTop: jest.fn((_value) => Promise.resolve()),
     getLoginItemSettings: jest.fn(() => Promise.resolve({ openAtLogin: false })),
-    setLoginItemSettings: jest.fn((openAtLogin) => Promise.resolve({ success: true, openAtLogin: !!openAtLogin })),
-    getWindowState: jest.fn(() => Promise.resolve({
-      isAlwaysOnTop: mockConfig.alwaysOnTop,
-      opacity: mockConfig.opacity,
-      position: mockConfig.windowPosition,
-      size: mockConfig.windowSize
-    })),
+    setLoginItemSettings: jest.fn((openAtLogin) =>
+      Promise.resolve({ success: true, openAtLogin: !!openAtLogin })
+    ),
+    getWindowState: jest.fn(() =>
+      Promise.resolve({
+        isAlwaysOnTop: mockConfig.alwaysOnTop,
+        opacity: mockConfig.opacity,
+        position: mockConfig.windowPosition,
+        size: mockConfig.windowSize,
+      })
+    ),
     minimizeWindow: jest.fn(() => Promise.resolve()),
     focusWindow: jest.fn(() => Promise.resolve()),
     focusDesktopPin: jest.fn((_entityId) => Promise.resolve({ focused: true, exists: true })),
-    pinEntityToDesktop: jest.fn((_entityId) => Promise.resolve({
-      success: true,
-      focused: false,
-      pinBounds: { x: 10, y: 20, width: 168, height: 148 }
-    })),
+    pinEntityToDesktop: jest.fn((_entityId) =>
+      Promise.resolve({
+        success: true,
+        focused: false,
+        pinBounds: { x: 10, y: 20, width: 168, height: 148 },
+      })
+    ),
     unpinEntityFromDesktop: jest.fn((_entityId) => Promise.resolve({ success: true })),
-    setDesktopPinEditMode: jest.fn((_enabled) => Promise.resolve({ success: true, enabled: !!_enabled })),
-    updateDesktopPinBounds: jest.fn((_entityId, bounds) => Promise.resolve({ success: true, pinBounds: bounds })),
-    syncDesktopPinContentMinBounds: jest.fn((_entityId, minBounds) => Promise.resolve({ success: true, minBounds, pinBounds: { x: 10, y: 20, width: minBounds?.width || 168, height: minBounds?.height || 148 } })),
+    setDesktopPinEditMode: jest.fn((_enabled) =>
+      Promise.resolve({ success: true, enabled: !!_enabled })
+    ),
+    updateDesktopPinBounds: jest.fn((_entityId, bounds) =>
+      Promise.resolve({ success: true, pinBounds: bounds })
+    ),
+    syncDesktopPinContentMinBounds: jest.fn((_entityId, minBounds) =>
+      Promise.resolve({
+        success: true,
+        minBounds,
+        pinBounds: {
+          x: 10,
+          y: 20,
+          width: minBounds?.width || 168,
+          height: minBounds?.height || 148,
+        },
+      })
+    ),
     getDesktopPinBootstrap: jest.fn((_entityId) => Promise.resolve(null)),
     publishHaSnapshot: jest.fn((_states) => Promise.resolve()),
     publishHaEntityUpdate: jest.fn((_entity) => Promise.resolve()),
-    requestDesktopPinAction: jest.fn((_entityId, _action, _payload) => Promise.resolve({ success: true })),
+    requestDesktopPinAction: jest.fn((_entityId, _action, _payload) =>
+      Promise.resolve({ success: true })
+    ),
     showEntityTileMenu: jest.fn((_entityId) => Promise.resolve({ shown: true })),
     restartApp: jest.fn(() => Promise.resolve()),
     quitApp: jest.fn(() => Promise.resolve()),
@@ -321,7 +369,7 @@ function createMockElectronAPI() {
         const index = eventListeners.entityTileHotkeyRequested.indexOf(callback);
         if (index > -1) eventListeners.entityTileHotkeyRequested.splice(index, 1);
       };
-    })
+    }),
   };
 }
 
@@ -331,7 +379,7 @@ function createMockElectronAPI() {
 function triggerMockEvent(eventType, data) {
   const listeners = eventListeners[eventType];
   if (listeners) {
-    listeners.forEach(callback => callback(data));
+    listeners.forEach((callback) => callback(data));
   }
 }
 
@@ -347,15 +395,15 @@ function resetMockElectronAPI() {
     homeAssistant: {
       url: 'http://homeassistant.local:8123',
       token: 'mock_long_lived_access_token',
-      tokenEncrypted: false
+      tokenEncrypted: false,
     },
     globalHotkeys: {
       enabled: false,
-      hotkeys: {}
+      hotkeys: {},
     },
     entityAlerts: {
       enabled: false,
-      alerts: {}
+      alerts: {},
     },
     popupHotkey: '',
     favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
@@ -374,7 +422,7 @@ function resetMockElectronAPI() {
       customColors: [],
       personalizationSectionsCollapsed: {},
       use24HourClock: false,
-      enableInteractionDebugLogs: false
+      enableInteractionDebugLogs: false,
     },
     customTabs: [],
     profileSync: {
@@ -387,8 +435,8 @@ function resetMockElectronAPI() {
           quickAccessLayout: true,
           visualPersonalization: true,
           automationAlerts: true,
-          connectionMediaPreferences: true
-        }
+          connectionMediaPreferences: true,
+        },
       },
       intervalMinutes: 5,
       encryptionEnabled: false,
@@ -397,8 +445,8 @@ function resetMockElectronAPI() {
       lastSyncAt: null,
       lastSyncStatus: 'idle',
       lastSyncError: '',
-      deviceId: 'test-device-1'
-    }
+      deviceId: 'test-device-1',
+    },
   };
 
   // Clear event listeners
@@ -431,5 +479,5 @@ module.exports = {
   triggerMockEvent,
   resetMockElectronAPI,
   getMockConfig,
-  setMockConfig
+  setMockConfig,
 };

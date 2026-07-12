@@ -27,6 +27,7 @@ npm test
 ```
 
 **What you'll see:**
+
 ```
 PASS tests/unit/state.test.js
 PASS tests/unit/utils.test.js
@@ -77,11 +78,13 @@ npm test -- --watch
 ### Step 1: Read the Error Message
 
 Jest provides clear error messages showing:
+
 - Which test failed
 - What was expected vs. what actually happened
 - The file and line number
 
 Example:
+
 ```
 FAIL tests/unit/state.test.js
   ● State Management › setConfig › should update CONFIG state
@@ -97,6 +100,7 @@ FAIL tests/unit/state.test.js
 ### Step 2: Fix the Issue
 
 Common causes:
+
 - **Your code has a bug** - Fix the logic in your source file
 - **The test is outdated** - Update the test to match new behavior
 - **You changed function signatures** - Update tests that call the changed function
@@ -108,19 +112,20 @@ After fixing, run `npm test` again to verify the fix.
 ### Step 4: Ask for Help (If Needed)
 
 If you're stuck:
+
 1. Look at similar tests in the same test file for patterns
 2. Check neighboring tests under `tests/unit/` or `tests/integration/` for shared setup patterns
 3. Ask a maintainer or create a GitHub issue
 
 ## Quick Reference
 
-| Command | Use Case |
-|---------|----------|
-| `npm test` | Run all tests (do this before commits) |
-| `npm test -- --coverage` | See test coverage report |
-| `npm test -- --watch` | Auto-rerun tests during development |
-| `npm test -- tests/unit/state.test.js` | Run single test file |
-| `npm run lint` | Check code style (also recommended before commits) |
+| Command                                | Use Case                                           |
+| -------------------------------------- | -------------------------------------------------- |
+| `npm test`                             | Run all tests (do this before commits)             |
+| `npm test -- --coverage`               | See test coverage report                           |
+| `npm test -- --watch`                  | Auto-rerun tests during development                |
+| `npm test -- tests/unit/state.test.js` | Run single test file                               |
+| `npm run lint`                         | Check code style (also recommended before commits) |
 
 ## Test Statistics
 

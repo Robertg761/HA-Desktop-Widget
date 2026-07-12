@@ -1,6 +1,6 @@
 jest.mock('../../src/ui.js', () => ({
   openEntityDetailModal: jest.fn(),
-  getEntityDomain: entityId => String(entityId || '').split('.')[0],
+  getEntityDomain: (entityId) => String(entityId || '').split('.')[0],
 }));
 
 const {
@@ -27,15 +27,19 @@ describe('command palette fuzzy scoring', () => {
 
   it('ranks entities by display name and entity id matches', () => {
     const entities = [
-      { entity_id: 'sensor.outdoor_temperature', state: '22', attributes: { friendly_name: 'Outside Temp' } },
+      {
+        entity_id: 'sensor.outdoor_temperature',
+        state: '22',
+        attributes: { friendly_name: 'Outside Temp' },
+      },
       { entity_id: 'light.kitchen', state: 'on', attributes: { friendly_name: 'Kitchen Light' } },
       { entity_id: 'switch.kettle', state: 'off', attributes: { friendly_name: 'Kettle' } },
     ];
 
     const ranked = rankCommandPaletteEntities(entities, 'kitchen', {
-      getDisplayName: entity => entity.attributes.friendly_name,
+      getDisplayName: (entity) => entity.attributes.friendly_name,
     });
 
-    expect(ranked.map(item => item.entity.entity_id)).toEqual(['light.kitchen']);
+    expect(ranked.map((item) => item.entity.entity_id)).toEqual(['light.kitchen']);
   });
 });

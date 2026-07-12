@@ -20,14 +20,22 @@ function supportsAutoUpdater(platform = process.platform, env = process.env) {
 
 function shouldUseTransparentWindow(platform = process.platform, env = process.env) {
   if (platform !== 'linux') return true;
-  const override = String(env?.HA_WIDGET_LINUX_TRANSPARENT_WINDOW || '').trim().toLowerCase();
+  const override = String(env?.HA_WIDGET_LINUX_TRANSPARENT_WINDOW || '')
+    .trim()
+    .toLowerCase();
   return override === '1' || override === 'true' || override === 'yes';
 }
 
-function getMainWindowVisualOptions({ platform = process.platform, frostedGlass = false, transparencyOptions = {} } = {}) {
+function getMainWindowVisualOptions({
+  platform = process.platform,
+  frostedGlass = false,
+  transparencyOptions = {},
+} = {}) {
   const options = {
     transparent: !!transparencyOptions.transparent,
-    backgroundColor: transparencyOptions.backgroundColor || (transparencyOptions.transparent ? '#00000000' : '#28282d'),
+    backgroundColor:
+      transparencyOptions.backgroundColor ||
+      (transparencyOptions.transparent ? '#00000000' : '#28282d'),
   };
 
   if (platform === 'win32') {

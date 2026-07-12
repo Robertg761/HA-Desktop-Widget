@@ -26,9 +26,8 @@ function getDesktopPinServiceProxyContext(serviceData = {}) {
   const params = new URLSearchParams(window.location?.search || '');
   if (params.get('mode') !== 'desktop-pin') return null;
 
-  const requestedEntityId = typeof serviceData?.entity_id === 'string'
-    ? serviceData.entity_id.trim()
-    : '';
+  const requestedEntityId =
+    typeof serviceData?.entity_id === 'string' ? serviceData.entity_id.trim() : '';
   const fallbackEntityId = (params.get('entityId') || '').trim();
   const entityId = requestedEntityId || fallbackEntityId;
 
@@ -64,7 +63,12 @@ class WebSocketManager extends EventEmitter {
   connect() {
     log.debug('Attempting to connect to Home Assistant WebSocket');
     this.emit('connect-attempt');
-    if (!state.CONFIG || !state.CONFIG.homeAssistant || !state.CONFIG.homeAssistant.url || !state.CONFIG.homeAssistant.token) {
+    if (
+      !state.CONFIG ||
+      !state.CONFIG.homeAssistant ||
+      !state.CONFIG.homeAssistant.url ||
+      !state.CONFIG.homeAssistant.token
+    ) {
       log.error('Invalid configuration for WebSocket');
       this.emit('status', false);
       this.emit('error', new Error('Invalid configuration. Please check settings.'));
@@ -75,7 +79,10 @@ class WebSocketManager extends EventEmitter {
     if (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
       log.error('Configuration contains default token');
       this.emit('status', false);
-      this.emit('error', new Error('Configuration contains default token. Please update settings.'));
+      this.emit(
+        'error',
+        new Error('Configuration contains default token. Please update settings.')
+      );
       this.emit('showLoading', false);
       return;
     }
@@ -209,29 +216,31 @@ class WebSocketManager extends EventEmitter {
 
     const requestPromise = this.request(subscription.payload);
     subscription.subscribeRequestId = requestPromise.id;
-    requestPromise.then((response) => {
-      if (subscription.subscribeRequestId !== response.id) return;
-      subscription.subscribeRequestId = null;
-      if (!response.success) {
-        log.warn('WebSocket subscription request was not successful:', response);
-        return;
-      }
-
-      if (!subscription.active) {
-        this.sendMessageUnsubscribe(response.id);
-        return;
-      }
-
-      subscription.subscriptionId = response.id;
-      this.messageSubscriptionHandlers.set(response.id, subscription);
-    }).catch((error) => {
-      if (subscription.subscribeRequestId === requestPromise.id) {
+    requestPromise
+      .then((response) => {
+        if (subscription.subscribeRequestId !== response.id) return;
         subscription.subscribeRequestId = null;
-      }
-      if (subscription.active) {
-        log.warn('WebSocket subscription request failed:', error);
-      }
-    });
+        if (!response.success) {
+          log.warn('WebSocket subscription request was not successful:', response);
+          return;
+        }
+
+        if (!subscription.active) {
+          this.sendMessageUnsubscribe(response.id);
+          return;
+        }
+
+        subscription.subscriptionId = response.id;
+        this.messageSubscriptionHandlers.set(response.id, subscription);
+      })
+      .catch((error) => {
+        if (subscription.subscribeRequestId === requestPromise.id) {
+          subscription.subscribeRequestId = null;
+        }
+        if (subscription.active) {
+          log.warn('WebSocket subscription request failed:', error);
+        }
+      });
   }
 
   sendMessageUnsubscribe(subscriptionId) {
@@ -307,28 +316,34 @@ class WebSocketManager extends EventEmitter {
       const shouldReturnResponse = options?.returnResponse === true;
       const proxyContext = getDesktopPinServiceProxyContext(serviceData);
       if ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && proxyContext) {
-        const proxiedPromise = window.electronAPI.requestDesktopPinAction(
-          proxyContext.entityId,
-          'service-call',
-          {
+        const proxiedPromise = window.electronAPI
+          .requestDesktopPinAction(proxyContext.entityId, 'service-call', {
             domain,
             service,
             serviceData: serviceData || {},
             ...(shouldReturnResponse ? { returnResponse: true } : {}),
-          }
-        ).then((response) => {
-          if (
-            response &&
-            response.forwarded === true &&
-            response.success !== false &&
-            !Object.prototype.hasOwnProperty.call(response, 'result')
-          ) {
-            throw new Error(`${domain}.${service} was forwarded without a service result`);
-          }
-          const checkedResponse = throwForFailedServiceResponse(response, `${domain}.${service} failed`);
-          if (!shouldReturnResponse) return checkedResponse;
-          return checkedResponse?.result?.response ?? checkedResponse?.response ?? checkedResponse?.result ?? checkedResponse;
-        });
+          })
+          .then((response) => {
+            if (
+              response &&
+              response.forwarded === true &&
+              response.success !== false &&
+              !Object.prototype.hasOwnProperty.call(response, 'result')
+            ) {
+              throw new Error(`${domain}.${service} was forwarded without a service result`);
+            }
+            const checkedResponse = throwForFailedServiceResponse(
+              response,
+              `${domain}.${service} failed`
+            );
+            if (!shouldReturnResponse) return checkedResponse;
+            return (
+              checkedResponse?.result?.response ??
+              checkedResponse?.response ??
+              checkedResponse?.result ??
+              checkedResponse
+            );
+          });
         proxiedPromise.id = null;
         return proxiedPromise;
       }
@@ -344,9 +359,17 @@ class WebSocketManager extends EventEmitter {
       const requestPromise = this.request(payload);
 
       const servicePromise = requestPromise.then((response) => {
-        const checkedResponse = throwForFailedServiceResponse(response, `${domain}.${service} failed`);
+        const checkedResponse = throwForFailedServiceResponse(
+          response,
+          `${domain}.${service} failed`
+        );
         if (!shouldReturnResponse) return checkedResponse;
-        return checkedResponse?.result?.response ?? checkedResponse?.response ?? checkedResponse?.result ?? checkedResponse;
+        return (
+          checkedResponse?.result?.response ??
+          checkedResponse?.response ??
+          checkedResponse?.result ??
+          checkedResponse
+        );
       });
 
       // Preserve request ID for tests and callers that correlate responses

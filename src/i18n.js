@@ -26,15 +26,20 @@ export function setLocaleBootstrap(bootstrap = {}) {
   localeState = {
     ...localeState,
     ...bootstrap,
-    messages: bootstrap?.messages && typeof bootstrap.messages === 'object'
-      ? bootstrap.messages
-      : localeState.messages,
+    messages:
+      bootstrap?.messages && typeof bootstrap.messages === 'object'
+        ? bootstrap.messages
+        : localeState.messages,
     installedPacks: Array.isArray(bootstrap?.installedPacks)
       ? bootstrap.installedPacks
       : localeState.installedPacks,
   };
   document.documentElement.lang = localeState.activeLocale || 'en';
-  document.documentElement.dir = RTL_LANGUAGE_CODES.has((localeState.activeLocale || 'en').split('-')[0]) ? 'rtl' : 'ltr';
+  document.documentElement.dir = RTL_LANGUAGE_CODES.has(
+    (localeState.activeLocale || 'en').split('-')[0]
+  )
+    ? 'rtl'
+    : 'ltr';
   return localeState;
 }
 
@@ -66,7 +71,9 @@ export function getLanguageDisplayName(locale, fallback = '') {
   try {
     if (!locale) return fallback || '';
     if (typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function') {
-      const displayNames = new Intl.DisplayNames([localeState.activeLocale || 'en'], { type: 'language' });
+      const displayNames = new Intl.DisplayNames([localeState.activeLocale || 'en'], {
+        type: 'language',
+      });
       return displayNames.of(locale) || fallback || locale;
     }
   } catch {
@@ -166,5 +173,9 @@ export function translateDocument(root = document) {
   if (root.nodeType === Node.ELEMENT_NODE) {
     translateElement(root);
   }
-  root.querySelectorAll?.('[data-i18n], [data-i18n-html], [data-i18n-title], [data-i18n-aria-label], [data-i18n-placeholder], [data-i18n-value]').forEach(translateElement);
+  root
+    .querySelectorAll?.(
+      '[data-i18n], [data-i18n-html], [data-i18n-title], [data-i18n-aria-label], [data-i18n-placeholder], [data-i18n-value]'
+    )
+    .forEach(translateElement);
 }

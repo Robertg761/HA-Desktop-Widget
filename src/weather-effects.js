@@ -150,7 +150,7 @@ export class WeatherEffectsManager {
         vy: 8 + Math.random() * 6,
         vx: -1.5 - Math.random() * 2.5,
         length: 20 + Math.random() * 20,
-        opacity: 0.35 + Math.random() * 0.4
+        opacity: 0.35 + Math.random() * 0.4,
       });
     }
   }
@@ -168,7 +168,7 @@ export class WeatherEffectsManager {
         swingSpeed: 0.015 + Math.random() * 0.02,
         swingRange: 1.5 + Math.random() * 2.0,
         swingAngle: Math.random() * Math.PI * 2,
-        opacity: 0.45 + Math.random() * 0.45
+        opacity: 0.45 + Math.random() * 0.45,
       });
     }
   }
@@ -182,7 +182,7 @@ export class WeatherEffectsManager {
         y: Math.random() * this.canvas.height * 0.6,
         vx: 0.08 + Math.random() * 0.08,
         radius: 180 + Math.random() * 120,
-        opacity: 0.12 + Math.random() * 0.12
+        opacity: 0.12 + Math.random() * 0.12,
       });
     }
   }
@@ -193,7 +193,7 @@ export class WeatherEffectsManager {
       x: this.canvas.width * 0.15,
       y: this.canvas.height * 0.15,
       pulse: 0,
-      pulseDirection: 1
+      pulseDirection: 1,
     };
   }
 
@@ -301,9 +301,9 @@ export class WeatherEffectsManager {
         } else if (progress < 0.16) {
           this.lightningOpacity = 0.45 - ((progress - 0.08) / 0.08) * 0.35;
         } else if (progress < 0.28) {
-          this.lightningOpacity = 0.10 + ((progress - 0.16) / 0.12) * 0.45;
+          this.lightningOpacity = 0.1 + ((progress - 0.16) / 0.12) * 0.45;
         } else if (progress < 0.45) {
-          this.lightningOpacity = 0.55 - ((progress - 0.28) / 0.17) * 0.40;
+          this.lightningOpacity = 0.55 - ((progress - 0.28) / 0.17) * 0.4;
         } else {
           this.lightningOpacity = 0.15 - ((progress - 0.45) / 0.55) * 0.15;
         }
@@ -387,7 +387,14 @@ export class WeatherEffectsManager {
     }
 
     const radius = 300 + this.sun.pulse * 60;
-    const gradient = this.ctx.createRadialGradient(this.sun.x, this.sun.y, 0, this.sun.x, this.sun.y, radius);
+    const gradient = this.ctx.createRadialGradient(
+      this.sun.x,
+      this.sun.y,
+      0,
+      this.sun.x,
+      this.sun.y,
+      radius
+    );
     gradient.addColorStop(0, 'rgba(255, 225, 150, 0.25)');
     gradient.addColorStop(0.5, 'rgba(255, 200, 110, 0.08)');
     gradient.addColorStop(1, 'rgba(255, 200, 110, 0)');
@@ -401,7 +408,14 @@ export class WeatherEffectsManager {
   drawSunStatic() {
     if (!this.ctx || !this.canvas || !this.sun) return;
     const radius = 320;
-    const gradient = this.ctx.createRadialGradient(this.sun.x, this.sun.y, 0, this.sun.x, this.sun.y, radius);
+    const gradient = this.ctx.createRadialGradient(
+      this.sun.x,
+      this.sun.y,
+      0,
+      this.sun.x,
+      this.sun.y,
+      radius
+    );
     gradient.addColorStop(0, 'rgba(255, 225, 150, 0.2)');
     gradient.addColorStop(0.5, 'rgba(255, 200, 110, 0.07)');
     gradient.addColorStop(1, 'rgba(255, 200, 110, 0)');

@@ -17,8 +17,12 @@ describe('main-process security helpers', () => {
     const normalizeEntityId = (value) => (typeof value === 'string' ? value.trim() : '');
 
     it('accepts normal Home Assistant entity IDs', () => {
-      expect(normalizeEntityIdForObjectKey(' light.kitchen_2 ', normalizeEntityId)).toBe('light.kitchen_2');
-      expect(normalizeEntityIdForObjectKey('input_button.TVMode', normalizeEntityId)).toBe('input_button.TVMode');
+      expect(normalizeEntityIdForObjectKey(' light.kitchen_2 ', normalizeEntityId)).toBe(
+        'light.kitchen_2'
+      );
+      expect(normalizeEntityIdForObjectKey('input_button.TVMode', normalizeEntityId)).toBe(
+        'input_button.TVMode'
+      );
     });
 
     it('rejects invalid and prototype-polluting object keys', () => {
@@ -73,7 +77,9 @@ describe('main-process security helpers', () => {
       const realSourceDir = await fs.promises.realpath(sourceDir);
       const realDestinationDir = await fs.promises.realpath(destinationDir);
       expect(result.sourcePath).toBe(path.join(realSourceDir, 'ha-widget-profile-sync.json'));
-      expect(result.destinationPath).toBe(path.join(realDestinationDir, 'ha-widget-profile-sync.json'));
+      expect(result.destinationPath).toBe(
+        path.join(realDestinationDir, 'ha-widget-profile-sync.json')
+      );
     });
 
     it('rejects wrong filenames and copies outside allowed folders', async () => {
@@ -82,21 +88,25 @@ describe('main-process security helpers', () => {
       fs.mkdirSync(sourceDir, { recursive: true });
       fs.mkdirSync(otherDir, { recursive: true });
 
-      await expect(validateProfileSyncCopyPaths({
-        fromPath: path.join(sourceDir, 'not-the-profile.json'),
-        toPath: path.join(otherDir, 'ha-widget-profile-sync.json'),
-        defaultFileName: 'ha-widget-profile-sync.json',
-        allowedFolders: [sourceDir],
-        fsModule: fs,
-      })).rejects.toThrow('Profile sync copies are limited');
+      await expect(
+        validateProfileSyncCopyPaths({
+          fromPath: path.join(sourceDir, 'not-the-profile.json'),
+          toPath: path.join(otherDir, 'ha-widget-profile-sync.json'),
+          defaultFileName: 'ha-widget-profile-sync.json',
+          allowedFolders: [sourceDir],
+          fsModule: fs,
+        })
+      ).rejects.toThrow('Profile sync copies are limited');
 
-      await expect(validateProfileSyncCopyPaths({
-        fromPath: path.join(otherDir, 'ha-widget-profile-sync.json'),
-        toPath: path.join(tempDir, 'outside', 'ha-widget-profile-sync.json'),
-        defaultFileName: 'ha-widget-profile-sync.json',
-        allowedFolders: [sourceDir],
-        fsModule: fs,
-      })).rejects.toThrow('configured sync folder or app data folder');
+      await expect(
+        validateProfileSyncCopyPaths({
+          fromPath: path.join(otherDir, 'ha-widget-profile-sync.json'),
+          toPath: path.join(tempDir, 'outside', 'ha-widget-profile-sync.json'),
+          defaultFileName: 'ha-widget-profile-sync.json',
+          allowedFolders: [sourceDir],
+          fsModule: fs,
+        })
+      ).rejects.toThrow('configured sync folder or app data folder');
     });
   });
 });
