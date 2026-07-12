@@ -18,6 +18,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "repo:check": "node scripts/check-repo-hygiene.cjs",
     "test": "jest",
     "test:coverage": "jest --coverage"
   },

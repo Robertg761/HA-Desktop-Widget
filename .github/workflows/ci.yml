@@ -28,6 +28,9 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Check repository hygiene
+        run: npm run repo:check
+
       - name: Run tests
         run: npm test
 
