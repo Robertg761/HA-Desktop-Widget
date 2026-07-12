@@ -100,6 +100,47 @@ describe('Home Assistant protocol handler', () => {
     expect(await response.text()).toBe('');
   });
 
+  it('rejects camera_stream entity ids that escape the camera proxy path', async () => {
+    const { handler, fetchStream } = createHandler();
+
+    const response = await handler(createRequest('ha://camera_stream/..%2F..%2Fapi%2Fstates'));
+
+    expect(response.status).toBe(400);
+    expect(fetchStream).not.toHaveBeenCalled();
+  });
+
+  it('rejects camera entity ids that escape the camera proxy path', async () => {
+    const { handler, fetchStream } = createHandler();
+
+    const response = await handler(createRequest('ha://camera/..%2F..%2Fapi%2Fstates'));
+
+    expect(response.status).toBe(400);
+    expect(fetchStream).not.toHaveBeenCalled();
+  });
+
+  it('rejects camera entity ids containing slashes after decoding', async () => {
+    const { handler, fetchStream } = createHandler();
+
+    const response = await handler(createRequest('ha://camera/camera.front%2Fapi%2Fstates'));
+
+    expect(response.status).toBe(400);
+    expect(fetchStream).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid camera entity ids', async () => {
+    const { handler, fetchStream } = createHandler();
+
+    const response = await handler(createRequest('ha://camera/camera.front_door'));
+
+    expect(response.status).toBe(200);
+    expect(fetchStream).toHaveBeenCalledWith(
+      'https://ha.example.test/api/camera_proxy/camera.front_door',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer secret-token' },
+      })
+    );
+  });
+
   it('fetches relative artwork with authorization and enforces the size/type validators', async () => {
     const { handler, fetchBinary } = createHandler();
     const encodedPath = encodeURIComponent(

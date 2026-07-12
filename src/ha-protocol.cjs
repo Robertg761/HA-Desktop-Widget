@@ -16,6 +16,8 @@ const MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES = new Set([
   'image/x-icon',
 ]);
 
+const HA_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
+
 const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-cache, no-store, must-revalidate',
   Pragma: 'no-cache',
@@ -253,6 +255,7 @@ function createHaProtocolHandler({
       if (!haUrl || !token || !entityId) return errorResponse(403);
 
       if (host === 'camera_stream') {
+        if (!HA_ENTITY_ID_PATTERN.test(entityId)) return errorResponse(400);
         const upstream = `${haUrl}/api/camera_proxy_stream/${entityId}`;
         const response = await fetchStream(upstream, {
           headers: { Authorization: `Bearer ${token}` },
@@ -277,6 +280,7 @@ function createHaProtocolHandler({
       }
 
       if (host === 'camera') {
+        if (!HA_ENTITY_ID_PATTERN.test(entityId)) return errorResponse(400);
         const upstream = `${haUrl}/api/camera_proxy/${entityId}`;
         const timeoutSignal = AbortSignal.timeout(15000);
         const response = await fetchStream(upstream, {
