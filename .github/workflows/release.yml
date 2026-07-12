@@ -158,6 +158,7 @@ jobs:
             dist/*.exe
             dist/*.blockmap
             dist/*.yml
+            !dist/builder-debug.yml
           if-no-files-found: error
 
   build-mac:
@@ -223,6 +224,7 @@ jobs:
             dist/*-mac.zip
             dist/*.blockmap
             dist/*.yml
+            !dist/builder-debug.yml
           if-no-files-found: error
 
   build-linux:
@@ -297,6 +299,7 @@ jobs:
             dist/*.deb
             dist/*.blockmap
             dist/*.yml
+            !dist/builder-debug.yml
           if-no-files-found: error
 
   publish-release:
@@ -321,6 +324,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          debug_artifact="$(find release-artifacts -type f -name 'builder-debug.yml' -print -quit)"
+          if [[ -n "$debug_artifact" ]]; then
+            echo "Internal electron-builder metadata must not be published: $debug_artifact" >&2
+            exit 1
+          fi
 
           artifacts=()
           while IFS= read -r -d '' artifact; do
