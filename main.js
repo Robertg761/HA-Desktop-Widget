@@ -5,8 +5,6 @@ const os = require('os');
 const { pathToFileURL, fileURLToPath } = require('url');
 const log = require('electron-log');
 const axios = require('axios');
-const http = require('http');
-const https = require('https');
 const pkg = require('./package.json');
 const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
@@ -37,6 +35,10 @@ const {
   validateProfileSyncCopyPaths,
 } = require('./src/main-security.cjs');
 const {
+  createElectronNetBinaryFetcher,
+  createHaProtocolHandler,
+} = require('./src/ha-protocol.cjs');
+const {
   getAppIconPath,
   getMainWindowVisualOptions,
   shouldUseTransparentWindow,
@@ -55,40 +57,9 @@ function getAutoUpdater() {
   return autoUpdaterInstance;
 }
 
-// HTTP agents with keep-alive for streaming connections (MJPEG, HLS)
-const httpKeepAliveAgent = new http.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 1000,
-  maxSockets: 100,
-  maxFreeSockets: 10,
-  timeout: 60000
-});
-
-const httpsKeepAliveAgent = new https.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 1000,
-  maxSockets: 100,
-  maxFreeSockets: 10,
-  timeout: 60000
-});
-
 const DESKTOP_PIN_WINDOW_CORNER_RADIUS = 24;
 const LOCALE_PACK_MANIFEST_URL = 'https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/manifest.json';
 const DESKTOP_PIN_ACTION_RESPONSE_TIMEOUT_MS = 30000;
-const MEDIA_ARTWORK_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-const MEDIA_ARTWORK_GENERIC_CONTENT_TYPES = new Set(['application/octet-stream', 'binary/octet-stream']);
-const MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES = new Set([
-  'image/apng',
-  'image/avif',
-  'image/bmp',
-  'image/gif',
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/vnd.microsoft.icon',
-  'image/webp',
-  'image/x-icon',
-]);
 const EXTERNAL_LINK_PROTOCOLS = new Set(['http:', 'https:']);
 
 function getLocalePackManifestSource() {
@@ -96,176 +67,6 @@ function getLocalePackManifestSource() {
     return pathToFileURL(path.join(__dirname, 'locale-packs', 'manifest.json')).toString();
   }
   return LOCALE_PACK_MANIFEST_URL;
-}
-
-function getHeaderValue(headers, name) {
-  if (!headers || !name) return undefined;
-  const value = headers[String(name).toLowerCase()];
-  if (Array.isArray(value)) return value[0];
-  return value;
-}
-
-function createProtocolError(message, statusCode, code) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-}
-
-function getContentLength(headers) {
-  const rawValue = getHeaderValue(headers, 'content-length');
-  if (rawValue === undefined || rawValue === null || rawValue === '') return null;
-  const parsed = Number(rawValue);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function getMimeType(contentType) {
-  if (!contentType || typeof contentType !== 'string') return '';
-  return contentType.split(';')[0].trim().toLowerCase();
-}
-
-function isPotentialMediaArtworkContentType(contentType) {
-  const mimeType = getMimeType(contentType);
-  if (!mimeType) return true;
-  if (MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES.has(mimeType)) return true;
-  return MEDIA_ARTWORK_GENERIC_CONTENT_TYPES.has(mimeType);
-}
-
-function sniffMediaArtworkContentType(buffer) {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
-
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47
-  ) {
-    return 'image/png';
-  }
-  if (buffer.slice(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
-  if (
-    buffer.length >= 12 &&
-    buffer.slice(0, 4).toString('ascii') === 'RIFF' &&
-    buffer.slice(8, 12).toString('ascii') === 'WEBP'
-  ) {
-    return 'image/webp';
-  }
-  if (
-    buffer.length >= 12 &&
-    buffer.slice(4, 8).toString('ascii') === 'ftyp' &&
-    ['avif', 'avis'].includes(buffer.slice(8, 12).toString('ascii'))
-  ) {
-    return 'image/avif';
-  }
-  if (buffer[0] === 0x42 && buffer[1] === 0x4d) return 'image/bmp';
-
-  return null;
-}
-
-function resolveMediaArtworkContentType(headers, buffer) {
-  const contentType = getHeaderValue(headers, 'content-type');
-  const mimeType = getMimeType(contentType);
-  if (MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES.has(mimeType)) return mimeType;
-
-  if (!mimeType || MEDIA_ARTWORK_GENERIC_CONTENT_TYPES.has(mimeType)) {
-    return sniffMediaArtworkContentType(buffer);
-  }
-
-  return null;
-}
-
-function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000, options = {}) {
-  return new Promise((resolve, reject) => {
-    let completed = false;
-    const chunks = [];
-    let receivedBytes = 0;
-    const maxBytes = Number.isFinite(Number(options.maxBytes))
-      ? Math.max(0, Math.floor(Number(options.maxBytes)))
-      : null;
-    const validateContentType = typeof options.validateContentType === 'function'
-      ? options.validateContentType
-      : null;
-
-    const request = net.request({
-      method: 'GET',
-      url,
-      redirect: 'follow',
-    });
-
-    Object.entries(headers || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null) return;
-      request.setHeader(key, String(value));
-    });
-    request.setHeader('Accept', 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8');
-
-    const timeoutId = setTimeout(() => {
-      if (completed) return;
-      completed = true;
-      try { request.abort(); } catch { /* noop */ }
-      reject(new Error(`Artwork request timeout after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    const rejectRequest = (error) => {
-      if (completed) return;
-      completed = true;
-      clearTimeout(timeoutId);
-      try { request.abort(); } catch { /* noop */ }
-      reject(error);
-    };
-
-    request.on('response', (response) => {
-      const responseHeaders = response.headers || {};
-      const statusCode = response.statusCode || 0;
-      const shouldValidateBody = statusCode >= 200 && statusCode < 300;
-      if (
-        shouldValidateBody &&
-        validateContentType &&
-        !validateContentType(getHeaderValue(responseHeaders, 'content-type'))
-      ) {
-        rejectRequest(createProtocolError('Artwork response is not an image', 415, 'MEDIA_ARTWORK_UNSUPPORTED_TYPE'));
-        return;
-      }
-
-      const contentLength = getContentLength(responseHeaders);
-      if (maxBytes !== null && contentLength !== null && contentLength > maxBytes) {
-        rejectRequest(createProtocolError('Artwork response is too large', 413, 'MEDIA_ARTWORK_TOO_LARGE'));
-        return;
-      }
-
-      response.on('data', (chunk) => {
-        if (completed) return;
-        const chunkBuffer = Buffer.from(chunk);
-        receivedBytes += chunkBuffer.length;
-        if (maxBytes !== null && receivedBytes > maxBytes) {
-          rejectRequest(createProtocolError('Artwork response is too large', 413, 'MEDIA_ARTWORK_TOO_LARGE'));
-          return;
-        }
-        chunks.push(chunkBuffer);
-      });
-
-      response.on('end', () => {
-        if (completed) return;
-        completed = true;
-        clearTimeout(timeoutId);
-        resolve({
-          status: response.statusCode || 0,
-          headers: response.headers || {},
-          data: Buffer.concat(chunks, receivedBytes),
-        });
-      });
-
-      response.on('error', (error) => {
-        rejectRequest(error);
-      });
-    });
-
-    request.on('error', (error) => {
-      rejectRequest(error);
-    });
-
-    request.end();
-  });
 }
 
 function isHttpOrHttpsUrl(rawUrl) {
@@ -4715,7 +4516,16 @@ app.on('before-quit', () => {
 
 // Register custom protocol before creating window
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'ha', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true } }
+  {
+    scheme: 'ha',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
 ]);
 
 app.whenReady().then(() => {
@@ -4729,134 +4539,16 @@ app.whenReady().then(() => {
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
   try {
-    const { Readable } = require('stream');
-    protocol.registerStreamProtocol('ha', async (request, respond) => {
-      try {
-        const url = new URL(request.url);
-        const host = url.hostname; // 'camera' or 'camera_stream'
-        const entityId = decodeURIComponent(url.pathname.replace(/^\//, ''));
-        const haUrl = (config && config.homeAssistant && config.homeAssistant.url) || '';
-        const token = (config && config.homeAssistant && config.homeAssistant.token) || '';
-        if (!haUrl || !token || !entityId) {
-          respond({ statusCode: 403 });
-          return;
-        }
-        if (host === 'camera_stream') {
-          const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy_stream/${entityId}`;
-          const isHttps = haUrl.startsWith('https://');
-          const res = await axios.get(upstream, {
-            headers: { Authorization: `Bearer ${token}` },
-            responseType: 'stream',
-            validateStatus: () => true,
-            timeout: 0,
-            maxRedirects: 5,
-            httpAgent: !isHttps ? httpKeepAliveAgent : undefined,
-            httpsAgent: isHttps ? httpsKeepAliveAgent : undefined
-          });
-          if (res.status >= 200 && res.status < 300) {
-            const contentType = res.headers['content-type'] || 'multipart/x-mixed-replace;boundary=--myboundary';
-            respond({ data: res.data, statusCode: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
-          } else {
-            respond({ statusCode: res.status || 502 });
-          }
-        } else if (host === 'hls') {
-          if (!isAllowedHlsProxyPath(url.pathname)) {
-            respond({ statusCode: 403 });
-            return;
-          }
-          const upstream = `${haUrl.replace(/\/$/, '')}${url.pathname}${url.search || ''}`;
-          const isHttps = haUrl.startsWith('https://');
-          const res = await axios.get(upstream, {
-            headers: { Authorization: `Bearer ${token}` },
-            responseType: 'stream',
-            validateStatus: () => true,
-            timeout: 0,
-            maxRedirects: 5,
-            httpAgent: !isHttps ? httpKeepAliveAgent : undefined,
-            httpsAgent: isHttps ? httpsKeepAliveAgent : undefined
-          });
-          if (res.status >= 200 && res.status < 300) {
-            const contentType = res.headers['content-type'] || (upstream.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/MP2T');
-            respond({ data: res.data, statusCode: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
-          } else {
-            respond({ statusCode: res.status || 502 });
-          }
-        } else if (host === 'camera') {
-          const upstream = `${haUrl.replace(/\/$/, '')}/api/camera_proxy/${entityId}`;
-          const res = await axios.get(upstream, {
-            headers: { Authorization: `Bearer ${token}` },
-            responseType: 'arraybuffer',
-            validateStatus: () => true,
-            timeout: 15000, // 15 second timeout for snapshots
-            maxRedirects: 5
-          });
-          if (res.status >= 200 && res.status < 300) {
-            const buf = Buffer.from(res.data);
-            const stream = Readable.from(buf);
-            const contentType = res.headers['content-type'] || 'image/jpeg';
-            respond({ data: stream, statusCode: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' } });
-          } else {
-            respond({ statusCode: res.status || 502 });
-          }
-        } else if (host === 'media_artwork') {
-          // Decode the base64-encoded URL from the path
-          const encodedUrl = decodeURIComponent(url.pathname.replace(/^\//, ''));
-          let artworkUrl;
-          try {
-            artworkUrl = Buffer.from(encodedUrl, 'base64').toString('utf-8');
-          } catch (decodeError) {
-            log.error('Failed to decode media artwork URL:', decodeError);
-            respond({ statusCode: 400 });
-            return;
-          }
-
-          // Determine if this is an external URL or HA-relative path
-          const isExternalUrl = artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://');
-          let upstream;
-          let headers = {};
-
-          if (isExternalUrl) {
-            // External CDN URL (Spotify, YouTube, etc.) - fetch without auth
-            upstream = artworkUrl;
-          } else {
-            // HA-relative path - add auth and construct full URL
-            const path = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
-            upstream = `${haUrl.replace(/\/$/, '')}${path}`;
-            headers = { Authorization: `Bearer ${token}` };
-          }
-
-          const res = await fetchBinaryWithElectronNet(upstream, headers, 10000, {
-            maxBytes: MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
-            validateContentType: isPotentialMediaArtworkContentType,
-          });
-
-          if (res.status >= 200 && res.status < 300) {
-            const buf = Buffer.isBuffer(res.data) ? res.data : Buffer.from(res.data);
-            const contentType = resolveMediaArtworkContentType(res.headers, buf);
-            if (!contentType) {
-              respond({ statusCode: 415 });
-              return;
-            }
-            const stream = Readable.from(buf);
-            respond({
-              data: stream,
-              statusCode: 200,
-              headers: {
-                'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=1800'
-              }
-            });
-          } else {
-            respond({ statusCode: res.status || 502 });
-          }
-        } else {
-          respond({ statusCode: 404 });
-        }
-      } catch (error) {
-        log.error('Protocol handler error:', error);
-        respond({ statusCode: error?.statusCode || 500 });
-      }
-    });
+    protocol.handle(
+      'ha',
+      createHaProtocolHandler({
+        getConfig: () => config,
+        fetchStream: (url, options) => net.fetch(url, options),
+        fetchBinary: createElectronNetBinaryFetcher(net),
+        isAllowedHlsProxyPath,
+        log,
+      })
+    );
   } catch (error) {
     log.error('Failed to register ha:// protocol', error);
   }

@@ -23,13 +23,11 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain("awaitResponse: normalizedAction === 'service-call'");
   });
 
-  it('limits media artwork proxy responses to image content within a bounded size', () => {
-    expect(mainSource).toContain('MEDIA_ARTWORK_MAX_RESPONSE_BYTES');
-    expect(mainSource).toContain('isPotentialMediaArtworkContentType');
-    expect(mainSource).toContain('resolveMediaArtworkContentType');
-    expect(mainSource).toContain('MEDIA_ARTWORK_TOO_LARGE');
-    expect(mainSource).toContain('MEDIA_ARTWORK_UNSUPPORTED_TYPE');
-    expect(mainSource).toContain("host === 'media_artwork'");
+  it('registers the streaming custom scheme with the current protocol API', () => {
+    expect(mainSource).toContain('stream: true');
+    expect(mainSource).toContain('protocol.handle(');
+    expect(mainSource).toContain('createHaProtocolHandler({');
+    expect(mainSource).not.toContain('protocol.registerStreamProtocol');
   });
 
   it('preserves persisted desktop pins during config normalization even when favorites are stale', () => {
