@@ -20,6 +20,11 @@ const {
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
 const {
+  createDesktopPinConnectionState,
+  createDesktopPinRendererConfig,
+  normalizeDesktopPinActionRequest,
+} = require('./src/desktop-pin-ipc.cjs');
+const {
   getWindowsStartupRegistryName,
   isWindowsLoginItemEnabled,
   quoteWindowsExecutablePath,
@@ -1030,7 +1035,10 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
     entity: latestEntityStates.get(entityId) || null,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[entityId] || null,
-    config: sanitizeConfigForRenderer(config),
+    config: createDesktopPinRendererConfig(config),
+    connection: createDesktopPinConnectionState(config, {
+      secureStoragePending: hasDeferredSecureConfigWork(),
+    }),
     editMode: desktopPinEditMode,
     ...extra,
   });
@@ -2882,7 +2890,7 @@ function schedulePostWindowStartupTasks() {
 
 // IPC handlers for configuration
 ipcMain.handle('get-config', (event) => {
-  const sender = authorizeIpcSender(event, 'get-config', { allowDesktopPin: true });
+  const sender = authorizeIpcSender(event, 'get-config');
   if (!sender) return rejectUnauthorizedIpc('get-config');
   return sanitizeConfigForRenderer(config);
 });
@@ -3153,14 +3161,17 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
     entity: latestEntityStates.get(normalizedEntityId) || null,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[normalizedEntityId] || null,
-    config: sanitizeConfigForRenderer(config),
+    config: createDesktopPinRendererConfig(config),
+    connection: createDesktopPinConnectionState(config, {
+      secureStoragePending: hasDeferredSecureConfigWork(),
+    }),
     isPinned: !!config?.desktopPins?.[normalizedEntityId],
     editMode: desktopPinEditMode,
   };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-snapshot', { allowDesktopPin: true });
+  const sender = authorizeIpcSender(event, 'publish-ha-snapshot');
   if (!sender) return rejectUnauthorizedIpc('publish-ha-snapshot');
   hasPublishedHaSnapshot = true;
   latestEntityStates.clear();
@@ -3180,7 +3191,7 @@ ipcMain.handle('publish-ha-snapshot', (event, states) => {
 });
 
 ipcMain.handle('publish-ha-entity-update', (event, entity) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-entity-update', { allowDesktopPin: true });
+  const sender = authorizeIpcSender(event, 'publish-ha-entity-update');
   if (!sender) return rejectUnauthorizedIpc('publish-ha-entity-update');
   const normalizedEntityId = normalizeEntityId(entity?.entity_id);
   if (!normalizedEntityId || !isPlainObject(entity)) {
@@ -3195,13 +3206,25 @@ ipcMain.handle('publish-ha-entity-update', (event, entity) => {
 ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload = {}) => {
   const sender = authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('request-desktop-pin-action');
-  const normalizedEntityId = normalizeEntityId(entityId);
-  const normalizedAction = typeof action === 'string' ? action.trim() : '';
+  let normalizedEntityId = normalizeEntityId(entityId);
+  let normalizedAction = typeof action === 'string' ? action.trim() : '';
+  let normalizedPayload = payload;
   if (!normalizedEntityId || !normalizedAction) {
     return { success: false, error: 'Invalid desktop pin action' };
   }
   if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
+  }
+  if (sender.type === 'desktop-pin') {
+    const normalizedRequest = normalizeDesktopPinActionRequest(
+      normalizedEntityId,
+      normalizedAction,
+      payload
+    );
+    if (!normalizedRequest.success) return normalizedRequest;
+    normalizedEntityId = normalizedRequest.entityId;
+    normalizedAction = normalizedRequest.action;
+    normalizedPayload = normalizedRequest.payload;
   }
 
   if (normalizedAction === 'open-settings') {
@@ -3221,7 +3244,7 @@ ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload =
   return forwardDesktopPinActionToMainWindow(
     normalizedEntityId,
     normalizedAction,
-    payload,
+    normalizedPayload,
     { awaitResponse: normalizedAction === 'service-call' }
   );
 });

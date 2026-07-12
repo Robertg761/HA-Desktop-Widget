@@ -3,7 +3,11 @@
  */
 
 const EventEmitter = require('events');
-const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  triggerMockEvent,
+} = require('../mocks/electron.js');
 
 describe('Renderer desktop pin waiting escape hatch', () => {
   let mockElectronAPI;
@@ -152,8 +156,13 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       config: {
         homeAssistant: {
           url: 'http://homeassistant.local:8123',
-          token: 'mock_long_lived_access_token',
         },
+        ui: {},
+      },
+      connection: {
+        hasUrl: true,
+        hasToken: true,
+        secureStoragePending: false,
       },
       entity: null,
       hasSnapshot: false,
@@ -263,10 +272,56 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
     expect(mockWebsocket.connect).not.toHaveBeenCalled();
+    expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
 
     focusBtn.click();
 
     expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
+  });
+
+  it('uses connection flags instead of requiring a token in renderer config', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        connection: {
+          hasUrl: true,
+          hasToken: false,
+          secureStoragePending: false,
+        },
+      },
+    });
+
+    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
+      hasSnapshot: false,
+      connectionIssue: 'Please configure your Home Assistant token in Settings (gear icon).',
+    });
+    expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
+  });
+
+  it('clears the connection warning when main reports that credentials are ready', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        connection: {
+          hasUrl: true,
+          hasToken: false,
+          secureStoragePending: false,
+        },
+      },
+    });
+
+    triggerMockEvent('desktopPinUpdate', {
+      entityId: 'light.bedroom',
+      connection: {
+        hasUrl: true,
+        hasToken: true,
+        secureStoragePending: false,
+      },
+    });
+    await flushAsync();
+
+    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
+      hasSnapshot: false,
+      connectionIssue: '',
+    });
   });
 
   it('hides Focus Main once live entity data is available', async () => {

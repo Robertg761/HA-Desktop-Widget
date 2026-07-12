@@ -4973,8 +4973,8 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
         }
 
         websocket.callService(domain, serviceName, {
-          entity_id: resolvedEntityId,
           ...serviceData,
+          entity_id: resolvedEntityId,
         }).then((result) => {
           sendResponse(normalizeDesktopPinActionResult(result));
         }).catch((error) => {

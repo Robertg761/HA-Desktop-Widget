@@ -95,6 +95,11 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain("authorizeIpcSender(event, 'update-config')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'copy-profile-sync-file')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })");
+    expect(mainSource).toContain('config: createDesktopPinRendererConfig(config)');
+    expect(mainSource).toContain('connection: createDesktopPinConnectionState(config');
+    expect(mainSource).not.toContain("authorizeIpcSender(event, 'get-config', { allowDesktopPin: true })");
+    expect(mainSource).not.toContain("authorizeIpcSender(event, 'publish-ha-snapshot', { allowDesktopPin: true })");
+    expect(mainSource).not.toContain("authorizeIpcSender(event, 'publish-ha-entity-update', { allowDesktopPin: true })");
   });
 
   it('keeps Windows non-glass opacity on renderer background surfaces', () => {

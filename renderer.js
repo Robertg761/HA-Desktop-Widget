@@ -136,6 +136,18 @@ function setDesktopPinConnectionIssue(detailMessage = '') {
     : '';
 }
 
+function applyDesktopPinConnectionState(connection = {}) {
+  if (connection.secureStoragePending === true) {
+    setDesktopPinConnectionIssue(t('Unlocking saved Home Assistant credentials...'));
+  } else if (connection.hasUrl !== true) {
+    setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
+  } else if (connection.hasToken !== true) {
+    setDesktopPinConnectionIssue(t('Please configure your Home Assistant token in Settings (gear icon).'));
+  } else {
+    setDesktopPinConnectionIssue('');
+  }
+}
+
 function isSecureStoragePending(targetConfig = state.CONFIG) {
   return targetConfig?.secureStoragePending === true;
 }
@@ -761,6 +773,9 @@ async function handleDesktopPinUpdate(message = {}) {
     if (message.config?.homeAssistant) {
       applyRendererConfig(message.config);
     }
+    if (message.connection && typeof message.connection === 'object') {
+      applyDesktopPinConnectionState(message.connection);
+    }
 
     if (message.entityId && message.entityId !== DESKTOP_PIN_ENTITY_ID) {
       return;
@@ -1365,7 +1380,7 @@ async function initializeDesktopPinMode() {
     log.info('Initializing desktop pin renderer');
     await refreshLocaleBootstrap();
     const bootstrap = await window.electronAPI.getDesktopPinBootstrap(DESKTOP_PIN_ENTITY_ID);
-    const nextConfig = bootstrap?.config || await window.electronAPI.getConfig();
+    const nextConfig = bootstrap?.config || { homeAssistant: {}, ui: {} };
     desktopPinEditMode = !!bootstrap?.editMode;
     desktopPinBounds = bootstrap?.pinBounds || null;
     desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
@@ -1388,19 +1403,7 @@ async function initializeDesktopPinMode() {
     wireDesktopPinUI();
     replaceEmojiIcons();
     uiUtils.showLoading(false);
-    const desktopPinUrl = typeof nextConfig?.homeAssistant?.url === 'string'
-      ? nextConfig.homeAssistant.url.trim()
-      : '';
-    const desktopPinToken = typeof nextConfig?.homeAssistant?.token === 'string'
-      ? nextConfig.homeAssistant.token.trim()
-      : '';
-    if (!desktopPinUrl) {
-      setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
-    } else if (!desktopPinToken || desktopPinToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN') {
-      setDesktopPinConnectionIssue(t('Please configure your Home Assistant token in Settings (gear icon).'));
-    } else {
-      setDesktopPinConnectionIssue('');
-    }
+    applyDesktopPinConnectionState(bootstrap?.connection || {});
     renderCurrentMode();
   } catch (error) {
     log.error('Desktop pin initialization error:', error);
