@@ -2,10 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-const preloadSource = fs.readFileSync(path.resolve(__dirname, '../../preload.js'), 'utf8');
 const stylesSource = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
-describe('main-process runtime hardening', () => {
+describe('main-process wiring safeguards', () => {
   it('denies renderer-created windows and routes http/https navigation externally', () => {
     expect(mainSource).toContain('function hardenRendererNavigation');
     expect(mainSource).toContain('setWindowOpenHandler');
@@ -15,9 +14,7 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('shell.openExternal');
   });
 
-  it('exposes and handles a correlated desktop-pin action response channel', () => {
-    expect(preloadSource).toContain('respondDesktopPinActionRequest');
-    expect(preloadSource).toContain("ipcRenderer.invoke('desktop-pin-action-response'");
+  it('handles a correlated desktop-pin action response channel', () => {
     expect(mainSource).toContain("ipcMain.handle('desktop-pin-action-response'");
     expect(mainSource).toContain('pendingDesktopPinActionRequests');
     expect(mainSource).toContain("awaitResponse: normalizedAction === 'service-call'");

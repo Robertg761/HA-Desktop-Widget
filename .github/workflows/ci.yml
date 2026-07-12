@@ -57,8 +57,8 @@ jobs:
       - name: Run linter
         run: npx eslint . --max-warnings=0
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests with coverage
+        run: npm run test:coverage -- --runInBand
 
       - name: Build renderer
         run: npm run build:renderer
