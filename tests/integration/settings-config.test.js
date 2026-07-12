@@ -183,6 +183,11 @@ function createSettingsModalDOM() {
         Always on Top
       </label>
 
+      <label for="start-with-windows">
+        <input type="checkbox" id="start-with-windows" />
+        Start at login
+      </label>
+
       <label for="allow-prerelease-updates">
         <input type="checkbox" id="allow-prerelease-updates" />
         Receive beta updates
@@ -1003,6 +1008,51 @@ describe('Settings + Config Integration', () => {
 
       // Verify config NOT updated
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+    });
+
+    test('late validation failure leaves live config and OS settings unchanged', async () => {
+      await settings.openSettings();
+
+      const originalConfig = JSON.parse(JSON.stringify(state.CONFIG));
+      document.getElementById('ha-url').value = 'https://new-ha.example.com';
+      document.getElementById('always-on-top').checked = false;
+      document.getElementById('start-with-windows').checked = true;
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '';
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG).toEqual(originalConfig);
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+      expect(window.electronAPI.setOpacity).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Choose a sync folder before enabling profile sync.',
+        'error',
+        3200
+      );
+    });
+
+    test('persistence failure does not publish the staged config or apply side effects', async () => {
+      await settings.openSettings();
+
+      const originalConfig = JSON.parse(JSON.stringify(state.CONFIG));
+      document.getElementById('ha-url').value = 'https://new-ha.example.com';
+      document.getElementById('always-on-top').checked = false;
+      document.getElementById('start-with-windows').checked = true;
+      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk unavailable'));
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG).toEqual(originalConfig);
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+      expect(window.electronAPI.setOpacity).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Settings could not be saved. No configuration changes were applied.',
+        'error',
+        4000
+      );
+      expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
     });
 
     test('opacity conversion and application', async () => {

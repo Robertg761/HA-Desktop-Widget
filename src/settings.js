@@ -2602,13 +2602,13 @@ function buildProfileSyncFilePathFromFolder(folderPath) {
   return `${normalizedFolder}${separator}${PROFILE_SYNC_DEFAULT_FILE_NAME}`;
 }
 
-function ensureProfileSyncConfig() {
-  state.CONFIG.profileSync = {
+function ensureProfileSyncConfig(targetConfig = state.CONFIG) {
+  targetConfig.profileSync = {
     ...getDefaultProfileSyncConfig(),
-    ...(state.CONFIG.profileSync || {}),
+    ...(targetConfig.profileSync || {}),
   };
-  state.CONFIG.profileSync.syncScope = normalizeProfileSyncScope(state.CONFIG.profileSync.syncScope);
-  return state.CONFIG.profileSync;
+  targetConfig.profileSync.syncScope = normalizeProfileSyncScope(targetConfig.profileSync.syncScope);
+  return targetConfig.profileSync;
 }
 
 function formatProfileSyncTimestamp(isoString) {
@@ -3654,14 +3654,18 @@ function bindConnectionTestUi() {
  * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
  */
 async function saveSettings() {
+  let configPersisted = false;
   try {
-    const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
-    const prevOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
-    const prevProfileSync = { ...(state.CONFIG.profileSync || {}) };
+    const currentConfig = state.CONFIG || {};
+    const nextConfig = JSON.parse(JSON.stringify(currentConfig));
+    nextConfig.homeAssistant = { ...(nextConfig.homeAssistant || {}) };
+    const prevAlwaysOnTop = currentConfig.alwaysOnTop;
+    const prevOpacity = typeof currentConfig.opacity === 'number' ? currentConfig.opacity : 1;
+    const prevProfileSync = { ...(currentConfig.profileSync || {}) };
 
     // Store previous HA connection settings to detect if reconnect is needed
-    const prevHaUrl = state.CONFIG.homeAssistant?.url;
-    const prevHaToken = state.CONFIG.homeAssistant?.token;
+    const prevHaUrl = currentConfig.homeAssistant?.url;
+    const prevHaToken = currentConfig.homeAssistant?.token;
 
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
@@ -3692,7 +3696,7 @@ async function saveSettings() {
         showToast(validation.error, 'error', 4000);
         return; // Don't save if URL is invalid
       }
-      state.CONFIG.homeAssistant.url = validation.url;
+      nextConfig.homeAssistant.url = validation.url;
     } else if (haUrl && !haUrl.value.trim()) {
       showToast('Home Assistant URL cannot be empty', 'error', 3000);
       return;
@@ -3700,84 +3704,72 @@ async function saveSettings() {
 
     if (haToken) {
       const nextToken = haToken.value.trim();
-      const currentToken = state.CONFIG.homeAssistant?.token || '';
+      const currentToken = currentConfig.homeAssistant?.token || '';
       const shouldPreservePlaceholderToken = !nextToken && currentToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 
       if (!shouldPreservePlaceholderToken) {
-        state.CONFIG.homeAssistant.token = nextToken;
+        nextConfig.homeAssistant.token = nextToken;
       }
 
       // Clear tokenResetReason only after the user enters a replacement token.
-      if (nextToken && state.CONFIG.tokenResetReason) {
-        delete state.CONFIG.tokenResetReason;
+      if (nextToken && nextConfig.tokenResetReason) {
+        delete nextConfig.tokenResetReason;
       }
     }
-    if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
-    if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
-    delete state.CONFIG.frostedGlassStrength;
-    delete state.CONFIG.frostedGlassTint;
+    if (alwaysOnTop) nextConfig.alwaysOnTop = alwaysOnTop.checked;
+    if (frostedGlass) nextConfig.frostedGlass = frostedGlass.checked;
+    delete nextConfig.frostedGlassStrength;
+    delete nextConfig.frostedGlassTint;
     
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
-    state.CONFIG.ui = state.CONFIG.ui || {};
-    const frostedGlassEnabled = !!state.CONFIG.frostedGlass;
-    state.CONFIG.ui.weatherEffectsEnabled = weatherEffectsEnabled
+    nextConfig.ui = nextConfig.ui || {};
+    const frostedGlassEnabled = !!nextConfig.frostedGlass;
+    nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
       ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
       : false;
-    state.CONFIG.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
-    state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
-    state.CONFIG.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
+    nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
+    nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
+    nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
     if (enableInteractionDebugLogs) {
-      state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
+      nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
-    state.CONFIG.updates = state.CONFIG.updates || {};
+    nextConfig.updates = nextConfig.updates || {};
     if (allowPrereleaseUpdates) {
-      state.CONFIG.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
+      nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
     }
-    state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
-    state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
-    state.CONFIG.ui.customColors = getCustomColorsForSave();
+    nextConfig.ui.accent = pendingAccent || getCurrentAccentTheme();
+    nextConfig.ui.background = pendingBackground || getCurrentBackgroundTheme();
+    nextConfig.ui.customColors = getCustomColorsForSave();
     const use24HourClock = document.getElementById('use-24-hour-clock');
-    state.CONFIG.ui.use24HourClock = !!use24HourClock?.checked;
-    setCustomThemes(state.CONFIG.ui.customColors);
+    nextConfig.ui.use24HourClock = !!use24HourClock?.checked;
 
-    // Save "Start at login" setting
+    // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');
-    if (startWithWindows) {
-      try {
-        const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
-        if (!result.success) {
-          log.error('Failed to set login item settings:', result.error);
-          showToast(t('Failed to update Start at login setting'), 'warning', 3000);
-        }
-      } catch (error) {
-        log.error('Failed to set login item settings:', error);
-      }
-    }
 
     // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
       const sliderValue = parseInt(opacitySlider.value) || 90;
-      state.CONFIG.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+      nextConfig.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
     }
 
-    state.CONFIG.globalHotkeys = state.CONFIG.globalHotkeys || { enabled: false, hotkeys: {} };
-    if (globalHotkeysEnabled) state.CONFIG.globalHotkeys.enabled = globalHotkeysEnabled.checked;
+    nextConfig.globalHotkeys = nextConfig.globalHotkeys || { enabled: false, hotkeys: {} };
+    if (globalHotkeysEnabled) nextConfig.globalHotkeys.enabled = globalHotkeysEnabled.checked;
 
-    state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
-    if (entityAlertsEnabled) state.CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
+    nextConfig.entityAlerts = nextConfig.entityAlerts || { enabled: false, alerts: {} };
+    if (entityAlertsEnabled) nextConfig.entityAlerts.enabled = entityAlertsEnabled.checked;
 
     // Save primary media player selection from custom dropdown
     // Read directly from DOM to avoid using global state variable
     const selectedOption = document.querySelector('#primary-media-player-menu .custom-dropdown-option.selected');
     const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
-    state.CONFIG.primaryMediaPlayer = selectedValue || null;
+    nextConfig.primaryMediaPlayer = selectedValue || null;
 
-    state.CONFIG.primaryCards = getPendingPrimaryCards();
-    state.CONFIG.desktopPins = getPendingDesktopPinsForSave();
-    state.CONFIG.customEntityIcons = getPendingCustomEntityIconsForSave();
+    nextConfig.primaryCards = getPendingPrimaryCards();
+    nextConfig.desktopPins = getPendingDesktopPinsForSave();
+    nextConfig.customEntityIcons = getPendingCustomEntityIconsForSave();
 
-    const nextProfileSync = ensureProfileSyncConfig();
+    const nextProfileSync = ensureProfileSyncConfig(nextConfig);
     nextProfileSync.enabled = !!profileSyncEnabled?.checked;
     nextProfileSync.provider = profileSyncProvider?.value || 'cloudFile';
     const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
@@ -3890,13 +3882,28 @@ async function saveSettings() {
       }
     }
 
-    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
-      showToast('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.', 'success', 2600);
+    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+    if (!updatedConfig || updatedConfig.success === false || !updatedConfig.homeAssistant) {
+      throw new Error(updatedConfig?.error || 'The main process rejected the settings update');
+    }
+    state.setConfig(updatedConfig);
+    configPersisted = true;
+    setCustomThemes(state.CONFIG.ui?.customColors || []);
+
+    if (startWithWindows) {
+      try {
+        const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
+        if (!result.success) {
+          log.error('Failed to set login item settings:', result.error);
+          showToast(t('Failed to update Start at login setting'), 'warning', 3000);
+        }
+      } catch (error) {
+        log.error('Failed to set login item settings:', error);
+      }
     }
 
-    const updatedConfig = await window.electronAPI.updateConfig(state.CONFIG);
-    if (updatedConfig) {
-      state.setConfig(updatedConfig);
+    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
+      showToast('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.', 'success', 2600);
     }
 
     if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
@@ -3979,6 +3986,13 @@ async function saveSettings() {
     }
   } catch (error) {
     log.error('Failed to save config:', error);
+    showToast(
+      configPersisted
+        ? 'Settings were saved, but one or more changes could not be applied immediately.'
+        : 'Settings could not be saved. No configuration changes were applied.',
+      'error',
+      4000
+    );
   }
 }
 
