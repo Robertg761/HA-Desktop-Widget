@@ -4,13 +4,24 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z or vX.Y.Z-beta.N tag to publish
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
 jobs:
   validate:
     outputs:
+      release_tag: ${{ steps.release_meta.outputs.release_tag }}
       release_version: ${{ steps.release_meta.outputs.release_version }}
       release_prerelease: ${{ steps.release_meta.outputs.release_prerelease }}
     runs-on: windows-latest
@@ -18,6 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.inputs.release_tag || github.ref }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -30,7 +42,7 @@ jobs:
         name: Resolve release version from tag
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
         run: |
           $releaseTag = $env:RELEASE_TAG
           if ([string]::IsNullOrWhiteSpace($releaseTag)) {
@@ -43,6 +55,7 @@ jobs:
 
           $releaseVersion = $releaseTag.Substring(1)
           $releasePrerelease = if ($releaseVersion -match '-') { 'true' } else { 'false' }
+          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_prerelease=$releasePrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Resolved release version $releaseVersion from tag $releaseTag"
@@ -54,7 +67,7 @@ jobs:
           set -euo pipefail
           git fetch origin main --depth=1
           main_head="$(git rev-parse origin/main)"
-          tag_sha="$(git rev-parse "$GITHUB_SHA")"
+          tag_sha="$(git rev-parse HEAD)"
 
           if [[ "$tag_sha" != "$main_head" ]]; then
             echo "Release tag must point to the current origin/main HEAD." >&2
@@ -73,7 +86,7 @@ jobs:
       - name: Verify aligned package versions
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           RELEASE_VERSION: ${{ steps.release_meta.outputs.release_version }}
         run: |
           @'
@@ -128,6 +141,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ needs.validate.outputs.release_tag }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -168,6 +182,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ needs.validate.outputs.release_tag }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -234,6 +249,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ needs.validate.outputs.release_tag }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -319,6 +335,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
           RELEASE_PRERELEASE: ${{ needs.validate.outputs.release_prerelease }}
         shell: bash
@@ -356,19 +373,19 @@ jobs:
             artifacts+=("$artifact")
           done < <(find release-artifacts -type f -print0)
 
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${artifacts[@]}" --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${artifacts[@]}" --clobber
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
-              gh release edit "$GITHUB_REF_NAME" --prerelease
+              gh release edit "$RELEASE_TAG" --prerelease
             else
-              gh release edit "$GITHUB_REF_NAME" --latest
+              gh release edit "$RELEASE_TAG" --latest
             fi
           else
             release_flags=(--latest)
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
               release_flags=(--prerelease)
             fi
-            gh release create "$GITHUB_REF_NAME" "${artifacts[@]}" \
+            gh release create "$RELEASE_TAG" "${artifacts[@]}" \
               --verify-tag \
               --title "$RELEASE_VERSION" \
               --notes "Release $RELEASE_VERSION" \
@@ -377,6 +394,7 @@ jobs:
 
   sync-version:
     needs: [validate, publish-release]
+    if: needs.validate.outputs.release_prerelease != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -384,7 +402,7 @@ jobs:
       - name: Checkout tagged commit
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.validate.outputs.release_tag }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -403,7 +421,7 @@ jobs:
       - name: Commit version bump back to main
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
         run: |
           set -euo pipefail

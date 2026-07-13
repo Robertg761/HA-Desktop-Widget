@@ -1,0 +1,129 @@
+name: Nightly Beta
+
+on:
+  schedule:
+    # 03:47 NST / 04:47 NDT. Avoid the busy start of the UTC hour.
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: nightly-beta
+  cancel-in-progress: false
+
+jobs:
+  prepare-beta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main with tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - id: stable
+        name: Find latest published stable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_stable_tag="$(
+            gh release list \
+              --exclude-drafts \
+              --exclude-pre-releases \
+              --limit 1 \
+              --json tagName \
+              --jq '.[0].tagName'
+          )"
+
+          if [[ ! "$latest_stable_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not resolve a published stable vX.Y.Z release." >&2
+            exit 1
+          fi
+
+          git rev-parse --verify "refs/tags/$latest_stable_tag" >/dev/null
+          echo "latest_stable_tag=$latest_stable_tag" >> "$GITHUB_OUTPUT"
+          echo "Latest stable release: $latest_stable_tag"
+
+      - id: version
+        name: Resolve beta target and next number
+        env:
+          LATEST_STABLE_TAG: ${{ steps.stable.outputs.latest_stable_tag }}
+        run: node scripts/resolve-nightly-beta.cjs
+
+      - id: baseline
+        name: Find last successfully published beta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_STABLE_TAG: ${{ steps.version.outputs.latest_stable_tag }}
+          TARGET_VERSION: ${{ steps.version.outputs.target_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_tag="$LATEST_STABLE_TAG"
+
+          while IFS= read -r beta_tag; do
+            published_tag="$(
+              gh release view "$beta_tag" \
+                --json isDraft,isPrerelease,tagName \
+                --jq 'select(.isDraft == false and .isPrerelease == true) | .tagName' \
+                2>/dev/null || true
+            )"
+            if [[ "$published_tag" == "$beta_tag" ]]; then
+              baseline_tag="$beta_tag"
+              break
+            fi
+          done < <(git tag --list "v${TARGET_VERSION}-beta.*" --sort=-v:refname)
+
+          echo "baseline_tag=$baseline_tag" >> "$GITHUB_OUTPUT"
+          echo "Change baseline: $baseline_tag"
+
+      - id: changes
+        name: Check for unreleased changes
+        env:
+          LATEST_STABLE_TAG: ${{ steps.version.outputs.latest_stable_tag }}
+        run: >-
+          node scripts/resolve-nightly-beta.cjs
+          --baseline "${{ steps.baseline.outputs.baseline_tag }}"
+
+      - name: Skip unchanged main
+        if: steps.changes.outputs.has_changes != 'true'
+        run: echo "No unreleased changes were found; no beta will be created."
+
+      - name: Tag main and start the release workflow
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.next_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "main advanced while the nightly beta was being prepared; retry on the next run." >&2
+            exit 1
+          fi
+
+          if git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" -m "Automated nightly beta $RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
+
+          gh workflow run release.yml \
+            --ref main \
+            --raw-field "release_tag=$RELEASE_TAG"
+          echo "Dispatched the release workflow for $RELEASE_TAG."
