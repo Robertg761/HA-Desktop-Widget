@@ -1683,6 +1683,13 @@ function fetchSensorHistory(entityId) {
     return Promise.resolve(entry.series);
   }
 
+  // Tiles are rendered before the WebSocket is open, so a request fired now would only be rejected
+  // with "not connected". Skip it — and deliberately leave lastFetchAt alone, so the next render
+  // retries instead of waiting out the refresh throttle.
+  if (typeof websocket.isConnected === 'function' && !websocket.isConnected()) {
+    return Promise.resolve(entry.series);
+  }
+
   const end = new Date(now);
   const start = new Date(now - SENSOR_HISTORY_WINDOW_MS);
   entry.promise = websocket
@@ -1699,11 +1706,13 @@ function fetchSensorHistory(entityId) {
         normalizeSensorHistoryResponse(response, entityId),
         Date.now()
       );
+      // Only a SUCCESSFUL fetch starts the refresh throttle. Stamping a failure here meant a single
+      // early rejection left the sparkline empty for the full five minutes.
       entry.lastFetchAt = Date.now();
       return entry.series;
     })
-    .catch(() => {
-      entry.lastFetchAt = Date.now();
+    .catch((error) => {
+      console.warn('Sensor history request failed:', error);
       return entry.series;
     })
     .finally(() => {

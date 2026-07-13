@@ -177,6 +177,17 @@ class WebSocketManager extends EventEmitter {
     }
   }
 
+  /**
+   * Whether the socket is open and authenticated, i.e. whether request() can succeed.
+   * Callers that fire optional requests during startup can use this to skip a request that would
+   * only be rejected, instead of logging an error for a perfectly normal not-connected-yet state.
+   *
+   * @returns {boolean}
+   */
+  isConnected() {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN && !!this.isAuthenticated;
+  }
+
   request(payload) {
     const id = this.wsId++;
     const promise = new Promise((resolve, reject) => {
