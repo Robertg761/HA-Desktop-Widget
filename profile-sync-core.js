@@ -14,12 +14,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'customTabs',
     'activeTabId',
   ],
-  visualPersonalization: [
-    'alwaysOnTop',
-    'opacity',
-    'frostedGlass',
-    'ui',
-  ],
+  visualPersonalization: ['alwaysOnTop', 'opacity', 'frostedGlass', 'ui'],
   automationAlerts: [
     'globalHotkeys',
     'entityAlerts',
@@ -27,10 +22,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'popupHotkeyHideOnRelease',
     'popupHotkeyToggleMode',
   ],
-  connectionMediaPreferences: [
-    'selectedWeatherEntity',
-    'primaryMediaPlayer',
-  ],
+  connectionMediaPreferences: ['selectedWeatherEntity', 'primaryMediaPlayer'],
 };
 const SYNC_SCOPE_SECTION_KEYS = Object.keys(SYNC_SCOPE_SECTION_FIELDS);
 
@@ -146,7 +138,11 @@ function projectSyncProfile(config, syncScope = getDefaultSyncScope()) {
   return profile;
 }
 
-function mergeSyncedProfileIntoConfig(baseConfig, syncedProfile, syncScope = getDefaultSyncScope()) {
+function mergeSyncedProfileIntoConfig(
+  baseConfig,
+  syncedProfile,
+  syncScope = getDefaultSyncScope()
+) {
   const target = isObject(baseConfig) ? deepClone(baseConfig) : {};
   const incoming = isObject(syncedProfile) ? syncedProfile : {};
   const normalizedScope = normalizeSyncScope(syncScope);
@@ -252,9 +248,7 @@ function buildSyncEnvelope({
     updatedAt: normalizedUpdatedAt,
     updatedByDeviceId: updatedByDeviceId || 'unknown-device',
     syncScope: normalizedScope,
-    payload: encrypt
-      ? encryptProfilePayload(profile, passphrase)
-      : deepClone(profile),
+    payload: encrypt ? encryptProfilePayload(profile, passphrase) : deepClone(profile),
   };
 }
 

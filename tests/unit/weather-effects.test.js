@@ -24,7 +24,7 @@ describe('WeatherEffectsManager', () => {
 
     // Set up mock canvas and context
     mockGradient = {
-      addColorStop: jest.fn()
+      addColorStop: jest.fn(),
     };
 
     mockContext = {
@@ -40,13 +40,13 @@ describe('WeatherEffectsManager', () => {
       globalAlpha: 1.0,
       strokeStyle: '',
       lineWidth: 1,
-      fillStyle: ''
+      fillStyle: '',
     };
 
     mockCanvas = {
       getContext: jest.fn().mockReturnValue(mockContext),
       width: 800,
-      height: 600
+      height: 600,
     };
 
     document.body.innerHTML = '<canvas id="weather-effects-canvas"></canvas>';
@@ -123,7 +123,7 @@ describe('WeatherEffectsManager', () => {
     const mediaQuery = {
       matches: true,
       addEventListener: jest.fn(),
-      removeEventListener: jest.fn()
+      removeEventListener: jest.fn(),
     };
     window.matchMedia = jest.fn().mockReturnValue(mediaQuery);
 
@@ -146,7 +146,7 @@ describe('WeatherEffectsManager', () => {
       addEventListener: jest.fn((event, handler) => {
         if (event === 'change') changeHandler = handler;
       }),
-      removeEventListener: jest.fn()
+      removeEventListener: jest.fn(),
     };
     window.matchMedia = jest.fn().mockReturnValue(mediaQuery);
 
@@ -170,7 +170,7 @@ describe('WeatherEffectsManager', () => {
   it('should run loop and invoke draw functions without error', () => {
     jest.useFakeTimers();
     const manager = new WeatherEffectsManager('weather-effects-canvas');
-    
+
     // Test rainy
     manager.setEffect('rainy');
     jest.advanceTimersByTime(60);

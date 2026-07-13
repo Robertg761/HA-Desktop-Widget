@@ -3,7 +3,11 @@
  */
 
 const EventEmitter = require('events');
-const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  triggerMockEvent,
+} = require('../mocks/electron.js');
 
 describe('Renderer desktop pin waiting escape hatch', () => {
   let mockElectronAPI;
@@ -66,10 +70,14 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       const focusActions = document.getElementById('desktop-pin-empty-actions');
       const focusBtn = document.getElementById('desktop-pin-focus-btn');
       const hasConnectionIssue = !!options.connectionIssue;
-      const normalizedState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
-      const entityDomain = typeof entity?.entity_id === 'string'
-        ? entity.entity_id.split('.')[0]
-        : (typeof _entityId === 'string' ? _entityId.split('.')[0] : '');
+      const normalizedState =
+        typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+      const entityDomain =
+        typeof entity?.entity_id === 'string'
+          ? entity.entity_id.split('.')[0]
+          : typeof _entityId === 'string'
+            ? _entityId.split('.')[0]
+            : '';
       const supportedDomains = new Set([
         'light',
         'climate',
@@ -98,40 +106,54 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       ]);
       const showWaitingState = !entity && !hasConnectionIssue;
       const showMissingState = !entity && !!options.hasSnapshot && !hasConnectionIssue;
-      const showUnsupportedState = !!entityDomain && !supportedDomains.has(entityDomain) && !hasConnectionIssue;
-      const showUnavailableState = !!entity && (
-        normalizedState === 'unavailable'
-        || (normalizedState === 'unknown' && entityDomain !== 'scene' && entityDomain !== 'script')
-      );
-      const showFallbackState = hasConnectionIssue || showUnsupportedState || showWaitingState || showUnavailableState;
+      const showUnsupportedState =
+        !!entityDomain && !supportedDomains.has(entityDomain) && !hasConnectionIssue;
+      const showUnavailableState =
+        !!entity &&
+        (normalizedState === 'unavailable' ||
+          (normalizedState === 'unknown' && entityDomain !== 'scene' && entityDomain !== 'script'));
+      const showFallbackState =
+        hasConnectionIssue || showUnsupportedState || showWaitingState || showUnavailableState;
 
       if (emptyState) {
         emptyState.classList.toggle('hidden', !showFallbackState);
         emptyState.dataset.state = hasConnectionIssue
           ? 'disconnected'
-          : (showUnsupportedState
-              ? 'unsupported'
-              : (showUnavailableState ? 'unavailable' : (showMissingState ? 'missing' : (showWaitingState ? 'waiting' : 'ready'))));
+          : showUnsupportedState
+            ? 'unsupported'
+            : showUnavailableState
+              ? 'unavailable'
+              : showMissingState
+                ? 'missing'
+                : showWaitingState
+                  ? 'waiting'
+                  : 'ready';
       }
       if (title) {
         title.textContent = hasConnectionIssue
           ? 'Home Assistant unavailable'
-          : (showUnsupportedState
-              ? 'Desktop pin not supported yet'
-              : (showUnavailableState
+          : showUnsupportedState
+            ? 'Desktop pin not supported yet'
+            : showUnavailableState
               ? 'Bedroom Light is unavailable'
-              : (showMissingState ? 'Pinned entity not found' : (showWaitingState ? 'Waiting for first live update' : 'Ready'))));
+              : showMissingState
+                ? 'Pinned entity not found'
+                : showWaitingState
+                  ? 'Waiting for first live update'
+                  : 'Ready';
       }
       if (copy) {
         copy.textContent = hasConnectionIssue
           ? options.connectionIssue
-          : (showUnsupportedState
-              ? `The ${entityDomain} domain does not have a desktop-pin profile yet.`
-              : (showUnavailableState
+          : showUnsupportedState
+            ? `The ${entityDomain} domain does not have a desktop-pin profile yet.`
+            : showUnavailableState
               ? 'Latest Home Assistant data reports this entity as unavailable right now.'
-              : (showMissingState
-                  ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
-                  : (showWaitingState ? 'Waiting for live Home Assistant data...' : 'Live data available.'))));
+              : showMissingState
+                ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+                : showWaitingState
+                  ? 'Waiting for live Home Assistant data...'
+                  : 'Live data available.';
       }
       if (focusActions) {
         focusActions.classList.toggle('hidden', !showFallbackState);
@@ -152,8 +174,13 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       config: {
         homeAssistant: {
           url: 'http://homeassistant.local:8123',
-          token: 'mock_long_lived_access_token',
         },
+        ui: {},
+      },
+      connection: {
+        hasUrl: true,
+        hasToken: true,
+        secureStoragePending: false,
       },
       entity: null,
       hasSnapshot: false,
@@ -239,7 +266,11 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       MAX_RECONNECT_DELAY_MS: 8000,
     }));
 
-    window.history.replaceState({}, '', 'http://localhost/?mode=desktop-pin&entityId=light.bedroom');
+    window.history.replaceState(
+      {},
+      '',
+      'http://localhost/?mode=desktop-pin&entityId=light.bedroom'
+    );
     require('../../renderer.js');
     window.dispatchEvent(new Event('DOMContentLoaded'));
     await flushAsync();
@@ -263,10 +294,59 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
     expect(mockWebsocket.connect).not.toHaveBeenCalled();
+    expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
 
     focusBtn.click();
 
-    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
+    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith(
+      'light.bedroom',
+      'focus-main'
+    );
+  });
+
+  it('uses connection flags instead of requiring a token in renderer config', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        connection: {
+          hasUrl: true,
+          hasToken: false,
+          secureStoragePending: false,
+        },
+      },
+    });
+
+    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
+      hasSnapshot: false,
+      connectionIssue: 'Please configure your Home Assistant token in Settings (gear icon).',
+    });
+    expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
+  });
+
+  it('clears the connection warning when main reports that credentials are ready', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        connection: {
+          hasUrl: true,
+          hasToken: false,
+          secureStoragePending: false,
+        },
+      },
+    });
+
+    triggerMockEvent('desktopPinUpdate', {
+      entityId: 'light.bedroom',
+      connection: {
+        hasUrl: true,
+        hasToken: true,
+        secureStoragePending: false,
+      },
+    });
+    await flushAsync();
+
+    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
+      hasSnapshot: false,
+      connectionIssue: '',
+    });
   });
 
   it('hides Focus Main once live entity data is available', async () => {
@@ -309,13 +389,18 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
     expect(emptyState?.dataset.state).toBe('missing');
     expect(title?.textContent).toBe('Pinned entity not found');
-    expect(copy?.textContent).toBe('This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.');
+    expect(copy?.textContent).toBe(
+      'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+    );
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
 
     focusBtn.click();
 
-    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
+    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith(
+      'light.bedroom',
+      'focus-main'
+    );
   });
 
   it('keeps unavailable entities on the fallback surface with Focus Main available', async () => {
@@ -340,7 +425,9 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
     expect(emptyState?.dataset.state).toBe('unavailable');
     expect(title?.textContent).toBe('Bedroom Light is unavailable');
-    expect(copy?.textContent).toBe('Latest Home Assistant data reports this entity as unavailable right now.');
+    expect(copy?.textContent).toBe(
+      'Latest Home Assistant data reports this entity as unavailable right now.'
+    );
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
   });
@@ -387,13 +474,18 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(mockUi.renderActiveTab).not.toHaveBeenCalled();
     expect(document.body.dataset.renderedMode).toBe('desktop-pin');
     expect(emptyState?.dataset.state).toBe('disconnected');
-    expect(copy?.textContent).toBe('Unable to reach Home Assistant. Check your network or Home Assistant URL.');
+    expect(copy?.textContent).toBe(
+      'Unable to reach Home Assistant. Check your network or Home Assistant URL.'
+    );
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
 
     focusBtn.click();
 
-    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith('light.bedroom', 'focus-main');
+    expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith(
+      'light.bedroom',
+      'focus-main'
+    );
   });
 
   it('replaces cached live controls with the disconnected fallback after a connection failure', async () => {
@@ -419,15 +511,22 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const focusActions = document.getElementById('desktop-pin-empty-actions');
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
 
-    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', expect.objectContaining({
-      entity_id: 'light.bedroom',
-    }), {
-      hasSnapshot: true,
-      connectionIssue: 'Unable to reach Home Assistant. Check your network or Home Assistant URL.',
-    });
+    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith(
+      'light.bedroom',
+      expect.objectContaining({
+        entity_id: 'light.bedroom',
+      }),
+      {
+        hasSnapshot: true,
+        connectionIssue:
+          'Unable to reach Home Assistant. Check your network or Home Assistant URL.',
+      }
+    );
     expect(emptyState?.dataset.state).toBe('disconnected');
     expect(title?.textContent).toBe('Home Assistant unavailable');
-    expect(copy?.textContent).toBe('Unable to reach Home Assistant. Check your network or Home Assistant URL.');
+    expect(copy?.textContent).toBe(
+      'Unable to reach Home Assistant. Check your network or Home Assistant URL.'
+    );
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
   });

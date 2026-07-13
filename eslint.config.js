@@ -11,18 +11,30 @@ module.exports = [
   prettier,
   // Config files (CommonJS, Node.js globals)
   {
-    files: ['eslint.config.js', 'jest.config.js', 'babel.config.js', 'scripts/*.cjs', 'src/linux-startup.cjs', 'src/main-logging.cjs', 'src/platform.cjs', 'src/windows-startup.cjs'],
+    files: [
+      'eslint.config.js',
+      'jest.config.js',
+      'babel.config.js',
+      'scripts/*.cjs',
+      'src/desktop-pin-ipc.cjs',
+      'src/ha-protocol.cjs',
+      'src/linux-startup.cjs',
+      'src/main-logging.cjs',
+      'src/platform.cjs',
+      'src/preload-api.cjs',
+      'src/windows-startup.cjs',
+    ],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'script',
       globals: {
         ...globals.node,
-      }
+      },
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-console': 'off'
-    }
+      'no-console': 'off',
+    },
   },
   // Main process files (CommonJS)
   {
@@ -33,12 +45,12 @@ module.exports = [
       globals: {
         ...globals.node,
         ...globals.browser,
-      }
+      },
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-console': 'off'
-    }
+      'no-console': 'off',
+    },
   },
   // Test files (CommonJS, Jest)
   {
@@ -50,12 +62,12 @@ module.exports = [
         ...globals.node,
         ...globals.browser,
         ...globals.jest,
-      }
+      },
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-console': 'off'
-    }
+      'no-console': 'off',
+    },
   },
   // Vite config (ES Modules, Node.js globals)
   {
@@ -65,12 +77,12 @@ module.exports = [
       sourceType: 'module',
       globals: {
         ...globals.node,
-      }
+      },
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-console': 'off'
-    }
+      'no-console': 'off',
+    },
   },
   // Renderer process files (ES Modules - bundled by Vite)
   {
@@ -82,11 +94,11 @@ module.exports = [
         ...globals.browser,
         __APP_VERSION__: 'readonly',
         Buffer: 'readonly', // Used for base64 encoding
-      }
+      },
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-console': 'off'
-    }
-  }
+      'no-console': 'off',
+    },
+  },
 ];

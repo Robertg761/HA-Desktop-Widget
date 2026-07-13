@@ -2,7 +2,11 @@
  * @jest-environment jsdom
  */
 
-const { createMockElectronAPI, resetMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  getMockConfig,
+} = require('../mocks/electron.js');
 const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Create mock electronAPI instance
@@ -10,7 +14,7 @@ let mockElectronAPI;
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
-  showToast: jest.fn()
+  showToast: jest.fn(),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -24,18 +28,22 @@ jest.mock('../../src/utils.js', () => ({
     if (entity.entity_id.startsWith('switch.')) return '🔌';
     if (entity.entity_id.startsWith('sensor.')) return '📊';
     return '❓';
-  })
+  }),
 }));
 
 // Mock state module
 const mockState = {
   CONFIG: null,
-  STATES: {}
+  STATES: {},
 };
 
 jest.mock('../../src/state.js', () => ({
-  get CONFIG() { return mockState.CONFIG; },
-  get STATES() { return mockState.STATES; }
+  get CONFIG() {
+    return mockState.CONFIG;
+  },
+  get STATES() {
+    return mockState.STATES;
+  },
 }));
 
 // Setup global mocks
@@ -84,9 +92,9 @@ describe('alerts module', () => {
         enabled: true,
         alerts: {
           'light.living_room': {
-            onStateChange: true
-          }
-        }
+            onStateChange: true,
+          },
+        },
       };
       mockState.STATES = sampleStates;
 
@@ -99,8 +107,8 @@ describe('alerts module', () => {
         enabled: true,
         alerts: {
           'light.living_room': { onStateChange: true },
-          'switch.bedroom': { onStateChange: true }
-        }
+          'switch.bedroom': { onStateChange: true },
+        },
       };
       mockState.STATES = sampleStates;
 
@@ -122,8 +130,8 @@ describe('alerts module', () => {
       mockState.CONFIG.entityAlerts = {
         enabled: false,
         alerts: {
-          'light.living_room': { onStateChange: true }
-        }
+          'light.living_room': { onStateChange: true },
+        },
       };
 
       alerts.initializeEntityAlerts();
@@ -135,8 +143,8 @@ describe('alerts module', () => {
       mockState.CONFIG.entityAlerts = {
         enabled: true,
         alerts: {
-          'light.nonexistent': { onStateChange: true }
-        }
+          'light.nonexistent': { onStateChange: true },
+        },
       };
       mockState.STATES = {};
 
@@ -149,7 +157,7 @@ describe('alerts module', () => {
       mockState.CONFIG = getMockConfig();
       mockState.CONFIG.entityAlerts = {
         enabled: true,
-        alerts: {}
+        alerts: {},
       };
       mockState.STATES = sampleStates;
     });
@@ -157,7 +165,7 @@ describe('alerts module', () => {
     describe('onStateChange alerts', () => {
       it('should trigger alert when state changes', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts(); // Initial state from sampleStates is 'on'
 
@@ -174,7 +182,7 @@ describe('alerts module', () => {
 
       it('should not trigger alert when state remains the same', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts(); // Initial state from sampleStates is 'on'
 
@@ -187,7 +195,7 @@ describe('alerts module', () => {
 
       it('should include previous and new states in alert message', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts();
 
@@ -210,24 +218,20 @@ describe('alerts module', () => {
       it('should trigger alert when state matches target state', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
           onSpecificState: true,
-          targetState: 'on'
+          targetState: 'on',
         };
         alerts.initializeEntityAlerts();
 
         alerts.checkEntityAlerts('light.living_room', 'on');
 
-        expect(showToast).toHaveBeenCalledWith(
-          expect.stringContaining('is now on'),
-          'info',
-          4000
-        );
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('is now on'), 'info', 4000);
         expect(global.Notification.lastNotification).toBeTruthy();
       });
 
       it('should not trigger alert when state does not match target', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
           onSpecificState: true,
-          targetState: 'on'
+          targetState: 'on',
         };
         alerts.initializeEntityAlerts();
 
@@ -240,7 +244,7 @@ describe('alerts module', () => {
       it('should trigger alert every time target state is reached', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
           onSpecificState: true,
-          targetState: 'on'
+          targetState: 'on',
         };
         alerts.initializeEntityAlerts();
 
@@ -260,7 +264,7 @@ describe('alerts module', () => {
       it('should not trigger alerts when globally disabled', () => {
         mockState.CONFIG.entityAlerts.enabled = false;
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts();
 
@@ -283,7 +287,7 @@ describe('alerts module', () => {
     describe('error handling', () => {
       it('should handle missing entity gracefully', () => {
         mockState.CONFIG.entityAlerts.alerts['light.nonexistent'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts();
 
@@ -292,7 +296,7 @@ describe('alerts module', () => {
 
       it('should handle null/undefined states gracefully', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts();
 
@@ -305,7 +309,7 @@ describe('alerts module', () => {
         const { getEntityDisplayName } = require('../../src/utils.js');
 
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
-          onStateChange: true
+          onStateChange: true,
         };
         alerts.initializeEntityAlerts();
 
@@ -316,7 +320,10 @@ describe('alerts module', () => {
 
         // Trigger state change to invoke getEntityDisplayName
         expect(() => alerts.checkEntityAlerts('light.living_room', 'off')).not.toThrow();
-        expect(consoleError).toHaveBeenCalledWith('Error checking entity alerts:', expect.any(Error));
+        expect(consoleError).toHaveBeenCalledWith(
+          'Error checking entity alerts:',
+          expect.any(Error)
+        );
 
         consoleError.mockRestore();
       });
@@ -329,8 +336,8 @@ describe('alerts module', () => {
       mockState.CONFIG.entityAlerts = {
         enabled: true,
         alerts: {
-          'light.living_room': { onStateChange: true }
-        }
+          'light.living_room': { onStateChange: true },
+        },
       };
       mockState.STATES = sampleStates;
       alerts.initializeEntityAlerts();
@@ -363,11 +370,7 @@ describe('alerts module', () => {
       // Trigger state change (from 'on' to 'off')
       alerts.checkEntityAlerts('light.living_room', 'off');
 
-      expect(showToast).toHaveBeenCalledWith(
-        expect.any(String),
-        'info',
-        4000
-      );
+      expect(showToast).toHaveBeenCalledWith(expect.any(String), 'info', 4000);
     });
 
     it('should use unknown icon for missing entity', () => {
@@ -407,7 +410,7 @@ describe('alerts module', () => {
       mockState.CONFIG = getMockConfig();
       mockState.CONFIG.entityAlerts = {
         enabled: false,
-        alerts: {}
+        alerts: {},
       };
     });
 
@@ -464,7 +467,7 @@ describe('alerts module', () => {
       expect(requestPermission).toHaveBeenCalled();
 
       // Wait for promise to resolve
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(showToast).toHaveBeenCalledWith('Notifications enabled', 'success', 2000);
     });
@@ -477,7 +480,7 @@ describe('alerts module', () => {
       alerts.requestNotificationPermission();
 
       // Wait for promise to resolve
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(showToast).toHaveBeenCalledWith('Notifications disabled', 'warning', 2000);
     });
@@ -510,7 +513,10 @@ describe('alerts module', () => {
       global.Notification.permission = 'default';
 
       expect(() => alerts.requestNotificationPermission()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith('Error requesting notification permission:', expect.any(Error));
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error requesting notification permission:',
+        expect.any(Error)
+      );
 
       consoleError.mockRestore();
     });

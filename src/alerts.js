@@ -12,7 +12,7 @@ function initializeEntityAlerts() {
   }
   if (!entityAlerts.enabled) return;
 
-  Object.keys(entityAlerts.alerts).forEach(entityId => {
+  Object.keys(entityAlerts.alerts).forEach((entityId) => {
     if (state.STATES[entityId]) {
       alertStates[entityId] = state.STATES[entityId].state;
     }
@@ -63,7 +63,7 @@ function showEntityAlert(message, entityId) {
         body: message,
         icon: icon,
         tag: `ha-alert-${entityId}`,
-        requireInteraction: false
+        requireInteraction: false,
       });
     }
 
@@ -78,7 +78,11 @@ async function toggleAlerts(enabled) {
     const result = await window.electronAPI.toggleAlerts(enabled);
     if (result.success) {
       entityAlerts.enabled = enabled;
-      showToast(enabled ? t('Entity alerts enabled') : t('Entity alerts disabled'), 'success', 2000);
+      showToast(
+        enabled ? t('Entity alerts enabled') : t('Entity alerts disabled'),
+        'success',
+        2000
+      );
       return true;
     }
   } catch (error) {
@@ -91,7 +95,7 @@ async function toggleAlerts(enabled) {
 function requestNotificationPermission() {
   try {
     if (Notification.permission === 'default') {
-      Notification.requestPermission().then(permission => {
+      Notification.requestPermission().then((permission) => {
         if (permission === 'granted') {
           showToast(t('Notifications enabled'), 'success', 2000);
         } else {
@@ -104,9 +108,4 @@ function requestNotificationPermission() {
   }
 }
 
-export {
-  initializeEntityAlerts,
-  checkEntityAlerts,
-  toggleAlerts,
-  requestNotificationPermission,
-};
+export { initializeEntityAlerts, checkEntityAlerts, toggleAlerts, requestNotificationPermission };

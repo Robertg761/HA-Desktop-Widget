@@ -13,7 +13,7 @@ const {
   sampleServices,
   sampleAreas,
   sampleUnitSystemMetric,
-  sampleWebSocketMessages
+  sampleWebSocketMessages,
 } = require('../fixtures/ha-data');
 
 describe('Test Environment Setup', () => {

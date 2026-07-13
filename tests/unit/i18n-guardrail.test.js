@@ -1,11 +1,21 @@
 const fs = require('fs');
 const path = require('path');
+const { parse } = require('@babel/parser');
 
 const enCatalog = require('../../locales/en.json');
 const allowlist = require('../fixtures/i18n-guardrail-allowlist.json');
 
 function collectTranslateKeys() {
-  const files = ['renderer.js', 'src/ui.js', 'src/ui-utils.js', 'src/settings.js', 'src/alerts.js', 'src/hotkeys.js', 'src/camera.js', 'main.js'];
+  const files = [
+    'renderer.js',
+    'src/ui.js',
+    'src/ui-utils.js',
+    'src/settings.js',
+    'src/alerts.js',
+    'src/hotkeys.js',
+    'src/camera.js',
+    'main.js',
+  ];
   const keyPattern = /\b(?:t|mainT)\(\s*'([^']+)'/g;
   const keys = new Set();
 
@@ -56,22 +66,99 @@ function collectDynamicI18nOwnershipViolations() {
 }
 
 function collectGuardrailViolations() {
-  const targets = ['index.html', 'main.js', 'renderer.js', ...fs.readdirSync(path.resolve(__dirname, '../../src')).filter((file) => file.endsWith('.js')).map((file) => `src/${file}`)];
+  const targets = [
+    'index.html',
+    'main.js',
+    'renderer.js',
+    ...fs
+      .readdirSync(path.resolve(__dirname, '../../src'))
+      .filter((file) => file.endsWith('.js'))
+      .map((file) => `src/${file}`),
+  ];
   const violations = [];
+
+  const normalizeSource = (source) => source.replace(/\s+/g, ' ').trim();
+  const getNodeSource = (text, node) => normalizeSource(text.slice(node.start, node.end));
+  const isLiteralMessageNode = (node) =>
+    node?.type === 'StringLiteral' || node?.type === 'TemplateLiteral';
+  const getPropertyName = (node) => {
+    if (!node || node.computed) return '';
+    return node.key?.name || node.key?.value || '';
+  };
+  const getCalleeName = (node) => {
+    if (node?.type === 'Identifier') return node.name;
+    if (node?.type === 'MemberExpression' && !node.computed) return node.property?.name || '';
+    return '';
+  };
+  const walkAst = (node, visitor) => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.type === 'string') visitor(node);
+    Object.entries(node).forEach(([key, value]) => {
+      if (['loc', 'start', 'end', 'extra'].includes(key)) return;
+      if (Array.isArray(value)) {
+        value.forEach((child) => walkAst(child, visitor));
+      } else if (value && typeof value === 'object') {
+        walkAst(value, visitor);
+      }
+    });
+  };
+
+  const collectHtmlViolations = (html) => {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const attributes = [
+      ['title', 'data-i18n-title', 'html-title'],
+      ['aria-label', 'data-i18n-aria-label', 'html-aria'],
+      ['placeholder', 'data-i18n-placeholder', 'html-placeholder'],
+    ];
+
+    attributes.forEach(([attribute, translatedAttribute, category]) => {
+      document.querySelectorAll(`[${attribute}]`).forEach((element) => {
+        const value = element.getAttribute(attribute) || '';
+        if (!/[A-Za-z]/.test(value) || element.hasAttribute(translatedAttribute)) return;
+        const tag = element.tagName.toLowerCase();
+        const identity = element.id
+          ? `${tag}#${element.id}`
+          : `${tag}.${[...element.classList].join('.') || 'unclassified'}`;
+        violations.push(`index.html|${category}|${identity}|${JSON.stringify(value)}`);
+      });
+    });
+  };
 
   targets.forEach((file) => {
     const text = fs.readFileSync(path.resolve(__dirname, '../../', file), 'utf8');
-    const lines = text.split(/\n/);
-    lines.forEach((line) => {
-      const trimmed = line.trim();
-      if (/showToast\(\s*['"`]/.test(line)) violations.push(`${file}|showToast|${trimmed}`);
-      if (/showConfirm\(\s*['"`]/.test(line)) violations.push(`${file}|showConfirm|${trimmed}`);
-      if (/new Notification\(\s*['"`]/.test(line)) violations.push(`${file}|notification|${trimmed}`);
-      if (file === 'main.js' && /label:\s*['"`]/.test(line)) violations.push(`${file}|menu|${trimmed}`);
-      if (file === 'main.js' && /title:\s*['"`]/.test(line)) violations.push(`${file}|dialog|${trimmed}`);
-      if (file === 'index.html' && /title="[^"]+[A-Za-z][^"]*"/.test(line) && !/data-i18n-title=/.test(line)) violations.push(`${file}|html-title|${trimmed}`);
-      if (file === 'index.html' && /aria-label="[^"]+[A-Za-z][^"]*"/.test(line) && !/data-i18n-aria-label=/.test(line)) violations.push(`${file}|html-aria|${trimmed}`);
-      if (file === 'index.html' && /placeholder="[^"]+[A-Za-z][^"]*"/.test(line) && !/data-i18n-placeholder=/.test(line)) violations.push(`${file}|html-placeholder|${trimmed}`);
+    if (file === 'index.html') {
+      collectHtmlViolations(text);
+      return;
+    }
+
+    const ast = parse(text, {
+      sourceType: 'unambiguous',
+      plugins: ['optionalChaining', 'nullishCoalescingOperator'],
+    });
+    walkAst(ast, (node) => {
+      if (node.type === 'CallExpression') {
+        const calleeName = getCalleeName(node.callee);
+        if (
+          ['showToast', 'showConfirm'].includes(calleeName) &&
+          isLiteralMessageNode(node.arguments[0])
+        ) {
+          violations.push(`${file}|${calleeName}|${getNodeSource(text, node.arguments[0])}`);
+        }
+      }
+      if (
+        node.type === 'NewExpression' &&
+        getCalleeName(node.callee) === 'Notification' &&
+        isLiteralMessageNode(node.arguments[0])
+      ) {
+        violations.push(`${file}|notification|${getNodeSource(text, node.arguments[0])}`);
+      }
+      if (file === 'main.js' && node.type === 'ObjectProperty') {
+        const propertyName = getPropertyName(node);
+        if (['label', 'title'].includes(propertyName) && isLiteralMessageNode(node.value)) {
+          const category = propertyName === 'label' ? 'menu' : 'dialog';
+          violations.push(`${file}|${category}|${getNodeSource(text, node.value)}`);
+        }
+      }
     });
   });
 

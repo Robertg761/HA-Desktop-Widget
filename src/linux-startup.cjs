@@ -15,7 +15,8 @@ function getLinuxAutostartDir(env = process.env) {
 }
 
 function getLinuxStartupDesktopFileName(pkg = {}, fallbackName = '') {
-  const rawName = pkg?.build?.appId || pkg?.appId || fallbackName || pkg?.name || 'ha-desktop-widget';
+  const rawName =
+    pkg?.build?.appId || pkg?.appId || fallbackName || pkg?.name || 'ha-desktop-widget';
   const normalized = String(rawName)
     .trim()
     .toLowerCase()
@@ -72,12 +73,16 @@ function linuxAutostartEntryMatches(content, executablePath) {
   if (/^X-GNOME-Autostart-enabled\s*=\s*false\s*$/im.test(content)) return false;
 
   const expectedExec = quoteDesktopExecArg(executablePath);
-  return content
-    .split(/\r?\n/)
-    .some((line) => line.trim() === `Exec=${expectedExec}`);
+  return content.split(/\r?\n/).some((line) => line.trim() === `Exec=${expectedExec}`);
 }
 
-function isLinuxLoginItemEnabled({ pkg = {}, appName = '', executablePath, env = process.env, fsModule = fs } = {}) {
+function isLinuxLoginItemEnabled({
+  pkg = {},
+  appName = '',
+  executablePath,
+  env = process.env,
+  fsModule = fs,
+} = {}) {
   const autostartPath = getLinuxAutostartFilePath(pkg, appName, env);
   try {
     const content = fsModule.readFileSync(autostartPath, 'utf8');
@@ -90,7 +95,10 @@ function isLinuxLoginItemEnabled({ pkg = {}, appName = '', executablePath, env =
   }
 }
 
-function setLinuxLoginItemSettings(openAtLogin, { pkg = {}, appName = '', executablePath, env = process.env, fsModule = fs } = {}) {
+function setLinuxLoginItemSettings(
+  openAtLogin,
+  { pkg = {}, appName = '', executablePath, env = process.env, fsModule = fs } = {}
+) {
   const autostartDir = getLinuxAutostartDir(env);
   const autostartPath = getLinuxAutostartFilePath(pkg, appName, env);
 
@@ -99,7 +107,7 @@ function setLinuxLoginItemSettings(openAtLogin, { pkg = {}, appName = '', execut
     fsModule.writeFileSync(
       autostartPath,
       buildLinuxAutostartDesktopEntry({ appName, executablePath }),
-      { encoding: 'utf8', mode: 0o644 },
+      { encoding: 'utf8', mode: 0o644 }
     );
     return { autostartPath };
   }

@@ -35,7 +35,7 @@ describe('State Module', () => {
         pressure: 'hPa',
         precipitation: 'mm',
         volume: 'L',
-        mass: 'kg'
+        mass: 'kg',
       });
     });
 
@@ -75,7 +75,7 @@ describe('State Module', () => {
       test('should update STATES', () => {
         const testStates = {
           'light.living_room': { state: 'on', attributes: {} },
-          'sensor.temperature': { state: '22.5', attributes: { unit_of_measurement: '°C' } }
+          'sensor.temperature': { state: '22.5', attributes: { unit_of_measurement: '°C' } },
         };
         state.setStates(testStates);
         expect(state.STATES).toEqual(testStates);
@@ -91,7 +91,7 @@ describe('State Module', () => {
     describe('setEntityState', () => {
       test('should insert a new entity into STATES without replacing existing entities', () => {
         state.setStates({
-          'light.living_room': { ...sampleStates['light.living_room'] }
+          'light.living_room': { ...sampleStates['light.living_room'] },
         });
         state.setEntityState({ ...sampleStates['light.bedroom'] });
 
@@ -101,7 +101,7 @@ describe('State Module', () => {
 
       test('should update an existing entity in place', () => {
         state.setStates({
-          'light.living_room': { ...sampleStates['light.living_room'], state: 'off' }
+          'light.living_room': { ...sampleStates['light.living_room'], state: 'off' },
         });
         state.setEntityState({ ...sampleStates['light.living_room'], state: 'on' });
 
@@ -116,7 +116,7 @@ describe('State Module', () => {
         state.setEntityState({ entity_id: '', state: 'on' });
 
         expect(state.STATES).toEqual({
-          'light.living_room': sampleStates['light.living_room']
+          'light.living_room': sampleStates['light.living_room'],
         });
       });
     });
@@ -125,7 +125,7 @@ describe('State Module', () => {
       test('should update SERVICES', () => {
         const testServices = {
           light: { turn_on: {}, turn_off: {} },
-          switch: { turn_on: {}, turn_off: {} }
+          switch: { turn_on: {}, turn_off: {} },
         };
         state.setServices(testServices);
         expect(state.SERVICES).toEqual(testServices);
@@ -136,7 +136,7 @@ describe('State Module', () => {
       test('should update AREAS', () => {
         const testAreas = {
           'area.living_room': { name: 'Living Room' },
-          'area.kitchen': { name: 'Kitchen' }
+          'area.kitchen': { name: 'Kitchen' },
         };
         state.setAreas(testAreas);
         expect(state.AREAS).toEqual(testAreas);
@@ -152,7 +152,7 @@ describe('State Module', () => {
           pressure: 'inHg',
           precipitation: 'in',
           volume: 'gal',
-          mass: 'lb'
+          mass: 'lb',
         };
         state.setUnitSystem(imperialUnits);
         expect(state.UNIT_SYSTEM).toEqual(imperialUnits);

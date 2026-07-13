@@ -34,7 +34,6 @@ config.json
 /*.zip
 /*.tar.gz
 /*.dmg
-/*.blockmap
 /win-unpacked/
 /win-ia32-unpacked/
 /linux-unpacked/

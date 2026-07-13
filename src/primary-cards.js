@@ -17,10 +17,7 @@ function normalizePrimaryCardValue(value, index) {
 
 function normalizePrimaryCards(value) {
   const raw = Array.isArray(value) ? value : [];
-  const normalized = [
-    normalizePrimaryCardValue(raw[0], 0),
-    normalizePrimaryCardValue(raw[1], 1),
-  ];
+  const normalized = [normalizePrimaryCardValue(raw[0], 0), normalizePrimaryCardValue(raw[1], 1)];
 
   const usedDefaults = new Set();
   return normalized.map((selection) => {
@@ -37,7 +34,7 @@ function normalizePrimaryCards(value) {
       return selection;
     }
 
-    const fallback = PRIMARY_CARD_DEFAULTS.find(option => !usedDefaults.has(option)) || selection;
+    const fallback = PRIMARY_CARD_DEFAULTS.find((option) => !usedDefaults.has(option)) || selection;
     usedDefaults.add(fallback);
     return fallback;
   });

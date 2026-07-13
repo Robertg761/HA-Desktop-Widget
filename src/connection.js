@@ -1,8 +1,5 @@
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-const URL_PLACEHOLDER_VALUES = new Set([
-  'YOUR_HOME_ASSISTANT_URL',
-  'HOME_ASSISTANT_URL',
-]);
+const URL_PLACEHOLDER_VALUES = new Set(['YOUR_HOME_ASSISTANT_URL', 'HOME_ASSISTANT_URL']);
 
 function normalizePlaceholderValue(value) {
   return typeof value === 'string' ? value.trim() : '';

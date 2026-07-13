@@ -5,13 +5,17 @@ function formatSparklineCoordinate(value) {
 }
 
 function buildSparklinePoints(values, width, height) {
-  const numericValues = Array.isArray(values)
-    ? values.map(Number).filter(Number.isFinite)
-    : [];
+  const numericValues = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
   const chartWidth = Number(width);
   const chartHeight = Number(height);
 
-  if (!numericValues.length || !Number.isFinite(chartWidth) || !Number.isFinite(chartHeight) || chartWidth <= 0 || chartHeight <= 0) {
+  if (
+    !numericValues.length ||
+    !Number.isFinite(chartWidth) ||
+    !Number.isFinite(chartHeight) ||
+    chartWidth <= 0 ||
+    chartHeight <= 0
+  ) {
     return '';
   }
 
@@ -23,15 +27,13 @@ function buildSparklinePoints(values, width, height) {
   const max = Math.max(...numericValues);
   const range = max - min;
 
-  return numericValues.map((value, index) => {
-    const x = (chartWidth * index) / (numericValues.length - 1);
-    const y = range === 0
-      ? chartHeight / 2
-      : chartHeight - (((value - min) / range) * chartHeight);
-    return `${formatSparklineCoordinate(x)},${formatSparklineCoordinate(y)}`;
-  }).join(' ');
+  return numericValues
+    .map((value, index) => {
+      const x = (chartWidth * index) / (numericValues.length - 1);
+      const y = range === 0 ? chartHeight / 2 : chartHeight - ((value - min) / range) * chartHeight;
+      return `${formatSparklineCoordinate(x)},${formatSparklineCoordinate(y)}`;
+    })
+    .join(' ');
 }
 
-export {
-  buildSparklinePoints,
-};
+export { buildSparklinePoints };

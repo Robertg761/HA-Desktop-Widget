@@ -23,14 +23,21 @@ describe('Linux startup helpers', () => {
   });
 
   test('uses a stable desktop file name from the Electron Builder app id', () => {
-    expect(getLinuxStartupDesktopFileName({
-      name: 'home-assistant-widget',
-      build: { appId: 'com.github.robertg761.hadesktopwidget' },
-    }, 'Fallback')).toBe('com.github.robertg761.hadesktopwidget.desktop');
+    expect(
+      getLinuxStartupDesktopFileName(
+        {
+          name: 'home-assistant-widget',
+          build: { appId: 'com.github.robertg761.hadesktopwidget' },
+        },
+        'Fallback'
+      )
+    ).toBe('com.github.robertg761.hadesktopwidget.desktop');
   });
 
   test('quotes executable paths for XDG desktop Exec entries', () => {
-    expect(quoteDesktopExecArg('/opt/HA Desktop Widget/ha-widget')).toBe('"/opt/HA Desktop Widget/ha-widget"');
+    expect(quoteDesktopExecArg('/opt/HA Desktop Widget/ha-widget')).toBe(
+      '"/opt/HA Desktop Widget/ha-widget"'
+    );
     expect(quoteDesktopExecArg('/tmp/$APP`test`')).toBe('"/tmp/\\$APP\\`test\\`"');
   });
 
@@ -56,19 +63,25 @@ describe('Linux startup helpers', () => {
     setLinuxLoginItemSettings(true, { pkg, appName: 'HA Desktop Widget', executablePath, env });
 
     expect(fs.existsSync(autostartPath)).toBe(true);
-    expect(isLinuxLoginItemEnabled({ pkg, appName: 'HA Desktop Widget', executablePath, env })).toBe(true);
+    expect(
+      isLinuxLoginItemEnabled({ pkg, appName: 'HA Desktop Widget', executablePath, env })
+    ).toBe(true);
 
     setLinuxLoginItemSettings(false, { pkg, appName: 'HA Desktop Widget', executablePath, env });
 
     expect(fs.existsSync(autostartPath)).toBe(false);
-    expect(isLinuxLoginItemEnabled({ pkg, appName: 'HA Desktop Widget', executablePath, env })).toBe(false);
+    expect(
+      isLinuxLoginItemEnabled({ pkg, appName: 'HA Desktop Widget', executablePath, env })
+    ).toBe(false);
   });
 
   test('prefers APPIMAGE for packaged Linux startup registration', () => {
     const app = { getPath: jest.fn(() => '/tmp/.mount_App/ha-desktop-widget') };
     const env = { APPIMAGE: '/home/user/Applications/HA Desktop Widget.AppImage' };
 
-    expect(getLinuxStartupExecutablePath(app, env)).toBe('/home/user/Applications/HA Desktop Widget.AppImage');
+    expect(getLinuxStartupExecutablePath(app, env)).toBe(
+      '/home/user/Applications/HA Desktop Widget.AppImage'
+    );
     expect(app.getPath).not.toHaveBeenCalled();
   });
 });

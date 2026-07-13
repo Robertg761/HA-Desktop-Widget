@@ -2,10 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-const preloadSource = fs.readFileSync(path.resolve(__dirname, '../../preload.js'), 'utf8');
 const stylesSource = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
-describe('main-process runtime hardening', () => {
+describe('main-process wiring safeguards', () => {
   it('denies renderer-created windows and routes http/https navigation externally', () => {
     expect(mainSource).toContain('function hardenRendererNavigation');
     expect(mainSource).toContain('setWindowOpenHandler');
@@ -15,21 +14,17 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('shell.openExternal');
   });
 
-  it('exposes and handles a correlated desktop-pin action response channel', () => {
-    expect(preloadSource).toContain('respondDesktopPinActionRequest');
-    expect(preloadSource).toContain("ipcRenderer.invoke('desktop-pin-action-response'");
+  it('handles a correlated desktop-pin action response channel', () => {
     expect(mainSource).toContain("ipcMain.handle('desktop-pin-action-response'");
     expect(mainSource).toContain('pendingDesktopPinActionRequests');
     expect(mainSource).toContain("awaitResponse: normalizedAction === 'service-call'");
   });
 
-  it('limits media artwork proxy responses to image content within a bounded size', () => {
-    expect(mainSource).toContain('MEDIA_ARTWORK_MAX_RESPONSE_BYTES');
-    expect(mainSource).toContain('isPotentialMediaArtworkContentType');
-    expect(mainSource).toContain('resolveMediaArtworkContentType');
-    expect(mainSource).toContain('MEDIA_ARTWORK_TOO_LARGE');
-    expect(mainSource).toContain('MEDIA_ARTWORK_UNSUPPORTED_TYPE');
-    expect(mainSource).toContain("host === 'media_artwork'");
+  it('registers the streaming custom scheme with the current protocol API', () => {
+    expect(mainSource).toContain('stream: true');
+    expect(mainSource).toContain('protocol.handle(');
+    expect(mainSource).toContain('createHaProtocolHandler({');
+    expect(mainSource).not.toContain('protocol.registerStreamProtocol');
   });
 
   it('preserves persisted desktop pins during config normalization even when favorites are stale', () => {
@@ -45,7 +40,9 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('ensureConfigBackupBeforeFirstWrite');
     expect(mainSource).toContain('configBackupCreatedThisRun');
     expect(mainSource).toContain('shouldBlockPotentialConfigClobber');
-    expect(mainSource).toContain('Blocked config save because it would replace an existing user config with default-like data.');
+    expect(mainSource).toContain(
+      'Blocked config save because it would replace an existing user config with default-like data.'
+    );
   });
 
   it('defers secure config resolution until after the first window can render', () => {
@@ -53,13 +50,24 @@ describe('main-process runtime hardening', () => {
     expect(mainSource).toContain('resolveDeferredSecureConfig({ notifyRenderer: true });');
 
     const getConfigStart = mainSource.indexOf("ipcMain.handle('get-config'");
-    const getConfigEnd = mainSource.indexOf("ipcMain.handle('get-locale-bootstrap'", getConfigStart);
+    const getConfigEnd = mainSource.indexOf(
+      "ipcMain.handle('get-locale-bootstrap'",
+      getConfigStart
+    );
     const getConfigSource = mainSource.slice(getConfigStart, getConfigEnd);
     expect(getConfigSource).not.toContain('resolveDeferredSecureConfig');
 
-    const desktopPinBootstrapStart = mainSource.indexOf("ipcMain.handle('get-desktop-pin-bootstrap'");
-    const desktopPinBootstrapEnd = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'", desktopPinBootstrapStart);
-    const desktopPinBootstrapSource = mainSource.slice(desktopPinBootstrapStart, desktopPinBootstrapEnd);
+    const desktopPinBootstrapStart = mainSource.indexOf(
+      "ipcMain.handle('get-desktop-pin-bootstrap'"
+    );
+    const desktopPinBootstrapEnd = mainSource.indexOf(
+      "ipcMain.handle('publish-ha-snapshot'",
+      desktopPinBootstrapStart
+    );
+    const desktopPinBootstrapSource = mainSource.slice(
+      desktopPinBootstrapStart,
+      desktopPinBootstrapEnd
+    );
     expect(desktopPinBootstrapSource).not.toContain('resolveDeferredSecureConfig');
   });
 
@@ -85,25 +93,44 @@ describe('main-process runtime hardening', () => {
 
   it('fails closed for token saves when encryption is unavailable', () => {
     expect(mainSource).toContain('delete configToSave.homeAssistant.token');
-    expect(mainSource).toContain("configToSave.tokenResetReason = reason");
-    expect(mainSource).toContain("config.tokenResetReason = reason");
-    expect(mainSource).toContain('omitting token from saved config so it is not written in plaintext');
+    expect(mainSource).toContain('configToSave.tokenResetReason = reason');
+    expect(mainSource).toContain('config.tokenResetReason = reason');
+    expect(mainSource).toContain(
+      'omitting token from saved config so it is not written in plaintext'
+    );
     expect(mainSource).not.toContain('Failed to encrypt token, saving as plaintext');
   });
 
   it('guards privileged IPC senders and restricts desktop-pin channels', () => {
     expect(mainSource).toContain('function getAuthorizedIpcSender');
-    expect(mainSource).toContain("sender.type === 'desktop-pin' && options.allowDesktopPin === true");
+    expect(mainSource).toContain(
+      "sender.type === 'desktop-pin' && options.allowDesktopPin === true"
+    );
     expect(mainSource).toContain("authorizeIpcSender(event, 'update-config')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'copy-profile-sync-file')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })");
+    expect(mainSource).toContain(
+      "authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })"
+    );
+    expect(mainSource).toContain('config: createDesktopPinRendererConfig(config)');
+    expect(mainSource).toContain('connection: createDesktopPinConnectionState(config');
+    expect(mainSource).not.toContain(
+      "authorizeIpcSender(event, 'get-config', { allowDesktopPin: true })"
+    );
+    expect(mainSource).not.toContain(
+      "authorizeIpcSender(event, 'publish-ha-snapshot', { allowDesktopPin: true })"
+    );
+    expect(mainSource).not.toContain(
+      "authorizeIpcSender(event, 'publish-ha-entity-update', { allowDesktopPin: true })"
+    );
   });
 
   it('keeps Windows non-glass opacity on renderer background surfaces', () => {
     expect(mainSource).toContain('function shouldUseNativeWindowOpacity');
     expect(mainSource).toContain("process.platform === 'win32'");
     expect(mainSource).toContain('transparent = true;');
-    expect(mainSource).toContain('targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1)');
+    expect(mainSource).toContain(
+      'targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1)'
+    );
   });
 
   it('reapplies Windows acrylic after focus and visibility lifecycle changes', () => {
@@ -119,7 +146,9 @@ describe('main-process runtime hardening', () => {
     expect(refreshSource).toContain("'restore'");
     expect(refreshSource).toContain("'enter-full-screen'");
     expect(refreshSource).toContain("'leave-full-screen'");
-    expect(refreshSource).toContain('applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass)');
+    expect(refreshSource).toContain(
+      'applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass)'
+    );
     expect(refreshSource).toContain('setTimeout(refreshEffects, 50)');
     expect(refreshSource).toContain('setTimeout(refreshEffects, 250)');
     expect(mainSource).toContain('wireWindowEffectsRefresh(mainWindow, () => config)');

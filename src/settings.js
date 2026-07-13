@@ -24,12 +24,7 @@ import {
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-import {
-  formatDateTime,
-  getLanguageDisplayName,
-  getLocaleState,
-  t,
-} from './i18n.js';
+import { formatDateTime, getLanguageDisplayName, getLocaleState, t } from './i18n.js';
 import {
   classifyConnectionError,
   isPlaceholderOrEmptyToken,
@@ -46,7 +41,8 @@ const COLOR_TARGETS = {
   accent: 'accent',
   background: 'background',
 };
-const WEATHER_EFFECTS_GLASS_WARNING = 'Turn on Frosted glass background before enabling subtle weather effects.';
+const WEATHER_EFFECTS_GLASS_WARNING =
+  'Turn on Frosted glass background before enabling subtle weather effects.';
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
@@ -69,7 +65,11 @@ let localePackListError = '';
 let languagePackRefreshPromise = Promise.resolve();
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
-const PERSONALIZATION_LAZY_SECTION_IDS = new Set(['primary-cards-section', 'desktop-pins-section', 'custom-entity-icons-section']);
+const PERSONALIZATION_LAZY_SECTION_IDS = new Set([
+  'primary-cards-section',
+  'desktop-pins-section',
+  'custom-entity-icons-section',
+]);
 const personalizationSectionPersistTimers = new Map();
 const hydratedPersonalizationSections = new Set();
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
@@ -84,12 +84,45 @@ const CUSTOM_EDITOR_SCOPE_SELECTOR = [
   '#rename-custom-color-btn',
   '#remove-custom-color-btn',
 ].join(', ');
-const ICON_GRAPHEME_SEGMENTER = (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function')
-  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-  : null;
+const ICON_GRAPHEME_SEGMENTER =
+  typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
 const CUSTOM_ENTITY_ICON_FALLBACKS = [
-  '💡', '🔌', '💨', '🌡️', '💧', '🔋', '⚡', '📈', '🏃', '🧍', '🚪', '🪟', '✔️', '❌', '🎵', '📷',
-  '🔒', '🔓', '🏠', '✈️', '⏲️', '🛡️', '🤖', '✨', '🧹', '🔥', '❄️', '🌙', '☀️', '⭐', '🛋️', '🛏️', '🍳', '🚿',
+  '💡',
+  '🔌',
+  '💨',
+  '🌡️',
+  '💧',
+  '🔋',
+  '⚡',
+  '📈',
+  '🏃',
+  '🧍',
+  '🚪',
+  '🪟',
+  '✔️',
+  '❌',
+  '🎵',
+  '📷',
+  '🔒',
+  '🔓',
+  '🏠',
+  '✈️',
+  '⏲️',
+  '🛡️',
+  '🤖',
+  '✨',
+  '🧹',
+  '🔥',
+  '❄️',
+  '🌙',
+  '☀️',
+  '⭐',
+  '🛋️',
+  '🛏️',
+  '🍳',
+  '🚿',
 ];
 
 function syncWeatherEffectsAvailability(options = {}) {
@@ -111,7 +144,8 @@ function syncWeatherEffectsAvailability(options = {}) {
   }
 
   if (weatherOverrideGroup) {
-    weatherOverrideGroup.style.display = frostedGlassEnabled && weatherEffectsEnabled.checked ? 'block' : 'none';
+    weatherOverrideGroup.style.display =
+      frostedGlassEnabled && weatherEffectsEnabled.checked ? 'block' : 'none';
   }
 
   if (warning) {
@@ -185,7 +219,23 @@ const CUSTOM_ENTITY_ICON_KEYWORD_GROUPS = {
   flower: ['🌸', '💮', '🪷', '🏵️', '🌹', '🥀', '🌺', '🌻', '🌼', '🌷', '🪻', '💐'],
   leaf: ['🍃', '🍂', '🍁', '🌿', '☘️', '🍀'],
   nature: ['🌲', '🌳', '🌴', '🌵', '🌱', '🌿', '🍃', '🍂', '🍁', '🌊', '⛰️', '🏞️'],
-  weather: ['☀️', '🌤️', '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '🌫️', '🌪️', '🌈', '☔'],
+  weather: [
+    '☀️',
+    '🌤️',
+    '⛅',
+    '🌥️',
+    '☁️',
+    '🌦️',
+    '🌧️',
+    '⛈️',
+    '🌩️',
+    '🌨️',
+    '❄️',
+    '🌫️',
+    '🌪️',
+    '🌈',
+    '☔',
+  ],
   rain: ['🌧️', '☔', '🌦️', '⛈️'],
   snow: ['❄️', '☃️', '⛄', '🌨️'],
   sun: ['☀️', '🌤️', '🌞'],
@@ -204,12 +254,76 @@ const CUSTOM_ENTITY_ICON_KEYWORD_GROUPS = {
   timer: ['⏲️', '⏰', '⌚', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛'],
   favorite: ['⭐', '🌟', '✨', '💖', '💛'],
   travel: ['✈️', '🚗', '🚙', '🚌', '🚆', '🛳️'],
-  animal: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦉', '🦄', '🐝', '🦋', '🐞', '🐢', '🐍', '🐙', '🦑', '🦀', '🐠', '🐟', '🐡', '🐬', '🦈', '🐳', '🐋'],
+  animal: [
+    '🐶',
+    '🐱',
+    '🐭',
+    '🐹',
+    '🐰',
+    '🦊',
+    '🐻',
+    '🐼',
+    '🐨',
+    '🐯',
+    '🦁',
+    '🐮',
+    '🐷',
+    '🐸',
+    '🐵',
+    '🐔',
+    '🐧',
+    '🐦',
+    '🦉',
+    '🦄',
+    '🐝',
+    '🦋',
+    '🐞',
+    '🐢',
+    '🐍',
+    '🐙',
+    '🦑',
+    '🦀',
+    '🐠',
+    '🐟',
+    '🐡',
+    '🐬',
+    '🦈',
+    '🐳',
+    '🐋',
+  ],
   pet: ['🐶', '🐱', '🐭', '🐹', '🐰', '🐦', '🐠', '🐢'],
   rodent: ['🐀', '🐁', '🐭', '🐹', '🐿️', '🦫'],
   rat: ['🐀', '🐁', '🐭'],
   mouse: ['🐁', '🐭', '🐀'],
-  mammal: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐵', '🦄', '🐘', '🦒', '🦛', '🦏', '🐪', '🐫', '🦘', '🦥', '🦦', '🦨', '🦡', '🦫'],
+  mammal: [
+    '🐶',
+    '🐱',
+    '🐭',
+    '🐹',
+    '🐰',
+    '🦊',
+    '🐻',
+    '🐼',
+    '🐨',
+    '🐯',
+    '🦁',
+    '🐮',
+    '🐷',
+    '🐵',
+    '🦄',
+    '🐘',
+    '🦒',
+    '🦛',
+    '🦏',
+    '🐪',
+    '🐫',
+    '🦘',
+    '🦥',
+    '🦦',
+    '🦨',
+    '🦡',
+    '🦫',
+  ],
   bird: ['🐔', '🐤', '🐣', '🐥', '🐦', '🦅', '🦆', '🦉', '🦇', '🦜', '🦢', '🦩', '🕊️'],
   fish: ['🐟', '🐠', '🐡', '🦈', '🐬', '🐳', '🐋', '🦭', '🐙', '🦑', '🦀', '🦞', '🦐'],
   insect: ['🐝', '🪲', '🪳', '🦋', '🐛', '🐜', '🐞', '🕷️', '🦂', '🪰', '🪱'],
@@ -241,9 +355,13 @@ function normalizeHexColor(hex) {
   const normalized = hex.trim().replace('#', '');
   if (![3, 6].includes(normalized.length)) return null;
   if (!/^[0-9a-fA-F]+$/.test(normalized)) return null;
-  const sixDigit = normalized.length === 3
-    ? normalized.split('').map(ch => ch + ch).join('')
-    : normalized;
+  const sixDigit =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((ch) => ch + ch)
+          .join('')
+      : normalized;
   return `#${sixDigit.toUpperCase()}`;
 }
 
@@ -264,14 +382,16 @@ function clampRgbChannel(value) {
 }
 
 function rgbToHex(r, g, b) {
-  const channels = [r, g, b].map(value => clampRgbChannel(value));
-  if (channels.some(channel => channel === null)) return null;
+  const channels = [r, g, b].map((value) => clampRgbChannel(value));
+  if (channels.some((channel) => channel === null)) return null;
   const [safeR, safeG, safeB] = channels;
   return `#${safeR.toString(16).padStart(2, '0')}${safeG.toString(16).padStart(2, '0')}${safeB.toString(16).padStart(2, '0')}`.toUpperCase();
 }
 
 function buildCustomColorId(seed = '') {
-  const cleanedSeed = String(seed || 'color').replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+  const cleanedSeed = String(seed || 'color')
+    .replace(/[^a-zA-Z0-9]+/g, '')
+    .toLowerCase();
   const suffix = Math.random().toString(36).slice(2, 8);
   return `${CUSTOM_THEME_ID_PREFIX}${cleanedSeed || 'color'}-${suffix}`;
 }
@@ -293,15 +413,14 @@ function normalizeCustomColorList(customColors) {
       id = buildCustomColorId(`${color.slice(1)}${index}`);
     }
 
-    const createdAt = (typeof entry.createdAt === 'string' && entry.createdAt.trim())
-      ? entry.createdAt
-      : new Date().toISOString();
-    const updatedAt = (typeof entry.updatedAt === 'string' && entry.updatedAt.trim())
-      ? entry.updatedAt
-      : createdAt;
-    const name = (typeof entry.name === 'string' && entry.name.trim())
-      ? entry.name.trim()
-      : `Custom ${color}`;
+    const createdAt =
+      typeof entry.createdAt === 'string' && entry.createdAt.trim()
+        ? entry.createdAt
+        : new Date().toISOString();
+    const updatedAt =
+      typeof entry.updatedAt === 'string' && entry.updatedAt.trim() ? entry.updatedAt : createdAt;
+    const name =
+      typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `Custom ${color}`;
 
     seenIds.add(id);
     seenColors.add(color);
@@ -326,7 +445,7 @@ function setPendingCustomColorList(customColors) {
 }
 
 function getCustomColorsForSave() {
-  return pendingCustomColors.map(color => ({
+  return pendingCustomColors.map((color) => ({
     id: color.id,
     name: color.name,
     color: color.color,
@@ -360,9 +479,9 @@ function stripEmojiVariationSelectors(value) {
 }
 
 function getIconCodepointTerms(icon) {
-  const codepoints = Array.from(String(icon || '')).map(char => char.codePointAt(0).toString(16));
+  const codepoints = Array.from(String(icon || '')).map((char) => char.codePointAt(0).toString(16));
   if (!codepoints.length) return [];
-  const perCodepoint = codepoints.flatMap(cp => [cp, `u+${cp}`]);
+  const perCodepoint = codepoints.flatMap((cp) => [cp, `u+${cp}`]);
   return [...perCodepoint, codepoints.join('-')];
 }
 
@@ -389,7 +508,7 @@ function tokenizeEmojiSearchInput(value) {
     .split(/[\s,./\\|:;()[\]{}"'`~!?@%^&*+=<>]+/)
     .map(normalizeEmojiSearchToken)
     .filter(Boolean)
-    .map(token => {
+    .map((token) => {
       const stemmed = stemEmojiSearchToken(token);
       return stemmed || token;
     });
@@ -403,8 +522,9 @@ function expandEmojiSearchToken(token) {
   const stemmed = stemEmojiSearchToken(normalized);
   if (stemmed) expanded.add(stemmed);
 
-  const mapped = CUSTOM_ENTITY_ICON_TERM_SYNONYMS[normalized] || CUSTOM_ENTITY_ICON_TERM_SYNONYMS[stemmed] || [];
-  mapped.forEach(term => {
+  const mapped =
+    CUSTOM_ENTITY_ICON_TERM_SYNONYMS[normalized] || CUSTOM_ENTITY_ICON_TERM_SYNONYMS[stemmed] || [];
+  mapped.forEach((term) => {
     const normalizedTerm = normalizeEmojiSearchToken(term);
     if (!normalizedTerm) return;
     expanded.add(normalizedTerm);
@@ -417,8 +537,8 @@ function expandEmojiSearchToken(token) {
 
 function buildEmojiSearchAlternativeGroups(filterValue) {
   return tokenizeEmojiSearchInput(filterValue)
-    .map(token => expandEmojiSearchToken(token))
-    .filter(group => group.length > 0);
+    .map((token) => expandEmojiSearchToken(token))
+    .filter((group) => group.length > 0);
 }
 
 function isNearMatchByEditDistance(left, right) {
@@ -442,11 +562,7 @@ function isNearMatchByEditDistance(left, right) {
     let minInRow = curr[0];
     for (let j = 1; j <= b.length; j += 1) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      const value = Math.min(
-        prev[j] + 1,
-        curr[j - 1] + 1,
-        prev[j - 1] + cost,
-      );
+      const value = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
       curr[j] = value;
       if (value < minInRow) minInRow = value;
     }
@@ -459,12 +575,12 @@ function isNearMatchByEditDistance(left, right) {
 
 function choiceMatchesAlternativeGroup(choice, alternatives, allowFuzzy = false) {
   if (!choice || !Array.isArray(choice.searchTerms) || !alternatives.length) return false;
-  return alternatives.some(term => (
-    choice.searchTerms.some(choiceTerm => {
+  return alternatives.some((term) =>
+    choice.searchTerms.some((choiceTerm) => {
       if (choiceTerm.includes(term)) return true;
       return allowFuzzy ? isNearMatchByEditDistance(choiceTerm, term) : false;
     })
-  ));
+  );
 }
 
 function buildCustomEntityIconGroupAliases() {
@@ -473,7 +589,7 @@ function buildCustomEntityIconGroupAliases() {
     const normalizedKeyword = normalizeEmojiSearchToken(keyword);
     if (!normalizedKeyword) return acc;
 
-    icons.forEach(icon => {
+    icons.forEach((icon) => {
       const normalizedIcon = normalizeCustomEntityIcon(icon);
       if (!normalizedIcon) return;
       if (!acc[normalizedIcon]) acc[normalizedIcon] = new Set();
@@ -490,10 +606,11 @@ function buildCustomEntityIconGroupAliases() {
 
 function getCustomEntityIconSearchAliases(icon) {
   const stripped = stripEmojiVariationSelectors(icon);
-  const directAliases = CUSTOM_ENTITY_ICON_SEARCH_ALIASES[icon]
-    || CUSTOM_ENTITY_ICON_SEARCH_ALIASES[stripped]
-    || [];
-  const groupedAliases = Array.from(CUSTOM_ENTITY_ICON_GROUP_ALIASES[icon] || CUSTOM_ENTITY_ICON_GROUP_ALIASES[stripped] || []);
+  const directAliases =
+    CUSTOM_ENTITY_ICON_SEARCH_ALIASES[icon] || CUSTOM_ENTITY_ICON_SEARCH_ALIASES[stripped] || [];
+  const groupedAliases = Array.from(
+    CUSTOM_ENTITY_ICON_GROUP_ALIASES[icon] || CUSTOM_ENTITY_ICON_GROUP_ALIASES[stripped] || []
+  );
   return Array.from(new Set([...directAliases, ...groupedAliases]));
 }
 
@@ -502,11 +619,11 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
   const stripped = stripEmojiVariationSelectors(icon);
   if (stripped) searchTerms.add(stripped.toLowerCase());
 
-  [...aliases, ...codepointTerms].forEach(term => {
+  [...aliases, ...codepointTerms].forEach((term) => {
     const rawTerm = String(term || '').toLowerCase();
     if (!rawTerm) return;
     searchTerms.add(rawTerm);
-    tokenizeEmojiSearchInput(rawTerm).forEach(token => {
+    tokenizeEmojiSearchInput(rawTerm).forEach((token) => {
       if (token.length < 2) return;
       searchTerms.add(token);
       const stemmed = stemEmojiSearchToken(token);
@@ -521,14 +638,14 @@ function buildCustomEntityIconChoices(rgiEmojiData) {
   const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
 
   if (Array.isArray(rgiEmojiData?.strings)) {
-    rgiEmojiData.strings.forEach(icon => {
+    rgiEmojiData.strings.forEach((icon) => {
       const normalized = normalizeCustomEntityIcon(icon);
       if (normalized) iconSet.add(normalized);
     });
   }
 
   if (rgiEmojiData?.characters && typeof rgiEmojiData.characters.toArray === 'function') {
-    rgiEmojiData.characters.toArray().forEach(codepoint => {
+    rgiEmojiData.characters.toArray().forEach((codepoint) => {
       if (!Number.isInteger(codepoint)) return;
       const normalized = normalizeCustomEntityIcon(String.fromCodePoint(codepoint));
       if (normalized) iconSet.add(normalized);
@@ -536,18 +653,14 @@ function buildCustomEntityIconChoices(rgiEmojiData) {
   }
 
   return Array.from(iconSet)
-    .map(icon => {
+    .map((icon) => {
       const stripped = stripEmojiVariationSelectors(icon);
       const aliases = getCustomEntityIconSearchAliases(icon);
       const codepointTerms = getIconCodepointTerms(icon);
       const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
-      const searchText = [
-        icon,
-        stripped,
-        ...aliases,
-        ...codepointTerms,
-        ...searchTerms,
-      ].join(' ').toLowerCase();
+      const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
+        .join(' ')
+        .toLowerCase();
 
       return {
         icon,
@@ -570,7 +683,8 @@ async function ensureCustomEntityIconChoicesLoaded() {
 
   customEntityIconChoicesPromise = (async () => {
     if (!rgiEmojiDataCache) {
-      const rgiEmojiDataModule = await import('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
+      const rgiEmojiDataModule =
+        await import('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
       rgiEmojiDataCache = rgiEmojiDataModule?.default || rgiEmojiDataModule;
     }
 
@@ -589,22 +703,24 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
   const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
   if (!choices.length) return [];
 
-  const rawFilter = String(filterValue || '').trim().toLowerCase();
+  const rawFilter = String(filterValue || '')
+    .trim()
+    .toLowerCase();
   if (!rawFilter) return choices;
 
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
   if (!alternativeGroups.length) return choices;
 
-  const strictMatches = choices.filter(choice => {
+  const strictMatches = choices.filter((choice) => {
     if (choice.searchText.includes(rawFilter)) return true;
-    return alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, false));
+    return alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, false));
   });
   if (strictMatches.length) return strictMatches;
 
   // Fallback: fuzzy category search when exact tokens miss.
-  return choices.filter(choice => (
-    alternativeGroups.every(group => choiceMatchesAlternativeGroup(choice, group, true))
-  ));
+  return choices.filter((choice) =>
+    alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, true))
+  );
 }
 
 function getCustomEntityIconPickerQuery(entityId) {
@@ -644,7 +760,11 @@ function refocusCustomEntityIconInput(section, entityId) {
 }
 
 function normalizeCustomEntityIconMap(customEntityIcons) {
-  if (!customEntityIcons || typeof customEntityIcons !== 'object' || Array.isArray(customEntityIcons)) {
+  if (
+    !customEntityIcons ||
+    typeof customEntityIcons !== 'object' ||
+    Array.isArray(customEntityIcons)
+  ) {
     return {};
   }
 
@@ -679,20 +799,22 @@ function persistCustomColorsImmediately() {
 
   if (!window?.electronAPI?.updateConfig) return;
 
-  window.electronAPI.updateConfig({
-    ui: {
-      ...state.CONFIG.ui,
-      customColors,
-    },
-  }).catch((error) => {
-    log.error('Failed to persist custom colors:', error);
-    showToast('Could not persist custom colors. Try Save in settings.', 'warning', 3000);
-  });
+  window.electronAPI
+    .updateConfig({
+      ui: {
+        ...state.CONFIG.ui,
+        customColors,
+      },
+    })
+    .catch((error) => {
+      log.error('Failed to persist custom colors:', error);
+      showToast('Could not persist custom colors. Try Save in settings.', 'warning', 3000);
+    });
 }
 
 function getThemeById(themeId) {
   if (!themeId) return null;
-  return getAccentThemes().find(theme => theme.id === themeId) || null;
+  return getAccentThemes().find((theme) => theme.id === themeId) || null;
 }
 
 function getCustomColorEditorElements() {
@@ -717,7 +839,8 @@ function getMainSettingsSaveButton() {
 
 function isElementInsideCustomEditor(element) {
   if (!element || typeof element !== 'object') return false;
-  if (typeof element.matches === 'function' && element.matches(CUSTOM_EDITOR_SCOPE_SELECTOR)) return true;
+  if (typeof element.matches === 'function' && element.matches(CUSTOM_EDITOR_SCOPE_SELECTOR))
+    return true;
   return !!element.closest?.(CUSTOM_EDITOR_SCOPE_SELECTOR);
 }
 
@@ -844,7 +967,7 @@ function saveCustomColorFromEditor() {
     return false;
   }
 
-  const existing = pendingCustomColors.find(entry => entry.color === color);
+  const existing = pendingCustomColors.find((entry) => entry.color === color);
   if (existing) {
     selectThemeForActiveTarget(existing.id);
     renderColorThemeOptions();
@@ -883,7 +1006,7 @@ function renameSelectedCustomColor() {
     return;
   }
 
-  pendingCustomColors = pendingCustomColors.map(entry => {
+  pendingCustomColors = pendingCustomColors.map((entry) => {
     if (entry.id !== selectedTheme.id) return entry;
     return {
       ...entry,
@@ -902,7 +1025,7 @@ function removeSelectedCustomColor() {
   const selectedTheme = getSelectedThemeForActiveTarget();
   if (!selectedTheme?.isCustom) return;
 
-  pendingCustomColors = pendingCustomColors.filter(entry => entry.id !== selectedTheme.id);
+  pendingCustomColors = pendingCustomColors.filter((entry) => entry.id !== selectedTheme.id);
   setCustomThemes(pendingCustomColors);
   persistCustomColorsImmediately();
 
@@ -920,8 +1043,19 @@ function removeSelectedCustomColor() {
 }
 
 function initCustomColorEditor() {
-  const { picker, rInput, gInput, bInput, hexInput, saveBtn, nameInput, renameBtn, removeBtn } = getCustomColorEditorElements();
-  const customEditorControls = [picker, rInput, gInput, bInput, hexInput, nameInput, saveBtn, renameBtn, removeBtn].filter(Boolean);
+  const { picker, rInput, gInput, bInput, hexInput, saveBtn, nameInput, renameBtn, removeBtn } =
+    getCustomColorEditorElements();
+  const customEditorControls = [
+    picker,
+    rInput,
+    gInput,
+    bInput,
+    hexInput,
+    nameInput,
+    saveBtn,
+    renameBtn,
+    removeBtn,
+  ].filter(Boolean);
 
   const scheduleUnlockIfOutsideEditor = () => {
     setTimeout(() => {
@@ -931,7 +1065,7 @@ function initCustomColorEditor() {
     }, 0);
   };
 
-  customEditorControls.forEach(control => {
+  customEditorControls.forEach((control) => {
     if (control.dataset.saveLockBound === 'true') return;
     control.addEventListener('focus', () => setMainSettingsSaveLocked(true));
     control.addEventListener('blur', scheduleUnlockIfOutsideEditor);
@@ -958,7 +1092,7 @@ function initCustomColorEditor() {
     applyCustomColorPreview(color);
   };
 
-  [rInput, gInput, bInput].forEach(input => {
+  [rInput, gInput, bInput].forEach((input) => {
     if (!input) return;
     input.oninput = handleRgbInput;
     input.onblur = () => {
@@ -1068,7 +1202,6 @@ async function handlePendingCustomEditorChangesBeforeSave() {
   return true;
 }
 
-
 /**
  * Resolve a valid accent theme id from a candidate, with optional preference for the 'slate' theme.
  *
@@ -1083,16 +1216,21 @@ async function handlePendingCustomEditorChangesBeforeSave() {
  */
 function resolveThemeId(themeId, { preferSlate = false } = {}) {
   const themes = getAccentThemes();
-  const validIds = new Set(themes.map(theme => theme.id));
+  const validIds = new Set(themes.map((theme) => theme.id));
   if (themeId && validIds.has(themeId)) return themeId;
   if (themeId === 'sky') {
-    const original = themes.find(theme => theme.id === 'original')?.id;
+    const original = themes.find((theme) => theme.id === 'original')?.id;
     if (original) return original;
   }
   if (preferSlate) {
-    return themes.find(theme => theme.id === 'slate')?.id || themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
+    return (
+      themes.find((theme) => theme.id === 'slate')?.id ||
+      themes.find((theme) => theme.id === 'original')?.id ||
+      themes[0]?.id ||
+      'original'
+    );
   }
-  return themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
+  return themes.find((theme) => theme.id === 'original')?.id || themes[0]?.id || 'original';
 }
 
 /**
@@ -1180,7 +1318,7 @@ function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
 function updateThemeSelectionUI() {
   const selectedTheme = getPendingTheme(activeColorTarget);
   const options = document.querySelectorAll('.color-theme-option');
-  options.forEach(option => {
+  options.forEach((option) => {
     const isSelected = option.dataset.theme === selectedTheme;
     option.classList.toggle('selected', isSelected);
     option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
@@ -1191,7 +1329,7 @@ function updateColorTargetUI() {
   const select = document.getElementById('color-target-select');
   if (select) select.value = activeColorTarget;
 
-  document.querySelectorAll('.color-target-option').forEach(option => {
+  document.querySelectorAll('.color-target-option').forEach((option) => {
     const isActive = option.dataset.colorTarget === activeColorTarget;
     option.classList.toggle('active', isActive);
     option.setAttribute('aria-checked', isActive ? 'true' : 'false');
@@ -1222,17 +1360,21 @@ function updateThemeSummary() {
   const summary = document.getElementById('theme-current-selection');
   if (!summary) return;
   const themes = getAccentThemes();
-  const accentName = themes.find(theme => theme.id === getPendingTheme(COLOR_TARGETS.accent))?.name || 'Custom';
-  const backgroundName = themes.find(theme => theme.id === getPendingTheme(COLOR_TARGETS.background))?.name || 'Custom';
+  const accentName =
+    themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.accent))?.name || 'Custom';
+  const backgroundName =
+    themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.background))?.name ||
+    'Custom';
   summary.textContent = `Accent: ${accentName} • Background: ${backgroundName}`;
 }
 
 /**
  * Set which color target (accent or background) is active for the theme options UI.
- * @param {string} target - Desired color target; expected values are `"accent"` or `"background"`. Any other value selects `"accent"`. 
+ * @param {string} target - Desired color target; expected values are `"accent"` or `"background"`. Any other value selects `"accent"`.
  */
 function setActiveColorTarget(target) {
-  activeColorTarget = target === COLOR_TARGETS.background ? COLOR_TARGETS.background : COLOR_TARGETS.accent;
+  activeColorTarget =
+    target === COLOR_TARGETS.background ? COLOR_TARGETS.background : COLOR_TARGETS.accent;
   hasDraftColorPreview = false;
   updateColorTargetUI();
   renderColorThemeOptions();
@@ -1366,7 +1508,7 @@ function renderColorThemeOptions() {
   const themes = getAccentThemes();
   const selectedTheme = getPendingTheme(activeColorTarget);
 
-  themes.forEach(theme => {
+  themes.forEach((theme) => {
     const option = document.createElement('button');
     option.type = 'button';
     option.className = 'theme-option color-theme-option';
@@ -1376,8 +1518,10 @@ function renderColorThemeOptions() {
     const isBackgroundTarget = activeColorTarget === COLOR_TARGETS.background;
     const tooltipName = theme.name;
     const tooltipDescription = isOriginalTheme
-      ? (isBackgroundTarget ? 'Original dark base (no tint)' : 'Original accent blue')
-      : (theme.description || (theme.isCustom ? 'Saved custom color' : 'Theme color'));
+      ? isBackgroundTarget
+        ? 'Original dark base (no tint)'
+        : 'Original accent blue'
+      : theme.description || (theme.isCustom ? 'Saved custom color' : 'Theme color');
     option.setAttribute('role', 'radio');
     option.setAttribute('aria-label', `${tooltipName}. ${tooltipDescription}`);
     option.setAttribute('aria-checked', theme.id === selectedTheme ? 'true' : 'false');
@@ -1446,16 +1590,17 @@ function initColorTargetSelect() {
     };
   }
 
-  document.querySelectorAll('.color-target-option').forEach(option => {
+  document.querySelectorAll('.color-target-option').forEach((option) => {
     option.onclick = () => {
       setActiveColorTarget(option.dataset.colorTarget);
     };
     option.onkeydown = (event) => {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
       event.preventDefault();
-      const nextTarget = activeColorTarget === COLOR_TARGETS.accent
-        ? COLOR_TARGETS.background
-        : COLOR_TARGETS.accent;
+      const nextTarget =
+        activeColorTarget === COLOR_TARGETS.accent
+          ? COLOR_TARGETS.background
+          : COLOR_TARGETS.accent;
       setActiveColorTarget(nextTarget);
       document.querySelector(`.color-target-option[data-color-target="${nextTarget}"]`)?.focus();
     };
@@ -1553,14 +1698,16 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
   const persistTimer = setTimeout(() => {
     personalizationSectionPersistTimers.delete(sectionId);
     const latestStates = getSavedPersonalizationSectionStates();
-    window.electronAPI.updateConfig({
-      ui: {
-        ...state.CONFIG.ui,
-        [PERSONALIZATION_SECTION_STATE_KEY]: latestStates,
-      },
-    }).catch(error => {
-      log.error('Failed to persist personalization section state:', error);
-    });
+    window.electronAPI
+      .updateConfig({
+        ui: {
+          ...state.CONFIG.ui,
+          [PERSONALIZATION_SECTION_STATE_KEY]: latestStates,
+        },
+      })
+      .catch((error) => {
+        log.error('Failed to persist personalization section state:', error);
+      });
   }, PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS);
   personalizationSectionPersistTimers.set(sectionId, persistTimer);
 }
@@ -1575,13 +1722,12 @@ function initColorThemeSectionToggle() {
   if (!sections.length) return;
   const savedSectionStates = getSavedPersonalizationSectionStates();
 
-  sections.forEach(section => {
+  sections.forEach((section) => {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
 
-    const isCollapsed = savedSectionStates[section.id] === true
-      ? true
-      : section.classList.contains('collapsed');
+    const isCollapsed =
+      savedSectionStates[section.id] === true ? true : section.classList.contains('collapsed');
     applyPersonalizationSectionState(section, toggle, isCollapsed, { immediate: true });
 
     toggle.onclick = () => {
@@ -1632,17 +1778,21 @@ function getPendingPrimaryCards() {
 function getPrimaryCardEntityOptions(filter = '') {
   const normalizedFilter = filter.toLowerCase();
   return Object.values(state.STATES || {})
-    .filter(entity => !entity.entity_id.startsWith('sun.') && !entity.entity_id.startsWith('zone.'))
-    .map(entity => {
+    .filter(
+      (entity) => !entity.entity_id.startsWith('sun.') && !entity.entity_id.startsWith('zone.')
+    )
+    .map((entity) => {
       if (!normalizedFilter) return { entity, score: 1 };
       const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), normalizedFilter);
       const idScore = utils.getSearchScore(entity.entity_id, normalizedFilter);
       return { entity, score: nameScore + idScore };
     })
-    .filter(item => item.score > 0)
+    .filter((item) => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      return utils.getEntityDisplayName(a.entity).localeCompare(utils.getEntityDisplayName(b.entity));
+      return utils
+        .getEntityDisplayName(a.entity)
+        .localeCompare(utils.getEntityDisplayName(b.entity));
     });
 }
 
@@ -1665,7 +1815,7 @@ function updatePrimaryCardSummary() {
 
 function updatePrimaryCardActionButtons() {
   const selections = getPendingPrimaryCards();
-  document.querySelectorAll('[data-primary-card][data-primary-value]').forEach(btn => {
+  document.querySelectorAll('[data-primary-card][data-primary-value]').forEach((btn) => {
     const cardIndex = Number(btn.dataset.primaryCard);
     const value = btn.dataset.primaryValue;
     const isActive = selections[cardIndex] === value;
@@ -1786,11 +1936,20 @@ function normalizeDesktopPinMap(desktopPins, options = {}) {
   }
 
   const requireFavorite = !!options.requireFavorite;
-  const favorites = new Set((state.CONFIG?.favoriteEntities || []).filter(entityId => typeof entityId === 'string' && entityId.trim()));
+  const favorites = new Set(
+    (state.CONFIG?.favoriteEntities || []).filter(
+      (entityId) => typeof entityId === 'string' && entityId.trim()
+    )
+  );
   return Object.entries(desktopPins).reduce((acc, [entityId, bounds]) => {
     if (typeof entityId !== 'string') return acc;
     const trimmedEntityId = entityId.trim();
-    if (!trimmedEntityId || (requireFavorite && !favorites.has(trimmedEntityId)) || !bounds || typeof bounds !== 'object') {
+    if (
+      !trimmedEntityId ||
+      (requireFavorite && !favorites.has(trimmedEntityId)) ||
+      !bounds ||
+      typeof bounds !== 'object'
+    ) {
       return acc;
     }
     acc[trimmedEntityId] = { ...bounds };
@@ -1809,9 +1968,7 @@ function setPendingDesktopPins(desktopPins) {
 function getPendingDesktopPinsForSave() {
   const liveDesktopPins = normalizeDesktopPinMap(state.CONFIG?.desktopPins);
   return Object.keys(pendingDesktopPins).reduce((acc, entityId) => {
-    acc[entityId] = liveDesktopPins[entityId]
-      ? { ...liveDesktopPins[entityId] }
-      : {};
+    acc[entityId] = liveDesktopPins[entityId] ? { ...liveDesktopPins[entityId] } : {};
     return acc;
   }, {});
 }
@@ -1825,7 +1982,8 @@ function getDesktopPinEntityOptions(filter = '') {
       const displayName = entity ? utils.getEntityDisplayName(entity) : favoriteId;
       const haystackId = entity?.entity_id || favoriteId;
       const score = normalizedFilter
-        ? utils.getSearchScore(displayName, normalizedFilter) + utils.getSearchScore(haystackId, normalizedFilter)
+        ? utils.getSearchScore(displayName, normalizedFilter) +
+          utils.getSearchScore(haystackId, normalizedFilter)
         : 1;
       return {
         entityId: favoriteId,
@@ -1834,7 +1992,7 @@ function getDesktopPinEntityOptions(filter = '') {
         score,
       };
     })
-    .filter(item => item.score > 0)
+    .filter((item) => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.displayName.localeCompare(b.displayName);
@@ -1849,9 +2007,10 @@ function updateDesktopPinsSummary() {
     currentEl.textContent = count === 0 ? 'None' : `${count} pinned tile${count === 1 ? '' : 's'}`;
   }
   if (summaryEl) {
-    summaryEl.textContent = count === 0
-      ? 'Pin any Quick Access tile to create a small desktop mini-widget.'
-      : `${count} tile${count === 1 ? '' : 's'} will be persisted when you save settings.`;
+    summaryEl.textContent =
+      count === 0
+        ? 'Pin any Quick Access tile to create a small desktop mini-widget.'
+        : `${count} tile${count === 1 ? '' : 's'} will be persisted when you save settings.`;
   }
 }
 
@@ -1865,7 +2024,8 @@ function renderDesktopPinsList() {
   list.innerHTML = '';
 
   if (!options.length) {
-    list.innerHTML = '<div class="no-entities-message">Add entities to Quick Access to pin them to the desktop.</div>';
+    list.innerHTML =
+      '<div class="no-entities-message">Add entities to Quick Access to pin them to the desktop.</div>';
     updateDesktopPinsSummary();
     syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
     return;
@@ -1962,7 +2122,7 @@ function getCustomEntityIconChoiceLabel(choice) {
     const visibleAliases = choice.aliases.slice(0, 4).join(', ');
     return choice.aliases.length > 4 ? `${visibleAliases}, ...` : visibleAliases;
   }
-  const codepointLabel = choice.codepointTerms.find(term => term.startsWith('u+'));
+  const codepointLabel = choice.codepointTerms.find((term) => term.startsWith('u+'));
   return codepointLabel ? codepointLabel.toUpperCase() : 'Emoji';
 }
 
@@ -2018,7 +2178,7 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   grid.setAttribute('role', 'listbox');
   grid.setAttribute('aria-label', `Choose icon for ${entityId}`);
 
-  filteredChoices.forEach(choice => {
+  filteredChoices.forEach((choice) => {
     const choiceBtn = document.createElement('button');
     choiceBtn.type = 'button';
     choiceBtn.className = 'custom-entity-icon-choice';
@@ -2038,7 +2198,10 @@ function renderCustomEntityIconsList() {
   const list = document.getElementById('custom-entity-icons-list');
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (!list || !searchInput) return;
-  list.classList.toggle('custom-entity-icons-list-expanded', !!activeCustomEntityIconPickerEntityId);
+  list.classList.toggle(
+    'custom-entity-icons-list-expanded',
+    !!activeCustomEntityIconPickerEntityId
+  );
 
   const filter = searchInput.value || '';
   const scoredEntities = getPrimaryCardEntityOptions(filter);
@@ -2059,8 +2222,8 @@ function renderCustomEntityIconsList() {
     const previewIcon = pendingIcon || fallbackIcon;
     const hasCustomIcon = !!pendingIcon;
     const isPickerOpen = activeCustomEntityIconPickerEntityId === entityId;
-    const showAppliedIndicator = !!lastCustomEntityIconAction
-      && lastCustomEntityIconAction.entityId === entityId;
+    const showAppliedIndicator =
+      !!lastCustomEntityIconAction && lastCustomEntityIconAction.entityId === entityId;
 
     const item = document.createElement('div');
     item.className = 'entity-item custom-entity-icon-item';
@@ -2097,9 +2260,8 @@ function renderCustomEntityIconsList() {
     if (showAppliedIndicator) {
       const actionBadge = document.createElement('span');
       actionBadge.className = 'custom-entity-icon-action-badge';
-      actionBadge.textContent = lastCustomEntityIconAction.action === 'reset'
-        ? 'Reset (unsaved)'
-        : 'Applied (unsaved)';
+      actionBadge.textContent =
+        lastCustomEntityIconAction.action === 'reset' ? 'Reset (unsaved)' : 'Applied (unsaved)';
       info.appendChild(actionBadge);
     }
 
@@ -2235,7 +2397,9 @@ function initCustomEntityIconsUI() {
       return;
     }
 
-    const choiceBtn = event.target.closest('[data-custom-icon-choice][data-custom-icon-choice-entity]');
+    const choiceBtn = event.target.closest(
+      '[data-custom-icon-choice][data-custom-icon-choice-entity]'
+    );
     if (choiceBtn) {
       const entityId = choiceBtn.dataset.customIconChoiceEntity;
       const icon = choiceBtn.dataset.customIconChoice;
@@ -2299,7 +2463,9 @@ function initCustomEntityIconsUI() {
     setTimeout(() => {
       if (activeCustomEntityIconPickerEntityId !== capturedEntityId) return;
 
-      const controls = section.querySelector(`[data-custom-icon-input="${capturedEntityId}"]`)?.closest('.custom-entity-icon-controls');
+      const controls = section
+        .querySelector(`[data-custom-icon-input="${capturedEntityId}"]`)
+        ?.closest('.custom-entity-icon-controls');
       const activeElement = document.activeElement;
       const shouldKeepOpen = !!(controls && activeElement && controls.contains(activeElement));
       if (shouldKeepOpen) return;
@@ -2373,12 +2539,14 @@ function previewWindowEffectsNow() {
     applyWindowEffects(values);
 
     if (window?.electronAPI?.previewWindowEffects) {
-      window.electronAPI.previewWindowEffects({
-        opacity: values.opacity,
-        frostedGlass: values.frostedGlass,
-      }).catch(err => {
-        log.error('Failed to preview window effects:', err);
-      });
+      window.electronAPI
+        .previewWindowEffects({
+          opacity: values.opacity,
+          frostedGlass: values.frostedGlass,
+        })
+        .catch((err) => {
+          log.error('Failed to preview window effects:', err);
+        });
     }
 
     if (settingsUiHooks?.updateWeatherEffects) {
@@ -2434,12 +2602,14 @@ function restorePreviewWindowEffects() {
     refreshBackgroundTheme();
     applyWindowEffects(previewState);
     if (window?.electronAPI?.previewWindowEffects) {
-      window.electronAPI.previewWindowEffects({
-        opacity: previewState.opacity,
-        frostedGlass: previewState.frostedGlass,
-      }).catch(err => {
-        log.error('Failed to restore preview window effects:', err);
-      });
+      window.electronAPI
+        .previewWindowEffects({
+          opacity: previewState.opacity,
+          frostedGlass: previewState.frostedGlass,
+        })
+        .catch((err) => {
+          log.error('Failed to restore preview window effects:', err);
+        });
     }
 
     if (settingsUiHooks?.updateWeatherEffects) {
@@ -2598,17 +2768,21 @@ function buildProfileSyncFilePathFromFolder(folderPath) {
   if (!normalizedFolder) return '';
   const separator = /[\\/]$/.test(normalizedFolder)
     ? ''
-    : (normalizedFolder.includes('\\') ? '\\' : '/');
+    : normalizedFolder.includes('\\')
+      ? '\\'
+      : '/';
   return `${normalizedFolder}${separator}${PROFILE_SYNC_DEFAULT_FILE_NAME}`;
 }
 
-function ensureProfileSyncConfig() {
-  state.CONFIG.profileSync = {
+function ensureProfileSyncConfig(targetConfig = state.CONFIG) {
+  targetConfig.profileSync = {
     ...getDefaultProfileSyncConfig(),
-    ...(state.CONFIG.profileSync || {}),
+    ...(targetConfig.profileSync || {}),
   };
-  state.CONFIG.profileSync.syncScope = normalizeProfileSyncScope(state.CONFIG.profileSync.syncScope);
-  return state.CONFIG.profileSync;
+  targetConfig.profileSync.syncScope = normalizeProfileSyncScope(
+    targetConfig.profileSync.syncScope
+  );
+  return targetConfig.profileSync;
 }
 
 function formatProfileSyncTimestamp(isoString) {
@@ -2645,9 +2819,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   }
 
   if (statusEl) {
-    const stateLabel = status.inFlight
-      ? 'Sync in progress...'
-      : (status.lastSyncStatus || 'idle');
+    const stateLabel = status.inFlight ? 'Sync in progress...' : status.lastSyncStatus || 'idle';
     statusEl.textContent = `Status: ${stateLabel} | Last sync: ${formatProfileSyncTimestamp(status.lastSyncAt)}`;
   }
 
@@ -2664,10 +2836,18 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   }
 
   if (passphraseHint) {
-    passphraseHint.classList.toggle('hidden', !status.enabled || !ensureProfileSyncConfig().encryptionEnabled);
+    passphraseHint.classList.toggle(
+      'hidden',
+      !status.enabled || !ensureProfileSyncConfig().encryptionEnabled
+    );
   }
 
-  if (folderInput && !folderInput.value.trim() && typeof status.cloudFilePath === 'string' && status.cloudFilePath.trim()) {
+  if (
+    folderInput &&
+    !folderInput.value.trim() &&
+    typeof status.cloudFilePath === 'string' &&
+    status.cloudFilePath.trim()
+  ) {
     const derivedFolder = deriveProfileSyncFolderPath(status.cloudFilePath);
     folderInput.value = derivedFolder || status.cloudFilePath;
   }
@@ -2750,7 +2930,11 @@ function applyProfileSyncConfigToForm() {
   if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
   if (remember) remember.checked = !!profileSync.rememberPassphrase;
   applyProfileSyncScopeToForm(profileSync.syncScope);
-  if (passphraseGroup) passphraseGroup.classList.toggle('hidden', !profileSync.enabled || !profileSync.encryptionEnabled);
+  if (passphraseGroup)
+    passphraseGroup.classList.toggle(
+      'hidden',
+      !profileSync.enabled || !profileSync.encryptionEnabled
+    );
   if (passphraseInput) passphraseInput.value = '';
 
   setProfileSyncSettingsVisibility();
@@ -2784,7 +2968,11 @@ async function runManualProfileSync(direction) {
     } else {
       await refreshProfileSyncStatusUi();
     }
-    showToast(`Profile sync ${direction === 'push' ? 'upload' : 'download'} complete.`, 'success', 2200);
+    showToast(
+      `Profile sync ${direction === 'push' ? 'upload' : 'download'} complete.`,
+      'success',
+      2200
+    );
   } catch (error) {
     log.error('Manual profile sync failed:', error);
     showToast(error?.message || 'Profile sync failed.', 'error', 3500);
@@ -2855,7 +3043,8 @@ function bindProfileSyncSettingsUi() {
       const selectedProvider = provider?.value || 'cloudFile';
       const response = await window.electronAPI.chooseProfileSyncFolder(selectedProvider);
       if (response?.canceled) return;
-      const folderPath = response?.folderPath || deriveProfileSyncFolderPath(response?.filePath || '');
+      const folderPath =
+        response?.folderPath || deriveProfileSyncFolderPath(response?.filePath || '');
       if (!folderPath) return;
       const input = document.getElementById('profile-sync-folder-path');
       if (input) input.value = folderPath;
@@ -2891,7 +3080,10 @@ function bindProfileSyncSettingsUi() {
       const enabledCheckbox = document.getElementById('profile-sync-enabled');
       const passphraseGroup = document.getElementById('profile-sync-passphrase-group');
       if (passphraseGroup) {
-        passphraseGroup.classList.toggle('hidden', !(enabledCheckbox?.checked) || !encryption.checked);
+        passphraseGroup.classList.toggle(
+          'hidden',
+          !enabledCheckbox?.checked || !encryption.checked
+        );
       }
     };
   }
@@ -2915,7 +3107,11 @@ function bindProfileSyncSettingsUi() {
         await window.electronAPI.clearProfileSyncPassphrase();
       } catch (error) {
         log.error('Failed to clear saved profile sync passphrase:', error);
-        showToast(`Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`, 'error', 3400);
+        showToast(
+          `Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`,
+          'error',
+          3400
+        );
         return;
       }
 
@@ -2939,10 +3135,11 @@ function bindProfileSyncSettingsUi() {
 }
 
 function compareLocalePackVersions(a = '', b = '') {
-  const toParts = (value) => String(value || '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10))
-    .map((part) => (Number.isNaN(part) ? 0 : part));
+  const toParts = (value) =>
+    String(value || '')
+      .split('.')
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isNaN(part) ? 0 : part));
   const aParts = toParts(a);
   const bParts = toParts(b);
   const length = Math.max(aParts.length, bParts.length);
@@ -2954,18 +3151,26 @@ function compareLocalePackVersions(a = '', b = '') {
 }
 
 function getLanguagePackDisplayName(pack = {}) {
-  return pack.displayName || getLanguageDisplayName(pack.locale, pack.englishName || pack.locale || '');
+  return (
+    pack.displayName || getLanguageDisplayName(pack.locale, pack.englishName || pack.locale || '')
+  );
 }
 
 function findLocalePack(locale) {
-  const normalizedLocale = String(locale || '').trim().toLowerCase();
+  const normalizedLocale = String(locale || '')
+    .trim()
+    .toLowerCase();
   if (!normalizedLocale) return null;
   const baseLocale = normalizedLocale.split('-')[0];
-  return localePackListCache.find((pack) => {
-    const packLocale = String(pack?.locale || '').trim().toLowerCase();
-    if (!packLocale) return false;
-    return packLocale === normalizedLocale || packLocale.split('-')[0] === baseLocale;
-  }) || null;
+  return (
+    localePackListCache.find((pack) => {
+      const packLocale = String(pack?.locale || '')
+        .trim()
+        .toLowerCase();
+      if (!packLocale) return false;
+      return packLocale === normalizedLocale || packLocale.split('-')[0] === baseLocale;
+    }) || null
+  );
 }
 
 function updateLanguageSummaryText() {
@@ -2976,21 +3181,28 @@ function updateLanguageSummaryText() {
   const localeState = getLocaleState();
   const selectedLocale = languageSelect?.value || state.CONFIG?.ui?.language || 'auto';
   const selectedPack = findLocalePack(selectedLocale);
-  const selectedLabel = selectedLocale === 'auto'
-    ? t('Auto (System Default)')
-    : (selectedPack ? getLanguagePackDisplayName(selectedPack) : getLanguageDisplayName(selectedLocale, selectedLocale));
-  const detectedLabel = getLanguageDisplayName(localeState.detectedLocale, localeState.detectedLocale || 'en');
+  const selectedLabel =
+    selectedLocale === 'auto'
+      ? t('Auto (System Default)')
+      : selectedPack
+        ? getLanguagePackDisplayName(selectedPack)
+        : getLanguageDisplayName(selectedLocale, selectedLocale);
+  const detectedLabel = getLanguageDisplayName(
+    localeState.detectedLocale,
+    localeState.detectedLocale || 'en'
+  );
 
   if (currentSummary) {
     currentSummary.textContent = t('Selected language: {{language}}', { language: selectedLabel });
   }
   if (systemSummary) {
-    systemSummary.textContent = t('System language detected: {{language}}', { language: detectedLabel });
+    systemSummary.textContent = t('System language detected: {{language}}', {
+      language: detectedLabel,
+    });
   }
   if (fallbackSummary) {
-    const needsPack = selectedLocale !== 'auto'
-      && selectedLocale !== 'en'
-      && localeState.activeLocale === 'en';
+    const needsPack =
+      selectedLocale !== 'auto' && selectedLocale !== 'en' && localeState.activeLocale === 'en';
     fallbackSummary.classList.toggle('hidden', !needsPack);
     fallbackSummary.textContent = t('Using English until the selected language pack is installed.');
   }
@@ -3018,7 +3230,10 @@ function syncLanguageSelectOptions() {
     languageSelect.appendChild(option);
   });
 
-  if (selectedValue && !Array.from(languageSelect.options).some((option) => option.value === selectedValue)) {
+  if (
+    selectedValue &&
+    !Array.from(languageSelect.options).some((option) => option.value === selectedValue)
+  ) {
     const fallbackOption = document.createElement('option');
     fallbackOption.value = selectedValue;
     fallbackOption.disabled = selectedValue !== 'auto' && selectedValue !== 'en';
@@ -3045,7 +3260,8 @@ function renderLanguagePackList() {
   if (!localePackListCache.length) {
     const empty = document.createElement('div');
     empty.className = 'help-text';
-    empty.textContent = localePackListError || t('No downloadable language packs are currently available.');
+    empty.textContent =
+      localePackListError || t('No downloadable language packs are currently available.');
     container.appendChild(empty);
     return;
   }
@@ -3074,7 +3290,9 @@ function renderLanguagePackList() {
     const actions = document.createElement('div');
     actions.className = 'language-pack-actions';
 
-    const versionAhead = !!pack.updateAvailable || (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
+    const versionAhead =
+      !!pack.updateAvailable ||
+      (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
     if (pack.installed && versionAhead) {
       const updateBtn = document.createElement('button');
       updateBtn.type = 'button';
@@ -3240,10 +3458,22 @@ function bindLanguageSettingsUi() {
         if (action === 'download') {
           const result = await window.electronAPI.downloadLocalePack(locale);
           localePackListCache = Array.isArray(result?.packs) ? result.packs : localePackListCache;
-          showToast(t('Language pack downloaded: {{language}}', { language: getLanguageDisplayName(locale, locale) }), 'success', 2200);
+          showToast(
+            t('Language pack downloaded: {{language}}', {
+              language: getLanguageDisplayName(locale, locale),
+            }),
+            'success',
+            2200
+          );
         } else if (action === 'remove') {
           await window.electronAPI.removeLocalePack(locale);
-          showToast(t('Language pack removed: {{language}}', { language: getLanguageDisplayName(locale, locale) }), 'success', 2200);
+          showToast(
+            t('Language pack removed: {{language}}', {
+              language: getLanguageDisplayName(locale, locale),
+            }),
+            'success',
+            2200
+          );
           localePackListCache = await window.electronAPI.getLocalePacks(true);
         }
       } catch (error) {
@@ -3349,7 +3579,7 @@ async function openSettings(uiHooks) {
     // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     // Formula: scale = 1 + (opacity - 0.5) * 198
-    const sliderScale = Math.round(1 + ((storedOpacity - 0.5) * 198));
+    const sliderScale = Math.round(1 + (storedOpacity - 0.5) * 198);
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
 
@@ -3358,7 +3588,8 @@ async function openSettings(uiHooks) {
     const weatherOverrideGroup = document.getElementById('weather-override-group');
 
     if (weatherEffectsEnabled) {
-      weatherEffectsEnabled.checked = !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled;
+      weatherEffectsEnabled.checked =
+        !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled;
       if (weatherOverrideGroup) {
         weatherOverrideGroup.style.display = weatherEffectsEnabled.checked ? 'block' : 'none';
       }
@@ -3370,7 +3601,8 @@ async function openSettings(uiHooks) {
     previewState = {
       opacity: storedOpacity,
       frostedGlass: !!state.CONFIG.frostedGlass,
-      weatherEffectsEnabled: !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled,
+      weatherEffectsEnabled:
+        !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled,
       weatherOverride: state.CONFIG.ui?.weatherOverride || 'auto',
     };
     syncWeatherEffectsAvailability();
@@ -3399,7 +3631,9 @@ async function openSettings(uiHooks) {
 
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
-      globalHotkeysEnabled.checked = !!(state.CONFIG.globalHotkeys && state.CONFIG.globalHotkeys.enabled);
+      globalHotkeysEnabled.checked = !!(
+        state.CONFIG.globalHotkeys && state.CONFIG.globalHotkeys.enabled
+      );
       const hotkeysSection = document.getElementById('hotkeys-section');
       if (hotkeysSection) {
         hotkeysSection.style.display = globalHotkeysEnabled.checked ? 'block' : 'none';
@@ -3408,7 +3642,9 @@ async function openSettings(uiHooks) {
 
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     if (entityAlertsEnabled) {
-      entityAlertsEnabled.checked = !!(state.CONFIG.entityAlerts && state.CONFIG.entityAlerts.enabled);
+      entityAlertsEnabled.checked = !!(
+        state.CONFIG.entityAlerts && state.CONFIG.entityAlerts.enabled
+      );
       const alertsSection = document.getElementById('alerts-section');
       if (alertsSection) {
         alertsSection.style.display = entityAlertsEnabled.checked ? 'block' : 'none';
@@ -3430,22 +3666,21 @@ async function openSettings(uiHooks) {
     const primarySection = document.getElementById('primary-cards-section');
     const primaryCardsList = document.getElementById('primary-cards-list');
     if (primaryCardsList) primaryCardsList.innerHTML = '';
-    const shouldRenderPrimaryCardsList = !(primarySection?.classList.contains('collapsed'));
+    const shouldRenderPrimaryCardsList = !primarySection?.classList.contains('collapsed');
     const primarySearch = document.getElementById('primary-cards-search');
     if (primarySearch) primarySearch.value = '';
     const use24HourClock = document.getElementById('use-24-hour-clock');
     if (use24HourClock) {
       use24HourClock.checked = !!state.CONFIG?.ui?.use24HourClock;
     }
-    setPendingPrimaryCards(
-      state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS,
-      { renderList: shouldRenderPrimaryCardsList }
-    );
+    setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS, {
+      renderList: shouldRenderPrimaryCardsList,
+    });
 
     const desktopPinsSection = document.getElementById('desktop-pins-section');
     const desktopPinsList = document.getElementById('desktop-pins-list');
     if (desktopPinsList) desktopPinsList.innerHTML = '';
-    const shouldRenderDesktopPinsList = !(desktopPinsSection?.classList.contains('collapsed'));
+    const shouldRenderDesktopPinsList = !desktopPinsSection?.classList.contains('collapsed');
     setPendingDesktopPins(getSavedDesktopPins());
     initDesktopPinsUI();
     const desktopPinsSearch = document.getElementById('desktop-pins-search');
@@ -3463,7 +3698,7 @@ async function openSettings(uiHooks) {
       customIconsList.innerHTML = '';
       customIconsList.classList.remove('custom-entity-icons-list-expanded');
     }
-    const shouldRenderCustomIconsList = !(customIconsSection?.classList.contains('collapsed'));
+    const shouldRenderCustomIconsList = !customIconsSection?.classList.contains('collapsed');
     setPendingCustomEntityIcons(getSavedCustomEntityIcons());
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -3547,7 +3782,8 @@ function closeSettings() {
         modal.classList.remove('modal-closing');
       };
 
-      const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+      const isTest =
+        typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
       if (isTest) {
         closeImmediate();
       } else {
@@ -3654,14 +3890,19 @@ function bindConnectionTestUi() {
  * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
  */
 async function saveSettings() {
+  let configPersisted = false;
+  let syncFileCopiedThisSave = false;
   try {
-    const prevAlwaysOnTop = state.CONFIG.alwaysOnTop;
-    const prevOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
-    const prevProfileSync = { ...(state.CONFIG.profileSync || {}) };
+    const currentConfig = state.CONFIG || {};
+    const nextConfig = JSON.parse(JSON.stringify(currentConfig));
+    nextConfig.homeAssistant = { ...(nextConfig.homeAssistant || {}) };
+    const prevAlwaysOnTop = currentConfig.alwaysOnTop;
+    const prevOpacity = typeof currentConfig.opacity === 'number' ? currentConfig.opacity : 1;
+    const prevProfileSync = { ...(currentConfig.profileSync || {}) };
 
     // Store previous HA connection settings to detect if reconnect is needed
-    const prevHaUrl = state.CONFIG.homeAssistant?.url;
-    const prevHaToken = state.CONFIG.homeAssistant?.token;
+    const prevHaUrl = currentConfig.homeAssistant?.url;
+    const prevHaToken = currentConfig.homeAssistant?.token;
 
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
@@ -3680,7 +3921,9 @@ async function saveSettings() {
     const profileSyncInterval = document.getElementById('profile-sync-interval');
     const profileSyncEncryptionEnabled = document.getElementById('profile-sync-encryption-enabled');
     const profileSyncPassphrase = document.getElementById('profile-sync-passphrase');
-    const profileSyncRememberPassphrase = document.getElementById('profile-sync-remember-passphrase');
+    const profileSyncRememberPassphrase = document.getElementById(
+      'profile-sync-remember-passphrase'
+    );
 
     const canProceedWithSave = await handlePendingCustomEditorChangesBeforeSave();
     if (!canProceedWithSave) return;
@@ -3692,7 +3935,7 @@ async function saveSettings() {
         showToast(validation.error, 'error', 4000);
         return; // Don't save if URL is invalid
       }
-      state.CONFIG.homeAssistant.url = validation.url;
+      nextConfig.homeAssistant.url = validation.url;
     } else if (haUrl && !haUrl.value.trim()) {
       showToast('Home Assistant URL cannot be empty', 'error', 3000);
       return;
@@ -3700,95 +3943,88 @@ async function saveSettings() {
 
     if (haToken) {
       const nextToken = haToken.value.trim();
-      const currentToken = state.CONFIG.homeAssistant?.token || '';
-      const shouldPreservePlaceholderToken = !nextToken && currentToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+      const currentToken = currentConfig.homeAssistant?.token || '';
+      const shouldPreservePlaceholderToken =
+        !nextToken && currentToken === 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 
       if (!shouldPreservePlaceholderToken) {
-        state.CONFIG.homeAssistant.token = nextToken;
+        nextConfig.homeAssistant.token = nextToken;
       }
 
       // Clear tokenResetReason only after the user enters a replacement token.
-      if (nextToken && state.CONFIG.tokenResetReason) {
-        delete state.CONFIG.tokenResetReason;
+      if (nextToken && nextConfig.tokenResetReason) {
+        delete nextConfig.tokenResetReason;
       }
     }
-    if (alwaysOnTop) state.CONFIG.alwaysOnTop = alwaysOnTop.checked;
-    if (frostedGlass) state.CONFIG.frostedGlass = frostedGlass.checked;
-    delete state.CONFIG.frostedGlassStrength;
-    delete state.CONFIG.frostedGlassTint;
-    
+    if (alwaysOnTop) nextConfig.alwaysOnTop = alwaysOnTop.checked;
+    if (frostedGlass) nextConfig.frostedGlass = frostedGlass.checked;
+    delete nextConfig.frostedGlassStrength;
+    delete nextConfig.frostedGlassTint;
+
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
-    state.CONFIG.ui = state.CONFIG.ui || {};
-    const frostedGlassEnabled = !!state.CONFIG.frostedGlass;
-    state.CONFIG.ui.weatherEffectsEnabled = weatherEffectsEnabled
+    nextConfig.ui = nextConfig.ui || {};
+    const frostedGlassEnabled = !!nextConfig.frostedGlass;
+    nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
       ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
       : false;
-    state.CONFIG.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
-    state.CONFIG.ui.language = languageSelect?.value || state.CONFIG.ui.language || 'auto';
-    state.CONFIG.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
+    nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
+    nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
+    nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
     if (enableInteractionDebugLogs) {
-      state.CONFIG.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
+      nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
-    state.CONFIG.updates = state.CONFIG.updates || {};
+    nextConfig.updates = nextConfig.updates || {};
     if (allowPrereleaseUpdates) {
-      state.CONFIG.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
+      nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
     }
-    state.CONFIG.ui.accent = pendingAccent || getCurrentAccentTheme();
-    state.CONFIG.ui.background = pendingBackground || getCurrentBackgroundTheme();
-    state.CONFIG.ui.customColors = getCustomColorsForSave();
+    nextConfig.ui.accent = pendingAccent || getCurrentAccentTheme();
+    nextConfig.ui.background = pendingBackground || getCurrentBackgroundTheme();
+    nextConfig.ui.customColors = getCustomColorsForSave();
     const use24HourClock = document.getElementById('use-24-hour-clock');
-    state.CONFIG.ui.use24HourClock = !!use24HourClock?.checked;
-    setCustomThemes(state.CONFIG.ui.customColors);
+    nextConfig.ui.use24HourClock = !!use24HourClock?.checked;
 
-    // Save "Start at login" setting
+    // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');
-    if (startWithWindows) {
-      try {
-        const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
-        if (!result.success) {
-          log.error('Failed to set login item settings:', result.error);
-          showToast(t('Failed to update Start at login setting'), 'warning', 3000);
-        }
-      } catch (error) {
-        log.error('Failed to set login item settings:', error);
-      }
-    }
 
     // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
       const sliderValue = parseInt(opacitySlider.value) || 90;
-      state.CONFIG.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+      nextConfig.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
     }
 
-    state.CONFIG.globalHotkeys = state.CONFIG.globalHotkeys || { enabled: false, hotkeys: {} };
-    if (globalHotkeysEnabled) state.CONFIG.globalHotkeys.enabled = globalHotkeysEnabled.checked;
+    nextConfig.globalHotkeys = nextConfig.globalHotkeys || { enabled: false, hotkeys: {} };
+    if (globalHotkeysEnabled) nextConfig.globalHotkeys.enabled = globalHotkeysEnabled.checked;
 
-    state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
-    if (entityAlertsEnabled) state.CONFIG.entityAlerts.enabled = entityAlertsEnabled.checked;
+    nextConfig.entityAlerts = nextConfig.entityAlerts || { enabled: false, alerts: {} };
+    if (entityAlertsEnabled) nextConfig.entityAlerts.enabled = entityAlertsEnabled.checked;
 
     // Save primary media player selection from custom dropdown
     // Read directly from DOM to avoid using global state variable
-    const selectedOption = document.querySelector('#primary-media-player-menu .custom-dropdown-option.selected');
+    const selectedOption = document.querySelector(
+      '#primary-media-player-menu .custom-dropdown-option.selected'
+    );
     const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
-    state.CONFIG.primaryMediaPlayer = selectedValue || null;
+    nextConfig.primaryMediaPlayer = selectedValue || null;
 
-    state.CONFIG.primaryCards = getPendingPrimaryCards();
-    state.CONFIG.desktopPins = getPendingDesktopPinsForSave();
-    state.CONFIG.customEntityIcons = getPendingCustomEntityIconsForSave();
+    nextConfig.primaryCards = getPendingPrimaryCards();
+    nextConfig.desktopPins = getPendingDesktopPinsForSave();
+    nextConfig.customEntityIcons = getPendingCustomEntityIconsForSave();
 
-    const nextProfileSync = ensureProfileSyncConfig();
+    const nextProfileSync = ensureProfileSyncConfig(nextConfig);
     nextProfileSync.enabled = !!profileSyncEnabled?.checked;
     nextProfileSync.provider = profileSyncProvider?.value || 'cloudFile';
     const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
     nextProfileSync.cloudFilePath = buildProfileSyncFilePathFromFolder(syncFolderPath);
     nextProfileSync.syncScope = readProfileSyncScopeFromForm();
     const parsedIntervalMinutes = Number.parseInt(profileSyncInterval?.value || '', 10);
-    nextProfileSync.intervalMinutes = Number.isFinite(parsedIntervalMinutes) && parsedIntervalMinutes > 0
-      ? parsedIntervalMinutes
-      : 5;
+    nextProfileSync.intervalMinutes =
+      Number.isFinite(parsedIntervalMinutes) && parsedIntervalMinutes > 0
+        ? parsedIntervalMinutes
+        : 5;
     nextProfileSync.encryptionEnabled = !!profileSyncEncryptionEnabled?.checked;
-    nextProfileSync.rememberPassphrase = nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
+    nextProfileSync.rememberPassphrase =
+      nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
     nextProfileSync.passphraseEncrypted = false;
 
     if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
@@ -3798,10 +4034,11 @@ async function saveSettings() {
 
     const previousSyncFilePath = (prevProfileSync.cloudFilePath || '').trim();
     const nextSyncFilePath = (nextProfileSync.cloudFilePath || '').trim();
-    const syncPathChanged = nextProfileSync.enabled
-      && !!previousSyncFilePath
-      && !!nextSyncFilePath
-      && previousSyncFilePath !== nextSyncFilePath;
+    const syncPathChanged =
+      nextProfileSync.enabled &&
+      !!previousSyncFilePath &&
+      !!nextSyncFilePath &&
+      previousSyncFilePath !== nextSyncFilePath;
     if (syncPathChanged) {
       const copyAndSwitch = await showConfirm(
         'Sync Folder Changed',
@@ -3824,18 +4061,30 @@ async function saveSettings() {
         revertToPreviousSyncPath();
         showToast('Copy is unavailable on this build. Kept current sync folder.', 'warning', 3200);
       } else {
-        let copyResult = await window.electronAPI.copyProfileSyncFile(previousSyncFilePath, nextSyncFilePath, false);
+        let copyResult = await window.electronAPI.copyProfileSyncFile(
+          previousSyncFilePath,
+          nextSyncFilePath,
+          false
+        );
         if (copyResult?.status === 'destination_exists') {
           const overwrite = await showConfirm(
             'Sync File Already Exists',
             'A sync file already exists in the new folder. Overwrite it with your current synced data?',
-            { confirmText: 'Overwrite & Switch', cancelText: 'Keep Current', confirmClass: 'btn-danger' }
+            {
+              confirmText: 'Overwrite & Switch',
+              cancelText: 'Keep Current',
+              confirmClass: 'btn-danger',
+            }
           );
           if (!overwrite) {
             revertToPreviousSyncPath();
             showToast('Kept current sync folder.', 'warning', 2200);
           } else {
-            copyResult = await window.electronAPI.copyProfileSyncFile(previousSyncFilePath, nextSyncFilePath, true);
+            copyResult = await window.electronAPI.copyProfileSyncFile(
+              previousSyncFilePath,
+              nextSyncFilePath,
+              true
+            );
           }
         }
 
@@ -3844,8 +4093,13 @@ async function saveSettings() {
             showToast('No existing sync file found. Switched to the new folder.', 'warning', 3200);
           } else if (!copyResult?.ok) {
             revertToPreviousSyncPath();
-            showToast(copyResult?.error || 'Failed to copy sync file. Kept current sync folder.', 'error', 3400);
+            showToast(
+              copyResult?.error || 'Failed to copy sync file. Kept current sync folder.',
+              'error',
+              3400
+            );
           } else if (copyResult?.copied) {
+            syncFileCopiedThisSave = true;
             showToast('Copied sync file and switched folders.', 'success', 2200);
           }
         }
@@ -3854,49 +4108,120 @@ async function saveSettings() {
 
     const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
     const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
-    const removingRememberedPassphrase = nextProfileSync.enabled
-      && nextProfileSync.encryptionEnabled
-      && !nextProfileSync.rememberPassphrase
-      && !!prevProfileSync.rememberPassphrase;
+    const removingRememberedPassphrase =
+      nextProfileSync.enabled &&
+      nextProfileSync.encryptionEnabled &&
+      !nextProfileSync.rememberPassphrase &&
+      !!prevProfileSync.rememberPassphrase;
     let passphraseUpdatedThisSave = false;
 
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
       const canReuseSavedPassphrase = hasSavedPassphrase && !removingRememberedPassphrase;
       if (!typedPassphrase && !canReuseSavedPassphrase) {
-        showToast('Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.', 'error', 3400);
+        showToast(
+          'Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.',
+          'error',
+          3400
+        );
         return;
       }
 
       if (typedPassphrase) {
+        // Validate that this build can persist a passphrase before we touch config,
+        // but defer the actual keychain write until after the config is safely
+        // persisted so a failed save can never overwrite a previously stored secret.
         if (!window.electronAPI?.setProfileSyncPassphrase) {
           showToast('This build cannot save a sync passphrase.', 'error', 3400);
           return;
         }
-        const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
-          typedPassphrase,
-          !!nextProfileSync.rememberPassphrase
-        );
-        if (!passphraseResult?.success) {
-          showToast(passphraseResult?.error || 'Failed to save sync passphrase.', 'error', 3600);
-          return;
-        }
-        if (typeof passphraseResult.remembered === 'boolean') {
-          nextProfileSync.rememberPassphrase = passphraseResult.remembered;
-        }
-        nextProfileSync.passphraseEncrypted = !!passphraseResult.encrypted;
-        passphraseUpdatedThisSave = true;
+        // Predicted metadata: rememberPassphrase is already the requested value; a
+        // freshly typed passphrase has not yet been encrypted at rest.
+        nextProfileSync.passphraseEncrypted = false;
       } else {
         nextProfileSync.passphraseEncrypted = !!profileSyncStatusCache?.passphraseEncrypted;
       }
     }
 
-    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
-      showToast('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.', 'success', 2600);
+    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+    if (!updatedConfig || updatedConfig.success === false || !updatedConfig.homeAssistant) {
+      throw new Error(updatedConfig?.error || 'The main process rejected the settings update');
+    }
+    state.setConfig(updatedConfig);
+    configPersisted = true;
+    setCustomThemes(state.CONFIG.ui?.customColors || []);
+
+    // Store the sync passphrase only now that the config is safely persisted. If this
+    // fails, the settings are still saved and the previously stored secret is untouched.
+    if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled && typedPassphrase) {
+      try {
+        const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
+          typedPassphrase,
+          !!nextProfileSync.rememberPassphrase
+        );
+        if (!passphraseResult?.success) {
+          throw new Error(passphraseResult?.error || 'Failed to save sync passphrase.');
+        }
+        passphraseUpdatedThisSave = true;
+
+        const resolvedRemembered =
+          typeof passphraseResult.remembered === 'boolean'
+            ? passphraseResult.remembered
+            : !!nextProfileSync.rememberPassphrase;
+        const resolvedEncrypted = !!passphraseResult.encrypted;
+        nextProfileSync.rememberPassphrase = resolvedRemembered;
+        nextProfileSync.passphraseEncrypted = resolvedEncrypted;
+
+        const persistedProfileSync = state.CONFIG.profileSync || {};
+        if (
+          resolvedRemembered !== persistedProfileSync.rememberPassphrase ||
+          resolvedEncrypted !== persistedProfileSync.passphraseEncrypted
+        ) {
+          try {
+            const correctedConfig = JSON.parse(JSON.stringify(state.CONFIG));
+            correctedConfig.profileSync = correctedConfig.profileSync || {};
+            correctedConfig.profileSync.rememberPassphrase = resolvedRemembered;
+            correctedConfig.profileSync.passphraseEncrypted = resolvedEncrypted;
+            const correctedResult = await window.electronAPI.updateConfig(correctedConfig);
+            if (
+              !correctedResult ||
+              correctedResult.success === false ||
+              !correctedResult.homeAssistant
+            ) {
+              throw new Error(correctedResult?.error || 'Failed to persist passphrase metadata');
+            }
+            state.setConfig(correctedResult);
+          } catch (correctiveError) {
+            log.error('Failed to persist updated passphrase metadata:', correctiveError);
+          }
+        }
+      } catch (passphraseError) {
+        log.error('Failed to store sync passphrase after saving settings:', passphraseError);
+        showToast(
+          'Settings were saved, but the sync passphrase could not be stored.',
+          'warning',
+          3600
+        );
+      }
     }
 
-    const updatedConfig = await window.electronAPI.updateConfig(state.CONFIG);
-    if (updatedConfig) {
-      state.setConfig(updatedConfig);
+    if (startWithWindows) {
+      try {
+        const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
+        if (!result.success) {
+          log.error('Failed to set login item settings:', result.error);
+          showToast(t('Failed to update Start at login setting'), 'warning', 3000);
+        }
+      } catch (error) {
+        log.error('Failed to set login item settings:', error);
+      }
+    }
+
+    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
+      showToast(
+        'Custom icons saved. Icons apply to entities already shown in your tabs/tiles.',
+        'success',
+        2600
+      );
     }
 
     if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
@@ -3920,16 +4245,25 @@ async function saveSettings() {
 
     const platform = window?.electronAPI?.platform || 'web';
     const nextOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
-    const opacityNeedsRestart = platform === 'linux' &&
+    const opacityNeedsRestart =
+      platform === 'linux' &&
       ((prevOpacity === 1 && nextOpacity < 1) || (prevOpacity < 1 && nextOpacity === 1));
 
     if (opacityNeedsRestart) {
-      if (confirm('Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?')) {
-        await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
+      if (
+        confirm(
+          'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
+        )
+      ) {
+        await window.electronAPI
+          .focusWindow()
+          .catch((err) => log.error('Failed to refocus window:', err));
         await window.electronAPI.restartApp();
         return;
       }
-      await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
+      await window.electronAPI
+        .focusWindow()
+        .catch((err) => log.error('Failed to refocus window:', err));
     }
 
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
@@ -3938,12 +4272,16 @@ async function saveSettings() {
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
           // Force window to regain focus after confirm dialog (Windows focus bug workaround)
-          await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
+          await window.electronAPI
+            .focusWindow()
+            .catch((err) => log.error('Failed to refocus window:', err));
           await window.electronAPI.restartApp();
           return;
         }
         // Force window to regain focus even if user cancelled (Windows focus bug workaround)
-        await window.electronAPI.focusWindow().catch(err => log.error('Failed to refocus window:', err));
+        await window.electronAPI
+          .focusWindow()
+          .catch((err) => log.error('Failed to refocus window:', err));
       }
     }
 
@@ -3979,9 +4317,19 @@ async function saveSettings() {
     }
   } catch (error) {
     log.error('Failed to save config:', error);
+    let failureMessage;
+    if (configPersisted) {
+      failureMessage =
+        'Settings were saved, but one or more changes could not be applied immediately.';
+    } else if (syncFileCopiedThisSave) {
+      failureMessage =
+        'Settings could not be saved. No configuration changes were applied, but the sync file was already copied to the new folder.';
+    } else {
+      failureMessage = 'Settings could not be saved. No configuration changes were applied.';
+    }
+    showToast(failureMessage, 'error', 4000);
   }
 }
-
 
 function renderAlertsListInline() {
   try {
@@ -3997,7 +4345,8 @@ function renderAlertsListInline() {
     if (Object.keys(alerts).length === 0) {
       const noAlertsMsg = document.createElement('div');
       noAlertsMsg.className = 'no-alerts-message';
-      noAlertsMsg.textContent = 'No alerts configured yet. Click the button below to add your first alert.';
+      noAlertsMsg.textContent =
+        'No alerts configured yet. Click the button below to add your first alert.';
       noAlertsMsg.style.padding = '20px';
       noAlertsMsg.style.textAlign = 'center';
       noAlertsMsg.style.color = 'var(--text-muted)';
@@ -4005,7 +4354,7 @@ function renderAlertsListInline() {
     }
 
     // Add existing alerts
-    Object.keys(alerts).forEach(entityId => {
+    Object.keys(alerts).forEach((entityId) => {
       const entity = state.STATES[entityId];
       if (!entity) return;
 
@@ -4044,11 +4393,11 @@ function renderAlertsListInline() {
     alertsList.appendChild(addButton);
 
     // Wire up event handlers
-    alertsList.querySelectorAll('.edit-alert').forEach(btn => {
+    alertsList.querySelectorAll('.edit-alert').forEach((btn) => {
       btn.onclick = () => openAlertConfigModal(btn.dataset.entity);
     });
 
-    alertsList.querySelectorAll('.remove-alert').forEach(btn => {
+    alertsList.querySelectorAll('.remove-alert').forEach((btn) => {
       btn.onclick = () => removeAlert(btn.dataset.entity);
     });
   } catch (error) {
@@ -4091,17 +4440,18 @@ function populateAlertEntityPicker() {
     // utils already imported at top
     const alerts = state.CONFIG.entityAlerts?.alerts || {};
     const entities = Object.values(state.STATES || {})
-      .filter(e => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
+      .filter((e) => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
       .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
 
     list.innerHTML = '';
 
     if (entities.length === 0) {
-      list.innerHTML = '<div class="no-entities-message">No entities available. Make sure you\'re connected to Home Assistant.</div>';
+      list.innerHTML =
+        '<div class="no-entities-message">No entities available. Make sure you\'re connected to Home Assistant.</div>';
       return;
     }
 
-    entities.forEach(entity => {
+    entities.forEach((entity) => {
       const entityId = entity.entity_id;
       const hasAlert = !!alerts[entityId];
 
@@ -4139,7 +4489,7 @@ function populateAlertEntityPicker() {
     });
 
     // Wire up click handlers
-    list.querySelectorAll('.entity-selector-btn').forEach(btn => {
+    list.querySelectorAll('.entity-selector-btn').forEach((btn) => {
       btn.onclick = () => {
         const entityId = btn.dataset.entityId;
         closeAlertEntityPicker();
@@ -4157,14 +4507,14 @@ function populateAlertEntityPicker() {
         const query = e.target.value.toLowerCase().trim();
         if (!query) {
           // Show all items if search is empty
-          list.querySelectorAll('.entity-item').forEach(item => {
+          list.querySelectorAll('.entity-item').forEach((item) => {
             item.style.display = 'flex';
           });
           return;
         }
 
         // Score each item and show/hide based on score
-        list.querySelectorAll('.entity-item').forEach(item => {
+        list.querySelectorAll('.entity-item').forEach((item) => {
           const name = item.querySelector('.entity-name')?.textContent || '';
           const id = item.querySelector('.entity-id')?.textContent || '';
 
@@ -4206,7 +4556,8 @@ function openAlertConfigModal(entityId) {
     const entity = state.STATES[entityId];
     // utils already imported at top
 
-    if (title) title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
+    if (title)
+      title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
 
     // Load existing alert config or set defaults
     if (alertConfig) {
@@ -4274,7 +4625,7 @@ async function saveAlert() {
     const alertConfig = {
       onStateChange: stateChangeRadio?.checked || false,
       onSpecificState: specificStateRadio?.checked || false,
-      targetState: targetStateInput?.value.trim() || ''
+      targetState: targetStateInput?.value.trim() || '',
     };
 
     state.CONFIG.entityAlerts.alerts[currentAlertEntity] = alertConfig;
@@ -4300,11 +4651,10 @@ async function removeAlert(entityId) {
     // showToast, showConfirm, utils already imported at top
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
-    const confirmed = await showConfirm(
-      'Remove Alert',
-      `Remove alert for "${entityName}"?`,
-      { confirmText: 'Remove', confirmClass: 'btn-danger' }
-    );
+    const confirmed = await showConfirm('Remove Alert', `Remove alert for "${entityName}"?`, {
+      confirmText: 'Remove',
+      confirmClass: 'btn-danger',
+    });
 
     if (!confirmed) return;
 
@@ -4395,7 +4745,7 @@ function setCustomDropdownValue(value, displayText) {
 
   // Update selected state on options (the DOM itself stores the selection state)
   const options = document.querySelectorAll('.custom-dropdown-option');
-  options.forEach(opt => {
+  options.forEach((opt) => {
     if (opt.getAttribute('data-value') === value) {
       opt.classList.add('selected');
     } else {
@@ -4425,7 +4775,7 @@ function populateMediaPlayerDropdown() {
 
     // Get all media player entities
     const mediaPlayers = Object.values(state.STATES || {})
-      .filter(entity => entity.entity_id.startsWith('media_player.'))
+      .filter((entity) => entity.entity_id.startsWith('media_player.'))
       .sort((a, b) => {
         // utils already imported at top
         const nameA = utils.getEntityDisplayName(a).toLowerCase();
@@ -4434,7 +4784,7 @@ function populateMediaPlayerDropdown() {
       });
 
     // Populate dropdown
-    mediaPlayers.forEach(entity => {
+    mediaPlayers.forEach((entity) => {
       const option = document.createElement('div');
       option.className = 'custom-dropdown-option';
       option.setAttribute('role', 'option');
@@ -4446,7 +4796,7 @@ function populateMediaPlayerDropdown() {
 
     // Add click handlers to all options
     const options = menu.querySelectorAll('.custom-dropdown-option');
-    options.forEach(option => {
+    options.forEach((option) => {
       option.addEventListener('click', () => {
         const value = option.getAttribute('data-value');
         const displayText = option.textContent;
@@ -4457,7 +4807,9 @@ function populateMediaPlayerDropdown() {
 
     // Set current selection
     const currentValue = state.CONFIG.primaryMediaPlayer || '';
-    const selectedOption = Array.from(options).find(opt => opt.getAttribute('data-value') === currentValue);
+    const selectedOption = Array.from(options).find(
+      (opt) => opt.getAttribute('data-value') === currentValue
+    );
     const displayText = selectedOption ? selectedOption.textContent : 'None (Hide Media Tile)';
     setCustomDropdownValue(currentValue, displayText);
 
@@ -4622,7 +4974,7 @@ async function initializePopupHotkey() {
 
     // Preset hotkey buttons
     const presetButtons = document.querySelectorAll('.preset-hotkey-btn');
-    presetButtons.forEach(btn => {
+    presetButtons.forEach((btn) => {
       btn.onclick = async () => {
         const hotkey = btn.dataset.hotkey;
         try {

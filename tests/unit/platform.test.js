@@ -23,7 +23,9 @@ describe('platform helpers', () => {
 
   test('enables in-app auto-updates only for supported packaged Linux format', () => {
     expect(isLinuxAppImage({ APPIMAGE: '/apps/HA Desktop Widget.AppImage' })).toBe(true);
-    expect(supportsAutoUpdater('linux', { APPIMAGE: '/apps/HA Desktop Widget.AppImage' })).toBe(true);
+    expect(supportsAutoUpdater('linux', { APPIMAGE: '/apps/HA Desktop Widget.AppImage' })).toBe(
+      true
+    );
     expect(supportsAutoUpdater('linux', {})).toBe(false);
     expect(supportsAutoUpdater('win32', {})).toBe(true);
     expect(supportsAutoUpdater('darwin', {})).toBe(true);
@@ -31,18 +33,24 @@ describe('platform helpers', () => {
 
   test('uses opaque native windows on Linux unless explicitly overridden', () => {
     expect(shouldUseTransparentWindow('linux', {})).toBe(false);
-    expect(shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: '1' })).toBe(true);
-    expect(shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: 'true' })).toBe(true);
+    expect(shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: '1' })).toBe(
+      true
+    );
+    expect(
+      shouldUseTransparentWindow('linux', { HA_WIDGET_LINUX_TRANSPARENT_WINDOW: 'true' })
+    ).toBe(true);
     expect(shouldUseTransparentWindow('win32', {})).toBe(true);
     expect(shouldUseTransparentWindow('darwin', {})).toBe(true);
   });
 
   test('keeps Windows transparent and resizable without frosted glass', () => {
-    expect(getMainWindowVisualOptions({
-      platform: 'win32',
-      frostedGlass: false,
-      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
-    })).toEqual({
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'win32',
+        frostedGlass: false,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
       transparent: true,
       backgroundColor: '#00000000',
       thickFrame: true,
@@ -50,11 +58,13 @@ describe('platform helpers', () => {
   });
 
   test('enables Windows acrylic only when frosted glass is enabled', () => {
-    expect(getMainWindowVisualOptions({
-      platform: 'win32',
-      frostedGlass: true,
-      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
-    })).toEqual({
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'win32',
+        frostedGlass: true,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
       transparent: true,
       backgroundColor: '#00000000',
       thickFrame: true,
@@ -63,32 +73,38 @@ describe('platform helpers', () => {
   });
 
   test('enables macOS vibrancy only when frosted glass is enabled', () => {
-    expect(getMainWindowVisualOptions({
-      platform: 'darwin',
-      frostedGlass: true,
-      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
-    })).toEqual({
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'darwin',
+        frostedGlass: true,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
       transparent: true,
       backgroundColor: '#00000000',
       vibrancy: 'sidebar',
     });
 
-    expect(getMainWindowVisualOptions({
-      platform: 'darwin',
-      frostedGlass: false,
-      transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
-    })).toEqual({
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'darwin',
+        frostedGlass: false,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
       transparent: true,
       backgroundColor: '#00000000',
     });
   });
 
   test('leaves Linux visual options driven by transparency options', () => {
-    expect(getMainWindowVisualOptions({
-      platform: 'linux',
-      frostedGlass: true,
-      transparencyOptions: { transparent: false, backgroundColor: '#28282d' },
-    })).toEqual({
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'linux',
+        frostedGlass: true,
+        transparencyOptions: { transparent: false, backgroundColor: '#28282d' },
+      })
+    ).toEqual({
       transparent: false,
       backgroundColor: '#28282d',
       roundedCorners: false,

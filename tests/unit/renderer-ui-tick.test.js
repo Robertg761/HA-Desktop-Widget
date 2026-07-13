@@ -171,9 +171,11 @@ describe('Renderer UI tick scheduler', () => {
 
     expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(1);
     expect(mockUi.updateTimerDisplays).toHaveBeenCalledTimes(1);
-    expect(mockUi.updateMediaSeekBar).toHaveBeenCalledWith(expect.objectContaining({
-      entity_id: 'media_player.office',
-    }));
+    expect(mockUi.updateMediaSeekBar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_id: 'media_player.office',
+      })
+    );
 
     jest.advanceTimersByTime(1000);
 

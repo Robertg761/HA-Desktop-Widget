@@ -77,9 +77,13 @@ function hexToRgb(hex) {
   const normalized = hex.replace('#', '').trim();
   if (![3, 6].includes(normalized.length)) return null;
   if (!/^[0-9a-fA-F]+$/.test(normalized)) return null;
-  const value = normalized.length === 3
-    ? normalized.split('').map(ch => ch + ch).join('')
-    : normalized;
+  const value =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((ch) => ch + ch)
+          .join('')
+      : normalized;
   const r = Number.parseInt(value.slice(0, 2), 16);
   const g = Number.parseInt(value.slice(2, 4), 16);
   const b = Number.parseInt(value.slice(4, 6), 16);
@@ -120,7 +124,7 @@ function mixRgb(base, mixin, amount) {
 function mapWindowOpacityToBackgroundAlpha(opacity) {
   const normalized = (opacity - 0.5) / 0.5;
   const curvedOpacity = Math.pow(Math.max(0, Math.min(1, normalized)), BACKGROUND_OPACITY_CURVE);
-  return MIN_BACKGROUND_OPACITY + (curvedOpacity * (1 - MIN_BACKGROUND_OPACITY));
+  return MIN_BACKGROUND_OPACITY + curvedOpacity * (1 - MIN_BACKGROUND_OPACITY);
 }
 
 /**
@@ -134,9 +138,13 @@ function normalizeHexColor(hex) {
   if (!trimmed) return null;
   const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
   if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-  const sixDigit = normalized.length === 3
-    ? normalized.split('').map(ch => ch + ch).join('')
-    : normalized;
+  const sixDigit =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((ch) => ch + ch)
+          .join('')
+      : normalized;
   return `#${sixDigit.toUpperCase()}`;
 }
 
@@ -203,15 +211,12 @@ function setCustomThemes(customColors = []) {
       id = `${CUSTOM_THEME_ID_PREFIX}${color.slice(1).toLowerCase()}-${index + 1}`;
     }
 
-    const name = (typeof entry.name === 'string' && entry.name.trim())
-      ? entry.name.trim()
-      : `Custom ${color}`;
-    const createdAt = (typeof entry.createdAt === 'string' && entry.createdAt.trim())
-      ? entry.createdAt
-      : nowIso;
-    const updatedAt = (typeof entry.updatedAt === 'string' && entry.updatedAt.trim())
-      ? entry.updatedAt
-      : createdAt;
+    const name =
+      typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `Custom ${color}`;
+    const createdAt =
+      typeof entry.createdAt === 'string' && entry.createdAt.trim() ? entry.createdAt : nowIso;
+    const updatedAt =
+      typeof entry.updatedAt === 'string' && entry.updatedAt.trim() ? entry.updatedAt : createdAt;
 
     nextCustomThemes.push({
       id,
@@ -260,7 +265,7 @@ function resolveAccentThemeId(accentKey) {
   const allThemes = getAllThemes();
   if (accentKey && themeMap[accentKey]) return accentKey;
   if (accentKey === 'sky' && themeMap.original) return 'original';
-  return themeMap.original ? 'original' : (allThemes[0]?.id || 'original');
+  return themeMap.original ? 'original' : allThemes[0]?.id || 'original';
 }
 
 /**
@@ -274,7 +279,7 @@ function resolveBackgroundThemeId(backgroundKey) {
   const allThemes = getAllThemes();
   if (backgroundKey && themeMap[backgroundKey]) return backgroundKey;
   if (backgroundKey === 'sky' && themeMap.original) return 'original';
-  return themeMap.original ? 'original' : (allThemes[0]?.id || 'original');
+  return themeMap.original ? 'original' : allThemes[0]?.id || 'original';
 }
 
 function applyAccentColor(color, accentId = 'custom-preview') {
@@ -287,7 +292,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
 
   const isLightTheme = document.body?.classList.contains('theme-light');
   const hoverMix = isLightTheme ? 0.18 : 0.22;
-  const hoverRgb = mixRgb(rgb, isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 }, hoverMix);
+  const hoverRgb = mixRgb(
+    rgb,
+    isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 },
+    hoverMix
+  );
   const accentBgAlpha = isLightTheme ? 0.12 : 0.18;
   const glowAlpha = isLightTheme ? 0.22 : 0.35;
   const focusAlpha = isLightTheme ? 0.18 : 0.25;
@@ -299,8 +308,14 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
   root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
-  root.style.setProperty('--glow-accent', `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`);
-  root.style.setProperty('--glow-focus', `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${focusAlpha})`);
+  root.style.setProperty(
+    '--glow-accent',
+    `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`
+  );
+  root.style.setProperty(
+    '--glow-focus',
+    `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${focusAlpha})`
+  );
 
   if (document.body) {
     document.body.dataset.accent = accentId;
@@ -340,7 +355,11 @@ function applyAccentThemeFromColor(hex) {
   }
 }
 
-function applyBackgroundColor(color, backgroundId = 'custom-preview', { disableTint = false } = {}) {
+function applyBackgroundColor(
+  color,
+  backgroundId = 'custom-preview',
+  { disableTint = false } = {}
+) {
   const normalizedColor = normalizeHexColor(color);
   const rgb = hexToRgb(normalizedColor);
   if (!normalizedColor || !rgb) return false;
@@ -351,7 +370,7 @@ function applyBackgroundColor(color, backgroundId = 'custom-preview', { disableT
 
   const isLightTheme = body.classList.contains('theme-light');
   const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
-  const tintAmount = disableTint ? 0 : (isLightTheme ? 0.08 : 0.12);
+  const tintAmount = disableTint ? 0 : isLightTheme ? 0.08 : 0.12;
   const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
   const setRgbaVar = (name, baseEntry) => {
     const tinted = tint(baseEntry);
@@ -478,7 +497,8 @@ function applyTheme(mode = 'auto') {
     } else if (mode === 'light') {
       body.classList.add('theme-light');
     } else {
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const prefersDark =
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       body.classList.add(prefersDark ? 'theme-dark' : 'theme-light');
     }
   } catch (error) {
@@ -537,7 +557,7 @@ function applyWindowEffects(config = {}) {
       body.classList.remove('frosted-glass');
       body.classList.remove('native-glass');
       body.classList.remove('software-glass');
-      
+
       // Then clear all custom properties
       body.style.removeProperty('--frosted-blur');
       body.style.removeProperty('--frosted-bg-alpha');
@@ -559,7 +579,7 @@ function applyWindowEffects(config = {}) {
     const tint = DEFAULT_FROSTED_TINT / 100;
     const nativeGlass = platform === 'win32' || platform === 'darwin';
     const lightTheme = isLightThemeActive();
-    
+
     // Linear interpolation helper
     const lerp = (min, max, value) => min + (max - min) * value;
 
@@ -568,7 +588,7 @@ function applyWindowEffects(config = {}) {
 
     // Calculate alpha values based on tint
     // Lower tint = more transparent, higher tint = more opaque
-    const softwareGlassScale = 0.32 + (backgroundAlpha * 0.68);
+    const softwareGlassScale = 0.32 + backgroundAlpha * 0.68;
     const glassScale = nativeGlass ? backgroundAlpha : softwareGlassScale;
     const softwareFloorBias = lightTheme ? 1.15 : 1;
     const scaleAlpha = (value, softwareFloor = 0) => {
@@ -584,14 +604,14 @@ function applyWindowEffects(config = {}) {
     const glassElevatedAlpha = scaleAlpha(lerp(0.25, 0.7, tint), 0.22);
     const glassOverlayAlpha = scaleAlpha(lerp(0.3, 0.85, tint), 0.22);
     const softwareBodyAlpha = lightTheme
-      ? Math.max(0.22, Math.min(0.78, 0.18 + (backgroundAlpha * 0.6)))
-      : Math.max(0.16, Math.min(0.76, 0.14 + (backgroundAlpha * 0.62)));
-    const softwareEffectScale = 0.45 + (backgroundAlpha * 0.55);
+      ? Math.max(0.22, Math.min(0.78, 0.18 + backgroundAlpha * 0.6))
+      : Math.max(0.16, Math.min(0.76, 0.14 + backgroundAlpha * 0.62));
+    const softwareEffectScale = 0.45 + backgroundAlpha * 0.55;
     const softwareHighlightAlpha = (lightTheme ? 0.16 : 0.08) * softwareEffectScale;
     const softwareNoiseAlpha = (lightTheme ? 0.08 : 0.055) * softwareEffectScale;
     const softwareShadowAlpha = (lightTheme ? 0.035 : 0.08) * softwareEffectScale;
 
-    /* 
+    /*
      * CRITICAL: Set CSS custom properties BEFORE adding the class.
      * This ensures the browser has the values ready when it processes
      * the class change, preventing flash of unstyled content.
@@ -609,7 +629,7 @@ function applyWindowEffects(config = {}) {
     body.style.setProperty('--software-acrylic-highlight-alpha', softwareHighlightAlpha.toFixed(3));
     body.style.setProperty('--software-acrylic-noise-alpha', softwareNoiseAlpha.toFixed(3));
     body.style.setProperty('--software-acrylic-shadow-alpha', softwareShadowAlpha.toFixed(3));
-    
+
     // Now add the frosted-glass class
     body.classList.add('frosted-glass');
     body.classList.toggle('native-glass', nativeGlass);
@@ -628,16 +648,24 @@ function applyWindowEffects(config = {}) {
 function trapFocus(modal) {
   try {
     lastFocusedElement = document.activeElement;
-    const focusable = modal.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])');
+    const focusable = modal.querySelectorAll(
+      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
+    );
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     const handler = (e) => {
       if (e.key !== 'Tab') return;
       if (focusable.length === 0) return;
       if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
       } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     modal.addEventListener('keydown', handler);
@@ -728,7 +756,8 @@ function showConnectionStatusTooltip(target, { pinned = false } = {}) {
   const tooltip = ensureConnectionStatusTooltip();
   const titleEl = tooltip.querySelector('.connection-status-tooltip-title');
   const detailEl = tooltip.querySelector('.connection-status-tooltip-detail');
-  const summary = target.dataset.statusSummary || target.title || t('Disconnected from Home Assistant');
+  const summary =
+    target.dataset.statusSummary || target.title || t('Disconnected from Home Assistant');
   const detail = getConnectionStatusDetail(target);
   if (titleEl) titleEl.textContent = summary;
   if (detailEl) detailEl.textContent = detail;
@@ -759,12 +788,30 @@ function bindConnectionStatusHandlers(status) {
   if (connectionStatusBoundElement === status) return;
 
   if (connectionStatusBoundElement && connectionStatusTooltipHandlers) {
-    connectionStatusBoundElement.removeEventListener('mouseenter', connectionStatusTooltipHandlers.onMouseEnter);
-    connectionStatusBoundElement.removeEventListener('mouseleave', connectionStatusTooltipHandlers.onMouseLeave);
-    connectionStatusBoundElement.removeEventListener('focus', connectionStatusTooltipHandlers.onFocus);
-    connectionStatusBoundElement.removeEventListener('blur', connectionStatusTooltipHandlers.onBlur);
-    connectionStatusBoundElement.removeEventListener('click', connectionStatusTooltipHandlers.onClick);
-    connectionStatusBoundElement.removeEventListener('keydown', connectionStatusTooltipHandlers.onKeyDown);
+    connectionStatusBoundElement.removeEventListener(
+      'mouseenter',
+      connectionStatusTooltipHandlers.onMouseEnter
+    );
+    connectionStatusBoundElement.removeEventListener(
+      'mouseleave',
+      connectionStatusTooltipHandlers.onMouseLeave
+    );
+    connectionStatusBoundElement.removeEventListener(
+      'focus',
+      connectionStatusTooltipHandlers.onFocus
+    );
+    connectionStatusBoundElement.removeEventListener(
+      'blur',
+      connectionStatusTooltipHandlers.onBlur
+    );
+    connectionStatusBoundElement.removeEventListener(
+      'click',
+      connectionStatusTooltipHandlers.onClick
+    );
+    connectionStatusBoundElement.removeEventListener(
+      'keydown',
+      connectionStatusTooltipHandlers.onKeyDown
+    );
   }
 
   const onMouseEnter = () => showConnectionStatusTooltip(status);
@@ -812,8 +859,10 @@ function bindConnectionStatusHandlers(status) {
 
   if (!connectionStatusDocumentHandlersBound) {
     document.addEventListener('click', (event) => {
-      if (!connectionStatusTooltip || !connectionStatusTooltip.classList.contains('visible')) return;
-      const clickedInsideStatus = connectionStatusBoundElement && connectionStatusBoundElement.contains(event.target);
+      if (!connectionStatusTooltip || !connectionStatusTooltip.classList.contains('visible'))
+        return;
+      const clickedInsideStatus =
+        connectionStatusBoundElement && connectionStatusBoundElement.contains(event.target);
       const clickedInsideTooltip = connectionStatusTooltip.contains(event.target);
       if (clickedInsideStatus || clickedInsideTooltip) return;
       hideConnectionStatusTooltip({ force: true });
@@ -867,7 +916,10 @@ function setStatus(connected, detailMessage = '') {
         status.setAttribute('aria-label', summary);
       }
 
-      if (connectionStatusTooltipTarget === status && connectionStatusTooltip?.classList?.contains('visible')) {
+      if (
+        connectionStatusTooltipTarget === status &&
+        connectionStatusTooltip?.classList?.contains('visible')
+      ) {
         showConnectionStatusTooltip(status, { pinned: connectionStatusTooltipPinned });
       }
     }
@@ -877,7 +929,11 @@ function setStatus(connected, detailMessage = '') {
 }
 
 window.electronAPI.onHotkeyRegistrationFailed(({ hotkey }) => {
-  showToast(t('Hotkey "{{hotkey}}" is already in use by another application.', { hotkey }), 'error', 5000);
+  showToast(
+    t('Hotkey "{{hotkey}}" is already in use by another application.', { hotkey }),
+    'error',
+    5000
+  );
 });
 
 function showConfirm(title, message, options = {}) {
@@ -936,7 +992,8 @@ function showConfirm(title, message, options = {}) {
           modal.classList.remove('modal-closing');
         };
 
-        const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+        const isTest =
+          typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
         if (isTest) {
           closeImmediate();
         } else {

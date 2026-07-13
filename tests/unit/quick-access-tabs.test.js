@@ -50,7 +50,7 @@ describe('quick-access-tabs helpers', () => {
     const added = addQuickAccessView(base, 'Bedroom', { idFactory: () => 'bedroom' });
 
     expect(added.activeTabId).toBe('bedroom');
-    expect(added.customTabs.map(tab => tab.name)).toEqual(['All', 'Bedroom']);
+    expect(added.customTabs.map((tab) => tab.name)).toEqual(['All', 'Bedroom']);
 
     const renamed = renameQuickAccessView(added, 'bedroom', 'Guest Room');
     expect(renamed.customTabs[1].name).toBe('Guest Room');

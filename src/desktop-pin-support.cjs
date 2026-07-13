@@ -24,9 +24,10 @@ function normalizeEntityId(entityId) {
 }
 
 function getDesktopPinDomain(entityOrEntityId = '') {
-  const entityId = typeof entityOrEntityId === 'object' && entityOrEntityId?.entity_id
-    ? entityOrEntityId.entity_id
-    : entityOrEntityId;
+  const entityId =
+    typeof entityOrEntityId === 'object' && entityOrEntityId?.entity_id
+      ? entityOrEntityId.entity_id
+      : entityOrEntityId;
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) return '';
   const [domain = ''] = normalizedEntityId.split('.');
@@ -53,12 +54,12 @@ function isTimerSensorEntity(entity) {
 
   const attrs = entity.attributes || {};
   return !!(
-    attrs.finishes_at
-    || attrs.end_time
-    || attrs.finish_time
-    || attrs.duration
-    || entity.entity_id.toLowerCase().includes('timer')
-    || isIsoFutureTimestamp(entity.state)
+    attrs.finishes_at ||
+    attrs.end_time ||
+    attrs.finish_time ||
+    attrs.duration ||
+    entity.entity_id.toLowerCase().includes('timer') ||
+    isIsoFutureTimestamp(entity.state)
   );
 }
 
@@ -73,7 +74,8 @@ function sanitizeDesktopPinSupportInfo(input = {}, fallbackEntityId = '') {
   const label = typeof input?.label === 'string' ? input.label.trim() : '';
   const reason = typeof input?.reason === 'string' ? input.reason.trim() : '';
   const primaryAction = typeof input?.primaryAction === 'string' ? input.primaryAction.trim() : '';
-  const secondaryAction = typeof input?.secondaryAction === 'string' ? input.secondaryAction.trim() : '';
+  const secondaryAction =
+    typeof input?.secondaryAction === 'string' ? input.secondaryAction.trim() : '';
 
   return {
     entityId,
@@ -88,9 +90,8 @@ function sanitizeDesktopPinSupportInfo(input = {}, fallbackEntityId = '') {
 }
 
 function resolveDesktopPinProfile(entityOrEntityId = null) {
-  const entity = (typeof entityOrEntityId === 'object' && entityOrEntityId?.entity_id)
-    ? entityOrEntityId
-    : null;
+  const entity =
+    typeof entityOrEntityId === 'object' && entityOrEntityId?.entity_id ? entityOrEntityId : null;
   const entityId = normalizeEntityId(entity?.entity_id || entityOrEntityId);
   const domain = getDesktopPinDomain(entityId);
 
@@ -129,15 +130,30 @@ function resolveDesktopPinProfile(entityOrEntityId = null) {
     case 'light':
       return { ...baseProfile, family: 'light', label: 'Light tile', primaryAction: 'toggle' };
     case 'climate':
-      return { ...baseProfile, family: 'climate', label: 'Climate tile', primaryAction: 'set-temperature' };
+      return {
+        ...baseProfile,
+        family: 'climate',
+        label: 'Climate tile',
+        primaryAction: 'set-temperature',
+      };
     case 'fan':
       return { ...baseProfile, family: 'fan', label: 'Fan tile', primaryAction: 'set-speed' };
     case 'cover':
-      return { ...baseProfile, family: 'cover', label: 'Cover tile', primaryAction: 'set-position' };
+      return {
+        ...baseProfile,
+        family: 'cover',
+        label: 'Cover tile',
+        primaryAction: 'set-position',
+      };
     case 'media_player':
       return { ...baseProfile, family: 'media', label: 'Media tile', primaryAction: 'play-pause' };
     case 'camera':
-      return { ...baseProfile, family: 'camera', label: 'Camera tile', primaryAction: 'open-camera' };
+      return {
+        ...baseProfile,
+        family: 'camera',
+        label: 'Camera tile',
+        primaryAction: 'open-camera',
+      };
     case 'sensor':
     case 'binary_sensor':
       return { ...baseProfile, family: 'sensor', label: 'Status tile', interactive: false };
@@ -149,13 +165,23 @@ function resolveDesktopPinProfile(entityOrEntityId = null) {
     case 'lock':
       return { ...baseProfile, family: 'toggle', label: 'Toggle tile', primaryAction: 'toggle' };
     case 'automation':
-      return { ...baseProfile, family: 'action', label: 'Automation tile', primaryAction: 'trigger' };
+      return {
+        ...baseProfile,
+        family: 'action',
+        label: 'Automation tile',
+        primaryAction: 'trigger',
+      };
     case 'button':
     case 'input_button':
       return { ...baseProfile, family: 'action', label: 'Button tile', primaryAction: 'press' };
     case 'number':
     case 'input_number':
-      return { ...baseProfile, family: 'numeric', label: 'Number tile', primaryAction: 'set-value' };
+      return {
+        ...baseProfile,
+        family: 'numeric',
+        label: 'Number tile',
+        primaryAction: 'set-value',
+      };
     case 'select':
     case 'input_select':
       return {

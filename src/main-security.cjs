@@ -10,7 +10,10 @@ function isReservedObjectKey(value) {
 function isPathInsideDirectory(candidatePath, parentDirectory) {
   if (!candidatePath || !parentDirectory) return false;
   const relativePath = path.relative(parentDirectory, candidatePath);
-  return relativePath === '' || (!!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+  return (
+    relativePath === '' ||
+    (!!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  );
 }
 
 async function resolveExistingDirectory(directoryPath, fsModule) {
@@ -63,11 +66,15 @@ async function validateProfileSyncCopyPaths({
 }) {
   const sourcePath = await normalizeProfileSyncCopyPath(fromPath, defaultFileName, fsModule);
   const destinationPath = await normalizeProfileSyncCopyPath(toPath, defaultFileName, fsModule);
-  const normalizedAllowedFolders = await normalizeAllowedProfileSyncFolders(allowedFolders, fsModule);
+  const normalizedAllowedFolders = await normalizeAllowedProfileSyncFolders(
+    allowedFolders,
+    fsModule
+  );
 
-  const touchesAllowedFolder = normalizedAllowedFolders.some((folder) => (
-    isPathInsideDirectory(sourcePath, folder) || isPathInsideDirectory(destinationPath, folder)
-  ));
+  const touchesAllowedFolder = normalizedAllowedFolders.some(
+    (folder) =>
+      isPathInsideDirectory(sourcePath, folder) || isPathInsideDirectory(destinationPath, folder)
+  );
 
   if (!touchesAllowedFolder) {
     throw new Error('Profile sync copy must involve the configured sync folder or app data folder');
@@ -91,9 +98,11 @@ function normalizeEntityIdForObjectKey(entityId, normalizeEntityId) {
 
 function isAllowedHlsProxyPath(pathname) {
   if (typeof pathname !== 'string') return false;
-  return pathname.startsWith('/api/hls/')
-    || pathname.startsWith('/api/camera_proxy/')
-    || pathname.startsWith('/api/camera_proxy_stream/');
+  return (
+    pathname.startsWith('/api/hls/') ||
+    pathname.startsWith('/api/camera_proxy/') ||
+    pathname.startsWith('/api/camera_proxy_stream/')
+  );
 }
 
 module.exports = {
