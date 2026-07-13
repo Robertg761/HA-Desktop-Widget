@@ -1981,7 +1981,7 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
     });
 
-    test('should persist the passphrase before saving encrypted sync config', async () => {
+    test('should persist the passphrase after saving encrypted sync config', async () => {
       mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
         success: true,
         remembered: true,
@@ -1998,8 +1998,10 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(mockElectronAPI.setProfileSyncPassphrase.mock.invocationCallOrder[0]).toBeLessThan(
-        mockElectronAPI.updateConfig.mock.invocationCallOrder[0]
+      // The config is persisted before the keychain write so a failed save can never
+      // overwrite a previously stored secret.
+      expect(mockElectronAPI.updateConfig.mock.invocationCallOrder[0]).toBeLessThan(
+        mockElectronAPI.setProfileSyncPassphrase.mock.invocationCallOrder[0]
       );
       expect(state.CONFIG.profileSync).toEqual(
         expect.objectContaining({
@@ -2009,7 +2011,31 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('should abort save when passphrase persistence fails', async () => {
+    test('does not store the passphrase when config persistence fails', async () => {
+      await settings.openSettings();
+
+      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk unavailable'));
+
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-provider').value = 'icloudDrive';
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-interval').value = '5';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'abcd1234';
+      document.getElementById('profile-sync-remember-passphrase').checked = true;
+
+      await settings.saveSettings();
+
+      // The old secret must never be overwritten when the settings did not persist.
+      expect(mockElectronAPI.setProfileSyncPassphrase).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Settings could not be saved. No configuration changes were applied.',
+        'error',
+        4000
+      );
+    });
+
+    test('saves settings but warns when the passphrase cannot be stored', async () => {
       await settings.openSettings();
 
       mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
@@ -2028,10 +2054,18 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
-      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      // The settings themselves are still persisted even though the secret failed.
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
+      expect(state.CONFIG.profileSync).toEqual(
+        expect.objectContaining({
+          enabled: true,
+          encryptionEnabled: true,
+          cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+        })
+      );
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Passphrase persistence failed',
-        'error',
+        'Settings were saved, but the sync passphrase could not be stored.',
+        'warning',
         3600
       );
     });

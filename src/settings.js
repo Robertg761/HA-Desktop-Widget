@@ -3891,6 +3891,7 @@ function bindConnectionTestUi() {
  */
 async function saveSettings() {
   let configPersisted = false;
+  let syncFileCopiedThisSave = false;
   try {
     const currentConfig = state.CONFIG || {};
     const nextConfig = JSON.parse(JSON.stringify(currentConfig));
@@ -4098,6 +4099,7 @@ async function saveSettings() {
               3400
             );
           } else if (copyResult?.copied) {
+            syncFileCopiedThisSave = true;
             showToast('Copied sync file and switched folders.', 'success', 2200);
           }
         }
@@ -4125,23 +4127,16 @@ async function saveSettings() {
       }
 
       if (typedPassphrase) {
+        // Validate that this build can persist a passphrase before we touch config,
+        // but defer the actual keychain write until after the config is safely
+        // persisted so a failed save can never overwrite a previously stored secret.
         if (!window.electronAPI?.setProfileSyncPassphrase) {
           showToast('This build cannot save a sync passphrase.', 'error', 3400);
           return;
         }
-        const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
-          typedPassphrase,
-          !!nextProfileSync.rememberPassphrase
-        );
-        if (!passphraseResult?.success) {
-          showToast(passphraseResult?.error || 'Failed to save sync passphrase.', 'error', 3600);
-          return;
-        }
-        if (typeof passphraseResult.remembered === 'boolean') {
-          nextProfileSync.rememberPassphrase = passphraseResult.remembered;
-        }
-        nextProfileSync.passphraseEncrypted = !!passphraseResult.encrypted;
-        passphraseUpdatedThisSave = true;
+        // Predicted metadata: rememberPassphrase is already the requested value; a
+        // freshly typed passphrase has not yet been encrypted at rest.
+        nextProfileSync.passphraseEncrypted = false;
       } else {
         nextProfileSync.passphraseEncrypted = !!profileSyncStatusCache?.passphraseEncrypted;
       }
@@ -4154,6 +4149,60 @@ async function saveSettings() {
     state.setConfig(updatedConfig);
     configPersisted = true;
     setCustomThemes(state.CONFIG.ui?.customColors || []);
+
+    // Store the sync passphrase only now that the config is safely persisted. If this
+    // fails, the settings are still saved and the previously stored secret is untouched.
+    if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled && typedPassphrase) {
+      try {
+        const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
+          typedPassphrase,
+          !!nextProfileSync.rememberPassphrase
+        );
+        if (!passphraseResult?.success) {
+          throw new Error(passphraseResult?.error || 'Failed to save sync passphrase.');
+        }
+        passphraseUpdatedThisSave = true;
+
+        const resolvedRemembered =
+          typeof passphraseResult.remembered === 'boolean'
+            ? passphraseResult.remembered
+            : !!nextProfileSync.rememberPassphrase;
+        const resolvedEncrypted = !!passphraseResult.encrypted;
+        nextProfileSync.rememberPassphrase = resolvedRemembered;
+        nextProfileSync.passphraseEncrypted = resolvedEncrypted;
+
+        const persistedProfileSync = state.CONFIG.profileSync || {};
+        if (
+          resolvedRemembered !== persistedProfileSync.rememberPassphrase ||
+          resolvedEncrypted !== persistedProfileSync.passphraseEncrypted
+        ) {
+          try {
+            const correctedConfig = JSON.parse(JSON.stringify(state.CONFIG));
+            correctedConfig.profileSync = correctedConfig.profileSync || {};
+            correctedConfig.profileSync.rememberPassphrase = resolvedRemembered;
+            correctedConfig.profileSync.passphraseEncrypted = resolvedEncrypted;
+            const correctedResult = await window.electronAPI.updateConfig(correctedConfig);
+            if (
+              !correctedResult ||
+              correctedResult.success === false ||
+              !correctedResult.homeAssistant
+            ) {
+              throw new Error(correctedResult?.error || 'Failed to persist passphrase metadata');
+            }
+            state.setConfig(correctedResult);
+          } catch (correctiveError) {
+            log.error('Failed to persist updated passphrase metadata:', correctiveError);
+          }
+        }
+      } catch (passphraseError) {
+        log.error('Failed to store sync passphrase after saving settings:', passphraseError);
+        showToast(
+          'Settings were saved, but the sync passphrase could not be stored.',
+          'warning',
+          3600
+        );
+      }
+    }
 
     if (startWithWindows) {
       try {
@@ -4268,13 +4317,17 @@ async function saveSettings() {
     }
   } catch (error) {
     log.error('Failed to save config:', error);
-    showToast(
-      configPersisted
-        ? 'Settings were saved, but one or more changes could not be applied immediately.'
-        : 'Settings could not be saved. No configuration changes were applied.',
-      'error',
-      4000
-    );
+    let failureMessage;
+    if (configPersisted) {
+      failureMessage =
+        'Settings were saved, but one or more changes could not be applied immediately.';
+    } else if (syncFileCopiedThisSave) {
+      failureMessage =
+        'Settings could not be saved. No configuration changes were applied, but the sync file was already copied to the new folder.';
+    } else {
+      failureMessage = 'Settings could not be saved. No configuration changes were applied.';
+    }
+    showToast(failureMessage, 'error', 4000);
   }
 }
 

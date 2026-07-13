@@ -60,6 +60,7 @@
   "src/settings.js|showToast|'Profile sync conflict resolved.'",
   "src/settings.js|showToast|'Resolve first-time sync conflict before syncing.'",
   "src/settings.js|showToast|'Saved passphrase cleared.'",
+  "src/settings.js|showToast|'Settings were saved, but the sync passphrase could not be stored.'",
   "src/settings.js|showToast|'This build cannot save a sync passphrase.'",
   "src/settings.js|showToast|`Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`",
   "src/settings.js|showToast|`Popup hotkey set to ${hotkey}`",
