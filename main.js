@@ -17,6 +17,11 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL, fileURLToPath } = require('url');
+
+// The BUNDLED preload (see vite.preload.config.js), not the unbundled preload.js. Preload scripts
+// are sandboxed, and a sandboxed preload cannot require a file from disk — so loading preload.js
+// directly leaves the renderer with no window.electronAPI at all.
+const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const axios = require('axios');
 const pkg = require('./package.json');
@@ -1268,7 +1273,7 @@ function createDesktopPinWindow(entityId, options = {}) {
     icon: iconPath,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: PRELOAD_SCRIPT_PATH,
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
@@ -2813,7 +2818,7 @@ function createWindow() {
     movable: true,
     icon: iconPath,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: PRELOAD_SCRIPT_PATH,
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true,

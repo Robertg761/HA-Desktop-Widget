@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The app starts again. Preload scripts are sandboxed, and a sandboxed preload cannot `require` a file from disk, so `preload.js` requiring `./src/preload-api.cjs` failed with "module not found": the contextBridge never ran and the renderer had no `window.electronAPI` at all. The preload is now bundled into a single self-contained file, which keeps the sandbox on and keeps the API factory a separately unit-tested module.
 - Sensor history no longer stays empty for the first five minutes after launch. Tiles render before the WebSocket connects, so the first history request was rejected — and a failed fetch was starting the 5-minute refresh throttle. The request is now skipped while disconnected, and only a successful fetch starts the throttle. This also affected the existing tile sparklines.
 - Sensor history is requested with `significant_changes_only: false`. Home Assistant's default drops rows its per-domain rules consider uninteresting, so history came back sparser than the recorder actually holds. For a weather entity only a _condition_ change counts as significant, so temperature drift under an unchanged sky was never returned (4 points per 24h instead of one per hour).
 
