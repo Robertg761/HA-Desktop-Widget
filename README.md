@@ -174,7 +174,12 @@ npm run dist:linux  # Build Linux AppImage and deb artifacts
 
 - **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release, and existing users receive it through the standard update path.
 - **Tester prereleases**: Push a SemVer prerelease tag like `v3.5.4-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings -> Application Updates are offered these builds.
+- **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
 - **Portable builds**: Portable users still update manually, but the update checker will show prerelease portable downloads when beta updates are enabled.
+
+The minimum planned beta version is stored in `.github/beta-target`. With `3.7.0` configured and `3.6.0` as the latest stable release, nightly builds use `v3.7.0-beta.N`. Once `v3.7.0` is stable, the workflow automatically moves to `v3.7.1-beta.N`. To begin a future minor series instead, change the file to `3.8.0`; the next changed build starts at `v3.8.0-beta.1`.
+
+Prerelease builds align their package version from the tag without committing that temporary beta version back to `main`. Stable releases continue to sync `package.json` and `package-lock.json` after publishing.
 
 ### Configuration
 
