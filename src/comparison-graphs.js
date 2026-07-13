@@ -56,8 +56,27 @@ function getGraphSeriesAttribute(entityId) {
   return GRAPH_SERIES_ATTRIBUTE_BY_DOMAIN[getEntityDomain(entityId)] || null;
 }
 
+/**
+ * A reading as a number, or null when there is no reading.
+ *
+ * Number() maps null, undefined, '', '   ', [] and false to 0 — all of which reach here as a
+ * missing or unavailable value. Coercing them would plot a real-looking 0, which on a temperature
+ * chart is not a gap but a data point that drags the shared scale down to freezing. Absence has to
+ * stay absent, so every non-numeric input is rejected before Number() sees it.
+ *
+ * @param {*} raw
+ * @returns {?number} Null when the value is missing, blank or not a number.
+ */
 function toFiniteNumber(raw) {
-  const value = Number(typeof raw === 'string' ? raw.trim() : raw);
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== 'string') return null;
+
+  const trimmed = raw.trim();
+  // '' would become 0. So would '   '. Home Assistant also reports 'unknown'/'unavailable' here,
+  // which Number() correctly rejects as NaN.
+  if (!trimmed) return null;
+
+  const value = Number(trimmed);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -422,6 +441,69 @@ function computeValueDomain(seriesList, { padding = 0.05 } = {}) {
   return { min: min - pad, max: max + pad };
 }
 
+/**
+ * One value domain PER UNIT, keyed by entity id.
+ *
+ * Overlaying series on a single domain only makes them comparable when they measure the same thing.
+ * A humidity reading of 60 %% and a temperature of 21 °C share no scale: one domain across both
+ * flattens the temperatures into a sliver at the bottom of the chart. So each unit is scaled
+ * against its own extremes — which is also what the editor's mixed-unit warning tells the user
+ * happens. Series within a unit still share one domain, so their real offset is preserved.
+ *
+ * @param {Array<{entityId: string, unit: string, points: Array<{value: number, timestamp: number}>}>} entries
+ * @param {{padding?: number}} [options] - Passed through to computeValueDomain.
+ * @returns {Map<string, {min: number, max: number}>} Entity id -> the domain to plot it against.
+ *   An entity with no plottable points is absent, since it has no scale of its own to be drawn on.
+ */
+function computeValueDomainsByUnit(entries, options = {}) {
+  const list = (Array.isArray(entries) ? entries : []).filter(
+    (entry) => isObject(entry) && typeof entry.entityId === 'string'
+  );
+
+  const pointsByEntityId = new Map(list.map((entry) => [entry.entityId, entry.points]));
+  const { groups } = groupSeriesByUnit(list);
+  const domainByEntityId = new Map();
+
+  groups.forEach((group) => {
+    const domain = computeValueDomain(
+      group.entityIds.map((entityId) => pointsByEntityId.get(entityId) || []),
+      options
+    );
+    if (!domain) return;
+    group.entityIds.forEach((entityId) => domainByEntityId.set(entityId, domain));
+  });
+
+  return domainByEntityId;
+}
+
+/**
+ * The value a series held at `timestamp`: its latest sample at or before that moment.
+ *
+ * The crosshair names ONE time, so every series has to be read at that same time or the tooltip
+ * lines up readings taken at different moments and invites a comparison that was never true.
+ * Picking the nearest sample instead lets a series answer with a reading from the future — a value
+ * it had not reported yet at the time being hovered.
+ *
+ * A Home Assistant state persists until it changes, so the latest sample at or before the hovered
+ * time is what the entity actually read then. That is the same rule the chart draws with, so the
+ * tooltip agrees with the line above it.
+ *
+ * @param {Array<{value: number, timestamp: number}>} series
+ * @param {number} timestamp
+ * @returns {?{value: number, timestamp: number}} Null when the series had not reported yet, which
+ *   is exactly where the chart draws no line either.
+ */
+function findSampleAtOrBefore(series, timestamp) {
+  const at = Number(timestamp);
+  if (!Number.isFinite(at)) return null;
+
+  return toFinitePoints(series).reduce((latest, point) => {
+    if (Number(point.timestamp) > at) return latest;
+    if (latest && Number(latest.timestamp) >= Number(point.timestamp)) return latest;
+    return point;
+  }, null);
+}
+
 // Turning off Home Assistant's significant-change filter means a chatty sensor can return a point
 // per minute (~1440/day). The plot is only a few hundred pixels wide, so beyond roughly one point
 // per pixel we are paying to draw detail nobody can see.
@@ -514,6 +596,9 @@ export {
   buildTimeSeriesPoints,
   computeTimeDomain,
   computeValueDomain,
+  computeValueDomainsByUnit,
+  findSampleAtOrBefore,
+  toFiniteNumber,
   splitSeriesAtWindow,
   getComparisonGraph,
   getComparisonGraphEntityIds,

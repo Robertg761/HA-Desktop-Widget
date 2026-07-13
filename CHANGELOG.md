@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comparison graph tiles: plot up to 7 entities as overlaid series on a single 24-hour chart, with a legend and a crosshair tooltip that lists every series at the hovered time. Added from Manage Quick Access, and dragged, resized and removed like any other tile.
 - Comparison graph series span the full window even though entities report at different times: the value before an entity's first reading, and after its last one, is drawn dashed. A Home Assistant state persists until it changes, so the value there is known — but nothing was recorded, and dashing keeps it from reading as measured data.
 - Comparison graphs can be 2, 3 or 4 tiles wide, clamped to the columns the grid actually has.
+- Series measured in different units are each scaled against their own unit, so a humidity sensor plotted beside temperatures stays readable instead of being flattened against a scale it does not share. Series within a unit still share one scale, so their real offset shows.
 - Weather and climate entities can be graphed. Their value lives in an attribute (`temperature` / `current_temperature`) rather than the state, so the outside temperature is now plottable alongside room sensors. They are also findable by searching "outside" or "weather".
 
 ### Changed

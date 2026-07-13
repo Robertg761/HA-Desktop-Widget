@@ -36,6 +36,9 @@ const state = require('../../src/state.js').default;
 const NOW = Date.now();
 const HOUR = 60 * 60 * 1000;
 
+// Mirrors COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS in ui.js: live updates coalesce into one repaint.
+const REDRAW_DEBOUNCE_MS = 250;
+
 // The sensor history cache is module state keyed by entity id and throttled for 5 minutes, so each
 // test uses its own sensors — otherwise the second test is served from the first test's cache.
 let sensorSeq = 0;
@@ -424,5 +427,177 @@ describe('comparison graph tile', () => {
     const tile = document.querySelector('.comparison-graph-tile');
     expect(tile.querySelector('.comparison-graph-empty')).not.toBeNull();
     expect(tile.querySelector('.comparison-graph-line')).toBeNull();
+  });
+
+  it('drops a missing reading instead of plotting it as a zero', async () => {
+    // Number('') and Number(null) are both 0. A sensor that went unavailable for a poll would
+    // otherwise contribute a real-looking 0 °C: a line plunging to freezing, dragging the scale
+    // down with it and hiding the real spread.
+    const { warmId, coldId } = makeScenario();
+    mockRequest.mockResolvedValue({
+      result: {
+        [warmId]: [
+          { s: '20', lu: (NOW - 3 * HOUR) / 1000 },
+          { s: '', lu: (NOW - 2 * HOUR) / 1000 },
+          { s: 'unavailable', lu: (NOW - 1.5 * HOUR) / 1000 },
+          { s: null, lu: (NOW - 1 * HOUR) / 1000 },
+          { s: '21.4', lu: NOW / 1000 },
+        ],
+        [coldId]: [
+          { s: '20.5', lu: (NOW - 3 * HOUR) / 1000 },
+          { s: '21', lu: NOW / 1000 },
+        ],
+      },
+    });
+    setupConfig([warmId, coldId]);
+
+    ui.renderActiveTab();
+    await flush();
+
+    const measured = solidLines()[0];
+    const ys = measured
+      .getAttribute('points')
+      .trim()
+      .split(/\s+/)
+      .map((pair) => Number(pair.split(',')[1]));
+
+    // Only the two real readings survive; the blank, the 'unavailable' and the null are gone.
+    expect(ys).toHaveLength(2);
+
+    // Both series sit in the same narrow band (20–21.4), so every point is drawn in the upper
+    // reaches of the plot. A coerced 0 would have pinned one of them to the bottom edge.
+    const plotHeight = 90 - 4 * 2;
+    ys.forEach((y) => expect(y).toBeLessThan(plotHeight));
+  });
+
+  it('scales each unit separately, so a mismatched series is not squashed flat', async () => {
+    // The editor warns that mixed units are scaled separately. One shared domain across °C and %
+    // would stretch from 20 to 60 and crush the temperatures into a couple of pixels.
+    const { warmId, coldId } = makeScenario({ unit: '%' });
+    mockRequest.mockResolvedValue(
+      historyResponse({
+        [warmId]: [
+          [20, NOW - 3 * HOUR],
+          [21.4, NOW],
+        ],
+        [coldId]: [
+          [55, NOW - 3 * HOUR],
+          [60, NOW],
+        ],
+      })
+    );
+    setupConfig([warmId, coldId]);
+
+    ui.renderActiveTab();
+    await flush();
+
+    const spread = (line) => {
+      const ys = line
+        .getAttribute('points')
+        .trim()
+        .split(/\s+/)
+        .map((pair) => Number(pair.split(',')[1]));
+      return Math.max(...ys) - Math.min(...ys);
+    };
+
+    const [temperature, humidity] = solidLines();
+    const plotHeight = 90 - 4 * 2;
+
+    // Each series is read against its own unit's extremes, so each uses most of the plot's height.
+    expect(spread(temperature)).toBeGreaterThan(plotHeight * 0.5);
+    expect(spread(humidity)).toBeGreaterThan(plotHeight * 0.5);
+  });
+
+  it('dates a weather temperature by last_updated, since its state does not move when it changes', async () => {
+    sensorSeq += 1;
+    const weatherId = `weather.home_${sensorSeq}`;
+
+    const skyLastChanged = NOW - 6 * HOUR;
+    state.setStates({
+      [weatherId]: {
+        entity_id: weatherId,
+        state: 'partlycloudy',
+        attributes: { friendly_name: 'Outside', temperature: 8.3, temperature_unit: '°C' },
+        // The sky last changed six hours ago and has not moved since; the temperature just did.
+        last_changed: new Date(skyLastChanged).toISOString(),
+        last_updated: new Date(NOW).toISOString(),
+      },
+    });
+
+    mockRequest.mockResolvedValue({
+      result: {
+        [weatherId]: [
+          { s: 'cloudy', a: { temperature: 7 }, lu: (NOW - 8 * HOUR) / 1000 },
+          { s: 'partlycloudy', a: { temperature: 7.5 }, lu: (NOW - 6 * HOUR) / 1000 },
+        ],
+      },
+    });
+
+    setupConfig([weatherId]);
+    ui.renderActiveTab();
+    await flush();
+
+    // A live update whose temperature climbed but whose condition did not.
+    ui.updateEntityInUI({
+      ...state.STATES[weatherId],
+      attributes: { friendly_name: 'Outside', temperature: 9.1, temperature_unit: '°C' },
+      last_changed: new Date(skyLastChanged).toISOString(),
+      last_updated: new Date(NOW).toISOString(),
+    });
+
+    // The graph repaint is debounced, so live updates don't rebuild the chart on every state event.
+    await new Promise((resolve) => setTimeout(resolve, REDRAW_DEBOUNCE_MS + 50));
+
+    const tile = document.querySelector('.comparison-graph-tile');
+    const xOfLastPoint = (line) =>
+      Number(line.getAttribute('points').trim().split(/\s+/).at(-1).split(',')[0]);
+
+    // Dating the new reading by last_changed would file it six hours in the past — right on top of
+    // the previous sample — so the measured span would stop three quarters of the way across.
+    // last_updated is when the temperature actually moved, which carries the line to "now".
+    const measured = solidLines(tile);
+    const plotWidth = 260 - 4 * 2;
+
+    expect(xOfLastPoint(measured[0])).toBeGreaterThan(plotWidth * 0.99);
+  });
+
+  it('reads every series at the hovered time, never at a reading it had not taken yet', async () => {
+    const { warmId, coldId } = makeScenario();
+    mockRequest.mockResolvedValue(
+      historyResponse({
+        [warmId]: [
+          [20, NOW - 3 * HOUR],
+          [22, NOW - 1 * HOUR],
+        ],
+        [coldId]: [
+          [5, NOW - 2 * HOUR],
+          [9, NOW - 0.5 * HOUR],
+        ],
+      })
+    );
+    setupConfig([warmId, coldId]);
+
+    ui.renderActiveTab();
+    await flush();
+
+    const tile = document.querySelector('.comparison-graph-tile');
+    const frame = tile.querySelector('.comparison-graph-frame');
+    const svg = tile.querySelector('.comparison-graph-svg');
+
+    // jsdom lays nothing out, so the plot is given the size it renders at.
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 260, height: 90 });
+
+    // Hover 1.9h ago. Living Room last reported 20 (3h ago) and does not read 22 until an hour
+    // ago; Outside last reported 5 (2h ago).
+    const ratio = (24 - 1.9) / 24;
+    frame.dispatchEvent(new MouseEvent('pointermove', { clientX: ratio * 260, bubbles: true }));
+
+    const values = [...tile.querySelectorAll('.comparison-graph-tooltip-value')].map(
+      (el) => el.textContent
+    );
+
+    // Nearest-sample would have answered 22 for Living Room — a reading from the future, taken an
+    // hour after the time being hovered, compared against an Outside reading from 2h ago.
+    expect(values).toEqual(['20 °C', '5 °C']);
   });
 });

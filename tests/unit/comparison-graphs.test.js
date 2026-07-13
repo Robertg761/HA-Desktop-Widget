@@ -4,7 +4,10 @@ const {
   buildTimeSeriesPoints,
   computeTimeDomain,
   computeValueDomain,
+  computeValueDomainsByUnit,
   decimatePoints,
+  findSampleAtOrBefore,
+  toFiniteNumber,
   splitSeriesAtWindow,
   getComparisonGraph,
   getComparisonGraphEntityIds,
@@ -327,6 +330,133 @@ describe('computeValueDomain', () => {
   it('returns null when there is nothing to plot', () => {
     expect(computeValueDomain([])).toBeNull();
     expect(computeValueDomain([[]])).toBeNull();
+  });
+});
+
+describe('toFiniteNumber', () => {
+  it('reads a number out of a state string', () => {
+    expect(toFiniteNumber('21.4')).toBe(21.4);
+    expect(toFiniteNumber(' 21.4 ')).toBe(21.4);
+    expect(toFiniteNumber(-3)).toBe(-3);
+    expect(toFiniteNumber(0)).toBe(0);
+  });
+
+  // Number(null), Number('') and Number('   ') are all 0. A missing reading that becomes 0 is not
+  // a gap in the chart — it is a data point, and on a temperature graph it drags the shared scale
+  // down to freezing and draws a line through a value the sensor never reported.
+  it('never turns a missing reading into a zero', () => {
+    expect(toFiniteNumber(null)).toBeNull();
+    expect(toFiniteNumber(undefined)).toBeNull();
+    expect(toFiniteNumber('')).toBeNull();
+    expect(toFiniteNumber('   ')).toBeNull();
+    expect(toFiniteNumber([])).toBeNull();
+    expect(toFiniteNumber({})).toBeNull();
+    expect(toFiniteNumber(false)).toBeNull();
+    expect(toFiniteNumber(true)).toBeNull();
+  });
+
+  it('rejects the non-numeric states Home Assistant reports', () => {
+    expect(toFiniteNumber('unavailable')).toBeNull();
+    expect(toFiniteNumber('unknown')).toBeNull();
+    expect(toFiniteNumber(NaN)).toBeNull();
+    expect(toFiniteNumber(Infinity)).toBeNull();
+  });
+});
+
+describe('readGraphSeriesValue', () => {
+  it('reports a missing attribute as absent rather than as zero', () => {
+    // A weather entity mid-restart has no temperature yet. Plotting it as 0 °C would invent a
+    // reading and pull the whole chart's scale down with it.
+    expect(
+      readGraphSeriesValue({ entity_id: 'weather.home', state: 'cloudy', attributes: {} })
+    ).toBeNull();
+    expect(
+      readGraphSeriesValue({ entity_id: 'sensor.living', state: '', attributes: {} })
+    ).toBeNull();
+    expect(
+      readGraphSeriesValue({ entity_id: 'sensor.living', state: 'unavailable', attributes: {} })
+    ).toBeNull();
+  });
+});
+
+describe('computeValueDomainsByUnit', () => {
+  const at = (value) => [{ value, timestamp: NOW }];
+
+  it('scales each unit against its own extremes, not one domain across all of them', () => {
+    // A humidity of 60 % and a temperature of 21 °C share no scale. One domain across both would
+    // stretch from 5 to 60 and squash the two temperatures into a sliver at the bottom.
+    const domains = computeValueDomainsByUnit(
+      [
+        { entityId: 'sensor.living', unit: '°C', points: at(21) },
+        { entityId: 'sensor.outside', unit: '°C', points: at(5) },
+        { entityId: 'sensor.humidity', unit: '%', points: at(60) },
+      ],
+      { padding: 0 }
+    );
+
+    expect(domains.get('sensor.living')).toEqual({ min: 5, max: 21 });
+    expect(domains.get('sensor.outside')).toEqual({ min: 5, max: 21 });
+    expect(domains.get('sensor.humidity')).not.toEqual(domains.get('sensor.living'));
+    expect(domains.get('sensor.humidity').max).toBeGreaterThan(21);
+  });
+
+  it('keeps series in the same unit on one shared domain, so their real offset survives', () => {
+    const domains = computeValueDomainsByUnit(
+      [
+        { entityId: 'sensor.living', unit: '°C', points: at(21) },
+        { entityId: 'sensor.outside', unit: '°C', points: at(5) },
+      ],
+      { padding: 0 }
+    );
+
+    expect(domains.get('sensor.living')).toEqual(domains.get('sensor.outside'));
+  });
+
+  it('omits a series that has nothing to plot, rather than giving it a scale', () => {
+    const domains = computeValueDomainsByUnit([
+      { entityId: 'sensor.living', unit: '°C', points: at(21) },
+      { entityId: 'sensor.dead', unit: 'kWh', points: [] },
+    ]);
+
+    expect(domains.has('sensor.living')).toBe(true);
+    expect(domains.has('sensor.dead')).toBe(false);
+  });
+});
+
+describe('findSampleAtOrBefore', () => {
+  const series = [
+    { value: 10, timestamp: NOW - 3 * HOUR },
+    { value: 20, timestamp: NOW - 2 * HOUR },
+    { value: 30, timestamp: NOW - 1 * HOUR },
+  ];
+
+  it('reports the value the series held at that time', () => {
+    // 90 minutes ago the series last reported 20 (two hours ago). It reads 20, not 30.
+    expect(findSampleAtOrBefore(series, NOW - 1.5 * HOUR).value).toBe(20);
+    expect(findSampleAtOrBefore(series, NOW - 2 * HOUR).value).toBe(20);
+  });
+
+  // The crosshair names ONE time. Snapping each series to its nearest sample lets one answer with a
+  // reading from the future — at 1h55m ago the nearest sample is the one from 1h ago, a value the
+  // entity had not reported yet — and lines up readings taken at different moments side by side.
+  it('never answers with a reading from after the hovered time', () => {
+    expect(findSampleAtOrBefore(series, NOW - 1.9 * HOUR).value).toBe(20);
+    expect(findSampleAtOrBefore(series, NOW - 1.1 * HOUR).value).toBe(20);
+  });
+
+  it('holds the last reading forward, matching the dashed trail the chart draws', () => {
+    expect(findSampleAtOrBefore(series, NOW).value).toBe(30);
+  });
+
+  it('reports nothing before the series had reported at all', () => {
+    // The chart draws no line there either, so the tooltip must not invent a value.
+    expect(findSampleAtOrBefore(series, NOW - 4 * HOUR)).toBeNull();
+    expect(findSampleAtOrBefore([], NOW)).toBeNull();
+  });
+
+  it('reads an unordered series by time, not by array position', () => {
+    const shuffled = [series[2], series[0], series[1]];
+    expect(findSampleAtOrBefore(shuffled, NOW - 1.5 * HOUR).value).toBe(20);
   });
 });
 

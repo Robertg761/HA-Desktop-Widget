@@ -27,8 +27,10 @@ import {
   normalizeComparisonGraphSpan,
   buildTimeSeriesPoints,
   computeTimeDomain,
-  computeValueDomain,
+  computeValueDomainsByUnit,
+  findSampleAtOrBefore,
   splitSeriesAtWindow,
+  toFiniteNumber,
   getComparisonGraph,
   getComparisonGraphEntityIds,
   getGraphSeriesAttribute,
@@ -1660,12 +1662,32 @@ function getSensorHistoryCacheEntry(entityId) {
   return sensorHistoryCache.get(entityId);
 }
 
-function parseSensorHistoryTimestamp(entry) {
+/**
+ * When a reading was taken.
+ *
+ * `last_changed` moves only when the STATE changes; `last_updated` moves whenever anything about
+ * the entity does, attributes included. For a series read out of an attribute — a weather entity's
+ * temperature, a climate entity's current_temperature — the temperature can climb all morning while
+ * the state ("partlycloudy", "heat") never moves, so `last_changed` is stale and would file every
+ * new reading under the hour the sky last changed. Attribute-backed series therefore date their
+ * readings by `last_updated`.
+ *
+ * State-backed series keep preferring `last_changed`: it is when the plotted value itself changed,
+ * so an unrelated attribute edit doesn't restamp a reading that never moved.
+ *
+ * @param {Object} entry - A Home Assistant state object, or a history row.
+ * @param {{preferLastUpdated?: boolean}} [options] - True for attribute-backed series.
+ * @returns {number} Epoch milliseconds.
+ */
+function parseSensorHistoryTimestamp(entry, { preferLastUpdated = false } = {}) {
+  // Compressed history rows carry `lu` (last_updated) and no `last_changed` at all.
   if (typeof entry?.lu === 'number' && Number.isFinite(entry.lu)) {
     return entry.lu * 1000;
   }
 
-  const rawTimestamp = entry?.last_changed || entry?.last_updated;
+  const rawTimestamp = preferLastUpdated
+    ? entry?.last_updated || entry?.last_changed
+    : entry?.last_changed || entry?.last_updated;
   if (typeof rawTimestamp === 'number' && Number.isFinite(rawTimestamp)) {
     return rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000;
   }
@@ -1706,11 +1728,13 @@ function normalizeSensorHistoryResponse(response, entityId, { allowBareArray = t
         rawValue = entry?.s ?? entry?.state;
       }
 
-      const value = Number(typeof rawValue === 'string' ? rawValue.trim() : rawValue);
-      if (!Number.isFinite(value)) return null;
+      // Not Number(): a missing or unavailable reading must stay missing rather than becoming a 0
+      // that reads as a real measurement and drags the shared scale with it.
+      const value = toFiniteNumber(rawValue);
+      if (value === null) return null;
       return {
         value,
-        timestamp: parseSensorHistoryTimestamp(entry),
+        timestamp: parseSensorHistoryTimestamp(entry, { preferLastUpdated: !!attribute }),
       };
     })
     .filter(Boolean)
@@ -2059,11 +2083,18 @@ function buildComparisonGraphPlot(entries) {
     spans: splitSeriesAtWindow(entry.series, timeDomain),
   }));
 
-  // One shared value domain across every series, so the curves are read against the same scale.
-  const valueDomain = computeValueDomain(
-    plotted.map((entry) => [...entry.spans.lead, ...entry.spans.measured, ...entry.spans.trail])
+  // One value domain per unit. Series in the same unit share a domain, so their real offset shows;
+  // a series in a different unit (a humidity beside temperatures) is scaled against its own kind
+  // instead of being crushed into a sliver by a domain it has no business sharing. This is what the
+  // editor's mixed-unit warning promises the user.
+  const domainByEntityId = computeValueDomainsByUnit(
+    plotted.map((entry) => ({
+      entityId: entry.entityId,
+      unit: entry.unit,
+      points: [...entry.spans.lead, ...entry.spans.measured, ...entry.spans.trail],
+    }))
   );
-  if (!valueDomain) return null;
+  if (!domainByEntityId.size) return null;
 
   const svg = createSvgElement('svg', {
     class: 'comparison-graph-svg',
@@ -2089,6 +2120,10 @@ function buildComparisonGraphPlot(entries) {
 
   let drew = false;
   plotted.forEach((entry) => {
+    // Absent when the series has no plottable points — there is no scale to draw it against.
+    const valueDomain = domainByEntityId.get(entry.entityId);
+    if (!valueDomain) return;
+
     const stroke = `var(--chart-series-${entry.colorSlot})`;
     const project = (span) =>
       buildTimeSeriesPoints(span, {
@@ -2165,20 +2200,6 @@ function formatComparisonGraphValue(entry) {
   if (entry.value === null || entry.value === undefined) return t('No data');
   const rounded = Math.round(entry.value * 10) / 10;
   return entry.unit ? `${rounded} ${entry.unit}` : String(rounded);
-}
-
-/** Nearest sample to a timestamp — the crosshair snaps to data, so the reader aims at a time. */
-function findNearestSample(series, timestamp) {
-  let nearest = null;
-  let bestDistance = Infinity;
-  (Array.isArray(series) ? series : []).forEach((point) => {
-    const distance = Math.abs(Number(point.timestamp) - timestamp);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      nearest = point;
-    }
-  });
-  return nearest;
 }
 
 /**
@@ -2262,7 +2283,11 @@ function attachComparisonGraphHover(frame, plot, entries) {
     tooltip.appendChild(heading);
 
     entries.forEach((entry) => {
-      const sample = findNearestSample(entry.series, timestamp);
+      // Every series is read at the SAME hovered time — the value it held then, which is its latest
+      // sample at or before it. Snapping each series to its own nearest sample would list readings
+      // taken at different moments under one heading, and could even answer with a reading the
+      // entity had not reported yet.
+      const sample = findSampleAtOrBefore(entry.series, timestamp);
       if (!sample) return;
 
       const row = document.createElement('div');
@@ -2481,7 +2506,12 @@ function refreshComparisonGraphTiles(entity) {
   const entry = sensorHistoryCache.get(entityId);
   const value = readGraphSeriesValue(entity);
   if (entry && value !== null) {
-    const timestamp = parseSensorHistoryTimestamp(entity);
+    // A weather entity's temperature moves without its state moving, and `last_changed` only
+    // tracks the state — so an attribute-backed reading dates itself by `last_updated`, or it
+    // would be plotted back at whenever the sky last changed.
+    const timestamp = parseSensorHistoryTimestamp(entity, {
+      preferLastUpdated: !!getGraphSeriesAttribute(entityId),
+    });
     const previous = entry.series[entry.series.length - 1];
     if (!previous || previous.timestamp !== timestamp || previous.value !== value) {
       entry.series = pruneSensorHistorySeries([...entry.series, { value, timestamp }]);
@@ -2491,10 +2521,12 @@ function refreshComparisonGraphTiles(entity) {
   if (comparisonGraphRedrawTimer) clearTimeout(comparisonGraphRedrawTimer);
   comparisonGraphRedrawTimer = setTimeout(() => {
     comparisonGraphRedrawTimer = null;
+    // Matched on the dataset rather than through a selector: a graph id contains a colon, and
+    // building a selector out of it drags in CSS.escape — which this timer callback runs outside
+    // of any try/catch, so a host without it takes the whole repaint down with a ReferenceError.
+    const tiles = [...document.querySelectorAll('.comparison-graph-tile')];
     graphs.forEach((graph) => {
-      const tile = document.querySelector(
-        `.comparison-graph-tile[data-entity-id="${CSS.escape(graph.id)}"]`
-      );
+      const tile = tiles.find((node) => node.dataset.entityId === graph.id);
       const current = getComparisonGraphById(graph.id);
       if (tile && current) renderComparisonGraphBody(tile, current);
     });
