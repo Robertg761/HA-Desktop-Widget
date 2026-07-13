@@ -20,7 +20,10 @@
     "format:check": "prettier --check .",
     "repo:check": "node scripts/check-repo-hygiene.cjs",
     "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "build:preload": "vite build --config vite.preload.config.js",
+    "prebuild:renderer": "npm run build:preload",
+    "prebuild:renderer:dev": "npm run build:preload"
   },
   "keywords": [
     "home-assistant",
@@ -58,8 +61,8 @@
       "locales/**/*",
       "main.js",
       "profile-sync-core.js",
-      "preload.js",
       "src/**/*",
+      "dist-preload/**/*",
       "dist-renderer/**/*",
       "styles.css",
       "build/icon.ico",

@@ -71,6 +71,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
 - **Alerts**: Desktop notifications for entity state changes
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
+- **Comparison Graphs**: Plot several entities on one 24-hour chart to compare them at a glance (e.g. every room temperature against the outside temperature)
 - **Media Tile**: Choose a primary media player or hide the tile
 - **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
 
@@ -110,6 +111,15 @@ Planned for a future release:
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
 - **Remove**: In reorganize mode, click the remove button to remove entities
 - **Pin to Desktop**: In reorganize mode or the tile context menu, pin supported Quick Access entities as standalone desktop tiles
+
+### Comparison Graphs
+
+- **Create**: Click the "+" button, then **Add comparison graph**
+- **Pick entities**: Add up to 7 numeric sensors. Weather and climate entities can be graphed too — a weather entity contributes the **outside temperature** (search "outside" to find it, even though it is usually named after the integration, e.g. "Forecast Home")
+- **Read it**: Series share one time axis and one value scale, so the curves are directly comparable. Hover anywhere to get a crosshair and a readout of every series at that moment
+- **Units**: Entities sharing a unit share a scale. Adding a different unit (e.g. humidity next to temperature) warns and scales it separately
+- **Width**: Choose 2, 3 or 4 tiles wide in the graph's editor
+- **Edit / remove**: In reorganize mode, click the edit icon on the graph tile (or the remove button)
 
 ### Entity Interactions
 

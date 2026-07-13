@@ -70,3 +70,4 @@ gha-creds-*.json
 todo.md
 improvement_suggestions.md
 testing-progress.md
+/dist-preload/

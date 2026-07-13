@@ -42,6 +42,18 @@ html {
   --primary: #64b5f6;
   --primary-hover: #90caf9;
 
+  /* Chart series (dark). Fixed categorical slots for comparison graphs — assigned in order,
+     never cycled or generated. Validated as a set against the dark card surface for lightness,
+     chroma, colour-vision separation and contrast; changing one means re-validating all of them.
+     Deliberately independent of --accent, which the user can retheme to anything. */
+  --chart-series-1: #3987e5;
+  --chart-series-2: #199e70;
+  --chart-series-3: #c98500;
+  --chart-series-4: #9085e9;
+  --chart-series-5: #e66767;
+  --chart-series-6: #d55181;
+  --chart-series-7: #d95926;
+
   /* State Colors */
   --success: #81c784;
   --success-hover: #a5d6a7;
@@ -213,6 +225,17 @@ html {
   --surface-3: rgba(255, 255, 255, 0.9);
   --surface-hover: rgba(240, 240, 245, 0.95);
   --card-bg: rgba(255, 255, 255, 0.7);
+
+  /* Chart series (light). The same seven hues re-stepped for the light card surface — not an
+     automatic flip of the dark set. Several sit below 3:1 contrast here, which is why the graph
+     legend always shows the sensor name: colour alone must never carry identity. */
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #1baf7a;
+  --chart-series-3: #eda100;
+  --chart-series-4: #4a3aa7;
+  --chart-series-5: #e34948;
+  --chart-series-6: #e87ba4;
+  --chart-series-7: #eb6834;
 
   /* Borders */
   --border-color: rgba(0, 0, 0, 0.1);
@@ -5950,6 +5973,232 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   height: 100%;
   overflow: visible;
   filter: drop-shadow(0 1px 3px rgba(var(--accent-rgb), 0.2));
+}
+
+/* --- Comparison graph tile --- */
+
+#quick-controls .control-item.comparison-graph-tile {
+  /* Sized by content (plot + legend) rather than a fixed height, so the legend can't be clipped
+     into a nested scrollbar. */
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 8px 10px 10px;
+  gap: 6px;
+  cursor: default;
+  overflow: visible;
+  /* A grid item defaults to min-width:auto, which lets wide content push the column wider than its
+     track and overflow the widget. */
+  min-width: 0;
+}
+
+/* A wider tile gets a taller plot — a 4-column chart with a 90px plot would read as a flat smear. */
+#quick-controls .control-item.comparison-graph-tile[data-span='3'] .comparison-graph-frame,
+#quick-controls .control-item.comparison-graph-tile[data-span='3'] .comparison-graph-empty {
+  height: 110px;
+}
+
+#quick-controls .control-item.comparison-graph-tile[data-span='4'] .comparison-graph-frame,
+#quick-controls .control-item.comparison-graph-tile[data-span='4'] .comparison-graph-empty {
+  height: 130px;
+}
+
+.comparison-graph-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.comparison-graph-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-graph-range {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.comparison-graph-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comparison-graph-frame {
+  position: relative;
+  height: 90px;
+}
+
+.comparison-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.comparison-graph-line {
+  /* Thin marks: the data is the only thing allowed to be loud. */
+  vector-effect: non-scaling-stroke;
+}
+
+/* A span where the value is HELD rather than measured — before the entity's first reading in the
+   window, and after its last one up to now. The state is known (it persists until it changes) but
+   nothing was recorded there, so it must not read as real data. */
+.comparison-graph-line-held {
+  stroke-dasharray: 2 3;
+  opacity: 0.55;
+}
+
+.comparison-graph-end-dot {
+  /* Ringed in the surface colour so overlapping series stay legible where they cross. */
+  stroke: var(--card-bg, var(--surface-2));
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.comparison-graph-crosshair {
+  stroke: var(--border-hover);
+  stroke-width: 1;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.comparison-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.comparison-graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 10px;
+}
+
+/* Identity comes from the swatch beside the text, never from colouring the text itself —
+   several series hues are illegible as text on the light surface. */
+.comparison-graph-swatch {
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.comparison-graph-legend-name {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 90px;
+}
+
+.comparison-graph-legend-value {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold, 600);
+  flex-shrink: 0;
+}
+
+.comparison-graph-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 90px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.comparison-graph-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  pointer-events: none;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--glass-overlay, var(--bg-elevated));
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(var(--blur-sm, 6px));
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.comparison-graph-tooltip.align-right {
+  left: auto;
+  right: 0;
+}
+
+.comparison-graph-tooltip-time {
+  color: var(--text-tertiary);
+  margin-bottom: 3px;
+}
+
+.comparison-graph-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* A short line key, not a filled box: at tooltip density a box is data-weight ink doing a
+   label's job. */
+.comparison-graph-tooltip-key {
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+/* The reader already has the series and wants the number, so the value leads. */
+.comparison-graph-tooltip-value {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold, 600);
+  font-variant-numeric: tabular-nums;
+}
+
+.comparison-graph-tooltip-name {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+.comparison-graph-warning {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(255, 183, 77, 0.12);
+  border: 1px solid rgba(255, 183, 77, 0.35);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.comparison-graph-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* Unit sits beside the Add button, clear of the entity id's ellipsis, so a mismatched scale is
+   visible before the sensor is added. */
+.comparison-graph-unit {
+  flex-shrink: 0;
+  margin: 0 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 #quick-controls .control-item[data-value-size='small'] .control-state:not(.control-sensor-readout) {

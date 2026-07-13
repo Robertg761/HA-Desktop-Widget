@@ -20,6 +20,29 @@ import {
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import { getNextQuickAccessFocusIndex } from './quick-access-ui-helpers.js';
+import {
+  COMPARISON_GRAPH_SPAN_OPTIONS,
+  MAX_COMPARISON_GRAPH_SERIES,
+  addComparisonGraph,
+  normalizeComparisonGraphSpan,
+  buildTimeSeriesPoints,
+  computeTimeDomain,
+  computeValueDomainsByUnit,
+  findSampleAtOrBefore,
+  splitSeriesAtWindow,
+  toFiniteNumber,
+  getComparisonGraph,
+  getComparisonGraphEntityIds,
+  getGraphSeriesAttribute,
+  getSeriesColorSlot,
+  groupSeriesByUnit,
+  isComparisonGraphId,
+  isGraphableEntity,
+  readGraphSeriesUnit,
+  readGraphSeriesValue,
+  removeComparisonGraph,
+  updateComparisonGraph,
+} from './comparison-graphs.js';
 import Sortable from 'sortablejs';
 
 let isReorganizeMode = false;
@@ -66,6 +89,11 @@ const SENSOR_TILE_SPARKLINE_WIDTH = 96;
 const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
 const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
 const SENSOR_DETAIL_SPARKLINE_HEIGHT = 120;
+const COMPARISON_GRAPH_WIDTH = 260;
+const COMPARISON_GRAPH_HEIGHT = 90;
+// The plot is inset so 2px strokes and the end-dot rings aren't clipped by the viewBox edge.
+const COMPARISON_GRAPH_INSET = 4;
+const COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS = 250;
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = [
   'off',
   'heat',
@@ -741,6 +769,11 @@ function refreshVisibleEntityCache() {
 
     addVisibleEntityCandidate(nextVisibleIds, state.CONFIG?.primaryMediaPlayer);
 
+    // Sensors plotted inside a graph are visible even though they have no tile of their own.
+    getComparisonGraphEntityIds(state.CONFIG || {}).forEach((entityId) => {
+      addVisibleEntityCandidate(nextVisibleIds, entityId);
+    });
+
     visibleEntityIds.clear();
     nextVisibleIds.forEach((entityId) => {
       visibleEntityIds.add(entityId);
@@ -1073,6 +1106,12 @@ function addButtonsToElement(item) {
 
 function showRenameModal(entityId) {
   try {
+    // Graph tiles are not entities; their Edit button opens the graph editor instead.
+    if (isComparisonGraphId(entityId)) {
+      showComparisonGraphModal(entityId);
+      return;
+    }
+
     const entity = state.STATES[entityId];
     if (!entity) return;
 
@@ -1217,7 +1256,11 @@ function showRenameModal(entityId) {
 
 function removeFromQuickAccess(entityId) {
   try {
-    const nextConfig = removeEntityFromQuickAccessViews(state.CONFIG, entityId);
+    // Removing a graph tile deletes the graph itself — leaving it behind would strand config that
+    // has no way back into the UI.
+    const nextConfig = isComparisonGraphId(entityId)
+      ? removeComparisonGraph(state.CONFIG, entityId)
+      : removeEntityFromQuickAccessViews(state.CONFIG, entityId);
     setQuickAccessConfig(nextConfig, { render: false });
 
     // Re-render
@@ -1339,6 +1382,9 @@ function updateEntityInUI(entity, options = {}) {
     if (renderEntity.entity_id === state.CONFIG.primaryMediaPlayer) {
       updateMediaTile();
     }
+
+    // A sensor plotted in a graph usually has no tile of its own, so repaint the graph directly.
+    refreshComparisonGraphTiles(renderEntity);
 
     const items = document.querySelectorAll(
       `.control-item[data-entity-id="${renderEntity.entity_id}"]`
@@ -1616,12 +1662,32 @@ function getSensorHistoryCacheEntry(entityId) {
   return sensorHistoryCache.get(entityId);
 }
 
-function parseSensorHistoryTimestamp(entry) {
+/**
+ * When a reading was taken.
+ *
+ * `last_changed` moves only when the STATE changes; `last_updated` moves whenever anything about
+ * the entity does, attributes included. For a series read out of an attribute — a weather entity's
+ * temperature, a climate entity's current_temperature — the temperature can climb all morning while
+ * the state ("partlycloudy", "heat") never moves, so `last_changed` is stale and would file every
+ * new reading under the hour the sky last changed. Attribute-backed series therefore date their
+ * readings by `last_updated`.
+ *
+ * State-backed series keep preferring `last_changed`: it is when the plotted value itself changed,
+ * so an unrelated attribute edit doesn't restamp a reading that never moved.
+ *
+ * @param {Object} entry - A Home Assistant state object, or a history row.
+ * @param {{preferLastUpdated?: boolean}} [options] - True for attribute-backed series.
+ * @returns {number} Epoch milliseconds.
+ */
+function parseSensorHistoryTimestamp(entry, { preferLastUpdated = false } = {}) {
+  // Compressed history rows carry `lu` (last_updated) and no `last_changed` at all.
   if (typeof entry?.lu === 'number' && Number.isFinite(entry.lu)) {
     return entry.lu * 1000;
   }
 
-  const rawTimestamp = entry?.last_changed || entry?.last_updated;
+  const rawTimestamp = preferLastUpdated
+    ? entry?.last_updated || entry?.last_changed
+    : entry?.last_changed || entry?.last_updated;
   if (typeof rawTimestamp === 'number' && Number.isFinite(rawTimestamp)) {
     return rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000;
   }
@@ -1634,83 +1700,221 @@ function parseSensorHistoryTimestamp(entry) {
   return Date.now();
 }
 
-function normalizeSensorHistoryResponse(response, entityId) {
+function normalizeSensorHistoryResponse(response, entityId, { allowBareArray = true } = {}) {
   const result = response?.result ?? response;
-  const entries = Array.isArray(result)
-    ? result
-    : Array.isArray(result?.[entityId])
-      ? result[entityId]
-      : [];
+  // Home Assistant keys the result by entity id. The bare-array shape is a fallback, and is only
+  // safe for a single-entity request — in a batch it would hand every sensor the same series.
+  const entries =
+    allowBareArray && Array.isArray(result)
+      ? result
+      : Array.isArray(result?.[entityId])
+        ? result[entityId]
+        : [];
+
+  // Attribute-backed series (a weather entity's temperature) read the number out of the
+  // attributes rather than the state.
+  const attribute = getGraphSeriesAttribute(entityId);
+  let lastAttributes = null;
 
   return entries
     .map((entry) => {
-      const rawValue = entry?.s ?? entry?.state;
-      const value = Number(typeof rawValue === 'string' ? rawValue.trim() : rawValue);
-      if (!Number.isFinite(value)) return null;
+      let rawValue;
+      if (attribute) {
+        // History omits unchanged attributes, so carry the last known set forward.
+        const attributes = entry?.a ?? entry?.attributes;
+        if (attributes) lastAttributes = attributes;
+        rawValue = lastAttributes?.[attribute];
+      } else {
+        rawValue = entry?.s ?? entry?.state;
+      }
+
+      // Not Number(): a missing or unavailable reading must stay missing rather than becoming a 0
+      // that reads as a real measurement and drags the shared scale with it.
+      const value = toFiniteNumber(rawValue);
+      if (value === null) return null;
       return {
         value,
-        timestamp: parseSensorHistoryTimestamp(entry),
+        timestamp: parseSensorHistoryTimestamp(entry, { preferLastUpdated: !!attribute }),
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
+/**
+ * Drops samples older than the 24h window, but KEEPS the newest sample at or before the cutoff.
+ *
+ * That boundary sample is the entity's state at the start of the window (Home Assistant sends it
+ * as the first row). Discarding it meant each line began at its own first *change* instead of at
+ * the window edge, so lines started at different x positions and couldn't be compared. A Home
+ * Assistant state persists until it changes, so this sample is what the entity read at the start
+ * of the window.
+ *
+ * @param {Array<{value: number, timestamp: number}>} series
+ * @param {number} [now]
+ * @returns {Array<{value: number, timestamp: number}>} Chronological samples.
+ */
 function pruneSensorHistorySeries(series, now = Date.now()) {
   const cutoff = now - SENSOR_HISTORY_WINDOW_MS;
-  return Array.isArray(series)
-    ? series.filter(
-        (point) =>
-          point &&
-          Number.isFinite(point.value) &&
-          Number.isFinite(point.timestamp) &&
-          point.timestamp >= cutoff
-      )
-    : [];
+  const valid = (Array.isArray(series) ? series : [])
+    .filter((point) => point && Number.isFinite(point.value) && Number.isFinite(point.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const inWindow = valid.filter((point) => point.timestamp >= cutoff);
+  const boundary = valid.filter((point) => point.timestamp < cutoff).pop();
+
+  return boundary ? [boundary, ...inWindow] : inWindow;
 }
 
-function fetchSensorHistory(entityId) {
-  if (!entityId) return Promise.resolve([]);
+/**
+ * Fetches 24h history for several entities in a SINGLE Home Assistant request, and writes each
+ * series into the shared per-entity cache. Entities that were fetched recently, or that already
+ * have a request in flight, are served from cache rather than re-requested.
+ *
+ * @param {string[]} entityIds
+ * @returns {Promise<Map<string, Array<{value:number, timestamp:number}>>>}
+ */
+async function fetchSensorHistoryBatch(entityIds) {
+  const ids = [
+    ...new Set(
+      (Array.isArray(entityIds) ? entityIds : []).filter(
+        (entityId) => typeof entityId === 'string' && entityId
+      )
+    ),
+  ];
+  if (!ids.length) return new Map();
 
-  const entry = getSensorHistoryCacheEntry(entityId);
   const now = Date.now();
-  if (entry.promise) return entry.promise;
-  if (entry.lastFetchAt && now - entry.lastFetchAt < SENSOR_HISTORY_REFRESH_THROTTLE_MS) {
-    return Promise.resolve(entry.series);
+  const inFlight = [];
+  const stale = [];
+
+  ids.forEach((entityId) => {
+    const entry = getSensorHistoryCacheEntry(entityId);
+    if (entry.promise) {
+      inFlight.push(entry.promise);
+      return;
+    }
+    if (entry.lastFetchAt && now - entry.lastFetchAt < SENSOR_HISTORY_REFRESH_THROTTLE_MS) return;
+    stale.push(entityId);
+  });
+
+  const collect = () => {
+    const seriesByEntity = new Map();
+    ids.forEach((entityId) => {
+      seriesByEntity.set(entityId, getSensorHistoryCacheEntry(entityId).series);
+    });
+    return seriesByEntity;
+  };
+
+  if (stale.length && typeof websocket.request !== 'function') {
+    stale.forEach((entityId) => {
+      getSensorHistoryCacheEntry(entityId).lastFetchAt = now;
+    });
+    stale.length = 0;
   }
-  if (typeof websocket.request !== 'function') {
-    entry.lastFetchAt = now;
-    return Promise.resolve(entry.series);
+
+  // Tiles render before the socket is open. Firing a request now would only be rejected, so skip it
+  // — and deliberately don't stamp the throttle, so the next render retries once connected.
+  if (stale.length && typeof websocket.isConnected === 'function' && !websocket.isConnected()) {
+    stale.length = 0;
+  }
+
+  if (!stale.length) {
+    await Promise.all(inFlight);
+    return collect();
   }
 
   const end = new Date(now);
   const start = new Date(now - SENSOR_HISTORY_WINDOW_MS);
-  entry.promise = websocket
-    .request({
-      type: 'history/history_during_period',
-      start_time: start.toISOString(),
-      end_time: end.toISOString(),
-      entity_ids: [entityId],
-      minimal_response: true,
-      no_attributes: true,
-    })
-    .then((response) => {
-      entry.series = pruneSensorHistorySeries(
-        normalizeSensorHistoryResponse(response, entityId),
-        Date.now()
-      );
-      entry.lastFetchAt = Date.now();
-      return entry.series;
-    })
-    .catch(() => {
-      entry.lastFetchAt = Date.now();
-      return entry.series;
-    })
-    .finally(() => {
-      entry.promise = null;
+
+  // Attribute-backed series (weather/climate temperatures) need the attributes in the response, so
+  // they can't share a request with plain state series, which fetch far less data.
+  const stateIds = stale.filter((entityId) => !getGraphSeriesAttribute(entityId));
+  const attributeIds = stale.filter((entityId) => getGraphSeriesAttribute(entityId));
+
+  /**
+   * Issues one history request for a batch of entities and writes the results into the cache.
+   * The returned promise is stored on each entry so concurrent callers share it instead of
+   * re-requesting.
+   *
+   * @param {string[]} batchIds - Entity IDs to fetch in this request.
+   * @param {boolean} withAttributes - Whether the response must include attributes.
+   * @returns {Promise<void>} Resolves once the cache has been updated.
+   */
+  const runRequest = (batchIds, withAttributes) => {
+    let request;
+
+    const run = async () => {
+      try {
+        const response = await websocket.request({
+          type: 'history/history_during_period',
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          entity_ids: batchIds,
+          minimal_response: !withAttributes,
+          no_attributes: !withAttributes,
+          // The entity's state at the start of the window, so every line can be drawn from the
+          // left edge rather than from its own first change.
+          include_start_time_state: true,
+          // Home Assistant defaults this to true, which drops rows its per-domain "significant
+          // change" rules consider uninteresting. For a weather entity only a CONDITION change is
+          // significant, so a temperature drifting 22°->31° under an unchanged sky records nothing
+          // — the outside series came back with 4 points a day. Ask for every recorded row.
+          significant_changes_only: false,
+        });
+
+        const completedAt = Date.now();
+        batchIds.forEach((entityId) => {
+          const entry = getSensorHistoryCacheEntry(entityId);
+          entry.series = pruneSensorHistorySeries(
+            normalizeSensorHistoryResponse(response, entityId, {
+              allowBareArray: batchIds.length === 1,
+            }),
+            completedAt
+          );
+          // Only a SUCCESSFUL fetch starts the refresh throttle. Tiles render before the WebSocket
+          // is open, so the first attempt is rejected with "not connected"; stamping that failure
+          // would leave the chart empty for the full five minutes.
+          entry.lastFetchAt = completedAt;
+        });
+      } catch (error) {
+        // Keep whatever is cached and leave the throttle untouched so the next render retries.
+        // The tile shows its "waiting for history" state, so the user still gets feedback.
+        console.warn('Sensor history request failed:', error);
+      } finally {
+        batchIds.forEach((entityId) => {
+          const entry = getSensorHistoryCacheEntry(entityId);
+          if (entry.promise === request) entry.promise = null;
+        });
+      }
+    };
+
+    request = run();
+    batchIds.forEach((entityId) => {
+      getSensorHistoryCacheEntry(entityId).promise = request;
     });
 
-  return entry.promise;
+    return request;
+  };
+
+  const requests = [];
+  if (stateIds.length) requests.push(runRequest(stateIds, false));
+  if (attributeIds.length) requests.push(runRequest(attributeIds, true));
+
+  await Promise.all([...requests, ...inFlight]);
+  return collect();
+}
+
+/**
+ * Fetches 24h history for a single entity.
+ *
+ * @param {string} entityId
+ * @returns {Promise<Array<{value: number, timestamp: number}>>} Chronological samples.
+ */
+async function fetchSensorHistory(entityId) {
+  if (!entityId) return [];
+  const seriesByEntity = await fetchSensorHistoryBatch([entityId]);
+  return seriesByEntity.get(entityId) || [];
 }
 
 function appendLiveSensorHistoryValue(entity) {
@@ -1803,6 +2007,862 @@ function renderSensorDetailSparkline(container, series) {
   if (svg) {
     container.appendChild(svg);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Comparison graph tiles
+// ---------------------------------------------------------------------------
+
+/**
+ * Looks up a comparison graph in the current config.
+ *
+ * @param {string} graphId - The graph's synthetic entity ID (`graph:…`).
+ * @returns {?{id: string, name: string, span: number, entityIds: string[]}} Null if it no longer exists.
+ */
+function getComparisonGraphById(graphId) {
+  return getComparisonGraph(state.CONFIG || {}, graphId);
+}
+
+/**
+ * Resolves a graph's configured entities into drawable series. The colour slot comes from the
+ * entity's index in the persisted list, so hiding or failing to resolve one series never
+ * repaints the others.
+ */
+function getComparisonGraphSeries(graph) {
+  const entityIds = Array.isArray(graph?.entityIds) ? graph.entityIds : [];
+  const fallbackTemperatureUnit = state.UNIT_SYSTEM?.temperature || '';
+
+  return entityIds.map((entityId, index) => {
+    const entity = state.STATES?.[entityId] || null;
+    return {
+      entityId,
+      entity,
+      colorSlot: getSeriesColorSlot(index),
+      name: entity ? utils.getEntityDisplayName(entity) : entityId,
+      unit: readGraphSeriesUnit(entity, { fallbackTemperatureUnit }),
+      value: readGraphSeriesValue(entity),
+      series: sensorHistoryCache.get(entityId)?.series || [],
+    };
+  });
+}
+
+/**
+ * Creates an SVG element with the given attributes.
+ *
+ * @param {string} name - SVG tag name (e.g. `polyline`).
+ * @param {Object<string, (string|number)>} [attributes]
+ * @returns {SVGElement}
+ */
+function createSvgElement(name, attributes = {}) {
+  const node = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, name);
+  Object.entries(attributes).forEach(([key, value]) => {
+    node.setAttribute(key, String(value));
+  });
+  return node;
+}
+
+/**
+ * Builds the multi-series SVG plot: one polyline per series, all projected onto a shared time axis
+ * and a shared value domain.
+ *
+ * @param {Array<Object>} entries - Resolved series from getComparisonGraphSeries().
+ * @returns {?{svg: SVGElement, crosshair: SVGElement, timeDomain: Object, plotWidth: number}}
+ *   Null when there is nothing plottable yet.
+ */
+function buildComparisonGraphPlot(entries) {
+  const plotWidth = COMPARISON_GRAPH_WIDTH - COMPARISON_GRAPH_INSET * 2;
+  const plotHeight = COMPARISON_GRAPH_HEIGHT - COMPARISON_GRAPH_INSET * 2;
+  const timeDomain = computeTimeDomain({ now: Date.now(), windowMs: SENSOR_HISTORY_WINDOW_MS });
+  if (!timeDomain) return null;
+
+  // Sensors report at different times, so a line's samples rarely reach either edge. Split each
+  // series into what was measured and what is merely held, so both edges can be drawn (making the
+  // series comparable at the start and at "now") while staying visibly distinct from real data.
+  const plotted = entries.map((entry) => ({
+    ...entry,
+    spans: splitSeriesAtWindow(entry.series, timeDomain),
+  }));
+
+  // One value domain per unit. Series in the same unit share a domain, so their real offset shows;
+  // a series in a different unit (a humidity beside temperatures) is scaled against its own kind
+  // instead of being crushed into a sliver by a domain it has no business sharing. This is what the
+  // editor's mixed-unit warning promises the user.
+  const domainByEntityId = computeValueDomainsByUnit(
+    plotted.map((entry) => ({
+      entityId: entry.entityId,
+      unit: entry.unit,
+      points: [...entry.spans.lead, ...entry.spans.measured, ...entry.spans.trail],
+    }))
+  );
+  if (!domainByEntityId.size) return null;
+
+  const svg = createSvgElement('svg', {
+    class: 'comparison-graph-svg',
+    viewBox: `0 0 ${COMPARISON_GRAPH_WIDTH} ${COMPARISON_GRAPH_HEIGHT}`,
+    preserveAspectRatio: 'none',
+    'aria-hidden': 'true',
+    focusable: 'false',
+  });
+
+  const plot = createSvgElement('g', {
+    transform: `translate(${COMPARISON_GRAPH_INSET}, ${COMPARISON_GRAPH_INSET})`,
+  });
+
+  const crosshair = createSvgElement('line', {
+    class: 'comparison-graph-crosshair',
+    y1: 0,
+    y2: plotHeight,
+    x1: 0,
+    x2: 0,
+    visibility: 'hidden',
+  });
+  plot.appendChild(crosshair);
+
+  let drew = false;
+  plotted.forEach((entry) => {
+    // Absent when the series has no plottable points — there is no scale to draw it against.
+    const valueDomain = domainByEntityId.get(entry.entityId);
+    if (!valueDomain) return;
+
+    const stroke = `var(--chart-series-${entry.colorSlot})`;
+    const project = (span) =>
+      buildTimeSeriesPoints(span, {
+        timeDomain,
+        valueDomain,
+        width: plotWidth,
+        height: plotHeight,
+      });
+
+    const drawSpan = (span, { held }) => {
+      const points = project(span);
+      if (!points) return null;
+
+      const coords = points.split(' ');
+      const firstX = Number(coords[0].split(',')[0]);
+      const lastX = Number(coords[coords.length - 1].split(',')[0]);
+      // A span narrower than a pixel (a sensor that reported seconds ago) would only add a stray
+      // dash at the edge. Keep it in the data — for the end dot — but don't draw it.
+      const visible = coords.length >= 2 && Math.abs(lastX - firstX) >= 0.5;
+
+      if (visible || !held) drew = true;
+      if (!visible) return points;
+
+      plot.appendChild(
+        createSvgElement('polyline', {
+          class: held
+            ? 'comparison-graph-line comparison-graph-line-held'
+            : 'comparison-graph-line',
+          points,
+          fill: 'none',
+          stroke,
+          'stroke-width': 2,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+        })
+      );
+      return points;
+    };
+
+    // Held spans are dashed: the value is known (a state persists until it changes) but nothing was
+    // recorded there, and drawing it like real data would overstate what we know.
+    drawSpan(entry.spans.lead, { held: true });
+    drawSpan(entry.spans.measured, { held: false });
+    const trail = drawSpan(entry.spans.trail, { held: true });
+
+    // End dot at "now", ringed in the surface colour so overlapping sensors stay legible.
+    const endPoints = trail || project(entry.spans.measured);
+    if (!endPoints) return;
+    const [endX, endY] = endPoints.split(' ').at(-1).split(',').map(Number);
+    plot.appendChild(
+      createSvgElement('circle', {
+        class: 'comparison-graph-end-dot',
+        cx: endX,
+        cy: endY,
+        r: 3,
+        fill: stroke,
+      })
+    );
+  });
+
+  if (!drew) return null;
+
+  svg.appendChild(plot);
+  return { svg, crosshair, timeDomain, plotWidth };
+}
+
+/**
+ * Formats a series' current value for the legend.
+ *
+ * @param {Object} entry - A resolved series.
+ * @returns {string} e.g. `21.4 °C`, or a placeholder when the entity has no numeric value.
+ */
+function formatComparisonGraphValue(entry) {
+  if (entry.value === null || entry.value === undefined) return t('No data');
+  const rounded = Math.round(entry.value * 10) / 10;
+  return entry.unit ? `${rounded} ${entry.unit}` : String(rounded);
+}
+
+/**
+ * Builds the legend: a colour swatch, name and live value per series.
+ *
+ * The legend is required, not decorative — several series colours fall below 3:1 contrast on the
+ * light surface, so the visible name is what carries identity. Text stays in text tokens; the
+ * colour lives in the swatch beside it, never in the text.
+ *
+ * @param {Array<Object>} entries - Resolved series.
+ * @returns {HTMLElement}
+ */
+function buildComparisonGraphLegend(entries) {
+  const legend = document.createElement('div');
+  legend.className = 'comparison-graph-legend';
+
+  entries.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'comparison-graph-legend-item';
+
+    const swatch = document.createElement('span');
+    swatch.className = 'comparison-graph-swatch';
+    swatch.style.background = `var(--chart-series-${entry.colorSlot})`;
+
+    const name = document.createElement('span');
+    name.className = 'comparison-graph-legend-name';
+    name.textContent = entry.name;
+
+    const value = document.createElement('span');
+    value.className = 'comparison-graph-legend-value';
+    value.textContent = formatComparisonGraphValue(entry);
+
+    row.appendChild(swatch);
+    row.appendChild(name);
+    row.appendChild(value);
+    legend.appendChild(row);
+  });
+
+  return legend;
+}
+
+/**
+ * Wires the crosshair and tooltip. The crosshair finds the time; the tooltip then lists EVERY
+ * series at that time, so the pointer never has to land on a 2px line to read a value.
+ *
+ * @param {HTMLElement} frame - The positioned container the tooltip is placed in.
+ * @param {{svg: SVGElement, crosshair: SVGElement, timeDomain: Object, plotWidth: number}} plot
+ * @param {Array<Object>} entries - Resolved series.
+ * @returns {void}
+ */
+function attachComparisonGraphHover(frame, plot, entries) {
+  const { svg, crosshair, timeDomain, plotWidth } = plot;
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'comparison-graph-tooltip';
+  tooltip.hidden = true;
+  frame.appendChild(tooltip);
+
+  const hide = () => {
+    tooltip.hidden = true;
+    crosshair.setAttribute('visibility', 'hidden');
+  };
+
+  const move = (event) => {
+    const bounds = svg.getBoundingClientRect();
+    if (!bounds.width) return;
+
+    const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+    const timestamp = timeDomain.start + (timeDomain.end - timeDomain.start) * ratio;
+
+    crosshair.setAttribute('visibility', 'visible');
+    crosshair.setAttribute('x1', String(ratio * plotWidth));
+    crosshair.setAttribute('x2', String(ratio * plotWidth));
+
+    // One tooltip lists every series at this time, so the pointer never has to land on a line.
+    tooltip.textContent = '';
+
+    const heading = document.createElement('div');
+    heading.className = 'comparison-graph-tooltip-time';
+    heading.textContent = formatTime(new Date(timestamp));
+    tooltip.appendChild(heading);
+
+    entries.forEach((entry) => {
+      // Every series is read at the SAME hovered time — the value it held then, which is its latest
+      // sample at or before it. Snapping each series to its own nearest sample would list readings
+      // taken at different moments under one heading, and could even answer with a reading the
+      // entity had not reported yet.
+      const sample = findSampleAtOrBefore(entry.series, timestamp);
+      if (!sample) return;
+
+      const row = document.createElement('div');
+      row.className = 'comparison-graph-tooltip-row';
+
+      const key = document.createElement('span');
+      key.className = 'comparison-graph-tooltip-key';
+      key.style.background = `var(--chart-series-${entry.colorSlot})`;
+
+      const value = document.createElement('span');
+      value.className = 'comparison-graph-tooltip-value';
+      value.textContent = entry.unit ? `${sample.value} ${entry.unit}` : String(sample.value);
+
+      const name = document.createElement('span');
+      name.className = 'comparison-graph-tooltip-name';
+      name.textContent = entry.name;
+
+      row.appendChild(key);
+      row.appendChild(value);
+      row.appendChild(name);
+      tooltip.appendChild(row);
+    });
+
+    tooltip.hidden = false;
+    tooltip.classList.toggle('align-right', ratio > 0.5);
+  };
+
+  frame.addEventListener('pointermove', move);
+  frame.addEventListener('pointerleave', hide);
+}
+
+/**
+ * Renders (or re-renders) a graph tile's chart and legend.
+ *
+ * @param {HTMLElement} tile - The `.comparison-graph-tile` element.
+ * @param {{id: string, name: string, span: number, entityIds: string[]}} graph
+ * @returns {void}
+ */
+function renderComparisonGraphBody(tile, graph) {
+  const body = tile.querySelector('.comparison-graph-body');
+  if (!body) return;
+
+  const entries = getComparisonGraphSeries(graph);
+  const plot = buildComparisonGraphPlot(entries);
+
+  if (!plot) {
+    // Hold whatever is already drawn rather than blanking the chart on a refresh that returned
+    // nothing — a skeleton flash on every poll is worse than a slightly stale curve.
+    if (body.querySelector('.comparison-graph-frame')) return;
+    body.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'comparison-graph-empty';
+    empty.textContent = entries.length ? t('Waiting for history…') : t('No sensors selected');
+    body.appendChild(empty);
+    return;
+  }
+
+  body.textContent = '';
+
+  const frame = document.createElement('div');
+  frame.className = 'comparison-graph-frame';
+  frame.appendChild(plot.svg);
+  attachComparisonGraphHover(frame, plot, entries);
+
+  body.appendChild(frame);
+  body.appendChild(buildComparisonGraphLegend(entries));
+}
+
+/**
+ * The tile's reconciliation key. Structural only: live value changes are repainted in place by
+ * refreshComparisonGraphTiles(), so a state update doesn't tear down the node (and the hover
+ * state) on every tick.
+ *
+ * @param {{id: string, name: string, span: number, entityIds: string[]}} graph
+ * @returns {string}
+ */
+function getComparisonGraphSignature(graph) {
+  return `graph|${graph.id}|${graph.name}|${graph.span}|${(graph.entityIds || []).join(',')}`;
+}
+
+/**
+ * Creates a comparison graph tile for the Quick Access grid.
+ *
+ * @param {string} graphId - The graph's synthetic entity ID (`graph:…`).
+ * @returns {HTMLElement} A `.control-item` carrying `data-entity-id`, as the grid contract requires.
+ */
+function createComparisonGraphTile(graphId) {
+  const graph = getComparisonGraphById(graphId);
+
+  const tile = document.createElement('div');
+  tile.className = 'control-item comparison-graph-tile';
+  tile.dataset.entityId = graphId;
+
+  const span = normalizeComparisonGraphSpan(graph?.span);
+  tile.dataset.span = String(span);
+  tile.style.gridColumn = `span ${span}`;
+
+  if (!graph) {
+    tile.classList.add('unavailable-entity');
+    tile.textContent = t('Graph unavailable');
+    return tile;
+  }
+
+  tile.dataset.renderSignature = getComparisonGraphSignature(graph);
+
+  const header = document.createElement('div');
+  header.className = 'comparison-graph-header';
+
+  const title = document.createElement('span');
+  title.className = 'comparison-graph-title';
+  title.textContent = graph.name;
+
+  const range = document.createElement('span');
+  range.className = 'comparison-graph-range';
+  range.textContent = t('24h');
+
+  header.appendChild(title);
+  header.appendChild(range);
+  tile.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'comparison-graph-body';
+  tile.appendChild(body);
+
+  hydrateComparisonGraphTile(tile, graphId);
+
+  return tile;
+}
+
+/**
+ * Paints a graph tile from cache, then fetches its history and repaints.
+ *
+ * Also called when an existing tile is re-used on a re-render: the first fetch happens before the
+ * WebSocket is open (so it is rejected), and without a retry here the chart would stay empty until
+ * the next structural change.
+ *
+ * @param {HTMLElement} tile - The `.comparison-graph-tile` element.
+ * @param {string} graphId - The graph's synthetic entity ID (`graph:…`).
+ * @param {Object} [options]
+ * @param {boolean} [options.renderNow=true] - Paint from cache before fetching. Pass false when the
+ *   tile is already showing a chart, so a refresh doesn't rebuild the DOM needlessly.
+ * @returns {Promise<void>}
+ */
+async function hydrateComparisonGraphTile(tile, graphId, { renderNow = true } = {}) {
+  const graph = getComparisonGraphById(graphId);
+  if (!graph) return;
+
+  if (renderNow) renderComparisonGraphBody(tile, graph);
+
+  try {
+    await fetchSensorHistoryBatch(graph.entityIds);
+  } catch (error) {
+    console.error('Error loading comparison graph history:', error);
+    return;
+  }
+
+  if (!tile.isConnected) return;
+  const current = getComparisonGraphById(graphId);
+  if (current) renderComparisonGraphBody(tile, current);
+}
+
+/**
+ * Applies each graph's configured width, clamped to the columns the grid actually has. The grid is
+ * `repeat(auto-fit, minmax(120px, 1fr))`, so a narrow window may have fewer columns than the graph
+ * asks for — and a span wider than the grid would add an implicit column and overflow horizontally.
+ */
+function applyComparisonGraphSpans(container) {
+  const grid = container || document.getElementById('quick-controls');
+  if (!grid) return;
+
+  const tiles = grid.querySelectorAll('.comparison-graph-tile');
+  if (!tiles.length) return;
+
+  const templateColumns = window.getComputedStyle(grid).gridTemplateColumns || '';
+  const columnCount = templateColumns.split(' ').filter(Boolean).length;
+
+  tiles.forEach((tile) => {
+    const desired = normalizeComparisonGraphSpan(Number(tile.dataset.span));
+    const span = columnCount > 0 ? Math.min(desired, columnCount) : desired;
+    tile.style.gridColumn = `span ${span}`;
+  });
+}
+
+// Resizing the window changes how many columns fit, so the clamp has to be re-applied.
+let comparisonGraphResizeTimer = null;
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('resize', () => {
+    if (comparisonGraphResizeTimer) clearTimeout(comparisonGraphResizeTimer);
+    comparisonGraphResizeTimer = setTimeout(() => {
+      comparisonGraphResizeTimer = null;
+      applyComparisonGraphSpans();
+    }, 150);
+  });
+}
+
+let comparisonGraphRedrawTimer = null;
+
+/**
+ * Repaints graph tiles in place after a live state change, debounced so bursts coalesce.
+ *
+ * @param {Object} entity - The Home Assistant entity that just changed.
+ * @returns {void}
+ */
+function refreshComparisonGraphTiles(entity) {
+  const entityId = entity?.entity_id;
+  if (!entityId) return;
+
+  const graphs = (state.CONFIG?.comparisonGraphs || []).filter(
+    (graph) => Array.isArray(graph.entityIds) && graph.entityIds.includes(entityId)
+  );
+  if (!graphs.length) return;
+
+  // A graphed entity usually has no tile of its own, so the tile update path never appends its
+  // live reading to the history cache. Do it here or the curve stops at the last fetch. Reads the
+  // value through the series resolver, since a weather entity's state is not its temperature.
+  const entry = sensorHistoryCache.get(entityId);
+  const value = readGraphSeriesValue(entity);
+  if (entry && value !== null) {
+    // A weather entity's temperature moves without its state moving, and `last_changed` only
+    // tracks the state — so an attribute-backed reading dates itself by `last_updated`, or it
+    // would be plotted back at whenever the sky last changed.
+    const timestamp = parseSensorHistoryTimestamp(entity, {
+      preferLastUpdated: !!getGraphSeriesAttribute(entityId),
+    });
+    const previous = entry.series[entry.series.length - 1];
+    if (!previous || previous.timestamp !== timestamp || previous.value !== value) {
+      entry.series = pruneSensorHistorySeries([...entry.series, { value, timestamp }]);
+    }
+  }
+
+  if (comparisonGraphRedrawTimer) clearTimeout(comparisonGraphRedrawTimer);
+  comparisonGraphRedrawTimer = setTimeout(() => {
+    comparisonGraphRedrawTimer = null;
+    // Matched on the dataset rather than through a selector: a graph id contains a colon, and
+    // building a selector out of it drags in CSS.escape — which this timer callback runs outside
+    // of any try/catch, so a host without it takes the whole repaint down with a ReferenceError.
+    const tiles = [...document.querySelectorAll('.comparison-graph-tile')];
+    graphs.forEach((graph) => {
+      const tile = tiles.find((node) => node.dataset.entityId === graph.id);
+      const current = getComparisonGraphById(graph.id);
+      if (tile && current) renderComparisonGraphBody(tile, current);
+    });
+  }, COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS);
+}
+
+/**
+ * The unit a series is measured in, falling back to the Home Assistant temperature unit for
+ * attribute-backed entities that don't declare one.
+ *
+ * @param {?Object} entity
+ * @returns {string} e.g. `°C`, or an empty string when unknown.
+ */
+function getGraphSeriesUnitFor(entity) {
+  return readGraphSeriesUnit(entity, {
+    fallbackTemperatureUnit: state.UNIT_SYSTEM?.temperature || '',
+  });
+}
+
+// A weather integration is usually named something like "Forecast Home", which says nothing about
+// the outside temperature it provides — the one series a comparison graph most often wants. These
+// aliases make it findable by the words people actually type.
+const GRAPH_SEARCH_ALIASES = {
+  weather: 'outside outdoor weather forecast temperature',
+  climate: 'thermostat climate temperature',
+};
+
+/**
+ * Extra search terms for an entity, so it can be found by what it measures rather than only by its
+ * name.
+ *
+ * @param {Object} entity
+ * @returns {string} Space-separated aliases, or an empty string.
+ */
+function getGraphSearchAlias(entity) {
+  const domain = typeof entity?.entity_id === 'string' ? entity.entity_id.split('.')[0] : '';
+  return GRAPH_SEARCH_ALIASES[domain] || '';
+}
+
+/**
+ * Persists a config that contains comparison graph changes, then re-renders the grid.
+ *
+ * @param {Object} nextConfig
+ * @returns {void}
+ */
+function persistComparisonGraphConfig(nextConfig) {
+  setQuickAccessConfig(nextConfig, { render: false });
+  renderQuickControls();
+}
+
+/**
+ * Creates an empty comparison graph in the active view and opens its editor.
+ *
+ * @returns {void}
+ */
+function addComparisonGraphTile() {
+  const config = ensureQuickAccessConfig();
+  const activeTab = getActiveQuickAccessTab(config);
+  const nextConfig = addComparisonGraph(config, {
+    name: t('Comparison Graph'),
+    entityIds: [],
+    tabId: activeTab?.id,
+  });
+  persistComparisonGraphConfig(nextConfig);
+
+  const added = (nextConfig.comparisonGraphs || []).at(-1);
+  if (added) showComparisonGraphModal(added.id);
+}
+
+/**
+ * Opens the comparison graph editor: rename, set width, add/remove entities, delete.
+ *
+ * The picker lists numeric sensors plus attribute-backed entities (weather, climate), shows each
+ * one's unit so a mismatched scale is visible before it is added, and enforces the series cap.
+ *
+ * @param {string} graphId - The graph's synthetic entity ID (`graph:…`).
+ * @returns {void}
+ */
+function showComparisonGraphModal(graphId) {
+  const initial = getComparisonGraphById(graphId);
+  if (!initial) return;
+
+  const modal = createEntityDetailModal({
+    className: 'comparison-graph-modal',
+    title: t('Edit Comparison Graph'),
+  });
+  const body = modal.querySelector('.modal-body');
+  if (!body) return;
+
+  const nameGroup = document.createElement('div');
+  nameGroup.className = 'form-group';
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = t('Graph name');
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'form-control';
+  nameInput.value = initial.name;
+  nameGroup.appendChild(nameLabel);
+  nameGroup.appendChild(nameInput);
+  body.appendChild(nameGroup);
+
+  const widthGroup = document.createElement('div');
+  widthGroup.className = 'form-group';
+  const widthLabel = document.createElement('label');
+  widthLabel.textContent = t('Width');
+  const widthSelect = document.createElement('select');
+  widthSelect.className = 'form-control';
+  COMPARISON_GRAPH_SPAN_OPTIONS.forEach((option) => {
+    const optionEl = document.createElement('option');
+    optionEl.value = String(option);
+    optionEl.textContent = t('{{count}} tiles wide', { count: option });
+    widthSelect.appendChild(optionEl);
+  });
+  widthSelect.value = String(normalizeComparisonGraphSpan(initial.span));
+  widthGroup.appendChild(widthLabel);
+  widthGroup.appendChild(widthSelect);
+  body.appendChild(widthGroup);
+
+  const warning = document.createElement('div');
+  warning.className = 'comparison-graph-warning';
+  warning.hidden = true;
+  body.appendChild(warning);
+
+  const hint = document.createElement('div');
+  hint.className = 'form-help';
+  body.appendChild(hint);
+
+  // The app scopes .form-control styling to .form-group, so these need the wrapper or they render
+  // as raw unstyled inputs.
+  const searchGroup = document.createElement('div');
+  searchGroup.className = 'form-group';
+  const search = document.createElement('input');
+  search.type = 'text';
+  search.className = 'form-control';
+  search.placeholder = t('Search sensors…');
+  searchGroup.appendChild(search);
+  body.appendChild(searchGroup);
+
+  const listGroup = document.createElement('div');
+  listGroup.className = 'form-group';
+  const list = document.createElement('div');
+  list.className = 'entity-selector-list';
+  listGroup.appendChild(list);
+  body.appendChild(listGroup);
+
+  const footer = document.createElement('div');
+  footer.className = 'comparison-graph-modal-footer';
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'btn btn-danger';
+  deleteBtn.textContent = t('Delete graph');
+  footer.appendChild(deleteBtn);
+  body.appendChild(footer);
+
+  const save = (changes) => {
+    persistComparisonGraphConfig(updateComparisonGraph(state.CONFIG, graphId, changes));
+  };
+
+  const renderUnitState = (graph) => {
+    const { groups, hasMismatch } = groupSeriesByUnit(
+      graph.entityIds.map((entityId) => ({
+        entityId,
+        unit: getGraphSeriesUnitFor(state.STATES?.[entityId]),
+      }))
+    );
+
+    warning.hidden = !hasMismatch;
+    if (hasMismatch) {
+      const units = groups.map((group) => group.unit || t('no unit')).join(', ');
+      warning.textContent = t(
+        'Mixed units ({{units}}). Each unit is scaled separately, so compare curves within a unit only.',
+        { units }
+      );
+    }
+
+    hint.textContent = t('{{count}} of {{max}} sensors.', {
+      count: graph.entityIds.length,
+      max: MAX_COMPARISON_GRAPH_SERIES,
+    });
+  };
+
+  const renderList = () => {
+    const graph = getComparisonGraphById(graphId);
+    if (!graph) {
+      modal.remove();
+      return;
+    }
+
+    renderUnitState(graph);
+
+    const filter = search.value.trim().toLowerCase();
+    const selected = new Set(graph.entityIds);
+    const atCapacity = graph.entityIds.length >= MAX_COMPARISON_GRAPH_SERIES;
+
+    // Numeric sensors plus attribute-backed entities (weather / climate), so the outside
+    // temperature from a weather integration can be graphed alongside room sensors.
+    const candidates = Object.values(state.STATES || {})
+      .filter(isGraphableEntity)
+      .map((entity) => {
+        if (!filter) return { entity, score: 1 };
+        const score =
+          utils.getSearchScore(utils.getEntityDisplayName(entity), filter) +
+          utils.getSearchScore(entity.entity_id, filter) +
+          utils.getSearchScore(getGraphSearchAlias(entity), filter);
+        return { entity, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => {
+        const aSelected = selected.has(a.entity.entity_id);
+        const bSelected = selected.has(b.entity.entity_id);
+        if (aSelected !== bSelected) return aSelected ? -1 : 1;
+
+        // Surface the weather entity near the top: it is the outside temperature, which is the
+        // series a comparison graph most often wants, and its name ("Forecast Home") gives no clue.
+        if (!filter) {
+          const aWeather = a.entity.entity_id.startsWith('weather.');
+          const bWeather = b.entity.entity_id.startsWith('weather.');
+          if (aWeather !== bWeather) return aWeather ? -1 : 1;
+        }
+
+        if (b.score !== a.score) return b.score - a.score;
+        return utils
+          .getEntityDisplayName(a.entity)
+          .localeCompare(utils.getEntityDisplayName(b.entity));
+      });
+
+    list.textContent = '';
+
+    if (!candidates.length) {
+      const empty = document.createElement('div');
+      empty.className = 'no-entities-message';
+      empty.textContent = t('No numeric sensors found');
+      list.appendChild(empty);
+      return;
+    }
+
+    candidates.forEach(({ entity }) => {
+      const entityId = entity.entity_id;
+      const isSelected = selected.has(entityId);
+      const unit = getGraphSeriesUnitFor(entity);
+
+      const item = document.createElement('div');
+      item.className = 'entity-item';
+
+      const main = document.createElement('div');
+      main.className = 'entity-item-main';
+
+      const icon = document.createElement('span');
+      icon.className = 'entity-icon';
+      icon.textContent = utils.getEntityIcon(entity);
+
+      const info = document.createElement('div');
+      info.className = 'entity-item-info';
+
+      const name = document.createElement('span');
+      name.className = 'entity-name';
+      name.textContent = utils.getEntityDisplayName(entity);
+
+      // For attribute-backed entities the entity id alone doesn't say what gets plotted, so name
+      // the attribute: a weather entity contributes the outside temperature.
+      const meta = document.createElement('span');
+      meta.className = 'entity-id';
+      const attribute = getGraphSeriesAttribute(entityId);
+      meta.textContent = attribute ? t('Outside temperature · {{id}}', { id: entityId }) : entityId;
+      if (attribute && !entityId.startsWith('weather.')) {
+        meta.textContent = t('Current temperature · {{id}}', { id: entityId });
+      }
+
+      info.appendChild(name);
+      info.appendChild(meta);
+      main.appendChild(icon);
+      main.appendChild(info);
+
+      // The unit gets its own element rather than being appended to the entity id — ids are long
+      // enough that the ellipsis would swallow it, and the unit is the thing you need to see
+      // *before* adding a sensor to a shared scale.
+      const unitBadge = document.createElement('span');
+      unitBadge.className = 'comparison-graph-unit';
+      unitBadge.textContent = unit || t('no unit');
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `entity-selector-btn ${isSelected ? 'remove' : 'add'}`;
+      button.textContent = isSelected ? t('Remove') : t('Add');
+      button.disabled = !isSelected && atCapacity;
+      button.addEventListener('click', () => {
+        const current = getComparisonGraphById(graphId);
+        if (!current) return;
+
+        if (isSelected) {
+          save({ entityIds: current.entityIds.filter((id) => id !== entityId) });
+        } else {
+          const units = new Set(
+            current.entityIds.map((id) => getGraphSeriesUnitFor(state.STATES?.[id])).filter(Boolean)
+          );
+          if (unit && units.size && !units.has(unit)) {
+            uiUtils.showToast(
+              t('{{unit}} does not match the other sensors — it will be scaled on its own.', {
+                unit,
+              }),
+              'warning',
+              3500
+            );
+          }
+          save({ entityIds: [...current.entityIds, entityId] });
+        }
+        renderList();
+      });
+
+      item.appendChild(main);
+      item.appendChild(unitBadge);
+      item.appendChild(button);
+      list.appendChild(item);
+    });
+  };
+
+  nameInput.addEventListener('change', () => {
+    save({ name: nameInput.value });
+  });
+  widthSelect.addEventListener('change', () => {
+    save({ span: Number(widthSelect.value) });
+  });
+  search.addEventListener('input', renderList);
+
+  deleteBtn.addEventListener('click', async () => {
+    const confirmed = await uiUtils.showConfirm(
+      t('Delete graph'),
+      t('This removes the graph and its tile.'),
+      { confirmText: t('Delete'), confirmClass: 'btn-danger' }
+    );
+    if (!confirmed) return;
+    persistComparisonGraphConfig(removeComparisonGraph(state.CONFIG, graphId));
+    modal.remove();
+  });
+
+  renderList();
 }
 
 function normalizeQuickAccessTileValueSize(value) {
@@ -4775,6 +5835,8 @@ function updateExistingDesktopPinPanelControl(root, entity) {
 
 function syncQuickAccessControlButton(control, entityId) {
   if (!control || !entityId) return;
+  // A graph is not an entity, so it can't be pinned to the desktop as one.
+  if (isComparisonGraphId(entityId)) return;
 
   let button = control.querySelector('.desktop-pin-quick-toggle');
   if (!button) {
@@ -5010,6 +6072,26 @@ function renderQuickControls() {
     // Iterate through ALL favorited entity IDs (not just those in STATES)
     // This ensures unavailable entities are still shown with an error state
     favorites.slice(0, 12).forEach((entityId) => {
+      // Comparison graphs are tiles backed by config, not by an entity, so they must be handled
+      // before the STATES lookup — otherwise they resolve to nothing and render as unavailable.
+      if (isComparisonGraphId(entityId)) {
+        const graph = getComparisonGraphById(entityId);
+        const existingGraphNode = existingNodesById.get(entityId);
+        const graphSignature = graph ? getComparisonGraphSignature(graph) : 'graph|missing';
+
+        if (existingGraphNode && existingGraphNode.dataset.renderSignature === graphSignature) {
+          // Re-attempt the history fetch (throttled) — the first one may have run before the
+          // WebSocket was connected.
+          hydrateComparisonGraphTile(existingGraphNode, entityId, { renderNow: false });
+          desiredNodes.push(existingGraphNode);
+          existingNodesById.delete(entityId);
+          return;
+        }
+
+        desiredNodes.push(createComparisonGraphTile(entityId));
+        return;
+      }
+
       const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
       const entity = state.STATES[resolvedEntityId];
       emitUiDebug('quick_access.render_tile', {
@@ -5066,6 +6148,8 @@ function renderQuickControls() {
       container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    // After insertion, so the grid's real column count is known.
+    applyComparisonGraphSpans(container);
     setupQuickAccessGridKeyboardNavigation();
     syncQuickAccessRovingTabIndex();
     refreshVisibleEntityCache();
@@ -9357,6 +10441,7 @@ export {
   renderPrimaryCards,
   toggleReorganizeMode,
   populateQuickControlsList,
+  addComparisonGraphTile,
   isEntityVisible,
   getTickTargets,
   refreshVisibleEntityCache,
