@@ -13,6 +13,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'primaryCards',
     'customTabs',
     'activeTabId',
+    'comparisonGraphs',
   ],
   visualPersonalization: ['alwaysOnTop', 'opacity', 'frostedGlass', 'ui'],
   automationAlerts: [

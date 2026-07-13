@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing yet
+- Comparison graph tiles: plot up to 7 entities as overlaid series on a single 24-hour chart, with a legend and a crosshair tooltip that lists every series at the hovered time. Added from Manage Quick Access, and dragged, resized and removed like any other tile.
+- Comparison graph series span the full window even though entities report at different times: the value before an entity's first reading, and after its last one, is drawn dashed. A Home Assistant state persists until it changes, so the value there is known — but nothing was recorded, and dashing keeps it from reading as measured data.
+- Comparison graphs can be 2, 3 or 4 tiles wide, clamped to the columns the grid actually has.
+- Weather and climate entities can be graphed. Their value lives in an attribute (`temperature` / `current_temperature`) rather than the state, so the outside temperature is now plottable alongside room sensors. They are also findable by searching "outside" or "weather".
 
 ### Changed
 
@@ -17,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Sensor history no longer stays empty for the first five minutes after launch. Tiles render before the WebSocket connects, so the first history request was rejected — and a failed fetch was starting the 5-minute refresh throttle. The request is now skipped while disconnected, and only a successful fetch starts the throttle.
-- Sensor history is requested with `significant_changes_only: false`. Home Assistant's default drops rows its per-domain rules consider uninteresting, so history came back sparser than the recorder actually holds.
+- Sensor history no longer stays empty for the first five minutes after launch. Tiles render before the WebSocket connects, so the first history request was rejected — and a failed fetch was starting the 5-minute refresh throttle. The request is now skipped while disconnected, and only a successful fetch starts the throttle. This also affected the existing tile sparklines.
+- Sensor history is requested with `significant_changes_only: false`. Home Assistant's default drops rows its per-domain rules consider uninteresting, so history came back sparser than the recorder actually holds. For a weather entity only a _condition_ change counts as significant, so temperature drift under an unchanged sky was never returned (4 points per 24h instead of one per hour).
 
 ## [3.6.0] - 2026-07-07
 

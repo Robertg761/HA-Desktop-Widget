@@ -15,6 +15,7 @@ import { setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
+import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import {
   buildHomeAssistantPathUrl,
   classifyConnectionError as classifyConnectionTestError,
@@ -790,9 +791,13 @@ function startConfiguredRuntime() {
 function applyRendererConfig(nextConfig) {
   if (!nextConfig || !nextConfig.homeAssistant) return;
   const normalizedQuickAccess = normalizeQuickAccessConfig(nextConfig, { withChanged: true });
-  state.setConfig(normalizedQuickAccess.config);
-  if (normalizedQuickAccess.changed && !IS_DESKTOP_PIN_MODE) {
-    window.electronAPI.updateConfig(normalizedQuickAccess.config).catch((error) => {
+  // Runs after the Quick Access pass because it reconciles graph tiles against the normalized tabs.
+  const normalizedGraphs = normalizeComparisonGraphsConfig(normalizedQuickAccess.config, {
+    withChanged: true,
+  });
+  state.setConfig(normalizedGraphs.config);
+  if ((normalizedQuickAccess.changed || normalizedGraphs.changed) && !IS_DESKTOP_PIN_MODE) {
+    window.electronAPI.updateConfig(normalizedGraphs.config).catch((error) => {
       log.error('Failed to persist Quick Access view migration:', error);
     });
   }
@@ -1733,14 +1738,24 @@ function wireUI() {
     }
 
     const closeQuickControlsBtn = document.getElementById('close-quick-controls');
+    const closeQuickControlsModal = () => {
+      const modal = document.getElementById('quick-controls-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        uiUtils.releaseFocusTrap(); // Release focus trap and restore previous focus
+      }
+    };
     if (closeQuickControlsBtn) {
-      closeQuickControlsBtn.onclick = () => {
-        const modal = document.getElementById('quick-controls-modal');
-        if (modal) {
-          modal.classList.add('hidden');
-          modal.style.display = 'none';
-          uiUtils.releaseFocusTrap(); // Release focus trap and restore previous focus
-        }
+      closeQuickControlsBtn.onclick = closeQuickControlsModal;
+    }
+
+    const addComparisonGraphBtn = document.getElementById('add-comparison-graph-btn');
+    if (addComparisonGraphBtn) {
+      addComparisonGraphBtn.onclick = () => {
+        // Close the picker first so the new graph's editor isn't stacked behind it.
+        closeQuickControlsModal();
+        ui.addComparisonGraphTile();
       };
     }
 

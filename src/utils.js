@@ -612,6 +612,22 @@ function reconcileConfigEntityIds(config, states = state.STATES) {
     }
   }
 
+  if (Array.isArray(config.comparisonGraphs)) {
+    let comparisonGraphsChanged = false;
+    const comparisonGraphsResult = config.comparisonGraphs.map((graph) => {
+      if (!graph || typeof graph !== 'object' || Array.isArray(graph)) return graph;
+      const entityIdsResult = remapArray(graph.entityIds, { dedupe: true });
+      if (!entityIdsResult.changed) return graph;
+      comparisonGraphsChanged = true;
+      return { ...graph, entityIds: entityIdsResult.value };
+    });
+    if (comparisonGraphsChanged) {
+      ensureConfigClone();
+      nextConfig.comparisonGraphs = comparisonGraphsResult;
+      changed = true;
+    }
+  }
+
   const desktopPinsResult = remapObjectKeys(config.desktopPins);
   if (desktopPinsResult.changed) {
     ensureConfigClone();

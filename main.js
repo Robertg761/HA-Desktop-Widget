@@ -1944,6 +1944,7 @@ function loadConfig(options = {}) {
     favoriteEntities: [],
     customTabs: [],
     activeTabId: '',
+    comparisonGraphs: [],
     desktopPins: {},
     customEntityIcons: {},
     quickAccessTileOptions: {},
