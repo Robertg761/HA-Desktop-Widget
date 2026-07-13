@@ -1700,6 +1700,10 @@ function fetchSensorHistory(entityId) {
       entity_ids: [entityId],
       minimal_response: true,
       no_attributes: true,
+      // Home Assistant defaults this to true, which drops rows its per-domain "significant change"
+      // rules consider uninteresting. Ask for every recorded row so the chart reflects what the
+      // recorder actually holds.
+      significant_changes_only: false,
     })
     .then((response) => {
       entry.series = pruneSensorHistorySeries(

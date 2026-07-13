@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Sensor history no longer stays empty for the first five minutes after launch. Tiles render before the WebSocket connects, so the first history request was rejected — and a failed fetch was starting the 5-minute refresh throttle. The request is now skipped while disconnected, and only a successful fetch starts the throttle.
+- Sensor history is requested with `significant_changes_only: false`. Home Assistant's default drops rows its per-domain rules consider uninteresting, so history came back sparser than the recorder actually holds.
 
 ## [3.6.0] - 2026-07-07
 
