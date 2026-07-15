@@ -223,7 +223,7 @@ jobs:
               echo "Expected a universal macOS executable; found architectures: $architectures" >&2
               exit 1
             fi
-          done < <(find dist -type d -name '*.app' -print0)
+          done < <(find dist -type d -name 'HA Desktop Widget.app' -print0)
 
           if [[ "$found_app" -eq 0 ]]; then
             echo "No packaged macOS .app bundle found under dist." >&2
