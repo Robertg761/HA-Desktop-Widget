@@ -69,6 +69,7 @@ const {
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 const { configureMainLogging } = require('./src/main-logging.cjs');
+const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 
 configureMainLogging(log, { isPackaged: app.isPackaged });
 
@@ -2827,6 +2828,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
   hardenRendererNavigation(mainWindow);
+  attachEditHandlers(mainWindow, Menu);
 
   // Transparent windows use renderer CSS surface opacity; opaque fallback
   // windows use native BrowserWindow opacity so the desktop shows through.
@@ -4858,6 +4860,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  installApplicationMenu(Menu);
+
   // Set app ID for Windows (helps with icon caching and taskbar behavior)
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.github.robertg761.hadesktopwidget');

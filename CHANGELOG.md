@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Nothing yet
+
+### Changed
+
+- Nothing yet
+
+### Fixed
+
+- Nothing yet
+
+## [3.7.1] - 2026-07-16
+
+### Fixed
+
+- Restored Cmd+V token pasting on macOS and added native right-click edit actions for editable fields.
+- Updated every downloadable language-pack integrity hash so current packs install successfully again.
+
+## [3.7.0] - 2026-07-16
+
+### Added
+
 - Comparison graph tiles: plot up to 7 entities as overlaid series on a single 24-hour chart, with a legend and a crosshair tooltip that lists every series at the hovered time. Added from Manage Quick Access, and dragged, resized and removed like any other tile.
 - Comparison graph series span the full window even though entities report at different times: the value before an entity's first reading, and after its last one, is drawn dashed. A Home Assistant state persists until it changes, so the value there is known — but nothing was recorded, and dashing keeps it from reading as measured data.
 - Comparison graphs can be 2, 3 or 4 tiles wide, clamped to the columns the grid actually has.
