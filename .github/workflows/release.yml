@@ -385,10 +385,54 @@ jobs:
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
               release_flags=(--prerelease)
             fi
+
+            published_releases="$(
+              gh release list \
+                --exclude-drafts \
+                --limit 1000 \
+                --json tagName,isPrerelease,publishedAt
+            )"
+
+            notes_start_tag=''
+            if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+              release_base_version="${RELEASE_VERSION%%-*}"
+              notes_start_tag="$(
+                jq -r \
+                  --arg current "$RELEASE_TAG" \
+                  --arg prefix "v${release_base_version}-" \
+                  '[.[] | select(
+                    .isPrerelease == true and
+                    .tagName != $current and
+                    (.tagName | startswith($prefix))
+                  )][0].tagName // empty' \
+                  <<<"$published_releases"
+              )"
+            fi
+
+            if [[ -z "$notes_start_tag" ]]; then
+              notes_start_tag="$(
+                jq -r \
+                  --arg current "$RELEASE_TAG" \
+                  '[.[] | select(
+                    .isPrerelease == false and
+                    .tagName != $current
+                  )][0].tagName // empty' \
+                  <<<"$published_releases"
+              )"
+            fi
+
+            notes_flags=(--generate-notes)
+            if [[ -n "$notes_start_tag" ]]; then
+              notes_flags+=(--notes-start-tag "$notes_start_tag")
+              echo "Generating release notes from $notes_start_tag to $RELEASE_TAG."
+            else
+              echo "No previous published release was found; GitHub will choose the release-notes baseline."
+            fi
+
             gh release create "$RELEASE_TAG" "${artifacts[@]}" \
               --verify-tag \
               --title "$RELEASE_VERSION" \
-              --notes "Release $RELEASE_VERSION" \
+              "${notes_flags[@]}" \
               "${release_flags[@]}"
           fi
 

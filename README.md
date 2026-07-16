@@ -181,6 +181,8 @@ The minimum planned beta version is stored in `.github/beta-target`. With `3.7.0
 
 Prerelease builds align their package version from the tag without committing that temporary beta version back to `main`. Stable releases continue to sync `package.json` and `package-lock.json` after publishing.
 
+New GitHub releases automatically generate notes from merged pull requests and contributors. A beta compares against the previous published prerelease in the same version series, falling back to the latest stable release for the first beta. A stable release compares against the previous stable release so its notes cover the complete release cycle rather than only the changes since the last beta.
+
 ### Configuration
 
 - **Config Location**: Stored as `config.json` in Electron's userData directory.
