@@ -148,7 +148,7 @@ Planned for a future release:
 - **Primary Cards**: Pin weather/time or any entity to the top two cards
 - **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
 - **Media Tile**: Select the primary media player or hide the tile
-- **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold or toggle)
+- **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold/toggle on macOS and Windows; press/toggle on Linux)
 - **Alerts**: Enable desktop notifications for entity state changes or target states
 - **Advanced**: Open logs and enable detailed interaction diagnostics when troubleshooting
 

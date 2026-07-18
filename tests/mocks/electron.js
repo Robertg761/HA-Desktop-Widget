@@ -104,6 +104,8 @@ function createMockElectronAPI() {
   );
 
   return {
+    platform: 'test',
+
     // Config Operations
     getConfig: jest.fn(() => Promise.resolve({ ...mockConfig })),
     getLocaleBootstrap: jest.fn(() =>

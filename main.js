@@ -70,6 +70,10 @@ const {
 } = require('./src/platform.cjs');
 const { configureMainLogging } = require('./src/main-logging.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
+const {
+  createLinuxPopupHotkeyController,
+  isLinuxPopupHotkeyPlatform,
+} = require('./src/linux-popup-hotkey.cjs');
 
 configureMainLogging(log, { isPackaged: app.isPackaged });
 
@@ -153,20 +157,30 @@ function hardenRendererNavigation(targetWindow) {
   });
 }
 
-// Try to load uiohook-napi (optional dependency for popup hotkey feature)
+const usesLinuxPopupHotkeyBackend = isLinuxPopupHotkeyPlatform(process.platform);
+if (usesLinuxPopupHotkeyBackend) {
+  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+}
+
+// Try to load uiohook-napi for platforms that support hold/release detection. Linux uses
+// Electron's globalShortcut instead so a native hook failure cannot terminate the main process.
 let uIOhook, UiohookKey;
 let uiohookAvailable = false;
-try {
-  const module = require('uiohook-napi');
-  uIOhook = module.uIOhook;
-  UiohookKey = module.UiohookKey;
-  uiohookAvailable = true;
-  log.info('uiohook-napi loaded successfully');
-} catch (error) {
-  log.warn(
-    'uiohook-napi is not available on this platform. Popup hotkey feature will be disabled.',
-    error.message
-  );
+if (usesLinuxPopupHotkeyBackend) {
+  log.info('Using Electron globalShortcut for Linux popup hotkeys');
+} else {
+  try {
+    const module = require('uiohook-napi');
+    uIOhook = module.uIOhook;
+    UiohookKey = module.UiohookKey;
+    uiohookAvailable = true;
+    log.info('uiohook-napi loaded successfully');
+  } catch (error) {
+    log.warn(
+      'uiohook-napi is not available on this platform. Popup hotkey feature will be disabled.',
+      error.message
+    );
+  }
 }
 
 // Log the app starting up
@@ -230,6 +244,13 @@ let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
+const registeredEntityHotkeyAccelerators = new Set();
+const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
+  globalShortcut,
+  getConfig: () => config,
+  getMainWindow: () => mainWindow,
+  log,
+});
 const desktopPinWindows = new Map();
 const desktopPinContentMinBounds = new Map();
 const pendingDesktopPinActionRequests = new Map();
@@ -4043,22 +4064,16 @@ ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
     };
   }
 
+  if (
+    typeof config.popupHotkey === 'string' &&
+    config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
+  ) {
+    return { success: false, error: 'Hotkey already assigned to the popup trigger' };
+  }
+
   // Check for conflicts with existing hotkeys first
   // Handle both string (legacy) and object (new) formats
-  const existingEntity = Object.entries(config.globalHotkeys.hotkeys).find(([id, hotkeyConfig]) => {
-    if (id === normalizedEntityId) return false; // Skip the entity we're currently updating
-
-    // Extract hotkey from either format: string or object
-    const existingHotkey =
-      typeof hotkeyConfig === 'object' && hotkeyConfig.hotkey ? hotkeyConfig.hotkey : hotkeyConfig;
-
-    // Only compare if we have a valid hotkey string
-    return (
-      existingHotkey &&
-      typeof existingHotkey === 'string' &&
-      existingHotkey.toLowerCase() === hotkey.toLowerCase()
-    );
-  });
+  const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
 
   if (existingEntity) {
     const entityName = existingEntity[0] || 'another action';
@@ -4190,7 +4205,7 @@ ipcMain.handle('toggle-alerts', (event, enabled) => {
 ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
   const sender = authorizeIpcSender(event, 'register-popup-hotkey');
   if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
-  if (!uiohookAvailable) {
+  if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
     return { success: false, error: 'Popup hotkey feature is not available on this platform' };
   }
 
@@ -4202,28 +4217,39 @@ ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
     };
   }
 
-  // Unregister old hotkey if exists
-  if (config.popupHotkey) {
-    unregisterPopupHotkey();
+  const conflictingEntity = findConfiguredEntityHotkey(hotkey);
+  if (conflictingEntity) {
+    return { success: false, error: `Hotkey already assigned to ${conflictingEntity[0]}` };
   }
 
-  // Update config
+  const previousHotkey = config.popupHotkey || '';
+  unregisterPopupHotkey();
   config.popupHotkey = hotkey;
+  const registrationResult = registerPopupHotkey();
+
+  if (!registrationResult.success) {
+    config.popupHotkey = previousHotkey;
+    if (previousHotkey) {
+      const rollbackResult = registerPopupHotkey();
+      if (!rollbackResult.success) {
+        log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
+      }
+    }
+    return registrationResult;
+  }
+
   saveConfig();
-
-  // Register new hotkey
-  registerPopupHotkey();
-
-  return { success: true };
+  return registrationResult;
 });
 
 ipcMain.handle('unregister-popup-hotkey', (event) => {
   const sender = authorizeIpcSender(event, 'unregister-popup-hotkey');
   if (!sender) return rejectUnauthorizedIpc('unregister-popup-hotkey');
+  const unregisterResult = unregisterPopupHotkey();
+  if (!unregisterResult.success) return unregisterResult;
   config.popupHotkey = '';
   saveConfig();
-  unregisterPopupHotkey();
-  return { success: true };
+  return unregisterResult;
 });
 
 ipcMain.handle('get-popup-hotkey', (event) => {
@@ -4235,15 +4261,13 @@ ipcMain.handle('get-popup-hotkey', (event) => {
 ipcMain.handle('is-popup-hotkey-available', (event) => {
   const sender = authorizeIpcSender(event, 'is-popup-hotkey-available');
   if (!sender) return rejectUnauthorizedIpc('is-popup-hotkey-available');
-  return uiohookAvailable;
+  return usesLinuxPopupHotkeyBackend || uiohookAvailable;
 });
 
 // Global Hotkey Management
 function registerGlobalHotkeys() {
+  unregisterGlobalHotkeys();
   if (!config.globalHotkeys.enabled) return;
-
-  // Unregister all existing hotkeys first
-  globalShortcut.unregisterAll();
 
   // Register each configured hotkey
   Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
@@ -4264,6 +4288,7 @@ function registerGlobalHotkeys() {
             mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
           }
         } else {
+          registeredEntityHotkeyAccelerators.add(hotkey);
           log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
         }
       } catch (error) {
@@ -4274,7 +4299,14 @@ function registerGlobalHotkeys() {
 }
 
 function unregisterGlobalHotkeys() {
-  globalShortcut.unregisterAll();
+  registeredEntityHotkeyAccelerators.forEach((accelerator) => {
+    try {
+      globalShortcut.unregister(accelerator);
+    } catch (error) {
+      log.warn(`Failed to unregister entity hotkey ${accelerator}:`, error.message);
+    }
+  });
+  registeredEntityHotkeyAccelerators.clear();
 }
 
 function validateHotkey(hotkey) {
@@ -4328,6 +4360,24 @@ function validateHotkey(hotkey) {
   ];
 
   return !systemShortcuts.includes(hotkey.toLowerCase());
+}
+
+function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
+  if (!hotkey || typeof hotkey !== 'string') return null;
+  const normalizedHotkey = hotkey.toLowerCase();
+
+  return (
+    Object.entries(config?.globalHotkeys?.hotkeys || {}).find(([entityId, hotkeyConfig]) => {
+      if (entityId === excludedEntityId) return false;
+      const configuredHotkey =
+        typeof hotkeyConfig === 'object' && hotkeyConfig?.hotkey
+          ? hotkeyConfig.hotkey
+          : hotkeyConfig;
+      return (
+        typeof configuredHotkey === 'string' && configuredHotkey.toLowerCase() === normalizedHotkey
+      );
+    }) || null
+  );
 }
 
 // Popup Hotkey Management
@@ -4449,27 +4499,34 @@ function acceleratorToUIOhookKey(accelerator) {
 }
 
 /**
- * Register and enable the configured popup hotkey using uiohook, replacing any previous handlers.
+ * Register and enable the configured popup hotkey, replacing any previous handlers.
  *
- * Registers keydown and keyup handlers derived from `config.popupHotkey` and honors `config.popupHotkeyToggleMode` and related settings (e.g., `popupHotkeyHideOnRelease`). Starts uIOhook if not running, updates internal popup hotkey state, and brings, focuses, hides, or restores the main window according to the configured behavior. If uiohook is not available or the configured accelerator is invalid or empty, the function logs a warning and returns without registering handlers.
+ * Linux uses Electron globalShortcut with press and toggle behavior. Other platforms use uiohook
+ * for hold/release detection.
  */
 function registerPopupHotkey() {
-  if (!uiohookAvailable) {
-    log.warn('Cannot register popup hotkey: uiohook-napi not available on this platform');
-    return;
-  }
-
-  // If no popup hotkey configured, clean up and return
   if (!config.popupHotkey || config.popupHotkey.trim() === '') {
     log.debug('No popup hotkey configured, cleaning up');
-    unregisterPopupHotkey();
-    return;
+    return unregisterPopupHotkey();
+  }
+
+  if (usesLinuxPopupHotkeyBackend) {
+    return linuxPopupHotkeyController.register(config.popupHotkey);
+  }
+
+  if (!uiohookAvailable) {
+    log.warn('Cannot register popup hotkey: uiohook-napi not available on this platform');
+    return {
+      success: false,
+      backend: 'uiohook',
+      error: 'Popup hotkey feature is not available on this platform',
+    };
   }
 
   const hotkeyConfig = acceleratorToUIOhookKey(config.popupHotkey);
   if (!hotkeyConfig) {
     log.warn(`Failed to parse popup hotkey: ${config.popupHotkey}`);
-    return;
+    return { success: false, backend: 'uiohook', error: 'Unsupported popup hotkey' };
   }
 
   try {
@@ -4627,8 +4684,10 @@ function registerPopupHotkey() {
     uIOhook.on('keyup', popupHotkeyKeyupHandler);
 
     log.info(`Popup hotkey registered: ${config.popupHotkey}`);
+    return { success: true, backend: 'uiohook' };
   } catch (error) {
     log.error('Failed to register popup hotkey:', error);
+    return { success: false, backend: 'uiohook', error: error?.message || String(error) };
   }
 }
 
@@ -4640,8 +4699,12 @@ function registerPopupHotkey() {
  * Does nothing when the native uiohook integration is unavailable.
  */
 function unregisterPopupHotkey() {
+  if (usesLinuxPopupHotkeyBackend) {
+    return linuxPopupHotkeyController.unregister();
+  }
+
   if (!uiohookAvailable) {
-    return;
+    return { success: true, backend: 'uiohook' };
   }
 
   try {
@@ -4668,8 +4731,10 @@ function unregisterPopupHotkey() {
     popupHotkeyConfig = null;
     popupHotkeyPressed = false;
     _popupHotkeyWindowVisible = false;
+    return { success: true, backend: 'uiohook' };
   } catch (error) {
     log.error('Failed to unregister popup hotkey:', error);
+    return { success: false, backend: 'uiohook', error: error?.message || String(error) };
   }
 }
 

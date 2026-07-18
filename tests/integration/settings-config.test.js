@@ -116,6 +116,7 @@ beforeAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   resetMockElectronAPI();
+  mockElectronAPI.platform = 'test';
   mockCustomThemes = [];
 
   // Clear any existing DOM
@@ -387,9 +388,21 @@ function createSettingsModalDOM() {
       </div>
 
       <div id="popup-hotkey-container">
+        <label id="popup-hotkey-mode-label">Popup Hotkey (Hold to Bring Window to Front)</label>
+        <p id="popup-hotkey-help-text"></p>
+        <p id="popup-hotkey-platform-notice" hidden></p>
         <input type="text" id="popup-hotkey-input" />
         <button id="popup-hotkey-set-btn">Set Hotkey</button>
         <button id="popup-hotkey-clear-btn" style="display: none;">Clear</button>
+        <button class="preset-hotkey-btn" data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
+        <label id="popup-hotkey-toggle-mode-label">
+          <input type="checkbox" id="popup-hotkey-toggle-mode" />
+          Press to toggle
+        </label>
+        <label id="popup-hotkey-hide-on-release-label">
+          <input type="checkbox" id="popup-hotkey-hide-on-release" />
+          Hide on release
+        </label>
       </div>
 
       <button id="save-settings">Save</button>
@@ -509,6 +522,31 @@ describe('Settings + Config Integration', () => {
 
       expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(modal);
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
+    });
+
+    test('Linux popup hotkeys expose stable press behavior and disable release-only controls', async () => {
+      mockElectronAPI.platform = 'linux';
+
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe(
+        'Popup Hotkey (Press to Bring Window to Front)'
+      );
+      expect(document.getElementById('popup-hotkey-platform-notice').hidden).toBe(false);
+      expect(document.getElementById('popup-hotkey-platform-notice').textContent).toContain(
+        'Linux uses the desktop shortcut service'
+      );
+      expect(document.getElementById('popup-hotkey-hide-on-release').disabled).toBe(true);
+      expect(document.getElementById('popup-hotkey-toggle-mode').disabled).toBe(false);
+
+      document.querySelector('[data-hotkey="Ctrl+Shift+F12"]').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Ctrl+Shift+F12');
+      expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
     });
 
     test('closing settings cleans up modal and focus trap', () => {

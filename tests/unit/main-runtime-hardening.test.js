@@ -27,6 +27,32 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).not.toContain('protocol.registerStreamProtocol');
   });
 
+  it('keeps Linux popup hotkeys off the native hook and preserves unrelated shortcuts', () => {
+    expect(mainSource).toContain('Using Electron globalShortcut for Linux popup hotkeys');
+    expect(mainSource).toContain('usesLinuxPopupHotkeyBackend');
+    expect(mainSource).toContain(
+      "app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')"
+    );
+    expect(mainSource).toContain('linuxPopupHotkeyController.register(config.popupHotkey)');
+    expect(mainSource).toContain('registeredEntityHotkeyAccelerators');
+    expect(mainSource).toContain('findConfiguredEntityHotkey(hotkey)');
+    expect(mainSource).toContain('Hotkey already assigned to the popup trigger');
+    expect(mainSource).not.toContain('globalShortcut.unregisterAll()');
+  });
+
+  it('persists a replacement popup hotkey only after successful registration', () => {
+    const handlerStart = mainSource.indexOf("ipcMain.handle('register-popup-hotkey'");
+    const handlerEnd = mainSource.indexOf("ipcMain.handle('unregister-popup-hotkey'", handlerStart);
+    const handlerSource = mainSource.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain('const previousHotkey = config.popupHotkey');
+    expect(handlerSource).toContain('if (!registrationResult.success)');
+    expect(handlerSource).toContain('config.popupHotkey = previousHotkey');
+    expect(handlerSource.indexOf('saveConfig()')).toBeGreaterThan(
+      handlerSource.indexOf('if (!registrationResult.success)')
+    );
+  });
+
   it('preserves persisted desktop pins during config normalization even when favorites are stale', () => {
     const start = mainSource.indexOf('function normalizeDesktopPinsConfig');
     const end = mainSource.indexOf('function resolveDesktopPinSupportDecision');

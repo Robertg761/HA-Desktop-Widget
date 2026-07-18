@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Nothing yet
+- Linux popup hotkeys now use the desktop's global shortcut service. Linux supports press-to-front
+  and press-to-toggle behavior; native hold/release behavior remains available on macOS and Windows.
 
 ### Fixed
 
-- Nothing yet
+- Fixed Linux crashes when selecting or capturing a popup hotkey by avoiding the unstable native
+  input hook on Linux.
+- Popup hotkey changes are now saved only after registration succeeds, and re-registering entity
+  hotkeys no longer clears the popup shortcut.
 
 ## [3.7.1] - 2026-07-16
 

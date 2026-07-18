@@ -1215,11 +1215,14 @@
                 </h3>
               </div>
               <div class="form-group">
-                <label>Popup Hotkey (Hold to Bring Window to Front)</label>
-                <p class="help-text">
+                <label id="popup-hotkey-mode-label"
+                  >Popup Hotkey (Hold to Bring Window to Front)</label
+                >
+                <p id="popup-hotkey-help-text" class="help-text">
                   Configure a global hotkey that brings the window to front while held down. When
                   released, the window returns to normal z-order.
                 </p>
+                <p id="popup-hotkey-platform-notice" class="help-text" hidden></p>
                 <div class="popup-hotkey-config">
                   <input
                     type="text"

@@ -4830,13 +4830,40 @@ async function initializePopupHotkey() {
   try {
     // Check if popup hotkey feature is available
     const isAvailable = await window.electronAPI.isPopupHotkeyAvailable();
+    const usesLinuxShortcutBackend = window.electronAPI.platform === 'linux';
 
     const input = document.getElementById('popup-hotkey-input');
     const setBtn = document.getElementById('popup-hotkey-set-btn');
     const clearBtn = document.getElementById('popup-hotkey-clear-btn');
     const container = document.getElementById('popup-hotkey-container');
+    const modeLabel = document.getElementById('popup-hotkey-mode-label');
+    const helpText = document.getElementById('popup-hotkey-help-text');
+    const platformNotice = document.getElementById('popup-hotkey-platform-notice');
 
     if (!input || !setBtn || !clearBtn) return;
+
+    if (usesLinuxShortcutBackend) {
+      if (modeLabel) modeLabel.textContent = 'Popup Hotkey (Press to Bring Window to Front)';
+      if (helpText) {
+        helpText.textContent =
+          'Configure a global hotkey that brings the window to front when pressed.';
+      }
+      if (platformNotice) {
+        platformNotice.hidden = false;
+        platformNotice.textContent =
+          'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.';
+      }
+    } else {
+      if (modeLabel) modeLabel.textContent = 'Popup Hotkey (Hold to Bring Window to Front)';
+      if (helpText) {
+        helpText.textContent =
+          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.';
+      }
+      if (platformNotice) {
+        platformNotice.hidden = true;
+        platformNotice.textContent = '';
+      }
+    }
 
     // If not available, disable the UI and show a message
     if (!isAvailable) {
@@ -4877,6 +4904,14 @@ async function initializePopupHotkey() {
     // Helper function to update disabled states
     const updateMutualExclusivity = () => {
       if (toggleModeCheckbox && hideOnReleaseCheckbox) {
+        if (usesLinuxShortcutBackend) {
+          hideOnReleaseCheckbox.disabled = true;
+          if (hideOnReleaseLabel) hideOnReleaseLabel.classList.add('disabled');
+          toggleModeCheckbox.disabled = false;
+          if (toggleModeLabel) toggleModeLabel.classList.remove('disabled');
+          return;
+        }
+
         // When toggle mode is enabled, disable hide-on-release
         hideOnReleaseCheckbox.disabled = toggleModeCheckbox.checked;
         if (hideOnReleaseLabel) {
@@ -4908,7 +4943,9 @@ async function initializePopupHotkey() {
           showToast(
             toggleModeCheckbox.checked
               ? 'Toggle mode enabled: tap to show/hide'
-              : 'Hold mode enabled: hold to show, release to restore',
+              : usesLinuxShortcutBackend
+                ? 'Press mode enabled: press to bring the window to front'
+                : 'Hold mode enabled: hold to show, release to restore',
             'success',
             2000
           );
