@@ -258,7 +258,12 @@ function createHaProtocolHandler({
         if (!HA_ENTITY_ID_PATTERN.test(entityId)) return errorResponse(400);
         const upstream = `${haUrl}/api/camera_proxy_stream/${entityId}`;
         const response = await fetchStream(upstream, {
-          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache, no-store',
+            Pragma: 'no-cache',
+          },
           redirect: 'follow',
           signal: request.signal,
         });
@@ -268,11 +273,36 @@ function createHaProtocolHandler({
       if (host === 'hls') {
         if (!isAllowedHlsProxyPath(url.pathname)) return errorResponse(403);
         const upstream = `${haUrl}${url.pathname}${url.search || ''}`;
-        const response = await fetchStream(upstream, {
-          headers: { Authorization: `Bearer ${token}` },
+        const fetchOptions = {
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache, no-store',
+            Pragma: 'no-cache',
+          },
           redirect: 'follow',
           signal: request.signal,
-        });
+        };
+        let response;
+        if (/\/master_playlist\.m3u8$/i.test(url.pathname)) {
+          try {
+            const warmupTimeoutSignal = AbortSignal.timeout(8000);
+            response = await fetchStream(upstream, {
+              ...fetchOptions,
+              signal: request.signal
+                ? AbortSignal.any([request.signal, warmupTimeoutSignal])
+                : warmupTimeoutSignal,
+            });
+          } catch (error) {
+            const isWarmupTimeout = ['AbortError', 'TimeoutError'].includes(error?.name);
+            if (request.signal?.aborted || !isWarmupTimeout) throw error;
+            // Some cloud cameras prepare the stream only after the first playlist request is
+            // cancelled. Retry inside the protocol handler so Hls.js receives the warmed playlist.
+            response = await fetchStream(upstream, fetchOptions);
+          }
+        } else {
+          response = await fetchStream(upstream, fetchOptions);
+        }
         const fallbackContentType = url.pathname.toLowerCase().endsWith('.m3u8')
           ? 'application/vnd.apple.mpegurl'
           : 'video/MP2T';
@@ -284,7 +314,12 @@ function createHaProtocolHandler({
         const upstream = `${haUrl}/api/camera_proxy/${entityId}`;
         const timeoutSignal = AbortSignal.timeout(15000);
         const response = await fetchStream(upstream, {
-          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache, no-store',
+            Pragma: 'no-cache',
+          },
           redirect: 'follow',
           signal: request.signal ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal,
         });

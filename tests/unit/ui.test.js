@@ -17,7 +17,27 @@ window.electronAPI = mockElectronAPI;
 
 // Mock dependencies
 jest.mock('../../src/camera.js', () => ({
+  CAMERA_PREVIEW_REFRESH_OPTIONS: [
+    { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
+    { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
+    { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+    { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
+    { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+  ],
+  disposeCameraPreview: jest.fn(),
+  mountCameraPreview: jest.fn(),
+  normalizeCameraPreviewRefresh: jest.fn((value) =>
+    ['off', 'live', '30s', '10s', '5s'].includes(
+      String(value || '')
+        .trim()
+        .toLowerCase()
+    )
+      ? String(value).trim().toLowerCase()
+      : 'off'
+  ),
   openCamera: jest.fn(),
+  pruneCameraPreviews: jest.fn(),
+  refreshCameraPreview: jest.fn(),
 }));
 
 jest.mock('../../src/ui-utils.js', () => ({
@@ -1396,6 +1416,190 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('keeps camera tiles on the static icon by default', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {};
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+      });
+
+      ui.renderActiveTab();
+
+      const cameraTile = document.querySelector(
+        '.control-item[data-entity-id="camera.front_door"]'
+      );
+      expect(cameraTile).toBeTruthy();
+      expect(cameraTile.classList.contains('camera-preview-tile')).toBe(false);
+      expect(cameraTile.querySelector('.camera-tile-preview-image')).toBeNull();
+      expect(camera.mountCameraPreview).not.toHaveBeenCalled();
+    });
+
+    it('renders a camera snapshot preview and passes its tile into the expand action', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {
+        'camera.front_door': { cameraPreviewRefresh: '10s' },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+      });
+
+      ui.renderActiveTab();
+
+      const cameraTile = document.querySelector(
+        '.control-item.camera-preview-tile[data-entity-id="camera.front_door"]'
+      );
+      expect(cameraTile).toBeTruthy();
+      expect(cameraTile.dataset.cameraPreviewRefresh).toBe('10s');
+      expect(cameraTile.querySelector('.camera-tile-preview-image')).toBeTruthy();
+      expect(cameraTile.querySelector('.camera-tile-preview-status').textContent).toBe(
+        'Loading snapshot…'
+      );
+      expect(cameraTile.querySelector('.camera-tile-preview-badge').textContent).toContain(
+        'Snapshot'
+      );
+      expect(camera.mountCameraPreview).toHaveBeenCalledWith(
+        cameraTile,
+        'camera.front_door',
+        '10s'
+      );
+
+      cameraTile.click();
+      expect(camera.openCamera).toHaveBeenCalledWith('camera.front_door', {
+        sourceTile: cameraTile,
+      });
+    });
+
+    it('labels and mounts a true live camera tile distinctly from snapshots', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {
+        'camera.front_door': { cameraPreviewRefresh: 'live' },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+      });
+
+      ui.renderActiveTab();
+
+      const cameraTile = document.querySelector(
+        '.control-item.camera-preview-tile[data-entity-id="camera.front_door"]'
+      );
+      expect(cameraTile).toBeTruthy();
+      expect(cameraTile.dataset.cameraPreviewRefresh).toBe('live');
+      expect(cameraTile.querySelector('.camera-tile-preview-badge').textContent).toContain('Live');
+      expect(cameraTile.querySelector('.camera-tile-preview-status').textContent).toBe(
+        'Starting live stream…'
+      );
+      expect(camera.mountCameraPreview).toHaveBeenCalledWith(
+        cameraTile,
+        'camera.front_door',
+        'live'
+      );
+    });
+
+    it('saves the camera snapshot cadence from Tile Settings', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {};
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="camera.front_door"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      const previewSelect = modal.querySelector('#camera-preview-refresh-select');
+      expect(previewSelect.value).toBe('off');
+      expect(Array.from(previewSelect.options, (option) => option.value)).toContain('live');
+      expect(modal.querySelector('#tile-value-size-select')).toBeNull();
+      previewSelect.value = '10s';
+      modal.querySelector('#save-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.quickAccessTileOptions['camera.front_door']).toEqual({
+        cameraPreviewRefresh: '10s',
+      });
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quickAccessTileOptions: {
+            'camera.front_door': { cameraPreviewRefresh: '10s' },
+          },
+        })
+      );
+      expect(
+        document.querySelector(
+          '.control-item.camera-preview-tile[data-entity-id="camera.front_door"]'
+        )
+      ).toBeTruthy();
+    });
+
+    it('resets an enabled camera snapshot preview to the static icon', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {
+        'camera.front_door': { cameraPreviewRefresh: '5s' },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="camera.front_door"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      expect(modal.querySelector('#camera-preview-refresh-select').value).toBe('5s');
+      modal.querySelector('#reset-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.quickAccessTileOptions['camera.front_door']).toBeUndefined();
+      expect(
+        document.querySelector(
+          '.control-item.camera-preview-tile[data-entity-id="camera.front_door"]'
+        )
+      ).toBeNull();
+    });
+
+    it('forces a camera snapshot refresh after the live viewer closes', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {
+        'camera.front_door': { cameraPreviewRefresh: '30s' },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+      });
+      ui.renderActiveTab();
+
+      document.dispatchEvent(
+        new CustomEvent('camera-modal-closed', {
+          detail: { entityId: 'camera.front_door' },
+        })
+      );
+
+      expect(camera.refreshCameraPreview).toHaveBeenCalledWith('camera.front_door', {
+        force: true,
+      });
     });
 
     it('renders todo tiles with active item counts from get_items', async () => {

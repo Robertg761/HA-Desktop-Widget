@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing yet
+- Added opt-in camera visuals on Quick Access tiles: a true authenticated live stream while visible,
+  or lower-usage 30-second, 10-second, and 5-second snapshots. Network activity stops when the live
+  tile or app is hidden, snapshot modes are clearly identified as potentially integration-cached,
+  and clicking a preview grows that exact feed into a larger view without restarting its stream.
 
 ### Changed
 
@@ -22,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   input hook on Linux.
 - Popup hotkey changes are now saved only after registration succeeds, and re-registering entity
   hotkeys no longer clears the popup shortcut.
+- Camera previews no longer remain indefinitely on “Starting live stream…”: stalled requests fall
+  back to the latest authenticated snapshot and retry the live feed after a short backoff.
+- Live camera tiles now use Home Assistant's authenticated HLS stream. Expanded live previews add a
+  Reconnect action that can clear stale Aarlo camera activity before retrying, while retaining the
+  existing MJPEG compatibility path for other integrations that cannot provide HLS.
+- Cloud-camera HLS startup now tolerates providers that only finish preparing the first playlist
+  after its initial request times out, and Aarlo reconnects wait for the entity to return to idle.
+- Expanded camera previews now remain open across Home Assistant camera-state updates instead of
+  being mistaken for a disposed tile while their shared visual is temporarily outside the grid.
 
 ## [3.7.1] - 2026-07-16
 

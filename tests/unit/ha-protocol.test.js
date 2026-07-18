@@ -65,7 +65,12 @@ describe('Home Assistant protocol handler', () => {
     expect(fetchStream).toHaveBeenCalledWith(
       'https://ha.example.test/api/camera_proxy_stream/camera.front_door',
       expect.objectContaining({
-        headers: { Authorization: 'Bearer secret-token' },
+        cache: 'no-store',
+        headers: {
+          Authorization: 'Bearer secret-token',
+          'Cache-Control': 'no-cache, no-store',
+          Pragma: 'no-cache',
+        },
         redirect: 'follow',
       })
     );
@@ -87,6 +92,61 @@ describe('Home Assistant protocol handler', () => {
     expect(fetchStream).toHaveBeenCalledTimes(1);
     expect(fetchStream.mock.calls[0][0]).toBe(
       'https://ha.example.test/api/hls/stream/master_playlist.m3u8?token=short-lived'
+    );
+    expect(fetchStream.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        cache: 'no-store',
+        headers: {
+          Authorization: 'Bearer secret-token',
+          'Cache-Control': 'no-cache, no-store',
+          Pragma: 'no-cache',
+        },
+        redirect: 'follow',
+      })
+    );
+  });
+
+  it('retries an HLS master playlist after a cloud-camera warmup timeout', async () => {
+    const warmupTimeout = new Error('The operation timed out');
+    warmupTimeout.name = 'TimeoutError';
+    const fetchStream = jest
+      .fn()
+      .mockRejectedValueOnce(warmupTimeout)
+      .mockResolvedValueOnce(
+        new Response('#EXTM3U\nplaylist.m3u8\n', {
+          status: 200,
+          headers: { 'Content-Type': 'application/vnd.apple.mpegurl' },
+        })
+      );
+    const { handler } = createHandler({ fetchStream });
+
+    const response = await handler(createRequest('ha://hls/api/hls/session/master_playlist.m3u8'));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('#EXTM3U');
+    expect(fetchStream).toHaveBeenCalledTimes(2);
+    expect(fetchStream.mock.calls[1][0]).toBe(
+      'https://ha.example.test/api/hls/session/master_playlist.m3u8'
+    );
+    expect(fetchStream.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        cache: 'no-store',
+        headers: expect.objectContaining({ Authorization: 'Bearer secret-token' }),
+      })
+    );
+  });
+
+  it('does not retry non-timeout HLS master failures', async () => {
+    const fetchStream = jest.fn().mockRejectedValue(new Error('connection refused'));
+    const { handler, log } = createHandler({ fetchStream });
+
+    const response = await handler(createRequest('ha://hls/api/hls/session/master_playlist.m3u8'));
+
+    expect(response.status).toBe(500);
+    expect(fetchStream).toHaveBeenCalledTimes(1);
+    expect(log.error).toHaveBeenCalledWith(
+      'Protocol handler error:',
+      expect.objectContaining({ message: 'connection refused' })
     );
   });
 
@@ -127,16 +187,23 @@ describe('Home Assistant protocol handler', () => {
     expect(fetchStream).not.toHaveBeenCalled();
   });
 
-  it('accepts valid camera entity ids', async () => {
+  it('accepts valid camera entity ids and ignores renderer cache-busting queries', async () => {
     const { handler, fetchStream } = createHandler();
 
-    const response = await handler(createRequest('ha://camera/camera.front_door'));
+    const response = await handler(
+      createRequest('ha://camera/camera.front_door?preview=2&t=1784299200000')
+    );
 
     expect(response.status).toBe(200);
     expect(fetchStream).toHaveBeenCalledWith(
       'https://ha.example.test/api/camera_proxy/camera.front_door',
       expect.objectContaining({
-        headers: { Authorization: 'Bearer secret-token' },
+        cache: 'no-store',
+        headers: {
+          Authorization: 'Bearer secret-token',
+          'Cache-Control': 'no-cache, no-store',
+          Pragma: 'no-cache',
+        },
       })
     );
   });

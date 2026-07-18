@@ -6,7 +6,15 @@ const { createMockElectronAPI } = require('../mocks/electron.js');
 
 window.electronAPI = createMockElectronAPI();
 
-jest.mock('../../src/camera.js', () => ({ openCamera: jest.fn() }));
+jest.mock('../../src/camera.js', () => ({
+  CAMERA_PREVIEW_REFRESH_OPTIONS: [],
+  disposeCameraPreview: jest.fn(),
+  mountCameraPreview: jest.fn(),
+  normalizeCameraPreviewRefresh: jest.fn(() => 'off'),
+  openCamera: jest.fn(),
+  pruneCameraPreviews: jest.fn(),
+  refreshCameraPreview: jest.fn(),
+}));
 jest.mock('../../src/icons.js', () => ({ setIconContent: jest.fn() }));
 jest.mock('sortablejs', () => ({ create: jest.fn(() => ({ destroy: jest.fn() })) }));
 jest.mock('../../src/ui-utils.js', () => ({

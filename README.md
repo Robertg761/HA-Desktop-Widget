@@ -33,6 +33,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles
 - **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant
 - **Tile Options**: Adjust selected Quick Access readout sizing for dense or prominent tiles
+- **Camera Tile Previews**: Opt into a visibility-scoped authenticated HLS stream or snapshots, then click the tile to grow that same feed into a larger view and reconnect a stale camera session when needed
 - **Interactive Controls**: Toggle lights, switches, scenes, and more with a single click
 
 ### Modern Interface
@@ -52,7 +53,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Covers & Locks**: Open/close and lock/unlock controls
 - **Sensors & Binary Sensors**: Real-time value display with units and state-aware icons
 - **Timers**: Live countdown displays for active timers
-- **Cameras**: Live feed viewing with snapshot fallback
+- **Cameras**: Optional Quick Access snapshots plus live feed viewing with snapshot fallback
 - **Climate**: Temperature display and control
 - **Media Players**: Play/pause, previous/next, artwork, seek bar, and 10-second rewind/fast-forward where supported
 - **Scenes, Scripts & Buttons**: One-click scene activation, script running, and button/input-button pressing
@@ -109,6 +110,7 @@ Planned for a future release:
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
 - **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
+- **Camera Previews**: Edit a camera tile to choose an HLS live feed or a 30-second, 10-second, or 5-second snapshot cadence; previews pause while the app or tile is hidden, clicking expands the current feed without restarting it, and the expanded live view includes a Reconnect action for stale sessions
 - **Remove**: In reorganize mode, click the remove button to remove entities
 - **Pin to Desktop**: In reorganize mode or the tile context menu, pin supported Quick Access entities as standalone desktop tiles
 

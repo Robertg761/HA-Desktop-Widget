@@ -1118,7 +1118,9 @@ function showRenameModal(entityId) {
     const currentName =
       state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
     const hasValueSizeControl = isQuickAccessTileValueSizeApplicable(entity);
+    const hasCameraPreviewControl = getEntityDomain(entity.entity_id) === 'camera';
     const currentValueSize = getQuickAccessTileValueSize(entityId);
+    const currentCameraPreviewRefresh = getQuickAccessCameraPreviewRefresh(entityId);
     const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS.map(
       (option) => `
                 <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
@@ -1131,6 +1133,20 @@ function showRenameModal(entityId) {
               ${valueSizeOptionsMarkup}
             </select>
             <div class="form-help">${utils.escapeHtml(t('Adjusts the state or readout text size for this Quick Access tile.'))}</div>
+          </div>`
+      : '';
+    const cameraPreviewOptionsMarkup = camera.CAMERA_PREVIEW_REFRESH_OPTIONS.map(
+      (option) => `
+                <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentCameraPreviewRefresh ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
+    ).join('');
+    const cameraPreviewControlMarkup = hasCameraPreviewControl
+      ? `
+          <div class="form-group camera-preview-setting">
+            <label for="camera-preview-refresh-select">${utils.escapeHtml(t('Camera Preview:'))}</label>
+            <select id="camera-preview-refresh-select" class="form-control">
+              ${cameraPreviewOptionsMarkup}
+            </select>
+            <div class="form-help">${utils.escapeHtml(t('Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.'))}</div>
           </div>`
       : '';
 
@@ -1148,6 +1164,7 @@ function showRenameModal(entityId) {
             <input type="text" id="rename-input" class="form-control" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
           </div>
           ${valueSizeControlMarkup}
+          ${cameraPreviewControlMarkup}
         </div>
         <div class="modal-footer">
           <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
@@ -1160,6 +1177,7 @@ function showRenameModal(entityId) {
 
     const input = modal.querySelector('#rename-input');
     const valueSizeSelect = modal.querySelector('#tile-value-size-select');
+    const cameraPreviewRefreshSelect = modal.querySelector('#camera-preview-refresh-select');
     const saveBtn = modal.querySelector('#save-rename-btn');
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
@@ -1200,6 +1218,14 @@ function showRenameModal(entityId) {
           changed = true;
         }
 
+        const nextCameraPreviewRefresh = hasCameraPreviewControl
+          ? camera.normalizeCameraPreviewRefresh(cameraPreviewRefreshSelect?.value || 'off')
+          : currentCameraPreviewRefresh;
+        if (hasCameraPreviewControl && nextCameraPreviewRefresh !== currentCameraPreviewRefresh) {
+          setQuickAccessCameraPreviewRefresh(entityId, nextCameraPreviewRefresh);
+          changed = true;
+        }
+
         if (changed) {
           await window.electronAPI.updateConfig(state.CONFIG);
           refreshQuickAccessAfterTileSettingsChange();
@@ -1225,6 +1251,13 @@ function showRenameModal(entityId) {
           state.CONFIG.quickAccessTileOptions?.[entityId]?.valueSize !== undefined;
         if (hadValueSizeOverride) {
           setQuickAccessTileValueSize(entityId, 'auto');
+          changed = true;
+        }
+
+        const hadCameraPreviewOverride =
+          state.CONFIG.quickAccessTileOptions?.[entityId]?.cameraPreviewRefresh !== undefined;
+        if (hadCameraPreviewOverride) {
+          setQuickAccessCameraPreviewRefresh(entityId, 'off');
           changed = true;
         }
 
@@ -1423,6 +1456,9 @@ function updateEntityInUI(entity, options = {}) {
       if (item.classList.contains('reorganize-mode')) {
         newControl.classList.add('reorganize-mode');
       }
+      if (item.classList.contains('camera-preview-tile')) {
+        camera.disposeCameraPreview(item);
+      }
       item.replaceWith(newControl);
 
       // If in reorganize mode, add buttons to the newly created element
@@ -1465,6 +1501,8 @@ function getControlRenderSignature(entity) {
           : 'light-empty';
   } else if (domain === 'climate') {
     contentKind = attrs.current_temperature || attrs.temperature ? 'climate-temp' : 'climate-empty';
+  } else if (domain === 'camera') {
+    contentKind = `camera-${getQuickAccessCameraPreviewRefresh(entity.entity_id)}`;
   }
   const hasQuickAccessValueSize = isQuickAccessTileValueSizeApplicable(entity);
   return JSON.stringify({
@@ -2880,6 +2918,12 @@ function getQuickAccessTileValueSize(entityId) {
   return normalizeQuickAccessTileValueSize(getQuickAccessTileOptions(entityId).valueSize);
 }
 
+function getQuickAccessCameraPreviewRefresh(entityId) {
+  return camera.normalizeCameraPreviewRefresh(
+    getQuickAccessTileOptions(entityId).cameraPreviewRefresh
+  );
+}
+
 function ensureQuickAccessTileOptionsConfig() {
   if (
     !state.CONFIG.quickAccessTileOptions ||
@@ -2908,6 +2952,27 @@ function setQuickAccessTileValueSize(entityId, valueSize) {
   tileOptions[entityId] = {
     ...(tileOptions[entityId] || {}),
     valueSize: normalized,
+  };
+  return normalized;
+}
+
+function setQuickAccessCameraPreviewRefresh(entityId, refreshValue) {
+  const normalized = camera.normalizeCameraPreviewRefresh(refreshValue);
+  const tileOptions = ensureQuickAccessTileOptionsConfig();
+
+  if (normalized === 'off') {
+    if (tileOptions[entityId]) {
+      delete tileOptions[entityId].cameraPreviewRefresh;
+      if (Object.keys(tileOptions[entityId]).length === 0) {
+        delete tileOptions[entityId];
+      }
+    }
+    return normalized;
+  }
+
+  tileOptions[entityId] = {
+    ...(tileOptions[entityId] || {}),
+    cameraPreviewRefresh: normalized,
   };
   return normalized;
 }
@@ -6143,6 +6208,7 @@ function renderQuickControls() {
     while (container.children.length > desiredNodes.length) {
       container.removeChild(container.lastElementChild);
     }
+    camera.pruneCameraPreviews();
 
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
@@ -6615,12 +6681,21 @@ function createControlElement(entity, options = {}) {
     const isTimerSensor = isTimerLikeSensorEntity(entity);
     const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
     const domain = getEntityDomain(entity.entity_id);
+    const cameraPreviewRefresh =
+      isQuickAccessContext && domain === 'camera'
+        ? getQuickAccessCameraPreviewRefresh(entity.entity_id)
+        : 'off';
+    const hasCameraPreview = cameraPreviewRefresh !== 'off';
+    const hasLiveCameraPreview = cameraPreviewRefresh === 'live';
 
     // Handle different entity types (matching main branch)
     if (domain === 'camera') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
-          executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
+          executeEntityPrimaryAction(entity, {
+            source: 'quick-access-click',
+            sourceElement: div,
+          });
       };
       div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
     } else if (domain === 'sensor' && !isTimerSensor) {
@@ -6758,6 +6833,27 @@ function createControlElement(entity, options = {}) {
         </div>
       `;
       div.classList.add('media-player-entity');
+    } else if (hasCameraPreview) {
+      div.innerHTML = `
+        <div class="camera-tile-visual" aria-hidden="true">
+          <video class="camera-tile-preview-video" muted autoplay playsinline></video>
+          <img class="camera-tile-preview-image" alt="" decoding="async">
+          <div class="camera-tile-fallback">
+            <div class="control-icon">${icon}</div>
+          </div>
+          <div class="camera-tile-scrim"></div>
+        </div>
+        <div class="camera-tile-preview-badge" aria-hidden="true">
+          <span class="camera-tile-preview-dot"></span>
+          ${utils.escapeHtml(t(hasLiveCameraPreview ? 'Live' : 'Snapshot'))}
+        </div>
+        <div class="camera-tile-copy">
+          <div class="control-name">${name}</div>
+          <div class="control-state camera-tile-preview-status">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Starting live stream…' : 'Loading snapshot…'))}</div>
+        </div>
+      `;
+      div.classList.add('camera-entity', 'camera-preview-tile');
+      div.dataset.cameraPreviewRefresh = cameraPreviewRefresh;
     } else {
       div.innerHTML = `
         <div class="control-icon">${icon}</div>
@@ -6775,6 +6871,9 @@ function createControlElement(entity, options = {}) {
     }
     if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
       mountSensorTileSparkline(div, entity);
+    }
+    if (hasCameraPreview) {
+      camera.mountCameraPreview(div, entity.entity_id, cameraPreviewRefresh);
     }
 
     return div;
@@ -6955,11 +7054,22 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('camera.')) {
+    const cameraPreviewRefresh = isQuickAccessContext
+      ? getQuickAccessCameraPreviewRefresh(displayEntity.entity_id)
+      : 'off';
+    const expectsPreview = cameraPreviewRefresh !== 'off';
+    if (expectsPreview !== div.classList.contains('camera-preview-tile')) return false;
     div.onclick = () => {
       if (!shouldBlockInteraction(div))
-        executeEntityPrimaryAction(displayEntity, { source: 'quick-access-click' });
+        executeEntityPrimaryAction(displayEntity, {
+          source: 'quick-access-click',
+          sourceElement: div,
+        });
     };
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    if (expectsPreview) {
+      camera.mountCameraPreview(div, displayEntity.entity_id, cameraPreviewRefresh);
+    }
     return true;
   }
 
@@ -8358,7 +8468,7 @@ function executeEntityPrimaryAction(entity, options = {}) {
     });
 
     if (domain === 'camera') {
-      camera.openCamera(liveEntity.entity_id);
+      camera.openCamera(liveEntity.entity_id, { sourceTile: options.sourceElement });
       return;
     }
 
@@ -9110,6 +9220,7 @@ function handleCameraModalClosed(event) {
     const entity = state.STATES[entityId];
     if (entity) {
       updateEntityInUI(entity);
+      camera.refreshCameraPreview(entityId, { force: true });
     }
   } catch (error) {
     console.error('Error refreshing camera tile after modal close:', error);

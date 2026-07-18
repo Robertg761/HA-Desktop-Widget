@@ -5880,6 +5880,486 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
   min-height: 62px;
 }
 
+/* Camera visuals are opt-in per Quick Access tile. Live streams are torn down when
+   hidden; expanding a preview reuses the same image element and stream connection. */
+#quick-controls .control-item.camera-preview-tile {
+  min-height: 96px;
+  padding: 0;
+  align-items: stretch;
+  justify-content: flex-end;
+  isolation: isolate;
+  background: linear-gradient(145deg, rgba(25, 31, 40, 0.96), rgba(11, 14, 20, 0.98));
+}
+
+.camera-tile-visual {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(var(--accent-rgb), 0.16), transparent 54%),
+    rgba(10, 13, 18, 0.96);
+  pointer-events: none;
+}
+
+.camera-tile-preview-image,
+.camera-tile-preview-video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.015);
+  filter: saturate(0.92) contrast(1.03);
+  transition:
+    opacity 220ms ease,
+    transform 360ms ease,
+    filter 220ms ease;
+}
+
+.camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='ready']
+  .camera-tile-preview-image,
+.camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='refreshing']
+  .camera-tile-preview-image,
+.camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='fallback']
+  .camera-tile-preview-image,
+.camera-preview-tile[data-camera-preview-source='video'][data-camera-preview-state='ready']
+  .camera-tile-preview-video {
+  opacity: 1;
+}
+
+.camera-tile-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.camera-tile-fallback .control-icon {
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.camera-preview-tile[data-camera-preview-state='ready'] .camera-tile-fallback,
+.camera-preview-tile[data-camera-preview-state='refreshing'] .camera-tile-fallback,
+.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-fallback {
+  opacity: 0;
+}
+
+.camera-tile-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(4, 7, 10, 0.08) 24%,
+    rgba(4, 7, 10, 0.42) 58%,
+    rgba(4, 7, 10, 0.92) 100%
+  );
+}
+
+.camera-tile-copy {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  padding: 28px 10px 9px;
+  text-align: left;
+  pointer-events: none;
+}
+
+.camera-preview-tile .camera-tile-copy .control-name {
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+}
+
+.camera-preview-tile .camera-tile-preview-status {
+  min-height: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+}
+
+.camera-tile-preview-badge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(8, 11, 16, 0.64);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(8px) saturate(130%);
+  -webkit-backdrop-filter: blur(8px) saturate(130%);
+  pointer-events: none;
+}
+
+.camera-tile-preview-dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.18);
+}
+
+.camera-preview-tile[data-camera-preview-state='loading'] .camera-tile-preview-dot,
+.camera-preview-tile[data-camera-preview-state='refreshing'] .camera-tile-preview-dot {
+  animation: cameraPreviewPulse 1.4s ease-in-out infinite;
+}
+
+.camera-preview-tile[data-camera-preview-state='error'] .camera-tile-preview-dot,
+.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-dot {
+  background: var(--warning);
+  box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
+}
+
+.camera-preview-tile[data-camera-preview-state='error'] .camera-tile-preview-status,
+.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-status {
+  color: rgba(255, 209, 151, 0.82);
+}
+
+#quick-controls .camera-preview-tile:hover .camera-tile-preview-image,
+#quick-controls .camera-preview-tile:hover .camera-tile-preview-video {
+  transform: scale(1.045);
+  filter: saturate(1) contrast(1.05);
+}
+
+@keyframes cameraPreviewPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+body.density-compact #quick-controls .control-item.camera-preview-tile {
+  min-height: 78px;
+  padding: 0;
+}
+
+body.density-compact #quick-controls .camera-preview-tile .camera-tile-copy {
+  padding: 24px 8px 7px;
+}
+
+body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-status {
+  font-size: 8px;
+}
+
+.camera-expanded-preview {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-backdrop);
+  display: grid;
+  padding: 16px;
+  place-items: center;
+  background: rgba(3, 6, 10, 0.76);
+  animation: cameraExpandedBackdropIn 160ms ease-out both;
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-app-region: no-drag;
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  cursor: zoom-out;
+}
+
+.camera-expanded-preview-shell {
+  display: flex;
+  width: min(94vw, 960px);
+  height: min(88vh, 720px);
+  max-height: calc(100vh - 24px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: rgba(10, 14, 20, 0.98);
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.56),
+    0 0 0 1px rgba(0, 0, 0, 0.28);
+  cursor: default;
+}
+
+.camera-expanded-preview-header,
+.camera-expanded-preview-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(13, 18, 25, 0.98);
+}
+
+.camera-expanded-preview-header {
+  min-height: 58px;
+  gap: 14px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camera-expanded-preview-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.camera-expanded-preview-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-expanded-preview-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.camera-expanded-preview-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
+}
+
+.camera-expanded-preview[data-camera-preview-state='loading'] .camera-expanded-preview-dot,
+.camera-expanded-preview[data-camera-preview-state='refreshing'] .camera-expanded-preview-dot {
+  animation: cameraPreviewPulse 1.4s ease-in-out infinite;
+}
+
+.camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-dot,
+.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-dot {
+  background: var(--warning);
+  box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
+}
+
+.camera-expanded-preview-close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  padding: 0 0 2px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+  cursor: pointer;
+}
+
+.camera-expanded-preview-close:hover,
+.camera-expanded-preview-close:focus-visible {
+  border-color: rgba(255, 255, 255, 0.22);
+  outline: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  transform: scale(1.04);
+}
+
+.camera-expanded-preview-stage {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(var(--accent-rgb), 0.08), transparent 58%), #05070a;
+}
+
+.camera-expanded-preview-stage .camera-tile-visual {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.camera-expanded-preview-stage .camera-tile-preview-image,
+.camera-expanded-preview-stage .camera-tile-preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: none;
+  transform: none;
+  transition: none;
+}
+
+.camera-expanded-preview[data-camera-preview-source='image'] .camera-tile-preview-image,
+.camera-expanded-preview[data-camera-preview-source='video'] .camera-tile-preview-video {
+  opacity: 1;
+}
+
+.camera-expanded-preview[data-camera-preview-state='ready'] .camera-tile-fallback,
+.camera-expanded-preview[data-camera-preview-state='refreshing'] .camera-tile-fallback,
+.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-tile-fallback {
+  opacity: 0;
+}
+
+.camera-expanded-preview-stage .camera-tile-scrim {
+  display: none;
+}
+
+.camera-expanded-preview-footer {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camera-expanded-preview-status {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-expanded-preview-reconnect {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.76);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+  cursor: pointer;
+}
+
+.camera-expanded-preview-reconnect:hover,
+.camera-expanded-preview-reconnect:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.42);
+  outline: none;
+  background: rgba(var(--accent-rgb), 0.14);
+  color: #fff;
+}
+
+.camera-expanded-preview-reconnect:disabled {
+  cursor: progress;
+  opacity: 0.56;
+}
+
+.camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-status,
+.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-status {
+  color: rgba(255, 209, 151, 0.86);
+}
+
+::view-transition-group(expanded-camera-preview-image) {
+  z-index: calc(var(--z-modal-backdrop) + 1);
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.72, 0.2, 1);
+}
+
+::view-transition-old(expanded-camera-preview-image),
+::view-transition-new(expanded-camera-preview-image) {
+  height: 100%;
+  animation-duration: 320ms;
+  mix-blend-mode: normal;
+  object-fit: cover;
+}
+
+@keyframes cameraExpandedBackdropIn {
+  from {
+    background: rgba(3, 6, 10, 0);
+    backdrop-filter: blur(0) saturate(100%);
+    -webkit-backdrop-filter: blur(0) saturate(100%);
+  }
+}
+
+@media (max-width: 520px) {
+  .camera-expanded-preview {
+    padding: 8px;
+  }
+
+  .camera-expanded-preview-shell {
+    width: 100%;
+    height: min(92vh, 720px);
+    max-height: calc(100vh - 16px);
+    border-radius: 15px;
+  }
+
+  .camera-expanded-preview-header {
+    min-height: 52px;
+    padding: 8px 9px 8px 12px;
+  }
+
+  .camera-expanded-preview-heading h2 {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .camera-expanded-preview {
+    animation: none;
+  }
+}
+
 .control-name {
   font-weight: 600;
   color: var(--text-color);
