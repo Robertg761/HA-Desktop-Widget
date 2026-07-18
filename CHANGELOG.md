@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.2] - 2026-07-18
+
 ### Added
 
 - Added opt-in camera visuals on Quick Access tiles: a true authenticated live stream while visible,
