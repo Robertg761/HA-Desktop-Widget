@@ -74,6 +74,11 @@ const {
   createLinuxPopupHotkeyController,
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
+const {
+  PORTAL_SHORTCUTS_BACKEND,
+  createPortalGlobalShortcutsController,
+  isWaylandSession,
+} = require('./src/portal-global-shortcuts.cjs');
 
 configureMainLogging(log, { isPackaged: app.isPackaged });
 
@@ -3069,6 +3074,14 @@ function schedulePostWindowStartupTasks() {
     }
 
     try {
+      // On Wayland this rebinds all hotkeys through the portal once it confirms
+      // availability; on X11/other the globalShortcut registration above stands.
+      void initPortalShortcutsBackend();
+    } catch (error) {
+      log.warn('Portal shortcut startup initialization failed:', error.message);
+    }
+
+    try {
       setupEntityAlerts();
     } catch (error) {
       log.warn('Entity alert startup initialization failed:', error.message);
@@ -4265,7 +4278,161 @@ ipcMain.handle('is-popup-hotkey-available', (event) => {
 });
 
 // Global Hotkey Management
+//
+// Coverage across Linux desktops (no native input hook — uiohook crashed Linux, see 3.7.2):
+//   - X11 sessions: Electron globalShortcut (works, invisible to the compositor's settings).
+//   - Wayland sessions: globalShortcut is a silent no-op (KWin/Mutter own global shortcuts),
+//     so entity + popup hotkeys are routed through the XDG GlobalShortcuts portal instead.
+//     Bound shortcuts then show up in the compositor's shortcut settings.
+//   - Wayland without a GlobalShortcuts portal (some wlroots compositors): no global hotkeys,
+//     but the app degrades gracefully rather than crashing.
+// Windows/macOS are unaffected and keep globalShortcut.
+const PORTAL_ENTITY_SHORTCUT_PREFIX = 'entity.';
+const PORTAL_POPUP_SHORTCUT_ID = 'popup-toggle';
+const PORTAL_SYNC_DEBOUNCE_MS = 25;
+let portalShortcutsController = null;
+let portalShortcutsActive = false;
+let portalSyncTimer = null;
+
+function handlePortalShortcutActivated(shortcutId) {
+  log.info(`Portal shortcut activated: ${shortcutId}`);
+  if (shortcutId === PORTAL_POPUP_SHORTCUT_ID) {
+    linuxPopupHotkeyController.handleShortcut();
+    return;
+  }
+  if (!shortcutId.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) return;
+  if (!config?.globalHotkeys?.enabled) return;
+
+  const entityId = shortcutId.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length);
+  const hotkeyConfig = config.globalHotkeys.hotkeys?.[entityId];
+  if (!hotkeyConfig) return;
+  const { hotkey, action } =
+    typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
+  }
+}
+
+function collectPortalShortcuts() {
+  const shortcuts = [];
+  if (config?.globalHotkeys?.enabled) {
+    Object.entries(config.globalHotkeys.hotkeys || {}).forEach(([entityId, hotkeyConfig]) => {
+      const { hotkey, action } =
+        typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
+      if (hotkey && hotkey.trim()) {
+        shortcuts.push({
+          id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
+          description: `${action === 'turn_on' ? 'Turn on' : action === 'turn_off' ? 'Turn off' : 'Toggle'} ${entityId}`,
+          accelerator: hotkey,
+        });
+      }
+    });
+  }
+  const popupHotkey = typeof config?.popupHotkey === 'string' ? config.popupHotkey.trim() : '';
+  if (popupHotkey) {
+    shortcuts.push({
+      id: PORTAL_POPUP_SHORTCUT_ID,
+      description: 'Show or hide the widget window',
+      accelerator: popupHotkey,
+    });
+  }
+  return shortcuts;
+}
+
+// Debounced so back-to-back register/unregister calls (e.g. an IPC handler that clears
+// then saves config) collapse into one portal rebind reading the settled config.
+function syncPortalShortcuts() {
+  if (!portalShortcutsActive || !portalShortcutsController) return false;
+  if (portalSyncTimer) clearTimeout(portalSyncTimer);
+  portalSyncTimer = setTimeout(() => {
+    portalSyncTimer = null;
+    const shortcuts = collectPortalShortcuts();
+    portalShortcutsController
+      .syncShortcuts(shortcuts)
+      .then((result) => {
+        if (result.success) {
+          if (result.bound.length) {
+            const summary = result.bound
+              .map((entry) => `${entry.id} -> ${entry.trigger || 'unset'}`)
+              .join(', ');
+            log.info(`Portal shortcuts bound: ${summary}`);
+          }
+          // A bind the user once dismissed stays approved with no active trigger; the
+          // desktop reuses that saved state on every rebind without showing its dialog
+          // again, so the only fix is assigning keys in the system shortcut settings.
+          const unset = result.bound.filter((entry) => !entry.trigger);
+          if (unset.length) {
+            log.warn(
+              `Portal shortcuts have no active trigger: ${unset.map((entry) => entry.id).join(', ')}. ` +
+                'Assign them in your desktop\'s shortcut settings (e.g. KDE System Settings -> Shortcuts -> "HA Desktop Widget").'
+            );
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              unset.forEach((entry) => {
+                if (entry.id.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) {
+                  const entityId = entry.id.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length);
+                  const shortcut = shortcuts.find((candidate) => candidate.id === entry.id);
+                  mainWindow.webContents.send('hotkey-registration-failed', {
+                    entityId,
+                    hotkey: shortcut?.accelerator || '',
+                  });
+                }
+              });
+            }
+          }
+          return;
+        }
+        log.warn(`Portal shortcut binding failed: ${result.error}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          shortcuts.forEach((shortcut) => {
+            if (shortcut.id.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) {
+              mainWindow.webContents.send('hotkey-registration-failed', {
+                entityId: shortcut.id.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length),
+                hotkey: shortcut.accelerator,
+              });
+            }
+          });
+        }
+      })
+      .catch((error) => log.error('Portal shortcut sync failed:', error));
+  }, PORTAL_SYNC_DEBOUNCE_MS);
+  return true;
+}
+
+// On a Wayland session, switch entity + popup hotkeys onto the portal. No-op (keeping the
+// globalShortcut path) on X11, non-Linux, or when the compositor lacks the portal.
+async function initPortalShortcutsBackend() {
+  if (process.platform !== 'linux' || !isWaylandSession()) return;
+  try {
+    portalShortcutsController = createPortalGlobalShortcutsController({
+      log,
+      onActivated: handlePortalShortcutActivated,
+    });
+    if (!(await portalShortcutsController.isAvailable())) {
+      log.info(
+        'GlobalShortcuts portal unavailable on this Wayland compositor; global hotkeys may not work here'
+      );
+      void portalShortcutsController.close();
+      portalShortcutsController = null;
+      return;
+    }
+    portalShortcutsActive = true;
+    log.info('Using XDG GlobalShortcuts portal for global hotkeys (Wayland session)');
+    // Drop the no-op globalShortcut registrations and rebind through the portal.
+    unregisterGlobalHotkeys();
+    linuxPopupHotkeyController.unregister();
+    syncPortalShortcuts();
+  } catch (error) {
+    portalShortcutsActive = false;
+    portalShortcutsController = null;
+    log.warn('GlobalShortcuts portal init failed; keeping globalShortcut:', error?.message || error);
+  }
+}
+
 function registerGlobalHotkeys() {
+  if (portalShortcutsActive) {
+    syncPortalShortcuts();
+    return;
+  }
   unregisterGlobalHotkeys();
   if (!config.globalHotkeys.enabled) return;
 
@@ -4299,6 +4466,11 @@ function registerGlobalHotkeys() {
 }
 
 function unregisterGlobalHotkeys() {
+  if (portalShortcutsActive) {
+    // Portal binds follow the current config; a sync after the caller updates config
+    // drops whatever is no longer configured or enabled.
+    syncPortalShortcuts();
+  }
   registeredEntityHotkeyAccelerators.forEach((accelerator) => {
     try {
       globalShortcut.unregister(accelerator);
@@ -4451,16 +4623,18 @@ function acceleratorToUIOhookKey(accelerator) {
     f10: UiohookKey.F10,
     f11: UiohookKey.F11,
     f12: UiohookKey.F12,
-    0: UiohookKey.Digit0,
-    1: UiohookKey.Digit1,
-    2: UiohookKey.Digit2,
-    3: UiohookKey.Digit3,
-    4: UiohookKey.Digit4,
-    5: UiohookKey.Digit5,
-    6: UiohookKey.Digit6,
-    7: UiohookKey.Digit7,
-    8: UiohookKey.Digit8,
-    9: UiohookKey.Digit9,
+    // uiohook-napi names the number-row digit keys '0'..'9' (there is no DigitN alias),
+    // so UiohookKey.DigitN is undefined and silently fails to parse digit hotkeys.
+    0: UiohookKey['0'],
+    1: UiohookKey['1'],
+    2: UiohookKey['2'],
+    3: UiohookKey['3'],
+    4: UiohookKey['4'],
+    5: UiohookKey['5'],
+    6: UiohookKey['6'],
+    7: UiohookKey['7'],
+    8: UiohookKey['8'],
+    9: UiohookKey['9'],
     a: UiohookKey.A,
     b: UiohookKey.B,
     c: UiohookKey.C,
@@ -4508,6 +4682,11 @@ function registerPopupHotkey() {
   if (!config.popupHotkey || config.popupHotkey.trim() === '') {
     log.debug('No popup hotkey configured, cleaning up');
     return unregisterPopupHotkey();
+  }
+
+  if (portalShortcutsActive) {
+    syncPortalShortcuts();
+    return { success: true, backend: PORTAL_SHORTCUTS_BACKEND };
   }
 
   if (usesLinuxPopupHotkeyBackend) {
@@ -4699,6 +4878,11 @@ function registerPopupHotkey() {
  * Does nothing when the native uiohook integration is unavailable.
  */
 function unregisterPopupHotkey() {
+  if (portalShortcutsActive) {
+    syncPortalShortcuts();
+    return { success: true, backend: PORTAL_SHORTCUTS_BACKEND };
+  }
+
   if (usesLinuxPopupHotkeyBackend) {
     return linuxPopupHotkeyController.unregister();
   }
@@ -4906,6 +5090,15 @@ app.on('before-quit', () => {
   }
   clearProfileSyncTimers();
   flushPendingConfigWriteSync();
+  if (portalShortcutsController) {
+    portalShortcutsActive = false;
+    if (portalSyncTimer) {
+      clearTimeout(portalSyncTimer);
+      portalSyncTimer = null;
+    }
+    void portalShortcutsController.close();
+    portalShortcutsController = null;
+  }
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
 });

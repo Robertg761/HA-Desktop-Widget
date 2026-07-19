@@ -40,6 +40,31 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).not.toContain('globalShortcut.unregisterAll()');
   });
 
+  it('does not load the native input hook on Linux (preserves the 3.7.2 crash fix)', () => {
+    // uiohook-napi is required only in the non-Linux branch; loading it on Linux is what
+    // crashed users before 3.7.2. Guard against anyone re-adding an unconditional require.
+    const requireIndex = mainSource.indexOf("require('uiohook-napi')");
+    expect(requireIndex).toBeGreaterThanOrEqual(0);
+    const guardIndex = mainSource.lastIndexOf('if (usesLinuxPopupHotkeyBackend) {', requireIndex);
+    const elseIndex = mainSource.lastIndexOf('} else {', requireIndex);
+    // The require must sit inside the `else` of the usesLinuxPopupHotkeyBackend gate.
+    expect(elseIndex).toBeGreaterThan(guardIndex);
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+  });
+
+  it('routes Wayland global hotkeys through the portal while X11 keeps globalShortcut', () => {
+    // Wayland: globalShortcut is a silent no-op, so entity + popup hotkeys use the portal.
+    expect(mainSource).toContain("require('./src/portal-global-shortcuts.cjs')");
+    expect(mainSource).toContain('function initPortalShortcutsBackend');
+    // The portal only activates on a Linux Wayland session; X11/other keep globalShortcut.
+    expect(mainSource).toContain("if (process.platform !== 'linux' || !isWaylandSession()) return;");
+    expect(mainSource).toContain('handlePortalShortcutActivated');
+    expect(mainSource).toContain('portalShortcutsActive');
+    // Digit hotkeys (Alt+1) must map to the real uiohook key names, not the absent DigitN.
+    expect(mainSource).toContain("1: UiohookKey['1']");
+    expect(mainSource).not.toMatch(/UiohookKey\.Digit\d/);
+  });
+
   it('persists a replacement popup hotkey only after successful registration', () => {
     const handlerStart = mainSource.indexOf("ipcMain.handle('register-popup-hotkey'");
     const handlerEnd = mainSource.indexOf("ipcMain.handle('unregister-popup-hotkey'", handlerStart);
