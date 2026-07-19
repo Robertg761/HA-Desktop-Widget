@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.4] - 2026-07-19
+
+### Fixed
+
+- Dialog windows (persistent notifications, quick controls, hotkeys, alerts, and other
+  popups) are now readable on systems where the frosted-glass blur effect does not render,
+  such as transparent windows on Linux and on Windows without acrylic. Previously the
+  content behind a dialog could bleed through the panel and overlap its text. Dialogs now
+  keep a subtle glass tint at roughly 75% opacity, and scale with the window opacity
+  setting so a very translucent widget gets a proportionally lighter dialog, with a
+  readability floor at the lowest opacities.
+
 ## [3.7.3] - 2026-07-19
 
 ### Fixed
