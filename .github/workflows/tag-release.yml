@@ -7,6 +7,12 @@ on:
         description: Stable version to release (X.Y.Z, no leading v)
         required: true
         type: string
+  push:
+    branches:
+      # Alternative trigger for environments that can push branches but cannot
+      # dispatch workflows: push a branch named release-tag/X.Y.Z pointing at
+      # the main HEAD to release. The branch is deleted after tagging.
+      - 'release-tag/*'
 
 permissions:
   actions: write
@@ -29,10 +35,18 @@ jobs:
       - name: Tag main and start the release workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${REF_NAME#release-tag/}"
+          fi
 
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid version: $VERSION. Expected X.Y.Z (stable, no leading v)." >&2
@@ -66,3 +80,7 @@ jobs:
             --ref main \
             --raw-field "release_tag=$release_tag"
           echo "Tagged main as $release_tag and dispatched the release workflow."
+
+          if [[ "$EVENT_NAME" == 'push' ]]; then
+            git push origin --delete "$REF_NAME" || true
+          fi
