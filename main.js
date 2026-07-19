@@ -4318,7 +4318,9 @@ function collectPortalShortcuts() {
   if (config?.globalHotkeys?.enabled) {
     Object.entries(config.globalHotkeys.hotkeys || {}).forEach(([entityId, hotkeyConfig]) => {
       const { hotkey, action } =
-        typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
+        typeof hotkeyConfig === 'object'
+          ? hotkeyConfig
+          : { hotkey: hotkeyConfig, action: 'toggle' };
       if (hotkey && hotkey.trim()) {
         shortcuts.push({
           id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
@@ -4424,7 +4426,10 @@ async function initPortalShortcutsBackend() {
   } catch (error) {
     portalShortcutsActive = false;
     portalShortcutsController = null;
-    log.warn('GlobalShortcuts portal init failed; keeping globalShortcut:', error?.message || error);
+    log.warn(
+      'GlobalShortcuts portal init failed; keeping globalShortcut:',
+      error?.message || error
+    );
   }
 }
 

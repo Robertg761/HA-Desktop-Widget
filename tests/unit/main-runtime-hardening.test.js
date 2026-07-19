@@ -57,7 +57,9 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain("require('./src/portal-global-shortcuts.cjs')");
     expect(mainSource).toContain('function initPortalShortcutsBackend');
     // The portal only activates on a Linux Wayland session; X11/other keep globalShortcut.
-    expect(mainSource).toContain("if (process.platform !== 'linux' || !isWaylandSession()) return;");
+    expect(mainSource).toContain(
+      "if (process.platform !== 'linux' || !isWaylandSession()) return;"
+    );
     expect(mainSource).toContain('handlePortalShortcutActivated');
     expect(mainSource).toContain('portalShortcutsActive');
     // Digit hotkeys (Alt+1) must map to the real uiohook key names, not the absent DigitN.

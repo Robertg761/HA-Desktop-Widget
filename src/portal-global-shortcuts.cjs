@@ -33,7 +33,10 @@ const BIND_SHORTCUTS_TIMEOUT_MS = 300000;
 
 function isWaylandSession(env = process.env) {
   if (!env || typeof env !== 'object') return false;
-  if (typeof env.XDG_SESSION_TYPE === 'string' && env.XDG_SESSION_TYPE.toLowerCase() === 'wayland') {
+  if (
+    typeof env.XDG_SESSION_TYPE === 'string' &&
+    env.XDG_SESSION_TYPE.toLowerCase() === 'wayland'
+  ) {
     return true;
   }
   return typeof env.WAYLAND_DISPLAY === 'string' && env.WAYLAND_DISPLAY.trim() !== '';
@@ -205,7 +208,9 @@ function createPortalGlobalShortcutsController(options = {}) {
   }
 
   function senderPathComponent() {
-    return String(bus.name || '').replace(/^:/, '').replace(/\./g, '_');
+    return String(bus.name || '')
+      .replace(/^:/, '')
+      .replace(/\./g, '_');
   }
 
   async function ensureRegistryRegistration() {
@@ -282,7 +287,10 @@ function createPortalGlobalShortcutsController(options = {}) {
 
       let timeoutTimer;
       const timeout = new Promise((resolve) => {
-        timeoutTimer = setTimeout(() => resolve({ code: -1, results: {}, timedOut: true }), timeoutMs);
+        timeoutTimer = setTimeout(
+          () => resolve({ code: -1, results: {}, timedOut: true }),
+          timeoutMs
+        );
         if (typeof timeoutTimer.unref === 'function') timeoutTimer.unref();
       });
       const response = await Promise.race([responsePromise, timeout]);
