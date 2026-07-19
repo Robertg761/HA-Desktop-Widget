@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.7.2] - 2026-07-18
+## [3.7.3] - 2026-07-19
+
+### Fixed
+
+- Global hotkeys (entity/scene shortcuts and the popup hotkey) now work on Linux Wayland
+  sessions. They are registered through the desktop's XDG GlobalShortcuts portal (KDE
+  Plasma, GNOME), which may ask for a one-time approval and lists the shortcuts in the
+  system's shortcut settings where they can be rebound. X11 sessions are unchanged and
+  keep using the previous registration method. Wayland compositors without a
+  GlobalShortcuts portal are detected and left unchanged.
+- Popup hotkeys using a number key (for example Ctrl+1) now register correctly on Windows
+  and macOS; previously they were silently rejected.
 
 ### Added
 
