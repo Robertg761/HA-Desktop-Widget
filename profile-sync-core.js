@@ -1,4 +1,7 @@
 const nodeCrypto = require('crypto');
+const { promisify } = require('util');
+
+const scryptAsync = promisify(nodeCrypto.scrypt);
 
 const SYNC_SCHEMA_VERSION = 2;
 const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
@@ -169,14 +172,14 @@ function compareIsoTimestamps(a, b) {
   return aMs > bMs ? 1 : -1;
 }
 
-function encryptProfilePayload(profile, passphrase) {
+async function encryptProfilePayload(profile, passphrase) {
   if (!passphrase || typeof passphrase !== 'string') {
     throw new Error('Passphrase is required for encryption');
   }
 
   const salt = nodeCrypto.randomBytes(16);
   const iv = nodeCrypto.randomBytes(12);
-  const key = nodeCrypto.scryptSync(passphrase, salt, 32);
+  const key = await scryptAsync(passphrase, salt, 32);
   const cipher = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
   const plaintext = Buffer.from(stableStringify(profile || {}), 'utf8');
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
@@ -193,7 +196,7 @@ function encryptProfilePayload(profile, passphrase) {
   };
 }
 
-function decryptProfilePayload(payload, passphrase) {
+async function decryptProfilePayload(payload, passphrase) {
   if (!payload || payload.encrypted !== true) {
     return deepClone(payload);
   }
@@ -210,7 +213,7 @@ function decryptProfilePayload(payload, passphrase) {
   const iv = Buffer.from(payload.iv || '', 'base64');
   const authTag = Buffer.from(payload.authTag || '', 'base64');
   const ciphertext = Buffer.from(payload.ciphertext || '', 'base64');
-  const key = nodeCrypto.scryptSync(passphrase, salt, 32);
+  const key = await scryptAsync(passphrase, salt, 32);
   const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
 
@@ -229,7 +232,7 @@ function decryptProfilePayload(payload, passphrase) {
   return parsed;
 }
 
-function buildSyncEnvelope({
+async function buildSyncEnvelope({
   profile,
   updatedAt,
   updatedByDeviceId,
@@ -249,7 +252,7 @@ function buildSyncEnvelope({
     updatedAt: normalizedUpdatedAt,
     updatedByDeviceId: updatedByDeviceId || 'unknown-device',
     syncScope: normalizedScope,
-    payload: encrypt ? encryptProfilePayload(profile, passphrase) : deepClone(profile),
+    payload: encrypt ? await encryptProfilePayload(profile, passphrase) : deepClone(profile),
   };
 }
 
@@ -304,7 +307,7 @@ function serializeSyncEnvelope(envelope) {
   return `${JSON.stringify(envelope, null, 2)}\n`;
 }
 
-function decodeEnvelopeProfile(envelope, passphrase) {
+async function decodeEnvelopeProfile(envelope, passphrase) {
   validateEnvelopeShape(envelope);
 
   if (isObject(envelope.payload) && envelope.payload.encrypted === true) {

@@ -207,9 +207,10 @@ New GitHub releases automatically generate notes from merged pull requests and c
 - **Folder changes**: When switching folders, the app can copy the existing sync file to the new location or keep the current folder.
 - **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections for Quick Access/layout, visual personalization, automation/alerts, and connection/media preferences.
 - **Need help button**: Opens profile sync setup instructions in your browser.
-- **Sync behavior**: Pull on startup, push on profile changes (debounced), and periodic sync every 5 minutes (default).
-- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins.
-- **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation).
+- **Sync behavior**: On startup the newer side wins (offline edits on this device are pushed instead of discarded), pushes on profile changes (debounced), and periodic sync every 5 minutes (default).
+- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins on the whole profile (no per-field merge). Because direction is chosen by timestamp, large clock skew between devices can pick the wrong winner, and conflict copies created by cloud sync clients (e.g. Dropbox "conflicted copy" files) are not detected.
+- **Safety net**: Before a remote profile is applied, the previous local profile is backed up to `profile-sync-backups/` in the app's data folder (the last 5 are kept).
+- **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation); passphrases must be at least 8 characters.
 - **Schema compatibility**: Sync writes use profile sync schema v2; older app versions must update to participate in sync.
 - **Local-only data**: Home Assistant URL/token, window position/size, startup setting, and profile-sync internals remain local.
 

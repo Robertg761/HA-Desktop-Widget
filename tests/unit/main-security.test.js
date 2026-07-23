@@ -57,7 +57,7 @@ describe('main-process security helpers', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     });
 
-    it('accepts default-named files when one side is in an allowed folder', async () => {
+    it('accepts default-named files when both sides are in their allowed folders', async () => {
       const sourceDir = path.join(tempDir, 'sync');
       const destinationDir = path.join(tempDir, 'other');
       fs.mkdirSync(sourceDir, { recursive: true });
@@ -67,7 +67,8 @@ describe('main-process security helpers', () => {
         fromPath: path.join(sourceDir, 'ha-widget-profile-sync.json'),
         toPath: path.join(destinationDir, 'ha-widget-profile-sync.json'),
         defaultFileName: 'ha-widget-profile-sync.json',
-        allowedFolders: [sourceDir],
+        allowedSourceFolders: [sourceDir],
+        allowedDestinationFolders: [destinationDir],
         fsModule: fs,
       });
 
@@ -93,7 +94,8 @@ describe('main-process security helpers', () => {
           fromPath: path.join(sourceDir, 'not-the-profile.json'),
           toPath: path.join(otherDir, 'ha-widget-profile-sync.json'),
           defaultFileName: 'ha-widget-profile-sync.json',
-          allowedFolders: [sourceDir],
+          allowedSourceFolders: [sourceDir],
+          allowedDestinationFolders: [otherDir],
           fsModule: fs,
         })
       ).rejects.toThrow('Profile sync copies are limited');
@@ -101,12 +103,24 @@ describe('main-process security helpers', () => {
       await expect(
         validateProfileSyncCopyPaths({
           fromPath: path.join(otherDir, 'ha-widget-profile-sync.json'),
-          toPath: path.join(tempDir, 'outside', 'ha-widget-profile-sync.json'),
+          toPath: path.join(sourceDir, 'ha-widget-profile-sync.json'),
           defaultFileName: 'ha-widget-profile-sync.json',
-          allowedFolders: [sourceDir],
+          allowedSourceFolders: [sourceDir],
+          allowedDestinationFolders: [sourceDir],
           fsModule: fs,
         })
-      ).rejects.toThrow('configured sync folder or app data folder');
+      ).rejects.toThrow('copy source must be inside');
+
+      await expect(
+        validateProfileSyncCopyPaths({
+          fromPath: path.join(sourceDir, 'ha-widget-profile-sync.json'),
+          toPath: path.join(tempDir, 'outside', 'ha-widget-profile-sync.json'),
+          defaultFileName: 'ha-widget-profile-sync.json',
+          allowedSourceFolders: [sourceDir],
+          allowedDestinationFolders: [otherDir],
+          fsModule: fs,
+        })
+      ).rejects.toThrow('copy destination must be');
     });
   });
 });

@@ -16,7 +16,7 @@
   "index.html|html-placeholder|input#popup-hotkey-input|\"Not set (click Set Hotkey)\"",
   "index.html|html-placeholder|input#primary-cards-search|\"Search entities...\"",
   "index.html|html-placeholder|input#profile-sync-folder-path|\"Choose a synced folder...\"",
-  "index.html|html-placeholder|input#profile-sync-passphrase|\"Enter passphrase (min 4 chars)\"",
+  "index.html|html-placeholder|input#profile-sync-passphrase|\"Enter passphrase (min 8 chars)\"",
   "index.html|html-placeholder|input#quick-controls-search|\"Search entities...\"",
   "index.html|html-placeholder|input#target-state-input|\"e.g., on, off, open, closed\"",
   "index.html|html-title|button#view-logs-btn|\"Opens the log file location in your file explorer\"",

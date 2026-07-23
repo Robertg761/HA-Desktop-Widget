@@ -15,7 +15,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
+const nodeCrypto = require('crypto');
 const { pathToFileURL, fileURLToPath } = require('url');
 
 // The BUNDLED preload (see vite.preload.config.js), not the unbundled preload.js. Preload scripts
@@ -215,6 +215,14 @@ let preservedEncryptedTokenForRecovery = null;
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
+// After applying a pulled profile, the renderer echoes the config back through
+// update-config; suppress auto-push scheduling briefly so that echo cannot
+// trigger a push, without swallowing later genuine user edits.
+const PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS = 3000;
+const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
+const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
+const PROFILE_SYNC_BACKUP_KEEP = 5;
+const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
   'cloudFile',
@@ -231,13 +239,14 @@ const profileSyncRuntime = {
   rerun: null,
   pushDebounceTimer: null,
   intervalTimer: null,
-  suppressNextAutoPush: false,
+  suppressAutoPushUntil: 0,
   needsResolution: false,
   pendingRemoteEnvelope: null,
   localProfileHash: null,
   localProfileUpdatedAt: null,
   passphraseSession: '',
   passphraseWarning: '',
+  approvedCopyDestinationFolders: [],
 };
 
 // Popup hotkey state
@@ -344,8 +353,14 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   const activeScope = getActiveProfileSyncScope();
   const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
+  // Seed from the persisted content-change timestamp. lastSyncAt is only a
+  // fallback for configs written before profileUpdatedAt existed — it tracks
+  // sync *attempts* (including failures), so it must not be preferred here or
+  // a string of failed syncs would make the local profile look freshly edited.
   profileSyncRuntime.localProfileUpdatedAt =
-    config?.profileSync?.lastSyncAt || new Date().toISOString();
+    config?.profileSync?.profileUpdatedAt ||
+    config?.profileSync?.lastSyncAt ||
+    new Date().toISOString();
 }
 
 function mainT(key, vars = {}) {
@@ -456,11 +471,40 @@ function normalizeProfileSyncProvider(provider) {
   return provider.trim();
 }
 
-function getDefaultProfileSyncFolderPath(_provider, existingPath = '') {
+function getProviderDefaultFolderCandidates(provider) {
+  let home = '';
+  try {
+    home = app.getPath('home');
+  } catch {
+    return [];
+  }
+  if (provider === 'googleDrive') {
+    return [path.join(home, 'Google Drive'), path.join(home, 'GoogleDrive')];
+  }
+  if (provider === 'icloudDrive') {
+    if (process.platform === 'darwin') {
+      return [path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs')];
+    }
+    return [path.join(home, 'iCloudDrive'), path.join(home, 'iCloud Drive')];
+  }
+  if (provider === 'syncthing') {
+    return [path.join(home, 'Sync'), path.join(home, 'Syncthing')];
+  }
+  return [];
+}
+
+function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
   if (existingPath) {
     const existingFolder = path.dirname(existingPath);
     if (existingFolder && existingFolder !== '.') {
       return existingFolder;
+    }
+  }
+  for (const candidate of getProviderDefaultFolderCandidates(normalizeProfileSyncProvider(provider))) {
+    try {
+      if (fs.statSync(candidate).isDirectory()) return candidate;
+    } catch {
+      // candidate does not exist; try the next one
     }
   }
   return app.getPath('userData');
@@ -582,10 +626,11 @@ function isPrereleaseVersion(value) {
 }
 
 function generateProfileSyncDeviceId() {
-  const host = (os.hostname && os.hostname()) || 'unknown-host';
-  const raw = `${host}-${process.platform}-${process.arch}-${Date.now()}-${Math.random()}`;
+  // Fully random: the ID is written into the shared sync file, so it must not
+  // leak host details such as the machine name.
   return (
-    Buffer.from(raw)
+    nodeCrypto
+      .randomBytes(16)
       .toString('base64')
       .replace(/[^a-zA-Z0-9]/g, '')
       .slice(0, 20) || 'device'
@@ -614,6 +659,7 @@ function getDefaultProfileSyncConfig() {
     lastSyncAt: null,
     lastSyncStatus: 'idle',
     lastSyncError: '',
+    profileUpdatedAt: null,
     deviceId: generateProfileSyncDeviceId(),
   };
 }
@@ -636,6 +682,12 @@ function ensureProfileSyncConfigDefaults(target) {
   }
   if (typeof target.profileSync.lastSyncError !== 'string') {
     target.profileSync.lastSyncError = '';
+  }
+  if (
+    target.profileSync.profileUpdatedAt != null &&
+    typeof target.profileSync.profileUpdatedAt !== 'string'
+  ) {
+    target.profileSync.profileUpdatedAt = null;
   }
   return target;
 }
@@ -1631,8 +1683,13 @@ async function writeCloudFileEnvelope(filePath, envelope) {
   const dirPath = path.dirname(filePath);
   const tempPath = `${filePath}.tmp-${Date.now()}`;
   await fs.promises.mkdir(dirPath, { recursive: true });
-  await fs.promises.writeFile(tempPath, serialized, 'utf8');
-  await fs.promises.rename(tempPath, filePath);
+  try {
+    await fs.promises.writeFile(tempPath, serialized, 'utf8');
+    await fs.promises.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.promises.unlink(tempPath).catch(() => {});
+    throw error;
+  }
 }
 
 async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
@@ -1645,7 +1702,12 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
       fromPath,
       toPath,
       defaultFileName: PROFILE_SYNC_DEFAULT_FILE_NAME,
-      allowedFolders: [configuredSyncFolder, app.getPath('userData')],
+      allowedSourceFolders: [configuredSyncFolder, app.getPath('userData')],
+      allowedDestinationFolders: [
+        configuredSyncFolder,
+        app.getPath('userData'),
+        ...profileSyncRuntime.approvedCopyDestinationFolders,
+      ],
       fsModule: fs,
     });
 
@@ -1714,7 +1776,7 @@ function computeScopedProfileHash(profile, syncScope) {
   });
 }
 
-function buildLocalProfileEnvelope(
+async function buildLocalProfileEnvelope(
   updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()
 ) {
   const profileSync = getProfileSyncConfig();
@@ -1735,11 +1797,38 @@ function buildLocalProfileEnvelope(
   });
 }
 
-function decodeEnvelopeProfile(envelope) {
+async function decodeEnvelopeProfile(envelope) {
   const passphrase = getActiveProfileSyncPassphrase();
-  const profile = profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
+  const profile = await profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
   const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(envelope);
   return { profile, syncScope };
+}
+
+async function backupLocalProfileBeforePullApply(syncScope) {
+  try {
+    const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+    await fs.promises.mkdir(backupDir, { recursive: true });
+    const normalizedScope = getNormalizedProfileSyncScopeValue(syncScope);
+    const backup = {
+      backedUpAt: new Date().toISOString(),
+      syncScope: normalizedScope,
+      profile: profileSyncCore.projectSyncProfile(config, normalizedScope),
+    };
+    await fs.promises.writeFile(
+      path.join(backupDir, `local-profile-${Date.now()}.json`),
+      JSON.stringify(backup, null, 2),
+      'utf8'
+    );
+    const entries = (await fs.promises.readdir(backupDir))
+      .filter((name) => /^local-profile-\d+\.json$/.test(name))
+      .sort();
+    while (entries.length > PROFILE_SYNC_BACKUP_KEEP) {
+      const oldest = entries.shift();
+      await fs.promises.unlink(path.join(backupDir, oldest)).catch(() => {});
+    }
+  } catch (error) {
+    log.warn('Failed to back up local profile before applying remote sync:', error.message);
+  }
 }
 
 function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
@@ -1752,6 +1841,7 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
   merged.profileSync = {
     ...previous.profileSync,
     syncScope: nextScope,
+    profileUpdatedAt: updatedAt || new Date().toISOString(),
   };
   config = merged;
   pruneConfig(config);
@@ -1765,7 +1855,7 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
     getActiveProfileSyncScope()
   );
   profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
-  profileSyncRuntime.suppressNextAutoPush = true;
+  profileSyncRuntime.suppressAutoPushUntil = Date.now() + PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS;
 
   saveConfig();
   syncDesktopPinWindowsWithConfig();
@@ -1798,9 +1888,11 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
 
   profileSyncRuntime.localProfileHash = nextHash;
   profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
+  if (config?.profileSync) {
+    config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
+  }
 
-  if (profileSyncRuntime.suppressNextAutoPush) {
-    profileSyncRuntime.suppressNextAutoPush = false;
+  if (Date.now() < profileSyncRuntime.suppressAutoPushUntil) {
     return;
   }
 
@@ -2589,6 +2681,9 @@ function flushPendingConfigWriteSync() {
 function saveConfig() {
   log.debug('Scheduling configuration save');
   try {
+    // Track first so profileSync.profileUpdatedAt lands in this snapshot
+    // rather than trailing one save behind.
+    updateLocalProfileSyncTracking();
     pendingConfigSnapshot = buildConfigSnapshotForSave();
     if (configWriteTimer) {
       clearTimeout(configWriteTimer);
@@ -2597,7 +2692,6 @@ function saveConfig() {
       configWriteTimer = null;
       flushConfigWriteQueue();
     }, CONFIG_SAVE_DEBOUNCE_MS);
-    updateLocalProfileSyncTracking();
   } catch (error) {
     log.error('Failed to schedule config save:', error);
   }
@@ -2644,7 +2738,7 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const { profile: remoteProfile, syncScope } = decodeEnvelopeProfile(readResult.envelope);
+  const { profile: remoteProfile, syncScope } = await decodeEnvelopeProfile(readResult.envelope);
   const localProfile = profileSyncCore.projectSyncProfile(config, syncScope);
   const localHash = computeScopedProfileHash(localProfile, syncScope);
   const remoteHash = computeScopedProfileHash(remoteProfile, syncScope);
@@ -2703,15 +2797,13 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
   emitProfileSyncStatus();
 
   try {
-    const localEnvelope = buildLocalProfileEnvelope(
-      profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()
-    );
+    const localUpdatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString();
     const remoteResult = await readConfiguredSyncEnvelope();
     let finalDirection = direction;
 
     if (direction === 'auto') {
       finalDirection = profileSyncCore.chooseSyncDirection({
-        localUpdatedAt: localEnvelope.updatedAt,
+        localUpdatedAt,
         remoteUpdatedAt: remoteResult.envelope?.updatedAt || null,
         remoteExists: remoteResult.exists,
       });
@@ -2732,16 +2824,18 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
         return { ok: true, action: 'none', status };
       }
 
-      const { profile: remoteProfile, syncScope: remoteSyncScope } = decodeEnvelopeProfile(
+      const { profile: remoteProfile, syncScope: remoteSyncScope } = await decodeEnvelopeProfile(
         remoteResult.envelope
       );
       const localProfile = profileSyncCore.projectSyncProfile(config, remoteSyncScope);
       const localHash = computeScopedProfileHash(localProfile, remoteSyncScope);
       const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
       if (remoteHash !== localHash || source === 'first_enable_resolution') {
+        await backupLocalProfileBeforePullApply(remoteSyncScope);
         applySyncedProfileToConfig(remoteProfile, remoteResult.envelope.updatedAt, remoteSyncScope);
       }
       profileSyncRuntime.localProfileUpdatedAt = remoteResult.envelope.updatedAt;
+      getProfileSyncConfig().profileUpdatedAt = remoteResult.envelope.updatedAt;
       updateProfileSyncStatus('success', '');
       setupProfileSyncInterval();
       const status = buildProfileSyncStatus();
@@ -2750,9 +2844,10 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
     }
 
     if (finalDirection === 'push') {
-      const envelopeToWrite = buildLocalProfileEnvelope(new Date().toISOString());
+      const envelopeToWrite = await buildLocalProfileEnvelope(new Date().toISOString());
       await writeConfiguredSyncEnvelope(envelopeToWrite);
       profileSyncRuntime.localProfileUpdatedAt = envelopeToWrite.updatedAt;
+      getProfileSyncConfig().profileUpdatedAt = envelopeToWrite.updatedAt;
       updateProfileSyncStatus('success', '');
       setupProfileSyncInterval();
       const status = buildProfileSyncStatus();
@@ -2784,9 +2879,12 @@ async function initializeProfileSyncOnStartup() {
   if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
 
   try {
-    await runProfileSync('pull', 'startup');
+    // 'auto' compares content timestamps, so offline edits made on this device
+    // after the remote's last write are pushed instead of being discarded by a
+    // forced pull.
+    await runProfileSync('auto', 'startup');
   } catch (error) {
-    log.warn('Profile sync startup pull failed:', error.message);
+    log.warn('Profile sync startup run failed:', error.message);
   }
 }
 
@@ -3176,6 +3274,10 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   ensureUpdateConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   pruneConfig(config);
+  // The renderer's echo of profileSync may be stale; the content-change
+  // timestamp is main-process-authoritative (saveConfig advances it on real
+  // profile changes).
+  config.profileSync.profileUpdatedAt = prevConfig?.profileSync?.profileUpdatedAt ?? null;
   if (
     TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason) &&
     !isPlaceholderOrEmptyToken(config.homeAssistant?.token)
@@ -3632,6 +3734,16 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider) => {
     return { canceled: true };
   }
 
+  // Folders picked through the native dialog become valid copy destinations;
+  // copy-profile-sync-file rejects destinations the user never selected.
+  profileSyncRuntime.approvedCopyDestinationFolders.push(folderPath);
+  if (
+    profileSyncRuntime.approvedCopyDestinationFolders.length >
+    PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS
+  ) {
+    profileSyncRuntime.approvedCopyDestinationFolders.shift();
+  }
+
   const filePath = path.join(folderPath, PROFILE_SYNC_DEFAULT_FILE_NAME);
   return { canceled: false, folderPath, filePath, provider: providerToUse };
 });
@@ -3670,8 +3782,14 @@ ipcMain.handle('set-profile-sync-passphrase', async (event, passphrase, remember
   const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
   if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
   try {
-    if (typeof passphrase !== 'string' || passphrase.trim().length < 4) {
-      return { success: false, error: 'Passphrase must be at least 4 characters long' };
+    if (
+      typeof passphrase !== 'string' ||
+      passphrase.trim().length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
+    ) {
+      return {
+        success: false,
+        error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+      };
     }
     const persisted = persistRememberedProfileSyncPassphrase(passphrase.trim(), !!remember);
     emitProfileSyncStatus();
@@ -3741,9 +3859,10 @@ ipcMain.handle('resolve-profile-sync-first-enable', async (event, choice) => {
         throw new Error('Remote profile is no longer available');
       }
       const { profile: remoteProfile, syncScope: remoteSyncScope } =
-        decodeEnvelopeProfile(envelope);
+        await decodeEnvelopeProfile(envelope);
       profileSyncRuntime.needsResolution = false;
       profileSyncRuntime.pendingRemoteEnvelope = null;
+      await backupLocalProfileBeforePullApply(remoteSyncScope);
       applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
       updateProfileSyncStatus('success', '');
       setupProfileSyncInterval();

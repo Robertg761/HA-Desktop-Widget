@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Profile Sync: the first settings change after pulling a remote profile now auto-pushes
+  again. Previously a stale internal flag swallowed that push until the next change or
+  the 5-minute interval.
+- Profile Sync: failed sync attempts no longer make the local profile look freshly
+  edited. The app now tracks when profile content actually changed separately from when
+  sync last ran, so a device that repeatedly failed to sync (for example, waiting for an
+  encryption passphrase) can no longer silently overwrite newer changes from another
+  device.
+- Profile Sync: startup sync now compares content timestamps and keeps whichever side is
+  newer, instead of always pulling and discarding edits made while offline.
+- Profile Sync: interrupted sync-file writes now clean up their temporary file.
+
+### Changed
+
+- Profile Sync: before a remote profile is applied, the previous local profile is backed
+  up to `profile-sync-backups/` in the app data folder (last 5 kept).
+- Profile Sync: encryption passphrases must now be at least 8 characters (previously 4).
+- Profile Sync: encryption key derivation no longer blocks the main process, and sync
+  runs skip the redundant encryption work they previously did up front.
+- Profile Sync: new device IDs are fully random instead of derived from the computer
+  name, so the shared sync file no longer hints at your hostname.
+- Profile Sync: choosing the Google Drive, iCloud Drive, or Syncthing provider now
+  suggests that provider's local folder when one exists.
+- Profile Sync: sync-file copies are restricted to folders you selected, the configured
+  sync folder, or the app data folder on both ends (previously only one end was checked).
+
 ## [3.7.4] - 2026-07-19
 
 ### Fixed

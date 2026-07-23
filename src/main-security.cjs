@@ -61,23 +61,33 @@ async function validateProfileSyncCopyPaths({
   fromPath,
   toPath,
   defaultFileName,
-  allowedFolders,
+  allowedSourceFolders,
+  allowedDestinationFolders,
   fsModule,
 }) {
   const sourcePath = await normalizeProfileSyncCopyPath(fromPath, defaultFileName, fsModule);
   const destinationPath = await normalizeProfileSyncCopyPath(toPath, defaultFileName, fsModule);
-  const normalizedAllowedFolders = await normalizeAllowedProfileSyncFolders(
-    allowedFolders,
+  const normalizedSourceFolders = await normalizeAllowedProfileSyncFolders(
+    allowedSourceFolders || [],
+    fsModule
+  );
+  const normalizedDestinationFolders = await normalizeAllowedProfileSyncFolders(
+    allowedDestinationFolders || [],
     fsModule
   );
 
-  const touchesAllowedFolder = normalizedAllowedFolders.some(
-    (folder) =>
-      isPathInsideDirectory(sourcePath, folder) || isPathInsideDirectory(destinationPath, folder)
-  );
+  if (!normalizedSourceFolders.some((folder) => isPathInsideDirectory(sourcePath, folder))) {
+    throw new Error(
+      'Profile sync copy source must be inside the configured sync folder or app data folder'
+    );
+  }
 
-  if (!touchesAllowedFolder) {
-    throw new Error('Profile sync copy must involve the configured sync folder or app data folder');
+  if (
+    !normalizedDestinationFolders.some((folder) => isPathInsideDirectory(destinationPath, folder))
+  ) {
+    throw new Error(
+      'Profile sync copy destination must be a selected sync folder or the app data folder'
+    );
   }
 
   return { sourcePath, destinationPath };

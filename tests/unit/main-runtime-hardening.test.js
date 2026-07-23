@@ -222,3 +222,46 @@ describe('main-process wiring safeguards', () => {
     expect(stylesSource).not.toMatch(/opacity:\s*var\(--window-opacity/);
   });
 });
+
+describe('profile sync runtime safeguards', () => {
+  it('uses a time-bounded suppression window instead of a one-shot auto-push flag', () => {
+    expect(mainSource).toContain('suppressAutoPushUntil');
+    expect(mainSource).not.toContain('suppressNextAutoPush');
+    expect(mainSource).toContain('Date.now() < profileSyncRuntime.suppressAutoPushUntil');
+  });
+
+  it('tracks profile content changes separately from sync attempt timestamps', () => {
+    expect(mainSource).toContain('profileUpdatedAt: null');
+    expect(mainSource).toContain('config?.profileSync?.profileUpdatedAt ||');
+    expect(mainSource).toContain('config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt');
+    // Tracking must run before the snapshot is built so the timestamp lands in
+    // the same save instead of trailing one save behind.
+    expect(mainSource.indexOf('updateLocalProfileSyncTracking();')).toBeLessThan(
+      mainSource.indexOf('pendingConfigSnapshot = buildConfigSnapshotForSave();')
+    );
+  });
+
+  it('resolves startup sync direction from content timestamps instead of forcing a pull', () => {
+    expect(mainSource).toContain("await runProfileSync('auto', 'startup')");
+    expect(mainSource).not.toContain("runProfileSync('pull', 'startup')");
+  });
+
+  it('backs up the local profile before applying a remote profile', () => {
+    expect(mainSource).toContain('async function backupLocalProfileBeforePullApply');
+    expect(mainSource).toContain('await backupLocalProfileBeforePullApply(remoteSyncScope);');
+    expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");
+  });
+
+  it('enforces a stronger passphrase minimum and random device ids', () => {
+    expect(mainSource).toContain('const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8');
+    expect(mainSource).toContain('passphrase.trim().length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH');
+    expect(mainSource).not.toContain('os.hostname');
+    expect(mainSource).toContain('.randomBytes(16)');
+  });
+
+  it('cleans up temp sync files and restricts copy sources and destinations', () => {
+    expect(mainSource).toContain('await fs.promises.unlink(tempPath).catch(() => {});');
+    expect(mainSource).toContain('allowedSourceFolders: [configuredSyncFolder');
+    expect(mainSource).toContain('approvedCopyDestinationFolders');
+  });
+});

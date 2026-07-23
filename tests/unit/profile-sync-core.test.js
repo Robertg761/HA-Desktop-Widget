@@ -232,7 +232,7 @@ describe('profile-sync-core', () => {
     expect(hashA).toBe(hashB);
   });
 
-  test('should round-trip encrypted envelope with passphrase', () => {
+  test('should round-trip encrypted envelope with passphrase', async () => {
     const profile = {
       favoriteEntities: ['light.office'],
     };
@@ -246,7 +246,7 @@ describe('profile-sync-core', () => {
       },
     });
 
-    const envelope = buildSyncEnvelope({
+    const envelope = await buildSyncEnvelope({
       profile,
       updatedAt: '2026-02-23T08:00:00.000Z',
       updatedByDeviceId: 'device-a',
@@ -257,22 +257,22 @@ describe('profile-sync-core', () => {
 
     const serialized = JSON.stringify(envelope);
     const parsed = parseSyncEnvelope(serialized);
-    const decoded = decodeEnvelopeProfile(parsed, 'strong-passphrase');
+    const decoded = await decodeEnvelopeProfile(parsed, 'strong-passphrase');
     const decodedScope = extractSyncScopeFromEnvelope(parsed);
 
     expect(decoded).toEqual(profile);
     expect(decodedScope).toEqual(scope);
   });
 
-  test('should fail to decode encrypted envelope with wrong passphrase', () => {
-    const envelope = buildSyncEnvelope({
+  test('should fail to decode encrypted envelope with wrong passphrase', async () => {
+    const envelope = await buildSyncEnvelope({
       profile: { alwaysOnTop: true },
       updatedByDeviceId: 'device-a',
       encrypt: true,
       passphrase: 'correct-passphrase',
     });
 
-    expect(() => decodeEnvelopeProfile(envelope, 'wrong-passphrase')).toThrow(
+    await expect(decodeEnvelopeProfile(envelope, 'wrong-passphrase')).rejects.toThrow(
       'Failed to decrypt synced profile payload'
     );
   });
@@ -299,18 +299,18 @@ describe('profile-sync-core', () => {
     );
   });
 
-  test('should validate decode behavior for missing passphrase and invalid payload fields', () => {
-    const encryptedEnvelope = buildSyncEnvelope({
+  test('should validate decode behavior for missing passphrase and invalid payload fields', async () => {
+    const encryptedEnvelope = await buildSyncEnvelope({
       profile: { alwaysOnTop: true },
       updatedByDeviceId: 'device-a',
       encrypt: true,
       passphrase: 'correct-passphrase',
     });
 
-    expect(() => decodeEnvelopeProfile(encryptedEnvelope)).toThrow(
+    await expect(decodeEnvelopeProfile(encryptedEnvelope)).rejects.toThrow(
       'Passphrase is required to decrypt profile payload'
     );
-    expect(() => decodeEnvelopeProfile(encryptedEnvelope, '')).toThrow(
+    await expect(decodeEnvelopeProfile(encryptedEnvelope, '')).rejects.toThrow(
       'Passphrase is required to decrypt profile payload'
     );
 
@@ -321,15 +321,15 @@ describe('profile-sync-core', () => {
       syncScope: getDefaultSyncScope(),
       payload: '',
     };
-    expect(() => decodeEnvelopeProfile(envelopeWithEmptyPayload)).toThrow(
+    await expect(decodeEnvelopeProfile(envelopeWithEmptyPayload)).rejects.toThrow(
       'Sync payload must be an object'
     );
 
     const encryptedEnvelopeMissingCiphertext = JSON.parse(JSON.stringify(encryptedEnvelope));
     encryptedEnvelopeMissingCiphertext.payload.ciphertext = '';
-    expect(() =>
+    await expect(
       decodeEnvelopeProfile(encryptedEnvelopeMissingCiphertext, 'correct-passphrase')
-    ).toThrow('Failed to decrypt synced profile payload');
+    ).rejects.toThrow('Failed to decrypt synced profile payload');
   });
 
   test('should prefer newer side in timestamp comparison and choose direction', () => {
@@ -388,7 +388,7 @@ describe('profile-sync-core', () => {
     ).toBe('push');
   });
 
-  test('should parse v1 envelopes and default to all sync scope', () => {
+  test('should parse v1 envelopes and default to all sync scope', async () => {
     const legacyEnvelope = {
       schemaVersion: 1,
       updatedAt: '2026-02-23T08:00:00.000Z',
@@ -397,7 +397,7 @@ describe('profile-sync-core', () => {
     };
 
     const parsed = parseSyncEnvelope(JSON.stringify(legacyEnvelope));
-    expect(decodeEnvelopeProfile(parsed)).toEqual(legacyEnvelope.payload);
+    await expect(decodeEnvelopeProfile(parsed)).resolves.toEqual(legacyEnvelope.payload);
     expect(extractSyncScopeFromEnvelope(parsed)).toEqual(getDefaultSyncScope());
   });
 });
