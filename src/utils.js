@@ -285,37 +285,146 @@ function getEntityDisplayState(entity) {
   }
 }
 
+/**
+ * Resolves the finish time of a sensor-backed timer (like Google Kitchen Timer).
+ * @param {object} entity - The entity to inspect.
+ * @returns {string|null} - The finish timestamp, or null when there is none.
+ */
+function resolveTimerFinishesAt(entity) {
+  if (!entity?.entity_id?.startsWith('sensor.')) return null;
+
+  // Check for various timer end time attributes
+  const finishesAt =
+    entity.attributes?.finishes_at || entity.attributes?.end_time || entity.attributes?.finish_time;
+  if (finishesAt) return finishesAt;
+
+  // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
+  if (!entity.state || entity.state === 'unavailable' || entity.state === 'unknown') {
+    return null;
+  }
+
+  // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
+  // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
+  // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
+  const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
+  if (!iso8601Pattern.test(entity.state)) return null;
+
+  return isNaN(new Date(entity.state).getTime()) ? null : entity.state;
+}
+
+/**
+ * Parses a Home Assistant duration ("0:15:00", "15:00" or a number of seconds).
+ * @param {string|number} value - The duration to parse.
+ * @returns {number|null} - The duration in seconds, or null when unparseable.
+ */
+function parseTimerDurationSeconds(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+
+  const parts = trimmed.split(':').map((part) => Number(part));
+  if (parts.some((part) => !Number.isFinite(part) || part < 0)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+
+/**
+ * Seconds left on a timer, derived from its finish time so it stays correct
+ * between state updates.
+ * @param {object} entity - The timer (or timer-like sensor) entity.
+ * @returns {number|null} - Seconds remaining, or null when the timer is not running.
+ */
+function getTimerRemainingSeconds(entity) {
+  try {
+    if (!entity?.entity_id) return null;
+
+    if (entity.entity_id.startsWith('sensor.')) {
+      const finishesAt = resolveTimerFinishesAt(entity);
+      if (!finishesAt) return null;
+      const endTime = new Date(finishesAt).getTime();
+      if (isNaN(endTime)) return null;
+      return Math.max(0, (endTime - Date.now()) / 1000);
+    }
+
+    const normalizedState =
+      typeof entity.state === 'string' ? entity.state.trim().toLowerCase() : '';
+    if (normalizedState === 'paused') {
+      return parseTimerDurationSeconds(entity.attributes?.remaining);
+    }
+    if (normalizedState !== 'active') return null;
+
+    const endTime = getTimerEnd(entity);
+    if (endTime == null) return null;
+    return Math.max(0, (endTime - Date.now()) / 1000);
+  } catch (error) {
+    console.error('Error getting timer remaining seconds:', error);
+    return null;
+  }
+}
+
+/**
+ * Fraction of a timer still to run, for progress bars.
+ * @param {object} entity - The timer (or timer-like sensor) entity.
+ * @returns {number|null} - A value from 0 to 1, or null when the total duration is unknown.
+ */
+function getTimerRemainingFraction(entity) {
+  const durationSeconds = parseTimerDurationSeconds(entity?.attributes?.duration);
+  if (!durationSeconds) return null;
+
+  const remainingSeconds = getTimerRemainingSeconds(entity);
+  if (remainingSeconds == null) return null;
+
+  return Math.max(0, Math.min(1, remainingSeconds / durationSeconds));
+}
+
+/**
+ * Short, human-readable run status for a timer entity ("Running", "Paused", ...).
+ * Never returns a raw timestamp, so it is safe to show as a compact badge.
+ * @param {object} entity - The timer (or timer-like sensor) entity.
+ * @returns {string} - The status label.
+ */
+function getTimerStatusLabel(entity) {
+  try {
+    if (!entity?.entity_id) return 'Idle';
+
+    const rawState = typeof entity.state === 'string' ? entity.state.trim() : '';
+    const normalizedState = rawState.toLowerCase();
+    if (normalizedState === 'unavailable') return 'Unavailable';
+    if (!rawState || normalizedState === 'unknown') return 'Idle';
+
+    if (entity.entity_id.startsWith('sensor.')) {
+      const finishesAt = resolveTimerFinishesAt(entity);
+      if (finishesAt) {
+        return new Date(finishesAt).getTime() > Date.now() ? 'Running' : 'Finished';
+      }
+      // A bare date state says nothing about whether the timer is running.
+      if (/^\d{4}-\d{2}-\d{2}/.test(rawState)) return 'Idle';
+      return rawState.charAt(0).toUpperCase() + rawState.slice(1);
+    }
+
+    if (normalizedState === 'active') return 'Running';
+    if (normalizedState === 'paused') return 'Paused';
+    if (normalizedState === 'idle') return 'Idle';
+    return rawState.charAt(0).toUpperCase() + rawState.slice(1);
+  } catch (error) {
+    console.error('Error getting timer status label:', error);
+    return 'Idle';
+  }
+}
+
 function getTimerDisplay(entity) {
   try {
     if (!entity) return '--:--';
 
     // Handle sensor-based timers (like Google Kitchen Timer)
     if (entity.entity_id.startsWith('sensor.')) {
-      // Check for various timer end time attributes
-      let finishesAt =
-        entity.attributes?.finishes_at ||
-        entity.attributes?.end_time ||
-        entity.attributes?.finish_time;
-
-      // If no attribute, check if state is a timestamp (Google Kitchen Timer uses state as timestamp)
-      if (
-        !finishesAt &&
-        entity.state &&
-        entity.state !== 'unavailable' &&
-        entity.state !== 'unknown'
-      ) {
-        // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
-        // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
-        // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
-        const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-        const looksLikeTimestamp = iso8601Pattern.test(entity.state);
-        if (looksLikeTimestamp) {
-          const stateTime = new Date(entity.state).getTime();
-          if (!isNaN(stateTime)) {
-            finishesAt = entity.state;
-          }
-        }
-      }
+      const finishesAt = resolveTimerFinishesAt(entity);
 
       if (finishesAt) {
         const endTime = new Date(finishesAt).getTime();
@@ -701,6 +810,9 @@ export {
   getSearchScore,
   getEntityDisplayState,
   getTimerDisplay,
+  getTimerStatusLabel,
+  getTimerRemainingSeconds,
+  getTimerRemainingFraction,
   escapeHtml,
   escapeHtmlAttribute,
   base64Encode,

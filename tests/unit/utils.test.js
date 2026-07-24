@@ -513,6 +513,62 @@ describe('Utils Module', () => {
     });
   });
 
+  describe('getTimerStatusLabel', () => {
+    test('should map timer states to friendly labels', () => {
+      const build = (state) => ({ entity_id: 'timer.kitchen', state, attributes: {} });
+      expect(utils.getTimerStatusLabel(build('active'))).toBe('Running');
+      expect(utils.getTimerStatusLabel(build('paused'))).toBe('Paused');
+      expect(utils.getTimerStatusLabel(build('idle'))).toBe('Idle');
+      expect(utils.getTimerStatusLabel(build('unavailable'))).toBe('Unavailable');
+    });
+
+    test('should never surface a raw timestamp for sensor timers', () => {
+      const futureTime = new Date(Date.now() + 60000).toISOString();
+      expect(
+        utils.getTimerStatusLabel({
+          entity_id: 'sensor.kitchen_timer',
+          state: futureTime,
+          attributes: {},
+        })
+      ).toBe('Running');
+
+      const pastTime = new Date(Date.now() - 60000).toISOString();
+      expect(
+        utils.getTimerStatusLabel({
+          entity_id: 'sensor.kitchen_timer',
+          state: pastTime,
+          attributes: {},
+        })
+      ).toBe('Finished');
+
+      expect(
+        utils.getTimerStatusLabel({
+          entity_id: 'sensor.kitchen_timer',
+          state: '2026-07-24',
+          attributes: {},
+        })
+      ).toBe('Idle');
+    });
+
+    test('should use finishes_at when the state is not a timestamp', () => {
+      const futureTime = new Date(Date.now() + 60000).toISOString();
+      expect(
+        utils.getTimerStatusLabel({
+          entity_id: 'sensor.kitchen_timer',
+          state: 'active',
+          attributes: { finishes_at: futureTime },
+        })
+      ).toBe('Running');
+    });
+
+    test('should fall back to Idle for missing or unknown entities', () => {
+      expect(utils.getTimerStatusLabel(null)).toBe('Idle');
+      expect(
+        utils.getTimerStatusLabel({ entity_id: 'timer.kitchen', state: 'unknown', attributes: {} })
+      ).toBe('Idle');
+    });
+  });
+
   describe('resolveEntityId', () => {
     test('should resolve exact entity IDs', () => {
       const states = {

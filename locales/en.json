@@ -257,6 +257,7 @@
   "Unlocking saved Home Assistant credentials...": "Unlocking saved Home Assistant credentials...",
   "Waiting for first live update": "Waiting for first live update",
   "Waiting for live Home Assistant data...": "Waiting for live Home Assistant data...",
+  "Ends {{time}}": "Ends {{time}}",
   "Auto-updates only work in packaged builds": "Auto-updates only work in packaged builds",
   "Download Portable Update": "Download Portable Update",
   "Download Update": "Download Update",

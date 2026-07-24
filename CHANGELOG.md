@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Desktop pins: pinned tiles that are drawn from the clock rather than from entity
+  updates — timer countdowns and media progress — now tick locally instead of freezing
+  between Home Assistant state changes.
+- Desktop pins: a pinned timer no longer shows its raw timestamp state (e.g.
+  `2026-07-24T19:51:57-02:30`) across the top of the tile. It now shows a short status
+  badge (Running / Paused / Idle / Finished), and the entity name stays visible so
+  several pinned timers can be told apart at a glance.
+
 - Profile Sync: the first settings change after pulling a remote profile now auto-pushes
   again. Previously a stale internal flag swallowed that push until the next change or
   the 5-minute interval. The app now recognises the redundant post-pull update by its
@@ -25,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profile Sync: the Google Drive folder suggestion now finds current installs on macOS
   (`~/Library/CloudStorage`) and Windows (`G:\My Drive`), instead of only the long
   retired `~/Google Drive` layout.
+
+### Changed
+
+- Desktop pins: the timer tile was rebuilt around the countdown. The icon, the duplicated
+  "Timer" caption and the inner panel are gone; the remaining time now scales to fill the
+  tile under the timer's name, with the finish time below it, a pulse dot while it runs,
+  and a bar along the bottom edge showing how much is left when Home Assistant reports a
+  total duration. Timers that are not running are labelled instead (Paused / Finished /
+  Idle), and the tile warms to a warning tint for the last minute.
 
 ### Added
 

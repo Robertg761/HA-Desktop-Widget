@@ -1507,6 +1507,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-kpi {
   font-size: clamp(14px, 4vw, 18px);
   line-height: 0.95;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-pin-panel-value {
@@ -2035,6 +2038,150 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-kpi,
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-value {
   font-size: 11px;
+}
+
+/* Timer tile: the countdown is the tile. The name sits above it as a quiet label so
+   several pinned timers can be told apart, and the run state is carried by a pulse dot
+   and the depleting bar along the bottom edge rather than by boxes and captions. */
+.desktop-pin-timer-control {
+  --desktop-pin-panel-meter-radius: 0;
+}
+
+.desktop-pin-timer-control::after {
+  display: none;
+}
+
+.desktop-pin-timer-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  /* Room for the progress bar pinned to the tile's bottom edge. */
+  padding-bottom: 5px;
+}
+
+.desktop-pin-timer-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.desktop-pin-timer-control .desktop-pin-timer-name,
+.desktop-pin-timer-control[data-layout='micro'] .desktop-pin-timer-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: clamp(8px, 2.6vw, 10px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.desktop-pin-timer-pulse {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--desktop-pin-tint-rgb));
+  box-shadow: 0 0 8px rgba(var(--desktop-pin-tint-rgb), 0.75);
+  animation: desktop-pin-timer-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes desktop-pin-timer-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+.desktop-pin-timer-badge {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
+  font-family: var(--desktop-pin-display-font);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-pin-timer-hero {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  min-height: 0;
+}
+
+.desktop-pin-timer-control .desktop-pin-timer-readout,
+.desktop-pin-timer-control[data-layout='micro'] .desktop-pin-timer-readout {
+  max-width: 100%;
+  font-size: calc(min(23vw, 30vh) * var(--desktop-pin-timer-readout-scale, 1));
+  line-height: 1;
+  letter-spacing: -0.045em;
+  color: rgba(255, 255, 255, 1);
+}
+
+.desktop-pin-timer-endsat {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--desktop-pin-display-font);
+  font-size: clamp(9px, 3vw, 12px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.7);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sits on the tile's bottom edge, corners clipped by the panel's own overflow. */
+.desktop-pin-timer-progress {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  overflow: hidden;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.desktop-pin-timer-progress-fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--desktop-pin-tint-rgb), 0.55),
+    rgba(var(--desktop-pin-tint-rgb), 1)
+  );
+  box-shadow: 0 0 12px rgba(var(--desktop-pin-tint-rgb), 0.35);
+  transition: width var(--transition-fast);
+}
+
+.desktop-pin-timer-control[data-state='paused'] .desktop-pin-timer-progress-fill {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.42));
+  box-shadow: none;
+}
+
+/* The last minute warms the whole tile: tint drives the glow, dot and bar. */
+.desktop-pin-timer-control[data-urgent='true'] {
+  --desktop-pin-tint-rgb: 255, 122, 110;
+}
+
+.desktop-pin-timer-control[data-urgent='true'] .desktop-pin-timer-readout {
+  color: rgba(255, 214, 208, 1);
 }
 
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-actions {

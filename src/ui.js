@@ -3721,7 +3721,7 @@ function getDesktopPinPanelHeaderMarkup(entity, { statusText = '', asideMarkup =
     <div class="desktop-pin-panel-topline">
       <div class="desktop-pin-panel-meta">
         <div class="desktop-pin-panel-name">${displayName}</div>
-        <div class="desktop-pin-panel-status">${safeStatus}</div>
+        ${safeStatus ? `<div class="desktop-pin-panel-status">${safeStatus}</div>` : ''}
       </div>
       ${asideMarkup || ''}
     </div>
@@ -5027,30 +5027,132 @@ function updateExistingDesktopPinSensorControl(root, entity) {
   return true;
 }
 
+function getDesktopPinTimerStatusLabel(entity) {
+  if (utils.getTimerStatusLabel) return utils.getTimerStatusLabel(entity);
+  const rawState = typeof entity?.state === 'string' ? entity.state.trim() : '';
+  return rawState ? rawState.charAt(0).toUpperCase() + rawState.slice(1) : 'Idle';
+}
+
+function getDesktopPinTimerTileTitle(entity) {
+  return `${utils.getEntityDisplayName(entity)} · Timer`;
+}
+
+// The badge carries the run state, so the readout is always a plain countdown — no
+// pause glyph or status word competing with the digits.
+function getDesktopPinTimerDisplay(entity) {
+  const remainingSeconds = getDesktopPinTimerRemainingSeconds(entity);
+  if (remainingSeconds == null) {
+    return getDesktopPinTimerStatusLabel(entity) === 'Finished' ? '0:00' : '—';
+  }
+  return utils.formatDuration(remainingSeconds * 1000);
+}
+
+function getDesktopPinTimerRemainingFraction(entity) {
+  return utils.getTimerRemainingFraction ? utils.getTimerRemainingFraction(entity) : null;
+}
+
+function getDesktopPinTimerRemainingSeconds(entity) {
+  return utils.getTimerRemainingSeconds ? utils.getTimerRemainingSeconds(entity) : null;
+}
+
+const DESKTOP_PIN_TIMER_URGENT_SECONDS = 60;
+
+// The countdown is sized to fill the tile, so a longer readout has to step down a size
+// to keep fitting: "0:22" gets the full treatment, "1:02:45" does not.
+function getDesktopPinTimerReadoutScale(display) {
+  const length = String(display || '').length;
+  if (length <= 4) return 1;
+  if (length === 5) return 0.86;
+  if (length === 6) return 0.72;
+  return 0.6;
+}
+
+function getDesktopPinTimerEndsAtLabel(entity) {
+  const remainingSeconds = getDesktopPinTimerRemainingSeconds(entity);
+  if (remainingSeconds == null || remainingSeconds <= 0) return '';
+
+  const endsAt = new Date(Date.now() + remainingSeconds * 1000);
+  const timeOptions = { hour: 'numeric', minute: '2-digit' };
+  if (state.CONFIG?.ui?.use24HourClock) {
+    timeOptions.hour12 = false;
+  }
+  return t('Ends {{time}}', { time: formatTime(endsAt, timeOptions) });
+}
+
+function applyDesktopPinTimerVisualState(root, entity) {
+  if (!root) return;
+
+  const display = getDesktopPinTimerDisplay(entity);
+  const remainingSeconds = getDesktopPinTimerRemainingSeconds(entity);
+  const isRunning = getDesktopPinTimerStatusLabel(entity) === 'Running';
+
+  const readout = root.querySelector('.desktop-pin-timer-readout');
+  if (readout) {
+    readout.textContent = display;
+    readout.style.setProperty(
+      '--desktop-pin-timer-readout-scale',
+      String(getDesktopPinTimerReadoutScale(display))
+    );
+  }
+
+  // Running timers are self-evident from the moving digits, so the badge is kept for the
+  // states that are not — paused, finished, idle.
+  const badge = root.querySelector('.desktop-pin-timer-badge');
+  if (badge) {
+    badge.textContent = getDesktopPinTimerStatusLabel(entity);
+    badge.classList.toggle('hidden', isRunning);
+  }
+
+  const pulse = root.querySelector('.desktop-pin-timer-pulse');
+  if (pulse) pulse.classList.toggle('hidden', !isRunning);
+
+  const endsAt = root.querySelector('.desktop-pin-timer-endsat');
+  if (endsAt) {
+    const endsAtLabel = isRunning ? getDesktopPinTimerEndsAtLabel(entity) : '';
+    endsAt.textContent = endsAtLabel;
+    endsAt.classList.toggle('hidden', !endsAtLabel);
+  }
+
+  root.dataset.urgent =
+    isRunning && remainingSeconds != null && remainingSeconds <= DESKTOP_PIN_TIMER_URGENT_SECONDS
+      ? 'true'
+      : 'false';
+
+  // Only timers that report a total duration can show how far along they are.
+  const remainingFraction = getDesktopPinTimerRemainingFraction(entity);
+  const progressFill = root.querySelector('.desktop-pin-timer-progress-fill');
+  if (progressFill) {
+    progressFill.style.width = `${((remainingFraction ?? 0) * 100).toFixed(1)}%`;
+  }
+  const progress = root.querySelector('.desktop-pin-timer-progress');
+  if (progress) progress.classList.toggle('hidden', remainingFraction == null);
+}
+
 function createDesktopPinTimerControlElement(entity) {
-  const timerDisplay = utils.getTimerDisplay
-    ? utils.getTimerDisplay(entity)
-    : utils.getEntityDisplayState(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-timer-control'], {
     domain: 'timer',
     state: entity.state,
-    title: 'Compact timer tile',
+    title: getDesktopPinTimerTileTitle(entity),
   });
 
   root.innerHTML = `
-    <div class="desktop-pin-panel-shell">
-      ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: 'Timer',
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(entity.state || 'idle')}</div>`,
-      })}
-      <div class="desktop-pin-panel-body">
-        <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
-          <div class="desktop-pin-panel-value">${utils.escapeHtml(timerDisplay)}</div>
-        </div>
+    <div class="desktop-pin-timer-shell">
+      <div class="desktop-pin-timer-header">
+        <span class="desktop-pin-timer-pulse hidden" aria-hidden="true"></span>
+        <div class="desktop-pin-panel-name desktop-pin-timer-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
+      </div>
+      <div class="desktop-pin-timer-hero">
+        <div class="desktop-pin-panel-value desktop-pin-timer-readout"></div>
+        <div class="desktop-pin-timer-endsat hidden"></div>
+        <div class="desktop-pin-timer-badge hidden"></div>
       </div>
     </div>
+    <div class="desktop-pin-timer-progress hidden">
+      <div class="desktop-pin-timer-progress-fill" style="width: 0%"></div>
+    </div>
   `;
+
+  applyDesktopPinTimerVisualState(root, entity);
 
   return root;
 }
@@ -5062,27 +5164,13 @@ function updateExistingDesktopPinTimerControl(root, entity) {
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: 'timer',
-    title: 'Compact timer tile',
+    title: getDesktopPinTimerTileTitle(entity),
   });
 
-  const name = root.querySelector('.desktop-pin-panel-name');
+  const name = root.querySelector('.desktop-pin-timer-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
 
-  const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = 'Timer';
-
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = entity.state || 'idle';
-
-  const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
-
-  const value = root.querySelector('.desktop-pin-panel-value');
-  if (value) {
-    value.textContent = utils.getTimerDisplay
-      ? utils.getTimerDisplay(entity)
-      : utils.getEntityDisplayState(entity);
-  }
+  applyDesktopPinTimerVisualState(root, entity);
 
   return true;
 }
@@ -6502,6 +6590,60 @@ function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
     hasSnapshot: !!options?.hasSnapshot,
     connectionIssue: options?.connectionIssue || '',
   });
+}
+
+function getRenderedDesktopPinTile() {
+  const container = document.getElementById('desktop-pin-content');
+  if (!container || container.classList.contains('hidden')) return null;
+  return container.querySelector('.control-item[data-entity-id]');
+}
+
+/**
+ * Tick cadence for a desktop pin window. Timers and playing media are drawn from the
+ * clock rather than from entity updates, so they need a local tick to stay live.
+ */
+function getDesktopPinTickTargets(entityId = '') {
+  const tile = getRenderedDesktopPinTile();
+  const resolvedEntityId = tile?.dataset?.entityId || entityId;
+  const entity = resolvedEntityId ? state.STATES?.[resolvedEntityId] : null;
+
+  const hasTimer = !!entity && !!tile?.classList.contains('desktop-pin-timer-control');
+  const mediaEntity =
+    entity && tile?.classList.contains('desktop-pin-media-control') && entity.state === 'playing'
+      ? entity
+      : null;
+
+  return {
+    timeVisible: false,
+    hasVisibleTimers: hasTimer,
+    mediaEntity,
+    hasLiveDisplays: hasTimer || !!mediaEntity,
+  };
+}
+
+/**
+ * Repaints the clock-derived parts of a pinned tile without rebuilding it, so
+ * countdowns and media progress keep moving between entity updates.
+ */
+function updateDesktopPinLiveDisplays() {
+  try {
+    const tile = getRenderedDesktopPinTile();
+    if (!tile) return;
+
+    const entity = state.STATES?.[tile.dataset.entityId];
+    if (!entity) return;
+
+    if (tile.classList.contains('desktop-pin-timer-control')) {
+      updateExistingDesktopPinTimerControl(tile, entity);
+      return;
+    }
+
+    if (tile.classList.contains('desktop-pin-media-control')) {
+      applyDesktopPinMediaVisualState(tile, getDesktopPinMediaValue(entity));
+    }
+  } catch (error) {
+    console.error('Error updating desktop pin live displays:', error);
+  }
 }
 
 function handleDesktopPinActionRequest({ entityId, action, payload = {}, requestId = null } = {}) {
@@ -10562,6 +10704,8 @@ export {
   getEntityDomain,
   handleDesktopPinActionRequest,
   renderDesktopPinnedTile,
+  getDesktopPinTickTargets,
+  updateDesktopPinLiveDisplays,
   updateMediaTile,
   updateMediaSeekBar,
   callMediaTileService,

@@ -2535,6 +2535,159 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.layout).toBe('roomy');
     });
 
+    it('labels sensor-backed timer pins without surfacing the raw timestamp state', () => {
+      const finishesAt = new Date(Date.now() + 60000).toISOString();
+      state.setStates({
+        'sensor.kitchen_timer': {
+          entity_id: 'sensor.kitchen_timer',
+          state: finishesAt,
+          attributes: {
+            friendly_name: 'Kitchen Timer',
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('sensor.kitchen_timer', state.STATES['sensor.kitchen_timer']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-timer-control');
+      expect(control).toBeTruthy();
+      expect(control.querySelector('.desktop-pin-timer-name')?.textContent).toBe('Kitchen Timer');
+      expect(control.textContent).not.toContain(finishesAt);
+      expect(control.title).toBe('Kitchen Timer · Timer');
+      // A running timer speaks for itself: pulse dot on, status badge off.
+      expect(control.querySelector('.desktop-pin-timer-pulse')?.classList.contains('hidden')).toBe(
+        false
+      );
+      expect(control.querySelector('.desktop-pin-timer-badge')?.classList.contains('hidden')).toBe(
+        true
+      );
+      expect(control.querySelector('.desktop-pin-timer-endsat')?.textContent).toMatch(/^Ends /);
+      // No total duration is known, so there is nothing honest to fill a bar with.
+      expect(
+        control.querySelector('.desktop-pin-timer-progress')?.classList.contains('hidden')
+      ).toBe(true);
+    });
+
+    it('badges a pinned timer that is not running instead of pulsing it', () => {
+      state.setStates({
+        'timer.kitchen': {
+          entity_id: 'timer.kitchen',
+          state: 'paused',
+          attributes: {
+            friendly_name: 'Kitchen Timer',
+            remaining: '00:02:30',
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('timer.kitchen', state.STATES['timer.kitchen']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-timer-control');
+      const badge = control?.querySelector('.desktop-pin-timer-badge');
+      expect(badge?.textContent).toBe('Paused');
+      expect(badge?.classList.contains('hidden')).toBe(false);
+      // The badge says paused, so the readout stays a plain countdown.
+      expect(control?.querySelector('.desktop-pin-timer-readout')?.textContent).toBe('2:30');
+      expect(control?.querySelector('.desktop-pin-timer-pulse')?.classList.contains('hidden')).toBe(
+        true
+      );
+      expect(
+        control?.querySelector('.desktop-pin-timer-endsat')?.classList.contains('hidden')
+      ).toBe(true);
+    });
+
+    it('warms a pinned timer up in its final minute', () => {
+      state.setStates({
+        'timer.kitchen': {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          attributes: {
+            friendly_name: 'Kitchen Timer',
+            finishes_at: new Date(Date.now() + 45000).toISOString(),
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('timer.kitchen', state.STATES['timer.kitchen']);
+
+      expect(
+        document.querySelector('#desktop-pin-content .desktop-pin-timer-control')?.dataset.urgent
+      ).toBe('true');
+    });
+
+    it('shows how much of a pinned timer is left when the duration is known', () => {
+      state.setStates({
+        'timer.kitchen': {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          attributes: {
+            friendly_name: 'Kitchen Timer',
+            duration: '0:10:00',
+            finishes_at: new Date(Date.now() + 300000).toISOString(),
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('timer.kitchen', state.STATES['timer.kitchen']);
+
+      const progress = document.querySelector('#desktop-pin-content .desktop-pin-timer-progress');
+      expect(progress?.classList.contains('hidden')).toBe(false);
+      expect(progress?.querySelector('.desktop-pin-timer-progress-fill')?.style.width).toBe('50%');
+    });
+
+    it('keeps a pinned timer counting down between entity updates', () => {
+      const now = Date.now();
+      jest.useFakeTimers({ now });
+
+      try {
+        state.setStates({
+          'sensor.kitchen_timer': {
+            entity_id: 'sensor.kitchen_timer',
+            state: new Date(now + 120000).toISOString(),
+            attributes: {
+              friendly_name: 'Kitchen Timer',
+            },
+          },
+        });
+
+        ui.renderDesktopPinnedTile('sensor.kitchen_timer', state.STATES['sensor.kitchen_timer']);
+
+        const readValue = () =>
+          document.querySelector('#desktop-pin-content .desktop-pin-timer-readout')?.textContent;
+        expect(readValue()).toBe('2:00');
+
+        expect(ui.getDesktopPinTickTargets('sensor.kitchen_timer')).toMatchObject({
+          hasVisibleTimers: true,
+          hasLiveDisplays: true,
+        });
+
+        jest.advanceTimersByTime(35000);
+        ui.updateDesktopPinLiveDisplays();
+
+        expect(readValue()).toBe('1:25');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not ask a static pinned tile to tick', () => {
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom']);
+
+      expect(ui.getDesktopPinTickTargets('light.bedroom')).toMatchObject({
+        hasVisibleTimers: false,
+        mediaEntity: null,
+        hasLiveDisplays: false,
+      });
+    });
+
     it('renders compact desktop light controls with inline presets', async () => {
       jest.useFakeTimers();
 
@@ -3427,8 +3580,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-timer-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('paused');
-          expect(control?.querySelector('.desktop-pin-panel-kpi')?.textContent).toBe('paused');
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('⏸ 00:02');
+          expect(control?.querySelector('.desktop-pin-timer-name')?.textContent).toBe(
+            'Kitchen Timer'
+          );
+          expect(control?.querySelector('.desktop-pin-timer-badge')?.textContent).toBe('Paused');
+          expect(control?.querySelector('.desktop-pin-timer-readout')?.textContent).toBe('2:30');
         },
       },
       {

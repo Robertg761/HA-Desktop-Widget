@@ -872,6 +872,8 @@ async function handleDesktopPinUpdate(message = {}) {
     }
 
     renderCurrentMode();
+    // Re-evaluates the tick cadence: a timer that just started needs a per-second tick.
+    startUiTickScheduler();
   } catch (error) {
     log.error('Failed to handle desktop pin update:', error);
   }
@@ -1003,6 +1005,17 @@ function scheduleNextUiTick(tickTargets) {
 function runUiTick() {
   if (shouldPauseUiTick()) {
     clearUiTickTimer();
+    return;
+  }
+
+  if (IS_DESKTOP_PIN_MODE) {
+    // Pins only hear from the main process when the entity itself changes, so their
+    // clock-derived tiles (timer countdowns, media progress) have to tick locally.
+    const pinTickTargets = ui.getDesktopPinTickTargets?.(DESKTOP_PIN_ENTITY_ID) || null;
+    if (pinTickTargets?.hasLiveDisplays) {
+      ui.updateDesktopPinLiveDisplays();
+    }
+    scheduleNextUiTick(pinTickTargets);
     return;
   }
 
@@ -1496,6 +1509,7 @@ async function initializeDesktopPinMode() {
     uiUtils.showLoading(false);
     applyDesktopPinConnectionState(bootstrap?.connection || {});
     renderCurrentMode();
+    startUiTickScheduler();
   } catch (error) {
     log.error('Desktop pin initialization error:', error);
     uiUtils.showLoading(false);

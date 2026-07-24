@@ -57,6 +57,13 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     stopTimeTicker: jest.fn(),
     updateTimerDisplays: jest.fn(),
     getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
+    getDesktopPinTickTargets: jest.fn(() => ({
+      timeVisible: false,
+      hasVisibleTimers: false,
+      mediaEntity: null,
+      hasLiveDisplays: false,
+    })),
+    updateDesktopPinLiveDisplays: jest.fn(),
     refreshVisibleEntityCache: jest.fn(),
     executeHotkeyAction: jest.fn(),
     handleDesktopPinActionRequest: jest.fn(),
@@ -529,5 +536,44 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     );
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
+  });
+
+  it('runs a local tick so pinned countdowns stay live without entity updates', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        entity: {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Bedroom Light',
+          },
+        },
+        hasSnapshot: true,
+      },
+    });
+
+    // A static tile is ticked over but never repainted.
+    expect(mockUi.getDesktopPinTickTargets).toHaveBeenCalledWith('light.bedroom');
+    expect(mockUi.updateDesktopPinLiveDisplays).not.toHaveBeenCalled();
+    expect(mockUi.updateTimerDisplays).not.toHaveBeenCalled();
+
+    mockUi.getDesktopPinTickTargets.mockReturnValue({
+      timeVisible: false,
+      hasVisibleTimers: true,
+      mediaEntity: null,
+      hasLiveDisplays: true,
+    });
+
+    triggerMockEvent('desktopPinUpdate', {
+      entityId: 'light.bedroom',
+      entity: {
+        entity_id: 'light.bedroom',
+        state: 'on',
+        attributes: { friendly_name: 'Bedroom Light' },
+      },
+    });
+    await flushAsync();
+
+    expect(mockUi.updateDesktopPinLiveDisplays).toHaveBeenCalled();
   });
 });
