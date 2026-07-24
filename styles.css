@@ -8589,6 +8589,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--warning);
 }
 
+/* Sync setups that look healthy but share nothing, so this has to read as a
+   problem rather than as ordinary help text. */
+.profile-sync-hint-warning {
+  color: var(--warning);
+}
+
 .profile-sync-file-row {
   display: flex;
   gap: 8px;

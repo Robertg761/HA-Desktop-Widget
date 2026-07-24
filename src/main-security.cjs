@@ -117,6 +117,7 @@ function isAllowedHlsProxyPath(pathname) {
 
 module.exports = {
   isAllowedHlsProxyPath,
+  isPathInsideDirectory,
   normalizeEntityIdForObjectKey,
   validateProfileSyncCopyPaths,
 };

@@ -11,7 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Profile Sync: the first settings change after pulling a remote profile now auto-pushes
   again. Previously a stale internal flag swallowed that push until the next change or
-  the 5-minute interval.
+  the 5-minute interval. The app now recognises the redundant post-pull update by its
+  content rather than by how soon it arrives, so a genuine edit made immediately after a
+  pull is pushed straight away.
+- Profile Sync: a redundant post-pull update can no longer be mistaken for a newer local
+  edit and pushed over the profile that was just pulled.
+- Profile Sync: a settings update already in flight when a remote profile arrives no
+  longer quietly reverts that profile on the receiving device.
+- Profile Sync: choosing a sync folder no longer probes for the provider's default folder
+  on the main thread, so the folder picker cannot stall the window.
+- Profile Sync: the sync file is re-checked immediately before it is overwritten, so a
+  change saved by another device in the meantime is no longer silently discarded.
+- Profile Sync: the Google Drive folder suggestion now finds current installs on macOS
+  (`~/Library/CloudStorage`) and Windows (`G:\My Drive`), instead of only the long
+  retired `~/Google Drive` layout.
+
+### Added
+
+- Profile Sync: Dropbox and OneDrive are selectable providers, each suggesting the folder
+  the installed client actually uses rather than assuming the default location.
+- Profile Sync: warns when the chosen folder is this device's local app data folder, which
+  syncs with nothing — previously that setup reported success while sharing no data.
+- Profile Sync: warns when conflict copies from Syncthing, Dropbox, OneDrive or Drive
+  appear next to the sync file, which means two devices saved at the same time.
+- Profile Sync: warns that Google Drive has no official Linux client and points at
+  Syncthing instead.
+- Profile Sync: syncs when the widget regains focus and after the machine wakes from
+  sleep, rather than only on the background interval, so changes from another device show
+  up sooner. Rate limited to once a minute.
 - Profile Sync: failed sync attempts no longer make the local profile look freshly
   edited. The app now tracks when profile content actually changed separately from when
   sync last ran, so a device that repeatedly failed to sync (for example, waiting for an

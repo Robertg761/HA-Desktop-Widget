@@ -224,16 +224,135 @@ describe('main-process wiring safeguards', () => {
 });
 
 describe('profile sync runtime safeguards', () => {
-  it('uses a time-bounded suppression window instead of a one-shot auto-push flag', () => {
-    expect(mainSource).toContain('suppressAutoPushUntil');
+  it('identifies the post-pull renderer echo by content instead of by timing', () => {
+    expect(mainSource).toContain('pendingPullEchoHash');
     expect(mainSource).not.toContain('suppressNextAutoPush');
-    expect(mainSource).toContain('Date.now() < profileSyncRuntime.suppressAutoPushUntil');
+    expect(mainSource).not.toContain('suppressAutoPushUntil');
+    // No timer may gate auto-push: a genuine edit made moments after a pull
+    // has to push immediately rather than wait for the 5-minute interval.
+    expect(mainSource).not.toContain('PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS');
+    expect(mainSource).toContain('nextHash === profileSyncRuntime.pendingPullEchoHash');
+  });
+
+  it('leaves the content timestamp behind when it drops a stale pull echo', () => {
+    const trackingStart = mainSource.indexOf('function updateLocalProfileSyncTracking');
+    const echoBranch = mainSource.indexOf(
+      'nextHash === profileSyncRuntime.pendingPullEchoHash',
+      trackingStart
+    );
+    const timestampAdvance = mainSource.indexOf(
+      'profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();',
+      echoBranch
+    );
+    const echoReturn = mainSource.indexOf('return;', echoBranch);
+
+    // The echo branch must return before the timestamp is advanced, otherwise the
+    // stale echo looks newer than the remote and the next auto sync pushes it out.
+    expect(trackingStart).toBeGreaterThanOrEqual(0);
+    expect(echoReturn).toBeGreaterThanOrEqual(0);
+    expect(echoReturn).toBeLessThan(timestampAdvance);
+  });
+
+  it('reverses a stale renderer config update before it can overwrite a pulled profile', () => {
+    expect(mainSource).toContain('function restoreProfileFromStalePullEcho');
+
+    // The guard has to run inside update-config, after the renderer payload is
+    // merged and pruned but before the merged config is treated as authoritative.
+    const handlerStart = mainSource.indexOf("ipcMain.handle('update-config'");
+    const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
+    const guard = mainSource.indexOf('restoreProfileFromStalePullEcho(prevConfig)', handlerStart);
+    const timestampOverride = mainSource.indexOf(
+      'config.profileSync.profileUpdatedAt = prevConfig',
+      handlerStart
+    );
+
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    expect(guard).toBeGreaterThan(merge);
+    expect(guard).toBeLessThan(timestampOverride);
+  });
+
+  it('keeps provider folder probing off the synchronous filesystem API', () => {
+    const helperStart = mainSource.indexOf('function getDefaultProfileSyncFolderPath');
+    const helperEnd = mainSource.indexOf('\n}', helperStart);
+    const helper = mainSource.slice(helperStart, helperEnd);
+
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    expect(helper).not.toContain('statSync');
+    expect(helper).toContain('await fs.promises.stat');
+  });
+
+  it('re-checks the remote file before overwriting it on push', () => {
+    const pushBranch = mainSource.indexOf("if (finalDirection === 'push')");
+    const compare = mainSource.indexOf('hasRemoteSyncEnvelopeChanged(remoteResult)', pushBranch);
+    const write = mainSource.indexOf('writeConfiguredSyncEnvelope(envelopeToWrite)', pushBranch);
+
+    expect(pushBranch).toBeGreaterThanOrEqual(0);
+    expect(compare).toBeGreaterThanOrEqual(0);
+    // The compare must precede the write, or it is not a compare-and-swap.
+    expect(compare).toBeLessThan(write);
+  });
+
+  it('treats an unreadable remote file as changed rather than overwriting it', () => {
+    const fnStart = mainSource.indexOf('async function hasRemoteSyncEnvelopeChanged');
+    const fnEnd = mainSource.indexOf('\n}', fnStart);
+    const fn = mainSource.slice(fnStart, fnEnd);
+
+    expect(fnStart).toBeGreaterThanOrEqual(0);
+    // A read failure must fail closed: returning false here would overwrite a
+    // file that another device may be midway through replicating.
+    expect(fn).toMatch(/catch[\s\S]*?return true;/);
+    expect(fn).toContain('updatedByDeviceId');
+  });
+
+  it('rate-limits focus and resume triggered syncs', () => {
+    const fnStart = mainSource.indexOf('function requestOpportunisticProfileSync');
+    const fnEnd = mainSource.indexOf('\n}', fnStart);
+    const fn = mainSource.slice(fnStart, fnEnd);
+
+    expect(fnStart).toBeGreaterThanOrEqual(0);
+    expect(fn).toContain('PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS');
+    expect(fn).toContain('profileSyncRuntime.inFlight');
+    expect(mainSource).toContain("mainWindow.on('focus'");
+    expect(mainSource).toContain("powerMonitor.on('resume'");
+  });
+
+  it('surfaces setups that report success while sharing nothing', () => {
+    expect(mainSource).toContain('function collectProfileSyncFolderWarnings');
+    expect(mainSource).toContain('unsynced_folder');
+    expect(mainSource).toContain('google_drive_linux');
+    expect(mainSource).toContain('conflict_copies');
+    // Codes, not sentences, so wording stays with the translated renderer text.
+    expect(mainSource).toContain('folderWarnings: collectProfileSyncFolderWarnings()');
+  });
+
+  it('probes the folder layouts current cloud clients actually use', () => {
+    // Drive for Desktop stopped using ~/Google Drive years ago; these are the
+    // layouts a real install has today.
+    expect(mainSource).toContain('CloudStorage');
+    expect(mainSource).toContain('GoogleDrive-');
+    expect(mainSource).toContain("'My Drive'");
+    // Dropbox and OneDrive both publish their real root, which matters when the
+    // user moved the folder off its default location.
+    expect(mainSource).toContain("'.dropbox', 'info.json'");
+    expect(mainSource).toContain('process.env.OneDrive');
+  });
+
+  it('offers the relocated providers in the settings picker', () => {
+    const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+    ['dropbox', 'oneDrive', 'googleDrive', 'icloudDrive', 'syncthing', 'cloudFile'].forEach(
+      (provider) => {
+        expect(mainSource).toContain(`'${provider}'`);
+        expect(html).toContain(`value="${provider}"`);
+      }
+    );
   });
 
   it('tracks profile content changes separately from sync attempt timestamps', () => {
     expect(mainSource).toContain('profileUpdatedAt: null');
     expect(mainSource).toContain('config?.profileSync?.profileUpdatedAt ||');
-    expect(mainSource).toContain('config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt');
+    expect(mainSource).toContain(
+      'config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt'
+    );
     // Tracking must run before the snapshot is built so the timestamp lands in
     // the same save instead of trailing one save behind.
     expect(mainSource.indexOf('updateLocalProfileSyncTracking();')).toBeLessThan(

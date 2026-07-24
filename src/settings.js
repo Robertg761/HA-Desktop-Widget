@@ -2835,6 +2835,8 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     resolutionEl.classList.toggle('hidden', !status.needsResolution);
   }
 
+  renderProfileSyncFolderWarnings(status);
+
   if (passphraseHint) {
     passphraseHint.classList.toggle(
       'hidden',
@@ -2851,6 +2853,44 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     const derivedFolder = deriveProfileSyncFolderPath(status.cloudFilePath);
     folderInput.value = derivedFolder || status.cloudFilePath;
   }
+}
+
+/**
+ * Renders the warning codes main sends alongside the sync status. These cover
+ * setups that report a healthy sync while sharing nothing, so they are shown even
+ * when lastSyncStatus is 'success'.
+ */
+function renderProfileSyncFolderWarnings(status) {
+  const hintEl = document.getElementById('profile-sync-provider-hint');
+  if (!hintEl) return;
+
+  const warnings = Array.isArray(status.folderWarnings) ? status.folderWarnings : [];
+  const messages = warnings
+    .map((code) => {
+      if (code === 'unsynced_folder') {
+        return t(
+          'This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.'
+        );
+      }
+      if (code === 'google_drive_linux') {
+        return t(
+          'Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.'
+        );
+      }
+      if (code === 'conflict_copies') {
+        const count = Array.isArray(status.conflictCopies) ? status.conflictCopies.length : 0;
+        return t(
+          'Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.',
+          { count }
+        );
+      }
+      return '';
+    })
+    .filter(Boolean);
+
+  hintEl.textContent = messages.join(' ');
+  hintEl.classList.toggle('hidden', messages.length === 0);
+  hintEl.classList.toggle('profile-sync-hint-warning', messages.length > 0);
 }
 
 async function refreshProfileSyncStatusUi(options = {}) {

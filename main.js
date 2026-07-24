@@ -12,6 +12,7 @@ const {
   safeStorage,
   net,
   dialog,
+  powerMonitor,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -55,6 +56,7 @@ const {
 } = require('./src/linux-startup.cjs');
 const {
   isAllowedHlsProxyPath,
+  isPathInsideDirectory,
   normalizeEntityIdForObjectKey,
   validateProfileSyncCopyPaths,
 } = require('./src/main-security.cjs');
@@ -215,11 +217,10 @@ let preservedEncryptedTokenForRecovery = null;
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
-// After applying a pulled profile, the renderer echoes the config back through
-// update-config; suppress auto-push scheduling briefly so that echo cannot
-// trigger a push, without swallowing later genuine user edits.
-const PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS = 3000;
 const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
+// Floor between syncs triggered by focus or resume, so alt-tabbing does not turn
+// into constant reads of a cloud-synced folder.
+const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
 const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
 const PROFILE_SYNC_BACKUP_KEEP = 5;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
@@ -227,9 +228,19 @@ const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', '
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
   'cloudFile',
   'googleDrive',
+  'dropbox',
+  'oneDrive',
   'icloudDrive',
   'syncthing',
 ]);
+// Filenames these providers leave behind when two devices write at once. Their
+// presence beside the sync file means a race already happened.
+const PROFILE_SYNC_CONFLICT_PATTERNS = [
+  /\.sync-conflict-/i, // Syncthing
+  /\bconflicted copy\b/i, // Dropbox
+  /-[A-Za-z0-9]+'s conflicted copy\b/i, // OneDrive
+  /\(\d+\)\.json$/i, // Google Drive / generic duplicate suffix
+];
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decryption_failed']);
@@ -239,7 +250,15 @@ const profileSyncRuntime = {
   rerun: null,
   pushDebounceTimer: null,
   intervalTimer: null,
-  suppressAutoPushUntil: 0,
+  // Hash of the scoped profile as it stood immediately before a pulled profile
+  // was applied. Armed by applySyncedProfileToConfig so the renderer's stale
+  // config echo can be recognised by content rather than by timing; see
+  // updateLocalProfileSyncTracking.
+  pendingPullEchoHash: null,
+  // Conflict-copy filenames found beside the sync file on the last run. Refreshed
+  // by sync runs because the check needs the filesystem.
+  conflictCopies: [],
+  lastOpportunisticSyncAt: 0,
   needsResolution: false,
   pendingRemoteEnvelope: null,
   localProfileHash: null,
@@ -353,6 +372,7 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   const activeScope = getActiveProfileSyncScope();
   const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
+  profileSyncRuntime.pendingPullEchoHash = null;
   // Seed from the persisted content-change timestamp. lastSyncAt is only a
   // fallback for configs written before profileUpdatedAt existed — it tracks
   // sync *attempts* (including failures), so it must not be preferred here or
@@ -471,7 +491,67 @@ function normalizeProfileSyncProvider(provider) {
   return provider.trim();
 }
 
-function getProviderDefaultFolderCandidates(provider) {
+async function getGoogleDriveFolderCandidates(home) {
+  const candidates = [];
+
+  if (process.platform === 'darwin') {
+    // Drive for Desktop mounts one root per signed-in account under CloudStorage,
+    // named GoogleDrive-<account>. The account is unknown here, so enumerate.
+    const cloudStorage = path.join(home, 'Library', 'CloudStorage');
+    try {
+      const entries = await fs.promises.readdir(cloudStorage);
+      entries
+        .filter((entry) => entry.startsWith('GoogleDrive-'))
+        .forEach((entry) => candidates.push(path.join(cloudStorage, entry, 'My Drive')));
+    } catch {
+      // CloudStorage is absent unless Drive for Desktop is installed
+    }
+  }
+
+  if (process.platform === 'win32') {
+    // Drive for Desktop mounts a virtual drive, G: by default. Only the default
+    // is probed: the letter is user-configurable, and stat on a disconnected
+    // network drive can block, so a full A-Z scan is not worth the risk.
+    candidates.push(path.join(`G:${path.sep}`, 'My Drive'));
+  }
+
+  // Legacy Backup and Sync, and the third-party clients Linux users rely on.
+  candidates.push(path.join(home, 'Google Drive'), path.join(home, 'GoogleDrive'));
+  return candidates;
+}
+
+async function getDropboxFolderCandidates(home) {
+  const candidates = [];
+  // The Dropbox client records its real folder here, which is authoritative when
+  // the user moved it off the default location.
+  try {
+    const info = JSON.parse(
+      await fs.promises.readFile(path.join(home, '.dropbox', 'info.json'), 'utf8')
+    );
+    Object.values(info || {}).forEach((account) => {
+      if (account && typeof account.path === 'string' && account.path.trim()) {
+        candidates.push(account.path.trim());
+      }
+    });
+  } catch {
+    // info.json is absent unless the desktop client is installed
+  }
+  candidates.push(path.join(home, 'Dropbox'));
+  return candidates;
+}
+
+function getOneDriveFolderCandidates(home) {
+  // The client exports its root through these, covering relocated folders and
+  // the personal/business split.
+  return [
+    process.env.OneDrive,
+    process.env.OneDriveConsumer,
+    process.env.OneDriveCommercial,
+    path.join(home, 'OneDrive'),
+  ].filter((candidate) => typeof candidate === 'string' && candidate.trim());
+}
+
+async function getProviderDefaultFolderCandidates(provider) {
   let home = '';
   try {
     home = app.getPath('home');
@@ -479,7 +559,13 @@ function getProviderDefaultFolderCandidates(provider) {
     return [];
   }
   if (provider === 'googleDrive') {
-    return [path.join(home, 'Google Drive'), path.join(home, 'GoogleDrive')];
+    return getGoogleDriveFolderCandidates(home);
+  }
+  if (provider === 'dropbox') {
+    return getDropboxFolderCandidates(home);
+  }
+  if (provider === 'oneDrive') {
+    return getOneDriveFolderCandidates(home);
   }
   if (provider === 'icloudDrive') {
     if (process.platform === 'darwin') {
@@ -493,16 +579,18 @@ function getProviderDefaultFolderCandidates(provider) {
   return [];
 }
 
-function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
+async function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
   if (existingPath) {
     const existingFolder = path.dirname(existingPath);
     if (existingFolder && existingFolder !== '.') {
       return existingFolder;
     }
   }
-  for (const candidate of getProviderDefaultFolderCandidates(normalizeProfileSyncProvider(provider))) {
+  for (const candidate of await getProviderDefaultFolderCandidates(
+    normalizeProfileSyncProvider(provider)
+  )) {
     try {
-      if (fs.statSync(candidate).isDirectory()) return candidate;
+      if ((await fs.promises.stat(candidate)).isDirectory()) return candidate;
     } catch {
       // candidate does not exist; try the next one
     }
@@ -1558,9 +1646,42 @@ function buildProfileSyncStatus(extra = {}) {
     inFlight: !!profileSyncRuntime.inFlight,
     needsResolution: !!profileSyncRuntime.needsResolution,
     deviceId: profileSync.deviceId,
+    // Machine-readable codes rather than sentences, so the wording stays in the
+    // renderer with the rest of the translated UI text.
+    folderWarnings: collectProfileSyncFolderWarnings(),
+    conflictCopies: [...profileSyncRuntime.conflictCopies],
     ...extra,
   };
   return status;
+}
+
+/**
+ * Conditions that make a sync setup look healthy while not actually working.
+ * Only the cheap synchronous checks live here; conflict-copy detection needs the
+ * filesystem and is refreshed on sync runs instead.
+ *
+ * @returns {string[]} warning codes for the renderer to translate
+ */
+function collectProfileSyncFolderWarnings() {
+  const profileSync = getProfileSyncConfig();
+  const warnings = [];
+
+  if (profileSync.enabled && isProfileSyncFolderUnsynced(profileSync.cloudFilePath)) {
+    warnings.push('unsynced_folder');
+  }
+  // Google has never shipped a Linux client, so picking that provider here means
+  // a third-party tool or nothing at all.
+  if (
+    normalizeProfileSyncProvider(profileSync.provider) === 'googleDrive' &&
+    process.platform === 'linux'
+  ) {
+    warnings.push('google_drive_linux');
+  }
+  if (profileSyncRuntime.conflictCopies.length > 0) {
+    warnings.push('conflict_copies');
+  }
+
+  return warnings;
 }
 
 function updateProfileSyncStatus(status, errorMessage = '') {
@@ -1762,6 +1883,79 @@ async function writeConfiguredSyncEnvelope(envelope) {
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
 }
 
+/**
+ * Re-reads the configured sync file and reports whether it moved since an earlier
+ * read. This is the compare half of the compare-and-swap guarding a push.
+ *
+ * A failed re-read counts as changed: when the file is unreadable or a provider
+ * is midway through replicating it, backing off is safer than overwriting.
+ *
+ * @param {{exists: boolean, envelope: object|null}} previousResult earlier read to compare against
+ * @returns {Promise<boolean>} whether the remote file changed
+ */
+async function hasRemoteSyncEnvelopeChanged(previousResult) {
+  let currentResult;
+  try {
+    currentResult = await readConfiguredSyncEnvelope();
+  } catch (error) {
+    log.warn('Could not re-read the sync file before pushing:', error.message);
+    return true;
+  }
+
+  if (currentResult.exists !== previousResult.exists) return true;
+  if (!currentResult.exists) return false;
+
+  // deviceId is compared too: two devices can write inside the same clock tick,
+  // which updatedAt alone would not distinguish.
+  return (
+    (currentResult.envelope?.updatedAt || null) !== (previousResult.envelope?.updatedAt || null) ||
+    (currentResult.envelope?.updatedByDeviceId || null) !==
+      (previousResult.envelope?.updatedByDeviceId || null)
+  );
+}
+
+/**
+ * Looks beside the sync file for the copies Syncthing, Dropbox, OneDrive and
+ * Drive leave when two devices write at once. Their presence is the only signal
+ * the app gets that a provider-level race happened, since the providers resolve
+ * it by forking the file rather than reporting an error.
+ *
+ * @returns {Promise<string[]>} conflict-copy filenames, empty when none
+ */
+async function findProfileSyncConflictCopies() {
+  const filePath = getProfileSyncConfig().cloudFilePath;
+  if (!filePath) return [];
+
+  const folder = path.dirname(filePath);
+  const baseName = path.basename(filePath, path.extname(filePath));
+  try {
+    const entries = await fs.promises.readdir(folder);
+    return entries.filter(
+      (entry) =>
+        entry !== path.basename(filePath) &&
+        entry.includes(baseName) &&
+        PROFILE_SYNC_CONFLICT_PATTERNS.some((pattern) => pattern.test(entry))
+    );
+  } catch {
+    // folder unreadable or gone; nothing useful to report
+    return [];
+  }
+}
+
+/**
+ * True when the sync file sits in the app's own data folder, which nothing
+ * replicates. Enabling sync there succeeds and shares the profile with no one,
+ * so it is worth calling out rather than reporting a healthy sync.
+ */
+function isProfileSyncFolderUnsynced(filePath = getProfileSyncConfig().cloudFilePath) {
+  if (!filePath) return false;
+  try {
+    return isPathInsideDirectory(filePath, app.getPath('userData'));
+  } catch {
+    return false;
+  }
+}
+
 function getActiveProfileSyncScope() {
   const profileSync = getProfileSyncConfig();
   const normalizedScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
@@ -1836,6 +2030,12 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
   const nextScope = getNormalizedProfileSyncScopeValue(
     syncScopeValue || previous?.profileSync?.syncScope
   );
+  // Captured under nextScope (not the pre-pull scope) so it is directly
+  // comparable to the hashes updateLocalProfileSyncTracking computes afterwards.
+  const prePullHash = computeScopedProfileHash(
+    profileSyncCore.projectSyncProfile(previous, nextScope),
+    nextScope
+  );
   const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
   ensureProfileSyncConfigDefaults(merged);
   merged.profileSync = {
@@ -1855,7 +2055,8 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
     getActiveProfileSyncScope()
   );
   profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
-  profileSyncRuntime.suppressAutoPushUntil = Date.now() + PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS;
+  profileSyncRuntime.pendingPullEchoHash =
+    prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
 
   saveConfig();
   syncDesktopPinWindowsWithConfig();
@@ -1874,6 +2075,43 @@ function clearProfileSyncTimers() {
   }
 }
 
+/**
+ * Reverses a renderer config update that predates a just-applied pull.
+ *
+ * applySyncedProfileToConfig pushes the pulled profile out to the renderer, but a
+ * config update already in flight arrives afterwards still carrying the pre-pull
+ * values, and the update-config merge would silently revert the pull. The stale
+ * update is recognised by content — it reproduces the pre-pull profile exactly —
+ * and the pulled fields are merged back over it.
+ *
+ * @param {object} pulledConfig config as it stood before this update, i.e. the pulled state
+ * @returns {boolean} whether a stale update was detected and reversed
+ */
+function restoreProfileFromStalePullEcho(pulledConfig) {
+  const prePullHash = profileSyncRuntime.pendingPullEchoHash;
+  if (prePullHash === null || !pulledConfig) return false;
+
+  // Scope comes from the pulled config, not the merged one: the stale update may
+  // carry a stale syncScope too.
+  const scope = getNormalizedProfileSyncScopeValue(pulledConfig?.profileSync?.syncScope);
+  const incomingHash = computeScopedProfileHash(
+    profileSyncCore.projectSyncProfile(config, scope),
+    scope
+  );
+  if (incomingHash !== prePullHash) return false;
+
+  config = profileSyncCore.mergeSyncedProfileIntoConfig(
+    config,
+    profileSyncCore.projectSyncProfile(pulledConfig, scope),
+    scope
+  );
+  ensureProfileSyncConfigDefaults(config);
+  config.profileSync.syncScope = scope;
+  profileSyncRuntime.pendingPullEchoHash = null;
+  log.debug('Reverted a renderer config update that predates the last profile sync pull');
+  return true;
+}
+
 function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   const profile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
   const nextHash = computeScopedProfileHash(profile, getActiveProfileSyncScope());
@@ -1886,14 +2124,30 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
     return;
   }
 
+  // A pulled profile is applied here in main, but the renderer may still have an
+  // in-flight config snapshot from before the pull. That snapshot comes back
+  // through update-config and looks like a change back to the pre-pull content.
+  // Reverting to byte-identical pre-pull content is never a real user edit, so
+  // drop it instead of pushing stale data over the newer remote profile. Matching
+  // on content rather than on a timer means a genuine edit made moments after a
+  // pull still pushes immediately.
+  if (
+    profileSyncRuntime.pendingPullEchoHash !== null &&
+    nextHash === profileSyncRuntime.pendingPullEchoHash
+  ) {
+    profileSyncRuntime.pendingPullEchoHash = null;
+    profileSyncRuntime.localProfileHash = nextHash;
+    // localProfileUpdatedAt deliberately stays on the pulled envelope's
+    // timestamp: leaving it behind keeps the next auto sync from treating the
+    // stale echo as the newer side and pushing it out.
+    return;
+  }
+
+  profileSyncRuntime.pendingPullEchoHash = null;
   profileSyncRuntime.localProfileHash = nextHash;
   profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
   if (config?.profileSync) {
     config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
-  }
-
-  if (Date.now() < profileSyncRuntime.suppressAutoPushUntil) {
-    return;
   }
 
   if (allowDebouncedPush) {
@@ -2799,6 +3053,7 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
   try {
     const localUpdatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString();
     const remoteResult = await readConfiguredSyncEnvelope();
+    profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
     let finalDirection = direction;
 
     if (direction === 'auto') {
@@ -2845,6 +3100,21 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
 
     if (finalDirection === 'push') {
       const envelopeToWrite = await buildLocalProfileEnvelope(new Date().toISOString());
+
+      // Compare-and-swap: encryption and provider replication both take time, so
+      // another device can land a write between the read above and this one.
+      // Overwriting blind would silently drop it, so re-check and re-resolve.
+      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
+        log.info('Remote sync file changed while preparing a push; re-resolving direction');
+        if (source === 'conflict_recheck') {
+          throw new Error('Sync file kept changing on the other device; try again');
+        }
+        profileSyncRuntime.rerun = { direction: 'auto', source: 'conflict_recheck' };
+        const status = buildProfileSyncStatus();
+        emitProfileSyncStatus();
+        return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
+      }
+
       await writeConfiguredSyncEnvelope(envelopeToWrite);
       profileSyncRuntime.localProfileUpdatedAt = envelopeToWrite.updatedAt;
       getProfileSyncConfig().profileUpdatedAt = envelopeToWrite.updatedAt;
@@ -2869,6 +3139,43 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
         log.warn('Queued profile sync rerun failed:', error.message);
       });
     }
+  }
+}
+
+/**
+ * Runs a sync triggered by something other than the interval timer (window focus,
+ * waking from suspend). Best-effort: it declines rather than queues when a sync is
+ * already running or the setup is incomplete.
+ *
+ * @param {string} source label recorded for logging
+ */
+function requestOpportunisticProfileSync(source) {
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (profileSyncRuntime.needsResolution || profileSyncRuntime.inFlight) return;
+
+  // focus fires on every alt-tab, so without a floor this would hit the sync
+  // folder constantly to discover nothing changed.
+  const now = Date.now();
+  if (now - profileSyncRuntime.lastOpportunisticSyncAt < PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS) {
+    return;
+  }
+  profileSyncRuntime.lastOpportunisticSyncAt = now;
+
+  runProfileSync('auto', source).catch((error) => {
+    log.warn(`Opportunistic profile sync (${source}) failed:`, error.message);
+  });
+}
+
+function setupProfileSyncWakeTriggers() {
+  try {
+    // Suspend stops the interval timer from firing on time, so the profile is
+    // usually stale by the time the machine comes back.
+    powerMonitor.on('resume', () => {
+      requestOpportunisticProfileSync('resume');
+    });
+  } catch (error) {
+    log.warn('Could not subscribe to power resume events:', error?.message || error);
   }
 }
 
@@ -2992,6 +3299,12 @@ function createWindow() {
   mainWindow.on('minimize', (event) => {
     event.preventDefault();
     mainWindow.hide();
+  });
+
+  // Coming back to the widget is the moment a stale profile is most visible, and
+  // the provider has usually finished replicating by then.
+  mainWindow.on('focus', () => {
+    requestOpportunisticProfileSync('focus');
   });
 
   // Open DevTools in development mode
@@ -3191,6 +3504,7 @@ function schedulePostWindowStartupTasks() {
       log.warn('Popup hotkey startup initialization failed:', error.message);
     }
 
+    setupProfileSyncWakeTriggers();
     void initializeProfileSyncOnStartup().catch((error) => {
       log.warn('Profile sync startup initialization failed:', error.message);
     });
@@ -3274,6 +3588,7 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   ensureUpdateConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   pruneConfig(config);
+  restoreProfileFromStalePullEcho(prevConfig);
   // The renderer's echo of profileSync may be stale; the content-change
   // timestamp is main-process-authoritative (saveConfig advances it on real
   // profile changes).
@@ -3722,7 +4037,10 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider) => {
   if (!sender) return rejectUnauthorizedIpc('choose-profile-sync-folder');
   const profileSync = getProfileSyncConfig();
   const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
-  const defaultPath = getDefaultProfileSyncFolderPath(providerToUse, profileSync.cloudFilePath);
+  const defaultPath = await getDefaultProfileSyncFolderPath(
+    providerToUse,
+    profileSync.cloudFilePath
+  );
   const result = await dialog.showOpenDialog({
     title: mainT('Choose Profile Sync Folder'),
     defaultPath,
