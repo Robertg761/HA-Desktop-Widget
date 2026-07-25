@@ -77,6 +77,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`~/Library/CloudStorage`) and Windows (`G:\My Drive`), instead of only the long
   retired `~/Google Drive` layout.
 
+- Language packs: Arabic, Simplified Chinese, French, Hindi and Spanish were translated
+  when the app had 172 strings and had not been updated since, leaving them at 46%
+  coverage — everything added over the last few months, including onboarding, Quick
+  Access pages, comparison graphs, tile settings and camera previews, fell back to
+  English. All five packs are now complete at 343 strings and bumped to 1.1.0, so anyone
+  with a pack installed will be offered an update.
+
 ### Changed
 
 - Desktop pins: the timer tile was rebuilt around the countdown. The icon, the duplicated
