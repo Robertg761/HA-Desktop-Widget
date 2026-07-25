@@ -5984,7 +5984,35 @@ body.first-run-active .widget-content > * {
   box-sizing: border-box;
 }
 
-/* All entities have consistent styling - no special active or off states */
+/* Tiles are styled the same whatever they are, except for the opt-out accent glow that
+   marks a Quick Access tile whose entity is currently on (Personalization > Window
+   Effects). Read-only tiles never carry data-active, so they never glow. */
+body.active-tile-glow #quick-controls .control-item[data-active='true'] {
+  border-color: rgba(var(--accent-rgb), 0.34);
+  background-image: radial-gradient(
+    circle at 50% 116%,
+    rgba(var(--accent-rgb), 0.24),
+    rgba(var(--accent-rgb), 0.07) 52%,
+    transparent 76%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--accent-rgb), 0.07),
+    0 4px 18px rgba(var(--accent-rgb), 0.14);
+}
+
+body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
+  border-color: rgba(var(--accent-rgb), 0.46);
+}
+
+body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  background-image: radial-gradient(
+    circle at 50% 116%,
+    rgba(var(--accent-rgb), 0.34),
+    rgba(var(--accent-rgb), 0.12) 52%,
+    transparent 76%
+  );
+}
 
 .control-icon {
   font-size: 24px;

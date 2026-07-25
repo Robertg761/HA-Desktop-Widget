@@ -228,6 +228,11 @@ function createSettingsModalDOM() {
         <option value="compact">Compact</option>
       </select>
 
+      <label for="active-tile-glow">
+        <input type="checkbox" id="active-tile-glow" />
+        Glow tiles that are on
+      </label>
+
       <label for="global-hotkeys-enabled">
         <input type="checkbox" id="global-hotkeys-enabled" />
         Enable Global Hotkeys
@@ -1863,6 +1868,35 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(state.CONFIG.ui.density).toBe('compact');
+    });
+
+    test('loads, previews, and saves the active tile glow toggle', async () => {
+      await settings.openSettings();
+
+      const activeTileGlow = document.getElementById('active-tile-glow');
+      // Defaults on: a config that predates the setting still gets the glow.
+      expect(activeTileGlow.checked).toBe(true);
+
+      activeTileGlow.checked = false;
+      activeTileGlow.dispatchEvent(new Event('change'));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
+        expect.objectContaining({ activeTileGlow: false })
+      );
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({ activeTileGlow: false }),
+        })
+      );
+
+      await settings.openSettings();
+      expect(document.getElementById('active-tile-glow').checked).toBe(false);
+
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
     });
   });
 

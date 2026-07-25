@@ -333,6 +333,17 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('density-compact')).toBe(true);
     });
 
+    it('should glow active tiles unless the preference is turned off', () => {
+      uiUtils.applyUiPreferences({});
+      expect(document.body.classList.contains('active-tile-glow')).toBe(true);
+
+      uiUtils.applyUiPreferences({ activeTileGlow: true });
+      expect(document.body.classList.contains('active-tile-glow')).toBe(true);
+
+      uiUtils.applyUiPreferences({ activeTileGlow: false });
+      expect(document.body.classList.contains('active-tile-glow')).toBe(false);
+    });
+
     it('should remove compact density for comfortable mode', () => {
       document.body.classList.add('density-compact');
 

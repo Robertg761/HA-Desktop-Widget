@@ -1475,6 +1475,52 @@ function updateEntityInUI(entity, options = {}) {
   }
 }
 
+/**
+ * Whether a Quick Access tile is currently doing something — a light that is on, a fan
+ * that is running, a player that is playing. Read-only entities (sensors, cameras,
+ * calendars) never qualify: there is nothing to be "on".
+ * @param {object} entity - The entity behind the tile.
+ * @returns {boolean} - True when the tile should read as active.
+ */
+function isQuickAccessTileActive(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const entityState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+  if (!domain || !entityState || entityState === 'unavailable' || entityState === 'unknown') {
+    return false;
+  }
+
+  switch (domain) {
+    case 'light':
+    case 'switch':
+    case 'fan':
+    case 'input_boolean':
+    case 'siren':
+    case 'humidifier':
+    case 'script': // "on" only while the script is actually running
+      return entityState === 'on';
+    case 'media_player':
+      return entityState === 'playing';
+    case 'climate':
+    case 'water_heater':
+      return entityState !== 'off';
+    case 'cover':
+      return entityState === 'open' || entityState === 'opening';
+    case 'vacuum':
+      return entityState === 'cleaning' || entityState === 'returning';
+    default:
+      return false;
+  }
+}
+
+function applyQuickAccessTileActiveState(element, entity) {
+  if (!element) return;
+  if (isQuickAccessTileActive(entity)) {
+    element.dataset.active = 'true';
+    return;
+  }
+  delete element.dataset.active;
+}
+
 function getControlRenderSignature(entity) {
   if (!entity || !entity.entity_id) return '';
   const attrs = entity.attributes || {};
@@ -6108,6 +6154,7 @@ function updateExistingMediaPlayerControl(item, entity) {
   if (!item.querySelector('.control-icon') || !item.querySelector('.control-info')) return false;
 
   item.dataset.entityId = entity.entity_id;
+  applyQuickAccessTileActiveState(item, entity);
   item.title = 'Click to play/pause, hold for controls';
   setupMediaPlayerControls(item, entity);
   return true;
@@ -6783,6 +6830,7 @@ function createControlElement(entity, options = {}) {
     const div = document.createElement('div');
     div.className = 'control-item';
     div.dataset.entityId = entity.entity_id;
+    applyQuickAccessTileActiveState(div, entity);
     if (isQuickAccessContext) {
       applyQuickAccessTileAccessibility(div, entity);
     }
@@ -7088,6 +7136,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   const isQuickAccessContext = renderContext === 'quick-access';
   const displayEntity = getEntityForDisplay(entity);
   if (!div || !displayEntity?.entity_id || div.dataset.desktopPin === 'true') return false;
+
+  applyQuickAccessTileActiveState(div, displayEntity);
 
   if (displayEntity.entity_id.startsWith('media_player.')) {
     return updateExistingMediaPlayerControl(div, displayEntity);

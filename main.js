@@ -2312,6 +2312,7 @@ function loadConfig(options = {}) {
       language: 'auto',
       customColors: [],
       density: 'comfortable',
+      activeTileGlow: true,
       personalizationSectionsCollapsed: {},
       use24HourClock: false,
       weatherEffectsEnabled: false,

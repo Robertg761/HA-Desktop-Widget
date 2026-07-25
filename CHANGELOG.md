@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Quick Access: tiles whose entity is currently on now carry a subtle glow in your accent
+  colour, so a switch, light, fan, player, cover, climate or vacuum that is running reads
+  at a glance instead of only from its label. Read-only tiles (sensors, cameras,
+  calendars, buttons) never glow. Toggle it under Personalization > Window Effects with
+  "Glow tiles that are on"; it is on by default.
 - Profile Sync: Dropbox and OneDrive are selectable providers, each suggesting the folder
   the installed client actually uses rather than assuming the default location.
 - Profile Sync: warns when the chosen folder is this device's local app data folder, which

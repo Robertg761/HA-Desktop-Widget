@@ -1418,6 +1418,63 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerIcon.textContent).toContain('🔥');
     });
 
+    it('marks controllable quick access tiles as active while their entity is on', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.fan_socket', 'light.bedroom', 'sensor.temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'switch.fan_socket': {
+          entity_id: 'switch.fan_socket',
+          state: 'on',
+          attributes: { friendly_name: 'Fan Socket' },
+        },
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'off',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+        'sensor.temperature': sampleStates['sensor.temperature'],
+      });
+
+      ui.renderActiveTab();
+
+      const tileFor = (entityId) =>
+        document.querySelector(`#quick-controls .control-item[data-entity-id="${entityId}"]`);
+
+      expect(tileFor('switch.fan_socket')?.dataset.active).toBe('true');
+      // Off, and read-only tiles, stay unmarked so nothing glows without reason.
+      expect(tileFor('light.bedroom')?.dataset.active).toBeUndefined();
+      expect(tileFor('sensor.temperature')?.dataset.active).toBeUndefined();
+    });
+
+    it('clears the active marker when the entity turns off', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.fan_socket'];
+      state.setConfig(config);
+      state.setStates({
+        'switch.fan_socket': {
+          entity_id: 'switch.fan_socket',
+          state: 'on',
+          attributes: { friendly_name: 'Fan Socket' },
+        },
+      });
+
+      ui.renderActiveTab();
+      const tile = () =>
+        document.querySelector('#quick-controls .control-item[data-entity-id="switch.fan_socket"]');
+      expect(tile()?.dataset.active).toBe('true');
+
+      const offState = {
+        entity_id: 'switch.fan_socket',
+        state: 'off',
+        attributes: { friendly_name: 'Fan Socket' },
+      };
+      state.setEntityState(offState);
+      ui.updateEntityInUI(offState);
+
+      expect(tile()?.dataset.active).toBeUndefined();
+    });
+
     it('keeps camera tiles on the static icon by default', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];

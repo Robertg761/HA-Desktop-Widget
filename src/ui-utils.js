@@ -523,6 +523,8 @@ function applyUiPreferences(ui = {}) {
     body.classList.toggle('high-contrast', !!ui.highContrast);
     body.classList.toggle('opaque-panels', !!ui.opaquePanels);
     body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
+    // Opt-out rather than opt-in: the glow is how a tile shows it is on.
+    body.classList.toggle('active-tile-glow', ui.activeTileGlow !== false);
   } catch (error) {
     console.error('Error applying UI preferences:', error);
   }

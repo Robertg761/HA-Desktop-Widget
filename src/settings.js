@@ -3444,7 +3444,34 @@ async function persistDensitySelection(nextDensity) {
   return updatedConfig;
 }
 
+async function persistActiveTileGlowSelection(enabled) {
+  state.CONFIG.ui = state.CONFIG.ui || {};
+  const nextUiConfig = {
+    ...state.CONFIG.ui,
+    activeTileGlow: !!enabled,
+  };
+
+  state.CONFIG.ui = nextUiConfig;
+  applyUiPreferences(nextUiConfig);
+
+  if (!window?.electronAPI?.updateConfig) return null;
+  return window.electronAPI.updateConfig({ ui: nextUiConfig });
+}
+
 function bindAppearanceSettingsUi() {
+  const activeTileGlow = document.getElementById('active-tile-glow');
+  if (activeTileGlow) {
+    activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
+    activeTileGlow.onchange = async () => {
+      try {
+        await persistActiveTileGlowSelection(activeTileGlow.checked);
+      } catch (error) {
+        log.error('Failed to save tile glow setting:', error);
+        showToast(t('Failed to save tile glow setting'), 'warning', 3000);
+      }
+    };
+  }
+
   const densitySelect = document.getElementById('density-select');
   if (!densitySelect) return;
 
@@ -4011,6 +4038,10 @@ async function saveSettings() {
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
     nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
+    const activeTileGlow = document.getElementById('active-tile-glow');
+    nextConfig.ui.activeTileGlow = activeTileGlow
+      ? !!activeTileGlow.checked
+      : nextConfig.ui.activeTileGlow !== false;
     if (enableInteractionDebugLogs) {
       nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
