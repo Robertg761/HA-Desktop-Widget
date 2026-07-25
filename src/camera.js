@@ -17,6 +17,25 @@ const CAMERA_PREVIEW_REFRESH_VALUES = new Set(
 const CAMERA_PREVIEW_ERROR_RETRY_MS = 30000;
 const CAMERA_PREVIEW_LOAD_TIMEOUT_MS = 20000;
 const CAMERA_PREVIEW_LIVE_START_TIMEOUT_MS = 30000;
+// A camera gets the full wait the first time, because some cloud cameras genuinely need 20s+ to
+// negotiate a stream. Once one has failed, later attempts give up sooner rather than parking the
+// tile on "Starting live stream…" for half a minute every cycle.
+const CAMERA_PREVIEW_LIVE_RESTART_TIMEOUT_MS = 10000;
+const CAMERA_PREVIEW_STAGGER_MS = 180;
+const CAMERA_PREVIEW_MAX_STAGGER_MS = 900;
+// Cameras that cannot start a stream at all (battery doorbells especially) should not be woken
+// twice a minute forever. Each consecutive failure widens the gap before the next live attempt;
+// the snapshot fallback keeps refreshing on its own cadence in the meantime.
+const CAMERA_PREVIEW_LIVE_RETRY_STEPS_MS = Object.freeze([30000, 60000, 300000]);
+const CAMERA_PREVIEW_WARMUP_REUSE_MS = 15000;
+const CAMERA_PREVIEW_MJPEG_TIMEOUT_MS = 8000;
+// Learned per entity rather than assumed per brand: a camera that answers the MJPEG endpoint with
+// nothing usable is remembered, which covers every integration with the quirk instead of one.
+const cameraMjpegUnusableEntities = new Set();
+// Doorbell cameras are usually portrait, so `object-fit: cover` in a landscape tile crops the
+// top of the frame — exactly where faces are. Bias the crop upward for those sources.
+const CAMERA_PREVIEW_TALL_SOURCE_RATIO = 0.9;
+const CAMERA_PREVIEW_TALL_OBJECT_POSITION = 'center 30%';
 const cameraPreviewRecords = new Map();
 const suspendedCameraPreviewEntities = new Set();
 let cameraPreviewObserver = null;
@@ -69,20 +88,44 @@ function armCameraPreviewLoadTimeout(
   }, timeoutMs);
 }
 
-function setCameraPreviewState(record, previewState, statusText) {
+function getCameraPreviewBadgeLabel(record) {
+  return record?.previewMode === 'live' && !record.snapshotFallback ? 'Live' : 'Snapshot';
+}
+
+function updateCameraPreviewBadge(record) {
+  const label = t(getCameraPreviewBadgeLabel(record));
+  const tileLabel = record?.tile?.querySelector('.camera-tile-preview-badge-label');
+  if (tileLabel) tileLabel.textContent = label;
+  const expandedLabel = record?.expandedPreview?.badgeLabel;
+  if (expandedLabel) expandedLabel.textContent = label;
+}
+
+// A Quick Access tile is only about 140px wide at 9px type, so anything past roughly 28
+// characters is ellipsised away. The expanded view has room for the full explanation.
+function setCameraPreviewState(record, previewState, statusText, tileStatusText = statusText) {
   if (!record?.tile) return;
   const translatedStatus = statusText ? t(statusText) : '';
+  const translatedTileStatus = tileStatusText ? t(tileStatusText) : '';
   record.previewState = previewState;
   record.statusText = translatedStatus;
   record.tile.dataset.cameraPreviewState = previewState;
   const status = record.tile.querySelector('.camera-tile-preview-status');
-  if (status && translatedStatus) status.textContent = translatedStatus;
+  if (status) status.textContent = translatedTileStatus;
   if (record.expandedPreview) {
     record.expandedPreview.overlay.dataset.cameraPreviewState = previewState;
-    if (record.expandedPreview.status && translatedStatus) {
+    if (record.expandedPreview.status) {
       record.expandedPreview.status.textContent = translatedStatus;
     }
   }
+  updateCameraPreviewBadge(record);
+}
+
+// Home Assistant marks a camera unavailable when the integration has lost it. Polling the proxy
+// through that only produces failures, so the preview waits for the camera to come back instead.
+function isCameraEntityOffline(entityId) {
+  const entityState = state.STATES?.[entityId]?.state;
+  if (entityState === undefined) return false;
+  return CAMERA_OFFLINE_STATES.has(String(entityState).toLowerCase());
 }
 
 function isCameraPreviewEligible(record) {
@@ -90,16 +133,78 @@ function isCameraPreviewEligible(record) {
     record?.tile?.isConnected &&
     record.intersecting !== false &&
     !suspendedCameraPreviewEntities.has(record.entityId) &&
+    !isCameraEntityOffline(record.entityId) &&
     document.visibilityState !== 'hidden'
   );
 }
 
+function getCameraPreviewImages(record) {
+  if (record?.images?.length) return record.images;
+  return record?.image ? [record.image] : [];
+}
+
+// Snapshots load into the buffer that is not on screen, so a failed refresh can never blank the
+// frame the tile is already showing.
+function getCameraPreviewLoadTarget(record) {
+  const images = getCameraPreviewImages(record);
+  if (images.length < 2) return images[0] || null;
+  return images.find((image) => image !== record.image) || images[0];
+}
+
+// Tracked on the tile so the placeholder icon can get out of the way of a warmup still, which
+// arrives while the state is still 'loading'.
+function setCameraPreviewHasFrame(record, hasFrame) {
+  if (!record?.tile) return;
+  record.tile.dataset.cameraPreviewHasFrame = hasFrame ? 'true' : 'false';
+  if (record.expandedPreview) {
+    record.expandedPreview.overlay.dataset.cameraPreviewHasFrame = hasFrame ? 'true' : 'false';
+  }
+}
+
+function activateCameraPreviewImage(record, image) {
+  if (!record || !image) return;
+  record.image = image;
+  getCameraPreviewImages(record).forEach((buffer) => {
+    buffer.dataset.cameraBufferActive = buffer === image ? 'true' : 'false';
+  });
+  setCameraPreviewHasFrame(record, true);
+}
+
+function clearCameraPreviewImageElement(image) {
+  if (!image) return;
+  image.onload = null;
+  image.onerror = null;
+  image.removeAttribute('src');
+  image.dataset.cameraBufferLoaded = 'false';
+}
+
+// Clearing one buffer can leave the tile flagged as holding a frame when it no longer does.
+function clearCameraPreviewBuffer(record, image) {
+  clearCameraPreviewImageElement(image);
+  setCameraPreviewHasFrame(record, hasCameraPreviewFrame(record));
+}
+
+function hasCameraPreviewImageSource(record) {
+  return getCameraPreviewImages(record).some((image) => image.hasAttribute('src'));
+}
+
+function applyCameraPreviewFraming(record, media) {
+  if (!media) return;
+  const sourceWidth = media.naturalWidth || media.videoWidth || 0;
+  const sourceHeight = media.naturalHeight || media.videoHeight || 0;
+  const boxWidth = record?.tile?.clientWidth || 0;
+  const boxHeight = record?.tile?.clientHeight || 0;
+  if (!sourceWidth || !sourceHeight || !boxWidth || !boxHeight) return;
+  const isTallerThanTile =
+    sourceWidth / sourceHeight < (boxWidth / boxHeight) * CAMERA_PREVIEW_TALL_SOURCE_RATIO;
+  media.style.objectPosition = isTallerThanTile ? CAMERA_PREVIEW_TALL_OBJECT_POSITION : '';
+}
+
 function resetCameraPreviewImage(record) {
-  if (!record?.image) return;
+  if (!record) return;
   clearCameraPreviewLoadTimeout(record);
-  record.image.onload = null;
-  record.image.onerror = null;
-  record.image.removeAttribute('src');
+  getCameraPreviewImages(record).forEach(clearCameraPreviewImageElement);
+  setCameraPreviewHasFrame(record, false);
 }
 
 function resetCameraPreviewVideo(record) {
@@ -170,7 +275,8 @@ function scheduleCameraPreview(record, delayMs) {
 
 function requestCameraSnapshot(record, { liveFallback = false } = {}) {
   if (!record || record.disposed || record.loading || !isCameraPreviewEligible(record)) return;
-  if (!record.image?.isConnected) {
+  const target = getCameraPreviewLoadTarget(record);
+  if (!target?.isConnected) {
     disposeCameraPreview(record.tile);
     return;
   }
@@ -178,9 +284,13 @@ function requestCameraSnapshot(record, { liveFallback = false } = {}) {
   clearCameraPreviewLoadTimeout(record);
   resetCameraPreviewVideo(record);
   setCameraPreviewSource(record, 'image');
+  record.snapshotFallback = liveFallback;
   record.loading = true;
   record.requestId += 1;
   const requestId = record.requestId;
+  // A frame already on screen survives a failed refresh because the new snapshot decodes into
+  // the spare buffer first. Without a spare buffer the failure has to fall back to the icon.
+  const canRetainLastFrame = record.hasLoaded && target !== record.image;
   setCameraPreviewState(
     record,
     liveFallback ? 'loading' : record.hasLoaded ? 'refreshing' : 'loading',
@@ -188,40 +298,124 @@ function requestCameraSnapshot(record, { liveFallback = false } = {}) {
       ? 'Live unavailable — loading snapshot…'
       : record.hasLoaded
         ? 'Refreshing snapshot…'
-        : 'Loading snapshot…'
+        : 'Loading snapshot…',
+    liveFallback ? 'Loading snapshot…' : undefined
   );
 
-  record.image.onload = () => {
+  const failSnapshot = () => {
+    if (record.disposed || record.requestId !== requestId) return;
+    clearCameraPreviewLoadTimeout(record);
+    record.loading = false;
+    record.snapshotFailureCount = (record.snapshotFailureCount || 0) + 1;
+    clearCameraPreviewBuffer(record, target);
+    if (canRetainLastFrame) {
+      setCameraPreviewState(
+        record,
+        'stale',
+        'Preview unavailable — showing last frame',
+        'Showing last frame'
+      );
+    } else {
+      setCameraPreviewState(record, 'error', 'Preview unavailable');
+    }
+    // A camera that keeps failing should not be re-requested every 30s forever.
+    scheduleCameraPreview(
+      record,
+      Math.max(record.intervalMs, getCameraRetryDelay(record.snapshotFailureCount))
+    );
+  };
+
+  target.onload = () => {
     if (record.disposed || record.requestId !== requestId) return;
     clearCameraPreviewLoadTimeout(record);
     record.loading = false;
     record.hasLoaded = true;
     record.lastLoadedAt = Date.now();
+    record.snapshotFailureCount = 0;
+    target.dataset.cameraBufferLoaded = 'true';
+    applyCameraPreviewFraming(record, target);
+    activateCameraPreviewImage(record, target);
     setCameraPreviewState(
       record,
       liveFallback ? 'fallback' : 'ready',
-      liveFallback ? 'Live unavailable — showing snapshot' : 'Snapshot loaded'
+      liveFallback ? 'Live unavailable — showing snapshot' : 'Snapshot loaded',
+      liveFallback ? 'Snapshot fallback' : undefined
     );
     scheduleCameraPreview(record, liveFallback ? CAMERA_PREVIEW_ERROR_RETRY_MS : record.intervalMs);
   };
 
-  record.image.onerror = () => {
-    if (record.disposed || record.requestId !== requestId) return;
-    record.loading = false;
-    resetCameraPreviewImage(record);
-    setCameraPreviewState(record, 'error', 'Preview unavailable');
-    scheduleCameraPreview(record, Math.max(record.intervalMs, CAMERA_PREVIEW_ERROR_RETRY_MS));
-  };
+  target.onerror = failSnapshot;
 
   cameraPreviewSequence += 1;
   const entityPath = encodeURIComponent(record.entityId);
-  record.image.src = `ha://camera/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
-  armCameraPreviewLoadTimeout(record, requestId, () => {
-    record.loading = false;
-    resetCameraPreviewImage(record);
-    setCameraPreviewState(record, 'error', 'Preview unavailable');
-    scheduleCameraPreview(record, Math.max(record.intervalMs, CAMERA_PREVIEW_ERROR_RETRY_MS));
-  });
+  target.src = `ha://camera/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
+  armCameraPreviewLoadTimeout(record, requestId, failSnapshot);
+}
+
+function getCameraRetryDelay(failures) {
+  const steps = CAMERA_PREVIEW_LIVE_RETRY_STEPS_MS;
+  return steps[Math.min(Math.max((failures || 0) - 1, 0), steps.length - 1)];
+}
+
+function getCameraLiveRetryDelay(record) {
+  return getCameraRetryDelay(record?.liveFailureCount);
+}
+
+function resetCameraLiveRetryBackoff(record) {
+  if (!record) return;
+  record.liveFailureCount = 0;
+  record.liveRetryAt = 0;
+}
+
+function isCameraLiveRetryDue(record) {
+  return !record?.liveRetryAt || Date.now() >= record.liveRetryAt;
+}
+
+// A camera that has just started streaming — or come back from unavailable — is worth an
+// immediate retry rather than serving out a backoff earned while it was down. 'recording' is
+// deliberately excluded: motion makes cameras flip in and out of it constantly without any stream
+// becoming available, which would cancel the backoff on exactly the cameras that need it.
+const CAMERA_STREAMING_STATES = new Set(['streaming']);
+const CAMERA_OFFLINE_STATES = new Set(['unavailable', 'unknown', '']);
+
+function markCameraPreviewUnavailable(record) {
+  clearCameraPreviewTimer(record);
+  record.requestId += 1;
+  record.loading = false;
+  // The stream is gone with the camera, but the last frame is kept so the tile kept showing a
+  // picture rather than dropping to a placeholder over a brief outage.
+  resetCameraPreviewVideo(record);
+  setCameraPreviewState(record, 'unavailable', 'Camera unavailable');
+}
+
+function syncCameraPreviewWithEntityState(record) {
+  if (!record || record.disposed) return;
+  const previousState = record.entityState;
+  const nextState = String(state.STATES?.[record.entityId]?.state || '').toLowerCase();
+  if (nextState === previousState) return;
+  record.entityState = nextState;
+  if (previousState === undefined) return;
+
+  const wasOffline = CAMERA_OFFLINE_STATES.has(previousState);
+  const isOffline = CAMERA_OFFLINE_STATES.has(nextState);
+
+  if (isOffline && !wasOffline) {
+    markCameraPreviewUnavailable(record);
+    return;
+  }
+
+  if (wasOffline && !isOffline) {
+    resetCameraLiveRetryBackoff(record);
+    record.snapshotFailureCount = 0;
+    clearCameraPreviewTimer(record);
+    scheduleCameraPreview(record, 0);
+    return;
+  }
+
+  if (record.previewMode !== 'live' || !record.liveFailureCount) return;
+  const startedStreaming =
+    CAMERA_STREAMING_STATES.has(nextState) && !CAMERA_STREAMING_STATES.has(previousState);
+  if (startedStreaming) resetCameraLiveRetryBackoff(record);
 }
 
 function markCameraLivePreviewReady(record, requestId) {
@@ -232,22 +426,51 @@ function markCameraLivePreviewReady(record, requestId) {
   record.loading = false;
   record.hasLoaded = true;
   record.lastLoadedAt = Date.now();
-  resetCameraPreviewImage(record);
+  applyCameraPreviewFraming(record, record.video);
+  resetCameraLiveRetryBackoff(record);
+  // Switch to the video before dropping the warmup still, so the tile never flashes empty. The
+  // still is cleared rather than kept because an MJPEG source holds its connection open.
   setCameraPreviewSource(record, 'video');
+  resetCameraPreviewImage(record);
   setCameraPreviewState(record, 'ready', 'Live now');
 }
 
-function failCameraLivePreview(record, requestId) {
+function failCameraLivePreview(record, requestId, reason = 'unknown') {
   if (!record || record.disposed || record.requestId !== requestId) return;
+  // Without this the only trace of a stream that never starts is a generic protocol timeout,
+  // which cannot be told apart from a slow snapshot.
+  console.warn(`Camera live preview unavailable (${record.entityId}): ${reason}`);
   clearCameraPreviewLoadTimeout(record);
   record.loading = false;
   resetCameraPreviewVideo(record);
+  if (reason.startsWith('mjpeg')) cameraMjpegUnusableEntities.add(record.entityId);
+
+  record.liveFailureCount = (record.liveFailureCount || 0) + 1;
+  record.liveRetryAt = Date.now() + getCameraLiveRetryDelay(record);
+
+  // The warmup still from this same attempt is seconds old, so refetching it would double the
+  // request count for every camera whose stream never starts.
+  const frameAgeMs = Date.now() - (record.lastLoadedAt || 0);
+  if (hasCameraPreviewFrame(record) && frameAgeMs < CAMERA_PREVIEW_WARMUP_REUSE_MS) {
+    record.snapshotFallback = true;
+    setCameraPreviewSource(record, 'image');
+    setCameraPreviewState(
+      record,
+      'fallback',
+      'Live unavailable — showing snapshot',
+      'Snapshot fallback'
+    );
+    scheduleCameraPreview(record, CAMERA_PREVIEW_ERROR_RETRY_MS);
+    return;
+  }
+
   requestCameraSnapshot(record, { liveFallback: true });
 }
 
 function requestCameraMjpegPreview(record, requestId) {
   if (!record || record.disposed || record.requestId !== requestId) return;
-  if (!record.image?.isConnected) {
+  const target = getCameraPreviewLoadTarget(record);
+  if (!target?.isConnected) {
     disposeCameraPreview(record.tile);
     return;
   }
@@ -255,26 +478,84 @@ function requestCameraMjpegPreview(record, requestId) {
   clearCameraPreviewLoadTimeout(record);
   resetCameraPreviewVideo(record);
   setCameraPreviewSource(record, 'image');
-  record.image.onload = () => {
+  record.snapshotFallback = false;
+
+  // A failed probe must not leave a stream URL sitting on the buffer, or the browser keeps the
+  // connection to a dead endpoint alive.
+  const failMjpegProbe = (reason) => {
+    clearCameraPreviewBuffer(record, target);
+    failCameraLivePreview(record, requestId, reason);
+  };
+
+  target.onload = () => {
     if (record.disposed || record.requestId !== requestId) return;
+    // Some integrations answer the stream endpoint with an empty payload, which fires load rather
+    // than error. Treat a frame with no pixels as the failure it is.
+    if (!target.naturalWidth || !target.naturalHeight) {
+      failMjpegProbe('mjpeg-empty');
+      return;
+    }
     clearCameraPreviewLoadTimeout(record);
     record.loading = false;
     record.hasLoaded = true;
     record.lastLoadedAt = Date.now();
+    target.dataset.cameraBufferLoaded = 'true';
+    applyCameraPreviewFraming(record, target);
+    activateCameraPreviewImage(record, target);
+    resetCameraLiveRetryBackoff(record);
     setCameraPreviewState(record, 'ready', 'Live now');
   };
-  record.image.onerror = () => failCameraLivePreview(record, requestId);
+  target.onerror = () => failMjpegProbe('mjpeg-error');
 
   cameraPreviewSequence += 1;
   const entityPath = encodeURIComponent(record.entityId);
-  record.image.src = `ha://camera_stream/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
-  armCameraPreviewLoadTimeout(record, requestId, () => failCameraLivePreview(record, requestId));
+  target.src = `ha://camera_stream/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
+  armCameraPreviewLoadTimeout(
+    record,
+    requestId,
+    () => failMjpegProbe('mjpeg-timeout'),
+    CAMERA_PREVIEW_MJPEG_TIMEOUT_MS
+  );
+}
+
+function hasCameraPreviewFrame(record) {
+  return getCameraPreviewImages(record).some(
+    (image) => image.dataset.cameraBufferLoaded === 'true'
+  );
+}
+
+// Negotiating a stream takes anywhere from a second to half a minute depending on the camera and
+// integration, and the tile is a bare icon for all of it. A still is the one thing every Home
+// Assistant camera can serve quickly, so paint one underneath while the stream comes up.
+function requestCameraWarmupSnapshot(record, requestId) {
+  if (!record || record.disposed || hasCameraPreviewFrame(record)) return;
+  const target = getCameraPreviewLoadTarget(record);
+  if (!target?.isConnected) return;
+
+  target.onload = () => {
+    // The stream winning the race is the better outcome; leave it alone if it already did.
+    if (record.disposed || record.requestId !== requestId) return;
+    if (record.previewSource === 'video' && record.previewState === 'ready') return;
+    record.hasLoaded = true;
+    record.lastLoadedAt = Date.now();
+    target.dataset.cameraBufferLoaded = 'true';
+    applyCameraPreviewFraming(record, target);
+    activateCameraPreviewImage(record, target);
+    setCameraPreviewSource(record, 'image');
+  };
+  target.onerror = () => {
+    // A failed warmup still is not itself a failure; the live attempt owns that verdict.
+    clearCameraPreviewImageElement(target);
+  };
+
+  cameraPreviewSequence += 1;
+  const entityPath = encodeURIComponent(record.entityId);
+  target.src = `ha://camera/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
 }
 
 function useCameraLiveCompatibilityFallback(record, requestId) {
-  const camera = state.STATES?.[record.entityId] || { entity_id: record.entityId };
-  if (isAarloCamera(camera)) {
-    failCameraLivePreview(record, requestId);
+  if (cameraMjpegUnusableEntities.has(record.entityId)) {
+    failCameraLivePreview(record, requestId, 'no-stream-url (mjpeg already ruled out)');
     return;
   }
   requestCameraMjpegPreview(record, requestId);
@@ -289,16 +570,22 @@ async function requestCameraLivePreview(record) {
 
   clearCameraPreviewLoadTimeout(record);
   resetCameraPreviewVideo(record);
-  setCameraPreviewSource(record, 'video');
+  // The source only becomes 'video' once a frame actually arrives, so the warmup still stays
+  // visible for however long the stream takes to negotiate.
+  setCameraPreviewSource(record, hasCameraPreviewFrame(record) ? 'image' : 'video');
+  record.snapshotFallback = false;
   record.loading = true;
   record.requestId += 1;
   const requestId = record.requestId;
   setCameraPreviewState(record, 'loading', 'Starting live stream…');
+  requestCameraWarmupSnapshot(record, requestId);
   armCameraPreviewLoadTimeout(
     record,
     requestId,
-    () => failCameraLivePreview(record, requestId),
-    CAMERA_PREVIEW_LIVE_START_TIMEOUT_MS
+    () => failCameraLivePreview(record, requestId, 'live-start-timeout'),
+    record.liveFailureCount
+      ? CAMERA_PREVIEW_LIVE_RESTART_TIMEOUT_MS
+      : CAMERA_PREVIEW_LIVE_START_TIMEOUT_MS
   );
 
   try {
@@ -316,7 +603,7 @@ async function requestCameraLivePreview(record) {
     video.playsInline = true;
     video.onloadeddata = () => markCameraLivePreviewReady(record, requestId);
     video.onplaying = () => markCameraLivePreviewReady(record, requestId);
-    video.onerror = () => failCameraLivePreview(record, requestId);
+    video.onerror = () => failCameraLivePreview(record, requestId, 'video-element-error');
 
     const playVideo = () => {
       try {
@@ -336,8 +623,7 @@ async function requestCameraLivePreview(record) {
       record.hls = hls;
       hls.on(HlsLib.Events.ERROR, (_event, data) => {
         if (data?.fatal) {
-          console.warn('Camera preview HLS fatal error:', data?.details || 'unknown');
-          failCameraLivePreview(record, requestId);
+          failCameraLivePreview(record, requestId, `hls-fatal: ${data?.details || 'unknown'}`);
         }
       });
       if (HlsLib.Events.MANIFEST_PARSED) {
@@ -363,10 +649,23 @@ async function requestCameraLivePreview(record) {
 
 function requestCameraPreview(record) {
   if (record?.previewMode === 'live') {
-    requestCameraLivePreview(record);
+    // While the live attempt is backed off, keep the tile current with snapshots instead.
+    if (isCameraLiveRetryDue(record)) {
+      requestCameraLivePreview(record);
+    } else {
+      requestCameraSnapshot(record, { liveFallback: true });
+    }
     return;
   }
   requestCameraSnapshot(record);
+}
+
+// Snapshot tiles keep their configured cadence across pauses instead of refetching the moment
+// they come back, so scrolling or focusing the window cannot outpace the chosen interval.
+function getCameraPreviewResumeDelay(record) {
+  if (!record || record.previewMode === 'live' || !record.hasLoaded) return 0;
+  const elapsed = Date.now() - (record.lastLoadedAt || 0);
+  return Math.max(0, record.intervalMs - elapsed);
 }
 
 function ensureCameraPreviewLifecycle() {
@@ -374,13 +673,17 @@ function ensureCameraPreviewLifecycle() {
   cameraPreviewLifecycleInstalled = true;
 
   document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      cameraPreviewRecords.forEach((record) => pauseCameraPreview(record));
+      return;
+    }
+    // Resuming every camera at once hammers the proxy, so reuse the mount-time stagger.
+    let index = 0;
     cameraPreviewRecords.forEach((record) => {
-      if (document.visibilityState === 'hidden') {
-        pauseCameraPreview(record);
-      } else {
-        clearCameraPreviewTimer(record);
-        scheduleCameraPreview(record, 0);
-      }
+      clearCameraPreviewTimer(record);
+      const stagger = Math.min(index * CAMERA_PREVIEW_STAGGER_MS, CAMERA_PREVIEW_MAX_STAGGER_MS);
+      scheduleCameraPreview(record, getCameraPreviewResumeDelay(record) + stagger);
+      index += 1;
     });
   });
 
@@ -398,12 +701,15 @@ function ensureCameraPreviewObserver() {
         const record = cameraPreviewRecords.get(entry.target);
         if (!record || record.disposed) return;
         record.intersecting = entry.isIntersecting;
+        // While expanded the media lives in the dialog, so the source tile scrolling out of
+        // view must not tear down the stream the user is watching.
+        if (record.expandedPreview) return;
         if (!entry.isIntersecting) {
           pauseCameraPreview(record);
           return;
         }
         clearCameraPreviewTimer(record);
-        scheduleCameraPreview(record, record.hasLoaded ? 0 : 100);
+        scheduleCameraPreview(record, record.hasLoaded ? getCameraPreviewResumeDelay(record) : 100);
       });
     },
     { rootMargin: '80px' }
@@ -428,16 +734,20 @@ function mountCameraPreview(tile, entityId, refreshValue) {
   // updates can rerender Quick Access during that time, so reuse the connected preview record
   // before looking for media inside the temporarily empty source tile.
   if (canReuseExisting) {
+    syncCameraPreviewWithEntityState(existing);
     const hasActiveLiveSource =
       existing.previewMode === 'live' &&
-      (existing.hls || existing.video.hasAttribute('src') || existing.image.hasAttribute('src'));
+      (existing.hls || existing.video.hasAttribute('src') || hasCameraPreviewImageSource(existing));
     if (!existing.loading && !existing.timerId && !hasActiveLiveSource) {
       scheduleCameraPreview(existing, 0);
     }
     return true;
   }
 
-  const image = tile?.querySelector?.('.camera-tile-preview-image');
+  const images = tile?.querySelectorAll
+    ? Array.from(tile.querySelectorAll('.camera-tile-preview-image'))
+    : [];
+  const image = images[0] || null;
   let video = tile?.querySelector?.('.camera-tile-preview-video');
   const visual = tile?.querySelector?.('.camera-tile-visual') || image;
 
@@ -450,25 +760,47 @@ function mountCameraPreview(tile, entityId, refreshValue) {
     image.parentNode?.insertBefore(video, image);
   }
 
+  // Older markup only had a single image element; the spare buffer is what keeps the last good
+  // frame on screen when a refresh fails, so add it when it is missing.
+  if (image && images.length < 2) {
+    const spare = image.cloneNode(false);
+    spare.removeAttribute('src');
+    image.parentNode?.insertBefore(spare, image.nextSibling);
+    images.push(spare);
+  }
+
   if (!tile || !entityId || previewMode === 'off' || !image || !visual || !video) {
     if (tile) disposeCameraPreview(tile);
     return false;
   }
 
+  images.forEach((buffer, index) => {
+    buffer.dataset.cameraBufferActive = index === 0 ? 'true' : 'false';
+    buffer.dataset.cameraBufferLoaded = 'false';
+  });
+
   if (existing) disposeCameraPreview(tile);
 
   ensureCameraPreviewLifecycle();
   const observer = ensureCameraPreviewObserver();
-  const initialDelay = Math.min(cameraPreviewRecords.size * 180, 900);
+  const initialDelay = Math.min(
+    cameraPreviewRecords.size * CAMERA_PREVIEW_STAGGER_MS,
+    CAMERA_PREVIEW_MAX_STAGGER_MS
+  );
   const record = {
     disposed: false,
     entityId,
+    entityState: String(state.STATES?.[entityId]?.state || '').toLowerCase(),
     hasLoaded: false,
     hls: null,
     image,
+    images,
+    snapshotFallback: false,
     intersecting: true,
     intervalMs,
     lastLoadedAt: 0,
+    liveFailureCount: 0,
+    liveRetryAt: 0,
     loadTimeoutId: null,
     loading: false,
     previewMode,
@@ -488,13 +820,18 @@ function mountCameraPreview(tile, entityId, refreshValue) {
   tile.dataset.cameraPreviewRefresh = normalizedRefresh;
   tile.dataset.cameraPreviewMode = previewMode;
   setCameraPreviewSource(record, record.previewSource);
+  setCameraPreviewHasFrame(record, false);
   setCameraPreviewState(
     record,
     'loading',
     previewMode === 'live' ? 'Starting live stream…' : 'Loading snapshot…'
   );
   observer?.observe(tile);
-  scheduleCameraPreview(record, initialDelay);
+  if (isCameraEntityOffline(entityId)) {
+    setCameraPreviewState(record, 'unavailable', 'Camera unavailable');
+  } else {
+    scheduleCameraPreview(record, initialDelay);
+  }
   return true;
 }
 
@@ -504,9 +841,13 @@ function refreshCameraPreview(entityId, options = {}) {
   cameraPreviewRecords.forEach((record) => {
     if (record.entityId !== entityId || record.disposed) return;
     if (record.previewMode === 'live') {
-      if (force) pauseCameraPreview(record);
+      // An explicit refresh is a deliberate ask for the stream, so start the ladder over.
+      if (force) {
+        resetCameraLiveRetryBackoff(record);
+        pauseCameraPreview(record);
+      }
       const hasActiveSource =
-        record.hls || record.video.hasAttribute('src') || record.image.hasAttribute('src');
+        record.hls || record.video.hasAttribute('src') || hasCameraPreviewImageSource(record);
       if (!record.loading && !record.timerId && !hasActiveSource) {
         scheduleCameraPreview(record, 0);
       }
@@ -543,6 +884,8 @@ function pruneCameraPreviews() {
 function disposeAllCameraPreviews() {
   Array.from(cameraPreviewRecords.keys()).forEach((tile) => disposeCameraPreview(tile));
   suspendedCameraPreviewEntities.clear();
+  // Learned capability is only good for the life of the session; a camera may be reconfigured.
+  cameraMjpegUnusableEntities.clear();
 }
 
 function suspendLiveCameraPreviews(entityId) {
@@ -584,6 +927,7 @@ async function reconnectCameraPreview(record, camera, button) {
   record.requestId += 1;
   record.loading = false;
   resetCameraPreviewMedia(record);
+  resetCameraLiveRetryBackoff(record);
   suspendedCameraPreviewEntities.delete(record.entityId);
   setCameraPreviewState(record, 'loading', 'Reconnecting live stream…');
 
@@ -659,7 +1003,7 @@ function openExpandedCameraPreview(record, camera) {
         <div class="camera-expanded-preview-heading">
           <span class="camera-expanded-preview-badge">
             <span class="camera-expanded-preview-dot"></span>
-            ${escapeHtml(t(record.previewMode === 'live' ? 'Live' : 'Snapshot'))}
+            <span class="camera-expanded-preview-badge-label">${escapeHtml(t(getCameraPreviewBadgeLabel(record)))}</span>
           </span>
           <h2>${escapeHtml(displayName)}</h2>
         </div>
@@ -681,13 +1025,20 @@ function openExpandedCameraPreview(record, camera) {
   const closeButton = overlay.querySelector('.camera-expanded-preview-close');
   const reconnectButton = overlay.querySelector('.camera-expanded-preview-reconnect');
   const status = overlay.querySelector('.camera-expanded-preview-status');
+  const badgeLabel = overlay.querySelector('.camera-expanded-preview-badge-label');
   const originalParent = record.visual.parentNode;
   const originalNextSibling = record.visual.nextSibling;
   const sourceTile = record.tile;
   const visual = record.visual;
   visual.style.setProperty('view-transition-name', 'expanded-camera-preview-image');
+  // Inside the tile the visual is decorative, but it is the dialog's only content once expanded.
+  const wasVisualHidden = visual.getAttribute('aria-hidden') === 'true';
+  visual.removeAttribute('aria-hidden');
+  const previewAltText = `${displayName} ${t('Preview')}`;
+  getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', previewAltText));
 
   const expandedPreview = {
+    badgeLabel,
     close: null,
     closeButton,
     closed: false,
@@ -706,6 +1057,9 @@ function openExpandedCameraPreview(record, camera) {
     record.expandedPreview = null;
     if (activeExpandedCameraPreview === expandedPreview) activeExpandedCameraPreview = null;
     document.removeEventListener('keydown', handleKeydown, true);
+
+    if (wasVisualHidden) visual.setAttribute('aria-hidden', 'true');
+    getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', ''));
 
     const restoreImage = () => {
       if (originalParent?.isConnected && visual.parentNode !== originalParent) {
@@ -809,8 +1163,11 @@ async function getHlsStreamUrl(entityId) {
       // Proxy through ha://hls to keep Authorization header handling in main
       return `ha://hls${abs.pathname}${abs.search || ''}`;
     }
+    console.warn(
+      `Camera stream URL unavailable (${entityId}): ${res?.error?.message || 'camera/stream returned no url'}`
+    );
   } catch (e) {
-    console.warn('HLS stream request failed:', e?.message || e);
+    console.warn(`Camera stream request failed (${entityId}):`, e?.message || e);
   }
   return null;
 }
@@ -847,6 +1204,9 @@ async function openCamera(cameraId, options = {}) {
     // Create a camera popup modal
     const modal = document.createElement('div');
     modal.className = 'modal camera-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', `${getEntityDisplayName(camera)} ${t('Camera preview')}`);
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
@@ -874,6 +1234,15 @@ async function openCamera(cameraId, options = {}) {
     `;
 
     document.body.appendChild(modal);
+
+    const previouslyFocused = document.activeElement;
+    // Escape closed the expanded preview but not this viewer, which is the one most people reach.
+    const handleModalKeydown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeModal();
+    };
 
     const img = modal.querySelector('.camera-stream');
     const snapshotBtn = modal.querySelector('#snapshot-btn');
@@ -907,10 +1276,15 @@ async function openCamera(cameraId, options = {}) {
 
     const loadSnapshot = async () => {
       stopLive();
-      // Use ha:// protocol for snapshot (handled by main process)
-      if (img) {
-        img.src = `ha://camera/${cameraId}?t=${Date.now()}`;
-      }
+      if (!img) return;
+      // A snapshot that fails used to leave a broken image icon and no explanation.
+      showLoading(true);
+      img.onload = () => showLoading(false);
+      img.onerror = () => {
+        showLoading(false);
+        showToast(t('Could not load camera snapshot'), 'error', 2500);
+      };
+      img.src = `ha://camera/${cameraId}?t=${Date.now()}`;
     };
 
     const startLive = async () => {
@@ -1014,7 +1388,11 @@ async function openCamera(cameraId, options = {}) {
 
     const closeModal = () => {
       stopLive();
+      document.removeEventListener('keydown', handleModalKeydown, true);
       modal.remove();
+      if (previouslyFocused?.isConnected && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus({ preventScroll: true });
+      }
       // Ensure any tile visuals tied to this entity are refreshed after modal closes
       document.dispatchEvent(
         new CustomEvent('camera-modal-closed', { detail: { entityId: cameraId } })
@@ -1031,6 +1409,9 @@ async function openCamera(cameraId, options = {}) {
         closeModal();
       }
     };
+
+    document.addEventListener('keydown', handleModalKeydown, true);
+    closeBtn?.focus({ preventScroll: true });
 
     // Load initial snapshot
     loadSnapshot();

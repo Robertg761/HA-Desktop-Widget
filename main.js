@@ -164,6 +164,27 @@ function hardenRendererNavigation(targetWindow) {
   });
 }
 
+// Renderer warnings never reached the log file, so camera, stream and websocket failures were
+// invisible in user-supplied logs — the main process only ever saw its own side of the problem.
+// Warnings and errors only, to keep the log readable.
+function forwardRendererConsole(webContents, label = 'renderer') {
+  if (!webContents || typeof webContents.on !== 'function') return;
+
+  webContents.on('console-message', (...args) => {
+    // Electron 37 replaced the (event, level, message) signature with a single details object.
+    const usesDetailsObject = args[0] && typeof args[0] === 'object' && 'level' in args[0];
+    const level = String((usesDetailsObject ? args[0].level : args[1]) ?? '').toLowerCase();
+    const message = String((usesDetailsObject ? args[0].message : args[2]) ?? '').trim();
+    if (!message) return;
+
+    if (level === 'error' || level === '3') {
+      log.error(`[${label}] ${message}`);
+    } else if (level === 'warning' || level === 'warn' || level === '2') {
+      log.warn(`[${label}] ${message}`);
+    }
+  });
+}
+
 const usesLinuxPopupHotkeyBackend = isLinuxPopupHotkeyPlatform(process.platform);
 if (usesLinuxPopupHotkeyBackend) {
   app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
@@ -3260,6 +3281,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
   hardenRendererNavigation(mainWindow);
+  forwardRendererConsole(mainWindow.webContents, 'renderer');
   attachEditHandlers(mainWindow, Menu);
 
   // Transparent windows use renderer CSS surface opacity; opaque fallback

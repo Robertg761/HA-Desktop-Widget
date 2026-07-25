@@ -17,6 +17,13 @@ const MEDIA_ARTWORK_ALLOWED_CONTENT_TYPES = new Set([
 ]);
 
 const HA_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
+const HLS_MASTER_WARMUP_TIMEOUT_MS = 8000;
+const HLS_MASTER_RETRY_TIMEOUT_MS = 12000;
+// An MJPEG stream sends frames continuously whether or not anything in view is moving, so a long
+// silence means the stream is dead rather than the scene being still. Without this the renderer
+// keeps a frozen first frame on screen and goes on calling it live, because a multipart image
+// that simply stops arriving never fires an error.
+const MJPEG_STREAM_STALL_TIMEOUT_MS = 15000;
 
 const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -209,6 +216,85 @@ function createElectronNetBinaryFetcher(net) {
   };
 }
 
+// "Protocol handler error: TimeoutError" on its own cannot tell a stalled snapshot apart from a
+// stalled stream, which makes user-reported camera problems unreproducible. HLS playlist paths
+// embed a signed access token, so only the trailing filename from those is safe to record.
+function describeHaProtocolRequest(host, url, entityId) {
+  if (host === 'camera' || host === 'camera_stream') return `${host}/${entityId}`;
+  if (host === 'hls') return `hls/${url.pathname.split('/').filter(Boolean).pop() || ''}`;
+  return host || 'unknown';
+}
+
+// An integration serving a cached frame looks exactly like a working camera from the widget's
+// side: HTTP 200, a decodable JPEG, no errors anywhere. Identical response sizes in a row are the
+// cheapest signal that the picture on screen has stopped changing, and saying so once turns an
+// unreproducible "my camera looks wrong" report into a one-line answer.
+const IDENTICAL_SNAPSHOT_WARNING_THRESHOLD = 5;
+const repeatedCameraSnapshots = new Map();
+
+function reportRepeatedCameraSnapshot(entityId, contentLength, log) {
+  if (!entityId || contentLength === null) return;
+  const previous = repeatedCameraSnapshots.get(entityId);
+
+  if (!previous || previous.contentLength !== contentLength) {
+    repeatedCameraSnapshots.set(entityId, { contentLength, count: 1, warned: false });
+    return;
+  }
+
+  previous.count += 1;
+  if (previous.count < IDENTICAL_SNAPSHOT_WARNING_THRESHOLD || previous.warned) return;
+  previous.warned = true;
+  log.warn(
+    `Camera ${entityId} has returned ${previous.count} identical ${contentLength}-byte snapshots in a row; ` +
+      'Home Assistant is probably serving a cached frame rather than a current one.'
+  );
+}
+
+// Ends the passthrough stream when the upstream goes quiet, which surfaces to the renderer as a
+// plain image error. Doing it here rather than in the renderer avoids sampling pixels from a
+// canvas the ha:// scheme would taint, and needs no extra IPC channel.
+function watchStreamForStall(body, timeoutMs, onStall) {
+  if (!body || typeof body.getReader !== 'function') return body;
+  if (typeof ReadableStream !== 'function') return body;
+
+  const reader = body.getReader();
+  return new ReadableStream({
+    async pull(controller) {
+      let timeoutId = null;
+      try {
+        const result = await Promise.race([
+          reader.read(),
+          new Promise((_resolve, reject) => {
+            timeoutId = setTimeout(
+              () => reject(createProtocolError('Camera stream stalled', 504, 'STREAM_STALLED')),
+              timeoutMs
+            );
+          }),
+        ]);
+
+        if (result.done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
+      } catch (error) {
+        try {
+          await reader.cancel(error);
+        } catch {
+          // The upstream may already have torn the connection down.
+        }
+        controller.error(error);
+        if (error?.code === 'STREAM_STALLED' && typeof onStall === 'function') onStall();
+      } finally {
+        if (timeoutId !== null) clearTimeout(timeoutId);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+}
+
 function createHaProtocolHandler({
   getConfig,
   fetchStream,
@@ -227,13 +313,16 @@ function createHaProtocolHandler({
   if (typeof ResponseCtor !== 'function') throw new TypeError('Response is unavailable');
 
   const errorResponse = (status) => new ResponseCtor(null, { status });
-  const streamResponse = (upstreamResponse, fallbackContentType) => {
+  const streamResponse = (upstreamResponse, fallbackContentType, options = {}) => {
     const status = Number(upstreamResponse?.status) || 502;
     if (status < 200 || status >= 300) return errorResponse(status);
 
     const contentType =
       getHeaderValue(upstreamResponse.headers, 'content-type') || fallbackContentType;
-    const body = [204, 205].includes(status) ? null : upstreamResponse.body;
+    const rawBody = [204, 205].includes(status) ? null : upstreamResponse.body;
+    const body = options.stallTimeoutMs
+      ? watchStreamForStall(rawBody, options.stallTimeoutMs, options.onStall)
+      : rawBody;
     return new ResponseCtor(body, {
       status,
       headers: {
@@ -244,10 +333,12 @@ function createHaProtocolHandler({
   };
 
   return async function handleHaProtocol(request) {
+    let requestContext = 'unknown';
     try {
       const url = new URL(request.url);
       const host = url.hostname;
       const entityId = decodeURIComponent(url.pathname.replace(/^\//, ''));
+      requestContext = describeHaProtocolRequest(host, url, entityId);
       const currentConfig = getConfig() || {};
       const haUrl = String(currentConfig?.homeAssistant?.url || '').replace(/\/$/, '');
       const token = String(currentConfig?.homeAssistant?.token || '');
@@ -267,7 +358,14 @@ function createHaProtocolHandler({
           redirect: 'follow',
           signal: request.signal,
         });
-        return streamResponse(response, 'multipart/x-mixed-replace;boundary=--myboundary');
+        return streamResponse(response, 'multipart/x-mixed-replace;boundary=--myboundary', {
+          stallTimeoutMs: MJPEG_STREAM_STALL_TIMEOUT_MS,
+          onStall: () =>
+            log.warn(
+              `Camera ${entityId} stopped sending MJPEG frames after ${MJPEG_STREAM_STALL_TIMEOUT_MS}ms; ` +
+                'ending the stream so the preview stops presenting a frozen frame as live.'
+            ),
+        });
       }
 
       if (host === 'hls') {
@@ -286,7 +384,7 @@ function createHaProtocolHandler({
         let response;
         if (/\/master_playlist\.m3u8$/i.test(url.pathname)) {
           try {
-            const warmupTimeoutSignal = AbortSignal.timeout(8000);
+            const warmupTimeoutSignal = AbortSignal.timeout(HLS_MASTER_WARMUP_TIMEOUT_MS);
             response = await fetchStream(upstream, {
               ...fetchOptions,
               signal: request.signal
@@ -298,7 +396,15 @@ function createHaProtocolHandler({
             if (request.signal?.aborted || !isWarmupTimeout) throw error;
             // Some cloud cameras prepare the stream only after the first playlist request is
             // cancelled. Retry inside the protocol handler so Hls.js receives the warmed playlist.
-            response = await fetchStream(upstream, fetchOptions);
+            // The retry is bounded too: an unbounded one hangs on a camera that never produces a
+            // playlist, holding the connection open until the renderer gives up on its own timer.
+            const retryTimeoutSignal = AbortSignal.timeout(HLS_MASTER_RETRY_TIMEOUT_MS);
+            response = await fetchStream(upstream, {
+              ...fetchOptions,
+              signal: request.signal
+                ? AbortSignal.any([request.signal, retryTimeoutSignal])
+                : retryTimeoutSignal,
+            });
           }
         } else {
           response = await fetchStream(upstream, fetchOptions);
@@ -323,6 +429,7 @@ function createHaProtocolHandler({
           redirect: 'follow',
           signal: request.signal ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal,
         });
+        reportRepeatedCameraSnapshot(entityId, getContentLength(response?.headers), log);
         return streamResponse(response, 'image/jpeg');
       }
 
@@ -360,7 +467,7 @@ function createHaProtocolHandler({
 
       return errorResponse(404);
     } catch (error) {
-      log.error('Protocol handler error:', error);
+      log.error(`Protocol handler error (${requestContext}):`, error);
       return errorResponse(error?.statusCode || 500);
     }
   };

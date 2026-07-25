@@ -24,7 +24,7 @@ function createHandler(overrides = {}) {
     headers: { 'content-type': ['image/png'] },
     data: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
   }));
-  const log = { error: jest.fn() };
+  const log = { error: jest.fn(), warn: jest.fn() };
   const config = {
     homeAssistant: {
       url: 'https://ha.example.test/',
@@ -134,6 +134,28 @@ describe('Home Assistant protocol handler', () => {
         headers: expect.objectContaining({ Authorization: 'Bearer secret-token' }),
       })
     );
+    // The retry has to be bounded too, or a camera that never produces a playlist hangs the
+    // connection until the renderer abandons it.
+    expect(fetchStream.mock.calls[1][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('gives up on an HLS master playlist when the retry also stalls', async () => {
+    const stall = () => {
+      const timeout = new Error('The operation timed out');
+      timeout.name = 'TimeoutError';
+      return Promise.reject(timeout);
+    };
+    const fetchStream = jest.fn(stall);
+    const { handler, log } = createHandler({ fetchStream });
+
+    const response = await handler(createRequest('ha://hls/api/hls/session/master_playlist.m3u8'));
+
+    expect(response.status).toBe(500);
+    expect(fetchStream).toHaveBeenCalledTimes(2);
+    expect(log.error).toHaveBeenCalledWith(
+      'Protocol handler error (hls/master_playlist.m3u8):',
+      expect.objectContaining({ name: 'TimeoutError' })
+    );
   });
 
   it('does not retry non-timeout HLS master failures', async () => {
@@ -144,9 +166,116 @@ describe('Home Assistant protocol handler', () => {
 
     expect(response.status).toBe(500);
     expect(fetchStream).toHaveBeenCalledTimes(1);
+    // The failing endpoint has to be identifiable, but the signed session segment must not leak.
     expect(log.error).toHaveBeenCalledWith(
-      'Protocol handler error:',
+      'Protocol handler error (hls/master_playlist.m3u8):',
       expect.objectContaining({ message: 'connection refused' })
+    );
+    expect(log.error.mock.calls[0][0]).not.toContain('session');
+  });
+
+  it('ends an MJPEG stream that stops sending frames', async () => {
+    jest.useFakeTimers();
+    try {
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('frame-one'));
+          // and then nothing, forever — the camera is gone but the socket stays open
+        },
+      });
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler, log } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+      const reader = response.body.getReader();
+
+      const first = await reader.read();
+      expect(new TextDecoder().decode(first.value)).toBe('frame-one');
+
+      const stalled = reader.read();
+      const settled = stalled.then(
+        () => 'resolved',
+        (error) => error
+      );
+      await jest.advanceTimersByTimeAsync(15000);
+      const outcome = await settled;
+
+      expect(outcome).not.toBe('resolved');
+      expect(outcome.code).toBe('STREAM_STALLED');
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining('camera.front_door stopped sending MJPEG frames')
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('leaves a healthy MJPEG stream alone', async () => {
+    jest.useFakeTimers();
+    try {
+      let controllerRef = null;
+      const body = new ReadableStream({
+        start(controller) {
+          controllerRef = controller;
+          controller.enqueue(new TextEncoder().encode('frame-one'));
+        },
+      });
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler, log } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+      const reader = response.body.getReader();
+      await reader.read();
+
+      // A frame arriving inside the window keeps the stream open.
+      const next = reader.read();
+      await jest.advanceTimersByTimeAsync(10000);
+      controllerRef.enqueue(new TextEncoder().encode('frame-two'));
+      const second = await next;
+
+      expect(new TextDecoder().decode(second.value)).toBe('frame-two');
+      expect(log.warn).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('warns once when a camera keeps returning an identically sized snapshot', async () => {
+    const fetchStream = jest.fn(
+      async () =>
+        new Response('jpeg-bytes', { status: 200, headers: { 'Content-Length': '80656' } })
+    );
+    const { handler, log } = createHandler({ fetchStream });
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await handler(createRequest('ha://camera/camera.repeated_frame'));
+    }
+
+    const warnings = log.warn.mock.calls.filter(([message]) =>
+      String(message).includes('camera.repeated_frame')
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0][0]).toContain('identical 80656-byte snapshots');
+
+    // A different size means the picture moved on; the warning re-arms rather than repeating.
+    fetchStream.mockResolvedValue(
+      new Response('other', { status: 200, headers: { 'Content-Length': '90000' } })
+    );
+    await handler(createRequest('ha://camera/camera.repeated_frame'));
+    expect(
+      log.warn.mock.calls.filter(([message]) => String(message).includes('camera.repeated_frame'))
+    ).toHaveLength(1);
+  });
+
+  it('names the camera entity when a snapshot request fails', async () => {
+    const fetchStream = jest.fn().mockRejectedValue(new Error('boom'));
+    const { handler, log } = createHandler({ fetchStream });
+
+    await handler(createRequest('ha://camera/camera.front_door'));
+
+    expect(log.error).toHaveBeenCalledWith(
+      'Protocol handler error (camera/camera.front_door):',
+      expect.objectContaining({ message: 'boom' })
     );
   });
 

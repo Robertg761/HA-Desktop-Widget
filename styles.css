@@ -6101,12 +6101,26 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
     filter 220ms ease;
 }
 
+/* Two image buffers alternate so a refresh decodes off screen: the active buffer stays on top
+   until the next frame is ready, and a failed refresh leaves the visible frame untouched. */
+.camera-tile-preview-image[data-camera-buffer-active='true'] {
+  z-index: 1;
+}
+
+/* 'loading' is included so the warmup still shows while a live stream is negotiating; a buffer
+   is only marked loaded once it actually holds a decoded frame. */
+.camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='loading']
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
 .camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='ready']
-  .camera-tile-preview-image,
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
 .camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='refreshing']
-  .camera-tile-preview-image,
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
 .camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='fallback']
-  .camera-tile-preview-image,
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
+.camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='stale']
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
+.camera-preview-tile[data-camera-preview-source='image'][data-camera-preview-state='unavailable']
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
 .camera-preview-tile[data-camera-preview-source='video'][data-camera-preview-state='ready']
   .camera-tile-preview-video {
   opacity: 1;
@@ -6115,6 +6129,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 .camera-tile-fallback {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: grid;
   place-items: center;
   color: var(--text-secondary);
@@ -6134,13 +6149,25 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 
 .camera-preview-tile[data-camera-preview-state='ready'] .camera-tile-fallback,
 .camera-preview-tile[data-camera-preview-state='refreshing'] .camera-tile-fallback,
-.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-fallback {
+.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-fallback,
+.camera-preview-tile[data-camera-preview-state='stale'] .camera-tile-fallback,
+.camera-preview-tile[data-camera-preview-state='unavailable'][data-camera-preview-has-frame='true']
+  .camera-tile-fallback,
+.camera-preview-tile[data-camera-preview-state='loading'][data-camera-preview-has-frame='true']
+  .camera-tile-fallback {
   opacity: 0;
+}
+
+/* A retained frame from a camera that has gone offline is desaturated so it does not read as a
+   current picture. */
+.camera-preview-tile[data-camera-preview-state='unavailable'] .camera-tile-preview-image {
+  filter: saturate(0.25) brightness(0.7);
 }
 
 .camera-tile-scrim {
   position: absolute;
   inset: 0;
+  z-index: 3;
   background: linear-gradient(
     180deg,
     rgba(4, 7, 10, 0.08) 24%,
@@ -6221,13 +6248,17 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity {
 }
 
 .camera-preview-tile[data-camera-preview-state='error'] .camera-tile-preview-dot,
-.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-dot {
+.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-dot,
+.camera-preview-tile[data-camera-preview-state='stale'] .camera-tile-preview-dot,
+.camera-preview-tile[data-camera-preview-state='unavailable'] .camera-tile-preview-dot {
   background: var(--warning);
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
 
 .camera-preview-tile[data-camera-preview-state='error'] .camera-tile-preview-status,
-.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-status {
+.camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-status,
+.camera-preview-tile[data-camera-preview-state='stale'] .camera-tile-preview-status,
+.camera-preview-tile[data-camera-preview-state='unavailable'] .camera-tile-preview-status {
   color: rgba(255, 209, 151, 0.82);
 }
 
@@ -6359,7 +6390,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-dot,
-.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-dot {
+.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-dot,
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-dot {
   background: var(--warning);
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
@@ -6424,14 +6456,20 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   transition: none;
 }
 
-.camera-expanded-preview[data-camera-preview-source='image'] .camera-tile-preview-image,
+.camera-expanded-preview[data-camera-preview-source='image']
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
+.camera-expanded-preview[data-camera-preview-state='loading']
+  .camera-tile-preview-image[data-camera-buffer-loaded='true'],
 .camera-expanded-preview[data-camera-preview-source='video'] .camera-tile-preview-video {
   opacity: 1;
 }
 
 .camera-expanded-preview[data-camera-preview-state='ready'] .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='refreshing'] .camera-tile-fallback,
-.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-tile-fallback {
+.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-tile-fallback,
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-tile-fallback,
+.camera-expanded-preview[data-camera-preview-state='loading'][data-camera-preview-has-frame='true']
+  .camera-tile-fallback {
   opacity: 0;
 }
 
@@ -6487,7 +6525,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-status,
-.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-status {
+.camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-status,
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-status {
   color: rgba(255, 209, 151, 0.86);
 }
 

@@ -7027,7 +7027,8 @@ function createControlElement(entity, options = {}) {
       div.innerHTML = `
         <div class="camera-tile-visual" aria-hidden="true">
           <video class="camera-tile-preview-video" muted autoplay playsinline></video>
-          <img class="camera-tile-preview-image" alt="" decoding="async">
+          <img class="camera-tile-preview-image" data-camera-buffer-active="true" data-camera-buffer-loaded="false" alt="" decoding="async">
+          <img class="camera-tile-preview-image" data-camera-buffer-active="false" data-camera-buffer-loaded="false" alt="" decoding="async">
           <div class="camera-tile-fallback">
             <div class="control-icon">${icon}</div>
           </div>
@@ -7035,7 +7036,7 @@ function createControlElement(entity, options = {}) {
         </div>
         <div class="camera-tile-preview-badge" aria-hidden="true">
           <span class="camera-tile-preview-dot"></span>
-          ${utils.escapeHtml(t(hasLiveCameraPreview ? 'Live' : 'Snapshot'))}
+          <span class="camera-tile-preview-badge-label">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Live' : 'Snapshot'))}</span>
         </div>
         <div class="camera-tile-copy">
           <div class="control-name">${name}</div>

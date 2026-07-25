@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Quick Access camera previews: a snapshot that fails to load no longer wipes the picture
+  the tile is already showing. Snapshots now decode into a spare buffer and only replace
+  the visible frame once they succeed, so a camera that times out once keeps its last
+  frame and says "Showing last frame" instead of dropping to a placeholder icon for
+  thirty seconds.
+
+- Quick Access camera previews: a tile that scrolls out of view and back, or a window
+  that regains focus, no longer refetches immediately. Both now respect the refresh
+  interval you chose, so "Snapshot every 30 seconds" means that even while scrolling.
+  Several cameras resuming at once are also staggered rather than fired simultaneously.
+
+- Quick Access camera previews: the badge no longer claims "LIVE" while a still image is
+  on screen. It says "SNAPSHOT" whenever the tile has fallen back, and the status text is
+  short enough to fit the tile instead of being cut off mid-sentence.
+
+- Quick Access camera previews: cameras Home Assistant reports as unavailable are no
+  longer polled. The tile says "Camera unavailable", keeps its last frame dimmed rather
+  than blanking, and resumes on its own when the camera comes back.
+
+- Quick Access camera previews: a camera whose live stream cannot start is retried on a
+  widening schedule (30s, 1m, then every 5 minutes) instead of every 30 seconds forever,
+  and gives up on a stream sooner once it has failed before. Snapshot failures back off
+  the same way. The snapshot fallback keeps refreshing on its normal cadence throughout,
+  so the picture stays as current as the camera allows.
+
+- Quick Access camera previews: live tiles now show a still image while the stream is
+  negotiating rather than a bare camera icon, and portrait camera feeds are cropped
+  towards the top so faces are not cut off in a landscape tile.
+
+- Camera viewer: the full-screen viewer now closes on Escape, moves focus to its close
+  button and back to whatever opened it, and is exposed to screen readers as a dialog. A
+  snapshot that fails to load reports the failure instead of leaving a broken image.
+
+- Camera streams: an MJPEG stream that stops sending frames is now ended rather than left
+  open, so a frozen first frame is no longer presented as a live picture. Home Assistant
+  stream playlists that never arrive are also given a bounded retry instead of holding a
+  connection open until the preview gives up on its own.
+
+- Diagnostics: renderer warnings now reach the log file, protocol errors name the request
+  that failed (with stream tokens redacted), and a camera that returns the same image over
+  and over is called out once in the log — that pattern means the integration is serving a
+  cached frame, which otherwise looks identical to a working camera.
+
 - Desktop pins: pinned tiles that are drawn from the clock rather than from entity
   updates — timer countdowns and media progress — now tick locally instead of freezing
   between Home Assistant state changes.

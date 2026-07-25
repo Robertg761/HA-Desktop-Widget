@@ -155,14 +155,37 @@ describe('Camera Module', () => {
 
   describe('Quick Access camera previews', () => {
     let visibilityState;
+    let intersectionCallback = null;
+
+    // jsdom has no IntersectionObserver, so stand one up and keep the callback the module
+    // registers. The module caches its observer, so the stub has to outlive individual tests.
+    beforeAll(() => {
+      globalThis.IntersectionObserver = class {
+        constructor(callback) {
+          intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      };
+    });
+
+    const setTileIntersecting = (tile, isIntersecting) => {
+      intersectionCallback([{ target: tile, isIntersecting }]);
+    };
 
     const createPreviewTile = () => {
       const tile = document.createElement('button');
       tile.innerHTML = `
         <div class="camera-tile-visual">
           <video class="camera-tile-preview-video" muted autoplay playsinline></video>
-          <img class="camera-tile-preview-image" alt="">
+          <img class="camera-tile-preview-image" data-camera-buffer-active="true" alt="">
+          <img class="camera-tile-preview-image" data-camera-buffer-active="false" alt="">
           <div class="camera-tile-fallback"></div>
+        </div>
+        <div class="camera-tile-preview-badge">
+          <span class="camera-tile-preview-dot"></span>
+          <span class="camera-tile-preview-badge-label"></span>
         </div>
         <span class="camera-tile-preview-status"></span>
       `;
@@ -170,6 +193,25 @@ describe('Camera Module', () => {
       return tile;
     };
 
+    // Snapshots decode into the buffer that is off screen, so the element under test is whichever
+    // buffer is currently inactive.
+    const pendingImage = (tile) =>
+      tile.querySelector('.camera-tile-preview-image[data-camera-buffer-active="false"]');
+    const activeImage = (tile) =>
+      tile.querySelector('.camera-tile-preview-image[data-camera-buffer-active="true"]');
+    const hasAnyImageSource = (tile) =>
+      Array.from(tile.querySelectorAll('.camera-tile-preview-image')).some((image) =>
+        image.hasAttribute('src')
+      );
+    const badgeLabel = (tile) =>
+      tile.querySelector('.camera-tile-preview-badge-label')?.textContent || '';
+    // jsdom reports naturalWidth 0 for every image, which the MJPEG path reads as an empty
+    // response, so a decoded frame has to be simulated explicitly.
+    const markDecoded = (image, width = 1280, height = 720) => {
+      Object.defineProperty(image, 'naturalWidth', { configurable: true, value: width });
+      Object.defineProperty(image, 'naturalHeight', { configurable: true, value: height });
+      return image;
+    };
     const flushLivePreviewStart = async () => {
       await jest.advanceTimersByTimeAsync(0);
       for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -210,24 +252,229 @@ describe('Camera Module', () => {
 
     it('loads immediately and refreshes only after the configured cadence', () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const status = tile.querySelector('.camera-tile-preview-status');
 
       expect(camera.mountCameraPreview(tile, 'camera.front_door', '10s')).toBe(true);
       expect(tile.dataset.cameraPreviewState).toBe('loading');
       jest.advanceTimersByTime(0);
 
-      const firstSrc = image.getAttribute('src');
+      const firstBuffer = pendingImage(tile);
+      const firstSrc = firstBuffer.getAttribute('src');
       expect(firstSrc).toMatch(/^ha:\/\/camera\/camera\.front_door\?preview=\d+&t=\d+$/);
-      image.onload();
+      firstBuffer.onload();
       expect(tile.dataset.cameraPreviewState).toBe('ready');
       expect(status.textContent).toBe('Snapshot loaded');
+      expect(activeImage(tile)).toBe(firstBuffer);
+      expect(firstBuffer.dataset.cameraBufferLoaded).toBe('true');
 
       jest.advanceTimersByTime(9999);
-      expect(image.getAttribute('src')).toBe(firstSrc);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
       jest.advanceTimersByTime(1);
-      expect(image.getAttribute('src')).not.toBe(firstSrc);
+      const secondBuffer = pendingImage(tile);
+      expect(secondBuffer).not.toBe(firstBuffer);
+      expect(secondBuffer.getAttribute('src')).not.toBe(firstSrc);
       expect(tile.dataset.cameraPreviewState).toBe('refreshing');
+      // The previous frame stays on screen until the incoming snapshot has decoded.
+      expect(activeImage(tile)).toBe(firstBuffer);
+    });
+
+    it('stops polling and says so while the camera is unavailable', () => {
+      const tile = createPreviewTile();
+      mockState.STATES = {
+        'camera.front_door': { ...sampleStates['camera.front_door'], state: 'idle' },
+      };
+
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      const loaded = pendingImage(tile);
+      loaded.onload();
+      const loadedSrc = loaded.getAttribute('src');
+
+      mockState.STATES['camera.front_door'].state = 'unavailable';
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+
+      expect(tile.dataset.cameraPreviewState).toBe('unavailable');
+      expect(tile.querySelector('.camera-tile-preview-status').textContent).toBe(
+        'Camera unavailable'
+      );
+      // The last frame is kept rather than dropping the tile to a placeholder mid-outage.
+      expect(loaded.getAttribute('src')).toBe(loadedSrc);
+
+      // Polling an offline camera only produces failures, which would bury the real reason for
+      // the tile under a generic error state.
+      jest.advanceTimersByTime(120000);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+      expect(tile.dataset.cameraPreviewState).toBe('unavailable');
+
+      // Nothing that normally resumes a preview may restart it while the camera is down.
+      setTileIntersecting(tile, false);
+      setTileIntersecting(tile, true);
+      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(60000);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+      expect(tile.dataset.cameraPreviewState).toBe('unavailable');
+
+      mockState.STATES['camera.front_door'].state = 'idle';
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
+    });
+
+    it('does not start requesting for a camera that is already unavailable', () => {
+      const tile = createPreviewTile();
+      mockState.STATES = {
+        'camera.front_door': { ...sampleStates['camera.front_door'], state: 'unavailable' },
+      };
+
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(60000);
+
+      expect(tile.dataset.cameraPreviewState).toBe('unavailable');
+      expect(hasAnyImageSource(tile)).toBe(false);
+    });
+
+    it('widens the retry gap for a camera whose snapshots keep failing', () => {
+      const tile = createPreviewTile();
+
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      pendingImage(tile).onerror();
+
+      // First failure keeps the 30s floor.
+      jest.advanceTimersByTime(29999);
+      expect(hasAnyImageSource(tile)).toBe(false);
+      jest.advanceTimersByTime(1);
+      pendingImage(tile).onerror();
+
+      // Second failure stretches to a minute rather than hammering every 30s forever.
+      jest.advanceTimersByTime(30000);
+      expect(hasAnyImageSource(tile)).toBe(false);
+      jest.advanceTimersByTime(30000);
+      const retry = pendingImage(tile);
+      expect(retry.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+
+      // A success puts the cadence straight back to normal.
+      retry.onload();
+      jest.advanceTimersByTime(10000);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
+    });
+
+    it('holds the configured cadence when a tile scrolls out of view and back', () => {
+      const tile = createPreviewTile();
+
+      camera.mountCameraPreview(tile, 'camera.front_door', '30s');
+      jest.advanceTimersByTime(0);
+      pendingImage(tile).onload();
+
+      jest.advanceTimersByTime(5000);
+      setTileIntersecting(tile, false);
+      setTileIntersecting(tile, true);
+
+      // Scrolling back into view must not restart the 30s cadence early.
+      jest.advanceTimersByTime(0);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+      jest.advanceTimersByTime(24999);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+      jest.advanceTimersByTime(1);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
+    });
+
+    it('keeps an expanded live stream running when its tile scrolls out of view', async () => {
+      const tile = createPreviewTile();
+      const video = tile.querySelector('.camera-tile-preview-video');
+      mockState.STATES = {
+        'camera.front_door': sampleStates['camera.front_door'],
+      };
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      video.onloadeddata();
+      await camera.openCamera('camera.front_door', { sourceTile: tile });
+
+      setTileIntersecting(tile, false);
+
+      expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+      expect(document.querySelector('.camera-expanded-preview').dataset.cameraPreviewState).toBe(
+        'ready'
+      );
+    });
+
+    it('staggers resumed previews when the window becomes visible again', () => {
+      const firstTile = createPreviewTile();
+      const secondTile = createPreviewTile();
+
+      camera.mountCameraPreview(firstTile, 'camera.front_door', '5s');
+      camera.mountCameraPreview(secondTile, 'camera.back_door', '5s');
+      jest.advanceTimersByTime(200);
+      pendingImage(firstTile).onload();
+      pendingImage(secondTile).onload();
+
+      visibilityState = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(30000);
+
+      visibilityState = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(0);
+      expect(pendingImage(firstTile).hasAttribute('src')).toBe(true);
+      expect(pendingImage(secondTile).hasAttribute('src')).toBe(false);
+
+      jest.advanceTimersByTime(180);
+      expect(pendingImage(secondTile).hasAttribute('src')).toBe(true);
+    });
+
+    it('biases the crop upward for camera sources taller than the tile', () => {
+      const tile = createPreviewTile();
+      Object.defineProperty(tile, 'clientWidth', { configurable: true, value: 160 });
+      Object.defineProperty(tile, 'clientHeight', { configurable: true, value: 96 });
+
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      const portraitBuffer = pendingImage(tile);
+      Object.defineProperty(portraitBuffer, 'naturalWidth', { configurable: true, value: 1200 });
+      Object.defineProperty(portraitBuffer, 'naturalHeight', { configurable: true, value: 1600 });
+      portraitBuffer.onload();
+      expect(portraitBuffer.style.objectPosition).toBe('center 30%');
+
+      jest.advanceTimersByTime(10000);
+      const landscapeBuffer = pendingImage(tile);
+      Object.defineProperty(landscapeBuffer, 'naturalWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(landscapeBuffer, 'naturalHeight', { configurable: true, value: 1080 });
+      landscapeBuffer.onload();
+      expect(landscapeBuffer.style.objectPosition).toBe('');
+    });
+
+    it('keeps the last good frame when a snapshot refresh fails', () => {
+      const tile = createPreviewTile();
+      const status = tile.querySelector('.camera-tile-preview-status');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      const loadedBuffer = pendingImage(tile);
+      const loadedSrc = loadedBuffer.getAttribute('src');
+      loadedBuffer.onload();
+
+      jest.advanceTimersByTime(10000);
+      pendingImage(tile).onerror();
+
+      expect(tile.dataset.cameraPreviewState).toBe('stale');
+      expect(status.textContent).toBe('Showing last frame');
+      expect(activeImage(tile)).toBe(loadedBuffer);
+      expect(loadedBuffer.getAttribute('src')).toBe(loadedSrc);
+      expect(loadedBuffer.dataset.cameraBufferLoaded).toBe('true');
+
+      jest.advanceTimersByTime(30000);
+      const retryBuffer = pendingImage(tile);
+      expect(retryBuffer.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      retryBuffer.onload();
+      expect(tile.dataset.cameraPreviewState).toBe('ready');
+      expect(activeImage(tile)).toBe(retryBuffer);
     });
 
     it('keeps one authenticated HLS stream open while the tile is visible', async () => {
@@ -287,19 +534,21 @@ describe('Camera Module', () => {
 
     it('shows a snapshot fallback and retries when HLS reports a fatal error', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const status = tile.querySelector('.camera-tile-preview-status');
 
       camera.mountCameraPreview(tile, 'camera.front_door', 'live');
       await flushLivePreviewStart();
       mockHlsEventHandlers.hlsError(null, { fatal: true });
 
+      const image = pendingImage(tile);
       const fallbackSrc = image.getAttribute('src');
       expect(fallbackSrc).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
-      expect(status.textContent).toBe('Live unavailable — loading snapshot…');
+      // The tile is too narrow for the full explanation; the expanded view carries that.
+      expect(status.textContent).toBe('Loading snapshot…');
       image.onload();
       expect(tile.dataset.cameraPreviewState).toBe('fallback');
-      expect(status.textContent).toBe('Live unavailable — showing snapshot');
+      expect(status.textContent).toBe('Snapshot fallback');
+      expect(badgeLabel(tile)).toBe('Snapshot');
 
       jest.advanceTimersByTime(29999);
       expect(image.getAttribute('src')).toBe(fallbackSrc);
@@ -308,27 +557,233 @@ describe('Camera Module', () => {
       expect(mockHls).toHaveBeenCalledTimes(2);
     });
 
+    it('paints a still while the live stream is still negotiating', async () => {
+      const tile = createPreviewTile();
+      const video = tile.querySelector('.camera-tile-preview-video');
+      const status = tile.querySelector('.camera-tile-preview-status');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+
+      const warmup = pendingImage(tile);
+      expect(warmup.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
+
+      warmup.onload();
+      // Still waiting on the stream, but the tile has a picture and still says so honestly.
+      expect(tile.dataset.cameraPreviewState).toBe('loading');
+      expect(tile.dataset.cameraPreviewSource).toBe('image');
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('true');
+      expect(activeImage(tile)).toBe(warmup);
+      expect(status.textContent).toBe('Starting live stream…');
+      expect(badgeLabel(tile)).toBe('Live');
+
+      video.onloadeddata();
+      expect(tile.dataset.cameraPreviewState).toBe('ready');
+      expect(tile.dataset.cameraPreviewSource).toBe('video');
+      expect(hasAnyImageSource(tile)).toBe(false);
+    });
+
+    it('does not let a late warmup still displace a running stream', async () => {
+      const tile = createPreviewTile();
+      const video = tile.querySelector('.camera-tile-preview-video');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      const warmup = pendingImage(tile);
+
+      video.onloadeddata();
+      expect(tile.dataset.cameraPreviewSource).toBe('video');
+
+      // Switching to the stream tears the buffer down, so a still that lands afterwards has
+      // nothing left to display into.
+      expect(warmup.onload).toBeNull();
+      expect(warmup.hasAttribute('src')).toBe(false);
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
+      expect(tile.dataset.cameraPreviewState).toBe('ready');
+    });
+
+    it('reuses the warmup still instead of refetching when the stream fails', async () => {
+      const tile = createPreviewTile();
+      const status = tile.querySelector('.camera-tile-preview-status');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      const warmup = pendingImage(tile);
+      const warmupSrc = warmup.getAttribute('src');
+      warmup.onload();
+
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+
+      // No second request: the still from this attempt is seconds old and already on screen.
+      expect(hasAnyImageSource(tile)).toBe(true);
+      expect(activeImage(tile)).toBe(warmup);
+      expect(warmup.getAttribute('src')).toBe(warmupSrc);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+      expect(tile.dataset.cameraPreviewState).toBe('fallback');
+      expect(status.textContent).toBe('Snapshot fallback');
+      expect(badgeLabel(tile)).toBe('Snapshot');
+    });
+
+    it('widens the gap between live attempts while snapshots keep refreshing', async () => {
+      const tile = createPreviewTile();
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(1);
+
+      // First failure: the next live attempt is still one snapshot cycle away.
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+
+      // Second failure: the cycle 30s later must refresh the snapshot without touching HLS.
+      // MJPEG was ruled out on the first failure, so it is not probed again.
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      const secondFallback = pendingImage(tile);
+      secondFallback.onload();
+      const secondSrc = secondFallback.getAttribute('src');
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+      const backedOffSrc = pendingImage(tile).getAttribute('src');
+      expect(backedOffSrc).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      expect(backedOffSrc).not.toBe(secondSrc);
+
+      // A minute after the second failure the live attempt is due again.
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(3);
+    });
+
+    it('drops the live backoff when the camera starts streaming again', async () => {
+      const tile = createPreviewTile();
+      mockState.STATES = {
+        'camera.front_door': { ...sampleStates['camera.front_door'], state: 'idle' },
+      };
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+
+      // Backed off to a minute, so the next cycle would normally be a snapshot only.
+      mockState.STATES['camera.front_door'].state = 'streaming';
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(3);
+    });
+
+    it('ignores motion churn between idle and recording for the live backoff', async () => {
+      const tile = createPreviewTile();
+      mockState.STATES = {
+        'camera.front_door': { ...sampleStates['camera.front_door'], state: 'idle' },
+      };
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+
+      // idle -> recording is routine motion activity, not evidence the stream now works.
+      mockState.STATES['camera.front_door'].state = 'recording';
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+    });
+
+    it('restarts the live retry ladder once the stream recovers', async () => {
+      const tile = createPreviewTile();
+      const video = tile.querySelector('.camera-tile-preview-video');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+
+      // The cycle 30s on is a backed-off snapshot; the live attempt lands 30s after that.
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(3);
+      video.onloadeddata();
+      expect(tile.dataset.cameraPreviewState).toBe('ready');
+
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      pendingImage(tile).onload();
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(4);
+    });
+
     it('retains the MJPEG compatibility path when a non-Aarlo camera has no HLS URL', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const status = tile.querySelector('.camera-tile-preview-status');
       mockWebSocketRequest.mockResolvedValue({ success: false });
 
       camera.mountCameraPreview(tile, 'camera.front_door', 'live');
       await flushLivePreviewStart();
 
+      const image = pendingImage(tile);
       expect(image.getAttribute('src')).toMatch(
         /^ha:\/\/camera_stream\/camera\.front_door\?preview=\d+&t=\d+$/
       );
       expect(tile.dataset.cameraPreviewSource).toBe('image');
-      image.onload();
+      markDecoded(image).onload();
       expect(tile.dataset.cameraPreviewState).toBe('ready');
       expect(status.textContent).toBe('Live now');
+      expect(badgeLabel(tile)).toBe('Live');
     });
 
-    it('skips the zero-byte MJPEG path when an Aarlo camera has no HLS URL', async () => {
+    it('stops calling a stalled MJPEG stream live once it drops', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
+      const status = tile.querySelector('.camera-tile-preview-status');
+      mockWebSocketRequest.mockResolvedValue({ success: false });
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      const stream = pendingImage(tile);
+      markDecoded(stream).onload();
+      expect(tile.dataset.cameraPreviewState).toBe('ready');
+      expect(badgeLabel(tile)).toBe('Live');
+
+      // The main process ends a stream that stops sending frames, which reaches the renderer as
+      // an ordinary image error rather than a silent freeze.
+      stream.onerror();
+
+      expect(tile.dataset.cameraPreviewState).not.toBe('ready');
+      expect(stream.hasAttribute('src')).toBe(false);
+      const snapshot = pendingImage(tile);
+      expect(snapshot.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      snapshot.onload();
+      expect(status.textContent).toBe('Snapshot fallback');
+      expect(badgeLabel(tile)).toBe('Snapshot');
+    });
+
+    it('treats an empty MJPEG response as a failure and stops probing that camera', async () => {
+      const tile = createPreviewTile();
       const status = tile.querySelector('.camera-tile-preview-status');
       const entityId = 'camera.aarlo_doorbell_cam';
       mockState.STATES = {
@@ -346,18 +801,28 @@ describe('Camera Module', () => {
       camera.mountCameraPreview(tile, entityId, 'live');
       await flushLivePreviewStart();
 
-      expect(image.getAttribute('src')).toMatch(
+      // Some integrations answer the stream endpoint with nothing at all, firing load rather
+      // than error. A frame with no pixels is not a live stream.
+      const probe = pendingImage(tile);
+      expect(probe.getAttribute('src')).toMatch(/^ha:\/\/camera_stream\//);
+      probe.onload();
+
+      const snapshot = pendingImage(tile);
+      expect(snapshot.getAttribute('src')).toMatch(
         /^ha:\/\/camera\/camera\.aarlo_doorbell_cam\?preview=\d+&t=\d+$/
       );
-      expect(image.getAttribute('src')).not.toContain('camera_stream');
-      expect(status.textContent).toBe('Live unavailable — loading snapshot…');
-      image.onload();
+      expect(status.textContent).toBe('Loading snapshot…');
+      snapshot.onload();
       expect(tile.dataset.cameraPreviewState).toBe('fallback');
+
+      // The camera is remembered as MJPEG-incapable, so the next attempt skips the probe.
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(pendingImage(tile).getAttribute('src')).toMatch(/^ha:\/\/camera\//);
     });
 
     it('falls back instead of waiting forever when HLS never produces a frame', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const status = tile.querySelector('.camera-tile-preview-status');
 
       camera.mountCameraPreview(tile, 'camera.front_door', 'live');
@@ -368,9 +833,41 @@ describe('Camera Module', () => {
       expect(status.textContent).toBe('Starting live stream…');
 
       jest.advanceTimersByTime(1);
-      expect(image.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
-      expect(status.textContent).toBe('Live unavailable — loading snapshot…');
       expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
+      expect(status.textContent).toBe('Loading snapshot…');
+    });
+
+    it('gives a camera the full wait once, then gives up on the stream sooner', async () => {
+      const tile = createPreviewTile();
+      const status = tile.querySelector('.camera-tile-preview-status');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+
+      // A cloud camera can legitimately need 20s+, so the first attempt waits the full time.
+      jest.advanceTimersByTime(29999);
+      expect(status.textContent).toBe('Starting live stream…');
+      jest.advanceTimersByTime(1);
+      expect(status.textContent).toBe('Loading snapshot…');
+      pendingImage(tile).onload();
+
+      await jest.advanceTimersByTimeAsync(30000);
+      await flushLivePreviewStart();
+      expect(mockHls).toHaveBeenCalledTimes(2);
+      expect(status.textContent).toBe('Starting live stream…');
+
+      // This camera has already failed once, so the tile stops claiming to be starting a stream
+      // long before another 30 seconds have gone by.
+      jest.advanceTimersByTime(9999);
+      expect(status.textContent).toBe('Starting live stream…');
+      jest.advanceTimersByTime(1);
+      expect(status.textContent).toBe('Loading snapshot…');
+      pendingImage(tile).onload();
+      expect(tile.dataset.cameraPreviewState).toBe('fallback');
+      expect(badgeLabel(tile)).toBe('Snapshot');
     });
 
     it('expands and collapses the exact preview visual without restarting HLS', async () => {
@@ -420,7 +917,7 @@ describe('Camera Module', () => {
 
     it('updates the expanded status and falls back when startup stalls', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
+      const buffers = Array.from(tile.querySelectorAll('.camera-tile-preview-image'));
       mockState.CONFIG = getMockConfig();
       mockState.STATES = {
         'camera.front_door': sampleStates['camera.front_door'],
@@ -432,17 +929,18 @@ describe('Camera Module', () => {
 
       jest.advanceTimersByTime(30000);
 
+      // The expanded stage reuses the tile's own buffers rather than cloning the media.
       const expanded = document.querySelector('.camera-expanded-preview');
-      expect(expanded.querySelector('.camera-expanded-preview-stage img')).toBe(image);
+      expect(expanded.querySelector('.camera-expanded-preview-stage img')).toBe(buffers[0]);
       expect(expanded.querySelector('.camera-expanded-preview-status').textContent).toBe(
         'Live unavailable — loading snapshot…'
       );
-      expect(image.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      const loadingBuffer = buffers.find((buffer) => buffer.hasAttribute('src'));
+      expect(loadingBuffer.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
     });
 
     it('clears stale Aarlo activity and retries HLS from the expanded Reconnect action', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const video = tile.querySelector('.camera-tile-preview-video');
       const entityId = 'camera.aarlo_doorbell_cam';
       const aarloCamera = {
@@ -463,7 +961,10 @@ describe('Camera Module', () => {
 
       camera.mountCameraPreview(tile, entityId, 'live');
       await flushLivePreviewStart();
-      image.onload();
+      // No stream URL, so MJPEG is probed once; jsdom decodes it to zero pixels, which the
+      // preview treats as an empty response and drops to stills.
+      pendingImage(tile).onload();
+      pendingImage(tile).onload();
       await camera.openCamera(entityId, { sourceTile: tile });
 
       const expanded = document.querySelector('.camera-expanded-preview');
@@ -587,7 +1088,6 @@ describe('Camera Module', () => {
 
     it('returns the shared preview to its tile when Escape closes the expanded view', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const visual = tile.querySelector('.camera-tile-visual');
       mockState.CONFIG = getMockConfig();
       mockState.STATES = {
@@ -596,8 +1096,12 @@ describe('Camera Module', () => {
 
       camera.mountCameraPreview(tile, 'camera.front_door', '10s');
       jest.advanceTimersByTime(0);
+      const image = pendingImage(tile);
       image.onload();
       await camera.openCamera('camera.front_door', { sourceTile: tile });
+
+      expect(visual.getAttribute('aria-hidden')).toBeNull();
+      expect(image.getAttribute('alt')).toBe('Front Door Camera Preview');
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
@@ -605,11 +1109,11 @@ describe('Camera Module', () => {
       expect(visual.parentNode).toBe(tile);
       expect(image.parentNode).toBe(visual);
       expect(image.hasAttribute('src')).toBe(true);
+      expect(image.getAttribute('alt')).toBe('');
     });
 
     it('removes an expanded preview and its pending request when the tile is disposed', async () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       mockState.CONFIG = getMockConfig();
       mockState.STATES = {
         'camera.front_door': sampleStates['camera.front_door'],
@@ -623,29 +1127,30 @@ describe('Camera Module', () => {
       expect(camera.disposeCameraPreview(tile)).toBe(true);
 
       expect(document.querySelector('.camera-expanded-preview')).toBeNull();
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
       jest.advanceTimersByTime(60000);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
     });
 
     it('times out a stalled snapshot request and backs off before retrying', () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const status = tile.querySelector('.camera-tile-preview-status');
 
       camera.mountCameraPreview(tile, 'camera.front_door', '5s');
       jest.advanceTimersByTime(0);
-      expect(image.hasAttribute('src')).toBe(true);
+      expect(hasAnyImageSource(tile)).toBe(true);
 
       jest.advanceTimersByTime(20000);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
       expect(tile.dataset.cameraPreviewState).toBe('error');
       expect(status.textContent).toBe('Preview unavailable');
 
       jest.advanceTimersByTime(29999);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
       jest.advanceTimersByTime(1);
-      expect(image.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
     });
 
     it('suspends the tile stream while the full camera viewer is open', async () => {
@@ -678,69 +1183,74 @@ describe('Camera Module', () => {
 
     it('backs off failed snapshots for at least thirty seconds', () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
       const status = tile.querySelector('.camera-tile-preview-status');
 
       camera.mountCameraPreview(tile, 'camera.front_door', '5s');
       jest.advanceTimersByTime(0);
-      image.onerror();
+      pendingImage(tile).onerror();
 
-      expect(image.hasAttribute('src')).toBe(false);
+      // Nothing has loaded yet, so there is no frame worth keeping on screen.
+      expect(hasAnyImageSource(tile)).toBe(false);
       expect(tile.dataset.cameraPreviewState).toBe('error');
       expect(status.textContent).toBe('Preview unavailable');
       jest.advanceTimersByTime(29999);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
       jest.advanceTimersByTime(1);
-      expect(image.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
     });
 
     it('pauses refreshes while the document is hidden and resumes on visibility', () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
 
       camera.mountCameraPreview(tile, 'camera.front_door', '5s');
       jest.advanceTimersByTime(0);
-      image.onload();
-      const firstSrc = image.getAttribute('src');
+      const loadedBuffer = pendingImage(tile);
+      loadedBuffer.onload();
+      const firstSrc = loadedBuffer.getAttribute('src');
 
       visibilityState = 'hidden';
       document.dispatchEvent(new Event('visibilitychange'));
       jest.advanceTimersByTime(30000);
-      expect(image.getAttribute('src')).toBe(firstSrc);
+      expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+      expect(loadedBuffer.getAttribute('src')).toBe(firstSrc);
 
       visibilityState = 'visible';
       document.dispatchEvent(new Event('visibilitychange'));
       jest.advanceTimersByTime(0);
-      expect(image.getAttribute('src')).not.toBe(firstSrc);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
     });
 
     it('does not request snapshots when mounted while hidden', () => {
       visibilityState = 'hidden';
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
 
       camera.mountCameraPreview(tile, 'camera.front_door', '5s');
       jest.advanceTimersByTime(60000);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
 
       visibilityState = 'visible';
       document.dispatchEvent(new Event('visibilitychange'));
       jest.advanceTimersByTime(0);
-      expect(image.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
     });
 
     it('cleans up pending refreshes when a tile is disposed', () => {
       const tile = createPreviewTile();
-      const image = tile.querySelector('.camera-tile-preview-image');
 
       camera.mountCameraPreview(tile, 'camera.front_door', '5s');
       jest.advanceTimersByTime(0);
-      image.onload();
+      pendingImage(tile).onload();
 
       expect(camera.disposeCameraPreview(tile)).toBe(true);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
       jest.advanceTimersByTime(30000);
-      expect(image.hasAttribute('src')).toBe(false);
+      expect(hasAnyImageSource(tile)).toBe(false);
       expect(camera.disposeCameraPreview(tile)).toBe(false);
     });
   });
@@ -832,8 +1342,9 @@ describe('Camera Module', () => {
 
       await camera.getHlsStreamUrl('camera.front_door');
 
+      // The entity has to be named or a multi-camera log cannot be read.
       expect(mockConsoleWarn).toHaveBeenCalledWith(
-        'HLS stream request failed:',
+        'Camera stream request failed (camera.front_door):',
         'Stream unavailable'
       );
     });
@@ -908,6 +1419,35 @@ describe('Camera Module', () => {
 
       const img = document.querySelector('.camera-img');
       expect(img.src).toBe('ha://camera/camera.front_door?t=1234567890');
+    });
+
+    it('closes on Escape and restores focus to the opener', async () => {
+      const opener = document.createElement('button');
+      document.body.appendChild(opener);
+      opener.focus();
+
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      expect(modal.getAttribute('role')).toBe('dialog');
+      expect(modal.getAttribute('aria-modal')).toBe('true');
+      expect(document.activeElement).toBe(modal.querySelector('.close-btn'));
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(document.querySelector('.camera-modal')).toBeNull();
+      expect(document.activeElement).toBe(opener);
+    });
+
+    it('reports a failed snapshot instead of leaving a broken image', async () => {
+      const { showToast } = require('../../src/ui-utils.js');
+      await camera.openCamera('camera.front_door');
+      const img = document.querySelector('.camera-modal .camera-stream');
+
+      expect(img.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
+      img.onerror();
+
+      expect(showToast).toHaveBeenCalledWith('Could not load camera snapshot', 'error', 2500);
+      expect(document.getElementById('camera-loading').style.display).toBe('none');
     });
 
     it('should close modal when close button clicked', () => {
