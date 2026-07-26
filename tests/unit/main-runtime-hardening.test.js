@@ -130,6 +130,14 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).not.toContain("const { autoUpdater } = require('electron-updater');");
   });
 
+  it('keeps the connected climate demo as a development-only runtime overlay', () => {
+    expect(mainSource).toContain('IS_CLIMATE_DEMO_OVERLAY_MODE');
+    expect(mainSource).toContain("process.argv.includes('--demo-climate-overlay')");
+    expect(mainSource).toContain("cloned.developmentDemo = { climate: true, mode: 'overlay' }");
+    expect(mainSource).toContain('delete newConfig.developmentDemo;');
+    expect(mainSource).toContain('delete cloned.developmentDemo;');
+  });
+
   it('allows Electron to throttle background renderers', () => {
     expect(mainSource).not.toContain('backgroundThrottling: false');
   });

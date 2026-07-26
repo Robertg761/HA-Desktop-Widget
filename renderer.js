@@ -17,6 +17,11 @@ import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import {
+  installClimateDemo,
+  isClimateDemoConfig,
+  isClimateDemoOverlayConfig,
+} from './src/dev-climate-demo.js';
+import {
   buildHomeAssistantPathUrl,
   classifyConnectionError as classifyConnectionTestError,
   isConfigured,
@@ -100,6 +105,7 @@ let mainConnectionState = 'idle';
 let firstRunWizard = null;
 let firstRunSettingsObserver = null;
 let configuredRuntimeStarted = false;
+let climateDemoController = null;
 const pendingStateChangedEntities = new Map();
 let pendingStateChangedFlushId = null;
 const UI_TICK_ACTIVE_INTERVAL_MS = 1000;
@@ -788,6 +794,31 @@ function startConfiguredRuntime() {
   return true;
 }
 
+function startClimateDemoRuntime({ overlay = false } = {}) {
+  if (IS_DESKTOP_PIN_MODE || !isClimateDemoConfig(state.CONFIG)) return false;
+
+  document.body.dataset.developmentDemo = 'climate';
+  if (!overlay) {
+    mainConnectionState = 'demo';
+    setConnectedStatus(t('Development climate demo — no Home Assistant connection'));
+  }
+  if (!climateDemoController) {
+    climateDemoController = installClimateDemo({
+      state,
+      websocket,
+      overlay,
+      // The connected overlay stays wholly inside the renderer. In particular,
+      // it never publishes its fake entity to the main process or Home Assistant.
+      onEntityUpdated: overlay ? renderCurrentMode : queueStateChangedEntity,
+    });
+  }
+  climateDemoController.ensureEntity();
+  startUiTickScheduler();
+  uiUtils.showLoading(false);
+  renderCurrentMode();
+  return true;
+}
+
 function applyRendererConfig(nextConfig) {
   if (!nextConfig || !nextConfig.homeAssistant) return;
   const normalizedQuickAccess = normalizeQuickAccessConfig(nextConfig, { withChanged: true });
@@ -1186,6 +1217,12 @@ websocket.on('message', (msg) => {
               favoriteCount,
             });
             state.setStates(mergedStates);
+            // Home Assistant replaces the full state map after authentication.
+            // Restore the renderer-local overlay immediately without publishing it
+            // back through the HA snapshot path below.
+            if (isClimateDemoOverlayConfig(state.CONFIG)) {
+              climateDemoController?.ensureEntity();
+            }
             if (IS_DESKTOP_PIN_MODE) {
               desktopPinHasSnapshot = true;
             }
@@ -1578,6 +1615,15 @@ async function init() {
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
+
+    if (isClimateDemoConfig(state.CONFIG)) {
+      const overlay = isClimateDemoOverlayConfig(state.CONFIG);
+      if (overlay) {
+        startConfiguredRuntime();
+      }
+      startClimateDemoRuntime({ overlay });
+      return;
+    }
 
     // Check if token was reset due to encryption issues
     if (state.CONFIG.tokenResetReason) {

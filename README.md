@@ -171,6 +171,7 @@ git clone https://github.com/Robertg761/HA-Desktop-Widget.git
 cd HA-Desktop-Widget
 npm install
 npm run dev   # Development mode (opens DevTools)
+npm run dev:climate-demo # Isolated simulated Fahrenheit air-conditioner demo (no HA required)
 npm start     # Regular run (builds the renderer, then starts Electron)
 npm run lint  # Run ESLint
 npm test      # Run Jest tests
@@ -179,6 +180,26 @@ npm run dist:win    # Build Windows NSIS installer artifacts
 npm run dist:mac    # Build macOS distribution artifacts
 npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
+
+### Climate UI Demo (Development Only)
+
+Run `npm run dev:climate-demo` to launch a simulated **Demo Air Conditioner** without a Home
+Assistant server. The demo starts with a Fahrenheit AC entity in Quick Access and advertises
+its HVAC, fan, and preset modes plus a 60–86°F target range with 1°F steps. Click the tile to
+toggle it; press and hold it to exercise the target-temperature, mode, fan, and preset controls.
+
+This command only works with the development `--dev` launch path. It creates a fresh temporary
+Electron profile for that run, blocks all real Home Assistant service calls, and never reads or
+writes the normal app configuration, token, desktop pins, or profile-sync data. Remove the
+`dev:climate-demo` script and `src/dev-climate-demo.js` when the fixture is no longer useful.
+
+To test the card alongside a real Home Assistant connection, run
+`npm run dev:climate-overlay`. This development-only mode leaves the normal Electron profile and
+Home Assistant connection intact, then places a renderer-local **Demo Air Conditioner** card at
+the start of Quick Access for the current session. Its fake state and climate service calls stay
+in memory and are intercepted before the WebSocket layer; the card is not saved as a favorite,
+cannot be edited/removed in Quick Access, and is never written into the normal configuration or
+sent to Home Assistant. The existing `npm run dev:climate-demo` remains the fully isolated mode.
 
 ### Release Channels
 

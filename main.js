@@ -214,6 +214,25 @@ if (usesLinuxPopupHotkeyBackend) {
 // Log the app starting up
 log.info('App starting...');
 
+const IS_DEV_MODE = process.argv.includes('--dev');
+const IS_CLIMATE_DEMO_MODE =
+  IS_DEV_MODE && !app.isPackaged && process.argv.includes('--demo-climate');
+const IS_CLIMATE_DEMO_OVERLAY_MODE =
+  IS_DEV_MODE &&
+  !app.isPackaged &&
+  !IS_CLIMATE_DEMO_MODE &&
+  process.argv.includes('--demo-climate-overlay');
+
+// The demo gets a fresh temporary Electron profile, so it cannot read or write
+// a user's Home Assistant token, favorites, pins, or other production settings.
+if (IS_CLIMATE_DEMO_MODE) {
+  const demoUserDataPath = fs.mkdtempSync(
+    path.join(app.getPath('temp'), 'ha-desktop-widget-climate-demo-')
+  );
+  app.setPath('userData', demoUserDataPath);
+  log.info(`Starting isolated development climate demo: ${demoUserDataPath}`);
+}
+
 // Set cache paths before app is ready to avoid access issues
 const userDataPath = app.getPath('userData');
 app.setPath('userData', userDataPath);
@@ -224,7 +243,6 @@ let tray;
 let config;
 let isQuitting = false;
 let autoUpdateDownloaded = false;
-const IS_DEV_MODE = process.argv.includes('--dev');
 let windowStateSaveTimer = null;
 const CONFIG_SAVE_DEBOUNCE_MS = 120;
 let configWriteTimer = null;
@@ -858,6 +876,14 @@ function sanitizeConfigForRenderer(inputConfig) {
   const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
   if (cloned.profileSync) {
     delete cloned.profileSync.storedPassphrase;
+  }
+  // The marker is runtime-only. It is never read from or written to a user
+  // profile, including when the connected overlay is active.
+  delete cloned.developmentDemo;
+  if (IS_CLIMATE_DEMO_MODE) {
+    cloned.developmentDemo = { climate: true, mode: 'isolated' };
+  } else if (IS_CLIMATE_DEMO_OVERLAY_MODE) {
+    cloned.developmentDemo = { climate: true, mode: 'overlay' };
   }
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
   return cloned;
@@ -2613,6 +2639,25 @@ function loadConfig(options = {}) {
   }
 }
 
+function enableDevelopmentClimateDemo() {
+  if (!IS_CLIMATE_DEMO_MODE) return;
+
+  config = {
+    ...config,
+    homeAssistant: {
+      url: '',
+      token: HOME_ASSISTANT_TOKEN_PLACEHOLDER,
+    },
+    favoriteEntities: ['climate.demo_air_conditioner'],
+    customTabs: [],
+    activeTabId: '',
+    desktopPins: {},
+    globalHotkeys: { enabled: false, hotkeys: {} },
+    entityAlerts: { enabled: false, alerts: {} },
+    profileSync: { ...getDefaultProfileSyncConfig(), enabled: false },
+  };
+}
+
 function resolveDeferredSecureConfig(options = {}) {
   if (deferredSecureConfigResolutionInProgress) return false;
   const notifyRenderer = !!options.notifyRenderer;
@@ -3646,6 +3691,9 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   log.debug('Updating configuration');
   const prevConfig = config;
   const prevSyncEnabled = !!config?.profileSync?.enabled;
+  // Development demo state is an IPC-only marker. Never let an overlay renderer
+  // write it back into the user's real configuration.
+  delete newConfig.developmentDemo;
   pruneConfig(newConfig);
   const customTabs = Array.isArray(newConfig.customTabs)
     ? newConfig.customTabs
@@ -4656,6 +4704,7 @@ ipcMain.handle('save-config', (event, newConfig) => {
   }
   log.warn('save-config handler is deprecated, use update-config instead');
   // Update the config with the new values
+  delete newConfig.developmentDemo;
   pruneConfig(newConfig);
   ensureDateTimeFormatConfigDefaults(newConfig);
   ensureProfileSyncConfigDefaults(newConfig);
@@ -5642,6 +5691,7 @@ app.whenReady().then(() => {
   }
 
   loadConfig({ deferSecureStorage: true });
+  enableDevelopmentClimateDemo();
   startDevLiveReloadWatchers();
 
   // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)

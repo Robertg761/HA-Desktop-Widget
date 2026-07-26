@@ -2175,6 +2175,73 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(climateState.textContent).toContain('71');
     });
 
+    it('discovers climate entities in the Quick Access picker', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<input id="quick-controls-search" /><div id="quick-controls-list"></div>'
+      );
+      state.setStates({
+        'sensor.bedroom_temperature': {
+          entity_id: 'sensor.bedroom_temperature',
+          state: '24',
+          attributes: { friendly_name: 'Bedroom Temperature' },
+        },
+        'climate.bedroom_air_conditioner': sampleStates['climate.bedroom_air_conditioner'],
+      });
+
+      ui.populateQuickControlsList();
+
+      expect(
+        document.querySelector(
+          '.entity-selector-btn[data-entity-id="climate.bedroom_air_conditioner"]'
+        )
+      ).toBeTruthy();
+    });
+
+    it("renders only an air conditioner's advertised climate controls", () => {
+      jest.useFakeTimers();
+      const airConditioner = sampleStates['climate.bedroom_air_conditioner'];
+
+      ui.executeEntityPrimaryAction(airConditioner);
+
+      const modal = document.querySelector('.climate-modal');
+      expect(modal).toBeTruthy();
+      expect(modal.querySelector('#climate-slider').step).toBe('1');
+      expect(
+        [...modal.querySelectorAll('.climate-mode-btn')].map((button) => button.dataset.mode)
+      ).toEqual(['off', 'cool', 'dry', 'fan_only']);
+      expect(
+        [...modal.querySelectorAll('.climate-fan-mode-btn')].map((button) => button.dataset.mode)
+      ).toEqual(['low', 'medium', 'high']);
+
+      const slider = modal.querySelector('#climate-slider');
+      slider.value = '23';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      jest.advanceTimersByTime(300);
+
+      expect(mockCallService).toHaveBeenCalledWith('climate', 'set_temperature', {
+        entity_id: 'climate.bedroom_air_conditioner',
+        temperature: 23,
+      });
+      jest.useRealTimers();
+    });
+
+    it('does not invent climate controls that an entity does not advertise', () => {
+      ui.executeEntityPrimaryAction({
+        entity_id: 'climate.read_only_air_conditioner',
+        state: 'cool',
+        attributes: {
+          friendly_name: 'Read-only Air Conditioner',
+          current_temperature: 24,
+        },
+      });
+
+      const modal = document.querySelector('.climate-modal');
+      expect(modal.querySelector('#climate-slider')).toBeNull();
+      expect(modal.querySelectorAll('.climate-mode-btn')).toHaveLength(0);
+      expect(modal.querySelector('.climate-controls-unavailable')).toBeTruthy();
+    });
+
     it('updates timer tick targets when a visible sensor becomes timer-like', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.kitchen_status'];

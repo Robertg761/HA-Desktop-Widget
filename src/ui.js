@@ -9,6 +9,7 @@ import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import desktopPinSupport from './desktop-pin-support.cjs';
+import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from './dev-climate-demo.js';
 import {
   addQuickAccessView,
   deleteQuickAccessView,
@@ -324,7 +325,15 @@ function setQuickAccessConfig(nextConfig, options = {}) {
 
 function getActiveQuickAccessEntityIds() {
   const config = ensureQuickAccessConfig();
-  return getActiveQuickAccessTab(config)?.entityIds || [];
+  const entityIds = getActiveQuickAccessTab(config)?.entityIds || [];
+  if (isClimateDemoOverlayConfig(config) && !entityIds.includes(DEV_CLIMATE_DEMO_ENTITY_ID)) {
+    return [DEV_CLIMATE_DEMO_ENTITY_ID, ...entityIds];
+  }
+  return entityIds;
+}
+
+function isDevelopmentClimateOverlayEntity(entityId) {
+  return entityId === DEV_CLIMATE_DEMO_ENTITY_ID && isClimateDemoOverlayConfig(state.CONFIG);
 }
 
 // Preset page names offered when adding a Quick Access page in reorganize mode.
@@ -747,7 +756,7 @@ function refreshVisibleTimerEntityFlag() {
 function refreshVisibleEntityCache() {
   try {
     const nextVisibleIds = new Set();
-    const favorites = (state.CONFIG?.favoriteEntities || []).slice(0, 12);
+    const favorites = getActiveQuickAccessEntityIds().slice(0, 12);
     favorites.forEach((entityId) => {
       addVisibleEntityCandidate(nextVisibleIds, entityId);
     });
@@ -1015,6 +1024,7 @@ function removeRemoveButtons() {
 function addButtonsToElement(item) {
   try {
     if (!item || item.dataset.primaryCard === 'true') return;
+    if (isDevelopmentClimateOverlayEntity(item.dataset.entityId)) return;
 
     // Add rename button
     if (!item.querySelector('.rename-btn')) {
@@ -1337,6 +1347,7 @@ function saveQuickAccessOrder(movedItem = null) {
     items.forEach((item) => {
       if (!item.isConnected) return;
       const entityId = item.dataset.entityId;
+      if (isDevelopmentClimateOverlayEntity(entityId)) return;
       if (!entityId || seen.has(entityId)) {
         if (item.isConnected) item.remove();
         return;
@@ -3827,6 +3838,11 @@ function getDesktopPinClimateValue(entity) {
     maxTemp: Number.isFinite(Number(entity?.attributes?.max_temp))
       ? Number(entity.attributes.max_temp)
       : 30,
+    targetTempStep:
+      Number.isFinite(Number(entity?.attributes?.target_temp_step)) &&
+      Number(entity.attributes.target_temp_step) > 0
+        ? Number(entity.attributes.target_temp_step)
+        : 0.5,
     modes:
       Array.isArray(entity?.attributes?.hvac_modes) && entity.attributes.hvac_modes.length
         ? entity.attributes.hvac_modes
@@ -3936,7 +3952,7 @@ function createDesktopPinClimateControlElement(entity) {
         ${renderProfile.showCompactCurrent ? `<div class="desktop-pin-panel-caption desktop-pin-climate-inline-copy">${currentSummary}</div>` : ''}
         <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Cool</span>' : ''}
-          <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="0.5" value="${climateValue.targetTemp}" aria-label="Target temperature" />
+          <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="${climateValue.targetTempStep}" value="${climateValue.targetTemp}" aria-label="Target temperature" />
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Warm</span>' : ''}
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-climate-modes">
@@ -9822,36 +9838,73 @@ function showBrightnessSlider(light) {
   }
 }
 
+function getClimateControlCapabilities(climateEntity) {
+  const attributes = climateEntity?.attributes || {};
+  const finiteAttribute = (name) => {
+    const value = Number(attributes[name]);
+    return Number.isFinite(value) ? value : null;
+  };
+  const supportedModes = (name) =>
+    Array.from(
+      new Set(
+        (Array.isArray(attributes[name]) ? attributes[name] : [])
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter(Boolean)
+      )
+    );
+  const minTemp = finiteAttribute('min_temp');
+  const maxTemp = finiteAttribute('max_temp');
+  const targetTemp = finiteAttribute('temperature');
+  const advertisedStep =
+    finiteAttribute('target_temperature_step') ?? finiteAttribute('temperature_step');
+
+  return {
+    currentTemp: finiteAttribute('current_temperature'),
+    targetTemp,
+    minTemp,
+    maxTemp,
+    temperatureStep:
+      advertisedStep &&
+      advertisedStep > 0 &&
+      advertisedStep <= Math.max(1, (maxTemp || 0) - (minTemp || 0))
+        ? advertisedStep
+        : 0.5,
+    canSetTemperature:
+      targetTemp !== null && minTemp !== null && maxTemp !== null && minTemp < maxTemp,
+    hvacModes: supportedModes('hvac_modes'),
+    fanModes: supportedModes('fan_modes'),
+    presetModes: supportedModes('preset_modes'),
+  };
+}
+
 function showClimateControls(climateEntity) {
   try {
+    const attributes = climateEntity?.attributes || {};
+    const capabilities = getClimateControlCapabilities(climateEntity);
     const name = utils.escapeHtml(utils.getEntityDisplayName(climateEntity));
-    const currentTempValue = Number(climateEntity.attributes.current_temperature);
-    const targetTempValue = Number(climateEntity.attributes.temperature);
-    const minTempValue = Number(climateEntity.attributes.min_temp);
-    const maxTempValue = Number(climateEntity.attributes.max_temp);
-    const currentTemp = Number.isFinite(currentTempValue) ? currentTempValue : 0;
-    const targetTemp = Number.isFinite(targetTempValue) ? targetTempValue : 20;
+    const currentTemp = capabilities.currentTemp;
+    const targetTemp = capabilities.targetTemp;
     const currentMode = String(climateEntity.state || 'off');
-    const minTemp = Number.isFinite(minTempValue) ? minTempValue : 10;
-    const maxTemp = Number.isFinite(maxTempValue) ? maxTempValue : 30;
-    const tempUnit = utils.escapeHtml(climateEntity.attributes.unit_of_measurement || '°C');
+    const minTemp = capabilities.minTemp;
+    const maxTemp = capabilities.maxTemp;
+    const tempUnit = utils.escapeHtml(
+      attributes.temperature_unit || attributes.unit_of_measurement || '°C'
+    );
     const hasCurrentHumidity =
-      climateEntity.attributes.current_humidity !== undefined &&
-      climateEntity.attributes.current_humidity !== null;
+      attributes.current_humidity !== undefined && attributes.current_humidity !== null;
     const currentHumidity = hasCurrentHumidity
-      ? utils.escapeHtml(String(climateEntity.attributes.current_humidity))
+      ? utils.escapeHtml(String(attributes.current_humidity))
       : '';
-    const availableModes = Array.isArray(climateEntity.attributes.hvac_modes)
-      ? climateEntity.attributes.hvac_modes
-      : ['off', 'heat', 'cool', 'auto'];
-    const availableFanModes = Array.isArray(climateEntity.attributes.fan_modes)
-      ? climateEntity.attributes.fan_modes
-      : [];
-    const availablePresetModes = Array.isArray(climateEntity.attributes.preset_modes)
-      ? climateEntity.attributes.preset_modes
-      : [];
-    const currentFanMode = String(climateEntity.attributes.fan_mode || '');
-    const currentPresetMode = String(climateEntity.attributes.preset_mode || '');
+    const availableModes = capabilities.hvacModes;
+    const availableFanModes = capabilities.fanModes;
+    const availablePresetModes = capabilities.presetModes;
+    const currentFanMode = String(attributes.fan_mode || '');
+    const currentPresetMode = String(attributes.preset_mode || '');
+    const hasControls =
+      capabilities.canSetTemperature ||
+      availableModes.length > 0 ||
+      availableFanModes.length > 0 ||
+      availablePresetModes.length > 0;
 
     const modal = document.createElement('div');
     modal.className = 'modal climate-modal';
@@ -9866,11 +9919,11 @@ function showClimateControls(climateEntity) {
             <div class="climate-temp-display">
               <div class="climate-current-temp">
                 <div class="climate-temp-label">Current</div>
-                <div class="climate-temp-value">${currentTemp}${tempUnit}</div>
+                <div class="climate-temp-value">${currentTemp === null ? '—' : `${currentTemp}${tempUnit}`}</div>
               </div>
               <div class="climate-target-temp">
                 <div class="climate-temp-label">Target</div>
-                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp}${tempUnit}</div>
+                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : `${targetTemp}${tempUnit}`}</div>
               </div>
             </div>
             ${
@@ -9886,12 +9939,14 @@ function showClimateControls(climateEntity) {
                 : ''
             }
 
-            <div class="climate-slider-wrapper">
+            ${
+              capabilities.canSetTemperature
+                ? `<div class="climate-slider-wrapper">
               <input
                 type="range"
                 min="${minTemp}"
                 max="${maxTemp}"
-                step="0.5"
+                step="${capabilities.temperatureStep}"
                 value="${targetTemp}"
                 id="climate-slider"
                 class="climate-slider"
@@ -9901,12 +9956,18 @@ function showClimateControls(climateEntity) {
                 <span>${minTemp}${tempUnit}</span>
                 <span>${maxTemp}${tempUnit}</span>
               </div>
-            </div>
+            </div>`
+                : ''
+            }
 
-            <div class="climate-modes">
+            ${
+              availableModes.length
+                ? `<div class="climate-modes">
               <div class="climate-modes-label">Mode</div>
               <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
-            </div>
+            </div>`
+                : ''
+            }
             ${
               availableFanModes.length
                 ? `
@@ -9926,6 +9987,11 @@ function showClimateControls(climateEntity) {
               </div>
             `
                 : ''
+            }
+            ${
+              hasControls
+                ? ''
+                : '<p class="climate-controls-unavailable">This climate entity does not advertise controls that Home Assistant can safely change.</p>'
             }
           </div>
         </div>
@@ -9961,7 +10027,9 @@ function showClimateControls(climateEntity) {
     function formatModeLabel(mode) {
       const normalizedMode = String(mode ?? '').trim();
       if (!normalizedMode) return 'Mode';
-      return normalizedMode.charAt(0).toUpperCase() + normalizedMode.slice(1);
+      return normalizedMode
+        .replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, (character) => character.toUpperCase());
     }
 
     if (modeButtonsContainer) {
@@ -10415,7 +10483,8 @@ function populateQuickControlsList() {
         const item = document.createElement('div');
         item.className = 'entity-item';
 
-        const isInActiveView = activeTab?.entityIds.includes(entity.entity_id);
+        const isOverlayDemo = isDevelopmentClimateOverlayEntity(entity.entity_id);
+        const isInActiveView = isOverlayDemo || activeTab?.entityIds.includes(entity.entity_id);
 
         const main = document.createElement('div');
         main.className = 'entity-item-main';
@@ -10448,8 +10517,13 @@ function populateQuickControlsList() {
         button.type = 'button';
         button.className = `entity-selector-btn ${isInActiveView ? 'remove' : 'add'}`;
         button.dataset.entityId = entity.entity_id;
-        button.textContent = isInActiveView ? t('Remove') : t('Add');
-        button.onclick = () => toggleQuickAccess(entity.entity_id);
+        button.textContent = isOverlayDemo
+          ? t('Development demo')
+          : isInActiveView
+            ? t('Remove')
+            : t('Add');
+        button.disabled = isOverlayDemo;
+        button.onclick = isOverlayDemo ? null : () => toggleQuickAccess(entity.entity_id);
 
         actions.appendChild(button);
 
@@ -10476,6 +10550,7 @@ function populateQuickControlsList() {
 
 function toggleQuickAccess(entityId) {
   try {
+    if (isDevelopmentClimateOverlayEntity(entityId)) return;
     const config = ensureQuickAccessConfig();
     const activeTab = getActiveQuickAccessTab(config);
     const nextConfig = activeTab?.entityIds.includes(entityId)
