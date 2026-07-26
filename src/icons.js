@@ -178,6 +178,21 @@ const Icons = {
       { ...options, ariaLabel: options?.ariaLabel || 'Snowy' }
     ),
 
+  waterDrop: (options) =>
+    createIcon('M12 2.8S5.5 10.2 5.5 15.3a6.5 6.5 0 0 0 13 0C18.5 10.2 12 2.8 12 2.8Z', {
+      ...options,
+      ariaLabel: options?.ariaLabel || 'Humidity',
+    }),
+
+  wind: (options) =>
+    createIcon(
+      'M3 6h9.5a2 2 0 1 0-1.72-3.02l-1.74-1A4 4 0 1 1 12.5 8H3V6zm0 6h14.5a2 2 0 1 1-1.72 3.02l-1.74 1A4 4 0 1 0 17.5 10H3v2zm0 6h6.5a2 2 0 1 1-1.72 3.02l-1.74 1A4 4 0 1 0 9.5 16H3v2z',
+      {
+        ...options,
+        ariaLabel: options?.ariaLabel || 'Wind',
+      }
+    ),
+
   // Camera & Video
   camera: (options) =>
     createIcon(

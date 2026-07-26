@@ -1437,6 +1437,12 @@ function replaceEmojiIcons() {
     if (persistentNotificationsIcon)
       setIconContent(persistentNotificationsIcon, 'notifications', { size: 16 });
 
+    const humidityIcon = document.querySelector('.detail-icon-humidity');
+    if (humidityIcon) setIconContent(humidityIcon, 'waterDrop', { size: 13 });
+
+    const windIcon = document.querySelector('.detail-icon-wind');
+    if (windIcon) setIconContent(windIcon, 'wind', { size: 14 });
+
     const minimizeBtn = document.getElementById('minimize-btn');
     if (minimizeBtn) setIconContent(minimizeBtn, 'minimize', { size: 18 });
 

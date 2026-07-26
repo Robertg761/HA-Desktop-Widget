@@ -207,7 +207,7 @@ jobs:
         run: |
           npm run dist:mac -- --publish never
 
-      - name: Verify macOS app bundle signature
+      - name: Verify macOS ad-hoc bundle integrity and architecture
         shell: bash
         run: |
           set -euo pipefail
@@ -215,6 +215,8 @@ jobs:
           found_app=0
           while IFS= read -r -d '' app; do
             found_app=1
+            # This checks the package's ad-hoc signature for structural integrity.
+            # It does not assert Apple Developer-ID signing or notarization.
             codesign --verify --deep --strict --verbose=4 "$app"
 
             executable="$app/Contents/MacOS/HA Desktop Widget"

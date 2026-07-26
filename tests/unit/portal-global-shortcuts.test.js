@@ -5,6 +5,7 @@ const {
   PORTAL_SHORTCUTS_BACKEND,
   acceleratorToPortalTrigger,
   createPortalGlobalShortcutsController,
+  getNetSessionBusAddress,
   isWaylandSession,
 } = require('../../src/portal-global-shortcuts.cjs');
 
@@ -122,6 +123,34 @@ describe('isWaylandSession', () => {
     expect(isWaylandSession({ XDG_SESSION_TYPE: 'x11' })).toBe(false);
     expect(isWaylandSession({})).toBe(false);
     expect(isWaylandSession(null)).toBe(false);
+  });
+});
+
+describe('getNetSessionBusAddress', () => {
+  it('routes a path-based D-Bus address through Node net.Socket', () => {
+    expect(
+      getNetSessionBusAddress({
+        DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus,guid=abc',
+      })
+    ).toBe('unix:socket=/run/user/1000/bus,guid=abc');
+  });
+
+  it('routes an abstract D-Bus address through a Node abstract socket', () => {
+    expect(
+      getNetSessionBusAddress({
+        DBUS_SESSION_BUS_ADDRESS: 'unix:abstract=/tmp/dbus-test,guid=abc',
+      })
+    ).toBe('unix:socket=\u0000/tmp/dbus-test,guid=abc');
+  });
+
+  it('uses the standard runtime bus when only XDG_RUNTIME_DIR is available', () => {
+    expect(getNetSessionBusAddress({ XDG_RUNTIME_DIR: '/run/user/1000/' })).toBe(
+      'unix:socket=/run/user/1000/bus'
+    );
+  });
+
+  it('does not guess a session-bus address without environment evidence', () => {
+    expect(getNetSessionBusAddress({})).toBe('');
   });
 });
 

@@ -3957,13 +3957,102 @@ body.first-run-active .widget-content > * {
 }
 
 .weather-icon {
-  font-size: 32px;
+  --weather-primary: #f7c948;
+  --weather-secondary: #63c5da;
+  --weather-cloud: #b9c8d8;
+  --weather-cloud-fill: #58718a;
   width: 40px;
   height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.3s ease;
+}
+
+.weather-glyph {
+  display: block;
+  overflow: visible;
+  fill: none;
+  stroke: var(--weather-primary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.8;
+  filter: drop-shadow(0 1px 3px rgba(var(--window-bg-rgb), 0.8));
+}
+
+.weather-glyph-fill,
+.weather-glyph-hail {
+  fill: var(--weather-primary);
+  stroke: none;
+}
+
+.weather-glyph-cloud {
+  fill: var(--weather-cloud-fill);
+  stroke: var(--weather-cloud);
+}
+
+.weather-glyph-ray,
+.weather-glyph-precip,
+.weather-glyph-wind,
+.weather-glyph-fog,
+.weather-glyph-alert-mark {
+  fill: none;
+  stroke: var(--weather-secondary);
+}
+
+.weather-glyph-bolt,
+.weather-glyph-alert {
+  fill: var(--weather-secondary);
+  stroke: var(--weather-primary);
+}
+
+.weather-glyph-unknown {
+  fill: none;
+  stroke: var(--weather-primary);
+}
+
+.weather-glyph-ray,
+.weather-glyph-bolt {
+  stroke: #ffd166;
+}
+
+.weather-glyph-precip {
+  stroke: #67d5f5;
+}
+
+.weather-glyph-hail {
+  fill: #d8f5ff;
+}
+
+.weather-glyph-wind,
+.weather-glyph-fog {
+  stroke: #a8dff0;
+}
+
+.weather-glyph-alert {
+  fill: #f47c7c;
+  stroke: #ffd166;
+}
+
+.weather-icon-clear-night {
+  --weather-primary: #a9c7ff;
+  --weather-secondary: #f5edff;
+}
+
+.weather-icon-cloudy,
+.weather-icon-partlycloudy {
+  --weather-cloud: #c3d7e9;
+  --weather-cloud-fill: #f8fbff;
+}
+
+.weather-icon-fog {
+  --weather-primary: #bfe9f5;
+  --weather-secondary: #84c9e2;
+}
+
+.weather-icon-exceptional {
+  --weather-primary: #ffd166;
+  --weather-secondary: #f47c7c;
 }
 
 .weather-icon.animated {
@@ -4065,10 +4154,10 @@ body.first-run-active .widget-content > * {
 @keyframes fog {
   0%,
   100% {
-    opacity: 0.8;
+    transform: translateX(-1px);
   }
   50% {
-    opacity: 1;
+    transform: translateX(1px);
   }
 }
 
@@ -4154,127 +4243,45 @@ body.first-run-active .widget-content > * {
   overflow: visible;
 }
 
-.weather-icon.rain {
+.weather-icon-rainy,
+.weather-icon-pouring {
   animation: rain 2s ease-in-out infinite;
 }
 
-.weather-icon.rain::before,
-.weather-icon.rain::after {
-  content: '💧';
-  position: absolute;
-  font-size: 6px;
-  animation: rainDroplets 1.2s linear infinite;
-  pointer-events: none;
-}
-
-.weather-icon.rain::before {
-  left: 6px;
-  top: 12px;
-  animation-delay: 0s;
-}
-
-.weather-icon.rain::after {
-  left: 14px;
-  top: 14px;
-  animation-delay: 0.3s;
-}
-
-/* Third rain droplet - will be added via JavaScript */
-.weather-icon.rain .rain-droplet {
-  content: '💧';
-  position: absolute;
-  font-size: 6px;
-  animation: rainDroplets 1.2s linear infinite;
-  pointer-events: none;
-  left: 22px;
-  top: 13px;
-  animation-delay: 0.6s;
-}
-
-.weather-icon.snow {
+.weather-icon-snowy,
+.weather-icon-snowy-rainy,
+.weather-icon-hail {
   animation: snow 3s ease-in-out infinite;
 }
 
-.weather-icon.snow::before,
-.weather-icon.snow::after {
-  content: '❄';
-  position: absolute;
-  font-size: 6px;
-  animation: snowflakes 2s linear infinite;
-  pointer-events: none;
-}
-
-.weather-icon.snow::before {
-  left: 3px;
-  animation-delay: 0s;
-}
-
-.weather-icon.snow::after {
-  left: 18px;
-  animation-delay: 0.7s;
-}
-
-.weather-icon.wind {
+.weather-icon-windy,
+.weather-icon-windy-variant {
   animation: wind 1.5s ease-in-out infinite;
 }
 
-.weather-icon.wind::before,
-.weather-icon.wind::after {
-  content: '·';
-  position: absolute;
-  font-size: 4px;
-  color: rgba(255, 255, 255, 0.7);
-  animation: windParticles 1s linear infinite;
-  pointer-events: none;
-}
-
-.weather-icon.wind::before {
-  left: 2px;
-  top: 8px;
-  animation-delay: 0s;
-}
-
-.weather-icon.wind::after {
-  left: 20px;
-  top: 12px;
-  animation-delay: 0.3s;
-}
-
-.weather-icon.sun {
+.weather-icon-sunny {
   animation: sun 4s linear infinite;
 }
 
-.weather-icon.storm {
+.weather-icon-lightning,
+.weather-icon-lightning-rainy {
   animation: lightning 0.5s ease-in-out infinite;
 }
 
-.weather-icon.storm::before,
-.weather-icon.storm::after {
-  content: '⚡';
-  position: absolute;
-  font-size: 6px;
-  animation: lightningBolts 0.3s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.weather-icon.storm::before {
-  left: 5px;
-  top: 2px;
-  animation-delay: 0s;
-}
-
-.weather-icon.storm::after {
-  left: 15px;
-  top: 8px;
-  animation-delay: 0.1s;
-}
-
-.weather-icon.cloud {
+.weather-icon-cloudy,
+.weather-icon-partlycloudy {
   animation: cloud 4s ease-in-out infinite;
 }
 
-.weather-icon.fog {
+.weather-icon-fog {
   animation: fog 3s ease-in-out infinite;
+}
+
+/* The old condition animations were designed for emoji and rotate or move the
+ * whole glyph. SVG weather illustrations stay still; motion remains in the
+ * widget's ambient weather effects instead. */
+.weather-icon.weather-icon-svg {
+  animation: none;
 }
 
 .weather-content {

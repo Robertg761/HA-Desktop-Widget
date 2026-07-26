@@ -5,9 +5,15 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.7.5] - 2026-07-25
 
 ### Fixed
+
+- Weather conditions now use bundled, deterministic SVG icons instead of platform-native
+  emoji. All Home Assistant weather states, including fog, clear night, mixed
+  precipitation, hail, lightning and wind, have an explicit icon; the icons inherit the
+  theme's primary text colour so they remain visible in dark, light and custom-colour
+  themes. The humidity and wind indicators no longer depend on native emoji either.
 
 - Quick Access camera previews: a snapshot that fails to load no longer wipes the picture
   the tile is already showing. Snapshots now decode into a spare buffer and only replace
@@ -86,6 +92,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Production dependency security findings in the Linux D-Bus shortcut chain were
+  remediated without removing Wayland portal support. The runtime-reachable XML parser is
+  pinned to a patched release, the optional Unix-socket binding no longer brings the
+  deprecated `request` stack into production installs, and its build-time archive tooling
+  is updated past the audited vulnerable ranges.
+
 - Desktop pins: the timer tile was rebuilt around the countdown. The icon, the duplicated
   "Timer" caption and the inner panel are gone; the remaining time now scales to fill the
   tile under the timer's name, with the finish time below it, a pulse dot while it runs,
@@ -133,6 +145,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suggests that provider's local folder when one exists.
 - Profile Sync: sync-file copies are restricted to folders you selected, the configured
   sync folder, or the app data folder on both ends (previously only one end was checked).
+
+### Known limitations
+
+- macOS artifacts are universal builds but are temporarily **not** signed with an Apple
+  Developer ID and are **not notarized**. The packaging step applies only an ad-hoc
+  integrity signature; it does not establish the developer's identity or satisfy
+  Gatekeeper. On first launch macOS may say it cannot verify the developer and block the
+  app. If the app came from this project's official GitHub Releases page, Control-click
+  the app and choose **Open**, or use **System Settings > Privacy & Security > Open
+  Anyway**. Do not bypass Gatekeeper for copies obtained elsewhere.
 
 ## [3.7.4] - 2026-07-19
 

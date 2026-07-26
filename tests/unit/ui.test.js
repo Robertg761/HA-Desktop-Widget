@@ -81,6 +81,15 @@ jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
 }));
 
+jest.mock('../../src/weather-icons.js', () => ({
+  normalizeWeatherCondition: jest.requireActual('../../src/weather-icons.js')
+    .normalizeWeatherCondition,
+  renderWeatherIcon: jest.fn((element, condition) => {
+    element.replaceChildren();
+    element.dataset.weatherCondition = condition;
+  }),
+}));
+
 jest.mock('sortablejs', () => ({
   create: jest.fn(() => ({
     destroy: jest.fn(),
@@ -951,7 +960,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const iconEl = document.getElementById('weather-icon');
-      expect(iconEl.textContent).toBe('☀️');
+      expect(iconEl.dataset.weatherCondition).toBe('sunny');
     });
 
     it('should set rainy icon for rainy/pouring conditions', () => {
@@ -966,7 +975,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const iconEl = document.getElementById('weather-icon');
-      expect(iconEl.textContent).toBe('🌧️');
+      expect(iconEl.dataset.weatherCondition).toBe('rainy');
     });
 
     it('should set snowy icon for snowy conditions', () => {
@@ -981,7 +990,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const iconEl = document.getElementById('weather-icon');
-      expect(iconEl.textContent).toBe('❄️');
+      expect(iconEl.dataset.weatherCondition).toBe('snowy');
     });
 
     it('should use selected weather entity when configured', () => {

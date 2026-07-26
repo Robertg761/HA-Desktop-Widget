@@ -90,6 +90,14 @@ Planned for a future release:
 2. Windows: run the `.exe` installer or portable build. macOS: open the universal `.dmg` or `.zip` (older releases may be Apple Silicon-only). Linux: use the `.AppImage` or install the `.deb` package.
 3. Run the app and click the Settings button to configure your Home Assistant connection.
 
+> **macOS Gatekeeper notice:** Current macOS artifacts are universal, but they are
+> temporarily not Apple Developer-ID signed or notarized. macOS may block the first launch
+> because it cannot verify the developer. For a copy downloaded from this project's official
+> GitHub Releases page, Control-click the app and choose **Open**; if needed, go to **System
+> Settings > Privacy & Security** and choose **Open Anyway**. The package's ad-hoc integrity
+> signature is not a substitute for Developer-ID signing. Do not bypass Gatekeeper for copies
+> obtained elsewhere.
+
 ### First-Time Setup
 
 1. **Get your Home Assistant URL**: Usually `http://your-ha-ip:8123` or `https://your-ha-domain.com`

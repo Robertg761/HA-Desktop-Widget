@@ -133,7 +133,7 @@
           data-i18n-title="Long-press to configure weather"
           title="Long-press to configure weather"
         >
-          <div class="weather-icon" id="weather-icon">🌤️</div>
+          <div class="weather-icon weather-icon-unknown" id="weather-icon" aria-hidden="true"></div>
           <div class="weather-content">
             <div class="weather-main">
               <div class="weather-temp" id="weather-temp">--°</div>
@@ -141,11 +141,11 @@
             </div>
             <div class="weather-details">
               <div class="weather-detail">
-                <span class="detail-icon">💧</span>
+                <span class="detail-icon detail-icon-humidity" aria-hidden="true"></span>
                 <span class="detail-value" id="weather-humidity">--%</span>
               </div>
               <div class="weather-detail">
-                <span class="detail-icon">💨</span>
+                <span class="detail-icon detail-icon-wind" aria-hidden="true"></span>
                 <span class="detail-value" id="weather-wind">--</span>
               </div>
             </div>

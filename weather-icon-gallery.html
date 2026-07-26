@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather icon gallery</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #151b23;
+        color: #f5f7fa;
+        font:
+          15px/1.45 system-ui,
+          sans-serif;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 26px;
+      }
+      p {
+        margin: 0 0 28px;
+        color: #b9c8d8;
+      }
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 16px;
+        max-width: 1100px;
+      }
+      .icon-card {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow: hidden;
+        border: 1px solid #344352;
+        border-radius: 12px;
+        background: #202936;
+      }
+      .icon-label {
+        grid-column: 1 / -1;
+        padding: 10px 12px;
+        font-weight: 650;
+        text-transform: capitalize;
+        border-bottom: 1px solid #344352;
+      }
+      .preview {
+        display: grid;
+        place-items: center;
+        min-height: 88px;
+      }
+      .preview.dark {
+        background: #202936;
+      }
+      .preview.light {
+        background: #eef3f8;
+      }
+      .preview-label {
+        align-self: end;
+        padding: 0 0 7px;
+        font-size: 11px;
+        opacity: 0.72;
+      }
+      .preview.light .preview-label {
+        color: #25364a;
+      }
+      .weather-icon {
+        width: 52px;
+        height: 52px;
+      }
+      .weather-glyph {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Weather icon gallery</h1>
+    <p>Every Home Assistant weather state, shown on dark and light widget surfaces.</p>
+    <main class="gallery" id="gallery"></main>
+    <script type="module">
+      import { renderWeatherIcon } from '/src/weather-icons.js';
+
+      const conditions = [
+        'sunny',
+        'clear-night',
+        'partlycloudy',
+        'cloudy',
+        'rainy',
+        'pouring',
+        'snowy',
+        'snowy-rainy',
+        'hail',
+        'lightning',
+        'lightning-rainy',
+        'fog',
+        'windy',
+        'windy-variant',
+        'exceptional',
+        'unknown',
+      ];
+
+      const gallery = document.querySelector('#gallery');
+      for (const condition of conditions) {
+        const card = document.createElement('section');
+        card.className = 'icon-card';
+        card.innerHTML = `<div class="icon-label">${condition.replace('-', ' ')}</div>`;
+        for (const theme of ['dark', 'light']) {
+          const preview = document.createElement('div');
+          preview.className = `preview ${theme}`;
+          const icon = document.createElement('div');
+          icon.className = `weather-icon weather-icon-svg weather-icon-${condition}`;
+          renderWeatherIcon(icon, condition, { size: 52 });
+          const label = document.createElement('span');
+          label.className = 'preview-label';
+          label.textContent = theme;
+          preview.append(icon, label);
+          card.append(preview);
+        }
+        gallery.append(card);
+      }
+    </script>
+  </body>
+</html>

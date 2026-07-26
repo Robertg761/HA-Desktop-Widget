@@ -1,6 +1,6 @@
 {
   "name": "home-assistant-widget",
-  "version": "3.7.4",
+  "version": "3.7.5",
   "main": "main.js",
   "scripts": {
     "build:renderer": "vite build --mode production",
@@ -67,7 +67,8 @@
       "styles.css",
       "build/icon.ico",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "!node_modules/usocket/**/*"
     ],
     "asar": true,
     "compression": "normal",
@@ -163,5 +164,11 @@
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"
+  },
+  "overrides": {
+    "dbus-next": {
+      "usocket": "1.0.3",
+      "xml2js": "0.6.2"
+    }
   }
 }

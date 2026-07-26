@@ -69,7 +69,7 @@ Expected handling is best effort for a maintainer-run project:
 ### Application Security
 
 - **Electron isolation**: The renderer uses `contextIsolation: true` and `nodeIntegration: false`; privileged operations are exposed through the preload IPC bridge.
-- **Updates and authenticity**: Update delivery is based on the GitHub release channel and Electron updater behavior for supported package types. Code signing is not guaranteed for every platform or artifact; treat unsigned builds as possible unless a release explicitly states otherwise.
+- **Updates and authenticity**: Update delivery is based on the GitHub release channel and Electron updater behavior for supported package types. Current macOS artifacts are not Apple Developer-ID signed or notarized. Their ad-hoc packaging signature checks bundle integrity only; it does not authenticate the developer or satisfy Gatekeeper. Treat other platform artifacts as unsigned unless a release explicitly states otherwise.
 - **Build formats**: Windows installer and portable builds, macOS archives, and Linux packages may have different updater and signing capabilities.
 
 ## Known Security Considerations

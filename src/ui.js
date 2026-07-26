@@ -5,6 +5,7 @@ import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import { formatDate, formatTime, t } from './i18n.js';
 import { setIconContent } from './icons.js';
+import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import desktopPinSupport from './desktop-pin-support.cjs';
@@ -8918,49 +8919,11 @@ function updateWeatherFromHA() {
     if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
     if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
 
-    // Update weather icon based on current condition
+    // Render a deterministic SVG for every Home Assistant weather condition.
     if (iconEl) {
-      const condition = weatherEntity.state?.toLowerCase() || '';
-      let icon = '🌤️'; // default
-      let classes = 'weather-icon';
-
-      if (condition.includes('sunny') || condition === 'clear') {
-        icon = '☀️';
-        classes += ' sunny';
-      } else if (condition.includes('partly') || condition.includes('cloudy')) {
-        icon = '⛅';
-        classes += ' cloudy';
-      } else if (condition.includes('rain') || condition.includes('rainy')) {
-        icon = '🌧️';
-        classes += ' rain';
-      } else if (condition.includes('snow') || condition.includes('snowy')) {
-        icon = '❄️';
-        classes += ' snow';
-      } else if (
-        condition.includes('storm') ||
-        condition.includes('thunder') ||
-        condition.includes('lightning')
-      ) {
-        icon = '⛈️';
-        classes += ' storm';
-      } else if (
-        condition.includes('fog') ||
-        condition.includes('mist') ||
-        condition.includes('haze')
-      ) {
-        icon = '🌫️';
-      } else if (condition.includes('wind')) {
-        icon = '💨';
-        classes += ' wind';
-      } else if (condition.includes('cloud')) {
-        icon = '☁️';
-        classes += ' cloudy';
-      } else if (condition.includes('night') || condition.includes('clear-night')) {
-        icon = '🌙';
-      }
-
-      iconEl.textContent = icon;
-      iconEl.className = classes;
+      const normalizedCondition = normalizeWeatherCondition(weatherEntity.state);
+      renderWeatherIcon(iconEl, normalizedCondition);
+      iconEl.className = `weather-icon weather-icon-svg weather-icon-${normalizedCondition}`;
     }
 
     updateWeatherEffects();

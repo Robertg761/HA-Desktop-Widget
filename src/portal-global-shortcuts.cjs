@@ -42,6 +42,39 @@ function isWaylandSession(env = process.env) {
   return typeof env.WAYLAND_DISPLAY === 'string' && env.WAYLAND_DISPLAY.trim() !== '';
 }
 
+/**
+ * Rewrite the session-bus address so dbus-next uses Node's maintained net.Socket
+ * implementation instead of its optional usocket native addon. The portal never sends
+ * Unix file descriptors, so the native addon provides no feature we need. It has also
+ * crashed newer Electron runtimes while reading ordinary portal replies.
+ */
+function getNetSessionBusAddress(env = process.env) {
+  if (!env || typeof env !== 'object') return '';
+  const configuredAddress =
+    typeof env.DBUS_SESSION_BUS_ADDRESS === 'string' ? env.DBUS_SESSION_BUS_ADDRESS.trim() : '';
+
+  if (configuredAddress) {
+    return configuredAddress
+      .split(';')
+      .map((address) => {
+        if (address.startsWith('unix:path=')) {
+          return address.replace(/^unix:path=/, 'unix:socket=');
+        }
+        if (address.startsWith('unix:abstract=')) {
+          return address.replace(/^unix:abstract=([^,]+)/, (_match, name) => {
+            return `unix:socket=\u0000${name}`;
+          });
+        }
+        return address;
+      })
+      .join(';');
+  }
+
+  const runtimeDir =
+    typeof env.XDG_RUNTIME_DIR === 'string' ? env.XDG_RUNTIME_DIR.trim().replace(/\/+$/, '') : '';
+  return runtimeDir ? `unix:socket=${runtimeDir}/bus` : '';
+}
+
 // Electron accelerator key names -> XKB keysym names used by portal trigger descriptions.
 const PORTAL_KEY_NAME_MAP = {
   space: 'space',
@@ -141,7 +174,13 @@ function createPortalGlobalShortcutsController(options = {}) {
     appId = DEFAULT_PORTAL_APP_ID,
     onActivated = () => {},
     // Injectable for tests; defaults to a real session bus connection.
-    createBus = () => require('dbus-next').sessionBus(),
+    createBus = () => {
+      const busAddress = getNetSessionBusAddress(env);
+      if (!busAddress) {
+        throw new Error('D-Bus session address is unavailable');
+      }
+      return require('dbus-next').sessionBus({ busAddress, negotiateUnixFd: false });
+    },
     createSessionTimeoutMs = CREATE_SESSION_TIMEOUT_MS,
     bindShortcutsTimeoutMs = BIND_SHORTCUTS_TIMEOUT_MS,
   } = options;
@@ -518,5 +557,6 @@ module.exports = {
   DEFAULT_PORTAL_APP_ID,
   acceleratorToPortalTrigger,
   createPortalGlobalShortcutsController,
+  getNetSessionBusAddress,
   isWaylandSession,
 };
