@@ -1042,6 +1042,29 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(conditionEl.textContent).toBe('cloudy');
     });
 
+    it('falls back to an available weather entity when the saved source is unavailable', () => {
+      const config = state.CONFIG;
+      config.selectedWeatherEntity = 'weather.home';
+      state.setConfig(config);
+
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'unavailable',
+          attributes: { temperature: 22, humidity: 65, wind_speed: 5 },
+        },
+        'weather.forecast': {
+          entity_id: 'weather.forecast',
+          state: 'cloudy',
+          attributes: { temperature: 18, humidity: 70, wind_speed: 3 },
+        },
+      });
+
+      ui.updateWeatherFromHA();
+
+      expect(document.getElementById('weather-condition').textContent).toBe('cloudy');
+    });
+
     it('keeps weather visibility target aligned with displayed fallback entity', () => {
       const config = state.CONFIG;
       config.selectedWeatherEntity = null;

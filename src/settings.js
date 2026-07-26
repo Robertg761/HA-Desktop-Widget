@@ -43,6 +43,7 @@ const COLOR_TARGETS = {
 };
 const WEATHER_EFFECTS_GLASS_WARNING =
   'Turn on Frosted glass background before enabling subtle weather effects.';
+const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
@@ -158,6 +159,83 @@ function syncWeatherEffectsAvailability(options = {}) {
   }
 
   return frostedGlassEnabled;
+}
+
+function isAvailableWeatherEntity(entity) {
+  if (typeof entity?.entity_id !== 'string' || !entity.entity_id.startsWith('weather.')) {
+    return false;
+  }
+  return !WEATHER_UNAVAILABLE_STATES.has(String(entity.state || '').toLowerCase());
+}
+
+function getAvailableWeatherEntities() {
+  return Object.values(state.STATES || {})
+    .filter(isAvailableWeatherEntity)
+    .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+}
+
+function populateWeatherEntitySelect() {
+  const select = document.getElementById('weather-entity-select');
+  const help = document.getElementById('weather-entity-help');
+  if (!select) return;
+
+  const availableEntities = getAvailableWeatherEntities();
+  const selectedEntityId = state.CONFIG?.selectedWeatherEntity;
+  const selectedEntity = selectedEntityId ? state.STATES?.[selectedEntityId] : null;
+  const selectedIsAvailable = availableEntities.some(
+    (entity) => entity.entity_id === selectedEntityId
+  );
+
+  select.replaceChildren();
+  const automaticOption = document.createElement('option');
+  automaticOption.value = '';
+  automaticOption.textContent = t('Automatic (first available)');
+  select.appendChild(automaticOption);
+
+  // Keep a saved but temporarily unavailable weather source visible and intact. The
+  // widget falls back to Automatic until Home Assistant reports it as available again.
+  if (
+    typeof selectedEntityId === 'string' &&
+    !selectedIsAvailable &&
+    selectedEntityId.startsWith('weather.')
+  ) {
+    const unavailableOption = document.createElement('option');
+    unavailableOption.value = selectedEntityId;
+    unavailableOption.disabled = true;
+    unavailableOption.dataset.savedUnavailable = 'true';
+    unavailableOption.textContent = t('Unavailable saved source: {{entityId}}', {
+      entityId: selectedEntity ? utils.getEntityDisplayName(selectedEntity) : selectedEntityId,
+    });
+    select.appendChild(unavailableOption);
+  }
+
+  availableEntities.forEach((entity) => {
+    const option = document.createElement('option');
+    option.value = entity.entity_id;
+    option.textContent = `${utils.getEntityDisplayName(entity)} (${entity.entity_id})`;
+    select.appendChild(option);
+  });
+
+  select.value =
+    selectedIsAvailable || select.querySelector('[data-saved-unavailable]') ? selectedEntityId : '';
+
+  if (help) {
+    if (
+      typeof selectedEntityId === 'string' &&
+      !selectedIsAvailable &&
+      selectedEntityId.startsWith('weather.')
+    ) {
+      help.textContent = t(
+        'The saved weather source is unavailable. The widget is using the first available source until it returns.'
+      );
+    } else if (availableEntities.length) {
+      help.textContent = t('Choose the Home Assistant weather entity used by the weather card.');
+    } else {
+      help.textContent = t(
+        'No available weather entities found. Connect Home Assistant or try again later.'
+      );
+    }
+  }
 }
 
 const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
@@ -3614,6 +3692,7 @@ async function openSettings(uiHooks) {
     bindConnectionTestUi();
     setSettingsConnectionTestStatus('', '');
     setSettingsConnectionTestBusy(false);
+    populateWeatherEntitySelect();
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
@@ -3992,6 +4071,7 @@ async function saveSettings() {
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
+    const weatherEntitySelect = document.getElementById('weather-entity-select');
     const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
@@ -4034,6 +4114,25 @@ async function saveSettings() {
       // Clear tokenResetReason only after the user enters a replacement token.
       if (nextToken && nextConfig.tokenResetReason) {
         delete nextConfig.tokenResetReason;
+      }
+    }
+    if (weatherEntitySelect) {
+      const selectedOption = weatherEntitySelect.selectedOptions[0];
+      const selectedWeatherEntity = weatherEntitySelect.value;
+      const selectedIsStillUnavailable =
+        selectedOption?.dataset?.savedUnavailable === 'true' &&
+        selectedWeatherEntity === currentConfig.selectedWeatherEntity;
+
+      if (selectedIsStillUnavailable) {
+        // Preserve an existing unavailable selection so it automatically resumes when HA restores it.
+        nextConfig.selectedWeatherEntity = selectedWeatherEntity;
+      } else if (
+        getAvailableWeatherEntities().some((entity) => entity.entity_id === selectedWeatherEntity)
+      ) {
+        nextConfig.selectedWeatherEntity = selectedWeatherEntity;
+      } else {
+        // Empty, stale, or malformed selections return to the long-standing automatic behaviour.
+        nextConfig.selectedWeatherEntity = null;
       }
     }
     if (alwaysOnTop) nextConfig.alwaysOnTop = alwaysOnTop.checked;

@@ -191,6 +191,10 @@ function createSettingsModalDOM() {
       <label for="ha-token">Access Token</label>
       <input type="password" id="ha-token" />
 
+      <label for="weather-entity-select">Weather source</label>
+      <select id="weather-entity-select"></select>
+      <div id="weather-entity-help"></div>
+
       <label for="always-on-top">
         <input type="checkbox" id="always-on-top" />
         Always on Top
@@ -537,6 +541,94 @@ describe('Settings + Config Integration', () => {
 
       expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(modal);
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
+    });
+
+    test('discovers available weather entities and selects the saved source', async () => {
+      state.CONFIG.selectedWeatherEntity = 'weather.home';
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'sunny',
+          attributes: { friendly_name: 'Home Weather' },
+        },
+        'weather.backup': {
+          entity_id: 'weather.backup',
+          state: 'cloudy',
+          attributes: { friendly_name: 'Backup Weather' },
+        },
+        'weather.offline': {
+          entity_id: 'weather.offline',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Offline Weather' },
+        },
+      });
+
+      await settings.openSettings();
+
+      const select = document.getElementById('weather-entity-select');
+      expect(select.value).toBe('weather.home');
+      expect([...select.options].map((option) => option.value)).toEqual([
+        '',
+        'weather.backup',
+        'weather.home',
+      ]);
+      expect(document.getElementById('weather-entity-help').textContent).toContain('weather card');
+    });
+
+    test('persists a weather source chosen in Settings', async () => {
+      state.CONFIG.selectedWeatherEntity = null;
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'sunny',
+          attributes: { friendly_name: 'Home Weather' },
+        },
+        'weather.backup': {
+          entity_id: 'weather.backup',
+          state: 'cloudy',
+          attributes: { friendly_name: 'Backup Weather' },
+        },
+      });
+
+      await settings.openSettings();
+      document.getElementById('weather-entity-select').value = 'weather.backup';
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.selectedWeatherEntity).toBe('weather.backup');
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedWeatherEntity: 'weather.backup' })
+      );
+    });
+
+    test('retains an unavailable saved weather source while the widget falls back automatically', async () => {
+      state.CONFIG.selectedWeatherEntity = 'weather.home';
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Home Weather' },
+        },
+        'weather.backup': {
+          entity_id: 'weather.backup',
+          state: 'cloudy',
+          attributes: { friendly_name: 'Backup Weather' },
+        },
+      });
+
+      await settings.openSettings();
+
+      const select = document.getElementById('weather-entity-select');
+      expect(select.value).toBe('weather.home');
+      expect(select.selectedOptions[0].disabled).toBe(true);
+      expect(select.selectedOptions[0].textContent).toContain('Unavailable saved source');
+      expect(document.getElementById('weather-entity-help').textContent).toContain(
+        'using the first available source'
+      );
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.selectedWeatherEntity).toBe('weather.home');
     });
 
     test('Linux popup hotkeys expose stable press behavior and disable release-only controls', async () => {

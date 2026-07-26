@@ -8595,6 +8595,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-secondary);
 }
 
+.weather-entity-setting {
+  margin-top: var(--space-5);
+}
+
 .connection-test-status[data-status='success'],
 .first-run-status[data-status='success'] {
   color: var(--success);

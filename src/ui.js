@@ -288,6 +288,7 @@ let weatherCardTemplate = null;
 let timeCardTemplate = null;
 const todoItemsCacheByEntity = new Map();
 const todoItemsPendingByEntity = new Map();
+const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 
 function generateQuickAccessViewId() {
   quickAccessViewIdCounter += 1;
@@ -725,14 +726,18 @@ function isTimerEntityForLiveUpdates(entity) {
 }
 
 function getDefaultWeatherEntity() {
-  const weatherEntities = Object.values(state.STATES || {}).filter((entity) =>
-    entity?.entity_id?.startsWith('weather.')
+  const weatherEntities = Object.values(state.STATES || {}).filter(
+    (entity) => typeof entity?.entity_id === 'string' && entity.entity_id.startsWith('weather.')
   );
   if (!weatherEntities.length) return null;
-  weatherEntities.sort((a, b) =>
+  const availableWeatherEntities = weatherEntities.filter(
+    (entity) => !WEATHER_UNAVAILABLE_STATES.has(String(entity.state || '').toLowerCase())
+  );
+  const candidates = availableWeatherEntities.length ? availableWeatherEntities : weatherEntities;
+  candidates.sort((a, b) =>
     utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b))
   );
-  return weatherEntities[0];
+  return candidates[0];
 }
 
 function getDefaultWeatherEntityId() {
@@ -741,7 +746,12 @@ function getDefaultWeatherEntityId() {
 
 function resolveSelectedWeatherEntityId() {
   const selectedWeatherEntity = state.CONFIG?.selectedWeatherEntity;
-  if (selectedWeatherEntity && state.STATES?.[selectedWeatherEntity]) {
+  const selectedEntity = selectedWeatherEntity ? state.STATES?.[selectedWeatherEntity] : null;
+  if (
+    typeof selectedEntity?.entity_id === 'string' &&
+    selectedEntity.entity_id.startsWith('weather.') &&
+    !WEATHER_UNAVAILABLE_STATES.has(String(selectedEntity.state || '').toLowerCase())
+  ) {
     return selectedWeatherEntity;
   }
   return getDefaultWeatherEntityId();
