@@ -203,7 +203,7 @@ New GitHub releases automatically generate notes from merged pull requests and c
 - **Config Contents**: `homeAssistant` (url, token, tokenEncrypted), `favoriteEntities`, `customEntityNames`,
   `desktopPins`, `customEntityIcons`, `quickAccessTileOptions`, `tileSpans`, `selectedWeatherEntity`, `primaryMediaPlayer`,
   `globalHotkeys`, `entityAlerts`, `popupHotkey`, `windowPosition`, `windowSize`, `opacity`, `ui` (theme, accent, background,
-  language, customColors, use24HourClock, weatherEffectsEnabled, weatherOverride, enableInteractionDebugLogs),
+  language, customColors, timeFormat, dateFormat, use24HourClock, weatherEffectsEnabled, weatherOverride, enableInteractionDebugLogs),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
   `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, `updates`, and `profileSync`.
 - **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS

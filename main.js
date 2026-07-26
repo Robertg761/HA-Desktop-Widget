@@ -811,6 +811,36 @@ function ensureUpdateConfigDefaults(target) {
   return target;
 }
 
+const TIME_DISPLAY_FORMATS = new Set(['system', '12-hour', '24-hour']);
+const DATE_DISPLAY_FORMATS = new Set(['system', 'weekday-short', 'long', 'numeric']);
+
+/**
+ * Keep clock preferences constrained to formats the renderer understands.
+ * Existing profiles only stored a 24-hour boolean, so preserve that behavior
+ * while they are migrated to the explicit time format setting.
+ */
+function ensureDateTimeFormatConfigDefaults(target, options = {}) {
+  if (!target || typeof target !== 'object') return target;
+  target.ui = target.ui && typeof target.ui === 'object' ? target.ui : {};
+
+  if (!TIME_DISPLAY_FORMATS.has(target.ui.timeFormat)) {
+    target.ui.timeFormat =
+      options.migrateLegacyClock === true && typeof target.ui.use24HourClock === 'boolean'
+        ? target.ui.use24HourClock
+          ? '24-hour'
+          : '12-hour'
+        : 'system';
+  }
+  if (!DATE_DISPLAY_FORMATS.has(target.ui.dateFormat)) {
+    // Matches the date card shown before date formats were configurable.
+    target.ui.dateFormat = 'weekday-short';
+  }
+
+  // Keep this legacy field as a compatibility alias for older synced profiles.
+  target.ui.use24HourClock = target.ui.timeFormat === '24-hour';
+  return target;
+}
+
 function getProfileSyncConfig() {
   ensureProfileSyncConfigDefaults(config);
   return config.profileSync;
@@ -2058,6 +2088,7 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
     nextScope
   );
   const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
+  ensureDateTimeFormatConfigDefaults(merged);
   ensureProfileSyncConfigDefaults(merged);
   merged.profileSync = {
     ...previous.profileSync,
@@ -2066,6 +2097,7 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
   };
   config = merged;
   pruneConfig(config);
+  ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   applyMainWindowSettingSideEffects(previous, config);
@@ -2336,6 +2368,8 @@ function loadConfig(options = {}) {
       activeTileGlow: true,
       personalizationSectionsCollapsed: {},
       use24HourClock: false,
+      timeFormat: 'system',
+      dateFormat: 'weekday-short',
       weatherEffectsEnabled: false,
       weatherOverride: 'auto',
       enableInteractionDebugLogs: false,
@@ -2374,6 +2408,12 @@ function loadConfig(options = {}) {
       if (typeof config.ui?.language !== 'string' || !config.ui.language.trim()) {
         config.ui.language = 'auto';
       }
+      ensureDateTimeFormatConfigDefaults(config, {
+        migrateLegacyClock: !Object.prototype.hasOwnProperty.call(
+          userConfig.ui || {},
+          'timeFormat'
+        ),
+      });
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
 
@@ -2520,6 +2560,12 @@ function loadConfig(options = {}) {
           const legacyConfig = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
           config = { ...defaultConfig, ...legacyConfig };
           pruneConfig(config);
+          ensureDateTimeFormatConfigDefaults(config, {
+            migrateLegacyClock: !Object.prototype.hasOwnProperty.call(
+              legacyConfig.ui || {},
+              'timeFormat'
+            ),
+          });
           ensureProfileSyncConfigDefaults(config);
           ensureUpdateConfigDefaults(config);
           normalizeDesktopPinsConfig(config);
@@ -2531,6 +2577,7 @@ function loadConfig(options = {}) {
       } else {
         config = defaultConfig;
       }
+      ensureDateTimeFormatConfigDefaults(config);
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
       normalizeDesktopPinsConfig(config);
@@ -2545,6 +2592,7 @@ function loadConfig(options = {}) {
     log.error('Error loading config:', error);
     config = defaultConfig;
     pruneConfig(config);
+    ensureDateTimeFormatConfigDefaults(config);
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
     normalizeDesktopPinsConfig(config);
@@ -3607,6 +3655,7 @@ ipcMain.handle('update-config', async (event, newConfig) => {
   const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
   const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
   config = { ...config, ...newConfig, customTabs, profileSync, updates };
+  ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
   ensureUpdateConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
@@ -4608,9 +4657,11 @@ ipcMain.handle('save-config', (event, newConfig) => {
   log.warn('save-config handler is deprecated, use update-config instead');
   // Update the config with the new values
   pruneConfig(newConfig);
+  ensureDateTimeFormatConfigDefaults(newConfig);
   ensureProfileSyncConfigDefaults(newConfig);
   ensureUpdateConfigDefaults(newConfig);
   config = newConfig;
+  ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
   ensureUpdateConfigDefaults(config);
   pruneConfig(config);

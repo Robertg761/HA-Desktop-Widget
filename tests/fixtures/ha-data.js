@@ -68,6 +68,8 @@ const sampleConfig = {
     customColors: [],
     personalizationSectionsCollapsed: {},
     use24HourClock: false,
+    timeFormat: 'system',
+    dateFormat: 'weekday-short',
     weatherEffectsEnabled: false,
     weatherOverride: 'auto',
     enableInteractionDebugLogs: false,

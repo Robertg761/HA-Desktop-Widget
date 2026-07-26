@@ -1080,16 +1080,47 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(ui.isEntityVisible('weather.zeta')).toBe(false);
     });
 
-    it('uses 24-hour time when enabled for the primary time card', () => {
+    it('uses the chosen 24-hour time and numeric date formats for the primary time card', () => {
       jest.useFakeTimers();
       jest.setSystemTime(new Date('2025-01-15T20:05:00'));
       const config = state.CONFIG;
-      config.ui = { ...(config.ui || {}), use24HourClock: true };
+      config.ui = {
+        ...(config.ui || {}),
+        use24HourClock: false,
+        timeFormat: '24-hour',
+        dateFormat: 'numeric',
+      };
       state.setConfig(config);
 
       ui.updateTimeDisplay();
 
       expect(document.getElementById('current-time').textContent).toBe('20:05');
+      expect(document.getElementById('current-date').textContent).toBe(
+        new Date('2025-01-15T20:05:00').toLocaleDateString('en', {
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+        })
+      );
+      jest.useRealTimers();
+    });
+
+    it('uses an explicit 12-hour format instead of the system hour cycle', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-15T20:05:00'));
+      const config = state.CONFIG;
+      config.ui = { ...(config.ui || {}), timeFormat: '12-hour' };
+      state.setConfig(config);
+
+      ui.updateTimeDisplay();
+
+      expect(document.getElementById('current-time').textContent).toBe(
+        new Date('2025-01-15T20:05:00').toLocaleTimeString('en', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
       jest.useRealTimers();
     });
 

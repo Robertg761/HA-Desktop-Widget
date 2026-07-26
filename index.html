@@ -1062,11 +1062,29 @@
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>
-                    <input type="checkbox" id="use-24-hour-clock" />
-                    Use 24-hour clock
-                  </label>
-                  <div class="form-help">Applies when a Time card is shown.</div>
+                  <label for="time-format" data-i18n="Time Format">Time Format</label>
+                  <select id="time-format">
+                    <option value="system" data-i18n="System default">System default</option>
+                    <option value="12-hour" data-i18n="12-hour">12-hour</option>
+                    <option value="24-hour" data-i18n="24-hour">24-hour</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="date-format" data-i18n="Date Format">Date Format</label>
+                  <select id="date-format">
+                    <option value="system" data-i18n="System default">System default</option>
+                    <option value="weekday-short" data-i18n="Weekday, short date">
+                      Weekday, short date
+                    </option>
+                    <option value="long" data-i18n="Long date">Long date</option>
+                    <option value="numeric" data-i18n="Numeric date">Numeric date</option>
+                  </select>
+                  <div
+                    class="form-help"
+                    data-i18n="Date and time always use your selected language and regional conventions."
+                  >
+                    Date and time always use your selected language and regional conventions.
+                  </div>
                 </div>
                 <div class="form-group">
                   <label for="primary-cards-search">Search Entities</label>

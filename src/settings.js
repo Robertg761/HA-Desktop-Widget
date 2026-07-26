@@ -3736,9 +3736,22 @@ async function openSettings(uiHooks) {
     const shouldRenderPrimaryCardsList = !primarySection?.classList.contains('collapsed');
     const primarySearch = document.getElementById('primary-cards-search');
     if (primarySearch) primarySearch.value = '';
-    const use24HourClock = document.getElementById('use-24-hour-clock');
-    if (use24HourClock) {
-      use24HourClock.checked = !!state.CONFIG?.ui?.use24HourClock;
+    const timeFormat = document.getElementById('time-format');
+    if (timeFormat) {
+      const savedTimeFormat = state.CONFIG?.ui?.timeFormat;
+      timeFormat.value = ['system', '12-hour', '24-hour'].includes(savedTimeFormat)
+        ? savedTimeFormat
+        : state.CONFIG?.ui?.use24HourClock
+          ? '24-hour'
+          : '12-hour';
+    }
+    const dateFormat = document.getElementById('date-format');
+    if (dateFormat) {
+      dateFormat.value = ['system', 'weekday-short', 'long', 'numeric'].includes(
+        state.CONFIG?.ui?.dateFormat
+      )
+        ? state.CONFIG.ui.dateFormat
+        : 'weekday-short';
     }
     setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS, {
       renderList: shouldRenderPrimaryCardsList,
@@ -4052,8 +4065,17 @@ async function saveSettings() {
     nextConfig.ui.accent = pendingAccent || getCurrentAccentTheme();
     nextConfig.ui.background = pendingBackground || getCurrentBackgroundTheme();
     nextConfig.ui.customColors = getCustomColorsForSave();
-    const use24HourClock = document.getElementById('use-24-hour-clock');
-    nextConfig.ui.use24HourClock = !!use24HourClock?.checked;
+    const timeFormat = document.getElementById('time-format');
+    nextConfig.ui.timeFormat = ['system', '12-hour', '24-hour'].includes(timeFormat?.value)
+      ? timeFormat.value
+      : 'system';
+    const dateFormat = document.getElementById('date-format');
+    nextConfig.ui.dateFormat = ['system', 'weekday-short', 'long', 'numeric'].includes(
+      dateFormat?.value
+    )
+      ? dateFormat.value
+      : 'weekday-short';
+    nextConfig.ui.use24HourClock = nextConfig.ui.timeFormat === '24-hour';
 
     // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');

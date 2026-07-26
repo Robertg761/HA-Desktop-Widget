@@ -5104,6 +5104,27 @@ function getDesktopPinTimerRemainingSeconds(entity) {
 
 const DESKTOP_PIN_TIMER_URGENT_SECONDS = 60;
 
+function getClockTimeOptions() {
+  const timeFormat = state.CONFIG?.ui?.timeFormat;
+  if (timeFormat === '12-hour') return { hour12: true };
+  if (timeFormat === '24-hour' || state.CONFIG?.ui?.use24HourClock) return { hour12: false };
+  return {};
+}
+
+function getClockDateOptions() {
+  switch (state.CONFIG?.ui?.dateFormat) {
+    case 'system':
+      return {};
+    case 'long':
+      return { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    case 'numeric':
+      return { year: 'numeric', month: 'numeric', day: 'numeric' };
+    case 'weekday-short':
+    default:
+      return { weekday: 'short', month: 'short', day: 'numeric' };
+  }
+}
+
 // The countdown is sized to fill the tile, so a longer readout has to step down a size
 // to keep fitting: "0:22" gets the full treatment, "1:02:45" does not.
 function getDesktopPinTimerReadoutScale(display) {
@@ -5119,10 +5140,7 @@ function getDesktopPinTimerEndsAtLabel(entity) {
   if (remainingSeconds == null || remainingSeconds <= 0) return '';
 
   const endsAt = new Date(Date.now() + remainingSeconds * 1000);
-  const timeOptions = { hour: 'numeric', minute: '2-digit' };
-  if (state.CONFIG?.ui?.use24HourClock) {
-    timeOptions.hour12 = false;
-  }
+  const timeOptions = { hour: 'numeric', minute: '2-digit', ...getClockTimeOptions() };
   return t('Ends {{time}}', { time: formatTime(endsAt, timeOptions) });
 }
 
@@ -9355,15 +9373,10 @@ function updateTimeDisplay() {
     const now = new Date();
     const timeEl = document.getElementById('current-time');
     const dateEl = document.getElementById('current-date');
-    const timeOptions = { hour: '2-digit', minute: '2-digit' };
-
-    if (state.CONFIG?.ui?.use24HourClock) {
-      timeOptions.hour12 = false;
-    }
+    const timeOptions = { hour: '2-digit', minute: '2-digit', ...getClockTimeOptions() };
 
     if (timeEl) timeEl.textContent = formatTime(now, timeOptions);
-    if (dateEl)
-      dateEl.textContent = formatDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
+    if (dateEl) dateEl.textContent = formatDate(now, getClockDateOptions());
   } catch (error) {
     console.error('Error updating time display:', error);
   }

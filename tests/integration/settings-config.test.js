@@ -355,7 +355,17 @@ function createSettingsModalDOM() {
             <div id="primary-card-1-current"></div>
             <div id="primary-card-2-current"></div>
             <button type="button" id="primary-cards-reset">Reset</button>
-            <input type="checkbox" id="use-24-hour-clock" />
+            <select id="time-format">
+              <option value="system">System default</option>
+              <option value="12-hour">12-hour</option>
+              <option value="24-hour">24-hour</option>
+            </select>
+            <select id="date-format">
+              <option value="system">System default</option>
+              <option value="weekday-short">Weekday, short date</option>
+              <option value="long">Long date</option>
+              <option value="numeric">Numeric date</option>
+            </select>
             <input type="text" id="primary-cards-search" />
             <div id="primary-cards-list"></div>
           </div>
@@ -875,21 +885,28 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('loads and saves 24-hour clock preference from primary cards settings', async () => {
+    test('migrates the legacy 24-hour preference and saves explicit time and date formats', async () => {
       state.CONFIG.ui.use24HourClock = true;
       await settings.openSettings();
 
-      const clockToggle = document.getElementById('use-24-hour-clock');
-      expect(clockToggle).toBeTruthy();
-      expect(clockToggle.checked).toBe(true);
+      const timeFormat = document.getElementById('time-format');
+      const dateFormat = document.getElementById('date-format');
+      expect(timeFormat).toBeTruthy();
+      expect(timeFormat.value).toBe('24-hour');
+      expect(dateFormat.value).toBe('weekday-short');
 
-      clockToggle.checked = false;
+      timeFormat.value = '12-hour';
+      dateFormat.value = 'long';
       await settings.saveSettings();
 
       expect(state.CONFIG.ui.use24HourClock).toBe(false);
+      expect(state.CONFIG.ui.timeFormat).toBe('12-hour');
+      expect(state.CONFIG.ui.dateFormat).toBe('long');
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           ui: expect.objectContaining({
+            timeFormat: '12-hour',
+            dateFormat: 'long',
             use24HourClock: false,
           }),
         })

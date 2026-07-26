@@ -144,6 +144,14 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('/releases/latest');
   });
 
+  it('migrates the legacy clock boolean and constrains configurable clock formats', () => {
+    expect(mainSource).toContain('function ensureDateTimeFormatConfigDefaults');
+    expect(mainSource).toContain("new Set(['system', '12-hour', '24-hour'])");
+    expect(mainSource).toContain("new Set(['system', 'weekday-short', 'long', 'numeric'])");
+    expect(mainSource).toContain("target.ui.use24HourClock === 'boolean'");
+    expect(mainSource).toContain("target.ui.dateFormat = 'weekday-short'");
+  });
+
   it('fails closed for token saves when encryption is unavailable', () => {
     expect(mainSource).toContain('delete configToSave.homeAssistant.token');
     expect(mainSource).toContain('configToSave.tokenResetReason = reason');
