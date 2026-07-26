@@ -248,6 +248,24 @@ const userDataPath = app.getPath('userData');
 app.setPath('userData', userDataPath);
 app.setPath('sessionData', path.join(userDataPath, 'session'));
 
+// One widget per user data directory. Without this a second launch raised a second tray icon and
+// a second window writing the same config file, so the two instances fought over it and the loser's
+// state won whichever happened to save last. The lock lives in the user data directory, and the
+// climate demo redirects that above, so an isolated demo still runs alongside the real widget.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  log.info('Another instance already owns this profile; handing the request to it and exiting');
+  app.quit();
+} else {
+  // Launching the widget again is the user asking to see it, the same thing the tray click and the
+  // popup hotkey do. This is also the only way back for a window hidden to the tray on a desktop
+  // whose tray is missing or broken.
+  app.on('second-instance', () => {
+    log.info('Second instance launched; showing the existing window');
+    showMainWindowFromTray();
+  });
+}
+
 // A Wayland compositor places windows itself and ignores where the widget asks to be, so a
 // hidden-then-shown widget comes back wherever the compositor decides and native window opacity
 // does nothing. XWayland restores the X11 behavior the widget is built on; see
@@ -5780,6 +5798,10 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  // An instance that lost the single-instance lock is already on its way out. It must not load the
+  // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
+  if (!gotSingleInstanceLock) return;
+
   installApplicationMenu(Menu);
 
   // Set app ID for Windows (helps with icon caching and taskbar behavior)

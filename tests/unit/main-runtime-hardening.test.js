@@ -63,6 +63,26 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
+  it('runs one widget per profile and shows the existing window on a second launch', () => {
+    expect(mainSource).toContain('const gotSingleInstanceLock = app.requestSingleInstanceLock()');
+    expect(mainSource).toContain("app.on('second-instance'");
+    // The second launch is a request to see the widget, not to build another one.
+    const secondInstanceStart = mainSource.indexOf("app.on('second-instance'");
+    const secondInstanceSource = mainSource.slice(secondInstanceStart, secondInstanceStart + 400);
+    expect(secondInstanceSource).toContain('showMainWindowFromTray()');
+    expect(secondInstanceSource).not.toContain('createWindow()');
+    // The losing instance must not load config, take the tray, or claim the hotkeys.
+    expect(mainSource).toContain('if (!gotSingleInstanceLock) return;');
+    const readyStart = mainSource.indexOf('app.whenReady().then(() => {');
+    const readySource = mainSource.slice(readyStart, mainSource.indexOf('loadConfig(', readyStart));
+    expect(readySource).toContain('if (!gotSingleInstanceLock) return;');
+    // The lock has to be requested after the user data path is settled, so the climate demo's
+    // throwaway profile gets its own lock instead of colliding with the real widget.
+    expect(mainSource.indexOf('const userDataPath = app.getPath')).toBeLessThan(
+      mainSource.indexOf('app.requestSingleInstanceLock()')
+    );
+  });
+
   it('handles a correlated desktop-pin action response channel', () => {
     expect(mainSource).toContain("ipcMain.handle('desktop-pin-action-response'");
     expect(mainSource).toContain('pendingDesktopPinActionRequests');
