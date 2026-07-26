@@ -65,17 +65,21 @@ const {
   createHaProtocolHandler,
 } = require('./src/ha-protocol.cjs');
 const {
+  NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  shouldForceX11OzonePlatform,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
+const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
 const { configureMainLogging } = require('./src/main-logging.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
   createLinuxPopupHotkeyController,
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
+const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
   PORTAL_SHORTCUTS_BACKEND,
   createPortalGlobalShortcutsController,
@@ -190,6 +194,12 @@ if (usesLinuxPopupHotkeyBackend) {
   app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
 }
 
+// Used to tell a GPU process that never started from one that died later in the session.
+const processStartedAt = Date.now();
+
+// Window managers match rules against this, so it must stay stable across releases and locales.
+const MAIN_WINDOW_TITLE = 'HA Desktop Widget';
+
 // Try to load uiohook-napi for platforms that support hold/release detection. Linux uses
 // Electron's globalShortcut instead so a native hook failure cannot terminate the main process.
 let uIOhook, UiohookKey;
@@ -237,6 +247,38 @@ if (IS_CLIMATE_DEMO_MODE) {
 const userDataPath = app.getPath('userData');
 app.setPath('userData', userDataPath);
 app.setPath('sessionData', path.join(userDataPath, 'session'));
+
+// A Wayland compositor places windows itself and ignores where the widget asks to be, so a
+// hidden-then-shown widget comes back wherever the compositor decides and native window opacity
+// does nothing. XWayland restores the X11 behavior the widget is built on; see
+// docs/linux-wayland-notes.md for the measurements. Must run before app.whenReady(), and after
+// the user data path is settled so the climate demo's throwaway profile stays isolated.
+// The marker is written once by the GPU-crash fallback, on a machine where XWayland cannot render.
+const XWAYLAND_UNAVAILABLE_MARKER_PATH = path.join(userDataPath, 'xwayland-unavailable');
+
+function hasXWaylandFailureMarker() {
+  try {
+    return fs.existsSync(XWAYLAND_UNAVAILABLE_MARKER_PATH);
+  } catch {
+    return false;
+  }
+}
+
+const forcedX11Ozone = shouldForceX11OzonePlatform({
+  waylandSession: isWaylandSession(),
+  previousAttemptFailed: hasXWaylandFailureMarker(),
+});
+if (forcedX11Ozone) {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+  log.info(
+    `Wayland session detected; running through XWayland so the widget keeps its position and opacity (set ${NATIVE_WAYLAND_ENV_OVERRIDE}=1 to use the native Wayland backend)`
+  );
+}
+
+// The compositor only owns placement when we are really running on Wayland; under XWayland
+// the widget can position itself again.
+const usesCompositorOwnedPlacement =
+  process.platform === 'linux' && isWaylandSession() && !forcedX11Ozone;
 
 let mainWindow;
 let tray;
@@ -310,18 +352,26 @@ const profileSyncRuntime = {
 // Popup hotkey state
 let popupHotkeyPressed = false;
 let popupHotkeyConfig = null; // Stores { keycode, alt, ctrl, shift, meta }
-let wasAlwaysOnTop = false; // Track original alwaysOnTop state
 let popupHotkeyKeydownHandler = null; // Reference to keydown handler for cleanup
 let popupHotkeyKeyupHandler = null; // Reference to keyup handler for cleanup
 let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
 const registeredEntityHotkeyAccelerators = new Set();
+// Owns the window level, full-screen visibility, and saved position for every path that
+// pops the widget up, so a hotkey press lands above full-screen video instead of behind it.
+const popupWindowPresenter = createPopupWindowPresenter({
+  getConfig: () => config,
+  getWorkAreas: () => electronScreen.getAllDisplays().map((display) => display.workArea),
+  supportsWindowPositioning: !usesCompositorOwnedPlacement,
+  log,
+});
 const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   globalShortcut,
   getConfig: () => config,
   getMainWindow: () => mainWindow,
   log,
+  presenter: popupWindowPresenter,
 });
 const desktopPinWindows = new Map();
 const desktopPinContentMinBounds = new Map();
@@ -1378,18 +1428,47 @@ function focusMainWindow() {
     return { focused: false };
   }
 
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
-  }
-  mainWindow.show();
-  mainWindow.focus();
-  mainWindow.moveTop();
-
-  const wasOnTop = mainWindow.isAlwaysOnTop();
-  mainWindow.setAlwaysOnTop(true);
-  mainWindow.setAlwaysOnTop(wasOnTop);
+  // A one-off raise: it clears full-screen windows the same way the popup hotkey does,
+  // then settles back to the user's always-on-top preference.
+  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated: false });
 
   return { focused: mainWindow.isFocused() };
+}
+
+/**
+ * Show the widget from the tray, going through the same raise the popup hotkey uses so it
+ * cannot open behind a full-screen window either.
+ */
+function showMainWindowFromTray() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      // Restore the configured size before showing; a hide can leave a stale size behind.
+      mainWindow.setSize(config.windowSize?.width || 500, config.windowSize?.height || 600);
+    } catch (error) {
+      log.warn('Failed to restore window size before showing:', error.message);
+    }
+  }
+  return focusMainWindow();
+}
+
+/** Hide the widget to the tray, ending any raise still in flight. */
+function hideMainWindowToTray() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  return popupWindowPresenter.hidePopup(mainWindow);
+}
+
+/**
+ * Push the user's always-on-top preference onto the main window.
+ *
+ * While a popup raise is in flight the window sits above full-screen content on purpose;
+ * writing the preference then would drop it behind the video mid-popup, so the presenter
+ * applies it when the raise ends instead.
+ */
+function applyAlwaysOnTopPreference() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (popupWindowPresenter.isElevated()) return false;
+  mainWindow.setAlwaysOnTop(!!config.alwaysOnTop);
+  return true;
 }
 
 function focusDesktopPinWindow(entityId) {
@@ -1660,7 +1739,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
-        mainWindow.setAlwaysOnTop(!!nextConfig?.alwaysOnTop);
+        applyAlwaysOnTopPreference();
       }
     } catch (error) {
       log.warn('Failed to apply always-on-top update from sync:', error.message);
@@ -3352,6 +3431,26 @@ function createWindow() {
     frostedGlass: !!config.frostedGlass,
     transparencyOptions,
   });
+  // A saved position can point at a monitor that has since been unplugged, or at the empty
+  // space between monitors in a multi-display layout, and a window opened there never
+  // appears. Recover onto the nearest display instead of starting off-screen.
+  const savedPosition = config.windowPosition || {};
+  const placement = clampPositionToWorkAreas(
+    {
+      x: savedPosition.x,
+      y: savedPosition.y,
+      width: config.windowSize?.width,
+      height: config.windowSize?.height,
+    },
+    electronScreen.getAllDisplays().map((display) => display.workArea)
+  );
+  if (placement.x !== savedPosition.x || placement.y !== savedPosition.y) {
+    log.info(
+      `Saved window position ${savedPosition.x},${savedPosition.y} is not on a connected display; opening at ${placement.x},${placement.y}`
+    );
+    config.windowPosition = { x: placement.x, y: placement.y };
+  }
+
   const windowOptions = {
     x: config.windowPosition.x,
     y: config.windowPosition.y,
@@ -3359,6 +3458,10 @@ function createWindow() {
     height: config.windowSize.height,
     ...visualOptions,
     frame: false,
+    // A frameless window still reports a title to the window manager, and a stable one is what
+    // lets a user write a window rule that matches only this widget (see
+    // docs/linux-wayland-notes.md for the KWin rule that keeps its position on Wayland).
+    title: MAIN_WINDOW_TITLE,
     alwaysOnTop: config.alwaysOnTop,
     skipTaskbar: true,
     resizable: true,
@@ -3383,6 +3486,13 @@ function createWindow() {
   config.opacity = safeOpacity; // Update config to safe value
   applyFrostedGlass();
   wireWindowEffectsRefresh(mainWindow, () => config);
+
+  // index.html carries no <title>, so Chromium would name the window after the file and window
+  // rules would have nothing stable to match. Desktop pins load the same file and deliberately
+  // keep that default title, so a rule for the widget cannot catch them.
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
 
   // Load the index.html file
   mainWindow.loadFile('index.html');
@@ -3417,6 +3527,12 @@ function createWindow() {
     mainWindow.hide();
   });
 
+  // Any hide (tray toggle, close to tray, minimize) ends a popup raise, so a later show
+  // from the tray or menu does not inherit the above-full-screen z-order.
+  mainWindow.on('hide', () => {
+    popupWindowPresenter.handleWindowHidden(mainWindow);
+  });
+
   // Coming back to the widget is the moment a stale profile is most visible, and
   // the provider has usually finished replicating by then.
   mainWindow.on('focus', () => {
@@ -3447,12 +3563,10 @@ function buildTrayContextMenu() {
     {
       label: mainT('Show/Hide'),
       click: () => {
-        if (mainWindow.isVisible()) {
-          mainWindow.hide();
+        if (mainWindow?.isVisible()) {
+          hideMainWindowToTray();
         } else {
-          // Restore window size before showing to prevent resizing issues
-          mainWindow.setSize(config.windowSize.width, config.windowSize.height);
-          mainWindow.show();
+          showMainWindowFromTray();
         }
       },
     },
@@ -3462,7 +3576,7 @@ function buildTrayContextMenu() {
       checked: config.alwaysOnTop,
       click: (menuItem) => {
         config.alwaysOnTop = menuItem.checked;
-        mainWindow.setAlwaysOnTop(config.alwaysOnTop);
+        applyAlwaysOnTopPreference();
         saveConfig();
       },
     },
@@ -3491,10 +3605,8 @@ function buildTrayContextMenu() {
     {
       label: mainT('Open Settings'),
       click: () => {
-        if (mainWindow) {
-          // Restore window size before showing to prevent resizing issues
-          mainWindow.setSize(config.windowSize.width, config.windowSize.height);
-          mainWindow.show();
+        showMainWindowFromTray();
+        if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('open-settings');
         }
       },
@@ -3558,14 +3670,10 @@ function createTray() {
   if (!tray || tray.isDestroyed?.()) {
     tray = new Tray(resolveTrayIcon());
     tray.on('click', () => {
-      if (!mainWindow) return;
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
+      if (mainWindow?.isVisible()) {
+        hideMainWindowToTray();
       } else {
-        // Restore window size before showing to prevent resizing issues
-        mainWindow.setSize(config.windowSize.width, config.windowSize.height);
-        mainWindow.show();
-        mainWindow.focus();
+        showMainWindowFromTray();
       }
     });
   }
@@ -4137,18 +4245,31 @@ ipcMain.handle('set-always-on-top', (event, value) => {
   if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
   const flag = !!value;
   config.alwaysOnTop = flag;
+  let applied = false;
   try {
-    mainWindow.setAlwaysOnTop(flag);
+    if (popupWindowPresenter.isElevated()) {
+      // A popup raise keeps the window above full-screen content until it hides; the new
+      // preference is what the presenter falls back to when that raise ends.
+      applied = !!mainWindow && !mainWindow.isDestroyed();
+    } else {
+      applyAlwaysOnTopPreference();
+      applied = mainWindow?.isAlwaysOnTop?.() === flag;
+    }
   } catch (error) {
     log.warn('Failed to set always on top:', error.message);
   }
   saveConfig();
-  return { applied: mainWindow?.isAlwaysOnTop?.() === flag };
+  return { applied };
 });
 
 ipcMain.handle('get-window-state', (event) => {
   const sender = authorizeIpcSender(event, 'get-window-state');
   if (!sender) return rejectUnauthorizedIpc('get-window-state');
+  // The temporary popup raise is not the user's preference, so report the stored value
+  // while it is in effect.
+  if (popupWindowPresenter.isElevated()) {
+    return { alwaysOnTop: !!config.alwaysOnTop };
+  }
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
@@ -5326,7 +5447,7 @@ function registerPopupHotkey() {
             if (isVisible && isFocused && !recentlyShown) {
               // Window is already visible and focused (and not recently shown) - hide it
               log.info('Popup hotkey toggle: window is focused, hiding...');
-              mainWindow.hide();
+              popupWindowPresenter.hidePopup(mainWindow);
               _popupHotkeyWindowVisible = false;
               popupHotkeyLastShownTime = null;
               log.debug('Popup hotkey toggle - window hidden');
@@ -5334,26 +5455,13 @@ function registerPopupHotkey() {
               // Window is hidden, minimized, not focused, or was just shown - bring to top
               log.info('Popup hotkey toggle: bringing window to top...');
 
-              // Save current alwaysOnTop state
-              wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
-
-              // Bring window to front
-              if (mainWindow.isMinimized()) {
-                mainWindow.restore();
-              }
-              mainWindow.show();
-              mainWindow.setAlwaysOnTop(true);
-              mainWindow.focus();
-              mainWindow.moveTop();
-
-              // Restore original alwaysOnTop state immediately so popup doesn't override user preference
-              mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
+              // The raise is held until the next toggle hides the window, otherwise a
+              // full-screen video takes the z-order back and the popup disappears.
+              popupWindowPresenter.showAboveFullScreen(mainWindow);
 
               _popupHotkeyWindowVisible = true;
               popupHotkeyLastShownTime = now;
-              log.debug(
-                'Popup hotkey toggle - window shown and focused, alwaysOnTop restored to user preference'
-              );
+              log.debug('Popup hotkey toggle - window shown above full-screen windows');
             }
           }
         } else {
@@ -5364,18 +5472,7 @@ function registerPopupHotkey() {
           log.info('Popup hotkey matched! Bringing window to front...');
 
           if (mainWindow && !mainWindow.isDestroyed()) {
-            // Save current alwaysOnTop state
-            wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
-
-            // Bring window to front
-            if (mainWindow.isMinimized()) {
-              mainWindow.restore();
-            }
-            mainWindow.show();
-            mainWindow.setAlwaysOnTop(true);
-            mainWindow.focus();
-            mainWindow.moveTop();
-
+            popupWindowPresenter.showAboveFullScreen(mainWindow);
             log.debug('Popup hotkey pressed - window brought to front');
           }
         }
@@ -5402,14 +5499,14 @@ function registerPopupHotkey() {
         log.info('Popup hotkey released! Restoring window state...');
 
         if (mainWindow && !mainWindow.isDestroyed()) {
-          // Restore original alwaysOnTop state
-          mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
-
           // Hide window if setting is enabled (Issue #21)
           if (config.popupHotkeyHideOnRelease) {
-            mainWindow.hide();
+            popupWindowPresenter.hidePopup(mainWindow);
             log.debug('Popup hotkey released - window hidden');
           } else {
+            // Hold mode ends the raise on release, dropping back to the user's
+            // always-on-top preference rather than a stale snapshot of it.
+            popupWindowPresenter.releaseElevation(mainWindow);
             log.debug('Popup hotkey released - window state restored');
           }
         }
@@ -5713,6 +5810,60 @@ app.whenReady().then(() => {
   createWindow();
   setupAutoUpdates();
   schedulePostWindowStartupTasks();
+});
+
+// XWayland cannot render at all on some machines (a driver stack where Chromium's GPU process
+// dies on startup), and the widget would then simply never appear. Rather than leave the user
+// with an invisible window, fall back to the native Wayland backend and say so.
+const FORCED_X11_GPU_CRASH_LIMIT = 2;
+const FORCED_X11_FALLBACK_WINDOW_MS = 20000;
+let forcedX11GpuCrashes = 0;
+let forcedX11FallbackStarted = false;
+let reportedForcedX11RenderFailure = false;
+app.on('child-process-gone', (_event, details) => {
+  if (!forcedX11Ozone || details?.type !== 'GPU' || forcedX11FallbackStarted) return;
+  forcedX11GpuCrashes += 1;
+
+  // Only repeated crashes right after startup mean XWayland cannot render here. A crash later
+  // on is ordinary GPU flakiness that Chromium recovers from by itself.
+  const duringStartup = Date.now() - processStartedAt <= FORCED_X11_FALLBACK_WINDOW_MS;
+  if (!duringStartup || forcedX11GpuCrashes < FORCED_X11_GPU_CRASH_LIMIT) {
+    if (!reportedForcedX11RenderFailure) {
+      reportedForcedX11RenderFailure = true;
+      log.warn(
+        `The GPU process exited (${details.reason}) while the widget was running through XWayland.`
+      );
+    }
+    return;
+  }
+
+  forcedX11FallbackStarted = true;
+  log.error(
+    `The GPU process could not start under XWayland (${details.reason}); relaunching on the native ` +
+      'Wayland backend. The widget will work, but it will forget its position whenever it is hidden.'
+  );
+
+  // Remember the verdict so later starts skip the attempt instead of paying for it every time.
+  // Deleting this file makes the widget try XWayland again, e.g. after a driver update.
+  try {
+    fs.writeFileSync(
+      XWAYLAND_UNAVAILABLE_MARKER_PATH,
+      `XWayland could not render on this machine (GPU process ${details.reason}).\n` +
+        'Delete this file to let the widget try XWayland again, which is what lets it keep its\n' +
+        'position when hidden. Background:\n' +
+        'https://github.com/Robertg761/HA-Desktop-Widget/blob/main/docs/linux-wayland-notes.md\n'
+    );
+    log.info(`Recorded the XWayland failure at ${XWAYLAND_UNAVAILABLE_MARKER_PATH}`);
+  } catch (error) {
+    log.warn(
+      'Failed to record the XWayland failure; it will be retried next start:',
+      error.message
+    );
+  }
+  // The explicit platform argument is also what stops the relaunched instance from forcing
+  // XWayland again, so this cannot loop.
+  app.relaunch({ args: process.argv.slice(1).concat('--ozone-platform=wayland') });
+  app.quit();
 });
 
 app.on('window-all-closed', () => {

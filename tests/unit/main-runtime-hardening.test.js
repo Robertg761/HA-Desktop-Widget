@@ -14,6 +14,55 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('shell.openExternal');
   });
 
+  it('runs Wayland sessions through XWayland and keeps the recovery discoverable', () => {
+    expect(mainSource).toContain('shouldForceX11OzonePlatform({');
+    expect(mainSource).toContain('waylandSession: isWaylandSession(),');
+    expect(mainSource).toContain("app.commandLine.appendSwitch('ozone-platform', 'x11')");
+    // The popup presenter must know whether it can position the window at all.
+    expect(mainSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
+    expect(mainSource).toContain("app.on('child-process-gone'");
+    expect(mainSource).toContain('NATIVE_WAYLAND_ENV_OVERRIDE');
+    // A machine where XWayland cannot render must end up on Wayland, not with no window.
+    expect(mainSource).toContain(
+      "app.relaunch({ args: process.argv.slice(1).concat('--ozone-platform=wayland') })"
+    );
+    expect(mainSource).toContain('forcedX11FallbackStarted');
+    // The verdict is remembered so a machine without working XWayland stops paying for it.
+    expect(mainSource).toContain('XWAYLAND_UNAVAILABLE_MARKER_PATH');
+    expect(mainSource).toContain('previousAttemptFailed: hasXWaylandFailureMarker()');
+    // A saved position on a disconnected monitor must not open the widget off-screen.
+    expect(mainSource).toContain('clampPositionToWorkAreas(');
+    // Window rules match on the title, so it has to be stable and not follow the page.
+    expect(mainSource).toContain("const MAIN_WINDOW_TITLE = 'HA Desktop Widget'");
+    expect(mainSource).toContain('title: MAIN_WINDOW_TITLE');
+    expect(mainSource).toContain("mainWindow.on('page-title-updated'");
+    // The tray is another way in, so it must use the same raise rather than a bare show().
+    expect(mainSource).toContain('function showMainWindowFromTray');
+    expect(mainSource).toContain('function hideMainWindowToTray');
+    const trayMenuStart = mainSource.indexOf('function buildTrayContextMenu');
+    const trayMenuEnd = mainSource.indexOf('function createTray', trayMenuStart);
+    const traySource = mainSource.slice(trayMenuStart, mainSource.indexOf('const contextMenu'));
+    expect(trayMenuEnd).toBeGreaterThan(trayMenuStart);
+    expect(traySource).not.toContain('mainWindow.show()');
+    // Desktop pins must keep Chromium's default title, or a window rule written for the widget
+    // would match them too and drag them to the widget's remembered position.
+    const pinOptionsStart = mainSource.indexOf('function createDesktopPinWindow');
+    const pinOptionsEnd = mainSource.indexOf(
+      'hardenRendererNavigation(pinWindow)',
+      pinOptionsStart
+    );
+    expect(pinOptionsEnd).toBeGreaterThan(pinOptionsStart);
+    expect(mainSource.slice(pinOptionsStart, pinOptionsEnd)).not.toContain('MAIN_WINDOW_TITLE');
+    // The XWayland marker must resolve from the settled user data path, so the climate demo's
+    // throwaway profile cannot read or write the real one.
+    expect(mainSource).toContain(
+      "const XWAYLAND_UNAVAILABLE_MARKER_PATH = path.join(userDataPath, 'xwayland-unavailable')"
+    );
+    expect(mainSource.indexOf('const userDataPath = app.getPath')).toBeLessThan(
+      mainSource.indexOf('XWAYLAND_UNAVAILABLE_MARKER_PATH')
+    );
+  });
+
   it('handles a correlated desktop-pin action response channel', () => {
     expect(mainSource).toContain("ipcMain.handle('desktop-pin-action-response'");
     expect(mainSource).toContain('pendingDesktopPinActionRequests');

@@ -1,5 +1,7 @@
 /* global console, process */
 
+const { createPopupWindowPresenter } = require('./popup-window-presenter.cjs');
+
 const LINUX_POPUP_HOTKEY_BACKEND = 'globalShortcut';
 const POPUP_TOGGLE_DEBOUNCE_MS = 300;
 
@@ -14,6 +16,7 @@ function createLinuxPopupHotkeyController(options = {}) {
     getMainWindow = () => null,
     log = console,
     now = () => Date.now(),
+    presenter = createPopupWindowPresenter({ getConfig, log }),
   } = options;
 
   if (!globalShortcut || typeof globalShortcut.register !== 'function') {
@@ -45,13 +48,7 @@ function createLinuxPopupHotkeyController(options = {}) {
   }
 
   function bringWindowToFront(targetWindow, timestamp) {
-    const wasAlwaysOnTop = targetWindow.isAlwaysOnTop();
-    if (targetWindow.isMinimized()) targetWindow.restore();
-    targetWindow.show();
-    targetWindow.setAlwaysOnTop(true);
-    targetWindow.focus();
-    targetWindow.moveTop();
-    targetWindow.setAlwaysOnTop(wasAlwaysOnTop);
+    presenter.showAboveFullScreen(targetWindow);
     popupHotkeyLastShownTime = timestamp;
   }
 
@@ -72,7 +69,7 @@ function createLinuxPopupHotkeyController(options = {}) {
         targetWindow.isFocused() &&
         !recentlyShown
       ) {
-        targetWindow.hide();
+        presenter.hidePopup(targetWindow);
         popupHotkeyLastShownTime = null;
         log.info?.('Linux popup hotkey toggle: window hidden');
         return;
