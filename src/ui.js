@@ -9,7 +9,7 @@ import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import desktopPinSupport from './desktop-pin-support.cjs';
-import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from './dev-climate-demo.js';
+import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
   addQuickAccessView,
   deleteQuickAccessView,

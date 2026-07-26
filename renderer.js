@@ -20,7 +20,7 @@ import {
   installClimateDemo,
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
-} from './src/dev-climate-demo.js';
+} from '@dev-climate-demo';
 import {
   buildHomeAssistantPathUrl,
   classifyConnectionError as classifyConnectionTestError,

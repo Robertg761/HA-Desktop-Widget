@@ -36,6 +36,13 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
+        // The climate fixture is available only in development renderer builds.
+        // Production resolves it to a no-op module, so its mock entity and
+        // service implementation cannot be included in shipped artifacts.
+        '@dev-climate-demo': resolve(
+          __dirname,
+          isProduction ? 'src/dev-climate-demo.production.js' : 'src/dev-climate-demo.js'
+        ),
         '@': resolve(__dirname, 'src'),
         // Node.js polyfills for browser
         events: 'events',
