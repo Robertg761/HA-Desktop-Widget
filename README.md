@@ -212,9 +212,13 @@ cannot start while a copy of the widget is already running — quit that one fir
 - **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
 - **Portable builds**: Portable users still update manually, but the update checker will show prerelease portable downloads when beta updates are enabled.
 
-The minimum planned beta version is stored in `.github/beta-target`. With `3.7.0` configured and `3.6.0` as the latest stable release, nightly builds use `v3.7.0-beta.N`. Once `v3.7.0` is stable, the workflow automatically moves to `v3.7.1-beta.N`. To begin a future minor series instead, change the file to `3.8.0`; the next changed build starts at `v3.8.0-beta.1`.
+The minimum planned beta version is stored in `.github/beta-target`. It is currently set to
+`3.8.0`, so the active series starts at `v3.8.0-beta.1`. Once `v3.8.0` is stable, the workflow
+automatically moves to `v3.8.1-beta.N`; increasing the file starts a future minor series instead.
 
-Prerelease builds align their package version from the tag without committing that temporary beta version back to `main`. Stable releases continue to sync `package.json` and `package-lock.json` after publishing.
+Release builds align their package version from the tag. Manually prepared betas commit matching
+prerelease metadata before tagging; automated nightly betas align it only inside the build.
+Stable releases continue to sync `package.json` and `package-lock.json` after publishing.
 
 New GitHub releases automatically generate notes from merged pull requests and contributors. A beta compares against the previous published prerelease in the same version series, falling back to the latest stable release for the first beta. A stable release compares against the previous stable release so its notes cover the complete release cycle rather than only the changes since the last beta.
 

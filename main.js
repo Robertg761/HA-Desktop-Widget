@@ -908,7 +908,7 @@ const DATE_DISPLAY_FORMATS = new Set(['system', 'weekday-short', 'long', 'numeri
  * Only `true` carries an intent to migrate. `false` was the default nobody chose, and it
  * meant "no hour12 option", i.e. whatever the active locale does — so it becomes 'system'
  * rather than '12-hour', which would flip 14:30 to 2:30 PM for every user on a 24-hour
- * locale the first time they open 3.7.5.
+ * locale the first time they open 3.8.0.
  */
 function ensureDateTimeFormatConfigDefaults(target, options = {}) {
   if (!target || typeof target !== 'object') return target;
