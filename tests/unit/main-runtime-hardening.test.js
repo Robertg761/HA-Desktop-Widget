@@ -39,6 +39,9 @@ describe('main-process wiring safeguards', () => {
     // The tray is another way in, so it must use the same raise rather than a bare show().
     expect(mainSource).toContain('function showMainWindowFromTray');
     expect(mainSource).toContain('function hideMainWindowToTray');
+    // Minimize is routed through hide(), so the one 'hide' listener has to cover every way
+    // the widget leaves the screen or a raise stays armed after it is gone.
+    expect(mainSource).toContain("mainWindow.on('hide'");
     const trayMenuStart = mainSource.indexOf('function buildTrayContextMenu');
     const trayMenuEnd = mainSource.indexOf('function createTray', trayMenuStart);
     const traySource = mainSource.slice(trayMenuStart, mainSource.indexOf('const contextMenu'));
@@ -225,7 +228,11 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('function ensureDateTimeFormatConfigDefaults');
     expect(mainSource).toContain("new Set(['system', '12-hour', '24-hour'])");
     expect(mainSource).toContain("new Set(['system', 'weekday-short', 'long', 'numeric'])");
-    expect(mainSource).toContain("target.ui.use24HourClock === 'boolean'");
+    // Only an explicit 24-hour preference migrates to a fixed format. Migrating the
+    // never-chosen `false` to '12-hour' would force hour12 on every 24-hour locale.
+    expect(mainSource.replace(/\s+/g, ' ')).toContain(
+      "options.migrateLegacyClock === true && target.ui.use24HourClock === true ? '24-hour' : 'system'"
+    );
     expect(mainSource).toContain("target.ui.dateFormat = 'weekday-short'");
   });
 

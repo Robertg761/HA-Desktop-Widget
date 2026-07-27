@@ -1005,6 +1005,16 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('leaves a profile that never chose 24-hour on the locale default', async () => {
+      // `false` was the shipped default, not a preference: before time formats were
+      // configurable it meant "no hour12 option", i.e. whatever the locale does. Migrating
+      // it to '12-hour' would flip 14:30 to 2:30 PM for every user on a 24-hour locale.
+      state.CONFIG.ui.use24HourClock = false;
+      await settings.openSettings();
+
+      expect(document.getElementById('time-format').value).toBe('system');
+    });
+
     test('downloadable languages stay disabled in the selector until installed', async () => {
       window.electronAPI.getLocalePacks.mockResolvedValue([
         {

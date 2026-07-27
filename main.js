@@ -904,6 +904,11 @@ const DATE_DISPLAY_FORMATS = new Set(['system', 'weekday-short', 'long', 'numeri
  * Keep clock preferences constrained to formats the renderer understands.
  * Existing profiles only stored a 24-hour boolean, so preserve that behavior
  * while they are migrated to the explicit time format setting.
+ *
+ * Only `true` carries an intent to migrate. `false` was the default nobody chose, and it
+ * meant "no hour12 option", i.e. whatever the active locale does — so it becomes 'system'
+ * rather than '12-hour', which would flip 14:30 to 2:30 PM for every user on a 24-hour
+ * locale the first time they open 3.7.5.
  */
 function ensureDateTimeFormatConfigDefaults(target, options = {}) {
   if (!target || typeof target !== 'object') return target;
@@ -911,10 +916,8 @@ function ensureDateTimeFormatConfigDefaults(target, options = {}) {
 
   if (!TIME_DISPLAY_FORMATS.has(target.ui.timeFormat)) {
     target.ui.timeFormat =
-      options.migrateLegacyClock === true && typeof target.ui.use24HourClock === 'boolean'
-        ? target.ui.use24HourClock
-          ? '24-hour'
-          : '12-hour'
+      options.migrateLegacyClock === true && target.ui.use24HourClock === true
+        ? '24-hour'
         : 'system';
   }
   if (!DATE_DISPLAY_FORMATS.has(target.ui.dateFormat)) {

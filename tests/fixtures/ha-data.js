@@ -257,7 +257,7 @@ const sampleStates = {
       temperature: 22,
       min_temp: 16,
       max_temp: 30,
-      target_temperature_step: 1,
+      target_temp_step: 1,
       hvac_modes: ['off', 'cool', 'dry', 'fan_only'],
       fan_mode: 'medium',
       fan_modes: ['low', 'medium', 'high'],

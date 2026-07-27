@@ -5,7 +5,7 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.7.5] - 2026-07-25
+## [3.7.5] - 2026-07-26
 
 ### Fixed
 
@@ -90,23 +90,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   English. All five packs are now complete at 343 strings and bumped to 1.1.0, so anyone
   with a pack installed will be offered an update.
 
-### Changed
+- The popup hotkey now lands above full-screen windows instead of flashing and dropping
+  behind them. Full-screen video players re-raise themselves for a frame or two after the
+  widget appears, so the raise is held for the life of the popup and released when it
+  hides, rather than being applied once and immediately reverted. Showing the widget from
+  the tray icon, the tray menu, or Open Settings goes through the same path, and a
+  temporary raise no longer overwrites your always-on-top preference.
 
-- Production dependency security findings in the Linux D-Bus shortcut chain were
-  remediated without removing Wayland portal support. The runtime-reachable XML parser is
-  pinned to a patched release, the optional Unix-socket binding no longer brings the
-  deprecated `request` stack into production installs, and its build-time archive tooling
-  is updated past the audited vulnerable ranges.
+- A saved window position that points at a monitor which is no longer connected, or at
+  empty space between monitors, no longer opens the widget where nothing can see it. It is
+  moved onto the nearest display instead.
 
-- Desktop pins: the timer tile was rebuilt around the countdown. The icon, the duplicated
-  "Timer" caption and the inner panel are gone; the remaining time now scales to fill the
-  tile under the timer's name, with the finish time below it, a pulse dot while it runs,
-  and a bar along the bottom edge showing how much is left when Home Assistant reports a
-  total duration. Timers that are not running are labelled instead (Paused / Finished /
-  Idle), and the tile warms to a warning tint for the last minute.
+- Linux Wayland: the widget now runs through XWayland by default, so it keeps the position
+  you gave it across hide/show and restarts and the opacity setting works again — a
+  Wayland compositor ignores both. If the GPU process cannot start under XWayland, the app
+  relaunches itself on the native Wayland backend, records that so later starts skip the
+  attempt, and says so in the log. Set `HA_WIDGET_LINUX_NATIVE_WAYLAND=1` to opt out. See
+  `docs/linux-wayland-notes.md`, which also has the KWin rule that keeps the position on a
+  native Wayland session.
+
+- Launching the widget while it is already running now shows the existing window instead
+  of starting a second tray icon and window. Two instances shared one configuration file
+  and overwrote each other's settings depending on which saved last. This is also the way
+  back to a window hidden to a tray that is missing or broken.
+
+- The climate control dialog no longer offers controls the entity does not advertise. A
+  climate entity with no target temperature, no HVAC modes, or no fan/preset modes gets
+  those sections omitted rather than shown with invented defaults, and says so when it
+  supports nothing the widget can change. The temperature slider also follows the step
+  size the entity reports (`target_temp_step`) instead of always moving in half degrees,
+  and mode names like `fan_only` are labelled "Fan Only".
 
 ### Added
 
+- Settings > Personalization: separate **Time Format** (System default / 12-hour /
+  24-hour) and **Date Format** (System default / Weekday, short date / Long date / Numeric
+  date) settings, replacing the single "Use 24-hour clock" checkbox. A profile that had
+  the 24-hour clock switched on keeps it; one that never changed it follows your language
+  and region setting exactly as before.
+- Settings > Home Assistant Connection: a **Weather source** list of the `weather.`
+  entities Home Assistant is reporting, so the weather card's source no longer has to be
+  found by long-pressing the card itself. A saved source that goes unavailable is kept and
+  labelled rather than discarded, and the card falls back to the first available source
+  until it returns.
 - Quick Access: tiles whose entity is currently on now carry a subtle glow in your accent
   colour, so a switch, light, fan, player, cover, climate or vacuum that is running reads
   at a glance instead of only from its label. Read-only tiles (sensors, cameras,
@@ -134,6 +160,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Production dependency security findings in the Linux D-Bus shortcut chain were
+  remediated without removing Wayland portal support. The runtime-reachable XML parser is
+  pinned to a patched release, the optional Unix-socket binding no longer brings the
+  deprecated `request` stack into production installs, and its build-time archive tooling
+  is updated past the audited vulnerable ranges.
+- Desktop pins: the timer tile was rebuilt around the countdown. The icon, the duplicated
+  "Timer" caption and the inner panel are gone; the remaining time now scales to fill the
+  tile under the timer's name, with the finish time below it, a pulse dot while it runs,
+  and a bar along the bottom edge showing how much is left when Home Assistant reports a
+  total duration. Timers that are not running are labelled instead (Paused / Finished /
+  Idle), and the tile warms to a warning tint for the last minute.
 - Profile Sync: before a remote profile is applied, the previous local profile is backed
   up to `profile-sync-backups/` in the app data folder (last 5 kept).
 - Profile Sync: encryption passphrases must now be at least 8 characters (previously 4).

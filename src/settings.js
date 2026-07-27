@@ -3818,11 +3818,13 @@ async function openSettings(uiHooks) {
     const timeFormat = document.getElementById('time-format');
     if (timeFormat) {
       const savedTimeFormat = state.CONFIG?.ui?.timeFormat;
+      // Mirrors the main-process migration: only an explicit 24-hour preference maps to a
+      // fixed format, everything else follows the locale.
       timeFormat.value = ['system', '12-hour', '24-hour'].includes(savedTimeFormat)
         ? savedTimeFormat
-        : state.CONFIG?.ui?.use24HourClock
+        : state.CONFIG?.ui?.use24HourClock === true
           ? '24-hour'
-          : '12-hour';
+          : 'system';
     }
     const dateFormat = document.getElementById('date-format');
     if (dateFormat) {

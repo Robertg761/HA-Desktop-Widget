@@ -9865,8 +9865,12 @@ function getClimateControlCapabilities(climateEntity) {
   const minTemp = finiteAttribute('min_temp');
   const maxTemp = finiteAttribute('max_temp');
   const targetTemp = finiteAttribute('temperature');
+  // `target_temp_step` is the attribute Home Assistant actually publishes (ATTR_TARGET_TEMP_STEP);
+  // the other two are only tolerated in case an integration invents its own name.
   const advertisedStep =
-    finiteAttribute('target_temperature_step') ?? finiteAttribute('temperature_step');
+    finiteAttribute('target_temp_step') ??
+    finiteAttribute('target_temperature_step') ??
+    finiteAttribute('temperature_step');
 
   return {
     currentTemp: finiteAttribute('current_temperature'),

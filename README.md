@@ -201,6 +201,10 @@ in memory and are intercepted before the WebSocket layer; the card is not saved 
 cannot be edited/removed in Quick Access, and is never written into the normal configuration or
 sent to Home Assistant. The existing `npm run dev:climate-demo` remains the fully isolated mode.
 
+Because the overlay uses the normal Electron profile, and only one widget runs per profile, it
+cannot start while a copy of the widget is already running — quit that one first. The isolated
+`dev:climate-demo` gets its own temporary profile and runs alongside the real widget.
+
 ### Release Channels
 
 - **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release, and existing users receive it through the standard update path.
@@ -237,7 +241,7 @@ New GitHub releases automatically generate notes from merged pull requests and c
 - **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections for Quick Access/layout, visual personalization, automation/alerts, and connection/media preferences.
 - **Need help button**: Opens profile sync setup instructions in your browser.
 - **Sync behavior**: On startup the newer side wins (offline edits on this device are pushed instead of discarded), pushes on profile changes (debounced), and periodic sync every 5 minutes (default).
-- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins on the whole profile (no per-field merge). Because direction is chosen by timestamp, large clock skew between devices can pick the wrong winner, and conflict copies created by cloud sync clients (e.g. Dropbox "conflicted copy" files) are not detected.
+- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins on the whole profile (no per-field merge). The sync file is re-read immediately before it is overwritten, so a write that landed from another device in the meantime is not discarded. Because direction is chosen by timestamp, large clock skew between devices can still pick the wrong winner. Conflict copies created by cloud sync clients (e.g. Syncthing `.sync-conflict-` or Dropbox "conflicted copy" files) are detected and reported in Settings, but resolving them is left to you — the app never deletes them.
 - **Safety net**: Before a remote profile is applied, the previous local profile is backed up to `profile-sync-backups/` in the app's data folder (the last 5 are kept).
 - **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation); passphrases must be at least 8 characters.
 - **Schema compatibility**: Sync writes use profile sync schema v2; older app versions must update to participate in sync.
