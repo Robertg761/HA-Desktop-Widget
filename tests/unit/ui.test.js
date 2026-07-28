@@ -16,6 +16,7 @@ global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 
 // Setup mocks BEFORE loading modules
 const mockElectronAPI = createMockElectronAPI();
+const defaultUpdateConfigImplementation = mockElectronAPI.updateConfig.getMockImplementation();
 window.electronAPI = mockElectronAPI;
 
 // Mock dependencies
@@ -135,6 +136,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     jest.useRealTimers();
     jest.clearAllMocks();
     resetMockElectronAPI();
+    mockElectronAPI.updateConfig.mockReset();
+    mockElectronAPI.updateConfig.mockImplementation(defaultUpdateConfigImplementation);
     mockElectronAPI.respondDesktopPinActionRequest = jest.fn(() =>
       Promise.resolve({ success: true })
     );
@@ -930,14 +933,89 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // ==============================================================================
 
   describe('selectWeatherEntity', () => {
-    it('should update config with selected weather entity', async () => {
+    it('sends a narrow patch and applies the authoritative config response', async () => {
+      const before = JSON.parse(JSON.stringify(state.CONFIG));
+      let authoritative = {
+        ...before,
+        selectedWeatherEntity: 'weather.home',
+        opacity: 0.73,
+        profileSync: {
+          ...before.profileSync,
+          lastSyncStatus: 'success',
+        },
+      };
+      mockElectronAPI.updateConfig.mockImplementation((patch) => {
+        authoritative = {
+          ...authoritative,
+          ...patch,
+        };
+        return Promise.resolve(authoritative);
+      });
+
       await ui.selectWeatherEntity('weather.home');
 
-      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedWeatherEntity: 'weather.home',
-        })
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({
+        selectedWeatherEntity: 'weather.home',
+      });
+      expect(state.CONFIG.selectedWeatherEntity).toBe('weather.home');
+      expect(state.CONFIG.opacity).toBe(0.73);
+      expect(state.CONFIG.profileSync.lastSyncStatus).toBe('success');
+    });
+
+    it('applies authoritative recovery and reports a rejected selection without success', async () => {
+      const before = {
+        ...JSON.parse(JSON.stringify(state.CONFIG)),
+        selectedWeatherEntity: 'weather.prior',
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+        favoriteEntities: [],
+      };
+      state.setConfig(before);
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'sunny',
+          attributes: { friendly_name: 'Home Weather' },
+        },
+        'weather.authoritative': {
+          entity_id: 'weather.authoritative',
+          state: 'rainy',
+          attributes: {
+            friendly_name: 'Authoritative Weather',
+            temperature: 8,
+            humidity: 92,
+          },
+        },
+      });
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'disk full',
+        config: {
+          ...before,
+          selectedWeatherEntity: 'weather.authoritative',
+          opacity: 0.68,
+        },
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        await ui.selectWeatherEntity('weather.home');
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({
+        selectedWeatherEntity: 'weather.home',
+      });
+      expect(state.CONFIG.selectedWeatherEntity).toBe('weather.authoritative');
+      expect(state.CONFIG.opacity).toBe(0.68);
+      expect(document.getElementById('weather-condition').textContent).toBe('rainy');
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        'Failed to save weather entity selection',
+        'error',
+        3000
       );
+      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('should show success toast when entity exists', async () => {
@@ -2248,6 +2326,143 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
     });
 
+    it('keeps tile settings and the editor intact when a narrow save is rejected', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.customEntityNames = {};
+      config.quickAccessTileOptions = {};
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      const nameInput = modal.querySelector('#rename-input');
+      const sizeSelect = modal.querySelector('#tile-value-size-select');
+      nameInput.value = 'Desk Temperature';
+      sizeSelect.value = 'extra-large';
+
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'disk full',
+        config: authoritativeBefore,
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        modal.querySelector('#save-rename-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({
+        customEntityNames: {
+          'sensor.office_temperature': 'Desk Temperature',
+        },
+        quickAccessTileOptions: {
+          'sensor.office_temperature': { valueSize: 'extra-large' },
+        },
+      });
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
+      expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toBeUndefined();
+      expect(document.querySelector('.rename-modal')).toBe(modal);
+      expect(nameInput.value).toBe('Desk Temperature');
+      expect(sizeSelect.value).toBe('extra-large');
+      expect(modal.querySelector('#save-rename-btn').disabled).toBe(false);
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('disk full'),
+        'error',
+        4000
+      );
+      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+    });
+
+    it('locks every Tile Settings action until a deferred save settles', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['sensor.office_temperature'],
+        customTabs: [
+          {
+            id: 'default',
+            name: 'All',
+            entityIds: ['sensor.office_temperature'],
+          },
+        ],
+        activeTabId: 'default',
+        customEntityNames: {},
+        quickAccessTileOptions: {},
+      });
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21.5',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      modal.querySelector('#rename-input').value = 'Desk Temperature';
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      let resolveSave;
+      let submittedPatch;
+      mockElectronAPI.updateConfig.mockImplementationOnce(
+        (patch) =>
+          new Promise((resolve) => {
+            submittedPatch = patch;
+            resolveSave = resolve;
+          })
+      );
+
+      modal.querySelector('#save-rename-btn').click();
+
+      expect(modal.querySelector('#save-rename-btn').disabled).toBe(true);
+      expect(modal.querySelector('#reset-rename-btn').disabled).toBe(true);
+      expect(modal.querySelector('#cancel-rename-btn').disabled).toBe(true);
+      expect(modal.querySelector('.close-btn').disabled).toBe(true);
+      modal.querySelector('#cancel-rename-btn').click();
+      modal.querySelector('#reset-rename-btn').click();
+      modal.querySelector('.close-btn').click();
+      modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(document.querySelector('.rename-modal')).toBe(modal);
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+
+      resolveSave({
+        ...authoritativeBefore,
+        ...submittedPatch,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(document.querySelector('.rename-modal')).toBeNull();
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBe('Desk Temperature');
+    });
+
     it('resets quick access tile name and value font size from the pencil settings modal', async () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_temperature'];
@@ -2700,6 +2915,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const config = {
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
         desktopPins: {},
       };
       state.setConfig(config);
@@ -2753,6 +2970,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const config = {
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
         desktopPins: {
           'light.bedroom': { x: 10, y: 20, width: 168, height: 148 },
         },
@@ -4953,7 +5172,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
     });
 
-    it('opens a themed add-page modal and creates a page from a preset chip', () => {
+    it('opens a themed add-page modal and creates a page from a preset chip', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
 
@@ -4979,8 +5198,324 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       // Saving creates the page and closes the modal.
       modal.querySelector('#add-page-save-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.getElementById('add-page-modal')).toBeNull();
       expect((state.CONFIG.customTabs || []).map((p) => p.name)).toContain('Bedroom');
+    });
+
+    it('persists only Quick Access fields and applies unrelated authoritative changes', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const before = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockImplementationOnce((patch) =>
+        Promise.resolve({
+          ...before,
+          ...patch,
+          opacity: 0.71,
+          profileSync: {
+            ...before.profileSync,
+            lastSyncStatus: 'success',
+          },
+        })
+      );
+
+      tabBar.querySelector('.qa-tab-add').click();
+      const modal = document.getElementById('add-page-modal');
+      modal.querySelector('#add-page-name').value = 'Bedroom';
+      modal.querySelector('#add-page-save-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      const patch = mockElectronAPI.updateConfig.mock.calls[0][0];
+      expect(Object.keys(patch).sort()).toEqual([
+        'activeTabId',
+        'comparisonGraphs',
+        'customTabs',
+        'favoriteEntities',
+      ]);
+      expect(patch.homeAssistant).toBeUndefined();
+      expect(patch.ui).toBeUndefined();
+      expect(state.CONFIG.customTabs.map((page) => page.name)).toContain('Bedroom');
+      expect(state.CONFIG.opacity).toBe(0.71);
+      expect(state.CONFIG.profileSync.lastSyncStatus).toBe('success');
+      expect(tabBar.querySelectorAll('.quick-access-tab')).toHaveLength(2);
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Page added', 'success', 1600);
+    });
+
+    it('rolls page state and tabs back to the authoritative config after rejection', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const authoritativeBefore = {
+        ...JSON.parse(JSON.stringify(state.CONFIG)),
+        opacity: 0.69,
+      };
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'profile changed elsewhere',
+        config: authoritativeBefore,
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        tabBar.querySelector('.qa-tab-add').click();
+        const modal = document.getElementById('add-page-modal');
+        modal.querySelector('#add-page-name').value = 'Bedroom';
+        modal.querySelector('#add-page-save-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      expect(Object.keys(mockElectronAPI.updateConfig.mock.calls[0][0]).sort()).toEqual([
+        'activeTabId',
+        'comparisonGraphs',
+        'customTabs',
+        'favoriteEntities',
+      ]);
+      expect(state.CONFIG.customTabs).toEqual([{ id: 'default', name: 'All', entityIds: [] }]);
+      expect(state.CONFIG.opacity).toBe(0.69);
+      expect(tabBar.querySelectorAll('.quick-access-tab')).toHaveLength(1);
+      expect(tabBar.querySelector('.quick-access-tab-link').textContent).toBe('All');
+      const retainedModal = document.getElementById('add-page-modal');
+      expect(retainedModal).not.toBeNull();
+      expect(retainedModal.querySelector('#add-page-name').value).toBe('Bedroom');
+      expect(retainedModal.querySelector('#add-page-save-btn').disabled).toBe(false);
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('profile changed elsewhere'),
+        'error',
+        4000
+      );
+      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+    });
+
+    it('sends complete Quick Access slices so a later write can carry an earlier optimistic edit', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'default'
+      );
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      let rejectFirst;
+      let resolveSecond;
+      const firstWrite = new Promise((_resolve, reject) => {
+        rejectFirst = reject;
+      });
+      const secondWrite = new Promise((resolve) => {
+        resolveSecond = resolve;
+      });
+      mockElectronAPI.updateConfig
+        .mockImplementationOnce(() => firstWrite)
+        .mockImplementationOnce(() => secondWrite);
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        tabBar.querySelector('.quick-access-tab.active .qa-tab-rename').click();
+        const renameInput = tabBar.querySelector('.qa-tab-rename-input');
+        renameInput.value = 'Whole Home';
+        renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        tabBar.querySelector('.quick-access-tab-link[data-tab="bedroom"]').click();
+
+        expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
+        mockElectronAPI.updateConfig.mock.calls.forEach(([patch]) => {
+          expect(Object.keys(patch).sort()).toEqual([
+            'activeTabId',
+            'comparisonGraphs',
+            'customTabs',
+            'favoriteEntities',
+          ]);
+        });
+        const secondPatch = mockElectronAPI.updateConfig.mock.calls[1][0];
+        expect(secondPatch.customTabs[0].name).toBe('Whole Home');
+        expect(secondPatch.activeTabId).toBe('bedroom');
+
+        rejectFirst(new Error('first write failed'));
+        await Promise.resolve();
+        resolveSecond({
+          ...authoritativeBefore,
+          ...secondPatch,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(state.CONFIG.customTabs[0].name).toBe('Whole Home');
+      expect(state.CONFIG.activeTabId).toBe('bedroom');
+    });
+
+    it('rolls overlapping failed Quick Access writes back to the pre-batch baseline', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'default'
+      );
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      let rejectFirst;
+      let rejectSecond;
+      mockElectronAPI.updateConfig
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectFirst = reject;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectSecond = reject;
+            })
+        );
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        tabBar.querySelector('.quick-access-tab.active .qa-tab-rename').click();
+        const renameInput = tabBar.querySelector('.qa-tab-rename-input');
+        renameInput.value = 'Whole Home';
+        renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        tabBar.querySelector('.quick-access-tab-link[data-tab="bedroom"]').click();
+
+        rejectFirst(new Error('first write failed'));
+        await Promise.resolve();
+        rejectSecond(new Error('second write failed'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(state.CONFIG.customTabs[0].name).toBe('All');
+      expect(state.CONFIG.activeTabId).toBe('default');
+      expect(tabBar.querySelector('.quick-access-tab-link.active').dataset.tab).toBe('default');
+    });
+
+    it('rolls an optimistic comparison graph addition back after rejection', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.renderActiveTab();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'graph write failed',
+        config: authoritativeBefore,
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        await ui.addComparisonGraphTile();
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      const patch = mockElectronAPI.updateConfig.mock.calls[0][0];
+      expect(patch.comparisonGraphs).toHaveLength(1);
+      expect(
+        Object.keys(patch).every((key) =>
+          ['activeTabId', 'comparisonGraphs', 'customTabs', 'favoriteEntities'].includes(key)
+        )
+      ).toBe(true);
+      expect(patch.homeAssistant).toBeUndefined();
+      expect(patch.ui).toBeUndefined();
+      expect(state.CONFIG.comparisonGraphs).toEqual([]);
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+      expect(document.querySelector('.comparison-graph-tile')).toBeNull();
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('graph write failed'),
+        'error',
+        4000
+      );
+    });
+
+    it('serializes comparison graph editor mutations while persistence is pending', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.renderActiveTab();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const beforeAdd = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockImplementationOnce((patch) =>
+        Promise.resolve({
+          ...beforeAdd,
+          ...patch,
+        })
+      );
+      await ui.addComparisonGraphTile();
+
+      const modal = document.querySelector('.comparison-graph-modal');
+      expect(modal).not.toBeNull();
+      mockElectronAPI.updateConfig.mockClear();
+      const beforeEdit = JSON.parse(JSON.stringify(state.CONFIG));
+      let resolveEdit;
+      let editPatch;
+      mockElectronAPI.updateConfig.mockImplementationOnce(
+        (patch) =>
+          new Promise((resolve) => {
+            editPatch = patch;
+            resolveEdit = resolve;
+          })
+      );
+
+      const nameInput = modal.querySelector('input.form-control');
+      const widthSelect = modal.querySelector('select.form-control');
+      nameInput.value = 'Rooms';
+      nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(nameInput.disabled).toBe(true);
+      expect(widthSelect.disabled).toBe(true);
+      expect(modal.querySelector('.comparison-graph-modal-footer button').disabled).toBe(true);
+      expect(modal.querySelector('.close-btn').disabled).toBe(true);
+      modal.querySelector('.close-btn').click();
+      modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(document.querySelector('.comparison-graph-modal')).toBe(modal);
+
+      widthSelect.value = '2';
+      widthSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+
+      resolveEdit({
+        ...beforeEdit,
+        ...editPatch,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(nameInput.disabled).toBe(false);
+      expect(widthSelect.disabled).toBe(false);
+      expect(state.CONFIG.comparisonGraphs[0].name).toBe('Rooms');
     });
 
     it('closes the add-page modal when leaving reorganize mode', () => {

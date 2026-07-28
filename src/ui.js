@@ -295,6 +295,10 @@ let sortableInstance = null; // SortableJS instance for reorganize mode
 let quickAccessViewIdCounter = 0;
 let quickAccessRovingIndex = 0;
 let dialogModalIdCounter = 0;
+let quickAccessPersistenceRevision = 0;
+let quickAccessPendingWriteCount = 0;
+let quickAccessAuthoritativeFallback = null;
+let quickAccessAuthoritativeFallbackRevision = 0;
 
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
@@ -315,32 +319,139 @@ function generateQuickAccessViewId() {
   return `view-${Date.now().toString(36)}-${quickAccessViewIdCounter}-${randomPart}`;
 }
 
+function cloneConfigSnapshot(config = state.CONFIG) {
+  return JSON.parse(JSON.stringify(config || {}));
+}
+
+function requireAuthoritativeConfig(response) {
+  if (!response || response.success === false || !response.homeAssistant) {
+    const error = new Error(response?.error || 'The main process rejected the settings update');
+    if (response && typeof response === 'object') {
+      error.result = response;
+    }
+    throw error;
+  }
+  return response;
+}
+
+async function persistAuthoritativeConfig(nextConfig) {
+  if (!window?.electronAPI?.updateConfig) {
+    throw new Error('Configuration updates are unavailable on this build.');
+  }
+  try {
+    const authoritativeConfig = requireAuthoritativeConfig(
+      await window.electronAPI.updateConfig(nextConfig)
+    );
+    state.setConfig(authoritativeConfig);
+    return state.CONFIG;
+  } catch (error) {
+    const recoveredConfig = error?.result?.config;
+    if (recoveredConfig?.homeAssistant) {
+      state.setConfig(recoveredConfig);
+    }
+    throw error;
+  }
+}
+
+function showConfigPersistenceError(error) {
+  const message = t('Error: {{error}}', {
+    error: error?.message || t('Unknown error'),
+  });
+  uiUtils.showToast(message, 'error', 4000);
+}
+
+function renderQuickAccessConfigState() {
+  renderQuickControls();
+  populateQuickControlsList();
+}
+
+function buildQuickAccessConfigPatch(config) {
+  return {
+    customTabs: cloneConfigSnapshot(config?.customTabs || []),
+    activeTabId: config?.activeTabId,
+    favoriteEntities: [...(config?.favoriteEntities || [])],
+    comparisonGraphs: cloneConfigSnapshot(config?.comparisonGraphs || []),
+  };
+}
+
+async function persistQuickAccessConfigSnapshot(
+  nextConfig,
+  previousConfig,
+  { rollbackOnFailure = true } = {}
+) {
+  const revision = ++quickAccessPersistenceRevision;
+  if (!window?.electronAPI?.updateConfig) {
+    return { success: true, config: nextConfig, revision, isCurrent: true };
+  }
+
+  if (quickAccessPendingWriteCount === 0) {
+    quickAccessAuthoritativeFallback = cloneConfigSnapshot(previousConfig);
+    quickAccessAuthoritativeFallbackRevision = revision - 1;
+  }
+  quickAccessPendingWriteCount += 1;
+
+  try {
+    const authoritativeConfig = requireAuthoritativeConfig(
+      await window.electronAPI.updateConfig(buildQuickAccessConfigPatch(nextConfig))
+    );
+    const isCurrent = revision === quickAccessPersistenceRevision;
+    if (revision >= quickAccessAuthoritativeFallbackRevision) {
+      quickAccessAuthoritativeFallback = cloneConfigSnapshot(authoritativeConfig);
+      quickAccessAuthoritativeFallbackRevision = revision;
+    }
+    if (isCurrent) {
+      state.setConfig(authoritativeConfig);
+      renderQuickAccessConfigState();
+    }
+    return { success: true, config: authoritativeConfig, revision, isCurrent };
+  } catch (error) {
+    console.error('Failed to persist Quick Access configuration:', error);
+    const isCurrent = revision === quickAccessPersistenceRevision;
+    if (isCurrent) {
+      if (rollbackOnFailure) {
+        const recoveredConfig = error?.result?.config;
+        state.setConfig(
+          recoveredConfig?.homeAssistant
+            ? recoveredConfig
+            : cloneConfigSnapshot(quickAccessAuthoritativeFallback || previousConfig)
+        );
+        renderQuickAccessConfigState();
+      }
+      showConfigPersistenceError(error);
+    }
+    return { success: false, error, revision, isCurrent };
+  } finally {
+    quickAccessPendingWriteCount = Math.max(0, quickAccessPendingWriteCount - 1);
+    if (quickAccessPendingWriteCount === 0) {
+      quickAccessAuthoritativeFallback = null;
+      quickAccessAuthoritativeFallbackRevision = 0;
+    }
+  }
+}
+
 function ensureQuickAccessConfig() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {}, { withChanged: true });
   if (!state.CONFIG || normalized.changed) {
+    const previousConfig = cloneConfigSnapshot(state.CONFIG);
     state.setConfig(normalized.config);
-    if (window?.electronAPI?.updateConfig) {
-      window.electronAPI.updateConfig(normalized.config).catch((error) => {
-        console.error('Failed to persist Quick Access view config:', error);
-      });
-    }
+    void persistQuickAccessConfigSnapshot(normalized.config, previousConfig, {
+      // Keep the valid in-memory normalization if an automatic migration cannot
+      // be written; the app can retry it later without restoring malformed state.
+      rollbackOnFailure: false,
+    });
   }
   return normalized.config;
 }
 
 function setQuickAccessConfig(nextConfig, options = {}) {
+  const previousConfig = cloneConfigSnapshot(state.CONFIG);
   const normalized = normalizeQuickAccessConfig(nextConfig || {});
   state.setConfig(normalized);
-  if (window?.electronAPI?.updateConfig) {
-    window.electronAPI.updateConfig(normalized).catch((error) => {
-      console.error('Failed to persist Quick Access view config:', error);
-    });
-  }
+  const persistence = persistQuickAccessConfigSnapshot(normalized, previousConfig);
   if (options.render !== false) {
-    renderQuickControls();
-    populateQuickControlsList();
+    renderQuickAccessConfigState();
   }
-  return normalized;
+  return persistence;
 }
 
 function getActiveQuickAccessEntityIds() {
@@ -491,8 +602,11 @@ function beginInlineTabRename(tabId, buttonEl) {
     const value = input.value.trim();
     if (save && value && value !== currentName) {
       const nextConfig = renameQuickAccessView(state.CONFIG, tabId, value);
-      setQuickAccessConfig(nextConfig);
-      uiUtils.showToast(t('Page renamed'), 'success', 1600);
+      void setQuickAccessConfig(nextConfig).then((result) => {
+        if (result.success) {
+          uiUtils.showToast(t('Page renamed'), 'success', 1600);
+        }
+      });
     } else {
       // Re-render to restore the tab label (revert or no-op change).
       renderQuickAccessTabs();
@@ -529,16 +643,22 @@ async function deleteQuickAccessPage(tabId) {
   if (!confirmed) return;
 
   const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
-  setQuickAccessConfig(nextConfig);
-  uiUtils.showToast(t('Page deleted'), 'info', 1600);
+  const result = await setQuickAccessConfig(nextConfig);
+  if (result.success) {
+    uiUtils.showToast(t('Page deleted'), 'info', 1600);
+  }
 }
 
 function createQuickAccessPage(name) {
   const nextConfig = addQuickAccessView(state.CONFIG, name, {
     idFactory: generateQuickAccessViewId,
   });
-  setQuickAccessConfig(nextConfig);
-  uiUtils.showToast(t('Page added'), 'success', 1600);
+  return setQuickAccessConfig(nextConfig).then((result) => {
+    if (result.success) {
+      uiUtils.showToast(t('Page added'), 'success', 1600);
+    }
+    return result;
+  });
 }
 
 function closeAddPageModal() {
@@ -590,15 +710,35 @@ function showAddPageModal() {
 
   if (input) input.focus();
 
-  const close = () => modal.remove();
-  const submit = () => {
+  let submissionInFlight = false;
+  const setSubmissionInFlight = (inFlight) => {
+    submissionInFlight = inFlight;
+    [input, saveBtn, cancelBtn, closeBtn, ...modal.querySelectorAll('.qa-add-chip')].forEach(
+      (control) => {
+        if (control) control.disabled = inFlight;
+      }
+    );
+  };
+  const close = () => {
+    if (!submissionInFlight) modal.remove();
+  };
+  const submit = async () => {
+    if (submissionInFlight) return;
     const name = (input?.value || '').trim();
     if (!name) {
       if (input) input.focus();
       return;
     }
-    close();
-    createQuickAccessPage(name);
+    setSubmissionInFlight(true);
+    const result = await createQuickAccessPage(name);
+    if (result.success) {
+      modal.remove();
+      return;
+    }
+    if (modal.isConnected) {
+      setSubmissionInFlight(false);
+      input?.focus();
+    }
   };
 
   modal.querySelectorAll('.qa-add-chip').forEach((chip) => {
@@ -617,7 +757,7 @@ function showAddPageModal() {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        submit();
+        void submit();
       } else if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation(); // close the modal without exiting reorganize mode
@@ -1130,7 +1270,7 @@ function addButtonsToElement(item) {
           );
 
           if (confirmed) {
-            removeFromQuickAccess(entityId);
+            await removeFromQuickAccess(entityId);
           }
         },
         true
@@ -1155,12 +1295,12 @@ function showRenameModal(entityId) {
     const entity = state.STATES[entityId];
     if (!entity) return;
 
-    const currentName =
+    let currentName =
       state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
     const hasValueSizeControl = isQuickAccessTileValueSizeApplicable(entity);
     const hasCameraPreviewControl = getEntityDomain(entity.entity_id) === 'camera';
-    const currentValueSize = getQuickAccessTileValueSize(entityId);
-    const currentCameraPreviewRefresh = getQuickAccessCameraPreviewRefresh(entityId);
+    let currentValueSize = getQuickAccessTileValueSize(entityId);
+    let currentCameraPreviewRefresh = getQuickAccessCameraPreviewRefresh(entityId);
     const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS.map(
       (option) => `
                 <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
@@ -1234,18 +1374,62 @@ function showRenameModal(entityId) {
       }
     };
 
+    let tileSettingsMutationInFlight = false;
+    const setTileSettingsMutationInFlight = (inFlight) => {
+      tileSettingsMutationInFlight = inFlight;
+      [
+        input,
+        valueSizeSelect,
+        cameraPreviewRefreshSelect,
+        saveBtn,
+        resetBtn,
+        cancelBtn,
+        closeBtn,
+      ].forEach((control) => {
+        if (control) control.disabled = inFlight;
+      });
+    };
+    const reconcileRecoveredTileSettings = (error) => {
+      if (!error?.result?.config?.homeAssistant) return;
+
+      refreshQuickAccessAfterTileSettingsChange();
+      const authoritativeName =
+        state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
+      const authoritativeValueSize = getQuickAccessTileValueSize(entityId);
+      const authoritativeCameraRefresh = getQuickAccessCameraPreviewRefresh(entityId);
+      const relevantConfigChanged =
+        authoritativeName !== currentName ||
+        authoritativeValueSize !== currentValueSize ||
+        authoritativeCameraRefresh !== currentCameraPreviewRefresh;
+
+      // Preserve the user's retryable form values for an ordinary save failure. If
+      // main reports that this tile changed concurrently, show that authoritative
+      // state instead of leaving the editor detached from the rendered tile.
+      if (relevantConfigChanged) {
+        if (input) input.value = authoritativeName;
+        if (valueSizeSelect) valueSizeSelect.value = authoritativeValueSize;
+        if (cameraPreviewRefreshSelect) {
+          cameraPreviewRefreshSelect.value = authoritativeCameraRefresh;
+        }
+        currentName = authoritativeName;
+        currentValueSize = authoritativeValueSize;
+        currentCameraPreviewRefresh = authoritativeCameraRefresh;
+      }
+    };
+
     if (saveBtn) {
       saveBtn.onclick = async () => {
+        if (tileSettingsMutationInFlight) return;
         const newName = input ? input.value.trim() : '';
+        const nextConfig = cloneConfigSnapshot(state.CONFIG);
         let changed = false;
         let renamed = false;
 
         if (newName && newName !== currentName) {
-          // Initialize customEntityNames if it doesn't exist
-          if (!state.CONFIG.customEntityNames) {
-            state.CONFIG.customEntityNames = {};
+          if (!nextConfig.customEntityNames) {
+            nextConfig.customEntityNames = {};
           }
-          state.CONFIG.customEntityNames[entityId] = newName;
+          nextConfig.customEntityNames[entityId] = newName;
           changed = true;
           renamed = true;
         }
@@ -1254,7 +1438,7 @@ function showRenameModal(entityId) {
           ? normalizeQuickAccessTileValueSize(valueSizeSelect?.value || 'auto')
           : currentValueSize;
         if (hasValueSizeControl && nextValueSize !== currentValueSize) {
-          setQuickAccessTileValueSize(entityId, nextValueSize);
+          setQuickAccessTileValueSize(entityId, nextValueSize, nextConfig);
           changed = true;
         }
 
@@ -1262,79 +1446,115 @@ function showRenameModal(entityId) {
           ? camera.normalizeCameraPreviewRefresh(cameraPreviewRefreshSelect?.value || 'off')
           : currentCameraPreviewRefresh;
         if (hasCameraPreviewControl && nextCameraPreviewRefresh !== currentCameraPreviewRefresh) {
-          setQuickAccessCameraPreviewRefresh(entityId, nextCameraPreviewRefresh);
+          setQuickAccessCameraPreviewRefresh(entityId, nextCameraPreviewRefresh, nextConfig);
           changed = true;
         }
 
-        if (changed) {
-          await window.electronAPI.updateConfig(state.CONFIG);
+        if (!changed) {
+          modal.remove();
+          return;
+        }
+
+        setTileSettingsMutationInFlight(true);
+        try {
+          await persistAuthoritativeConfig({
+            customEntityNames: nextConfig.customEntityNames || {},
+            quickAccessTileOptions: nextConfig.quickAccessTileOptions || {},
+          });
           refreshQuickAccessAfterTileSettingsChange();
           const toastMessage = renamed
             ? t('Renamed to "{{name}}"', { name: newName })
             : t('Tile settings saved');
           uiUtils.showToast(toastMessage, 'success', 2000);
+          modal.remove();
+        } catch (error) {
+          console.error('Failed to save Quick Access tile settings:', error);
+          reconcileRecoveredTileSettings(error);
+          showConfigPersistenceError(error);
+        } finally {
+          if (modal.isConnected) setTileSettingsMutationInFlight(false);
         }
-        modal.remove();
       };
     }
 
     if (resetBtn) {
       resetBtn.onclick = async () => {
+        if (tileSettingsMutationInFlight) return;
+        const nextConfig = cloneConfigSnapshot(state.CONFIG);
         let changed = false;
 
-        if (state.CONFIG.customEntityNames && state.CONFIG.customEntityNames[entityId]) {
-          delete state.CONFIG.customEntityNames[entityId];
+        if (nextConfig.customEntityNames && nextConfig.customEntityNames[entityId]) {
+          delete nextConfig.customEntityNames[entityId];
           changed = true;
         }
 
         const hadValueSizeOverride =
-          state.CONFIG.quickAccessTileOptions?.[entityId]?.valueSize !== undefined;
+          nextConfig.quickAccessTileOptions?.[entityId]?.valueSize !== undefined;
         if (hadValueSizeOverride) {
-          setQuickAccessTileValueSize(entityId, 'auto');
+          setQuickAccessTileValueSize(entityId, 'auto', nextConfig);
           changed = true;
         }
 
         const hadCameraPreviewOverride =
-          state.CONFIG.quickAccessTileOptions?.[entityId]?.cameraPreviewRefresh !== undefined;
+          nextConfig.quickAccessTileOptions?.[entityId]?.cameraPreviewRefresh !== undefined;
         if (hadCameraPreviewOverride) {
-          setQuickAccessCameraPreviewRefresh(entityId, 'off');
+          setQuickAccessCameraPreviewRefresh(entityId, 'off', nextConfig);
           changed = true;
         }
 
-        if (changed) {
-          await window.electronAPI.updateConfig(state.CONFIG);
-          refreshQuickAccessAfterTileSettingsChange();
-
-          uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);
+        if (!changed) {
+          modal.remove();
+          return;
         }
-        modal.remove();
+
+        setTileSettingsMutationInFlight(true);
+        try {
+          await persistAuthoritativeConfig({
+            customEntityNames: nextConfig.customEntityNames || {},
+            quickAccessTileOptions: nextConfig.quickAccessTileOptions || {},
+          });
+          refreshQuickAccessAfterTileSettingsChange();
+          uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);
+          modal.remove();
+        } catch (error) {
+          console.error('Failed to reset Quick Access tile settings:', error);
+          reconcileRecoveredTileSettings(error);
+          showConfigPersistenceError(error);
+        } finally {
+          if (modal.isConnected) setTileSettingsMutationInFlight(false);
+        }
       };
     }
 
     if (cancelBtn) {
-      cancelBtn.onclick = () => modal.remove();
+      cancelBtn.onclick = () => {
+        if (!tileSettingsMutationInFlight) modal.remove();
+      };
     }
 
     if (closeBtn) {
-      closeBtn.onclick = () => modal.remove();
+      closeBtn.onclick = () => {
+        if (!tileSettingsMutationInFlight) modal.remove();
+      };
     }
 
     modal.onclick = (e) => {
-      if (e.target === modal) modal.remove();
+      if (e.target === modal && !tileSettingsMutationInFlight) modal.remove();
     };
   } catch (error) {
     console.error('Error showing rename modal:', error);
   }
 }
 
-function removeFromQuickAccess(entityId) {
+async function removeFromQuickAccess(entityId) {
   try {
     // Removing a graph tile deletes the graph itself — leaving it behind would strand config that
     // has no way back into the UI.
     const nextConfig = isComparisonGraphId(entityId)
       ? removeComparisonGraph(state.CONFIG, entityId)
       : removeEntityFromQuickAccessViews(state.CONFIG, entityId);
-    setQuickAccessConfig(nextConfig, { render: false });
+    const result = await setQuickAccessConfig(nextConfig, { render: false });
+    if (!result.success) return result;
 
     // Re-render
     renderQuickControls();
@@ -1345,8 +1565,11 @@ function removeFromQuickAccess(entityId) {
     }
 
     uiUtils.showToast('Entity removed from Quick Access', 'success', 2000);
+    return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);
+    showConfigPersistenceError(error);
+    return { success: false, error };
   }
 }
 
@@ -2709,19 +2932,20 @@ function getGraphSearchAlias(entity) {
  * Persists a config that contains comparison graph changes, then re-renders the grid.
  *
  * @param {Object} nextConfig
- * @returns {void}
+ * @returns {Promise<Object>}
  */
 function persistComparisonGraphConfig(nextConfig) {
-  setQuickAccessConfig(nextConfig, { render: false });
+  const persistence = setQuickAccessConfig(nextConfig, { render: false });
   renderQuickControls();
+  return persistence;
 }
 
 /**
  * Creates an empty comparison graph in the active view and opens its editor.
  *
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function addComparisonGraphTile() {
+async function addComparisonGraphTile() {
   const config = ensureQuickAccessConfig();
   const activeTab = getActiveQuickAccessTab(config);
   const nextConfig = addComparisonGraph(config, {
@@ -2729,9 +2953,10 @@ function addComparisonGraphTile() {
     entityIds: [],
     tabId: activeTab?.id,
   });
-  persistComparisonGraphConfig(nextConfig);
+  const result = await persistComparisonGraphConfig(nextConfig);
+  if (!result.success) return;
 
-  const added = (nextConfig.comparisonGraphs || []).at(-1);
+  const added = (result.config?.comparisonGraphs || nextConfig.comparisonGraphs || []).at(-1);
   if (added) showComparisonGraphModal(added.id);
 }
 
@@ -2754,6 +2979,10 @@ function showComparisonGraphModal(graphId) {
   });
   const body = modal.querySelector('.modal-body');
   if (!body) return;
+  const removeGraphModal = () => {
+    releaseAccessibleDialogModal(modal);
+    modal.remove();
+  };
 
   const nameGroup = document.createElement('div');
   nameGroup.className = 'form-group';
@@ -2820,9 +3049,76 @@ function showComparisonGraphModal(graphId) {
   footer.appendChild(deleteBtn);
   body.appendChild(footer);
 
-  const save = (changes) => {
-    persistComparisonGraphConfig(updateComparisonGraph(state.CONFIG, graphId, changes));
+  const modalCloseBtn = modal.querySelector('.close-btn');
+  let graphMutationInFlight = false;
+  const setGraphMutationInFlight = (inFlight) => {
+    graphMutationInFlight = inFlight;
+    [
+      nameInput,
+      widthSelect,
+      search,
+      deleteBtn,
+      modalCloseBtn,
+      ...list.querySelectorAll('button'),
+    ].forEach((control) => {
+      if (control) control.disabled = inFlight;
+    });
   };
+  modal.addEventListener(
+    'keydown',
+    (event) => {
+      if (graphMutationInFlight && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+  modal.addEventListener(
+    'click',
+    (event) => {
+      if (
+        graphMutationInFlight &&
+        (event.target === modal || event.target.closest?.('.close-btn'))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+
+  const reconcileEditor = () => {
+    const current = getComparisonGraphById(graphId);
+    if (!current) {
+      removeGraphModal();
+      return;
+    }
+    nameInput.value = current.name;
+    widthSelect.value = String(normalizeComparisonGraphSpan(current.span));
+  };
+
+  const persistEditorConfig = async (nextConfig, { reconcileOnFailure = true } = {}) => {
+    if (graphMutationInFlight) {
+      return { success: false, ignored: true, isCurrent: false };
+    }
+
+    setGraphMutationInFlight(true);
+    try {
+      const result = await persistComparisonGraphConfig(nextConfig);
+      if (!result.success && result.isCurrent !== false && reconcileOnFailure) {
+        reconcileEditor();
+      }
+      return result;
+    } finally {
+      if (modal.isConnected) {
+        setGraphMutationInFlight(false);
+        renderList();
+      }
+    }
+  };
+  const save = (changes) =>
+    persistEditorConfig(updateComparisonGraph(state.CONFIG, graphId, changes));
 
   const renderUnitState = (graph) => {
     const { groups, hasMismatch } = groupSeriesByUnit(
@@ -2850,7 +3146,7 @@ function showComparisonGraphModal(graphId) {
   const renderList = () => {
     const graph = getComparisonGraphById(graphId);
     if (!graph) {
-      modal.remove();
+      removeGraphModal();
       return;
     }
 
@@ -2950,13 +3246,14 @@ function showComparisonGraphModal(graphId) {
       button.type = 'button';
       button.className = `entity-selector-btn ${isSelected ? 'remove' : 'add'}`;
       button.textContent = isSelected ? t('Remove') : t('Add');
-      button.disabled = !isSelected && atCapacity;
-      button.addEventListener('click', () => {
+      button.disabled = graphMutationInFlight || (!isSelected && atCapacity);
+      button.addEventListener('click', async () => {
+        if (graphMutationInFlight) return;
         const current = getComparisonGraphById(graphId);
         if (!current) return;
 
         if (isSelected) {
-          save({ entityIds: current.entityIds.filter((id) => id !== entityId) });
+          await save({ entityIds: current.entityIds.filter((id) => id !== entityId) });
         } else {
           const units = new Set(
             current.entityIds.map((id) => getGraphSeriesUnitFor(state.STATES?.[id])).filter(Boolean)
@@ -2970,9 +3267,8 @@ function showComparisonGraphModal(graphId) {
               3500
             );
           }
-          save({ entityIds: [...current.entityIds, entityId] });
+          await save({ entityIds: [...current.entityIds, entityId] });
         }
-        renderList();
       });
 
       item.appendChild(main);
@@ -2982,23 +3278,26 @@ function showComparisonGraphModal(graphId) {
     });
   };
 
-  nameInput.addEventListener('change', () => {
-    save({ name: nameInput.value });
+  nameInput.addEventListener('change', async () => {
+    await save({ name: nameInput.value });
   });
-  widthSelect.addEventListener('change', () => {
-    save({ span: Number(widthSelect.value) });
+  widthSelect.addEventListener('change', async () => {
+    await save({ span: Number(widthSelect.value) });
   });
   search.addEventListener('input', renderList);
 
   deleteBtn.addEventListener('click', async () => {
+    if (graphMutationInFlight) return;
     const confirmed = await uiUtils.showConfirm(
       t('Delete graph'),
       t('This removes the graph and its tile.'),
       { confirmText: t('Delete'), confirmClass: 'btn-danger' }
     );
-    if (!confirmed) return;
-    persistComparisonGraphConfig(removeComparisonGraph(state.CONFIG, graphId));
-    modal.remove();
+    if (!confirmed || graphMutationInFlight) return;
+    const result = await persistEditorConfig(removeComparisonGraph(state.CONFIG, graphId), {
+      reconcileOnFailure: false,
+    });
+    if (result.success && modal.isConnected) removeGraphModal();
   });
 
   renderList();
@@ -3025,20 +3324,20 @@ function getQuickAccessCameraPreviewRefresh(entityId) {
   );
 }
 
-function ensureQuickAccessTileOptionsConfig() {
+function ensureQuickAccessTileOptionsConfig(targetConfig = state.CONFIG) {
   if (
-    !state.CONFIG.quickAccessTileOptions ||
-    typeof state.CONFIG.quickAccessTileOptions !== 'object' ||
-    Array.isArray(state.CONFIG.quickAccessTileOptions)
+    !targetConfig.quickAccessTileOptions ||
+    typeof targetConfig.quickAccessTileOptions !== 'object' ||
+    Array.isArray(targetConfig.quickAccessTileOptions)
   ) {
-    state.CONFIG.quickAccessTileOptions = {};
+    targetConfig.quickAccessTileOptions = {};
   }
-  return state.CONFIG.quickAccessTileOptions;
+  return targetConfig.quickAccessTileOptions;
 }
 
-function setQuickAccessTileValueSize(entityId, valueSize) {
+function setQuickAccessTileValueSize(entityId, valueSize, targetConfig = state.CONFIG) {
   const normalized = normalizeQuickAccessTileValueSize(valueSize);
-  const tileOptions = ensureQuickAccessTileOptionsConfig();
+  const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
 
   if (normalized === 'auto') {
     if (tileOptions[entityId]) {
@@ -3057,9 +3356,9 @@ function setQuickAccessTileValueSize(entityId, valueSize) {
   return normalized;
 }
 
-function setQuickAccessCameraPreviewRefresh(entityId, refreshValue) {
+function setQuickAccessCameraPreviewRefresh(entityId, refreshValue, targetConfig = state.CONFIG) {
   const normalized = camera.normalizeCameraPreviewRefresh(refreshValue);
-  const tileOptions = ensureQuickAccessTileOptionsConfig();
+  const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
 
   if (normalized === 'off') {
     if (tileOptions[entityId]) {
@@ -9406,17 +9705,9 @@ function populateWeatherEntitiesList() {
 
 async function selectWeatherEntity(entityId) {
   try {
-    // Update config
-    const updatedConfig = {
-      ...state.CONFIG,
+    await persistAuthoritativeConfig({
       selectedWeatherEntity: entityId,
-    };
-
-    // Persist to disk
-    await window.electronAPI.updateConfig(updatedConfig);
-
-    // Update local state
-    state.setConfig(updatedConfig);
+    });
     refreshVisibleEntityCache();
 
     // Refresh weather display
@@ -9436,6 +9727,11 @@ async function selectWeatherEntity(entityId) {
     }
   } catch (error) {
     console.error('Error selecting weather entity:', error);
+    if (error?.result?.config?.homeAssistant) {
+      refreshVisibleEntityCache();
+      updateWeatherFromHA();
+      populateWeatherEntitiesList();
+    }
     uiUtils.showToast(t('Failed to save weather entity selection'), 'error', 3000);
   }
 }
