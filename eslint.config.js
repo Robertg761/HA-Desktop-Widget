@@ -18,6 +18,7 @@ module.exports = [
       'scripts/*.cjs',
       'src/desktop-pin-ipc.cjs',
       'src/ha-protocol.cjs',
+      'src/i18n-main.cjs',
       'src/linux-startup.cjs',
       'src/main-logging.cjs',
       'src/platform.cjs',

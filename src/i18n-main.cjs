@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const nodeCrypto = require('crypto');
 const { fileURLToPath, pathToFileURL } = require('url');
 const axios = require('axios');
 
@@ -57,7 +57,7 @@ function ensureObject(value) {
 }
 
 function hashContent(content) {
-  return crypto.createHash('sha256').update(content).digest('hex');
+  return nodeCrypto.createHash('sha256').update(content).digest('hex');
 }
 
 function isFileSource(source) {

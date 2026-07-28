@@ -174,7 +174,10 @@ async function validatePublicArtworkUrl(value, lookup = dns.promises.lookup) {
     throw createProtocolError('Artwork URL is not allowed', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
   }
 
-  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '');
+  const hostname = parsed.hostname
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^\[|\]$/g, '');
   if (
     !hostname ||
     hostname === 'localhost' ||
