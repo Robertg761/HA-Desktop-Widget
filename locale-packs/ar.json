@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -365,6 +365,12 @@
     "Numeric date": "تاريخ رقمي",
     "Date and time always use your selected language and regional conventions.": "يستخدم التاريخ والوقت دائمًا اللغة المحددة والتنسيقات الإقليمية.",
     "Development climate demo — no Home Assistant connection": "عرض توضيحي للمناخ للتطوير — لا يوجد اتصال بـ Home Assistant",
-    "Development demo": "عرض توضيحي للتطوير"
+    "Development demo": "عرض توضيحي للتطوير",
+    "Hotkey action": "إجراء الاختصار",
+    "Weather entities": "كيانات الطقس",
+    "Command palette": "لوحة الأوامر",
+    "Search entities": "البحث عن الكيانات",
+    "Close command palette": "إغلاق لوحة الأوامر",
+    "No matching entities": "لا توجد كيانات مطابقة"
   }
 }

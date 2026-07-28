@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -365,6 +365,12 @@
     "Numeric date": "अंकीय दिनांक",
     "Date and time always use your selected language and regional conventions.": "दिनांक और समय हमेशा आपकी चुनी हुई भाषा और क्षेत्रीय परंपराओं का उपयोग करते हैं।",
     "Development climate demo — no Home Assistant connection": "डेवलपमेंट क्लाइमेट डेमो — Home Assistant कनेक्शन नहीं",
-    "Development demo": "डेवलपमेंट डेमो"
+    "Development demo": "डेवलपमेंट डेमो",
+    "Hotkey action": "हॉटकी कार्रवाई",
+    "Weather entities": "मौसम एंटिटी",
+    "Command palette": "कमांड पैलेट",
+    "Search entities": "एंटिटी खोजें",
+    "Close command palette": "कमांड पैलेट बंद करें",
+    "No matching entities": "कोई मेल खाती एंटिटी नहीं"
   }
 }

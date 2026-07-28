@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -365,6 +365,12 @@
     "Numeric date": "Date numérique",
     "Date and time always use your selected language and regional conventions.": "La date et l'heure utilisent toujours la langue et les conventions régionales sélectionnées.",
     "Development climate demo — no Home Assistant connection": "Démo de climat pour le développement — aucune connexion à Home Assistant",
-    "Development demo": "Démo de développement"
+    "Development demo": "Démo de développement",
+    "Hotkey action": "Action du raccourci",
+    "Weather entities": "Entités météo",
+    "Command palette": "Palette de commandes",
+    "Search entities": "Rechercher des entités",
+    "Close command palette": "Fermer la palette de commandes",
+    "No matching entities": "Aucune entité correspondante"
   }
 }

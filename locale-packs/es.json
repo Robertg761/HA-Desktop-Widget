@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -365,6 +365,12 @@
     "Numeric date": "Fecha numérica",
     "Date and time always use your selected language and regional conventions.": "La fecha y la hora siempre usan el idioma y las convenciones regionales seleccionados.",
     "Development climate demo — no Home Assistant connection": "Demostración de clima para desarrollo — sin conexión a Home Assistant",
-    "Development demo": "Demostración de desarrollo"
+    "Development demo": "Demostración de desarrollo",
+    "Hotkey action": "Acción del atajo",
+    "Weather entities": "Entidades meteorológicas",
+    "Command palette": "Paleta de comandos",
+    "Search entities": "Buscar entidades",
+    "Close command palette": "Cerrar la paleta de comandos",
+    "No matching entities": "No hay entidades coincidentes"
   }
 }

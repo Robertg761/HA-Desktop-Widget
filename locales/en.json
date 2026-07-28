@@ -360,5 +360,11 @@
   "{{count}} tiles wide": "{{count}} tiles wide",
   "This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.": "This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.",
   "Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.": "Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.",
-  "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need."
+  "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.",
+  "Hotkey action": "Hotkey action",
+  "Weather entities": "Weather entities",
+  "Command palette": "Command palette",
+  "Search entities": "Search entities",
+  "Close command palette": "Close command palette",
+  "No matching entities": "No matching entities"
 }
