@@ -8,6 +8,8 @@ const {
   MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
   createElectronNetBinaryFetcher,
   createHaProtocolHandler,
+  isPrivateOrReservedIp,
+  validatePublicArtworkUrl,
 } = require('../../src/ha-protocol.cjs');
 const { isAllowedHlsProxyPath } = require('../../src/main-security.cjs');
 
@@ -36,6 +38,7 @@ function createHandler(overrides = {}) {
     fetchStream,
     fetchBinary,
     isAllowedHlsProxyPath,
+    validateExternalArtworkUrl: jest.fn(async () => true),
     log,
     ...overrides,
   };
@@ -362,7 +365,8 @@ describe('Home Assistant protocol handler', () => {
   });
 
   it('does not attach the Home Assistant token to external artwork requests', async () => {
-    const { handler, fetchBinary } = createHandler();
+    const validateExternalArtworkUrl = jest.fn(async () => true);
+    const { handler, fetchBinary } = createHandler({ validateExternalArtworkUrl });
     const artworkUrl = 'https://cdn.example.test/artwork.png';
     const encodedUrl = encodeURIComponent(Buffer.from(artworkUrl).toString('base64'));
 
@@ -370,6 +374,25 @@ describe('Home Assistant protocol handler', () => {
 
     expect(fetchBinary.mock.calls[0][0]).toBe(artworkUrl);
     expect(fetchBinary.mock.calls[0][1]).toEqual({});
+    expect(validateExternalArtworkUrl).toHaveBeenCalledWith(artworkUrl);
+    expect(fetchBinary.mock.calls[0][3].validateRedirectUrl).toBe(validateExternalArtworkUrl);
+  });
+
+  it('rejects external artwork that resolves to a private destination', async () => {
+    const validateExternalArtworkUrl = jest.fn(async () => {
+      const error = new Error('blocked');
+      error.statusCode = 403;
+      throw error;
+    });
+    const { handler, fetchBinary } = createHandler({ validateExternalArtworkUrl });
+    const encodedUrl = encodeURIComponent(
+      Buffer.from('http://169.254.169.254/latest/meta-data').toString('base64')
+    );
+
+    const response = await handler(createRequest(`ha://media_artwork/${encodedUrl}`));
+
+    expect(response.status).toBe(403);
+    expect(fetchBinary).not.toHaveBeenCalled();
   });
 
   it('fails closed for missing credentials, unknown hosts, and bounded-fetch errors', async () => {
@@ -400,6 +423,7 @@ describe('Electron net binary fetcher', () => {
     const request = new EventEmitter();
     request.setHeader = jest.fn();
     request.abort = jest.fn();
+    request.followRedirect = jest.fn();
     request.end = jest.fn(() => {
       const response = new EventEmitter();
       Object.assign(response, responseDefinition);
@@ -467,5 +491,75 @@ describe('Electron net binary fetcher', () => {
       statusCode: 415,
       code: 'MEDIA_ARTWORK_UNSUPPORTED_TYPE',
     });
+  });
+
+  it('validates a redirect before following it', async () => {
+    const { net, request } = createNet({
+      statusCode: 200,
+      headers: { 'content-type': ['image/png'], 'content-length': ['4'] },
+      chunks: [Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+    });
+    const validateRedirectUrl = jest.fn(async () => true);
+    const fetchPromise = createElectronNetBinaryFetcher(net)(
+      'https://example.test/start',
+      {},
+      1000,
+      {
+        validateRedirectUrl,
+      }
+    );
+
+    request.emit('redirect', 302, 'GET', 'https://cdn.example.test/image.png', {});
+    await Promise.resolve();
+    await Promise.resolve();
+    await fetchPromise;
+
+    expect(validateRedirectUrl).toHaveBeenCalledWith('https://cdn.example.test/image.png');
+    expect(request.followRedirect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('external artwork URL validation', () => {
+  it.each([
+    '127.0.0.1',
+    '10.0.0.8',
+    '169.254.169.254',
+    '192.168.1.20',
+    '::1',
+    'fd00::1',
+    'fe80::1',
+  ])('classifies %s as private or reserved', (address) => {
+    expect(isPrivateOrReservedIp(address)).toBe(true);
+  });
+
+  it('allows a hostname only when every resolved address is public', async () => {
+    const publicLookup = jest.fn(async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+    ]);
+    const privateLookup = jest.fn(async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '192.168.1.3', family: 4 },
+    ]);
+
+    await expect(
+      validatePublicArtworkUrl('https://images.example.test/cover.png', publicLookup)
+    ).resolves.toBe('https://images.example.test/cover.png');
+    await expect(
+      validatePublicArtworkUrl('https://images.example.test/cover.png', privateLookup)
+    ).rejects.toMatchObject({ statusCode: 403, code: 'MEDIA_ARTWORK_BLOCKED_URL' });
+  });
+
+  it.each([
+    'http://localhost/image.png',
+    'http://printer.local/image.png',
+    'http://169.254.169.254/latest/meta-data',
+    'https://user:password@example.test/image.png',
+  ])('blocks non-public URL %s before DNS lookup', async (url) => {
+    const lookup = jest.fn();
+    await expect(validatePublicArtworkUrl(url, lookup)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    expect(lookup).not.toHaveBeenCalled();
   });
 });

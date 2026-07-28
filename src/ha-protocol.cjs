@@ -1,3 +1,6 @@
+const dns = require('dns');
+const nodeNet = require('net');
+
 const MEDIA_ARTWORK_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MEDIA_ARTWORK_GENERIC_CONTENT_TYPES = new Set([
   'application/octet-stream',
@@ -109,6 +112,105 @@ function resolveMediaArtworkContentType(headers, buffer) {
   return null;
 }
 
+function isPrivateOrReservedIp(address) {
+  const ipVersion = nodeNet.isIP(address);
+  if (ipVersion === 4) {
+    const parts = address.split('.').map((part) => Number.parseInt(part, 10));
+    const value = parts.reduce((result, part) => ((result << 8) | part) >>> 0, 0);
+    const inCidr = (base, prefixLength) => {
+      const baseValue = base
+        .split('.')
+        .map((part) => Number.parseInt(part, 10))
+        .reduce((result, part) => ((result << 8) | part) >>> 0, 0);
+      const mask = prefixLength === 0 ? 0 : (0xffffffff << (32 - prefixLength)) >>> 0;
+      return (value & mask) >>> 0 === (baseValue & mask) >>> 0;
+    };
+    return [
+      ['0.0.0.0', 8],
+      ['10.0.0.0', 8],
+      ['100.64.0.0', 10],
+      ['127.0.0.0', 8],
+      ['169.254.0.0', 16],
+      ['172.16.0.0', 12],
+      ['192.0.0.0', 24],
+      ['192.0.2.0', 24],
+      ['192.88.99.0', 24],
+      ['192.168.0.0', 16],
+      ['198.18.0.0', 15],
+      ['198.51.100.0', 24],
+      ['203.0.113.0', 24],
+      ['224.0.0.0', 4],
+      ['240.0.0.0', 4],
+    ].some(([base, prefixLength]) => inCidr(base, prefixLength));
+  }
+
+  if (ipVersion === 6) {
+    const normalized = address.toLowerCase().split('%')[0];
+    const mappedIpv4 = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+    if (mappedIpv4) return isPrivateOrReservedIp(mappedIpv4);
+    return (
+      normalized === '::' ||
+      normalized === '::1' ||
+      normalized.startsWith('::ffff:') ||
+      /^f[cd]/.test(normalized) ||
+      /^fe[89ab]/.test(normalized) ||
+      normalized.startsWith('ff') ||
+      normalized.startsWith('2001:db8:')
+    );
+  }
+
+  return true;
+}
+
+async function validatePublicArtworkUrl(value, lookup = dns.promises.lookup) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw createProtocolError('Artwork URL is invalid', 400, 'MEDIA_ARTWORK_INVALID_URL');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw createProtocolError('Artwork URL is not allowed', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+  }
+
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '');
+  if (
+    !hostname ||
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.home.arpa') ||
+    (!hostname.includes('.') && nodeNet.isIP(hostname) === 0)
+  ) {
+    throw createProtocolError('Artwork URL is not public', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+  }
+
+  if (nodeNet.isIP(hostname)) {
+    if (isPrivateOrReservedIp(hostname)) {
+      throw createProtocolError('Artwork URL is not public', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+    }
+    return parsed.toString();
+  }
+
+  let addresses;
+  try {
+    addresses = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw createProtocolError('Artwork host could not be resolved', 502, 'MEDIA_ARTWORK_DNS_ERROR');
+  }
+  const resolved = Array.isArray(addresses) ? addresses : [addresses];
+  if (
+    resolved.length === 0 ||
+    resolved.some((entry) => isPrivateOrReservedIp(String(entry?.address || '')))
+  ) {
+    throw createProtocolError('Artwork URL is not public', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+  }
+
+  return parsed.toString();
+}
+
 function createElectronNetBinaryFetcher(net) {
   return function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000, options = {}) {
     return new Promise((resolve, reject) => {
@@ -120,11 +222,16 @@ function createElectronNetBinaryFetcher(net) {
         : null;
       const validateContentType =
         typeof options.validateContentType === 'function' ? options.validateContentType : null;
+      const validateRedirectUrl =
+        typeof options.validateRedirectUrl === 'function' ? options.validateRedirectUrl : null;
+      let redirectsRemaining = Number.isFinite(Number(options.maxRedirects))
+        ? Math.max(0, Math.floor(Number(options.maxRedirects)))
+        : 5;
 
       const request = net.request({
         method: 'GET',
         url,
-        redirect: 'follow',
+        redirect: 'manual',
       });
 
       Object.entries(headers || {}).forEach(([key, value]) => {
@@ -208,6 +315,26 @@ function createElectronNetBinaryFetcher(net) {
         });
 
         response.on('error', rejectRequest);
+      });
+
+      request.on('redirect', (_statusCode, _method, redirectUrl) => {
+        if (completed) return;
+        if (redirectsRemaining <= 0) {
+          rejectRequest(
+            createProtocolError(
+              'Artwork redirected too many times',
+              502,
+              'MEDIA_ARTWORK_TOO_MANY_REDIRECTS'
+            )
+          );
+          return;
+        }
+        redirectsRemaining -= 1;
+        Promise.resolve(validateRedirectUrl ? validateRedirectUrl(redirectUrl) : undefined)
+          .then(() => {
+            if (!completed) request.followRedirect();
+          })
+          .catch(rejectRequest);
       });
 
       request.on('error', rejectRequest);
@@ -303,6 +430,7 @@ function createHaProtocolHandler({
   log = console,
   ResponseCtor = globalThis.Response,
   maxArtworkBytes = MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
+  validateExternalArtworkUrl = validatePublicArtworkUrl,
 }) {
   if (typeof getConfig !== 'function') throw new TypeError('getConfig must be a function');
   if (typeof fetchStream !== 'function') throw new TypeError('fetchStream must be a function');
@@ -442,10 +570,25 @@ function createHaProtocolHandler({
         const upstream = isExternalUrl
           ? artworkUrl
           : `${haUrl}${artworkUrl.startsWith('/') ? artworkUrl : `/${artworkUrl}`}`;
+        if (isExternalUrl) {
+          await validateExternalArtworkUrl(upstream);
+        }
         const headers = isExternalUrl ? {} : { Authorization: `Bearer ${token}` };
+        const expectedHaOrigin = new URL(haUrl).origin;
         const response = await fetchBinary(upstream, headers, 10000, {
           maxBytes: maxArtworkBytes,
           validateContentType: isPotentialMediaArtworkContentType,
+          validateRedirectUrl: isExternalUrl
+            ? validateExternalArtworkUrl
+            : (redirectUrl) => {
+                if (new URL(redirectUrl).origin !== expectedHaOrigin) {
+                  throw createProtocolError(
+                    'Authenticated artwork redirect changed origin',
+                    403,
+                    'MEDIA_ARTWORK_BLOCKED_REDIRECT'
+                  );
+                }
+              },
         });
 
         if (response.status < 200 || response.status >= 300) {
@@ -477,6 +620,8 @@ module.exports = {
   MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
   createElectronNetBinaryFetcher,
   createHaProtocolHandler,
+  isPrivateOrReservedIp,
   isPotentialMediaArtworkContentType,
   resolveMediaArtworkContentType,
+  validatePublicArtworkUrl,
 };
