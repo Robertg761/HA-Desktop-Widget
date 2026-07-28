@@ -191,7 +191,7 @@ toggle it; press and hold it to exercise the target-temperature, mode, fan, and 
 This command only works with the development `--dev` launch path. It creates a fresh temporary
 Electron profile for that run, blocks all real Home Assistant service calls, and never reads or
 writes the normal app configuration, token, desktop pins, or profile-sync data. Remove the
-`dev:climate-demo` script and `src/dev-climate-demo.js` when the fixture is no longer useful.
+`dev:climate-demo` script and `development/dev-climate-demo.js` when the fixture is no longer useful.
 
 To test the card alongside a real Home Assistant connection, run
 `npm run dev:climate-overlay`. This development-only mode leaves the normal Electron profile and
