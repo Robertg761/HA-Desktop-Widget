@@ -248,6 +248,25 @@ This is the first public beta of the 3.8.0 feature release.
 - Expanded camera previews now remain open across Home Assistant camera-state updates instead of
   being mistaken for a disposed tile while their shared visual is temporarily outside the grid.
 
+## [3.7.2] - 2026-07-18
+
+### Added
+
+- Added opt-in camera visuals on Quick Access tiles: authenticated live streams or lower-usage
+  snapshots, with visibility-aware network cleanup and an expanded viewer.
+
+### Changed
+
+- Linux popup hotkeys moved to the desktop global-shortcut service, with press-to-front and
+  press-to-toggle behavior.
+
+### Fixed
+
+- Avoided the unstable native input hook on Linux and made popup shortcut registration durable.
+- Added authenticated HLS camera previews, bounded startup recovery, snapshot fallback, and Aarlo
+  reconnect handling.
+- Kept expanded camera previews alive across normal Home Assistant camera-state updates.
+
 ## [3.7.1] - 2026-07-16
 
 ### Fixed
@@ -759,6 +778,31 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 This release represents months of development focused on stability, testing, and user experience. Special thanks to the Home Assistant community for feedback and bug reports.
 
 ---
+
+## [2.3.9] - 2025-10-26
+
+### Added
+
+- Added a polished light-brightness modal with presets and improved backdrop/close behavior.
+
+### Fixed
+
+- Escaped entity names in hotkey rows and made hotkey controls responsive in narrow windows.
+
+## [2.3.8] - 2025-10-25
+
+### Fixed
+
+- Restored the saved window size when reopening from the tray and corrected content-area focus.
+- Improved tile, clock, date, and entity-name overflow behavior in small windows.
+
+## [2.3.7] - 2025-10-24
+
+### Fixed
+
+- Prevented long entity names from overflowing tiles and restored typing in the rename modal.
+- Made opacity changes apply immediately and standardized the slider to a 1–100 scale.
+- Corrected camera, timer, WebSocket, state-management, CSS, and lint failures.
 
 ## [2.3.6] - 2025-10-21
 

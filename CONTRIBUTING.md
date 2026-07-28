@@ -9,7 +9,7 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - Node.js 20
 - npm
 - Git
-- Windows 10/11 (for testing)
+- Windows 10/11, macOS 12+, or a current Linux desktop
 
 ### Development Setup
 
@@ -34,7 +34,7 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 
 - **Bug Reports**: Use the [Issues](https://github.com/Robertg761/HA-Desktop-Widget/issues) page
 - **Feature Requests**: Submit enhancement ideas with detailed descriptions
-- **Security Issues**: Please email security concerns directly to the maintainer
+- **Security Issues**: Use GitHub private vulnerability reporting when available; otherwise follow [SECURITY.md](SECURITY.md) to contact the maintainer privately
 
 ### Making Changes
 
@@ -82,7 +82,8 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 
 - Test all new features thoroughly
 - Verify existing functionality still works
-- Test on different Windows versions if possible
+- Test on each operating system affected by the change when possible
+- Treat Wayland/X11, native-window, tray, global-shortcut, and updater behavior as platform-specific
 - Check performance with various numbers of entities
 
 ### Automated Testing
@@ -120,7 +121,8 @@ Brief description of changes
 
 ## Testing
 
-- [ ] Tested on Windows 10/11
+- [ ] Tested on every platform affected by the change
+- [ ] Platform-specific limitations or untested environments are documented
 - [ ] All existing functionality works
 - [ ] New features tested thoroughly
 
