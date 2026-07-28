@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -348,6 +348,23 @@
     "{{count}} tiles wide": "{{count}} vignettes de large",
     "This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.": "Ce dossier n'existe que sur cet appareil, rien n'est donc partagé. Choisissez un dossier synchronisé par votre client cloud ou de synchronisation.",
     "Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.": "Google Drive ne propose pas de client Linux officiel. Utilisez un client tiers comme Insync ou rclone, ou passez à Syncthing.",
-    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "{{count}} fichier(s) de copie de conflit ont été trouvés à côté du fichier de synchronisation, ce qui signifie que deux appareils ont enregistré en même temps. Vérifiez le dossier et supprimez les copies dont vous n'avez pas besoin."
+    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "{{count}} fichier(s) de copie de conflit ont été trouvés à côté du fichier de synchronisation, ce qui signifie que deux appareils ont enregistré en même temps. Vérifiez le dossier et supprimez les copies dont vous n'avez pas besoin.",
+    "Weather source": "Source météo",
+    "Automatic (first available)": "Automatique (première disponible)",
+    "Unavailable saved source: {{entityId}}": "Source enregistrée indisponible : {{entityId}}",
+    "The saved weather source is unavailable. The widget is using the first available source until it returns.": "La source météo enregistrée est indisponible. Le widget utilise la première source disponible jusqu'à son retour.",
+    "Choose the Home Assistant weather entity used by the weather card.": "Choisissez l'entité météo Home Assistant utilisée par la carte météo.",
+    "No available weather entities found. Connect Home Assistant or try again later.": "Aucune entité météo disponible. Connectez Home Assistant ou réessayez plus tard.",
+    "Time Format": "Format de l'heure",
+    "Date Format": "Format de la date",
+    "System default": "Valeur par défaut du système",
+    "12-hour": "12 heures",
+    "24-hour": "24 heures",
+    "Weekday, short date": "Jour de la semaine et date courte",
+    "Long date": "Date longue",
+    "Numeric date": "Date numérique",
+    "Date and time always use your selected language and regional conventions.": "La date et l'heure utilisent toujours la langue et les conventions régionales sélectionnées.",
+    "Development climate demo — no Home Assistant connection": "Démo de climat pour le développement — aucune connexion à Home Assistant",
+    "Development demo": "Démo de développement"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -348,6 +348,23 @@
     "{{count}} tiles wide": "{{count}} टाइल चौड़ा",
     "This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.": "यह फ़ोल्डर केवल इसी उपकरण पर है, इसलिए कुछ भी साझा नहीं होता। ऐसा फ़ोल्डर चुनें जिसे आपका क्लाउड या सिंक क्लाइंट सिंक में रखता हो।",
     "Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.": "Google Drive का कोई आधिकारिक Linux क्लाइंट नहीं है। Insync या rclone जैसे तृतीय-पक्ष क्लाइंट का उपयोग करें, या Syncthing पर जाएं।",
-    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "सिंक फ़ाइल के पास {{count}} कॉन्फ़्लिक्ट कॉपी फ़ाइल मिलीं, जिसका अर्थ है कि दो उपकरणों ने एक साथ सहेजा। फ़ोल्डर जांचें और जिन प्रतियों की आवश्यकता नहीं है उन्हें हटा दें।"
+    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "सिंक फ़ाइल के पास {{count}} कॉन्फ़्लिक्ट कॉपी फ़ाइल मिलीं, जिसका अर्थ है कि दो उपकरणों ने एक साथ सहेजा। फ़ोल्डर जांचें और जिन प्रतियों की आवश्यकता नहीं है उन्हें हटा दें।",
+    "Weather source": "मौसम स्रोत",
+    "Automatic (first available)": "स्वचालित (पहला उपलब्ध)",
+    "Unavailable saved source: {{entityId}}": "सहेजा गया स्रोत उपलब्ध नहीं है: {{entityId}}",
+    "The saved weather source is unavailable. The widget is using the first available source until it returns.": "सहेजा गया मौसम स्रोत उपलब्ध नहीं है। उसके वापस आने तक विजेट पहले उपलब्ध स्रोत का उपयोग कर रहा है।",
+    "Choose the Home Assistant weather entity used by the weather card.": "मौसम कार्ड में उपयोग की जाने वाली Home Assistant मौसम एंटिटी चुनें।",
+    "No available weather entities found. Connect Home Assistant or try again later.": "कोई उपलब्ध मौसम एंटिटी नहीं मिली। Home Assistant कनेक्ट करें या बाद में फिर कोशिश करें।",
+    "Time Format": "समय प्रारूप",
+    "Date Format": "दिनांक प्रारूप",
+    "System default": "सिस्टम डिफ़ॉल्ट",
+    "12-hour": "12-घंटे",
+    "24-hour": "24-घंटे",
+    "Weekday, short date": "सप्ताह का दिन, संक्षिप्त दिनांक",
+    "Long date": "लंबा दिनांक",
+    "Numeric date": "अंकीय दिनांक",
+    "Date and time always use your selected language and regional conventions.": "दिनांक और समय हमेशा आपकी चुनी हुई भाषा और क्षेत्रीय परंपराओं का उपयोग करते हैं।",
+    "Development climate demo — no Home Assistant connection": "डेवलपमेंट क्लाइमेट डेमो — Home Assistant कनेक्शन नहीं",
+    "Development demo": "डेवलपमेंट डेमो"
   }
 }

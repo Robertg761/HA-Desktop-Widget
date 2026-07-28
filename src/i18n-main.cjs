@@ -141,18 +141,58 @@ function createLocalizationService(options = {}) {
     return path.join(getInstalledLocaleDir(), `${normalizeLocaleCode(locale)}.json`);
   }
 
+  function quarantineInstalledPack(packPath) {
+    const quarantinePath = `${packPath}.corrupt-${Date.now()}`;
+    try {
+      fs.renameSync(packPath, quarantinePath);
+      return quarantinePath;
+    } catch {
+      return '';
+    }
+  }
+
   function readInstalledPack(locale) {
     const normalized = normalizeLocaleCode(locale);
     if (!normalized || normalized === 'en') return null;
     const packPath = getInstalledPackPath(normalized);
     if (!fs.existsSync(packPath)) return null;
-    // Intentionally surface corrupt installed packs for now; fallback/quarantine
-    // recovery is deferred to a dedicated hardening pass to avoid changing launch behavior.
-    const pack = readJsonFile(packPath);
-    if (!pack || typeof pack !== 'object' || Array.isArray(pack)) {
-      throw new Error(`Invalid locale pack: ${normalized}`);
+    try {
+      const pack = readJsonFile(packPath);
+      if (
+        !pack ||
+        typeof pack !== 'object' ||
+        Array.isArray(pack) ||
+        normalizeLocaleCode(pack.locale) !== normalized ||
+        !pack.messages ||
+        typeof pack.messages !== 'object' ||
+        Array.isArray(pack.messages)
+      ) {
+        throw new Error(`Invalid locale pack: ${normalized}`);
+      }
+      return pack;
+    } catch {
+      // A partial or manually edited download must never prevent the main window or tray from
+      // starting. Move it aside for diagnosis when possible, then continue with English.
+      quarantineInstalledPack(packPath);
+      return null;
     }
-    return pack;
+  }
+
+  function writeJsonFileAtomic(filePath, value) {
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, {
+        encoding: 'utf8',
+        mode: 0o600,
+      });
+      fs.renameSync(tempPath, filePath);
+    } finally {
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      } catch {
+        // The completed destination is authoritative; a stale temp file is harmless.
+      }
+    }
   }
 
   function buildInstalledPackMetadata(pack, stats = null) {
@@ -390,7 +430,7 @@ function createLocalizationService(options = {}) {
       sha256: actualHash,
       downloadedAt: new Date().toISOString(),
     };
-    fs.writeFileSync(filePath, `${JSON.stringify(storedPack, null, 2)}\n`, 'utf8');
+    writeJsonFileAtomic(filePath, storedPack);
     return buildInstalledPackMetadata(storedPack, fs.statSync(filePath));
   }
 

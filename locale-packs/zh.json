@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -348,6 +348,23 @@
     "{{count}} tiles wide": "宽 {{count}} 个磁贴",
     "This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.": "此文件夹仅存在于本设备上，因此不会共享任何内容。请选择一个由云端或同步客户端保持同步的文件夹。",
     "Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.": "Google Drive 没有官方 Linux 客户端。请使用 Insync 或 rclone 等第三方客户端，或改用 Syncthing。",
-    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "在同步文件旁发现了 {{count}} 个冲突副本文件，这说明有两台设备同时保存。请检查该文件夹并删除不需要的副本。"
+    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "在同步文件旁发现了 {{count}} 个冲突副本文件，这说明有两台设备同时保存。请检查该文件夹并删除不需要的副本。",
+    "Weather source": "天气来源",
+    "Automatic (first available)": "自动（第一个可用来源）",
+    "Unavailable saved source: {{entityId}}": "已保存的来源不可用：{{entityId}}",
+    "The saved weather source is unavailable. The widget is using the first available source until it returns.": "已保存的天气来源不可用。在其恢复前，小组件将使用第一个可用来源。",
+    "Choose the Home Assistant weather entity used by the weather card.": "选择天气卡片使用的 Home Assistant 天气实体。",
+    "No available weather entities found. Connect Home Assistant or try again later.": "未找到可用的天气实体。请连接 Home Assistant 或稍后重试。",
+    "Time Format": "时间格式",
+    "Date Format": "日期格式",
+    "System default": "系统默认",
+    "12-hour": "12 小时制",
+    "24-hour": "24 小时制",
+    "Weekday, short date": "星期和短日期",
+    "Long date": "长日期",
+    "Numeric date": "数字日期",
+    "Date and time always use your selected language and regional conventions.": "日期和时间始终使用所选语言和地区格式。",
+    "Development climate demo — no Home Assistant connection": "开发用气候演示 — 未连接 Home Assistant",
+    "Development demo": "开发演示"
   }
 }

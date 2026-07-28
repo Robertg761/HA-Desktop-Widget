@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -348,6 +348,23 @@
     "{{count}} tiles wide": "بعرض {{count}} بطاقات",
     "This folder is on this device only, so nothing is shared. Choose a folder your cloud or sync client keeps in sync.": "هذا المجلد موجود على هذا الجهاز فقط، لذا لا تتم مشاركة أي شيء. اختر مجلدًا يبقيه عميل السحابة أو المزامنة متزامنًا.",
     "Google Drive has no official Linux client. Use a third-party client such as Insync or rclone, or switch to Syncthing.": "لا يوفّر Google Drive عميلًا رسميًا لنظام Linux. استخدم عميلًا من طرف ثالث مثل Insync أو rclone، أو انتقل إلى Syncthing.",
-    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "تم العثور على {{count}} من نسخ التعارض بجوار ملف المزامنة، ما يعني أن جهازين حفظا في الوقت نفسه. تحقق من المجلد واحذف النسخ التي لا تحتاجها."
+    "Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.": "تم العثور على {{count}} من نسخ التعارض بجوار ملف المزامنة، ما يعني أن جهازين حفظا في الوقت نفسه. تحقق من المجلد واحذف النسخ التي لا تحتاجها.",
+    "Weather source": "مصدر الطقس",
+    "Automatic (first available)": "تلقائي (أول مصدر متاح)",
+    "Unavailable saved source: {{entityId}}": "المصدر المحفوظ غير متاح: {{entityId}}",
+    "The saved weather source is unavailable. The widget is using the first available source until it returns.": "مصدر الطقس المحفوظ غير متاح. تستخدم الأداة أول مصدر متاح حتى يعود.",
+    "Choose the Home Assistant weather entity used by the weather card.": "اختر كيان الطقس في Home Assistant الذي تستخدمه بطاقة الطقس.",
+    "No available weather entities found. Connect Home Assistant or try again later.": "لم يتم العثور على كيانات طقس متاحة. اتصل بـ Home Assistant أو حاول مرة أخرى لاحقًا.",
+    "Time Format": "تنسيق الوقت",
+    "Date Format": "تنسيق التاريخ",
+    "System default": "الإعداد الافتراضي للنظام",
+    "12-hour": "نظام 12 ساعة",
+    "24-hour": "نظام 24 ساعة",
+    "Weekday, short date": "يوم الأسبوع، تاريخ مختصر",
+    "Long date": "تاريخ طويل",
+    "Numeric date": "تاريخ رقمي",
+    "Date and time always use your selected language and regional conventions.": "يستخدم التاريخ والوقت دائمًا اللغة المحددة والتنسيقات الإقليمية.",
+    "Development climate demo — no Home Assistant connection": "عرض توضيحي للمناخ للتطوير — لا يوجد اتصال بـ Home Assistant",
+    "Development demo": "عرض توضيحي للتطوير"
   }
 }
