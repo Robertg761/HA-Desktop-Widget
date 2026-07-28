@@ -71,6 +71,12 @@ describe('preload Electron API', () => {
         'set-profile-sync-passphrase',
         ['secret', true, true],
       ],
+      [
+        'setProfileSyncPassphrase',
+        ['secret', true],
+        'set-profile-sync-passphrase',
+        ['secret', true, null],
+      ],
       ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase', []],
       ['resolveProfileSyncFirstEnable', ['merge'], 'resolve-profile-sync-first-enable', ['merge']],
       ['setOpacity', [0.8], 'set-opacity', [0.8]],
@@ -169,7 +175,34 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledWith();
     cleanup();
 
+    expect(() => api.onHotkeyTriggered(null)).toThrow(
+      'hotkey-triggered listener requires a callback'
+    );
     expect(() => api.onConfigUpdated(null)).toThrow('config-updated listener requires a callback');
+  });
+
+  it('shares one config listener across subscribers and removes it after the last cleanup', () => {
+    const ipcRenderer = createIpcRenderer();
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    const firstCallback = jest.fn();
+    const secondCallback = jest.fn();
+
+    const cleanupFirst = api.onConfigUpdated(firstCallback);
+    const cleanupSecond = api.onConfigUpdated(secondCallback);
+    expect(ipcRenderer.on).toHaveBeenCalledTimes(1);
+
+    ipcRenderer.emit('config-updated', {}, { configRevision: 1 });
+    expect(firstCallback).toHaveBeenCalledTimes(1);
+    expect(secondCallback).toHaveBeenCalledTimes(1);
+
+    cleanupFirst();
+    expect(ipcRenderer.removeListener).not.toHaveBeenCalled();
+    ipcRenderer.emit('config-updated', {}, { configRevision: 2 });
+    expect(firstCallback).toHaveBeenCalledTimes(1);
+    expect(secondCallback).toHaveBeenCalledTimes(2);
+
+    cleanupSecond();
+    expect(ipcRenderer.removeListener).toHaveBeenCalledWith('config-updated', expect.any(Function));
   });
 
   it('buffers config echoes until concurrent renderer mutations settle and drops stale revisions', async () => {
@@ -187,8 +220,8 @@ describe('preload Electron API', () => {
 
     const firstUpdate = api.updateConfig({ favoriteEntities: ['light.first'] });
     const secondUpdate = api.updateConfig({ favoriteEntities: ['light.second'] });
-    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 1 });
     ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 2 });
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 1 });
     expect(callback).not.toHaveBeenCalled();
 
     resolvers[0]({ homeAssistant: {}, configRevision: 1 });
@@ -202,6 +235,44 @@ describe('preload Electron API', () => {
 
     ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 1 });
     expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a deferred config echo older than the authoritative failed-write revision', async () => {
+    const ipcRenderer = createIpcRenderer();
+    let rejectUpdate;
+    ipcRenderer.invoke.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectUpdate = reject;
+        })
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    const callback = jest.fn();
+    api.onConfigUpdated(callback);
+
+    const update = api.updateConfig({ theme: 'dark' });
+    ipcRenderer.emit('config-updated', {}, { theme: 'light', configRevision: 4 });
+
+    const error = new Error('disk unavailable');
+    error.result = { config: { theme: 'dark', configRevision: 5 } };
+    rejectUpdate(error);
+
+    await expect(update).rejects.toBe(error);
+    expect(callback).not.toHaveBeenCalled();
+
+    ipcRenderer.emit('config-updated', {}, { theme: 'dark', configRevision: 6 });
+    expect(callback).toHaveBeenCalledWith({ theme: 'dark', configRevision: 6 });
+  });
+
+  it('uses an IPC channel fallback when a checked failure has no message', async () => {
+    const ipcRenderer = createIpcRenderer();
+    ipcRenderer.invoke.mockResolvedValue({ success: false });
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+
+    await expect(api.setOpacity(0.5)).rejects.toMatchObject({
+      message: 'set-opacity failed',
+      result: { success: false },
+    });
   });
 
   it.each([
