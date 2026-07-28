@@ -166,13 +166,26 @@ function isSecureStoragePending(targetConfig = state.CONFIG) {
 
 function flushPendingStateChangedEntities() {
   pendingStateChangedFlushId = null;
-  const entities = Array.from(pendingStateChangedEntities.values());
+  const changes = Array.from(pendingStateChangedEntities.values());
   pendingStateChangedEntities.clear();
+  const hasDeletion = changes.some(({ entity }) => !entity);
 
-  entities.forEach((entity) => {
-    window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
-      log.warn('Failed to publish HA entity update to main process:', error);
+  if (hasDeletion) {
+    // A full snapshot is the only renderer-to-main IPC operation that can remove
+    // an entity from the desktop-pin cache. It also carries every coalesced update
+    // in this flush, avoiding an update/snapshot ordering race.
+    window.electronAPI.publishHaSnapshot(state.STATES || {}).catch((error) => {
+      log.warn('Failed to publish HA snapshot after entity removal:', error);
     });
+  }
+
+  changes.forEach(({ entity }) => {
+    if (!entity) return;
+    if (!hasDeletion) {
+      window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
+        log.warn('Failed to publish HA entity update to main process:', error);
+      });
+    }
     if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
       renderCurrentMode();
     } else if (ui.isEntityVisible(entity.entity_id)) {
@@ -180,6 +193,15 @@ function flushPendingStateChangedEntities() {
     }
     alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
+
+  if (hasDeletion) {
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    } else {
+      ui.renderActiveTab();
+      renderMainWidgetState();
+    }
+  }
 
   nudgeUiTickScheduler();
 }
@@ -195,7 +217,20 @@ function scheduleStateChangedFlush() {
 function queueStateChangedEntity(entity) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
-  pendingStateChangedEntities.set(entity.entity_id, entity);
+  pendingStateChangedEntities.set(entity.entity_id, {
+    entity,
+  });
+  scheduleStateChangedFlush();
+}
+
+function queueDeletedEntity(entityId) {
+  const normalizedEntityId = typeof entityId === 'string' ? entityId.trim() : '';
+  if (!normalizedEntityId) return;
+  state.deleteEntityState(normalizedEntityId);
+  favoriteStalePreservation.delete(normalizedEntityId);
+  pendingStateChangedEntities.set(normalizedEntityId, {
+    entity: null,
+  });
   scheduleStateChangedFlush();
 }
 
@@ -490,6 +525,7 @@ function renderWizardStep() {
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
       firstRunWizard.urlInput = input;
+      invalidateWizardConnectionTest();
       updateWizardTokenButtonState();
     });
     firstRunWizard.urlInput = input;
@@ -538,6 +574,7 @@ function renderWizardStep() {
     input.value = getWizardToken();
     input.addEventListener('input', () => {
       firstRunWizard.tokenInput = input;
+      invalidateWizardConnectionTest();
     });
     firstRunWizard.tokenInput = input;
     content.appendChild(label);
@@ -586,10 +623,12 @@ function renderWizardStep() {
 async function runWizardConnectionTest() {
   const normalizedUrl = normalizeBaseUrl(getWizardUrl());
   const token = getWizardToken();
+  const testId = ++firstRunWizard.connectionTestId;
   if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
     const message = getConnectionTestMessage({ code: 'invalid-url' });
     setWizardStatus(message.text, message.type);
     firstRunWizard.lastTestSuccessful = false;
+    firstRunWizard.lastSuccessfulConnection = null;
     return false;
   }
 
@@ -603,58 +642,104 @@ async function runWizardConnectionTest() {
   setWizardStatus(t('Testing Home Assistant connection...'), 'pending');
   try {
     const result = await window.electronAPI.testHaConnection(normalizedUrl, token);
+    if (
+      !firstRunWizard ||
+      firstRunWizard.connectionTestId !== testId ||
+      normalizeBaseUrl(getWizardUrl()) !== normalizedUrl ||
+      getWizardToken() !== token
+    ) {
+      return false;
+    }
     const message = getConnectionTestMessage(result);
     setWizardStatus(message.text, message.type);
     firstRunWizard.lastTestSuccessful = !!result?.success;
+    firstRunWizard.lastSuccessfulConnection = result?.success
+      ? { url: normalizedUrl, token }
+      : null;
     return !!result?.success;
   } catch (error) {
+    if (!firstRunWizard || firstRunWizard.connectionTestId !== testId) {
+      return false;
+    }
     const message = getConnectionTestMessage(error);
     setWizardStatus(message.text, message.type);
     firstRunWizard.lastTestSuccessful = false;
+    firstRunWizard.lastSuccessfulConnection = null;
     return false;
   } finally {
-    if (firstRunWizard.testButton) {
-      firstRunWizard.testButton.disabled = false;
-      firstRunWizard.testButton.setAttribute('aria-busy', 'false');
-    }
-    if (firstRunWizard.testSpinner) {
-      firstRunWizard.testSpinner.classList.add('hidden');
+    if (firstRunWizard && firstRunWizard.connectionTestId === testId) {
+      if (firstRunWizard.testButton) {
+        firstRunWizard.testButton.disabled = false;
+        firstRunWizard.testButton.setAttribute('aria-busy', 'false');
+      }
+      if (firstRunWizard.testSpinner) {
+        firstRunWizard.testSpinner.classList.add('hidden');
+      }
     }
   }
 }
 
+function invalidateWizardConnectionTest() {
+  if (!firstRunWizard) return;
+  firstRunWizard.connectionTestId += 1;
+  firstRunWizard.lastTestSuccessful = false;
+  firstRunWizard.lastSuccessfulConnection = null;
+}
+
+function wizardConnectionWasTested(url, token) {
+  return (
+    firstRunWizard?.lastTestSuccessful === true &&
+    firstRunWizard.lastSuccessfulConnection?.url === url &&
+    firstRunWizard.lastSuccessfulConnection?.token === token
+  );
+}
+
 async function finishFirstRunWizard() {
+  if (!firstRunWizard || firstRunWizard.finishInProgress) return;
+  firstRunWizard.finishInProgress = true;
+  if (firstRunWizard.nextButton) {
+    firstRunWizard.nextButton.disabled = true;
+    firstRunWizard.nextButton.setAttribute('aria-busy', 'true');
+  }
+
   const normalizedUrl = normalizeBaseUrl(getWizardUrl());
   const token = getWizardToken();
-  if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
-    const message = getConnectionTestMessage({ code: 'invalid-url' });
-    setWizardStatus(message.text, message.type);
-    return;
-  }
+  try {
+    if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
+      const message = getConnectionTestMessage({ code: 'invalid-url' });
+      setWizardStatus(message.text, message.type);
+      return;
+    }
 
-  if (!firstRunWizard.lastTestSuccessful) {
-    const passed = await runWizardConnectionTest();
-    if (!passed) return;
-  }
+    if (!wizardConnectionWasTested(normalizedUrl, token)) {
+      const passed = await runWizardConnectionTest();
+      if (!passed || !wizardConnectionWasTested(normalizedUrl, token)) return;
+    }
 
-  const nextConfig = {
-    ...(state.CONFIG || {}),
-    homeAssistant: {
-      ...(state.CONFIG?.homeAssistant || {}),
-      url: normalizedUrl,
-      token,
-    },
-  };
-  const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-  applyRendererConfig(updatedConfig || nextConfig);
-  setFirstRunWizardVisible(false);
-  startUiTickScheduler();
-  hotkeys.initializeHotkeys();
-  hotkeys.setupHotkeyEventListeners();
-  alerts.initializeEntityAlerts();
-  notifications.initializePersistentNotifications();
-  renderCurrentMode();
-  connectWebSocket();
+    const nextConfig = {
+      ...(state.CONFIG || {}),
+      homeAssistant: {
+        ...(state.CONFIG?.homeAssistant || {}),
+        url: normalizedUrl,
+        token,
+      },
+    };
+    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+    applyRendererConfig(updatedConfig || nextConfig);
+    setFirstRunWizardVisible(false);
+    // update-config also broadcasts config-updated back to this renderer. Route both
+    // completion paths through the same idempotent startup gate so onboarding cannot
+    // initialize subscriptions or replace its just-opened WebSocket twice.
+    startConfiguredRuntime();
+  } finally {
+    if (firstRunWizard) {
+      firstRunWizard.finishInProgress = false;
+      if (firstRunWizard.nextButton) {
+        firstRunWizard.nextButton.disabled = false;
+        firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
+      }
+    }
+  }
 }
 
 function maybeShowWizardAfterSettingsClose() {
@@ -741,6 +826,9 @@ function ensureFirstRunWizard() {
     step: 0,
     visible: false,
     lastTestSuccessful: false,
+    lastSuccessfulConnection: null,
+    connectionTestId: 0,
+    finishInProgress: false,
     urlInput: null,
     tokenInput: null,
     testButton: null,
@@ -758,7 +846,7 @@ function maybeShowFirstRunWizard() {
   }
   ensureFirstRunWizard();
   firstRunWizard.step = 0;
-  firstRunWizard.lastTestSuccessful = false;
+  invalidateWizardConnectionTest();
   renderWizardStep();
   setFirstRunWizardVisible(true);
   return true;
@@ -1171,7 +1259,11 @@ websocket.on('message', (msg) => {
       configReq.catch((err) => {
         log.error('get_config request failed:', err);
       });
-      websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
+      websocket
+        .request({ type: 'subscribe_events', event_type: 'state_changed' })
+        .catch((error) => {
+          log.warn('State change subscription request failed:', error);
+        });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
       mainConnectionState = 'auth-failed';
@@ -1186,9 +1278,11 @@ websocket.on('message', (msg) => {
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
-      const entity = msg.event.data.new_state;
+      const entity = msg.event.data?.new_state;
       if (entity) {
         queueStateChangedEntity(entity);
+      } else {
+        queueDeletedEntity(msg.event.data?.entity_id || msg.event.data?.old_state?.entity_id);
       }
     } else if (msg.type === 'result') {
       log.debug(`Received result for message ID: ${msg.id}`);
@@ -1430,6 +1524,9 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     const wasConfigured = isConfigured(state.CONFIG);
     const wasSecureStoragePending = isSecureStoragePending();
     applyRendererConfig(nextConfig);
+    if (!IS_SPECIAL_PIN_MODE && configuredRuntimeStarted) {
+      alerts.initializeEntityAlerts();
+    }
     renderCurrentMode();
     const wizardShown = maybeShowFirstRunWizard();
     if (

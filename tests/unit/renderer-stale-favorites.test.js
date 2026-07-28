@@ -3,7 +3,11 @@
  */
 
 const EventEmitter = require('events');
-const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  triggerMockEvent,
+} = require('../mocks/electron.js');
 
 describe('Renderer stale favorite state handling', () => {
   const STALE_PRESERVE_MS = 15 * 60 * 1000;
@@ -21,6 +25,8 @@ describe('Renderer stale favorite state handling', () => {
   let mockElectronAPI;
   let mockState;
   let mockWebsocket;
+  let mockAlerts;
+  let mockUi;
   let requestLog;
   let now;
   let dateNowSpy;
@@ -81,6 +87,11 @@ describe('Renderer stale favorite state handling', () => {
           [entity.entity_id]: entity,
         };
       },
+      deleteEntityState(entityId) {
+        if (!Object.prototype.hasOwnProperty.call(this.STATES, entityId)) return false;
+        delete this.STATES[entityId];
+        return true;
+      },
       setServices: jest.fn(),
       setAreas: jest.fn(),
       setUnitSystem: jest.fn(),
@@ -122,12 +133,13 @@ describe('Renderer stale favorite state handling', () => {
       renderHotkeysTab: jest.fn(),
       assignHotkeyToEntity: jest.fn(),
     }));
-    jest.doMock('../../src/alerts.js', () => ({
+    mockAlerts = {
       __esModule: true,
       initializeEntityAlerts: jest.fn(),
       checkEntityAlerts: jest.fn(),
-    }));
-    jest.doMock('../../src/ui.js', () => ({
+    };
+    jest.doMock('../../src/alerts.js', () => mockAlerts);
+    mockUi = {
       initUpdateUI: jest.fn(),
       renderActiveTab: jest.fn(),
       updateMediaTile: jest.fn(),
@@ -147,7 +159,8 @@ describe('Renderer stale favorite state handling', () => {
       handleDesktopPinActionRequest: jest.fn(),
       callMediaTileService: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
-    }));
+    };
+    jest.doMock('../../src/ui.js', () => mockUi);
     jest.doMock('../../src/settings.js', () => ({
       __esModule: true,
       openSettings: jest.fn(),
@@ -271,5 +284,61 @@ describe('Renderer stale favorite state handling', () => {
       [favoriteEntity.entity_id]: favoriteEntity,
       [otherEntity.entity_id]: otherEntity,
     });
+  });
+
+  it('removes a deleted favorite immediately and republishes an authoritative snapshot', async () => {
+    await loadRenderer();
+    receiveStates([favoriteEntity, otherEntity]);
+    mockElectronAPI.publishHaSnapshot.mockClear();
+    mockElectronAPI.publishHaEntityUpdate.mockClear();
+    mockUi.renderActiveTab.mockClear();
+
+    mockWebsocket.emit('message', {
+      type: 'event',
+      event: {
+        event_type: 'state_changed',
+        data: {
+          entity_id: favoriteEntity.entity_id,
+          old_state: favoriteEntity,
+          new_state: null,
+        },
+      },
+    });
+    await jest.advanceTimersByTimeAsync(20);
+
+    expect(mockState.STATES).toEqual({
+      [otherEntity.entity_id]: otherEntity,
+    });
+    expect(mockElectronAPI.publishHaEntityUpdate).not.toHaveBeenCalled();
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
+      [otherEntity.entity_id]: otherEntity,
+    });
+    expect(mockUi.renderActiveTab).toHaveBeenCalled();
+
+    now += 60 * 1000;
+    receiveStates([otherEntity]);
+    expect(mockState.STATES).toEqual({
+      [otherEntity.entity_id]: otherEntity,
+    });
+  });
+
+  it('reinitializes entity alerts when a running renderer receives updated config', async () => {
+    await loadRenderer();
+    mockAlerts.initializeEntityAlerts.mockClear();
+    const nextConfig = {
+      ...createConfig(),
+      entityAlerts: {
+        enabled: true,
+        alerts: {
+          'sensor.present': { condition: 'above', value: 75 },
+        },
+      },
+    };
+
+    triggerMockEvent('configUpdated', nextConfig);
+    await flushPromises();
+
+    expect(mockState.CONFIG.entityAlerts).toEqual(nextConfig.entityAlerts);
+    expect(mockAlerts.initializeEntityAlerts).toHaveBeenCalledTimes(1);
   });
 });

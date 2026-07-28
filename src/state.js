@@ -49,6 +49,19 @@ export function setEntityState(entity) {
     console.error('Error setting entity state:', error);
   }
 }
+export function deleteEntityState(entityId) {
+  try {
+    if (typeof entityId !== 'string' || !entityId.trim()) return false;
+    if (!STATES || typeof STATES !== 'object') return false;
+    const normalizedEntityId = entityId.trim();
+    if (!Object.prototype.hasOwnProperty.call(STATES, normalizedEntityId)) return false;
+    delete STATES[normalizedEntityId];
+    return true;
+  } catch (error) {
+    console.error('Error deleting entity state:', error);
+    return false;
+  }
+}
 export function setServices(newServices) {
   try {
     SERVICES = newServices;
@@ -97,6 +110,7 @@ const state = {
   setWs,
   setStates,
   setEntityState,
+  deleteEntityState,
   setServices,
   setAreas,
   setUnitSystem,

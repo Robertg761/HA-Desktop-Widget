@@ -60,6 +60,31 @@ class WebSocketManager extends EventEmitter {
     this.isAuthenticated = false;
   }
 
+  clearPendingRequest(id) {
+    const pending = this.pendingWs.get(id);
+    if (!pending) return null;
+    this.pendingWs.delete(id);
+    if (pending.timeoutId != null) {
+      clearTimeout(pending.timeoutId);
+    }
+    return pending;
+  }
+
+  rejectPendingRequestsForSocket(socket, error = new Error('WebSocket connection closed')) {
+    this.pendingWs.forEach((pending, id) => {
+      if (pending.socket !== socket) return;
+      this.clearPendingRequest(id)?.reject(error);
+    });
+  }
+
+  resetMessageSubscriptionState() {
+    this.messageSubscriptionHandlers.clear();
+    this.messageSubscriptions.forEach((subscription) => {
+      subscription.subscriptionId = null;
+      subscription.subscribeRequestId = null;
+    });
+  }
+
   connect() {
     log.debug('Attempting to connect to Home Assistant WebSocket');
     this.emit('connect-attempt');
@@ -89,8 +114,18 @@ class WebSocketManager extends EventEmitter {
 
     if (this.ws) {
       // Mark existing socket as intentional close before replacing it.
-      this.ws.__intentionalClose = true;
-      this.ws.close();
+      const previousWs = this.ws;
+      previousWs.__intentionalClose = true;
+      this.rejectPendingRequestsForSocket(previousWs, new Error('WebSocket connection replaced'));
+      this.resetMessageSubscriptionState();
+      try {
+        previousWs.close();
+      } catch (error) {
+        log.warn('Failed to close superseded WebSocket connection:', error);
+        if (this.ws === previousWs) {
+          this.ws = null;
+        }
+      }
     }
 
     try {
@@ -103,15 +138,18 @@ class WebSocketManager extends EventEmitter {
       this.isAuthenticated = false;
 
       ws.onopen = () => {
+        if (this.ws !== ws) return;
         log.debug('WebSocket connection established');
         this.emit('open');
       };
 
       ws.onmessage = (event) => {
-        this.handleMessage(event);
+        if (this.ws !== ws) return;
+        this.handleMessage(event, ws);
       };
 
       ws.onerror = (event) => {
+        if (this.ws !== ws) return;
         const message = getWebSocketErrorMessage(event);
         log.error('WebSocket error:', message);
         this.emit('error', new Error(message));
@@ -119,15 +157,14 @@ class WebSocketManager extends EventEmitter {
 
       ws.onclose = (_event) => {
         const intentional = ws.__intentionalClose === true;
-        if (this.ws === ws) {
-          this.ws = null;
+        this.rejectPendingRequestsForSocket(ws);
+        if (this.ws !== ws) {
+          log.debug('Ignoring close event from superseded WebSocket connection');
+          return;
         }
+        this.ws = null;
         this.isAuthenticated = false;
-        this.messageSubscriptionHandlers.clear();
-        this.messageSubscriptions.forEach((subscription) => {
-          subscription.subscriptionId = null;
-          subscription.subscribeRequestId = null;
-        });
+        this.resetMessageSubscriptionState();
         log.debug('WebSocket connection closed');
         this.emit('close', { intentional });
       };
@@ -137,13 +174,14 @@ class WebSocketManager extends EventEmitter {
     }
   }
 
-  handleMessage(event) {
+  handleMessage(event, sourceSocket = this.ws) {
+    if (!sourceSocket || sourceSocket !== this.ws) return;
     try {
       const msg = JSON.parse(event.data);
       // Respond to HA application-level heartbeat to keep the connection alive
-      if (msg && msg.type === 'ping' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      if (msg && msg.type === 'ping' && sourceSocket.readyState === WebSocket.OPEN) {
         try {
-          this.ws.send(JSON.stringify({ type: 'pong' }));
+          sourceSocket.send(JSON.stringify({ type: 'pong' }));
         } catch (e) {
           log.warn('Failed to send pong to Home Assistant:', e);
         }
@@ -158,8 +196,9 @@ class WebSocketManager extends EventEmitter {
 
       if (msg.type === 'result' && this.pendingWs.has(msg.id)) {
         const pending = this.pendingWs.get(msg.id);
-        this.pendingWs.delete(msg.id);
-        pending.resolve(msg);
+        if (pending.socket === sourceSocket) {
+          this.clearPendingRequest(msg.id)?.resolve(msg);
+        }
       }
       if (msg.type === 'event' && this.messageSubscriptionHandlers.has(msg.id)) {
         const subscription = this.messageSubscriptionHandlers.get(msg.id);
@@ -192,24 +231,30 @@ class WebSocketManager extends EventEmitter {
     const id = this.wsId++;
     const promise = new Promise((resolve, reject) => {
       try {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        const socket = this.ws;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
           return reject(new Error('WebSocket not connected'));
         }
         const msg = { id, ...payload };
-        this.pendingWs.set(id, { resolve, reject });
+        const pending = {
+          resolve,
+          reject,
+          socket,
+          timeoutId: null,
+        };
+        this.pendingWs.set(id, pending);
+        pending.timeoutId = setTimeout(() => {
+          const timedOut = this.clearPendingRequest(id);
+          if (!timedOut) return;
+          // Reject without emitting a global error to avoid log spam for optional calls
+          timedOut.reject(new Error('WebSocket request timeout'));
+        }, WS_REQUEST_TIMEOUT_MS);
         try {
-          this.ws.send(JSON.stringify(msg));
+          socket.send(JSON.stringify(msg));
         } catch (e) {
-          this.pendingWs.delete(id);
+          this.clearPendingRequest(id);
           return reject(e);
         }
-        setTimeout(() => {
-          if (this.pendingWs.has(id)) {
-            this.pendingWs.delete(id);
-            // Reject without emitting a global error to avoid log spam for optional calls
-            reject(new Error('WebSocket request timeout'));
-          }
-        }, WS_REQUEST_TIMEOUT_MS);
       } catch (error) {
         log.error('Error making WebSocket request:', error);
         reject(error);
@@ -304,22 +349,29 @@ class WebSocketManager extends EventEmitter {
         this.sendMessageUnsubscribe(current.subscriptionId);
       }
       current.subscriptionId = null;
-      current.subscribeRequestId = null;
+      // Keep an in-flight subscribe request identifiable until it settles. Its
+      // success handler will see active=false and immediately unsubscribe the
+      // server-side subscription instead of leaking it for this socket's life.
+      // Socket resets still clear the ID because their pending request is rejected.
     };
   }
 
   close() {
-    try {
-      if (this.ws) {
-        this.ws.__intentionalClose = true;
-        this.ws.close();
+    const closingWs = this.ws;
+    if (closingWs) {
+      closingWs.__intentionalClose = true;
+      this.rejectPendingRequestsForSocket(closingWs);
+      try {
+        closingWs.close();
+      } catch (error) {
+        log.error('Error closing WebSocket:', error);
+      }
+      if (this.ws === closingWs) {
         this.ws = null;
       }
-      this.isAuthenticated = false;
-      this.messageSubscriptionHandlers.clear();
-    } catch (error) {
-      log.error('Error closing WebSocket:', error);
     }
+    this.isAuthenticated = false;
+    this.resetMessageSubscriptionState();
   }
 
   callService(domain, service, serviceData, options = {}) {

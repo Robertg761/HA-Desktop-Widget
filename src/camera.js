@@ -1174,8 +1174,13 @@ async function getHlsStreamUrl(entityId) {
 
 function stopHlsStream(entityId) {
   if (state.ACTIVE_HLS.has(entityId)) {
-    state.ACTIVE_HLS.get(entityId).destroy();
+    const hls = state.ACTIVE_HLS.get(entityId);
     state.ACTIVE_HLS.delete(entityId);
+    try {
+      hls?.destroy();
+    } catch (error) {
+      console.warn('Failed to destroy HLS instance:', error);
+    }
   }
 }
 
@@ -1250,37 +1255,64 @@ async function openCamera(cameraId, options = {}) {
     const loadingEl = modal.querySelector('#camera-loading');
     const closeBtn = modal.querySelector('.close-btn');
     let isLive = false;
-    let liveInterval = null;
+    let isStartingLive = false;
+    let streamGeneration = 0;
+    let closed = false;
 
     const showLoading = (show) => {
+      if (closed) return;
       if (loadingEl) {
         loadingEl.style.display = show ? 'flex' : 'none';
       }
     };
 
     const stopLive = () => {
+      streamGeneration += 1;
       showLoading(false);
-      if (liveInterval) {
-        clearInterval(liveInterval);
-        liveInterval = null;
-      }
       stopHlsStream(cameraId);
+
+      const video = modal.querySelector('video.camera-video');
+      if (video) {
+        try {
+          video.pause();
+        } catch {
+          // Pausing is best-effort during teardown.
+        }
+        video.removeAttribute('src');
+        try {
+          video.load();
+        } catch {
+          // jsdom and some embedded media implementations do not expose load().
+        }
+        video.style.display = 'none';
+      }
+
       if (img) {
+        img.onload = null;
+        img.onerror = null;
+        img.removeAttribute('src');
         img.style.display = 'block';
       }
       isLive = false;
+      isStartingLive = false;
       if (liveBtn) {
         liveBtn.textContent = t('Live');
+        liveBtn.setAttribute('aria-busy', 'false');
       }
     };
 
-    const loadSnapshot = async () => {
+    const loadSnapshot = () => {
       stopLive();
       if (!img) return;
+      const generation = streamGeneration;
       // A snapshot that fails used to leave a broken image icon and no explanation.
       showLoading(true);
-      img.onload = () => showLoading(false);
+      img.onload = () => {
+        if (closed || generation !== streamGeneration) return;
+        showLoading(false);
+      };
       img.onerror = () => {
+        if (closed || generation !== streamGeneration) return;
         showLoading(false);
         showToast(t('Could not load camera snapshot'), 'error', 2500);
       };
@@ -1289,17 +1321,23 @@ async function openCamera(cameraId, options = {}) {
 
     const startLive = async () => {
       stopLive();
+      const generation = streamGeneration;
+      isStartingLive = true;
+      if (liveBtn) {
+        liveBtn.textContent = t('Stop');
+        liveBtn.setAttribute('aria-busy', 'true');
+      }
       showLoading(true);
 
-      // Load HLS library dynamically
-      const HlsLib = await loadHls();
-
-      // Try HLS first
-      const hlsUrl = await getHlsStreamUrl(cameraId);
+      // Load the optional player and request the stream in parallel. Either may
+      // outlive the modal, so every continuation is generation guarded.
+      const [HlsLib, hlsUrl] = await Promise.all([loadHls(), getHlsStreamUrl(cameraId)]);
+      if (closed || generation !== streamGeneration || !modal.isConnected) return;
       let hlsStarted = false;
 
       if (hlsUrl) {
         const modalBody = modal.querySelector('.modal-body');
+        if (!modalBody) return;
         let video = modalBody.querySelector('video.camera-video');
         if (!video) {
           video = document.createElement('video');
@@ -1315,25 +1353,54 @@ async function openCamera(cameraId, options = {}) {
 
         if (HlsLib && HlsLib.isSupported()) {
           const hls = new HlsLib({ lowLatencyMode: true, backBufferLength: 90 });
-          hls.loadSource(hlsUrl);
-          hls.attachMedia(video);
-          hls.on(HlsLib.Events.ERROR, (_evt, data) => {
-            console.warn('HLS error', data?.details || data);
-            if (data?.fatal) {
-              try {
-                hls.destroy();
-              } catch (_error) {
-                console.warn('Failed to destroy HLS instance:', _error);
-              }
-              state.ACTIVE_HLS.delete(cameraId);
-              // Fallback to MJPEG if fatal error
-              video.style.display = 'none';
-              img.style.display = 'block';
-              img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
-              showLoading(false);
-            }
-          });
+          // Track the instance before setup so a synchronous load/attach failure
+          // is still reachable by teardown.
           state.ACTIVE_HLS.set(cameraId, hls);
+          try {
+            hls.loadSource(hlsUrl);
+            hls.attachMedia(video);
+            hls.on(HlsLib.Events.ERROR, (_evt, data) => {
+              if (
+                closed ||
+                generation !== streamGeneration ||
+                state.ACTIVE_HLS.get(cameraId) !== hls
+              ) {
+                return;
+              }
+              console.warn('HLS error', data?.details || data);
+              if (data?.fatal) {
+                try {
+                  hls.destroy();
+                } catch (_error) {
+                  console.warn('Failed to destroy HLS instance:', _error);
+                }
+                if (state.ACTIVE_HLS.get(cameraId) === hls) {
+                  state.ACTIVE_HLS.delete(cameraId);
+                }
+                // Fallback to MJPEG if fatal error
+                try {
+                  video.pause();
+                } catch {
+                  // Best-effort teardown before switching transports.
+                }
+                video.removeAttribute('src');
+                video.style.display = 'none';
+                img.style.display = 'block';
+                img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
+                showLoading(false);
+              }
+            });
+          } catch (error) {
+            if (state.ACTIVE_HLS.get(cameraId) === hls) {
+              state.ACTIVE_HLS.delete(cameraId);
+            }
+            try {
+              hls.destroy();
+            } catch (destroyError) {
+              console.warn('Failed to destroy HLS instance after setup error:', destroyError);
+            }
+            throw error;
+          }
           img.style.display = 'none';
           video.style.display = 'block';
           hlsStarted = true;
@@ -1341,6 +1408,14 @@ async function openCamera(cameraId, options = {}) {
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           // Safari native HLS support
           video.src = hlsUrl;
+          try {
+            const playPromise = video.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+              void playPromise.catch(() => {});
+            }
+          } catch {
+            // Autoplay failure leaves native controls hidden but does not leak the stream.
+          }
           img.style.display = 'none';
           video.style.display = 'block';
           hlsStarted = true;
@@ -1354,6 +1429,12 @@ async function openCamera(cameraId, options = {}) {
         const modalBody = modal.querySelector('.modal-body');
         const video = modalBody?.querySelector('video.camera-video');
         if (video) {
+          try {
+            video.pause();
+          } catch {
+            // Best-effort teardown before switching transports.
+          }
+          video.removeAttribute('src');
           video.style.display = 'none';
         }
 
@@ -1361,13 +1442,22 @@ async function openCamera(cameraId, options = {}) {
         img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
 
         // Hide loading when MJPEG starts
-        img.onload = () => showLoading(false);
-        img.onerror = () => showLoading(false);
+        img.onload = () => {
+          if (closed || generation !== streamGeneration) return;
+          showLoading(false);
+        };
+        img.onerror = () => {
+          if (closed || generation !== streamGeneration) return;
+          showLoading(false);
+        };
       }
 
+      if (closed || generation !== streamGeneration || !modal.isConnected) return;
+      isStartingLive = false;
       isLive = true;
       if (liveBtn) {
         liveBtn.textContent = t('Stop');
+        liveBtn.setAttribute('aria-busy', 'false');
       }
     };
 
@@ -1378,15 +1468,24 @@ async function openCamera(cameraId, options = {}) {
 
     if (liveBtn) {
       liveBtn.onclick = () => {
-        if (isLive) {
-          stopLive();
+        if (isLive || isStartingLive) {
+          loadSnapshot();
         } else {
-          startLive();
+          const startPromise = startLive();
+          const generation = streamGeneration;
+          void startPromise.catch((error) => {
+            if (closed || generation !== streamGeneration || !isStartingLive) return;
+            console.warn('Failed to start camera live stream:', error);
+            loadSnapshot();
+            showToast(t('Failed to open camera viewer'), 'error', 2500);
+          });
         }
       };
     }
 
     const closeModal = () => {
+      if (closed) return;
+      closed = true;
       stopLive();
       document.removeEventListener('keydown', handleModalKeydown, true);
       modal.remove();
