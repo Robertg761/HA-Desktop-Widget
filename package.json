@@ -153,6 +153,7 @@
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "prettier": "^3.9.5",
+    "regenerate-unicode-properties": "10.2.2",
     "vite": "^7.3.1"
   },
   "dependencies": {
