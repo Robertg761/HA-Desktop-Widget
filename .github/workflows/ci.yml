@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: windows-latest
@@ -21,6 +24,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependency tree
+        run: npm audit --audit-level=high
 
       - name: Run linter
         run: npx eslint . --max-warnings=0
@@ -40,6 +46,16 @@ jobs:
       - name: Package Windows app
         run: npx electron-builder --dir --win --x64 --publish never
 
+      - name: Smoke launch packaged Windows app
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $executable = (Resolve-Path 'dist/win-unpacked/HA Desktop Widget.exe').Path
+          $process = Start-Process -FilePath $executable -ArgumentList '--smoke-test' -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged Windows smoke test failed with exit code $($process.ExitCode)."
+          }
+
   lint-and-test-linux:
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +71,7 @@ jobs:
       - name: Install native build dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev
+          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb
 
       - name: Install dependencies
         run: npm ci
@@ -71,6 +87,12 @@ jobs:
 
       - name: Package Linux app
         run: npx electron-builder --dir --linux --x64 --publish never
+
+      - name: Smoke launch packaged Linux app
+        timeout-minutes: 2
+        run: |
+          timeout --kill-after=5s 30s xvfb-run -a dbus-run-session -- \
+            dist/linux-unpacked/home-assistant-widget --smoke-test
 
   package-macos:
     runs-on: macos-latest
@@ -94,6 +116,12 @@ jobs:
         run: npx electron-builder --dir --mac --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Smoke launch packaged macOS app
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          "dist/mac-universal/HA Desktop Widget.app/Contents/MacOS/HA Desktop Widget" --smoke-test
 
       - name: Verify universal macOS app
         shell: bash

@@ -12,6 +12,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -24,12 +25,13 @@ jobs:
       release_tag: ${{ steps.release_meta.outputs.release_tag }}
       release_version: ${{ steps.release_meta.outputs.release_version }}
       release_prerelease: ${{ steps.release_meta.outputs.release_prerelease }}
+      release_sha: ${{ steps.release_meta.outputs.release_sha }}
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.inputs.release_tag || github.ref }}
+          ref: refs/tags/${{ github.event.inputs.release_tag || github.ref_name }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -43,6 +45,7 @@ jobs:
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+          WORKFLOW_REF: ${{ github.ref }}
         run: |
           $releaseTag = $env:RELEASE_TAG
           if ([string]::IsNullOrWhiteSpace($releaseTag)) {
@@ -53,26 +56,71 @@ jobs:
             throw "Invalid release tag: $releaseTag. Expected vX.Y.Z or vX.Y.Z-suffix."
           }
 
+          $expectedWorkflowRef = "refs/tags/$releaseTag"
+          if ($env:WORKFLOW_REF -ne $expectedWorkflowRef) {
+            throw "Release workflow must run from $expectedWorkflowRef, not $($env:WORKFLOW_REF)."
+          }
+
           $releaseVersion = $releaseTag.Substring(1)
           $releasePrerelease = if ($releaseVersion -match '-') { 'true' } else { 'false' }
+          $releaseSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $releaseSha -notmatch '^[0-9a-f]{40}$') {
+            throw "Could not resolve the checked-out release commit."
+          }
           "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_prerelease=$releasePrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "release_sha=$releaseSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Resolved release version $releaseVersion from tag $releaseTag"
           Write-Host "GitHub prerelease: $releasePrerelease"
 
-      - name: Verify tag points to main HEAD
+      - name: Verify tag commit is on main
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
+          git fetch --force origin \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          git fetch origin main
           main_head="$(git rev-parse origin/main)"
           tag_sha="$(git rev-parse HEAD)"
+          remote_tag_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
 
-          if [[ "$tag_sha" != "$main_head" ]]; then
-            echo "Release tag must point to the current origin/main HEAD." >&2
+          if [[ "$tag_sha" != "$remote_tag_sha" ]]; then
+            echo "Release tag changed while validation was starting." >&2
+            echo "Checked-out commit: $tag_sha" >&2
+            echo "Current tag commit: $remote_tag_sha" >&2
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$tag_sha" "$main_head"; then
+            echo "Release tag must point to a commit contained in origin/main." >&2
             echo "Tag commit:  $tag_sha" >&2
             echo "origin/main: $main_head" >&2
+            exit 1
+          fi
+
+      - name: Verify successful CI for release commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse HEAD)"
+          successful_ci_run="$(
+            gh run list \
+              --workflow ci.yml \
+              --commit "$release_sha" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty'
+          )"
+          if [[ -z "$successful_ci_run" ]]; then
+            echo "No successful CI run exists for release commit $release_sha." >&2
+            echo "Wait for CI to pass before publishing this tag." >&2
             exit 1
           fi
 
@@ -129,10 +177,19 @@ jobs:
         run: npm ci
 
       - name: Run linter
-        run: npm run lint
+        run: npm run lint -- --max-warnings=0
 
-      - name: Run tests
-        run: npm test
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check repository hygiene
+        run: npm run repo:check
+
+      - name: Run tests with coverage
+        run: npm run test:coverage -- --runInBand
+
+      - name: Audit dependency tree
+        run: npm audit --audit-level=high
 
   build:
     needs: validate
@@ -141,7 +198,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -182,7 +239,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -251,7 +308,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Use Node.js
@@ -324,8 +381,32 @@ jobs:
     needs: [validate, build, build-mac, build-linux]
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     steps:
+      - name: Checkout validated release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.validate.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Revalidate release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
+          RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --force origin \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          remote_tag_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          if [[ "$remote_tag_sha" != "$RELEASE_SHA" ]]; then
+            echo "Release tag moved after validation; refusing to publish." >&2
+            echo "Validated commit: $RELEASE_SHA" >&2
+            echo "Current tag commit: $remote_tag_sha" >&2
+            exit 1
+          fi
+
       - name: Download release artifacts
         uses: actions/download-artifact@v7
         with:
@@ -340,6 +421,7 @@ jobs:
           RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
           RELEASE_PRERELEASE: ${{ needs.validate.outputs.release_prerelease }}
+          RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -374,6 +456,18 @@ jobs:
           while IFS= read -r -d '' artifact; do
             artifacts+=("$artifact")
           done < <(find release-artifacts -type f -print0)
+
+          # Close the gap between the validation job and publication. Release tags
+          # are expected to be immutable; refuse to upload if this one moved.
+          git fetch --force origin \
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          remote_tag_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          if [[ "$remote_tag_sha" != "$RELEASE_SHA" ]]; then
+            echo "Release tag moved before publication; refusing to upload." >&2
+            echo "Validated commit: $RELEASE_SHA" >&2
+            echo "Current tag commit: $remote_tag_sha" >&2
+            exit 1
+          fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${artifacts[@]}" --clobber
@@ -448,7 +542,7 @@ jobs:
       - name: Checkout tagged commit
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Use Node.js

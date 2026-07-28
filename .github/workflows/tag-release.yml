@@ -69,15 +69,42 @@ jobs:
             exit 1
           fi
 
+          main_sha="$(git rev-parse HEAD)"
+          successful_ci_run="$(
+            gh run list \
+              --workflow ci.yml \
+              --commit "$main_sha" \
+              --status success \
+              --limit 1 \
+              --json databaseId,headSha \
+              --jq '.[0].databaseId // empty'
+          )"
+          if [[ -z "$successful_ci_run" ]]; then
+            echo "No successful CI run exists for main commit $main_sha." >&2
+            echo "Wait for CI to pass, then run the tag workflow again." >&2
+            exit 1
+          fi
+
+          git fetch origin main --depth=1
+          latest_main_sha="$(git rev-parse origin/main)"
+          if [[ "$latest_main_sha" != "$main_sha" ]]; then
+            echo "origin/main advanced from $main_sha to $latest_main_sha during validation." >&2
+            echo "Run the tag workflow again after CI passes for the new main commit." >&2
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$release_tag" -m "$release_tag"
-          git push origin "$release_tag"
+          # The release workflow accepts this exact tested commit while it remains
+          # contained in main, so a normal main advance after validation cannot
+          # strand an otherwise valid release tag.
+          git push origin "refs/tags/$release_tag:refs/tags/$release_tag"
 
           # Tags pushed with GITHUB_TOKEN do not trigger on-push workflows, so
           # dispatch the release workflow explicitly (same as the nightly beta).
           gh workflow run release.yml \
-            --ref main \
+            --ref "$release_tag" \
             --raw-field "release_tag=$release_tag"
           echo "Tagged main as $release_tag and dispatched the release workflow."
 
