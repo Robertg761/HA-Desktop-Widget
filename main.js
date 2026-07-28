@@ -13,6 +13,7 @@ const {
   net,
   dialog,
   powerMonitor,
+  session,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -69,6 +70,7 @@ const {
   getAppIconPath,
   getMainWindowVisualOptions,
   shouldForceX11OzonePlatform,
+  shouldUseCompositorOwnedPlacement,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
@@ -80,6 +82,31 @@ const {
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
+const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
+const {
+  createSerializedTaskRunner,
+  createLatestTaskCoalescer,
+} = require('./src/serialized-task-runner.cjs');
+const { shouldBlockConfigWrite } = require('./src/config-write-guard.cjs');
+const { requireExistingSyncParentDirectory } = require('./src/cloud-sync-path.cjs');
+const {
+  createProfileSyncRewriteTransaction,
+  normalizeProfileSyncRewriteTransaction,
+  profileSyncRewriteEndpointMatches,
+  isSecureProfileSyncStorageAvailable,
+  classifyProfileSyncPassphraseSubmission,
+  resolveProfileSyncEncryptionRequest,
+  stageProfileSyncRewriteTransaction,
+  runProfileSyncRewriteRecovery,
+} = require('./src/profile-sync-rewrite-transaction.cjs');
+const {
+  canCommitSnapshot,
+  createVersionedWriteAcknowledgements,
+} = require('./src/versioned-write-acknowledgements.cjs');
+const {
+  SMOKE_TEST_PROFILE_PREFIX,
+  removeSmokeTestProfile,
+} = require('./src/smoke-test-profile.cjs');
 const {
   PORTAL_SHORTCUTS_BACKEND,
   createPortalGlobalShortcutsController,
@@ -166,6 +193,13 @@ function hardenRendererNavigation(targetWindow) {
     }
     routeExternalHttpLink(url);
   });
+
+  // Web Bluetooth bypasses the ordinary session permission request handler and has
+  // its own chooser event. The widget has no Bluetooth feature, so cancel it.
+  webContents.on('select-bluetooth-device', (event, _devices, callback) => {
+    event?.preventDefault?.();
+    callback('');
+  });
 }
 
 // Renderer warnings never reached the log file, so camera, stream and websocket failures were
@@ -225,6 +259,7 @@ if (usesLinuxPopupHotkeyBackend) {
 log.info('App starting...');
 
 const IS_DEV_MODE = process.argv.includes('--dev');
+const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
 const IS_CLIMATE_DEMO_MODE =
   IS_DEV_MODE && !app.isPackaged && process.argv.includes('--demo-climate');
 const IS_CLIMATE_DEMO_OVERLAY_MODE =
@@ -232,6 +267,8 @@ const IS_CLIMATE_DEMO_OVERLAY_MODE =
   !app.isPackaged &&
   !IS_CLIMATE_DEMO_MODE &&
   process.argv.includes('--demo-climate-overlay');
+let smokeTestUserDataPath = '';
+let smokeTestTempRootPath = '';
 
 // The demo gets a fresh temporary Electron profile, so it cannot read or write
 // a user's Home Assistant token, favorites, pins, or other production settings.
@@ -241,6 +278,13 @@ if (IS_CLIMATE_DEMO_MODE) {
   );
   app.setPath('userData', demoUserDataPath);
   log.info(`Starting isolated development climate demo: ${demoUserDataPath}`);
+} else if (IS_SMOKE_TEST_MODE) {
+  smokeTestTempRootPath = app.getPath('temp');
+  smokeTestUserDataPath = fs.mkdtempSync(
+    path.join(smokeTestTempRootPath, SMOKE_TEST_PROFILE_PREFIX)
+  );
+  app.setPath('userData', smokeTestUserDataPath);
+  log.info(`Starting isolated packaged-runtime smoke test: ${smokeTestUserDataPath}`);
 }
 
 // Set cache paths before app is ready to avoid access issues
@@ -282,8 +326,9 @@ function hasXWaylandFailureMarker() {
   }
 }
 
+const waylandSession = isWaylandSession();
 const forcedX11Ozone = shouldForceX11OzonePlatform({
-  waylandSession: isWaylandSession(),
+  waylandSession,
   previousAttemptFailed: hasXWaylandFailureMarker(),
 });
 if (forcedX11Ozone) {
@@ -295,8 +340,13 @@ if (forcedX11Ozone) {
 
 // The compositor only owns placement when we are really running on Wayland; under XWayland
 // the widget can position itself again.
-const usesCompositorOwnedPlacement =
-  process.platform === 'linux' && isWaylandSession() && !forcedX11Ozone;
+const usesCompositorOwnedPlacement = shouldUseCompositorOwnedPlacement({
+  platform: process.platform,
+  env: process.env,
+  argv: process.argv,
+  waylandSession,
+  forcedX11Ozone,
+});
 
 let mainWindow;
 let tray;
@@ -304,15 +354,57 @@ let config;
 let isQuitting = false;
 let autoUpdateDownloaded = false;
 let windowStateSaveTimer = null;
+let pendingWindowBounds = null;
+let quitFinalizationStarted = false;
+let quitFinalized = false;
+let smokeTestTimeout = null;
+let smokeTestFinished = false;
+let smokeTestRendererLoaded = false;
+let smokeTestRendererReady = false;
+let smokeTestTrayReady = false;
 const CONFIG_SAVE_DEBOUNCE_MS = 120;
+const QUIT_FINALIZATION_TIMEOUT_MS = 15000;
 let configWriteTimer = null;
 let configWriteInFlight = false;
 let pendingConfigSnapshot = null;
 let configSnapshotVersion = 0;
 let configWriteEpoch = 0;
 let configShutdownPending = false;
+const configWriteAcknowledgements = createVersionedWriteAcknowledgements();
+let lastConfigWriteError = null;
+let lastConfigPersistenceWarningSignature = '';
+let lastConfigPersistenceWarningAt = 0;
+let configRecoveryNotice = null;
+let configWriteBlockedReason = '';
 let configBackupCreatedThisRun = false;
 let preservedEncryptedTokenForRecovery = null;
+let configMutationQueueClosed = false;
+const runSerializedConfigMutationUnchecked = createSerializedTaskRunner();
+const runSerializedConfigMutation = (task) => {
+  if (configMutationQueueClosed) {
+    return Promise.reject(
+      new Error('The application is shutting down; the change was not applied')
+    );
+  }
+  return runSerializedConfigMutationUnchecked(task);
+};
+const runBackgroundConfigMutation = (task, context = 'background config mutation') => {
+  void runSerializedConfigMutation(task).catch((error) => {
+    if (configMutationQueueClosed || quitFinalizationStarted) return;
+    log.warn(`${context} failed:`, error?.message || String(error));
+  });
+};
+const serializeConfigMutationHandler =
+  (handler) =>
+  (...args) => {
+    if (quitFinalizationStarted || configMutationQueueClosed) {
+      return Promise.resolve({
+        success: false,
+        error: 'The application is shutting down; the change was not applied',
+      });
+    }
+    return runSerializedConfigMutation(() => handler(...args));
+  };
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
@@ -346,7 +438,6 @@ const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decrypt
 
 const profileSyncRuntime = {
   inFlight: false,
-  rerun: null,
   pushDebounceTimer: null,
   intervalTimer: null,
   // Hash of the scoped profile as it stood immediately before a pulled profile
@@ -360,6 +451,7 @@ const profileSyncRuntime = {
   lastOpportunisticSyncAt: 0,
   needsResolution: false,
   pendingRemoteEnvelope: null,
+  pendingRemoteIdentity: null,
   localProfileHash: null,
   localProfileUpdatedAt: null,
   passphraseSession: '',
@@ -382,6 +474,11 @@ const popupWindowPresenter = createPopupWindowPresenter({
   getConfig: () => config,
   getWorkAreas: () => electronScreen.getAllDisplays().map((display) => display.workArea),
   supportsWindowPositioning: !usesCompositorOwnedPlacement,
+  // Linux has press-only global shortcuts, and toggle-mode popups on other platforms
+  // likewise have no key-release event. In both cases, blur is the safe point to stop
+  // holding Electron's screen-saver window level.
+  shouldReleaseElevationOnBlur: () =>
+    usesLinuxPopupHotkeyBackend || !!config?.popupHotkeyToggleMode,
   log,
 });
 const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
@@ -419,6 +516,20 @@ const OPAQUE_WINDOW_BACKGROUND_COLOR = '#28282d';
 let devReloadTimer = null;
 let devReloadWatchersStarted = false;
 const devReloadWatchers = [];
+
+function isTrustedAppWebContents(candidate) {
+  if (!candidate) return false;
+  if (mainWindow && !mainWindow.isDestroyed() && candidate === mainWindow.webContents) {
+    return true;
+  }
+
+  for (const pinWindow of desktopPinWindows.values()) {
+    if (pinWindow && !pinWindow.isDestroyed() && candidate === pinWindow.webContents) {
+      return true;
+    }
+  }
+  return false;
+}
 let postWindowStartupTasksScheduled = false;
 let deferredHomeAssistantTokenDecryptPending = false;
 let deferredPlaintextTokenMigrationPending = false;
@@ -484,14 +595,99 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   // fallback for configs written before profileUpdatedAt existed — it tracks
   // sync *attempts* (including failures), so it must not be preferred here or
   // a string of failed syncs would make the local profile look freshly edited.
-  profileSyncRuntime.localProfileUpdatedAt =
+  const localProfileUpdatedAtSeed =
     config?.profileSync?.profileUpdatedAt ||
     config?.profileSync?.lastSyncAt ||
     new Date().toISOString();
+  profileSyncRuntime.localProfileUpdatedAt = localProfileUpdatedAtSeed;
+  if (config?.profileSync && !config.profileSync.profileUpdatedAt) {
+    config.profileSync.profileUpdatedAt = localProfileUpdatedAtSeed;
+    // Persist the migration once. Otherwise a failed attempt can advance
+    // lastSyncAt, and the next restart would mistake that failure timestamp for
+    // the age of local profile content.
+    saveConfig({ allowDebouncedPush: false });
+  }
 }
 
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
+}
+
+function finishSmokeTest(success, error = '') {
+  if (!IS_SMOKE_TEST_MODE || smokeTestFinished) return;
+  smokeTestFinished = true;
+  if (smokeTestTimeout) {
+    clearTimeout(smokeTestTimeout);
+    smokeTestTimeout = null;
+  }
+
+  if (success) {
+    const persistence = flushPendingConfigWriteSync({ shutdown: true });
+    if (!persistence.success) {
+      success = false;
+      error = `Configuration flush failed: ${persistence.error}`;
+    }
+  }
+
+  isQuitting = true;
+  setImmediate(async () => {
+    desktopPinWindows.forEach((pinWindow) => {
+      if (pinWindow && !pinWindow.isDestroyed()) {
+        pinWindow.destroy();
+      }
+    });
+    desktopPinWindows.clear();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
+    if (tray && !tray.isDestroyed?.()) {
+      tray.destroy();
+    }
+    try {
+      await session.defaultSession.flushStorageData();
+    } catch (storageError) {
+      success = false;
+      error = `Failed to flush smoke-test session storage: ${storageError.message}`;
+    }
+
+    const cleanup = removeSmokeTestProfile(smokeTestUserDataPath, smokeTestTempRootPath);
+    if (!cleanup.success) {
+      success = false;
+      error = `Failed to remove isolated smoke-test profile: ${cleanup.error}`;
+    } else {
+      smokeTestUserDataPath = '';
+    }
+
+    if (success) {
+      log.info('HA_WIDGET_SMOKE_TEST_OK');
+      console.log('HA_WIDGET_SMOKE_TEST_OK');
+    } else {
+      const message = error || 'Packaged runtime smoke test failed';
+      log.error(`HA_WIDGET_SMOKE_TEST_FAILED: ${message}`);
+      console.error(`HA_WIDGET_SMOKE_TEST_FAILED: ${message}`);
+    }
+    app.exit(success ? 0 : 1);
+  });
+}
+
+function maybeFinishSmokeTest() {
+  if (
+    IS_SMOKE_TEST_MODE &&
+    smokeTestRendererLoaded &&
+    smokeTestRendererReady &&
+    smokeTestTrayReady &&
+    mainWindow &&
+    !mainWindow.isDestroyed()
+  ) {
+    finishSmokeTest(true);
+  }
+}
+
+function startSmokeTestTimeout() {
+  if (!IS_SMOKE_TEST_MODE || smokeTestTimeout || smokeTestFinished) return;
+  smokeTestTimeout = setTimeout(() => {
+    finishSmokeTest(false, 'Timed out waiting for the renderer and tray to initialize');
+  }, 20000);
 }
 
 function closeDevReloadWatchers() {
@@ -848,6 +1044,7 @@ function getDefaultProfileSyncConfig() {
     syncScope: getNormalizedProfileSyncScopeValue(profileSyncCore.getDefaultSyncScope()),
     intervalMinutes: PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: false,
+    encryptionChangePending: null,
     rememberPassphrase: false,
     passphraseEncrypted: false,
     storedPassphrase: '',
@@ -855,6 +1052,10 @@ function getDefaultProfileSyncConfig() {
     lastSyncStatus: 'idle',
     lastSyncError: '',
     profileUpdatedAt: null,
+    firstEnableResolutionPending: false,
+    remoteRewritePending: false,
+    passphraseTransition: null,
+    passphraseTransitionInvalid: false,
     deviceId: generateProfileSyncDeviceId(),
   };
 }
@@ -883,6 +1084,23 @@ function ensureProfileSyncConfigDefaults(target) {
     typeof target.profileSync.profileUpdatedAt !== 'string'
   ) {
     target.profileSync.profileUpdatedAt = null;
+  }
+  target.profileSync.firstEnableResolutionPending =
+    target.profileSync.firstEnableResolutionPending === true;
+  target.profileSync.remoteRewritePending = target.profileSync.remoteRewritePending === true;
+  target.profileSync.encryptionChangePending =
+    typeof target.profileSync.encryptionChangePending === 'boolean'
+      ? target.profileSync.encryptionChangePending
+      : null;
+  const rawPassphraseTransition = target.profileSync.passphraseTransition;
+  const normalizedPassphraseTransition =
+    normalizeProfileSyncRewriteTransaction(rawPassphraseTransition);
+  target.profileSync.passphraseTransitionInvalid =
+    !!rawPassphraseTransition && !normalizedPassphraseTransition;
+  target.profileSync.passphraseTransition =
+    normalizedPassphraseTransition || rawPassphraseTransition || null;
+  if (target.profileSync.passphraseTransition || target.profileSync.passphraseTransitionInvalid) {
+    target.profileSync.remoteRewritePending = true;
   }
   return target;
 }
@@ -947,6 +1165,7 @@ function sanitizeConfigForRenderer(inputConfig) {
   const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
   if (cloned.profileSync) {
     delete cloned.profileSync.storedPassphrase;
+    delete cloned.profileSync.passphraseTransition;
   }
   // The marker is runtime-only. It is never read from or written to a user
   // profile, including when the connected overlay is active.
@@ -956,7 +1175,11 @@ function sanitizeConfigForRenderer(inputConfig) {
   } else if (IS_CLIMATE_DEMO_OVERLAY_MODE) {
     cloned.developmentDemo = { climate: true, mode: 'overlay' };
   }
+  cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
+  if (configRecoveryNotice) {
+    cloned.configRecovery = { ...configRecoveryNotice };
+  }
   return cloned;
 }
 
@@ -1136,20 +1359,36 @@ function clampDesktopPinBounds(
   const display = electronScreen.getDisplayMatching({ x, y, width, height });
   const workArea = display?.workArea ||
     electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
-  return clampDesktopPinBoundsWithWorkArea(bounds, {
+  const clampedBounds = clampDesktopPinBoundsWithWorkArea(bounds, {
     entityId,
     contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
     fallbackOrigin: cascadeOrigin,
     workArea,
     previousBounds,
   });
+  if (usesCompositorOwnedPlacement) {
+    // Native Wayland owns placement. Keep valid coordinates as opaque
+    // persisted metadata so an unrelated save cannot replace an X11 or
+    // multi-monitor position that Electron cannot apply in this session.
+    if (Number.isFinite(Number(bounds.x))) {
+      clampedBounds.x = Math.round(Number(bounds.x));
+    }
+    if (Number.isFinite(Number(bounds.y))) {
+      clampedBounds.y = Math.round(Number(bounds.y));
+    }
+  }
+  return clampedBounds;
 }
 
 function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
   if (!targetWindow || targetWindow.isDestroyed() || !nextBounds) return;
   try {
     targetWindow.__desktopPinApplyingBounds = true;
-    targetWindow.setBounds(nextBounds);
+    if (usesCompositorOwnedPlacement) {
+      targetWindow.setSize(nextBounds.width, nextBounds.height);
+    } else {
+      targetWindow.setBounds(nextBounds);
+    }
     applyDesktopPinWindowShape(targetWindow, nextBounds);
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
@@ -1158,7 +1397,7 @@ function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
   }
 }
 
-function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
+async function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -1177,10 +1416,15 @@ function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
     return { success: false, error: 'Invalid content minimum bounds' };
   }
 
+  const previousMinBounds = desktopPinContentMinBounds.get(normalizedEntityId);
   desktopPinContentMinBounds.set(normalizedEntityId, normalizedMinBounds);
 
   const currentBounds = config.desktopPins[normalizedEntityId];
   const clampedBounds = clampDesktopPinBounds(currentBounds, normalizedEntityId, 0, currentBounds);
+  if (usesCompositorOwnedPlacement) {
+    clampedBounds.x = currentBounds.x;
+    clampedBounds.y = currentBounds.y;
+  }
   const boundsChanged =
     clampedBounds.x !== currentBounds.x ||
     clampedBounds.y !== currentBounds.y ||
@@ -1188,11 +1432,38 @@ function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
     clampedBounds.height !== currentBounds.height;
 
   if (boundsChanged) {
+    const previousBounds = currentBounds;
     config.desktopPins[normalizedEntityId] = clampedBounds;
-    saveConfig();
-    applyDesktopPinBoundsToWindow(desktopPinWindows.get(normalizedEntityId), clampedBounds);
-    pushConfigToRenderer();
-    sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.desktopPins[normalizedEntityId] = previousBounds;
+      if (previousMinBounds) {
+        desktopPinContentMinBounds.set(normalizedEntityId, previousMinBounds);
+      } else {
+        desktopPinContentMinBounds.delete(normalizedEntityId);
+      }
+      return {
+        success: false,
+        error: `Failed to save desktop pin size: ${persistence.error}`,
+      };
+    }
+    const runtimeWarnings = [];
+    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin minimum bounds', () =>
+      applyDesktopPinBoundsToWindow(desktopPinWindows.get(normalizedEntityId), clampedBounds)
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds update', () =>
+      sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' })
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
+      pushConfigToRenderer({ runtimeWarnings })
+    );
+    return {
+      success: true,
+      minBounds: normalizedMinBounds,
+      pinBounds: config.desktopPins[normalizedEntityId],
+      resized: true,
+      ...(runtimeWarnings.length ? { runtimeWarnings } : {}),
+    };
   }
 
   return {
@@ -1236,7 +1507,7 @@ function resolveDesktopPinSupportDecision(entityId, supportInfo = null) {
   };
 }
 
-function pinEntityToDesktopInternal(entityId, supportInfo = null) {
+async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -1261,16 +1532,36 @@ function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   }
 
   const existed = !!config?.desktopPins?.[normalizedEntityId];
+  const previousBounds = config?.desktopPins?.[normalizedEntityId];
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = getDesktopPinBounds(
     normalizedEntityId,
     config.desktopPins[normalizedEntityId]
   );
   normalizeDesktopPinsConfig(config);
-  saveConfig();
-  syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId });
-  pushConfigToRenderer();
-  broadcastDesktopPinConfigUpdate();
+  const persistence = await saveConfigDurably();
+  if (!persistence.success) {
+    if (existed) {
+      config.desktopPins[normalizedEntityId] = previousBounds;
+    } else {
+      delete config.desktopPins[normalizedEntityId];
+    }
+    return {
+      success: false,
+      error: `Failed to save desktop pin: ${persistence.error}`,
+      supportProfile,
+    };
+  }
+  const runtimeWarnings = [];
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin window creation', () =>
+    syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId })
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin config broadcast', () =>
+    broadcastDesktopPinConfigUpdate()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
+    pushConfigToRenderer({ runtimeWarnings })
+  );
 
   return {
     success: true,
@@ -1278,6 +1569,50 @@ function pinEntityToDesktopInternal(entityId, supportInfo = null) {
     existed,
     supportProfile,
     pinBounds: config.desktopPins[normalizedEntityId],
+    ...(runtimeWarnings.length ? { runtimeWarnings } : {}),
+  };
+}
+
+async function unpinEntityFromDesktopInternal(entityId) {
+  const normalizedEntityId = normalizeEntityId(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+
+  const previousBounds = config?.desktopPins?.[normalizedEntityId];
+  const previousMinBounds = desktopPinContentMinBounds.get(normalizedEntityId);
+  if (previousBounds) {
+    delete config.desktopPins[normalizedEntityId];
+  }
+  desktopPinContentMinBounds.delete(normalizedEntityId);
+  const persistence = await saveConfigDurably();
+  if (!persistence.success) {
+    if (previousBounds) {
+      config.desktopPins[normalizedEntityId] = previousBounds;
+    }
+    if (previousMinBounds) {
+      desktopPinContentMinBounds.set(normalizedEntityId, previousMinBounds);
+    }
+    return {
+      success: false,
+      error: `Failed to save desktop pin removal: ${persistence.error}`,
+    };
+  }
+  const runtimeWarnings = [];
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin window removal', () =>
+    syncDesktopPinWindowsWithConfig()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin removal broadcast', () =>
+    broadcastDesktopPinConfigUpdate()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
+    pushConfigToRenderer({ runtimeWarnings })
+  );
+
+  return {
+    success: true,
+    pinned: false,
+    ...(runtimeWarnings.length ? { runtimeWarnings } : {}),
   };
 }
 
@@ -1539,7 +1874,7 @@ function setDesktopPinEditMode(enabled) {
   return { success: true, enabled: desktopPinEditMode };
 }
 
-function updateDesktopPinBounds(entityId, nextBounds = {}) {
+async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -1562,18 +1897,41 @@ function updateDesktopPinBounds(entityId, nextBounds = {}) {
     0,
     config.desktopPins[normalizedEntityId]
   );
-
-  config.desktopPins[normalizedEntityId] = clampedBounds;
-  saveConfig();
-
-  const window = desktopPinWindows.get(normalizedEntityId);
-  if (window && !window.isDestroyed()) {
-    applyDesktopPinBoundsToWindow(window, clampedBounds);
+  if (usesCompositorOwnedPlacement) {
+    clampedBounds.x = config.desktopPins[normalizedEntityId].x;
+    clampedBounds.y = config.desktopPins[normalizedEntityId].y;
   }
 
-  pushConfigToRenderer();
-  sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
-  return { success: true, pinBounds: clampedBounds };
+  const previousBounds = config.desktopPins[normalizedEntityId];
+  config.desktopPins[normalizedEntityId] = clampedBounds;
+  const persistence = await saveConfigDurably();
+  if (!persistence.success) {
+    config.desktopPins[normalizedEntityId] = previousBounds;
+    return {
+      success: false,
+      error: `Failed to save desktop pin position: ${persistence.error}`,
+      pinBounds: previousBounds,
+    };
+  }
+
+  const runtimeWarnings = [];
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds', () => {
+    const window = desktopPinWindows.get(normalizedEntityId);
+    if (window && !window.isDestroyed()) {
+      applyDesktopPinBoundsToWindow(window, clampedBounds);
+    }
+  });
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds update', () =>
+    sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' })
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
+    pushConfigToRenderer({ runtimeWarnings })
+  );
+  return {
+    success: true,
+    pinBounds: clampedBounds,
+    ...(runtimeWarnings.length ? { runtimeWarnings } : {}),
+  };
 }
 
 function createDesktopPinWindow(entityId, options = {}) {
@@ -1598,9 +1956,9 @@ function createDesktopPinWindow(entityId, options = {}) {
 
   const iconPath = getAppIconPath(__dirname);
   const transparencyOptions = getWindowTransparencyOptions(config);
+  const pinPositionOptions = usesCompositorOwnedPlacement ? {} : { x: pinBounds.x, y: pinBounds.y };
   const windowOptions = {
-    x: pinBounds.x,
-    y: pinBounds.y,
+    ...pinPositionOptions,
     width: pinBounds.width,
     height: pinBounds.height,
     transparent: transparencyOptions.transparent,
@@ -1657,20 +2015,35 @@ function createDesktopPinWindow(entityId, options = {}) {
   applyDesktopPinEditModeToWindow(pinWindow);
 
   const persistBounds = () => {
-    if (!desktopPinEditMode || pinWindow.__desktopPinApplyingBounds) return;
+    if (
+      usesCompositorOwnedPlacement ||
+      !desktopPinEditMode ||
+      pinWindow.__desktopPinApplyingBounds
+    ) {
+      return;
+    }
     if (pinWindow.__desktopPinSaveTimer) {
       clearTimeout(pinWindow.__desktopPinSaveTimer);
     }
+    pinWindow.__desktopPinPendingBounds = getDesktopPinBounds(
+      normalizedEntityId,
+      pinWindow.getBounds()
+    );
     pinWindow.__desktopPinSaveTimer = setTimeout(() => {
       pinWindow.__desktopPinSaveTimer = null;
       if (!pinWindow || pinWindow.isDestroyed()) return;
       if (!desktopPinEditMode) return;
-      const nextBounds = getDesktopPinBounds(normalizedEntityId, pinWindow.getBounds());
-      config.desktopPins = config.desktopPins || {};
-      config.desktopPins[normalizedEntityId] = nextBounds;
-      saveConfig();
-      pushConfigToRenderer();
-      sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
+      const nextBounds =
+        pinWindow.__desktopPinPendingBounds ||
+        getDesktopPinBounds(normalizedEntityId, pinWindow.getBounds());
+      pinWindow.__desktopPinPendingBounds = null;
+      runBackgroundConfigMutation(() => {
+        config.desktopPins = config.desktopPins || {};
+        config.desktopPins[normalizedEntityId] = nextBounds;
+        saveConfig();
+        pushConfigToRenderer();
+        sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
+      }, 'desktop pin bounds save');
     }, 180);
   };
 
@@ -1799,9 +2172,67 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   });
 }
 
-function pushConfigToRenderer() {
+function configSectionChanged(previousValue, nextValue) {
+  return JSON.stringify(previousValue ?? null) !== JSON.stringify(nextValue ?? null);
+}
+
+async function applyRuntimeConfigSideEffects(previousConfig, nextConfig, source = 'config update') {
+  const entityHotkeysChanged = configSectionChanged(
+    previousConfig?.globalHotkeys,
+    nextConfig?.globalHotkeys
+  );
+  const popupHotkeyChanged =
+    previousConfig?.popupHotkey !== nextConfig?.popupHotkey ||
+    previousConfig?.popupHotkeyHideOnRelease !== nextConfig?.popupHotkeyHideOnRelease ||
+    previousConfig?.popupHotkeyToggleMode !== nextConfig?.popupHotkeyToggleMode;
+  const failures = [];
+
+  try {
+    if (usesCompositorOwnedPlacement && (entityHotkeysChanged || popupHotkeyChanged)) {
+      await ensurePortalShortcutsBackendInitialized();
+    }
+    if (portalShortcutsActive && (entityHotkeysChanged || popupHotkeyChanged)) {
+      const result = await syncPortalShortcuts({ immediate: true });
+      if (!result.success) {
+        failures.push(`portal shortcuts: ${result.error || 'activation failed'}`);
+      }
+    } else {
+      if (entityHotkeysChanged) {
+        const result = await Promise.resolve(registerGlobalHotkeys());
+        if (result?.success === false) {
+          failures.push(`entity hotkeys: ${result.error || 'activation failed'}`);
+        }
+      }
+      if (popupHotkeyChanged) {
+        const result = await Promise.resolve(registerPopupHotkey());
+        if (result?.success === false) {
+          failures.push(`popup hotkey: ${result.error || 'activation failed'}`);
+        }
+      }
+    }
+  } catch (error) {
+    failures.push(`hotkey runtime: ${error?.message || String(error)}`);
+  }
+
+  if (configSectionChanged(previousConfig?.entityAlerts, nextConfig?.entityAlerts)) {
+    try {
+      setupEntityAlerts();
+    } catch (error) {
+      failures.push(`entity alerts: ${error?.message || String(error)}`);
+    }
+  }
+
+  if (failures.length) {
+    throw new Error(`Failed to refresh runtime state after ${source}: ${failures.join('; ')}`);
+  }
+}
+
+function pushConfigToRenderer(extra = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('config-updated', sanitizeConfigForRenderer(config));
+  mainWindow.webContents.send('config-updated', {
+    ...sanitizeConfigForRenderer(config),
+    ...(isPlainObject(extra) ? extra : {}),
+  });
 }
 
 function buildProfileSyncStatus(extra = {}) {
@@ -1821,7 +2252,19 @@ function buildProfileSyncStatus(extra = {}) {
     lastSyncStatus: profileSync.lastSyncStatus || 'idle',
     lastSyncError: profileSync.lastSyncError || '',
     inFlight: !!profileSyncRuntime.inFlight,
-    needsResolution: !!profileSyncRuntime.needsResolution,
+    needsResolution:
+      !!profileSyncRuntime.needsResolution || !!profileSync.firstEnableResolutionPending,
+    firstEnableResolutionPending: !!profileSync.firstEnableResolutionPending,
+    resolutionRetryRequired:
+      !!profileSync.firstEnableResolutionPending && !profileSyncRuntime.needsResolution,
+    remoteRewritePending: !!profileSync.remoteRewritePending,
+    rewriteRecoveryRequired:
+      !!profileSync.passphraseTransition || !!profileSync.passphraseTransitionInvalid,
+    rewriteRecoveryInvalid: !!profileSync.passphraseTransitionInvalid,
+    encryptionChangePending:
+      typeof profileSync.encryptionChangePending === 'boolean'
+        ? profileSync.encryptionChangePending
+        : null,
     deviceId: profileSync.deviceId,
     // Machine-readable codes rather than sentences, so the wording stays in the
     // renderer with the rest of the translated UI text.
@@ -1830,6 +2273,15 @@ function buildProfileSyncStatus(extra = {}) {
     ...extra,
   };
   return status;
+}
+
+function hasProfileSyncCredentialTransitionPending(profileSync = getProfileSyncConfig()) {
+  return (
+    !!profileSync.passphraseTransition ||
+    !!profileSync.passphraseTransitionInvalid ||
+    typeof profileSync.encryptionChangePending === 'boolean' ||
+    !!profileSync.remoteRewritePending
+  );
 }
 
 /**
@@ -1903,14 +2355,9 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
     profileSync.passphraseEncrypted = false;
     profileSync.storedPassphrase = '';
     profileSyncRuntime.passphraseSession = passphrase || '';
-    saveConfig();
     return { remembered: false, encrypted: false };
   }
 
-  const hadPersistedPassphrase =
-    !!profileSync.storedPassphrase ||
-    profileSync.rememberPassphrase ||
-    profileSync.passphraseEncrypted;
   profileSync.rememberPassphrase = true;
   profileSyncRuntime.passphraseSession = passphrase || '';
   profileSyncRuntime.passphraseWarning = '';
@@ -1920,7 +2367,6 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
       const encrypted = safeStorage.encryptString(passphrase || '');
       profileSync.storedPassphrase = encrypted.toString('base64');
       profileSync.passphraseEncrypted = true;
-      saveConfig();
       return { remembered: true, encrypted: true };
     } catch (error) {
       log.warn('Failed to encrypt remembered profile sync passphrase:', error.message);
@@ -1932,9 +2378,6 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
   profileSync.storedPassphrase = '';
   profileSyncRuntime.passphraseWarning =
     'Passphrase will only be kept for this session because OS encryption is unavailable.';
-  if (hadPersistedPassphrase) {
-    saveConfig();
-  }
   return { remembered: false, encrypted: false };
 }
 
@@ -1947,6 +2390,260 @@ function getActiveProfileSyncPassphrase() {
     profileSyncRuntime.passphraseSession = remembered;
   }
   return remembered;
+}
+
+function sealProfileSyncTransitionSecret(secret) {
+  if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
+    throw new Error(
+      'Secure OS credential storage is required to change an active sync passphrase safely'
+    );
+  }
+  const encrypted = safeStorage.encryptString(typeof secret === 'string' ? secret : '');
+  return encrypted.toString('base64');
+}
+
+function unsealProfileSyncTransitionSecret(encryptedSecret) {
+  if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
+    throw new Error('Secure OS credential storage is unavailable for pending sync-key recovery');
+  }
+  try {
+    return safeStorage.decryptString(Buffer.from(encryptedSecret, 'base64'));
+  } catch {
+    throw new Error('Pending sync-key recovery credentials could not be decrypted');
+  }
+}
+
+async function buildProfileSyncEnvelopeForConfig(
+  sourceConfig,
+  { encrypt, passphrase, updatedAt = new Date().toISOString() }
+) {
+  const profileSync = sourceConfig?.profileSync || getProfileSyncConfig();
+  const syncScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+  return profileSyncCore.buildSyncEnvelope({
+    profile: profileSyncCore.projectSyncProfile(sourceConfig, syncScope),
+    updatedAt,
+    updatedByDeviceId: profileSync.deviceId,
+    syncScope,
+    encrypt: encrypt === true,
+    passphrase: passphrase || '',
+  });
+}
+
+async function decodeRemoteProfileWithPassphrase(readResult, passphrase) {
+  if (!readResult?.exists || !readResult.envelope) {
+    return { profile: null, syncScope: null };
+  }
+  const profile = await profileSyncCore.decodeEnvelopeProfile(readResult.envelope, passphrase);
+  return {
+    profile,
+    syncScope: profileSyncCore.extractSyncScopeFromEnvelope(readResult.envelope),
+  };
+}
+
+function assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig) {
+  if (!decodedRemote?.profile || !decodedRemote.syncScope) return;
+  const localProfile = profileSyncCore.projectSyncProfile(baselineConfig, decodedRemote.syncScope);
+  if (
+    computeScopedProfileHash(decodedRemote.profile, decodedRemote.syncScope) !==
+    computeScopedProfileHash(localProfile, decodedRemote.syncScope)
+  ) {
+    throw new Error(
+      'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+    );
+  }
+}
+
+async function stageProfileSyncRewrite({
+  oldPassphrase,
+  newPassphrase,
+  rememberNewPassphrase,
+  targetEncryptionEnabled,
+  changeCredential,
+  baselineConfig = config,
+  targetConfig = config,
+  reason,
+  remoteResult = null,
+}) {
+  const profileSync = getProfileSyncConfig();
+  if (profileSync.passphraseTransition) {
+    throw new Error('A sync-key rewrite is already pending recovery');
+  }
+  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+    throw new Error('Profile sync must have an active remote file before it can be rewritten');
+  }
+
+  // Seal both credentials before either side changes. This is intentionally
+  // required even for users who do not normally remember a passphrase: the
+  // short-lived recovery record is what makes every crash point reversible.
+  const oldPassphraseEncrypted = sealProfileSyncTransitionSecret(oldPassphrase);
+  const newPassphraseEncrypted = sealProfileSyncTransitionSecret(newPassphrase);
+  const baselineRemote = remoteResult || (await readConfiguredSyncEnvelope());
+  const decodedRemote = await decodeRemoteProfileWithPassphrase(baselineRemote, oldPassphrase);
+  assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig);
+
+  const targetEnvelope = await buildProfileSyncEnvelopeForConfig(targetConfig, {
+    encrypt: targetEncryptionEnabled,
+    passphrase: newPassphrase,
+  });
+  const targetEnvelopeSerialized = profileSyncCore.serializeSyncEnvelope(targetEnvelope);
+  const transaction = createProfileSyncRewriteTransaction({
+    reason,
+    provider: normalizeProfileSyncProvider(profileSync.provider),
+    cloudFilePath: profileSync.cloudFilePath,
+    expectedRemoteIdentity: getSyncEnvelopeIdentity(baselineRemote),
+    targetRemoteIdentity: getSyncEnvelopeIdentity({ exists: true, envelope: targetEnvelope }),
+    targetEnvelopeSerialized,
+    oldPassphraseEncrypted,
+    newPassphraseEncrypted,
+    targetEncryptionEnabled,
+    changeCredential,
+    rememberNewPassphrase,
+  });
+
+  const previousTransition = profileSync.passphraseTransition;
+  const previousRemoteRewritePending = profileSync.remoteRewritePending;
+  await stageProfileSyncRewriteTransaction(transaction, async (stagedTransaction) => {
+    profileSync.passphraseTransition = stagedTransaction;
+    profileSync.remoteRewritePending = true;
+    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+    if (!persistence.success) {
+      profileSync.passphraseTransition = previousTransition;
+      profileSync.remoteRewritePending = previousRemoteRewritePending;
+      throw new Error(`Failed to stage sync-key recovery: ${persistence.error}`);
+    }
+  });
+  return transaction;
+}
+
+async function executePendingProfileSyncRewrite() {
+  const profileSync = getProfileSyncConfig();
+  const transaction = normalizeProfileSyncRewriteTransaction(profileSync.passphraseTransition);
+  if (!transaction) {
+    throw new Error('No valid sync-key rewrite transaction is available');
+  }
+  if (
+    !profileSyncRewriteEndpointMatches(
+      transaction,
+      normalizeProfileSyncProvider(profileSync.provider),
+      profileSync.cloudFilePath
+    )
+  ) {
+    throw new Error(
+      'The sync provider or file changed during key recovery. Restore the original target before retrying.'
+    );
+  }
+
+  const oldPassphrase = unsealProfileSyncTransitionSecret(transaction.oldPassphraseEncrypted);
+  const newPassphrase = unsealProfileSyncTransitionSecret(transaction.newPassphraseEncrypted);
+  const targetEnvelope = profileSyncCore.parseSyncEnvelope(transaction.targetEnvelopeSerialized);
+  const stagedTargetIdentity = getSyncEnvelopeIdentity({
+    exists: true,
+    envelope: targetEnvelope,
+  });
+  if (stagedTargetIdentity !== transaction.targetRemoteIdentity) {
+    throw new Error('The staged sync-key target failed its integrity check');
+  }
+
+  let persistedCredential = {
+    remembered: profileSync.rememberPassphrase,
+    encrypted: profileSync.passphraseEncrypted,
+  };
+  try {
+    await runProfileSyncRewriteRecovery({
+      transaction,
+      readRemoteIdentity: async () => getSyncEnvelopeIdentity(await readConfiguredSyncEnvelope()),
+      verifyOldRemote: async () => {
+        const currentRemote = await readConfiguredSyncEnvelope();
+        await decodeRemoteProfileWithPassphrase(currentRemote, oldPassphrase);
+      },
+      writeExactTarget: async (serializedTarget) => {
+        if (serializedTarget !== transaction.targetEnvelopeSerialized) {
+          throw new Error('The staged sync-key target changed before its exact write');
+        }
+        await writeConfiguredSyncEnvelope(targetEnvelope);
+      },
+      promoteLocal: async () => {
+        const previous = {
+          rememberPassphrase: profileSync.rememberPassphrase,
+          passphraseEncrypted: profileSync.passphraseEncrypted,
+          storedPassphrase: profileSync.storedPassphrase,
+          passphraseSession: profileSyncRuntime.passphraseSession,
+          passphraseWarning: profileSyncRuntime.passphraseWarning,
+          encryptionEnabled: profileSync.encryptionEnabled,
+          encryptionChangePending: profileSync.encryptionChangePending,
+          passphraseTransition: profileSync.passphraseTransition,
+          remoteRewritePending: profileSync.remoteRewritePending,
+          lastSyncAt: profileSync.lastSyncAt,
+          lastSyncStatus: profileSync.lastSyncStatus,
+          lastSyncError: profileSync.lastSyncError,
+          profileUpdatedAt: profileSync.profileUpdatedAt,
+          localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+        };
+
+        if (transaction.changeCredential) {
+          persistedCredential = persistRememberedProfileSyncPassphrase(
+            newPassphrase,
+            transaction.rememberNewPassphrase
+          );
+        } else if (!transaction.targetEncryptionEnabled) {
+          profileSync.rememberPassphrase = false;
+          profileSync.passphraseEncrypted = false;
+          profileSync.storedPassphrase = '';
+          profileSyncRuntime.passphraseSession = '';
+          profileSyncRuntime.passphraseWarning = '';
+          persistedCredential = { remembered: false, encrypted: false };
+        } else {
+          profileSyncRuntime.passphraseSession = newPassphrase;
+        }
+        profileSync.encryptionEnabled = transaction.targetEncryptionEnabled;
+        profileSync.encryptionChangePending = null;
+        profileSync.passphraseTransition = null;
+        profileSync.remoteRewritePending = false;
+        profileSync.lastSyncAt = new Date().toISOString();
+        profileSync.lastSyncStatus = 'success';
+        profileSync.lastSyncError = '';
+        profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
+        profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
+
+        const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+        if (!persistence.success) {
+          profileSync.rememberPassphrase = previous.rememberPassphrase;
+          profileSync.passphraseEncrypted = previous.passphraseEncrypted;
+          profileSync.storedPassphrase = previous.storedPassphrase;
+          profileSyncRuntime.passphraseSession = oldPassphrase || previous.passphraseSession;
+          profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
+          profileSync.encryptionEnabled = previous.encryptionEnabled;
+          profileSync.encryptionChangePending = previous.encryptionChangePending;
+          profileSync.passphraseTransition = previous.passphraseTransition;
+          profileSync.remoteRewritePending = previous.remoteRewritePending;
+          profileSync.lastSyncAt = previous.lastSyncAt;
+          profileSync.lastSyncStatus = previous.lastSyncStatus;
+          profileSync.lastSyncError = previous.lastSyncError;
+          profileSync.profileUpdatedAt = previous.profileUpdatedAt;
+          profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
+          const error = new Error(
+            `The remote rewrite committed, but local key promotion could not be saved: ${persistence.error}`
+          );
+          error.remoteRewriteCommitted = true;
+          throw error;
+        }
+      },
+    });
+  } catch (error) {
+    if (error?.code === 'PROFILE_SYNC_REWRITE_REMOTE_DIVERGED') {
+      profileSyncRuntime.passphraseSession = oldPassphrase;
+    }
+    throw error;
+  }
+
+  setupProfileSyncInterval();
+  emitProfileSyncStatus();
+  return {
+    ok: true,
+    action: 'rewrite_complete',
+    ...persistedCredential,
+    status: buildProfileSyncStatus(),
+  };
 }
 
 async function readCloudFileEnvelope(filePath) {
@@ -1967,6 +2664,7 @@ async function readCloudFileEnvelope(filePath) {
     return { exists: true, envelope };
   } catch (error) {
     if (error && error.code === 'ENOENT') {
+      await requireExistingSyncParentDirectory(filePath, fs);
       return { exists: false, envelope: null };
     }
     throw error;
@@ -1978,9 +2676,8 @@ async function writeCloudFileEnvelope(filePath, envelope) {
     throw new Error('Sync file path is not configured');
   }
   const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
-  const dirPath = path.dirname(filePath);
+  await requireExistingSyncParentDirectory(filePath, fs);
   const tempPath = `${filePath}.tmp-${Date.now()}`;
-  await fs.promises.mkdir(dirPath, { recursive: true });
   try {
     await fs.promises.writeFile(tempPath, serialized, 'utf8');
     await fs.promises.rename(tempPath, filePath);
@@ -2027,8 +2724,7 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
       return { ok: false, status: 'error', error: 'Source sync file is not a file' };
     }
 
-    const destinationDir = path.dirname(destinationPath);
-    await fs.promises.mkdir(destinationDir, { recursive: true });
+    await requireExistingSyncParentDirectory(destinationPath, fs);
     try {
       const copyFlags = overwrite ? 0 : fs.constants.COPYFILE_EXCL;
       await fs.promises.copyFile(sourcePath, destinationPath, copyFlags);
@@ -2079,16 +2775,7 @@ async function hasRemoteSyncEnvelopeChanged(previousResult) {
     return true;
   }
 
-  if (currentResult.exists !== previousResult.exists) return true;
-  if (!currentResult.exists) return false;
-
-  // deviceId is compared too: two devices can write inside the same clock tick,
-  // which updatedAt alone would not distinguish.
-  return (
-    (currentResult.envelope?.updatedAt || null) !== (previousResult.envelope?.updatedAt || null) ||
-    (currentResult.envelope?.updatedByDeviceId || null) !==
-      (previousResult.envelope?.updatedByDeviceId || null)
-  );
+  return getSyncEnvelopeIdentity(currentResult) !== getSyncEnvelopeIdentity(previousResult);
 }
 
 /**
@@ -2176,8 +2863,9 @@ async function decodeEnvelopeProfile(envelope) {
 }
 
 async function backupLocalProfileBeforePullApply(syncScope) {
+  let backupDir;
   try {
-    const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+    backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
     await fs.promises.mkdir(backupDir, { recursive: true });
     const normalizedScope = getNormalizedProfileSyncScopeValue(syncScope);
     const backup = {
@@ -2190,20 +2878,37 @@ async function backupLocalProfileBeforePullApply(syncScope) {
       JSON.stringify(backup, null, 2),
       'utf8'
     );
+  } catch (error) {
+    log.warn('Failed to back up local profile before applying remote sync:', error.message);
+    throw new Error(
+      `Remote profile was not applied because the local backup failed: ${error?.message || String(error)}`
+    );
+  }
+
+  try {
     const entries = (await fs.promises.readdir(backupDir))
       .filter((name) => /^local-profile-\d+\.json$/.test(name))
       .sort();
     while (entries.length > PROFILE_SYNC_BACKUP_KEEP) {
       const oldest = entries.shift();
-      await fs.promises.unlink(path.join(backupDir, oldest)).catch(() => {});
+      await fs.promises.unlink(path.join(backupDir, oldest));
     }
   } catch (error) {
-    log.warn('Failed to back up local profile before applying remote sync:', error.message);
+    log.warn(
+      'Created local profile backup, but failed to prune older profile backups:',
+      error.message
+    );
   }
 }
 
-function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
+async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
   const previous = config;
+  const previousRuntimeTracking = {
+    localProfileHash: profileSyncRuntime.localProfileHash,
+    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+  };
+  const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
   const nextScope = getNormalizedProfileSyncScopeValue(
     syncScopeValue || previous?.profileSync?.syncScope
   );
@@ -2226,7 +2931,6 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
-  applyMainWindowSettingSideEffects(previous, config);
 
   const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(
@@ -2237,10 +2941,34 @@ function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = n
   profileSyncRuntime.pendingPullEchoHash =
     prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
 
-  saveConfig();
-  syncDesktopPinWindowsWithConfig();
-  pushConfigToRenderer();
-  broadcastDesktopPinConfigUpdate();
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    config = previous;
+    Object.assign(profileSyncRuntime, previousRuntimeTracking);
+    preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
+    throw new Error(`Failed to persist pulled profile: ${persistence.error}`);
+  }
+
+  const runtimeWarnings = [];
+  await runPostSaveSideEffect(runtimeWarnings, 'synced main window settings', () =>
+    applyMainWindowSettingSideEffects(previous, config)
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings', () =>
+    applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
+    syncDesktopPinWindowsWithConfig()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin config broadcast', () =>
+    broadcastDesktopPinConfigUpdate()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'synced renderer config broadcast', () =>
+    pushConfigToRenderer({
+      persistenceWarnings: persistence.persistenceWarnings,
+      runtimeWarnings,
+    })
+  );
+  return { runtimeWarnings };
 }
 
 function clearProfileSyncTimers() {
@@ -2419,6 +3147,11 @@ function pruneConfig(target) {
   if (Object.prototype.hasOwnProperty.call(target, 'filters')) {
     delete target.filters;
   }
+  delete target.secureStoragePending;
+  delete target.configRevision;
+  delete target.configRecovery;
+  delete target.persistenceWarnings;
+  delete target.runtimeWarnings;
   return target;
 }
 
@@ -2433,6 +3166,20 @@ function hasRecoveryTokenBackup() {
 function shouldPreserveRecoveryTokenForSave(configToSave) {
   if (!hasRecoveryTokenBackup()) return false;
   return isPlaceholderOrEmptyToken(configToSave?.homeAssistant?.token);
+}
+
+function quarantineCorruptConfig(configPath) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const quarantinePath = path.join(path.dirname(configPath), `config.corrupt.${timestamp}.json`);
+
+  try {
+    fs.renameSync(configPath, quarantinePath);
+    log.error(`Invalid config moved aside for recovery: ${quarantinePath}`);
+    return { success: true, path: quarantinePath };
+  } catch (error) {
+    log.error('Failed to preserve invalid config for recovery:', error);
+    return { success: false, error: error?.message || String(error) };
+  }
 }
 
 /**
@@ -2457,6 +3204,8 @@ function shouldPreserveRecoveryTokenForSave(configToSave) {
  */
 function loadConfig(options = {}) {
   log.debug('Loading configuration');
+  configRecoveryNotice = null;
+  configWriteBlockedReason = '';
   const deferSecureStorage = !!options.deferSecureStorage;
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
@@ -2519,7 +3268,61 @@ function loadConfig(options = {}) {
 
   try {
     if (fs.existsSync(configPath)) {
-      const userConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      let userConfig;
+      let serializedConfig;
+      try {
+        serializedConfig = fs.readFileSync(configPath, 'utf8');
+      } catch (error) {
+        configWriteBlockedReason = `The existing config could not be read safely: ${error?.message || String(error)}`;
+        lastConfigWriteError = configWriteBlockedReason;
+        configRecoveryNotice = {
+          recovered: false,
+          backupPath: '',
+          error: configWriteBlockedReason,
+        };
+        throw error;
+      }
+      try {
+        userConfig = JSON.parse(serializedConfig);
+        if (!isPlainObject(userConfig)) {
+          throw new SyntaxError('Configuration root must be a JSON object');
+        }
+      } catch (error) {
+        log.error('Configuration could not be parsed:', error.message);
+        const recovery = quarantineCorruptConfig(configPath);
+        config = defaultConfig;
+        pruneConfig(config);
+        ensureDateTimeFormatConfigDefaults(config);
+        ensureProfileSyncConfigDefaults(config);
+        ensureUpdateConfigDefaults(config);
+        normalizeDesktopPinsConfig(config);
+
+        if (recovery.success) {
+          const scheduled = saveConfig();
+          const persisted = scheduled
+            ? flushPendingConfigWriteSync({ shutdown: false })
+            : {
+                success: false,
+                error: lastConfigWriteError || 'Failed to schedule recovered config save',
+              };
+          configRecoveryNotice = {
+            recovered: persisted.success,
+            backupPath: recovery.path,
+            error: persisted.success ? '' : persisted.error,
+          };
+        } else {
+          lastConfigWriteError = `The existing config is invalid and could not be moved aside: ${recovery.error}`;
+          configWriteBlockedReason = lastConfigWriteError;
+          configRecoveryNotice = {
+            recovered: false,
+            backupPath: '',
+            error: lastConfigWriteError,
+          };
+        }
+
+        refreshProfileSyncRuntimeTracking();
+        return;
+      }
       config = {
         ...defaultConfig,
         ...userConfig,
@@ -2613,11 +3416,7 @@ function loadConfig(options = {}) {
 
             if (encryptionAvailable) {
               log.info('Migrating plaintext token to encrypted storage...');
-              const plainToken = config.homeAssistant.token;
               try {
-                log.debug('Encrypting token...');
-                const encryptedBuffer = safeStorage.encryptString(plainToken);
-                config.homeAssistant.token = encryptedBuffer.toString('base64');
                 config.homeAssistant.tokenEncrypted = true;
                 config.migrationInfo = {
                   version: app.getVersion(),
@@ -2625,9 +3424,18 @@ function loadConfig(options = {}) {
                   tokenEncrypted: true,
                 };
                 log.debug('Saving encrypted config...');
-                saveConfig();
-                // Restore decrypted token for runtime use
-                config.homeAssistant.token = plainToken;
+                // buildConfigSnapshotForSave owns encryption. Keeping plaintext
+                // in memory here avoids encrypting the already-encrypted base64
+                // a second time when the snapshot is built.
+                const migrationSnapshot = saveConfig();
+                if (
+                  !migrationSnapshot ||
+                  migrationSnapshot.persistenceWarnings?.some(
+                    (warning) => warning.code === 'home_assistant_token_not_persisted'
+                  )
+                ) {
+                  throw new Error(lastConfigWriteError || 'Token encryption failed');
+                }
                 log.info('Token migration complete - token is now encrypted at rest');
               } catch (error) {
                 log.error('Exception during token encryption:', error);
@@ -2716,6 +3524,15 @@ function loadConfig(options = {}) {
     }
   } catch (error) {
     log.error('Error loading config:', error);
+    if (!configWriteBlockedReason && fs.existsSync(configPath)) {
+      configWriteBlockedReason = `The existing config could not be normalized safely: ${error?.message || String(error)}`;
+      lastConfigWriteError = configWriteBlockedReason;
+      configRecoveryNotice = {
+        recovered: false,
+        backupPath: '',
+        error: configWriteBlockedReason,
+      };
+    }
     config = defaultConfig;
     pruneConfig(config);
     ensureDateTimeFormatConfigDefaults(config);
@@ -2812,18 +3629,24 @@ function resolveDeferredSecureConfig(options = {}) {
 
         try {
           if (safeStorage.isEncryptionAvailable()) {
-            const plainToken = config.homeAssistant.token;
             try {
-              const encryptedBuffer = safeStorage.encryptString(plainToken);
-              config.homeAssistant.token = encryptedBuffer.toString('base64');
               config.homeAssistant.tokenEncrypted = true;
               config.migrationInfo = {
                 version: app.getVersion(),
                 date: new Date().toISOString(),
                 tokenEncrypted: true,
               };
-              saveConfig();
-              config.homeAssistant.token = plainToken;
+              // Snapshot construction performs the one and only encryption,
+              // while the runtime value remains plaintext.
+              const migrationSnapshot = saveConfig();
+              if (
+                !migrationSnapshot ||
+                migrationSnapshot.persistenceWarnings?.some(
+                  (warning) => warning.code === 'home_assistant_token_not_persisted'
+                )
+              ) {
+                throw new Error(lastConfigWriteError || 'Token encryption failed');
+              }
               changed = true;
               log.info('Deferred token migration complete - token is now encrypted at rest');
             } catch (error) {
@@ -2921,67 +3744,11 @@ function ensureConfigBackupBeforeFirstWrite(reason = 'pre-save') {
   configBackupCreatedThisRun = backupConfig(reason);
 }
 
-function hasMeaningfulConfigData(inputConfig) {
-  if (!isPlainObject(inputConfig)) return false;
-  const homeAssistant = isPlainObject(inputConfig.homeAssistant) ? inputConfig.homeAssistant : {};
-  const token = typeof homeAssistant.token === 'string' ? homeAssistant.token.trim() : '';
-  const url = typeof homeAssistant.url === 'string' ? homeAssistant.url.trim() : '';
-  if (token && token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER) return true;
-  if (url && url !== 'http://homeassistant.local:8123') return true;
-  if (Array.isArray(inputConfig.favoriteEntities) && inputConfig.favoriteEntities.length > 0)
-    return true;
-  if (isPlainObject(inputConfig.desktopPins) && Object.keys(inputConfig.desktopPins).length > 0)
-    return true;
-  if (isPlainObject(inputConfig.customTabs) && Object.keys(inputConfig.customTabs).length > 0)
-    return true;
-  if (Array.isArray(inputConfig.customTabs) && inputConfig.customTabs.length > 0) return true;
-  if (
-    isPlainObject(inputConfig.customEntityIcons) &&
-    Object.keys(inputConfig.customEntityIcons).length > 0
-  )
-    return true;
-  if (
-    isPlainObject(inputConfig.quickAccessTileOptions) &&
-    Object.keys(inputConfig.quickAccessTileOptions).length > 0
-  )
-    return true;
-  if (
-    isPlainObject(inputConfig.globalHotkeys?.hotkeys) &&
-    Object.keys(inputConfig.globalHotkeys.hotkeys).length > 0
-  )
-    return true;
-  if (
-    isPlainObject(inputConfig.entityAlerts?.alerts) &&
-    Object.keys(inputConfig.entityAlerts.alerts).length > 0
-  )
-    return true;
-  if (typeof inputConfig.primaryMediaPlayer === 'string' && inputConfig.primaryMediaPlayer.trim())
-    return true;
-  if (typeof inputConfig.popupHotkey === 'string' && inputConfig.popupHotkey.trim()) return true;
-  return false;
-}
-
-function shouldBlockPotentialConfigClobber(snapshot) {
-  try {
-    if (!snapshot?.configPath || !fs.existsSync(snapshot.configPath)) return false;
-    const existingConfigContent = fs.readFileSync(snapshot.configPath, 'utf8');
-    let existingConfig;
-    try {
-      existingConfig = JSON.parse(existingConfigContent);
-    } catch (error) {
-      log.error(
-        'Blocked config save because the existing config could not be parsed:',
-        error.message
-      );
-      return existingConfigContent.trim().length > 0;
-    }
-    return (
-      hasMeaningfulConfigData(existingConfig) && !hasMeaningfulConfigData(snapshot.configToSave)
-    );
-  } catch (error) {
-    log.warn('Unable to compare existing config before save:', error.message);
-    return false;
-  }
+function shouldBlockPotentialConfigClobber() {
+  // Authorized mutations may intentionally clear the last favorite, pin,
+  // token, or custom page. Only an unsafe config load arms the write block;
+  // shape/content heuristics cannot distinguish those valid clears.
+  return shouldBlockConfigWrite({ blockedReason: configWriteBlockedReason });
 }
 
 /**
@@ -2995,6 +3762,9 @@ function shouldBlockPotentialConfigClobber(snapshot) {
  * process are logged; the function does not throw.
  */
 function buildConfigSnapshotForSave() {
+  if (configWriteBlockedReason) {
+    throw new Error(configWriteBlockedReason);
+  }
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, 'config.json');
   const snapshotVersion = ++configSnapshotVersion;
@@ -3006,6 +3776,7 @@ function buildConfigSnapshotForSave() {
   const configToSave = JSON.parse(JSON.stringify(config));
   pruneConfig(configToSave);
   const preserveRecoveryToken = shouldPreserveRecoveryTokenForSave(configToSave);
+  const persistenceWarnings = [];
 
   if (preserveRecoveryToken) {
     configToSave.homeAssistant = configToSave.homeAssistant || {};
@@ -3019,6 +3790,12 @@ function buildConfigSnapshotForSave() {
     configToSave.homeAssistant.tokenEncrypted = false;
     configToSave.tokenResetReason = reason;
     config.tokenResetReason = reason;
+    if (!persistenceWarnings.some((entry) => entry.code === 'home_assistant_token_not_persisted')) {
+      persistenceWarnings.push({
+        code: 'home_assistant_token_not_persisted',
+        error: error?.message || '',
+      });
+    }
     if (error) {
       log.warn(warning, error);
     } else {
@@ -3064,23 +3841,79 @@ function buildConfigSnapshotForSave() {
     epoch: configWriteEpoch,
     configToSave,
     serializedConfig: JSON.stringify(configToSave, null, 2),
+    persistenceWarnings,
   };
 }
 
 async function writeConfigSnapshotAsync(snapshot) {
-  if (shouldBlockPotentialConfigClobber(snapshot)) {
-    log.error(
-      'Blocked config save because it would replace an existing user config with default-like data.'
-    );
-    return;
-  }
-  await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
-  await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
-  if (configShutdownPending || snapshot.epoch !== configWriteEpoch) {
+  try {
+    if (shouldBlockPotentialConfigClobber(snapshot)) {
+      throw new Error(configWriteBlockedReason || 'Configuration writes are blocked');
+    }
+    await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
+    await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
+    if (
+      !canCommitSnapshot(snapshot, {
+        shutdownPending: configShutdownPending,
+        currentEpoch: configWriteEpoch,
+      })
+    ) {
+      await fs.promises.unlink(snapshot.tempPath).catch(() => {});
+      return { written: false };
+    }
+    // Keep the epoch check and final atomic replacement in the same JavaScript turn.
+    // If this were an awaited async rename, restart/before-quit could sync-write a newer
+    // snapshot while the older rename was already queued, then the old write could win
+    // after shutdown. The local rename is tiny and closes that race.
+    fs.renameSync(snapshot.tempPath, snapshot.configPath);
+    return { written: true };
+  } catch (error) {
     await fs.promises.unlink(snapshot.tempPath).catch(() => {});
+    throw error;
+  }
+}
+
+function emitConfigPersistenceWarnings(warnings = []) {
+  if (!Array.isArray(warnings) || warnings.length === 0) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const safeWarnings = warnings
+    .filter((warning) => warning && typeof warning.code === 'string')
+    .map((warning) => ({
+      code: warning.code,
+      error: typeof warning.error === 'string' ? warning.error : '',
+    }));
+  if (!safeWarnings.length) return;
+
+  const signature = safeWarnings
+    .map((warning) => warning.code)
+    .sort()
+    .join('|');
+  const now = Date.now();
+  if (
+    signature === lastConfigPersistenceWarningSignature &&
+    now - lastConfigPersistenceWarningAt < 30000
+  ) {
     return;
   }
-  await fs.promises.rename(snapshot.tempPath, snapshot.configPath);
+  lastConfigPersistenceWarningSignature = signature;
+  lastConfigPersistenceWarningAt = now;
+  mainWindow.webContents.send('config-persistence-warning', safeWarnings);
+}
+
+async function runPostSaveSideEffect(runtimeWarnings, context, sideEffect) {
+  try {
+    return await sideEffect();
+  } catch (error) {
+    const message = error?.message || String(error);
+    log.warn(`Failed to apply ${context} after configuration was saved:`, message);
+    runtimeWarnings.push({
+      code: 'runtime_side_effect_failed',
+      context,
+      error: message,
+    });
+    return null;
+  }
 }
 
 function flushConfigWriteQueue() {
@@ -3090,10 +3923,28 @@ function flushConfigWriteQueue() {
   const snapshot = pendingConfigSnapshot;
   pendingConfigSnapshot = null;
   configWriteInFlight = true;
+  lastConfigWriteError = null;
 
   writeConfigSnapshotAsync(snapshot)
+    .then((writeResult) => {
+      if (!writeResult?.written) return;
+      lastConfigWriteError = null;
+      configWriteAcknowledgements.complete(snapshot.snapshotVersion, { success: true });
+    })
     .catch((error) => {
       log.error('Failed to save config asynchronously:', error);
+      lastConfigWriteError = error?.message || String(error);
+      // A newer queued snapshot contains this mutation too, so give it a chance
+      // to satisfy the durable acknowledgement. Only fail now when there is no
+      // superseding snapshot left to persist.
+      configWriteAcknowledgements.complete(
+        snapshot.snapshotVersion,
+        {
+          success: false,
+          error: lastConfigWriteError,
+        },
+        { hasSupersedingSnapshot: !!pendingConfigSnapshot }
+      );
     })
     .finally(() => {
       configWriteInFlight = false;
@@ -3103,8 +3954,9 @@ function flushConfigWriteQueue() {
     });
 }
 
-function flushPendingConfigWriteSync() {
-  configShutdownPending = true;
+function flushPendingConfigWriteSync(options = {}) {
+  const shutdown = options.shutdown !== false;
+  configShutdownPending = shutdown;
   // Invalidate any older in-flight async write attempts before flushing latest config.
   configWriteEpoch += 1;
 
@@ -3121,22 +3973,29 @@ function flushPendingConfigWriteSync() {
       snapshot = buildConfigSnapshotForSave();
     } catch (error) {
       log.error('Failed to build config snapshot for sync flush:', error);
-      return;
+      lastConfigWriteError = error?.message || String(error);
+      const result = { success: false, error: lastConfigWriteError };
+      configWriteAcknowledgements.failAll(lastConfigWriteError);
+      return result;
     }
   }
 
   try {
     if (shouldBlockPotentialConfigClobber(snapshot)) {
-      log.error(
+      throw new Error(
         'Blocked synchronous config save because it would replace an existing user config with default-like data.'
       );
-      return;
     }
     fs.mkdirSync(snapshot.userDataDir, { recursive: true });
     fs.writeFileSync(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
     fs.renameSync(snapshot.tempPath, snapshot.configPath);
+    lastConfigWriteError = null;
+    const result = { success: true };
+    configWriteAcknowledgements.complete(snapshot.snapshotVersion, result);
+    return result;
   } catch (error) {
     log.error('Failed to flush config synchronously:', error);
+    lastConfigWriteError = error?.message || String(error);
     try {
       if (snapshot?.tempPath && fs.existsSync(snapshot.tempPath)) {
         fs.unlinkSync(snapshot.tempPath);
@@ -3144,16 +4003,23 @@ function flushPendingConfigWriteSync() {
     } catch {
       // best effort cleanup
     }
+    const result = { success: false, error: lastConfigWriteError };
+    configWriteAcknowledgements.failAll(lastConfigWriteError);
+    return result;
   }
 }
 
-function saveConfig() {
+function saveConfig(options = {}) {
   log.debug('Scheduling configuration save');
   try {
     // Track first so profileSync.profileUpdatedAt lands in this snapshot
     // rather than trailing one save behind.
-    updateLocalProfileSyncTracking();
+    updateLocalProfileSyncTracking({
+      allowDebouncedPush: options.allowDebouncedPush !== false,
+    });
     pendingConfigSnapshot = buildConfigSnapshotForSave();
+    const scheduledSnapshot = pendingConfigSnapshot;
+    emitConfigPersistenceWarnings(scheduledSnapshot.persistenceWarnings);
     if (configWriteTimer) {
       clearTimeout(configWriteTimer);
     }
@@ -3161,9 +4027,68 @@ function saveConfig() {
       configWriteTimer = null;
       flushConfigWriteQueue();
     }, CONFIG_SAVE_DEBOUNCE_MS);
+    return scheduledSnapshot;
   } catch (error) {
     log.error('Failed to schedule config save:', error);
+    lastConfigWriteError = error?.message || String(error);
+    return false;
   }
+}
+
+async function saveConfigDurably(options = {}) {
+  const previousRuntimeTracking = {
+    localProfileHash: profileSyncRuntime.localProfileHash,
+    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+  };
+  const previousProfileUpdatedAt = config?.profileSync?.profileUpdatedAt ?? null;
+  const hadTokenResetReason = Object.prototype.hasOwnProperty.call(
+    config || {},
+    'tokenResetReason'
+  );
+  const previousTokenResetReason = config?.tokenResetReason;
+  const restoreSaveSideEffects = () => {
+    Object.assign(profileSyncRuntime, previousRuntimeTracking);
+    if (config?.profileSync) {
+      config.profileSync.profileUpdatedAt = previousProfileUpdatedAt;
+    }
+    if (hadTokenResetReason) {
+      config.tokenResetReason = previousTokenResetReason;
+    } else {
+      delete config.tokenResetReason;
+    }
+  };
+  const scheduledSnapshot = saveConfig({ allowDebouncedPush: false });
+  if (!scheduledSnapshot) {
+    restoreSaveSideEffects();
+    return {
+      success: false,
+      error: lastConfigWriteError || 'Failed to schedule configuration save',
+    };
+  }
+
+  if (configWriteTimer) {
+    clearTimeout(configWriteTimer);
+    configWriteTimer = null;
+  }
+
+  const completion = configWriteAcknowledgements.waitFor(scheduledSnapshot.snapshotVersion);
+  flushConfigWriteQueue();
+  const result = await completion;
+  if (!result.success) {
+    restoreSaveSideEffects();
+    return result;
+  }
+  if (
+    options.allowDebouncedPush !== false &&
+    profileSyncRuntime.localProfileHash !== previousRuntimeTracking.localProfileHash
+  ) {
+    scheduleDebouncedProfileSyncPush('config_change');
+  }
+  return {
+    ...result,
+    persistenceWarnings: [...(scheduledSnapshot.persistenceWarnings || [])],
+  };
 }
 
 function emitProfileSyncStatus(extra = {}) {
@@ -3178,7 +4103,13 @@ function setupProfileSyncInterval() {
   }
 
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || profileSyncRuntime.needsResolution || !profileSync.cloudFilePath) {
+  if (
+    !profileSync.enabled ||
+    profileSyncRuntime.needsResolution ||
+    profileSync.firstEnableResolutionPending ||
+    hasProfileSyncCredentialTransitionPending(profileSync) ||
+    !profileSync.cloudFilePath
+  ) {
     return;
   }
 
@@ -3197,12 +4128,14 @@ async function prepareProfileSyncFirstEnableResolution() {
   const profileSync = getProfileSyncConfig();
   profileSyncRuntime.needsResolution = false;
   profileSyncRuntime.pendingRemoteEnvelope = null;
+  profileSyncRuntime.pendingRemoteIdentity = null;
 
   if (!profileSync.enabled || !profileSync.cloudFilePath) {
     return { needsResolution: false };
   }
 
   const readResult = await readConfiguredSyncEnvelope();
+  profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   if (!readResult.exists || !readResult.envelope) {
     return { needsResolution: false };
   }
@@ -3217,6 +4150,7 @@ async function prepareProfileSyncFirstEnableResolution() {
 
   profileSyncRuntime.needsResolution = true;
   profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
+  profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   updateProfileSyncStatus(
     'needs_resolution',
     'Choose how to resolve initial profile sync conflict.'
@@ -3225,9 +4159,104 @@ async function prepareProfileSyncFirstEnableResolution() {
   return { needsResolution: true };
 }
 
+function getSyncEnvelopeIdentity(readResult) {
+  if (!readResult?.exists || !readResult.envelope) return 'missing';
+  return nodeCrypto
+    .createHash('sha256')
+    .update(profileSyncCore.serializeSyncEnvelope(readResult.envelope))
+    .digest('hex');
+}
+
+async function prepareRemoteRewriteBaseline(passphrase, baselineConfig = config) {
+  const readResult = await readConfiguredSyncEnvelope();
+  if (readResult.exists && readResult.envelope) {
+    const remoteProfile = await profileSyncCore.decodeEnvelopeProfile(
+      readResult.envelope,
+      passphrase
+    );
+    const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(readResult.envelope);
+    const localProfile = profileSyncCore.projectSyncProfile(baselineConfig, syncScope);
+    if (
+      computeScopedProfileHash(remoteProfile, syncScope) !==
+      computeScopedProfileHash(localProfile, syncScope)
+    ) {
+      throw new Error(
+        'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+      );
+    }
+  }
+  return getSyncEnvelopeIdentity(readResult);
+}
+
+async function verifyPendingRemoteEnvelopeUnchanged() {
+  const expectedIdentity = profileSyncRuntime.pendingRemoteIdentity;
+  if (!expectedIdentity) {
+    throw new Error('The pending profile conflict is no longer available; retry conflict check');
+  }
+  const currentResult = await readConfiguredSyncEnvelope();
+  const currentIdentity = getSyncEnvelopeIdentity(currentResult);
+  if (currentIdentity !== expectedIdentity) {
+    profileSyncRuntime.pendingRemoteEnvelope = currentResult.envelope;
+    profileSyncRuntime.pendingRemoteIdentity = currentIdentity;
+    profileSyncRuntime.needsResolution = true;
+    updateProfileSyncStatus(
+      'needs_resolution',
+      'The remote profile changed while waiting for a choice. Review it and choose again.'
+    );
+    emitProfileSyncStatus();
+    const error = new Error('The remote profile changed while waiting for conflict resolution');
+    error.remoteConflictRefreshed = true;
+    throw error;
+  }
+  return currentResult;
+}
+
+async function clearProfileSyncFirstEnableResolutionPending() {
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.firstEnableResolutionPending) {
+    return { success: true };
+  }
+
+  profileSync.firstEnableResolutionPending = false;
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    profileSync.firstEnableResolutionPending = true;
+    throw new Error(`Failed to save profile sync conflict check: ${persistence.error}`);
+  }
+  return persistence;
+}
+
+async function completeProfileSyncFirstEnablePreparation(source) {
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+    clearProfileSyncTimers();
+    return { ok: false, reason: 'not_configured', status: buildProfileSyncStatus() };
+  }
+  // Keep the durable gate armed through the first identity-checked write. If the
+  // provider changes or fails, retry remains available and no conflict is
+  // silently bypassed.
+  const expectedRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
+  const result = await runProfileSyncInternal('push', source, { expectedRemoteIdentity });
+  if (result?.ok !== true || result?.reason === 'remote_changed') {
+    throw new Error(result?.error || result?.reason || 'Initial profile sync did not complete');
+  }
+  await clearProfileSyncFirstEnableResolutionPending();
+  profileSyncRuntime.needsResolution = false;
+  profileSyncRuntime.pendingRemoteEnvelope = null;
+  profileSyncRuntime.pendingRemoteIdentity = null;
+  setupProfileSyncInterval();
+  return result;
+}
+
 function scheduleDebouncedProfileSyncPush(source = 'config_change') {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || profileSyncRuntime.needsResolution) return;
+  if (
+    !profileSync.enabled ||
+    profileSyncRuntime.needsResolution ||
+    profileSync.firstEnableResolutionPending ||
+    hasProfileSyncCredentialTransitionPending(profileSync)
+  )
+    return;
   if (!profileSync.cloudFilePath || !isProfileSyncProviderSupported(profileSync.provider)) return;
 
   if (profileSyncRuntime.pushDebounceTimer) {
@@ -3241,7 +4270,17 @@ function scheduleDebouncedProfileSyncPush(source = 'config_change') {
   }, PROFILE_SYNC_PUSH_DEBOUNCE_MS);
 }
 
-async function runProfileSync(direction = 'auto', source = 'manual') {
+const runCoalescedProfileSync = createLatestTaskCoalescer(
+  (direction, source) =>
+    runSerializedConfigMutation(() => runProfileSyncInternal(direction, source)),
+  { getPriority: (args) => (args[1] === 'manual' ? 1 : 0) }
+);
+
+function runProfileSync(direction = 'auto', source = 'manual') {
+  return runCoalescedProfileSync(direction, source);
+}
+
+async function runProfileSyncInternal(direction = 'auto', source = 'manual', options = {}) {
   const profileSync = getProfileSyncConfig();
 
   if (!profileSync.enabled) {
@@ -3253,12 +4292,55 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
   if (!profileSync.cloudFilePath) {
     throw new Error('Profile sync file is not configured');
   }
-  if (profileSyncRuntime.needsResolution && source !== 'first_enable_resolution') {
+  if (profileSync.passphraseTransition) {
+    if (source === 'manual' || source === 'startup_rewrite_recovery') {
+      return executePendingProfileSyncRewrite();
+    }
+    return { ok: false, reason: 'rewrite_pending', status: buildProfileSyncStatus() };
+  }
+  if (typeof profileSync.encryptionChangePending === 'boolean') {
+    return { ok: false, reason: 'encryption_change_pending', status: buildProfileSyncStatus() };
+  }
+  if (profileSync.firstEnableResolutionPending && source === 'manual') {
+    try {
+      const resolution = await prepareProfileSyncFirstEnableResolution();
+      if (resolution?.needsResolution) {
+        return { ok: false, reason: 'needs_resolution', status: buildProfileSyncStatus() };
+      }
+      return await completeProfileSyncFirstEnablePreparation('first_enable_resolution_retry');
+    } catch (error) {
+      updateProfileSyncStatus('error', error?.message || String(error));
+      emitProfileSyncStatus();
+      throw error;
+    }
+  }
+  if (profileSync.remoteRewritePending && source === 'manual') {
+    try {
+      const expectedRemoteIdentity = await prepareRemoteRewriteBaseline(
+        getActiveProfileSyncPassphrase(),
+        config
+      );
+      return await runProfileSyncInternal('push', 'remote_rewrite_retry', {
+        expectedRemoteIdentity,
+      });
+    } catch (error) {
+      updateProfileSyncStatus('error', error?.message || String(error));
+      emitProfileSyncStatus();
+      throw error;
+    }
+  }
+  if (profileSync.remoteRewritePending && !options.expectedRemoteIdentity) {
+    return { ok: false, reason: 'rewrite_pending', status: buildProfileSyncStatus() };
+  }
+  if (
+    (profileSyncRuntime.needsResolution || profileSync.firstEnableResolutionPending) &&
+    source !== 'first_enable_resolution' &&
+    !options.expectedRemoteIdentity
+  ) {
     return { ok: false, reason: 'needs_resolution', status: buildProfileSyncStatus() };
   }
 
   if (profileSyncRuntime.inFlight) {
-    profileSyncRuntime.rerun = { direction, source };
     return { ok: false, reason: 'in_flight', queued: true, status: buildProfileSyncStatus() };
   }
 
@@ -3268,6 +4350,18 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
   try {
     const localUpdatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString();
     const remoteResult = await readConfiguredSyncEnvelope();
+    if (
+      options.expectedRemoteIdentity &&
+      getSyncEnvelopeIdentity(remoteResult) !== options.expectedRemoteIdentity
+    ) {
+      profileSyncRuntime.needsResolution = false;
+      profileSyncRuntime.pendingRemoteEnvelope = remoteResult.envelope;
+      profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(remoteResult);
+      const error = new Error('The remote profile changed before the initial sync could complete');
+      error.remoteChangedBeforeResolution = true;
+      error.remoteConflictRefreshed = true;
+      throw error;
+    }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
     let finalDirection = direction;
 
@@ -3302,7 +4396,11 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
       const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
       if (remoteHash !== localHash || source === 'first_enable_resolution') {
         await backupLocalProfileBeforePullApply(remoteSyncScope);
-        applySyncedProfileToConfig(remoteProfile, remoteResult.envelope.updatedAt, remoteSyncScope);
+        await applySyncedProfileToConfig(
+          remoteProfile,
+          remoteResult.envelope.updatedAt,
+          remoteSyncScope
+        );
       }
       profileSyncRuntime.localProfileUpdatedAt = remoteResult.envelope.updatedAt;
       getProfileSyncConfig().profileUpdatedAt = remoteResult.envelope.updatedAt;
@@ -3316,7 +4414,7 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
     if (finalDirection === 'push') {
       const envelopeToWrite = await buildLocalProfileEnvelope(new Date().toISOString());
 
-      // Compare-and-swap: encryption and provider replication both take time, so
+      // Best-effort compare-before-write: encryption and provider replication take time, so
       // another device can land a write between the read above and this one.
       // Overwriting blind would silently drop it, so re-check and re-resolve.
       if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
@@ -3324,13 +4422,44 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
         if (source === 'conflict_recheck') {
           throw new Error('Sync file kept changing on the other device; try again');
         }
-        profileSyncRuntime.rerun = { direction: 'auto', source: 'conflict_recheck' };
+        void runProfileSync('auto', 'conflict_recheck');
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
         return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
       }
 
       await writeConfiguredSyncEnvelope(envelopeToWrite);
+      if (profileSync.remoteRewritePending) {
+        const previousCredential = {
+          rememberPassphrase: profileSync.rememberPassphrase,
+          passphraseEncrypted: profileSync.passphraseEncrypted,
+          storedPassphrase: profileSync.storedPassphrase,
+          passphraseSession: profileSyncRuntime.passphraseSession,
+          passphraseWarning: profileSyncRuntime.passphraseWarning,
+        };
+        profileSync.remoteRewritePending = false;
+        if (!profileSync.encryptionEnabled) {
+          profileSync.rememberPassphrase = false;
+          profileSync.passphraseEncrypted = false;
+          profileSync.storedPassphrase = '';
+          profileSyncRuntime.passphraseSession = '';
+          profileSyncRuntime.passphraseWarning = '';
+        }
+        const markerPersistence = await saveConfigDurably({ allowDebouncedPush: false });
+        if (!markerPersistence.success) {
+          profileSync.remoteRewritePending = true;
+          profileSync.rememberPassphrase = previousCredential.rememberPassphrase;
+          profileSync.passphraseEncrypted = previousCredential.passphraseEncrypted;
+          profileSync.storedPassphrase = previousCredential.storedPassphrase;
+          profileSyncRuntime.passphraseSession = previousCredential.passphraseSession;
+          profileSyncRuntime.passphraseWarning = previousCredential.passphraseWarning;
+          const markerError = new Error(
+            `Remote profile was rewritten, but the local completion marker could not be saved: ${markerPersistence.error}`
+          );
+          markerError.remoteRewriteCommitted = true;
+          throw markerError;
+        }
+      }
       profileSyncRuntime.localProfileUpdatedAt = envelopeToWrite.updatedAt;
       getProfileSyncConfig().profileUpdatedAt = envelopeToWrite.updatedAt;
       updateProfileSyncStatus('success', '');
@@ -3347,13 +4476,6 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
     throw error;
   } finally {
     profileSyncRuntime.inFlight = false;
-    if (profileSyncRuntime.rerun) {
-      const rerun = profileSyncRuntime.rerun;
-      profileSyncRuntime.rerun = null;
-      runProfileSync(rerun.direction, rerun.source).catch((error) => {
-        log.warn('Queued profile sync rerun failed:', error.message);
-      });
-    }
   }
 }
 
@@ -3367,7 +4489,13 @@ async function runProfileSync(direction = 'auto', source = 'manual') {
 function requestOpportunisticProfileSync(source) {
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !profileSync.cloudFilePath) return;
-  if (profileSyncRuntime.needsResolution || profileSyncRuntime.inFlight) return;
+  if (
+    profileSyncRuntime.needsResolution ||
+    profileSync.firstEnableResolutionPending ||
+    hasProfileSyncCredentialTransitionPending(profileSync) ||
+    profileSyncRuntime.inFlight
+  )
+    return;
 
   // focus fires on every alt-tab, so without a floor this would hit the sync
   // folder constantly to discover nothing changed.
@@ -3394,20 +4522,38 @@ function setupProfileSyncWakeTriggers() {
   }
 }
 
-async function initializeProfileSyncOnStartup() {
-  setupProfileSyncInterval();
+async function initializeProfileSyncOnStartupInternal() {
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !profileSync.cloudFilePath) return;
   if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
 
   try {
+    if (profileSync.passphraseTransition) {
+      await executePendingProfileSyncRewrite();
+      return;
+    }
+    if (profileSync.firstEnableResolutionPending) {
+      const resolution = await prepareProfileSyncFirstEnableResolution();
+      if (resolution?.needsResolution) {
+        clearProfileSyncTimers();
+        return;
+      }
+      await completeProfileSyncFirstEnablePreparation('startup_first_enable');
+      return;
+    }
+    setupProfileSyncInterval();
     // 'auto' compares content timestamps, so offline edits made on this device
     // after the remote's last write are pushed instead of being discarded by a
     // forced pull.
-    await runProfileSync('auto', 'startup');
+    await runProfileSyncInternal('auto', 'startup');
   } catch (error) {
+    clearProfileSyncTimers();
     log.warn('Profile sync startup run failed:', error.message);
   }
+}
+
+function initializeProfileSyncOnStartup() {
+  return runSerializedConfigMutation(initializeProfileSyncOnStartupInternal);
 }
 
 /**
@@ -3452,29 +4598,33 @@ function createWindow() {
     frostedGlass: !!config.frostedGlass,
     transparencyOptions,
   });
-  // A saved position can point at a monitor that has since been unplugged, or at the empty
-  // space between monitors in a multi-display layout, and a window opened there never
-  // appears. Recover onto the nearest display instead of starting off-screen.
-  const savedPosition = config.windowPosition || {};
-  const placement = clampPositionToWorkAreas(
-    {
-      x: savedPosition.x,
-      y: savedPosition.y,
-      width: config.windowSize?.width,
-      height: config.windowSize?.height,
-    },
-    electronScreen.getAllDisplays().map((display) => display.workArea)
-  );
-  if (placement.x !== savedPosition.x || placement.y !== savedPosition.y) {
-    log.info(
-      `Saved window position ${savedPosition.x},${savedPosition.y} is not on a connected display; opening at ${placement.x},${placement.y}`
+  const positionOptions = {};
+  if (!usesCompositorOwnedPlacement) {
+    // A saved position can point at a monitor that has since been unplugged, or at the empty
+    // space between monitors in a multi-display layout, and a window opened there never
+    // appears. Recover onto the nearest display instead of starting off-screen.
+    const savedPosition = config.windowPosition || {};
+    const placement = clampPositionToWorkAreas(
+      {
+        x: savedPosition.x,
+        y: savedPosition.y,
+        width: config.windowSize?.width,
+        height: config.windowSize?.height,
+      },
+      electronScreen.getAllDisplays().map((display) => display.workArea)
     );
-    config.windowPosition = { x: placement.x, y: placement.y };
+    if (placement.x !== savedPosition.x || placement.y !== savedPosition.y) {
+      log.info(
+        `Saved window position ${savedPosition.x},${savedPosition.y} is not on a connected display; opening at ${placement.x},${placement.y}`
+      );
+      config.windowPosition = { x: placement.x, y: placement.y };
+    }
+    positionOptions.x = config.windowPosition.x;
+    positionOptions.y = config.windowPosition.y;
   }
 
   const windowOptions = {
-    x: config.windowPosition.x,
-    y: config.windowPosition.y,
+    ...positionOptions,
     width: config.windowSize.width,
     height: config.windowSize.height,
     ...visualOptions,
@@ -3520,19 +4670,57 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     emitProfileSyncStatus();
     pushConfigToRenderer();
+    if (IS_SMOKE_TEST_MODE) {
+      smokeTestRendererLoaded = true;
+      maybeFinishSmokeTest();
+    }
   });
+  if (IS_SMOKE_TEST_MODE) {
+    mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+        if (isMainFrame === false) return;
+        finishSmokeTest(
+          false,
+          `Renderer failed to load ${validatedUrl || 'index.html'} (${errorCode}: ${errorDescription})`
+        );
+      }
+    );
+    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+      finishSmokeTest(
+        false,
+        `Renderer process exited during startup (${details?.reason || 'unknown reason'})`
+      );
+    });
+    mainWindow.on('unresponsive', () => {
+      finishSmokeTest(false, 'Renderer became unresponsive during startup');
+    });
+  }
 
   const changeWin = () => {
     const bounds = mainWindow.getBounds();
-
-    config.windowPosition = { x: bounds.x, y: bounds.y };
-    config.windowSize = { width: bounds.width, height: bounds.height };
+    pendingWindowBounds = bounds;
     if (windowStateSaveTimer) {
       clearTimeout(windowStateSaveTimer);
     }
     windowStateSaveTimer = setTimeout(() => {
       windowStateSaveTimer = null;
-      saveConfig();
+      const boundsToPersist = pendingWindowBounds;
+      pendingWindowBounds = null;
+      if (!boundsToPersist) return;
+      runBackgroundConfigMutation(() => {
+        // Native Wayland compositors own placement and report coordinates that are not
+        // stable app-controlled positions. Persisting those values during a resize makes
+        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
+        if (!usesCompositorOwnedPlacement) {
+          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
+        }
+        config.windowSize = {
+          width: boundsToPersist.width,
+          height: boundsToPersist.height,
+        };
+        saveConfig();
+      }, 'window bounds save');
     }, 400);
   };
 
@@ -3552,6 +4740,9 @@ function createWindow() {
   // from the tray or menu does not inherit the above-full-screen z-order.
   mainWindow.on('hide', () => {
     popupWindowPresenter.handleWindowHidden(mainWindow);
+  });
+  mainWindow.on('blur', () => {
+    popupWindowPresenter.handleWindowBlur(mainWindow);
   });
 
   // Coming back to the widget is the moment a stale profile is most visible, and
@@ -3596,17 +4787,41 @@ function buildTrayContextMenu() {
       type: 'checkbox',
       checked: config.alwaysOnTop,
       click: (menuItem) => {
-        config.alwaysOnTop = menuItem.checked;
-        applyAlwaysOnTopPreference();
-        saveConfig();
+        const requestedValue = !!menuItem.checked;
+        void runSerializedConfigMutation(async () => {
+          const previousValue = !!config.alwaysOnTop;
+          config.alwaysOnTop = requestedValue;
+          applyAlwaysOnTopPreference();
+          const persistence = await saveConfigDurably();
+          if (!persistence.success) {
+            config.alwaysOnTop = previousValue;
+            menuItem.checked = previousValue;
+            applyAlwaysOnTopPreference();
+            log.warn(`Failed to save tray always-on-top setting: ${persistence.error}`);
+          }
+        }).catch((error) => {
+          log.warn('Failed to apply tray always-on-top setting:', error.message);
+        });
       },
     },
     {
       label: mainT('Reset Position'),
+      enabled: !usesCompositorOwnedPlacement,
       click: () => {
-        mainWindow.setPosition(100, 100);
-        config.windowPosition = { x: 100, y: 100 };
-        saveConfig();
+        if (usesCompositorOwnedPlacement) return;
+        void runSerializedConfigMutation(async () => {
+          const previousPosition = config.windowPosition;
+          config.windowPosition = { x: 100, y: 100 };
+          const persistence = await saveConfigDurably();
+          if (!persistence.success) {
+            config.windowPosition = previousPosition;
+            log.warn(`Failed to save reset window position: ${persistence.error}`);
+            return;
+          }
+          mainWindow.setPosition(100, 100);
+        }).catch((error) => {
+          log.warn('Failed to reset window position:', error.message);
+        });
       },
     },
     { type: 'separator' },
@@ -3635,36 +4850,26 @@ function buildTrayContextMenu() {
     {
       label: mainT('Check for Updates'),
       click: () => {
-        if (app.isPackaged) {
-          if (isPortableBuild()) {
-            checkPortableUpdate()
-              .then((result) => {
-                if (mainWindow && result) {
-                  mainWindow.webContents.send('auto-update', result);
-                }
-              })
-              .catch((error) => {
-                if (mainWindow) {
-                  mainWindow.webContents.send('auto-update', {
-                    status: 'error',
-                    error: error?.message || String(error),
-                  });
-                }
-              });
-          } else {
-            const autoUpdater = getAutoUpdater();
-            configureAutoUpdaterChannel(autoUpdater);
-            autoUpdater.checkForUpdates().catch((error) => {
-              const payload = { status: 'error', error: error?.message || String(error) };
-              log.warn('Tray update check failed:', payload.error);
-              if (mainWindow) {
-                mainWindow.webContents.send('auto-update', payload);
-              }
-            });
-          }
-        } else {
-          log.info('Update check is only available in packaged builds.');
-        }
+        void checkForUpdatesForCurrentPackage()
+          .then((result) => {
+            if (result.status === 'dev') {
+              log.info('Update check is only available in packaged builds.');
+            }
+            // Supported auto-updaters emit their final available/none/error event before
+            // checkForUpdates resolves. Re-sending the synthetic "checking" result here
+            // would overwrite that final renderer state.
+            if (result.status === 'checking') return;
+            if (mainWindow && result) {
+              mainWindow.webContents.send('auto-update', result);
+            }
+          })
+          .catch((error) => {
+            const payload = { status: 'error', error: error?.message || String(error) };
+            log.warn('Tray update check failed:', payload.error);
+            if (mainWindow) {
+              mainWindow.webContents.send('auto-update', payload);
+            }
+          });
       },
     },
     {
@@ -3702,6 +4907,10 @@ function createTray() {
   const contextMenu = buildTrayContextMenu();
   tray.setToolTip(mainT('Home Assistant Widget'));
   tray.setContextMenu(contextMenu);
+  if (IS_SMOKE_TEST_MODE) {
+    smokeTestTrayReady = true;
+    maybeFinishSmokeTest();
+  }
 }
 
 function schedulePostWindowStartupTasks() {
@@ -3709,7 +4918,10 @@ function schedulePostWindowStartupTasks() {
   postWindowStartupTasksScheduled = true;
 
   setTimeout(() => {
-    resolveDeferredSecureConfig({ notifyRenderer: true });
+    runBackgroundConfigMutation(
+      () => resolveDeferredSecureConfig({ notifyRenderer: true }),
+      'deferred secure config resolution'
+    );
 
     try {
       syncDesktopPinWindowsWithConfig();
@@ -3721,6 +4933,7 @@ function schedulePostWindowStartupTasks() {
       createTray();
     } catch (error) {
       log.warn('Tray startup initialization failed:', error.message);
+      finishSmokeTest(false, `Tray startup initialization failed: ${error.message}`);
     }
 
     try {
@@ -3732,7 +4945,7 @@ function schedulePostWindowStartupTasks() {
     try {
       // On Wayland this rebinds all hotkeys through the portal once it confirms
       // availability; on X11/other the globalShortcut registration above stands.
-      void initPortalShortcutsBackend();
+      void ensurePortalShortcutsBackendInitialized();
     } catch (error) {
       log.warn('Portal shortcut startup initialization failed:', error.message);
     }
@@ -3757,6 +4970,16 @@ function schedulePostWindowStartupTasks() {
 }
 
 // IPC handlers for configuration
+ipcMain.handle('renderer-ready', (event) => {
+  const sender = authorizeIpcSender(event, 'renderer-ready');
+  if (!sender) return rejectUnauthorizedIpc('renderer-ready');
+  if (IS_SMOKE_TEST_MODE) {
+    smokeTestRendererReady = true;
+    maybeFinishSmokeTest();
+  }
+  return { success: true };
+});
+
 ipcMain.handle('get-config', (event) => {
   const sender = authorizeIpcSender(event, 'get-config');
   if (!sender) return rejectUnauthorizedIpc('get-config');
@@ -3811,96 +5034,271 @@ ipcMain.handle('remove-locale-pack', async (event, locale) => {
   };
 });
 
-ipcMain.handle('update-config', async (event, newConfig) => {
-  const sender = authorizeIpcSender(event, 'update-config');
-  if (!sender) return rejectUnauthorizedIpc('update-config');
-  if (!isPlainObject(newConfig)) {
-    return { success: false, error: 'Invalid config payload' };
-  }
-  log.debug('Updating configuration');
-  const prevConfig = config;
-  const prevSyncEnabled = !!config?.profileSync?.enabled;
-  // Development demo state is an IPC-only marker. Never let an overlay renderer
-  // write it back into the user's real configuration.
-  delete newConfig.developmentDemo;
-  pruneConfig(newConfig);
-  const customTabs = Array.isArray(newConfig.customTabs)
-    ? newConfig.customTabs
-    : Array.isArray(config.customTabs)
-      ? config.customTabs
-      : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
-  const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
-  const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
-  config = { ...config, ...newConfig, customTabs, profileSync, updates };
-  ensureDateTimeFormatConfigDefaults(config);
-  ensureProfileSyncConfigDefaults(config);
-  ensureUpdateConfigDefaults(config);
-  normalizeDesktopPinsConfig(config);
-  pruneConfig(config);
-  restoreProfileFromStalePullEcho(prevConfig);
-  // The renderer's echo of profileSync may be stale; the content-change
-  // timestamp is main-process-authoritative (saveConfig advances it on real
-  // profile changes).
-  config.profileSync.profileUpdatedAt = prevConfig?.profileSync?.profileUpdatedAt ?? null;
-  if (
-    TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason) &&
-    !isPlaceholderOrEmptyToken(config.homeAssistant?.token)
-  ) {
-    delete config.tokenResetReason;
-  }
-  if (
-    config.homeAssistant?.token &&
-    config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
-  ) {
-    preservedEncryptedTokenForRecovery = null;
-  }
-  applyMainWindowSettingSideEffects(prevConfig, config);
+ipcMain.handle(
+  'update-config',
+  serializeConfigMutationHandler(async (event, newConfig) => {
+    const sender = authorizeIpcSender(event, 'update-config');
+    if (!sender) return rejectUnauthorizedIpc('update-config');
+    if (!isPlainObject(newConfig)) {
+      return { success: false, error: 'Invalid config payload' };
+    }
+    log.debug('Updating configuration');
+    const prevConfig = config;
+    const previousRuntimeTracking = {
+      localProfileHash: profileSyncRuntime.localProfileHash,
+      localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+      pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    };
+    const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
+    const prevSyncEnabled = !!config?.profileSync?.enabled;
+    // Development demo state is an IPC-only marker. Never let an overlay renderer
+    // write it back into the user's real configuration.
+    delete newConfig.developmentDemo;
+    pruneConfig(newConfig);
+    const customTabs = Array.isArray(newConfig.customTabs)
+      ? newConfig.customTabs
+      : Array.isArray(config.customTabs)
+        ? config.customTabs
+        : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
+    const previousFirstEnableResolutionPending =
+      config.profileSync?.firstEnableResolutionPending === true;
+    const previousRemoteRewritePending = config.profileSync?.remoteRewritePending === true;
+    const previousEncryptionEnabled = config.profileSync?.encryptionEnabled === true;
+    const previousProvider = normalizeProfileSyncProvider(config.profileSync?.provider);
+    const previousCloudFilePath = config.profileSync?.cloudFilePath || '';
+    const previousSyncScope = getNormalizedProfileSyncScopeValue(config.profileSync?.syncScope);
+    const previousPassphraseMetadata = {
+      rememberPassphrase: config.profileSync?.rememberPassphrase === true,
+      passphraseEncrypted: config.profileSync?.passphraseEncrypted === true,
+      storedPassphrase: config.profileSync?.storedPassphrase || '',
+      passphraseTransition: config.profileSync?.passphraseTransition || null,
+      encryptionChangePending:
+        typeof config.profileSync?.encryptionChangePending === 'boolean'
+          ? config.profileSync.encryptionChangePending
+          : null,
+    };
+    const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
+    const requestedEncryptionEnabled = profileSync.encryptionEnabled === true;
+    // Credential metadata and rewrite recovery are main-owned. The settings
+    // renderer sends a sanitized snapshot before the dedicated passphrase IPC;
+    // accepting those fields here creates a crash window that can discard or
+    // mislabel the only working credential.
+    Object.assign(profileSync, previousPassphraseMetadata);
+    profileSync.encryptionEnabled = previousEncryptionEnabled;
+    const normalizedNextProvider = normalizeProfileSyncProvider(profileSync.provider);
+    const normalizedNextPath =
+      typeof profileSync.cloudFilePath === 'string' ? profileSync.cloudFilePath.trim() : '';
+    const normalizedNextScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+    const remoteTargetChanged =
+      prevSyncEnabled &&
+      profileSync.enabled &&
+      (normalizedNextProvider !== previousProvider ||
+        normalizedNextPath !== previousCloudFilePath ||
+        JSON.stringify(normalizedNextScope) !== JSON.stringify(previousSyncScope));
+    if (
+      previousPassphraseMetadata.passphraseTransition &&
+      (profileSync.enabled !== prevSyncEnabled ||
+        remoteTargetChanged ||
+        requestedEncryptionEnabled !== previousEncryptionEnabled)
+    ) {
+      return {
+        success: false,
+        error:
+          'Finish the pending sync-key recovery before changing the sync target or encryption setting',
+        config: sanitizeConfigForRenderer(config),
+      };
+    }
+    const requiresInitialPreparation =
+      !!profileSync.enabled && (!prevSyncEnabled || remoteTargetChanged);
+    if (requiresInitialPreparation) {
+      profileSync.firstEnableResolutionPending = true;
+    } else if (!profileSync.enabled) {
+      profileSync.firstEnableResolutionPending = false;
+    } else {
+      // This safety marker is main-process-authoritative. Renderer snapshots can
+      // arrive after a passphrase/conflict operation and must not resurrect or
+      // clear a first-enable gate with stale state.
+      profileSync.firstEnableResolutionPending = previousFirstEnableResolutionPending;
+    }
+    const encryptionRequest = resolveProfileSyncEncryptionRequest({
+      syncEnabled: !!profileSync.enabled,
+      wasSyncEnabled: prevSyncEnabled,
+      currentEncryptionEnabled: previousEncryptionEnabled,
+      requestedEncryptionEnabled,
+      existingPendingTarget: previousPassphraseMetadata.encryptionChangePending,
+    });
+    profileSync.encryptionEnabled = encryptionRequest.encryptionEnabled;
+    profileSync.encryptionChangePending = encryptionRequest.pendingTarget;
+    if (!profileSync.enabled) {
+      profileSync.remoteRewritePending = false;
+      profileSync.passphraseTransition = null;
+    } else if (!prevSyncEnabled) {
+      // The durable first-enable gate blocks every sync direction until the
+      // passphrase/conflict flow completes, so the requested mode can be
+      // recorded immediately without exposing the old-mode remote.
+      profileSync.remoteRewritePending =
+        requestedEncryptionEnabled !== previousEncryptionEnabled || previousRemoteRewritePending;
+    } else {
+      profileSync.remoteRewritePending = previousRemoteRewritePending;
+      if (requestedEncryptionEnabled !== previousEncryptionEnabled) {
+        profileSync.encryptionChangePending = requestedEncryptionEnabled;
+      }
+    }
+    const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
+    config = { ...config, ...newConfig, customTabs, profileSync, updates };
+    ensureDateTimeFormatConfigDefaults(config);
+    ensureProfileSyncConfigDefaults(config);
+    ensureUpdateConfigDefaults(config);
+    normalizeDesktopPinsConfig(config);
+    pruneConfig(config);
+    restoreProfileFromStalePullEcho(prevConfig);
+    // The renderer's echo of profileSync may be stale; the content-change
+    // timestamp is main-process-authoritative (saveConfig advances it on real
+    // profile changes).
+    config.profileSync.profileUpdatedAt = prevConfig?.profileSync?.profileUpdatedAt ?? null;
+    if (
+      TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason) &&
+      !isPlaceholderOrEmptyToken(config.homeAssistant?.token)
+    ) {
+      delete config.tokenResetReason;
+    }
+    if (
+      config.homeAssistant?.token &&
+      config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
+    ) {
+      preservedEncryptedTokenForRecovery = null;
+    }
+    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+    if (!persistence.success) {
+      config = prevConfig;
+      Object.assign(profileSyncRuntime, previousRuntimeTracking);
+      preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
+      log.error('Configuration update was not persisted:', persistence.error);
+      return {
+        success: false,
+        error: `Failed to save settings: ${persistence.error}`,
+        config: sanitizeConfigForRenderer(config),
+      };
+    }
 
-  const syncEnabled = !!config.profileSync?.enabled;
-  if (!syncEnabled) {
-    profileSyncRuntime.needsResolution = false;
-    profileSyncRuntime.pendingRemoteEnvelope = null;
-    clearProfileSyncTimers();
-  } else if (!prevSyncEnabled && syncEnabled) {
-    try {
-      const resolution = await prepareProfileSyncFirstEnableResolution();
-      if (!resolution?.needsResolution) {
+    const runtimeWarnings = [];
+    await runPostSaveSideEffect(runtimeWarnings, 'profile sync scheduling', async () => {
+      if (profileSyncRuntime.localProfileHash !== previousRuntimeTracking.localProfileHash) {
+        scheduleDebouncedProfileSyncPush('config_change');
+      }
+
+      const syncEnabled = !!config.profileSync?.enabled;
+      if (!syncEnabled) {
+        profileSyncRuntime.needsResolution = false;
+        profileSyncRuntime.pendingRemoteEnvelope = null;
+        clearProfileSyncTimers();
+      } else if (typeof config.profileSync.encryptionChangePending === 'boolean') {
+        clearProfileSyncTimers();
+        emitProfileSyncStatus();
+      } else if (requiresInitialPreparation) {
+        profileSyncRuntime.needsResolution = false;
+        profileSyncRuntime.pendingRemoteEnvelope = null;
+        profileSyncRuntime.pendingRemoteIdentity = null;
+        const hasRequiredPassphrase =
+          !config.profileSync.encryptionEnabled || !!getActiveProfileSyncPassphrase();
+        if (hasRequiredPassphrase) {
+          try {
+            const resolution = await prepareProfileSyncFirstEnableResolution();
+            if (!resolution?.needsResolution) {
+              await completeProfileSyncFirstEnablePreparation('settings_enable');
+            }
+          } catch (error) {
+            clearProfileSyncTimers();
+            updateProfileSyncStatus('error', error.message);
+          }
+        } else {
+          clearProfileSyncTimers();
+          emitProfileSyncStatus();
+        }
+      } else if (config.profileSync.firstEnableResolutionPending) {
+        clearProfileSyncTimers();
+      } else {
         setupProfileSyncInterval();
       }
-    } catch (error) {
-      updateProfileSyncStatus('error', error.message);
+    });
+
+    await runPostSaveSideEffect(runtimeWarnings, 'main window settings', () =>
+      applyMainWindowSettingSideEffects(prevConfig, config)
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'runtime settings', () =>
+      applyRuntimeConfigSideEffects(prevConfig, config, 'settings update')
+    );
+    if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
+      await runPostSaveSideEffect(runtimeWarnings, 'tray language', () => createTray());
     }
-  } else {
-    setupProfileSyncInterval();
-  }
+    if (
+      prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease &&
+      autoUpdaterInstance
+    ) {
+      await runPostSaveSideEffect(runtimeWarnings, 'update channel', () =>
+        configureAutoUpdaterChannel(autoUpdaterInstance)
+      );
+    }
+    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin windows', () =>
+      syncDesktopPinWindowsWithConfig()
+    );
 
-  saveConfig();
-  if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
-    createTray();
-  }
-  if (
-    prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease &&
-    autoUpdaterInstance
-  ) {
-    configureAutoUpdaterChannel(autoUpdaterInstance);
-  }
-  syncDesktopPinWindowsWithConfig();
-  pushConfigToRenderer();
-  broadcastDesktopPinConfigUpdate();
-  emitProfileSyncStatus();
-  return sanitizeConfigForRenderer(config);
-});
+    const rendererConfig = sanitizeConfigForRenderer(config);
+    if (persistence.persistenceWarnings?.length) {
+      rendererConfig.persistenceWarnings = persistence.persistenceWarnings;
+    }
+    if (runtimeWarnings.length) {
+      rendererConfig.runtimeWarnings = runtimeWarnings;
+    }
+    await runPostSaveSideEffect(runtimeWarnings, 'renderer config broadcast', () =>
+      pushConfigToRenderer({
+        persistenceWarnings: persistence.persistenceWarnings,
+        runtimeWarnings,
+      })
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin config broadcast', () =>
+      broadcastDesktopPinConfigUpdate()
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'profile sync status broadcast', () =>
+      emitProfileSyncStatus()
+    );
+    if (runtimeWarnings.length) {
+      rendererConfig.runtimeWarnings = runtimeWarnings;
+    }
+    return rendererConfig;
+  })
+);
 
-ipcMain.handle('clear-token-reset-reason', (event) => {
-  const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
-  if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
-  if (TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason)) {
-    delete config.tokenResetReason;
-    saveConfig();
-    pushConfigToRenderer();
-  }
-  return sanitizeConfigForRenderer(config);
-});
+ipcMain.handle(
+  'clear-token-reset-reason',
+  serializeConfigMutationHandler(async (event) => {
+    const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
+    if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
+    if (TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason)) {
+      const previousReason = config.tokenResetReason;
+      delete config.tokenResetReason;
+      const persistence = await saveConfigDurably();
+      if (!persistence.success) {
+        config.tokenResetReason = previousReason;
+        return {
+          success: false,
+          error: `Failed to save token recovery acknowledgement: ${persistence.error}`,
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
+      const runtimeWarnings = [];
+      await runPostSaveSideEffect(runtimeWarnings, 'token recovery renderer broadcast', () =>
+        pushConfigToRenderer({ runtimeWarnings })
+      );
+      const rendererConfig = sanitizeConfigForRenderer(config);
+      if (runtimeWarnings.length) {
+        rendererConfig.runtimeWarnings = runtimeWarnings;
+      }
+      return rendererConfig;
+    }
+    return sanitizeConfigForRenderer(config);
+  })
+);
 
 function normalizeHomeAssistantBaseUrlForIpc(rawUrl) {
   const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
@@ -3988,11 +5386,14 @@ ipcMain.handle('test-ha-connection', async (event, url, token) => {
   return testHomeAssistantApiRoot(url, token);
 });
 
-ipcMain.handle('pin-entity-to-desktop', (event, entityId, supportInfo = null) => {
-  const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
-  if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
-  return pinEntityToDesktopInternal(entityId, supportInfo);
-});
+ipcMain.handle(
+  'pin-entity-to-desktop',
+  serializeConfigMutationHandler(async (event, entityId, supportInfo = null) => {
+    const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
+    if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
+    return pinEntityToDesktopInternal(entityId, supportInfo);
+  })
+);
 
 ipcMain.handle('set-desktop-pin-edit-mode', (event, enabled) => {
   const sender = authorizeIpcSender(event, 'set-desktop-pin-edit-mode');
@@ -4000,45 +5401,42 @@ ipcMain.handle('set-desktop-pin-edit-mode', (event, enabled) => {
   return setDesktopPinEditMode(enabled);
 });
 
-ipcMain.handle('update-desktop-pin-bounds', (event, entityId, nextBounds = {}) => {
-  const sender = authorizeIpcSender(event, 'update-desktop-pin-bounds', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('update-desktop-pin-bounds');
-  if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
-    return { success: false, error: 'Unauthorized' };
-  }
-  return updateDesktopPinBounds(entityId, nextBounds);
-});
+ipcMain.handle(
+  'update-desktop-pin-bounds',
+  serializeConfigMutationHandler(async (event, entityId, nextBounds = {}) => {
+    const sender = authorizeIpcSender(event, 'update-desktop-pin-bounds', {
+      allowDesktopPin: true,
+    });
+    if (!sender) return rejectUnauthorizedIpc('update-desktop-pin-bounds');
+    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+      return { success: false, error: 'Unauthorized' };
+    }
+    return updateDesktopPinBounds(entityId, nextBounds);
+  })
+);
 
-ipcMain.handle('sync-desktop-pin-content-min-bounds', (event, entityId, minBounds = {}) => {
-  const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', {
-    allowDesktopPin: true,
-  });
-  if (!sender) return rejectUnauthorizedIpc('sync-desktop-pin-content-min-bounds');
-  if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
-    return { success: false, error: 'Unauthorized' };
-  }
-  return syncDesktopPinContentMinBounds(entityId, minBounds);
-});
+ipcMain.handle(
+  'sync-desktop-pin-content-min-bounds',
+  serializeConfigMutationHandler(async (event, entityId, minBounds = {}) => {
+    const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', {
+      allowDesktopPin: true,
+    });
+    if (!sender) return rejectUnauthorizedIpc('sync-desktop-pin-content-min-bounds');
+    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+      return { success: false, error: 'Unauthorized' };
+    }
+    return syncDesktopPinContentMinBounds(entityId, minBounds);
+  })
+);
 
-ipcMain.handle('unpin-entity-from-desktop', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'unpin-entity-from-desktop');
-  if (!sender) return rejectUnauthorizedIpc('unpin-entity-from-desktop');
-  const normalizedEntityId = normalizeEntityId(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-
-  if (config?.desktopPins?.[normalizedEntityId]) {
-    delete config.desktopPins[normalizedEntityId];
-  }
-  desktopPinContentMinBounds.delete(normalizedEntityId);
-  saveConfig();
-  syncDesktopPinWindowsWithConfig();
-  pushConfigToRenderer();
-  broadcastDesktopPinConfigUpdate();
-
-  return { success: true, pinned: false };
-});
+ipcMain.handle(
+  'unpin-entity-from-desktop',
+  serializeConfigMutationHandler(async (event, entityId) => {
+    const sender = authorizeIpcSender(event, 'unpin-entity-from-desktop');
+    if (!sender) return rejectUnauthorizedIpc('unpin-entity-from-desktop');
+    return unpinEntityFromDesktopInternal(entityId);
+  })
+);
 
 ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
@@ -4206,17 +5604,19 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
           : mainT('Desktop Pin Not Supported Yet'),
       enabled: isPinned || canPinToDesktop,
       click: () => {
-        if (isPinned) {
-          if (config?.desktopPins?.[normalizedEntityId]) {
-            delete config.desktopPins[normalizedEntityId];
-          }
-          saveConfig();
-          syncDesktopPinWindowsWithConfig();
-          pushConfigToRenderer();
-          broadcastDesktopPinConfigUpdate();
-        } else {
-          pinEntityToDesktopInternal(normalizedEntityId, supportProfile);
-        }
+        void runSerializedConfigMutation(() =>
+          isPinned
+            ? unpinEntityFromDesktopInternal(normalizedEntityId)
+            : pinEntityToDesktopInternal(normalizedEntityId, supportProfile)
+        )
+          .then((result) => {
+            if (result?.success === false) {
+              log.warn(`Desktop pin menu action failed: ${result.error}`);
+            }
+          })
+          .catch((error) => {
+            log.warn('Desktop pin menu action failed:', error.message);
+          });
       },
     },
   ]);
@@ -4225,19 +5625,39 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   return { success: true, pinned: isPinned, supportProfile };
 });
 
-ipcMain.handle('set-opacity', (event, opacity) => {
-  const sender = authorizeIpcSender(event, 'set-opacity');
-  if (!sender) return rejectUnauthorizedIpc('set-opacity');
-  // Ensure opacity is within safe range (50% to 100%)
-  let safeOpacity = Math.max(0.5, Math.min(1, opacity));
-  try {
-    safeOpacity = applyWindowOpacity(mainWindow, safeOpacity, config);
-  } catch (error) {
-    log.warn('Failed to set main window opacity:', error.message);
-  }
-  config.opacity = safeOpacity;
-  saveConfig();
-});
+ipcMain.handle(
+  'set-opacity',
+  serializeConfigMutationHandler(async (event, opacity) => {
+    const sender = authorizeIpcSender(event, 'set-opacity');
+    if (!sender) return rejectUnauthorizedIpc('set-opacity');
+    const previousOpacity = config.opacity;
+    // Ensure opacity is within safe range (50% to 100%)
+    const requestedOpacity = Number(opacity);
+    let safeOpacity = Number.isFinite(requestedOpacity)
+      ? Math.max(0.5, Math.min(1, requestedOpacity))
+      : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
+    try {
+      safeOpacity = applyWindowOpacity(mainWindow, safeOpacity, config);
+    } catch (error) {
+      log.warn('Failed to set main window opacity:', error.message);
+    }
+    config.opacity = safeOpacity;
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.opacity = previousOpacity;
+      try {
+        applyWindowOpacity(mainWindow, previousOpacity, config);
+      } catch (error) {
+        log.warn('Failed to restore main window opacity:', error.message);
+      }
+      return {
+        success: false,
+        error: `Failed to save window opacity: ${persistence.error}`,
+      };
+    }
+    return { success: true, opacity: safeOpacity };
+  })
+);
 
 ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   const sender = authorizeIpcSender(event, 'preview-window-effects');
@@ -4261,27 +5681,46 @@ ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   }
 });
 
-ipcMain.handle('set-always-on-top', (event, value) => {
-  const sender = authorizeIpcSender(event, 'set-always-on-top');
-  if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
-  const flag = !!value;
-  config.alwaysOnTop = flag;
-  let applied = false;
-  try {
-    if (popupWindowPresenter.isElevated()) {
-      // A popup raise keeps the window above full-screen content until it hides; the new
-      // preference is what the presenter falls back to when that raise ends.
-      applied = !!mainWindow && !mainWindow.isDestroyed();
-    } else {
-      applyAlwaysOnTopPreference();
-      applied = mainWindow?.isAlwaysOnTop?.() === flag;
+ipcMain.handle(
+  'set-always-on-top',
+  serializeConfigMutationHandler(async (event, value) => {
+    const sender = authorizeIpcSender(event, 'set-always-on-top');
+    if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
+    const flag = !!value;
+    const previousFlag = !!config.alwaysOnTop;
+    config.alwaysOnTop = flag;
+    let applied = false;
+    try {
+      if (popupWindowPresenter.isElevated()) {
+        // A popup raise keeps the window above full-screen content until it hides; the new
+        // preference is what the presenter falls back to when that raise ends.
+        applied = !!mainWindow && !mainWindow.isDestroyed();
+      } else {
+        applyAlwaysOnTopPreference();
+        applied = mainWindow?.isAlwaysOnTop?.() === flag;
+      }
+    } catch (error) {
+      log.warn('Failed to set always on top:', error.message);
     }
-  } catch (error) {
-    log.warn('Failed to set always on top:', error.message);
-  }
-  saveConfig();
-  return { applied };
-});
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.alwaysOnTop = previousFlag;
+      try {
+        if (!popupWindowPresenter.isElevated()) {
+          applyAlwaysOnTopPreference();
+        }
+      } catch (error) {
+        log.warn('Failed to restore always on top:', error.message);
+      }
+      return {
+        success: false,
+        error: `Failed to save always-on-top setting: ${persistence.error}`,
+        applied: false,
+      };
+    }
+    return { success: true, applied };
+  })
+);
 
 ipcMain.handle('get-window-state', (event) => {
   const sender = authorizeIpcSender(event, 'get-window-state');
@@ -4358,107 +5797,581 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
   }
 });
 
-ipcMain.handle('set-profile-sync-passphrase', async (event, passphrase, remember = false) => {
-  const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
-  if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
-  try {
+ipcMain.handle(
+  'set-profile-sync-passphrase',
+  serializeConfigMutationHandler(
+    async (event, passphrase, remember = false, desiredEncryptionEnabled = null) => {
+      const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
+      if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
+      try {
+        const candidatePassphrase = typeof passphrase === 'string' ? passphrase.trim() : '';
+        if (
+          candidatePassphrase &&
+          candidatePassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
+        ) {
+          return {
+            success: false,
+            error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+          };
+        }
+        const profileSync = getProfileSyncConfig();
+
+        if (profileSync.passphraseTransition) {
+          try {
+            await executePendingProfileSyncRewrite();
+          } catch (error) {
+            return {
+              success: false,
+              error: `Finish the pending sync-key recovery before changing the passphrase: ${error?.message || String(error)}`,
+              status: buildProfileSyncStatus(),
+            };
+          }
+        }
+
+        const activePassphrase = getActiveProfileSyncPassphrase();
+        const targetEncryptionEnabled =
+          typeof desiredEncryptionEnabled === 'boolean'
+            ? desiredEncryptionEnabled
+            : typeof profileSync.encryptionChangePending === 'boolean'
+              ? profileSync.encryptionChangePending
+              : profileSync.encryptionEnabled;
+        const effectiveNewPassphrase = candidatePassphrase || activePassphrase;
+        if (targetEncryptionEnabled && !effectiveNewPassphrase) {
+          return {
+            success: false,
+            error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+            status: buildProfileSyncStatus(),
+          };
+        }
+
+        const remoteResult =
+          profileSync.enabled && profileSync.cloudFilePath
+            ? await readConfiguredSyncEnvelope()
+            : { exists: false, envelope: null };
+
+        if (
+          typeof desiredEncryptionEnabled === 'boolean' &&
+          typeof profileSync.encryptionChangePending === 'boolean' &&
+          desiredEncryptionEnabled === profileSync.encryptionEnabled
+        ) {
+          const previousPendingTarget = profileSync.encryptionChangePending;
+          profileSync.encryptionChangePending = null;
+          const cancellationPersistence = await saveConfigDurably({
+            allowDebouncedPush: false,
+          });
+          if (!cancellationPersistence.success) {
+            profileSync.encryptionChangePending = previousPendingTarget;
+            return {
+              success: false,
+              error: `Failed to cancel the pending encryption change: ${cancellationPersistence.error}`,
+              status: buildProfileSyncStatus(),
+            };
+          }
+          setupProfileSyncInterval();
+          if (!candidatePassphrase) {
+            emitProfileSyncStatus();
+            return {
+              success: true,
+              remembered: profileSync.rememberPassphrase,
+              encrypted: profileSync.passphraseEncrypted,
+              status: buildProfileSyncStatus(),
+              config: sanitizeConfigForRenderer(config),
+            };
+          }
+        }
+
+        if (targetEncryptionEnabled !== profileSync.encryptionEnabled) {
+          let localEncryptionCommitPersisted = false;
+          const previous = {
+            encryptionEnabled: profileSync.encryptionEnabled,
+            encryptionChangePending: profileSync.encryptionChangePending,
+            remoteRewritePending: profileSync.remoteRewritePending,
+            rememberPassphrase: profileSync.rememberPassphrase,
+            passphraseEncrypted: profileSync.passphraseEncrypted,
+            storedPassphrase: profileSync.storedPassphrase,
+            passphraseSession: profileSyncRuntime.passphraseSession,
+            passphraseWarning: profileSyncRuntime.passphraseWarning,
+          };
+          const oldPassphrase = profileSync.encryptionEnabled
+            ? candidatePassphrase || activePassphrase
+            : '';
+          if (profileSync.encryptionEnabled && !oldPassphrase) {
+            return {
+              success: false,
+              error: 'Enter the current remote passphrase before disabling profile encryption',
+              status: buildProfileSyncStatus(),
+            };
+          }
+
+          try {
+            if (
+              profileSync.firstEnableResolutionPending ||
+              !remoteResult.exists ||
+              !remoteResult.envelope
+            ) {
+              // The first-enable gate prevents either direction from running, so
+              // committing the requested mode and credential locally is safe
+              // until conflict preparation chooses the exact first write.
+              profileSync.encryptionEnabled = targetEncryptionEnabled;
+              profileSync.encryptionChangePending = null;
+              profileSync.remoteRewritePending =
+                !!remoteResult.envelope &&
+                (remoteResult.envelope?.payload?.encrypted === true) !== targetEncryptionEnabled;
+              let persisted = {
+                remembered: profileSync.rememberPassphrase,
+                encrypted: profileSync.passphraseEncrypted,
+              };
+              if (targetEncryptionEnabled) {
+                persisted = persistRememberedProfileSyncPassphrase(
+                  effectiveNewPassphrase,
+                  !!remember
+                );
+              } else {
+                profileSync.rememberPassphrase = false;
+                profileSync.passphraseEncrypted = false;
+                profileSync.storedPassphrase = '';
+                profileSyncRuntime.passphraseSession = '';
+                profileSyncRuntime.passphraseWarning = '';
+                persisted = { remembered: false, encrypted: false };
+              }
+              const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+              if (!persistence.success) {
+                throw new Error(
+                  `Failed to save the requested encryption mode: ${persistence.error}`
+                );
+              }
+              localEncryptionCommitPersisted = true;
+
+              if (profileSync.enabled && profileSync.firstEnableResolutionPending) {
+                const resolution = await prepareProfileSyncFirstEnableResolution();
+                if (!resolution?.needsResolution) {
+                  await completeProfileSyncFirstEnablePreparation('passphrase_first_enable');
+                } else {
+                  clearProfileSyncTimers();
+                }
+              } else if (profileSync.enabled && !remoteResult.exists) {
+                const createResult = await runProfileSyncInternal(
+                  'push',
+                  'encryption_transition_missing',
+                  { expectedRemoteIdentity: 'missing' }
+                );
+                if (createResult?.ok !== true || createResult?.reason === 'remote_changed') {
+                  throw new Error(
+                    createResult?.error ||
+                      createResult?.reason ||
+                      'The missing remote profile could not be created'
+                  );
+                }
+                setupProfileSyncInterval();
+              }
+              emitProfileSyncStatus();
+              return {
+                success: true,
+                ...persisted,
+                status: buildProfileSyncStatus(),
+                config: sanitizeConfigForRenderer(config),
+              };
+            }
+
+            const targetConfig = {
+              ...config,
+              profileSync: {
+                ...profileSync,
+                encryptionEnabled: targetEncryptionEnabled,
+                encryptionChangePending: null,
+              },
+            };
+            await stageProfileSyncRewrite({
+              oldPassphrase,
+              newPassphrase: targetEncryptionEnabled ? effectiveNewPassphrase : oldPassphrase,
+              rememberNewPassphrase: !!remember,
+              targetEncryptionEnabled,
+              changeCredential: targetEncryptionEnabled,
+              baselineConfig: config,
+              targetConfig,
+              reason: 'encryption_transition',
+              remoteResult,
+            });
+            const result = await executePendingProfileSyncRewrite();
+            emitProfileSyncStatus();
+            return {
+              success: true,
+              ...result,
+              status: buildProfileSyncStatus(),
+              config: sanitizeConfigForRenderer(config),
+            };
+          } catch (error) {
+            if (!profileSync.passphraseTransition && !localEncryptionCommitPersisted) {
+              profileSync.encryptionEnabled = previous.encryptionEnabled;
+              profileSync.encryptionChangePending = previous.encryptionChangePending;
+              profileSync.remoteRewritePending = previous.remoteRewritePending;
+              profileSync.rememberPassphrase = previous.rememberPassphrase;
+              profileSync.passphraseEncrypted = previous.passphraseEncrypted;
+              profileSync.storedPassphrase = previous.storedPassphrase;
+              profileSyncRuntime.passphraseSession = previous.passphraseSession;
+              profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
+            }
+            clearProfileSyncTimers();
+            if (localEncryptionCommitPersisted) {
+              setupProfileSyncInterval();
+            }
+            updateProfileSyncStatus('error', error?.message || String(error));
+            emitProfileSyncStatus();
+            return {
+              success: false,
+              error: `Cannot change profile encryption safely: ${error?.message || String(error)}`,
+              status: buildProfileSyncStatus(),
+              config: sanitizeConfigForRenderer(config),
+            };
+          }
+        }
+
+        let candidateUnlocksRemote = !remoteResult.exists || !remoteResult.envelope;
+        if (remoteResult.exists && remoteResult.envelope) {
+          try {
+            await decodeRemoteProfileWithPassphrase(
+              remoteResult,
+              candidatePassphrase || activePassphrase
+            );
+            candidateUnlocksRemote = true;
+          } catch {
+            candidateUnlocksRemote = false;
+          }
+        }
+
+        const passphraseSubmission = classifyProfileSyncPassphraseSubmission({
+          remoteExists: !!remoteResult.exists && !!remoteResult.envelope,
+          remoteEncrypted: remoteResult.envelope?.payload?.encrypted === true,
+          candidateUnlocksRemote,
+          activePassphrase,
+          candidatePassphrase,
+        });
+
+        if (passphraseSubmission === 'rekey') {
+          try {
+            // Prove the current key still owns the exact remote state before
+            // staging a crash-recoverable exact replacement.
+            await stageProfileSyncRewrite({
+              oldPassphrase: activePassphrase,
+              newPassphrase: candidatePassphrase,
+              rememberNewPassphrase: !!remember,
+              targetEncryptionEnabled: true,
+              changeCredential: true,
+              baselineConfig: config,
+              targetConfig: config,
+              reason: 'passphrase_rekey',
+              remoteResult,
+            });
+            const result = await executePendingProfileSyncRewrite();
+            emitProfileSyncStatus();
+            return {
+              success: true,
+              ...result,
+              status: buildProfileSyncStatus(),
+              config: sanitizeConfigForRenderer(config),
+            };
+          } catch (error) {
+            clearProfileSyncTimers();
+            updateProfileSyncStatus('error', error?.message || String(error));
+            emitProfileSyncStatus();
+            return {
+              success: false,
+              error: `Cannot change the sync passphrase safely: ${error?.message || String(error)}`,
+              status: buildProfileSyncStatus(),
+              config: sanitizeConfigForRenderer(config),
+            };
+          }
+        }
+
+        if (passphraseSubmission === 'reject') {
+          return {
+            success: false,
+            error:
+              'That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.',
+            status: buildProfileSyncStatus(),
+          };
+        }
+
+        // The submitted candidate already decrypts the remote (including the
+        // remember=false restart case), matches the active key, or initializes a
+        // missing remote. This is unlock/remember-only, not a rewrite.
+        const previous = {
+          rememberPassphrase: profileSync.rememberPassphrase,
+          passphraseEncrypted: profileSync.passphraseEncrypted,
+          storedPassphrase: profileSync.storedPassphrase,
+          passphraseSession: profileSyncRuntime.passphraseSession,
+          passphraseWarning: profileSyncRuntime.passphraseWarning,
+        };
+        const persisted = persistRememberedProfileSyncPassphrase(
+          candidatePassphrase || activePassphrase,
+          !!remember
+        );
+        const persistence = await saveConfigDurably();
+        if (!persistence.success) {
+          profileSync.rememberPassphrase = previous.rememberPassphrase;
+          profileSync.passphraseEncrypted = previous.passphraseEncrypted;
+          profileSync.storedPassphrase = previous.storedPassphrase;
+          profileSyncRuntime.passphraseSession = previous.passphraseSession;
+          profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
+          emitProfileSyncStatus();
+          return {
+            success: false,
+            error: `Failed to save sync passphrase: ${persistence.error}`,
+            status: buildProfileSyncStatus(),
+          };
+        }
+        let resolutionWarning = '';
+        try {
+          if (profileSync.enabled && profileSync.firstEnableResolutionPending) {
+            const resolution = await prepareProfileSyncFirstEnableResolution();
+            if (!resolution?.needsResolution) {
+              await completeProfileSyncFirstEnablePreparation('passphrase_first_enable');
+            } else {
+              clearProfileSyncTimers();
+            }
+          } else {
+            setupProfileSyncInterval();
+          }
+        } catch (error) {
+          clearProfileSyncTimers();
+          resolutionWarning = error?.message || String(error);
+          updateProfileSyncStatus('error', resolutionWarning);
+        }
+        emitProfileSyncStatus();
+        return {
+          success: true,
+          ...persisted,
+          warning: resolutionWarning,
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  )
+);
+
+ipcMain.handle(
+  'clear-profile-sync-passphrase',
+  serializeConfigMutationHandler(async (event) => {
+    const sender = authorizeIpcSender(event, 'clear-profile-sync-passphrase');
+    if (!sender) return rejectUnauthorizedIpc('clear-profile-sync-passphrase');
+    const profileSync = getProfileSyncConfig();
+    if (hasProfileSyncCredentialTransitionPending(profileSync)) {
+      return {
+        success: false,
+        error:
+          'The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds',
+        status: buildProfileSyncStatus(),
+      };
+    }
+    const previous = {
+      rememberPassphrase: profileSync.rememberPassphrase,
+      passphraseEncrypted: profileSync.passphraseEncrypted,
+      storedPassphrase: profileSync.storedPassphrase,
+      passphraseSession: profileSyncRuntime.passphraseSession,
+      passphraseWarning: profileSyncRuntime.passphraseWarning,
+    };
+    profileSyncRuntime.passphraseSession = '';
+    profileSync.rememberPassphrase = false;
+    profileSync.passphraseEncrypted = false;
+    profileSync.storedPassphrase = '';
+    profileSyncRuntime.passphraseWarning = '';
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      profileSync.rememberPassphrase = previous.rememberPassphrase;
+      profileSync.passphraseEncrypted = previous.passphraseEncrypted;
+      profileSync.storedPassphrase = previous.storedPassphrase;
+      profileSyncRuntime.passphraseSession = previous.passphraseSession;
+      profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
+      emitProfileSyncStatus();
+      return {
+        success: false,
+        error: `Failed to clear sync passphrase: ${persistence.error}`,
+        status: buildProfileSyncStatus(),
+      };
+    }
+    emitProfileSyncStatus();
+    return { success: true, status: buildProfileSyncStatus() };
+  })
+);
+
+ipcMain.handle(
+  'resolve-profile-sync-first-enable',
+  serializeConfigMutationHandler(async (event, choice) => {
+    const sender = authorizeIpcSender(event, 'resolve-profile-sync-first-enable');
+    if (!sender) return rejectUnauthorizedIpc('resolve-profile-sync-first-enable');
+    if (!PROFILE_SYNC_RESOLUTION_CHOICES.has(choice)) {
+      return {
+        success: false,
+        error: 'Invalid resolution choice',
+        status: buildProfileSyncStatus(),
+      };
+    }
+    const activeProfileSync = getProfileSyncConfig();
     if (
-      typeof passphrase !== 'string' ||
-      passphrase.trim().length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
+      activeProfileSync.passphraseTransition ||
+      typeof activeProfileSync.encryptionChangePending === 'boolean'
     ) {
       return {
         success: false,
-        error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
-      };
-    }
-    const persisted = persistRememberedProfileSyncPassphrase(passphrase.trim(), !!remember);
-    emitProfileSyncStatus();
-    return { success: true, ...persisted, status: buildProfileSyncStatus() };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('clear-profile-sync-passphrase', async (event) => {
-  const sender = authorizeIpcSender(event, 'clear-profile-sync-passphrase');
-  if (!sender) return rejectUnauthorizedIpc('clear-profile-sync-passphrase');
-  profileSyncRuntime.passphraseSession = '';
-  const profileSync = getProfileSyncConfig();
-  profileSync.rememberPassphrase = false;
-  profileSync.passphraseEncrypted = false;
-  profileSync.storedPassphrase = '';
-  profileSyncRuntime.passphraseWarning = '';
-  saveConfig();
-  emitProfileSyncStatus();
-  return { success: true, status: buildProfileSyncStatus() };
-});
-
-ipcMain.handle('resolve-profile-sync-first-enable', async (event, choice) => {
-  const sender = authorizeIpcSender(event, 'resolve-profile-sync-first-enable');
-  if (!sender) return rejectUnauthorizedIpc('resolve-profile-sync-first-enable');
-  if (!PROFILE_SYNC_RESOLUTION_CHOICES.has(choice)) {
-    return { success: false, error: 'Invalid resolution choice', status: buildProfileSyncStatus() };
-  }
-
-  if (!profileSyncRuntime.needsResolution) {
-    return { success: true, status: buildProfileSyncStatus() };
-  }
-
-  try {
-    if (choice === 'cancel') {
-      getProfileSyncConfig().enabled = false;
-      profileSyncRuntime.needsResolution = false;
-      profileSyncRuntime.pendingRemoteEnvelope = null;
-      clearProfileSyncTimers();
-      saveConfig();
-      emitProfileSyncStatus();
-      return {
-        success: true,
+        error: 'Finish the pending encryption or key recovery before resolving this conflict',
         status: buildProfileSyncStatus(),
-        config: sanitizeConfigForRenderer(config),
       };
     }
 
-    if (choice === 'upload_local') {
-      profileSyncRuntime.needsResolution = false;
-      profileSyncRuntime.pendingRemoteEnvelope = null;
-      const result = await runProfileSync('push', 'first_enable_resolution');
-      setupProfileSyncInterval();
-      return {
-        success: true,
-        ...result,
-        status: buildProfileSyncStatus(),
-        config: sanitizeConfigForRenderer(config),
-      };
-    }
+    const previousResolutionState = {
+      needsResolution: profileSyncRuntime.needsResolution,
+      pendingRemoteEnvelope: profileSyncRuntime.pendingRemoteEnvelope,
+      pendingRemoteIdentity: profileSyncRuntime.pendingRemoteIdentity,
+      firstEnableResolutionPending: getProfileSyncConfig().firstEnableResolutionPending,
+    };
 
-    if (choice === 'use_remote') {
-      const envelope =
-        profileSyncRuntime.pendingRemoteEnvelope || (await readConfiguredSyncEnvelope()).envelope;
-      if (!envelope) {
-        throw new Error('Remote profile is no longer available');
+    try {
+      if (
+        choice !== 'cancel' &&
+        !profileSyncRuntime.needsResolution &&
+        getProfileSyncConfig().firstEnableResolutionPending
+      ) {
+        const resolution = await prepareProfileSyncFirstEnableResolution();
+        if (!resolution?.needsResolution) {
+          const result = await completeProfileSyncFirstEnablePreparation(
+            'first_enable_resolution_retry'
+          );
+          return {
+            success: true,
+            ...result,
+            status: buildProfileSyncStatus(),
+            config: sanitizeConfigForRenderer(config),
+          };
+        }
+        return {
+          success: false,
+          error: 'A remote profile conflict was found. Review it and choose again.',
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
       }
-      const { profile: remoteProfile, syncScope: remoteSyncScope } =
-        await decodeEnvelopeProfile(envelope);
-      profileSyncRuntime.needsResolution = false;
-      profileSyncRuntime.pendingRemoteEnvelope = null;
-      await backupLocalProfileBeforePullApply(remoteSyncScope);
-      applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
-      updateProfileSyncStatus('success', '');
-      setupProfileSyncInterval();
+      if (!profileSyncRuntime.needsResolution && choice !== 'cancel') {
+        return { success: true, status: buildProfileSyncStatus() };
+      }
+
+      if (choice === 'cancel') {
+        const profileSync = getProfileSyncConfig();
+        const previousEnabled = profileSync.enabled;
+        const previousNeedsResolution = profileSyncRuntime.needsResolution;
+        const previousPendingRemoteEnvelope = profileSyncRuntime.pendingRemoteEnvelope;
+        const previousPendingRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
+        const previousFirstEnableResolutionPending = profileSync.firstEnableResolutionPending;
+        const previousRemoteRewritePending = profileSync.remoteRewritePending;
+        profileSync.enabled = false;
+        profileSync.firstEnableResolutionPending = false;
+        profileSync.remoteRewritePending = false;
+        profileSyncRuntime.needsResolution = false;
+        profileSyncRuntime.pendingRemoteEnvelope = null;
+        profileSyncRuntime.pendingRemoteIdentity = null;
+        clearProfileSyncTimers();
+        const persistence = await saveConfigDurably();
+        if (!persistence.success) {
+          profileSync.enabled = previousEnabled;
+          profileSync.firstEnableResolutionPending = previousFirstEnableResolutionPending;
+          profileSync.remoteRewritePending = previousRemoteRewritePending;
+          profileSyncRuntime.needsResolution = previousNeedsResolution;
+          profileSyncRuntime.pendingRemoteEnvelope = previousPendingRemoteEnvelope;
+          profileSyncRuntime.pendingRemoteIdentity = previousPendingRemoteIdentity;
+          setupProfileSyncInterval();
+          emitProfileSyncStatus();
+          return {
+            success: false,
+            error: `Failed to save profile sync cancellation: ${persistence.error}`,
+            status: buildProfileSyncStatus(),
+            config: sanitizeConfigForRenderer(config),
+          };
+        }
+        emitProfileSyncStatus();
+        return {
+          success: true,
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
+
+      if (choice === 'upload_local') {
+        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
+        const result = await runProfileSyncInternal('push', 'first_enable_resolution', {
+          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+        });
+        if (result?.ok !== true || result?.reason === 'remote_changed') {
+          throw new Error(
+            result?.reason === 'remote_changed'
+              ? 'The remote profile changed during upload; review the conflict and try again'
+              : result?.error || result?.reason || 'Profile upload did not complete'
+          );
+        }
+        await clearProfileSyncFirstEnableResolutionPending();
+        profileSyncRuntime.needsResolution = false;
+        profileSyncRuntime.pendingRemoteEnvelope = null;
+        profileSyncRuntime.pendingRemoteIdentity = null;
+        setupProfileSyncInterval();
+        return {
+          success: true,
+          ...result,
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
+
+      if (choice === 'use_remote') {
+        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
+        const envelope = remoteResult.envelope;
+        if (!envelope) {
+          throw new Error('Remote profile is no longer available');
+        }
+        const { profile: remoteProfile, syncScope: remoteSyncScope } =
+          await decodeEnvelopeProfile(envelope);
+        profileSyncRuntime.needsResolution = false;
+        profileSyncRuntime.pendingRemoteEnvelope = null;
+        profileSyncRuntime.pendingRemoteIdentity = null;
+        await backupLocalProfileBeforePullApply(remoteSyncScope);
+        await applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
+        if (getProfileSyncConfig().remoteRewritePending) {
+          const rewriteResult = await runProfileSyncInternal('push', 'first_enable_resolution', {
+            expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          });
+          if (rewriteResult?.ok !== true || rewriteResult?.reason === 'remote_changed') {
+            throw new Error(
+              rewriteResult?.reason === 'remote_changed'
+                ? 'The remote profile changed before encryption could be applied; review it again'
+                : rewriteResult?.error ||
+                    'The accepted remote profile could not be rewritten safely'
+            );
+          }
+        }
+        await clearProfileSyncFirstEnableResolutionPending();
+        updateProfileSyncStatus('success', '');
+        setupProfileSyncInterval();
+        emitProfileSyncStatus();
+        return {
+          success: true,
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
+    } catch (error) {
+      if (!error?.remoteConflictRefreshed) {
+        profileSyncRuntime.needsResolution = previousResolutionState.needsResolution;
+        profileSyncRuntime.pendingRemoteEnvelope = previousResolutionState.pendingRemoteEnvelope;
+        profileSyncRuntime.pendingRemoteIdentity = previousResolutionState.pendingRemoteIdentity;
+        getProfileSyncConfig().firstEnableResolutionPending =
+          previousResolutionState.firstEnableResolutionPending;
+      }
+      updateProfileSyncStatus('error', error.message);
       emitProfileSyncStatus();
-      return {
-        success: true,
-        status: buildProfileSyncStatus(),
-        config: sanitizeConfigForRenderer(config),
-      };
+      return { success: false, error: error.message, status: buildProfileSyncStatus() };
     }
-  } catch (error) {
-    updateProfileSyncStatus('error', error.message);
-    emitProfileSyncStatus();
-    return { success: false, error: error.message, status: buildProfileSyncStatus() };
-  }
-});
+  })
+);
 
 // Start at login IPC handlers
 ipcMain.handle('get-login-item-settings', (event) => {
@@ -4571,16 +6484,20 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   }
 });
 
-ipcMain.handle('restart-app', (event) => {
+ipcMain.handle('restart-app', async (event) => {
   const sender = authorizeIpcSender(event, 'restart-app');
   if (!sender) return rejectUnauthorizedIpc('restart-app');
   log.info('Restarting application');
   try {
-    isQuitting = true;
+    await flushConfigForBoundedExit('restarting');
+    shutDownRuntimeAfterConfigFlush();
+    quitFinalized = true;
     app.relaunch();
     app.exit(0);
+    return { success: true };
   } catch (error) {
     log.warn('Failed to restart app:', error.message);
+    return { success: false, error: error?.message || String(error) };
   }
 });
 
@@ -4588,7 +6505,11 @@ ipcMain.handle('minimize-window', (event) => {
   const sender = authorizeIpcSender(event, 'minimize-window');
   if (!sender) return rejectUnauthorizedIpc('minimize-window');
   if (mainWindow) {
-    mainWindow.minimize();
+    if (usesCompositorOwnedPlacement) {
+      hideMainWindowToTray();
+    } else {
+      mainWindow.minimize();
+    }
   }
 });
 
@@ -4608,18 +6529,16 @@ ipcMain.handle('focus-desktop-pin', (event, entityId) => {
 ipcMain.handle('check-for-updates', async (event) => {
   const sender = authorizeIpcSender(event, 'check-for-updates');
   if (!sender) return rejectUnauthorizedIpc('check-for-updates');
+  return checkForUpdatesForCurrentPackage();
+});
+
+async function checkForUpdatesForCurrentPackage() {
   if (!app.isPackaged) return { status: 'dev' };
   if (isPortableBuild()) {
     return checkPortableUpdate();
   }
   if (!supportsAutoUpdater(process.platform, process.env)) {
-    return {
-      status: 'manual',
-      message: mainT(
-        'This package does not support in-app updates. Open Releases to download the latest build.'
-      ),
-      downloadUrl: pkg.homepage ? `${pkg.homepage}/releases/latest` : '',
-    };
+    return checkManualReleaseUpdate();
   }
   try {
     const autoUpdater = getAutoUpdater();
@@ -4629,9 +6548,9 @@ ipcMain.handle('check-for-updates', async (event) => {
   } catch (e) {
     return { status: 'error', error: e?.message };
   }
-});
+}
 
-ipcMain.handle('quit-and-install', (event) => {
+ipcMain.handle('quit-and-install', async (event) => {
   const sender = authorizeIpcSender(event, 'quit-and-install');
   if (!sender) return rejectUnauthorizedIpc('quit-and-install');
   if (!app.isPackaged) {
@@ -4643,9 +6562,26 @@ ipcMain.handle('quit-and-install', (event) => {
   if (!autoUpdateDownloaded) {
     return { success: false, error: 'No downloaded update is ready to install' };
   }
-  isQuitting = true;
-  getAutoUpdater().quitAndInstall();
-  return { success: true };
+  try {
+    const autoUpdater = getAutoUpdater();
+    await flushConfigForBoundedExit('installing the update');
+    // electron-updater closes windows before Electron emits before-quit, so the
+    // config and pending window bounds must already be durable at this point.
+    quitFinalized = true;
+    autoUpdater.quitAndInstall();
+    return { success: true };
+  } catch (error) {
+    if (quitFinalized) {
+      quitFinalized = false;
+      quitFinalizationStarted = false;
+      isQuitting = false;
+      configMutationQueueClosed = false;
+      configShutdownPending = false;
+      setupProfileSyncInterval();
+    }
+    log.warn('Failed to install downloaded update:', error.message);
+    return { success: false, error: error?.message || String(error) };
+  }
 });
 
 // Handle quit request from renderer
@@ -4761,121 +6697,256 @@ ipcMain.handle('debug-log', (event, payload) => {
 });
 
 // Global Hotkey IPC Handlers
-ipcMain.handle('register-hotkey', (event, entityId, hotkey, action) => {
-  const sender = authorizeIpcSender(event, 'register-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('register-hotkey');
-  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-
-  if (!validateHotkey(hotkey)) {
-    return {
-      success: false,
-      error: 'Invalid hotkey format or conflicts with common system shortcuts',
-    };
-  }
-
-  if (
-    typeof config.popupHotkey === 'string' &&
-    config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
-  ) {
-    return { success: false, error: 'Hotkey already assigned to the popup trigger' };
-  }
-
-  // Check for conflicts with existing hotkeys first
-  // Handle both string (legacy) and object (new) formats
-  const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
-
-  if (existingEntity) {
-    const entityName = existingEntity[0] || 'another action';
-    return { success: false, error: `Hotkey already assigned to ${entityName}` };
-  }
-
-  config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
-  saveConfig();
-
-  // Only register if hotkeys are enabled
-  if (config.globalHotkeys.enabled) {
-    registerGlobalHotkeys(); // This will re-register all hotkeys
-
-    // Final check to see if Electron successfully registered it
-    if (!globalShortcut.isRegistered(hotkey)) {
-      log.warn(
-        `Electron failed to register hotkey: ${hotkey}. It might be in use by another application.`
-      );
-      // Unset it from config so the user can try again
-      delete config.globalHotkeys.hotkeys[normalizedEntityId];
-      saveConfig();
-      registerGlobalHotkeys();
-      return { success: false, error: 'Hotkey is likely in use by another application' };
+ipcMain.handle(
+  'register-hotkey',
+  serializeConfigMutationHandler(async (event, entityId, hotkey, action) => {
+    const sender = authorizeIpcSender(event, 'register-hotkey');
+    if (!sender) return rejectUnauthorizedIpc('register-hotkey');
+    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+    if (!normalizedEntityId) {
+      return { success: false, error: 'Invalid entity ID' };
     }
-  }
 
-  return { success: true };
-});
+    if (!validateHotkey(hotkey)) {
+      return {
+        success: false,
+        error: 'Invalid hotkey format or conflicts with common system shortcuts',
+      };
+    }
 
-ipcMain.handle('unregister-hotkey', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'unregister-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('unregister-hotkey');
-  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-  delete config.globalHotkeys.hotkeys[normalizedEntityId];
-  saveConfig();
-  registerGlobalHotkeys();
-  return { success: true };
-});
+    if (
+      typeof config.popupHotkey === 'string' &&
+      config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
+    ) {
+      return { success: false, error: 'Hotkey already assigned to the popup trigger' };
+    }
 
-ipcMain.handle('register-hotkeys', (event) => {
+    // Check for conflicts with existing hotkeys first
+    // Handle both string (legacy) and object (new) formats
+    const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
+
+    if (existingEntity) {
+      const entityName = existingEntity[0] || 'another action';
+      return { success: false, error: `Hotkey already assigned to ${entityName}` };
+    }
+
+    if (config.globalHotkeys.enabled && usesCompositorOwnedPlacement) {
+      await ensurePortalShortcutsBackendInitialized();
+    }
+
+    const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
+    config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
+
+    // Only register if hotkeys are enabled
+    if (config.globalHotkeys.enabled) {
+      const registrationResult = portalShortcutsActive
+        ? await syncPortalShortcuts({ immediate: true })
+        : registerGlobalHotkeys();
+      const portalBinding = registrationResult?.bound?.find(
+        (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
+      );
+      const registered = portalShortcutsActive
+        ? registrationResult.success && !!portalBinding?.trigger
+        : !usesCompositorOwnedPlacement && globalShortcut.isRegistered(hotkey);
+
+      if (!registered) {
+        log.warn(
+          `Failed to register hotkey: ${hotkey}. It might be in use or unapproved by the desktop.`
+        );
+        if (previousHotkey === undefined) {
+          delete config.globalHotkeys.hotkeys[normalizedEntityId];
+        } else {
+          config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
+        }
+        const rollbackResult = await Promise.resolve(
+          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+        );
+        const rollbackWarning =
+          rollbackResult?.success === false
+            ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+            : '';
+        return {
+          success: false,
+          error:
+            (registrationResult?.error ||
+              'Hotkey is in use, unsupported, or was not approved by the desktop') +
+            (rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''),
+          rollbackWarning,
+        };
+      }
+    }
+
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      if (previousHotkey === undefined) {
+        delete config.globalHotkeys.hotkeys[normalizedEntityId];
+      } else {
+        config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
+      }
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          : '';
+      return {
+        success: false,
+        error: `Failed to save hotkey: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        rollbackWarning,
+      };
+    }
+
+    return {
+      success: true,
+      backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
+    };
+  })
+);
+
+ipcMain.handle(
+  'unregister-hotkey',
+  serializeConfigMutationHandler(async (event, entityId) => {
+    const sender = authorizeIpcSender(event, 'unregister-hotkey');
+    if (!sender) return rejectUnauthorizedIpc('unregister-hotkey');
+    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+    if (!normalizedEntityId) {
+      return { success: false, error: 'Invalid entity ID' };
+    }
+    const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
+    delete config.globalHotkeys.hotkeys[normalizedEntityId];
+    let registrationResult;
+    if (portalShortcutsActive && portalShortcutsController) {
+      // Close the prior portal session first so this target is removed even if an
+      // unrelated remaining accelerator cannot be rebound afterwards.
+      await portalShortcutsController.syncShortcuts([]);
+      registrationResult = await syncPortalShortcuts({ immediate: true });
+    } else {
+      registrationResult = await Promise.resolve(registerGlobalHotkeys());
+    }
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      if (previousHotkey !== undefined) {
+        config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
+        const rollbackResult = await Promise.resolve(
+          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+        );
+        const rollbackWarning =
+          rollbackResult?.success === false
+            ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+            : '';
+        return {
+          success: false,
+          error: `Failed to save hotkey removal: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+          rollbackWarning,
+        };
+      }
+      return { success: false, error: `Failed to save hotkey removal: ${persistence.error}` };
+    }
+    return {
+      success: true,
+      warning:
+        registrationResult?.success === false
+          ? registrationResult.error ||
+            'The hotkey was removed, but another shortcut could not be activated'
+          : '',
+    };
+  })
+);
+
+ipcMain.handle('register-hotkeys', async (event) => {
   const sender = authorizeIpcSender(event, 'register-hotkeys');
   if (!sender) return rejectUnauthorizedIpc('register-hotkeys');
+  if (usesCompositorOwnedPlacement) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
   // Re-register all hotkeys (useful after config changes)
-  registerGlobalHotkeys();
-  return { success: true };
+  const result = await Promise.resolve(
+    portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+  );
+  return result || { success: true };
 });
 
 // DEPRECATED: Use 'update-config' instead for safer config merging
-// This handler replaces the entire config which can lose data if not careful
-ipcMain.handle('save-config', (event, newConfig) => {
+// Whole-config replacement cannot preserve main-owned sync gates or encrypted
+// secrets from a sanitized renderer snapshot, so it is intentionally rejected.
+ipcMain.handle('save-config', (event) => {
   const sender = authorizeIpcSender(event, 'save-config');
   if (!sender) return rejectUnauthorizedIpc('save-config');
-  if (!isPlainObject(newConfig)) {
-    return { success: false, error: 'Invalid config payload' };
-  }
-  log.warn('save-config handler is deprecated, use update-config instead');
-  // Update the config with the new values
-  delete newConfig.developmentDemo;
-  pruneConfig(newConfig);
-  ensureDateTimeFormatConfigDefaults(newConfig);
-  ensureProfileSyncConfigDefaults(newConfig);
-  ensureUpdateConfigDefaults(newConfig);
-  config = newConfig;
-  ensureDateTimeFormatConfigDefaults(config);
-  ensureProfileSyncConfigDefaults(config);
-  ensureUpdateConfigDefaults(config);
-  pruneConfig(config);
-  saveConfig();
-  pushConfigToRenderer();
-  emitProfileSyncStatus();
-  return { success: true, config: sanitizeConfigForRenderer(config) };
+  return {
+    success: false,
+    error: 'save-config is no longer supported; use update-config',
+    config: sanitizeConfigForRenderer(config),
+  };
 });
 
-ipcMain.handle('toggle-hotkeys', (event, enabled) => {
-  const sender = authorizeIpcSender(event, 'toggle-hotkeys');
-  if (!sender) return rejectUnauthorizedIpc('toggle-hotkeys');
-  config.globalHotkeys.enabled = enabled;
-  saveConfig();
+ipcMain.handle(
+  'toggle-hotkeys',
+  serializeConfigMutationHandler(async (event, enabled) => {
+    const sender = authorizeIpcSender(event, 'toggle-hotkeys');
+    if (!sender) return rejectUnauthorizedIpc('toggle-hotkeys');
+    if (enabled && usesCompositorOwnedPlacement) {
+      await ensurePortalShortcutsBackendInitialized();
+    }
+    const previousEnabled = !!config.globalHotkeys.enabled;
+    config.globalHotkeys.enabled = !!enabled;
 
-  if (enabled) {
-    registerGlobalHotkeys();
-  } else {
-    unregisterGlobalHotkeys();
-  }
+    let registrationResult;
+    if (config.globalHotkeys.enabled) {
+      registrationResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+      );
+    } else {
+      unregisterGlobalHotkeys();
+      if (portalShortcutsActive && portalShortcutsController) {
+        await portalShortcutsController.syncShortcuts([]);
+        registrationResult = await syncPortalShortcuts({ immediate: true });
+      } else {
+        registrationResult = { success: true };
+      }
+    }
 
-  return { success: true };
-});
+    if (registrationResult?.success === false && config.globalHotkeys.enabled) {
+      config.globalHotkeys.enabled = previousEnabled;
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          : '';
+      return {
+        ...registrationResult,
+        error: `${registrationResult.error || 'Failed to activate global hotkeys'}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        rollbackWarning,
+      };
+    }
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.globalHotkeys.enabled = previousEnabled;
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          : '';
+      return {
+        success: false,
+        error: `Failed to save hotkey setting: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        rollbackWarning,
+      };
+    }
+    return {
+      success: true,
+      warning:
+        registrationResult?.success === false
+          ? registrationResult.error ||
+            'Global hotkeys were disabled, but another shortcut could not be activated'
+          : '',
+    };
+  })
+);
 
 ipcMain.handle('validate-hotkey', (event, hotkey) => {
   const sender = authorizeIpcSender(event, 'validate-hotkey');
@@ -4884,88 +6955,213 @@ ipcMain.handle('validate-hotkey', (event, hotkey) => {
 });
 
 // Entity Alert IPC Handlers
-ipcMain.handle('set-entity-alert', (event, entityId, alertConfig) => {
-  const sender = authorizeIpcSender(event, 'set-entity-alert');
-  if (!sender) return rejectUnauthorizedIpc('set-entity-alert');
-  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-  config.entityAlerts.alerts[normalizedEntityId] = alertConfig;
-  saveConfig();
-  return { success: true };
-});
+ipcMain.handle(
+  'set-entity-alert',
+  serializeConfigMutationHandler(async (event, entityId, alertConfig) => {
+    const sender = authorizeIpcSender(event, 'set-entity-alert');
+    if (!sender) return rejectUnauthorizedIpc('set-entity-alert');
+    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+    if (!normalizedEntityId) {
+      return { success: false, error: 'Invalid entity ID' };
+    }
+    const previousAlert = config.entityAlerts.alerts[normalizedEntityId];
+    config.entityAlerts.alerts[normalizedEntityId] = alertConfig;
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      if (previousAlert === undefined) {
+        delete config.entityAlerts.alerts[normalizedEntityId];
+      } else {
+        config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
+      }
+      return { success: false, error: `Failed to save alert: ${persistence.error}` };
+    }
+    setupEntityAlerts();
+    return { success: true };
+  })
+);
 
-ipcMain.handle('remove-entity-alert', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'remove-entity-alert');
-  if (!sender) return rejectUnauthorizedIpc('remove-entity-alert');
-  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-  if (!normalizedEntityId) {
-    return { success: false, error: 'Invalid entity ID' };
-  }
-  delete config.entityAlerts.alerts[normalizedEntityId];
-  saveConfig();
-  return { success: true };
-});
+ipcMain.handle(
+  'remove-entity-alert',
+  serializeConfigMutationHandler(async (event, entityId) => {
+    const sender = authorizeIpcSender(event, 'remove-entity-alert');
+    if (!sender) return rejectUnauthorizedIpc('remove-entity-alert');
+    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+    if (!normalizedEntityId) {
+      return { success: false, error: 'Invalid entity ID' };
+    }
+    const previousAlert = config.entityAlerts.alerts[normalizedEntityId];
+    delete config.entityAlerts.alerts[normalizedEntityId];
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      if (previousAlert !== undefined) {
+        config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
+      }
+      return { success: false, error: `Failed to remove alert: ${persistence.error}` };
+    }
+    setupEntityAlerts();
+    return { success: true };
+  })
+);
 
-ipcMain.handle('toggle-alerts', (event, enabled) => {
-  const sender = authorizeIpcSender(event, 'toggle-alerts');
-  if (!sender) return rejectUnauthorizedIpc('toggle-alerts');
-  config.entityAlerts.enabled = enabled;
-  saveConfig();
-  return { success: true };
-});
+ipcMain.handle(
+  'toggle-alerts',
+  serializeConfigMutationHandler(async (event, enabled) => {
+    const sender = authorizeIpcSender(event, 'toggle-alerts');
+    if (!sender) return rejectUnauthorizedIpc('toggle-alerts');
+    const previousEnabled = !!config.entityAlerts.enabled;
+    config.entityAlerts.enabled = !!enabled;
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.entityAlerts.enabled = previousEnabled;
+      return { success: false, error: `Failed to save alert setting: ${persistence.error}` };
+    }
+    setupEntityAlerts();
+    return { success: true };
+  })
+);
 
 // Popup Hotkey IPC Handlers
-ipcMain.handle('register-popup-hotkey', (event, hotkey) => {
-  const sender = authorizeIpcSender(event, 'register-popup-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
-  if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
-    return { success: false, error: 'Popup hotkey feature is not available on this platform' };
-  }
+ipcMain.handle(
+  'register-popup-hotkey',
+  serializeConfigMutationHandler(async (event, hotkey) => {
+    const sender = authorizeIpcSender(event, 'register-popup-hotkey');
+    if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
+    if (usesCompositorOwnedPlacement) {
+      await ensurePortalShortcutsBackendInitialized();
+    }
+    if (usesCompositorOwnedPlacement && !portalShortcutsActive) {
+      return {
+        success: false,
+        error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+      };
+    }
+    if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
+      return { success: false, error: 'Popup hotkey feature is not available on this platform' };
+    }
 
-  // Validate the hotkey
-  if (!validateHotkey(hotkey)) {
-    return {
-      success: false,
-      error: 'Invalid hotkey format or conflicts with common system shortcuts',
-    };
-  }
+    // Validate the hotkey
+    if (!validateHotkey(hotkey)) {
+      return {
+        success: false,
+        error: 'Invalid hotkey format or conflicts with common system shortcuts',
+      };
+    }
 
-  const conflictingEntity = findConfiguredEntityHotkey(hotkey);
-  if (conflictingEntity) {
-    return { success: false, error: `Hotkey already assigned to ${conflictingEntity[0]}` };
-  }
+    const conflictingEntity = findConfiguredEntityHotkey(hotkey);
+    if (conflictingEntity) {
+      return { success: false, error: `Hotkey already assigned to ${conflictingEntity[0]}` };
+    }
 
-  const previousHotkey = config.popupHotkey || '';
-  unregisterPopupHotkey();
-  config.popupHotkey = hotkey;
-  const registrationResult = registerPopupHotkey();
+    const previousHotkey = config.popupHotkey || '';
+    if (!portalShortcutsActive) {
+      unregisterPopupHotkey();
+    }
+    config.popupHotkey = hotkey;
+    const registrationResult = await Promise.resolve(
+      portalShortcutsActive
+        ? syncPortalShortcuts({ immediate: true }).then((result) => {
+            if (!result.success) return result;
+            const binding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
+            return binding?.trigger
+              ? { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding }
+              : {
+                  success: false,
+                  backend: PORTAL_SHORTCUTS_BACKEND,
+                  error:
+                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.',
+                };
+          })
+        : registerPopupHotkey()
+    );
 
-  if (!registrationResult.success) {
-    config.popupHotkey = previousHotkey;
-    if (previousHotkey) {
-      const rollbackResult = registerPopupHotkey();
-      if (!rollbackResult.success) {
-        log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
+    if (!registrationResult.success) {
+      if (!portalShortcutsActive) {
+        // A native backend can fail after partially attaching listeners. Always
+        // tear down the candidate before restoring (or clearing) the preference.
+        await Promise.resolve(unregisterPopupHotkey());
       }
+      config.popupHotkey = previousHotkey;
+      let rollbackWarning = '';
+      if (previousHotkey) {
+        const rollbackResult = await Promise.resolve(
+          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+        );
+        if (!rollbackResult.success) {
+          log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
+          rollbackWarning =
+            rollbackResult.error || 'The previous popup hotkey could not be restored';
+        }
+      }
+      return {
+        ...registrationResult,
+        error: `${registrationResult.error || 'Failed to register popup hotkey'}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        rollbackWarning,
+      };
+    }
+
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.popupHotkey = previousHotkey;
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || 'The previous popup hotkey could not be restored'
+          : '';
+      return {
+        success: false,
+        error: `Failed to save popup hotkey: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        rollbackWarning,
+      };
     }
     return registrationResult;
-  }
+  })
+);
 
-  saveConfig();
-  return registrationResult;
-});
-
-ipcMain.handle('unregister-popup-hotkey', (event) => {
-  const sender = authorizeIpcSender(event, 'unregister-popup-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('unregister-popup-hotkey');
-  const unregisterResult = unregisterPopupHotkey();
-  if (!unregisterResult.success) return unregisterResult;
-  config.popupHotkey = '';
-  saveConfig();
-  return unregisterResult;
-});
+ipcMain.handle(
+  'unregister-popup-hotkey',
+  serializeConfigMutationHandler(async (event) => {
+    const sender = authorizeIpcSender(event, 'unregister-popup-hotkey');
+    if (!sender) return rejectUnauthorizedIpc('unregister-popup-hotkey');
+    const previousHotkey = config.popupHotkey || '';
+    config.popupHotkey = '';
+    let unregisterResult;
+    if (portalShortcutsActive && portalShortcutsController) {
+      // Close the old session first so the removed popup target cannot survive an
+      // unrelated failure while rebinding entity shortcuts.
+      await portalShortcutsController.syncShortcuts([]);
+      unregisterResult = await syncPortalShortcuts({ immediate: true });
+    } else {
+      unregisterResult = await Promise.resolve(unregisterPopupHotkey());
+    }
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.popupHotkey = previousHotkey;
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || 'The previous popup hotkey could not be restored'
+          : '';
+      return {
+        success: false,
+        error: `Failed to save popup hotkey removal: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        rollbackWarning,
+      };
+    }
+    return {
+      success: true,
+      backend: unregisterResult?.backend,
+      warning:
+        unregisterResult?.success === false
+          ? unregisterResult.error ||
+            'The popup hotkey was removed, but another shortcut could not be activated'
+          : '',
+    };
+  })
+);
 
 ipcMain.handle('get-popup-hotkey', (event) => {
   const sender = authorizeIpcSender(event, 'get-popup-hotkey');
@@ -4973,9 +7169,13 @@ ipcMain.handle('get-popup-hotkey', (event) => {
   return { hotkey: config.popupHotkey || '' };
 });
 
-ipcMain.handle('is-popup-hotkey-available', (event) => {
+ipcMain.handle('is-popup-hotkey-available', async (event) => {
   const sender = authorizeIpcSender(event, 'is-popup-hotkey-available');
   if (!sender) return rejectUnauthorizedIpc('is-popup-hotkey-available');
+  if (usesCompositorOwnedPlacement) {
+    await ensurePortalShortcutsBackendInitialized();
+    return portalShortcutsActive;
+  }
   return usesLinuxPopupHotkeyBackend || uiohookAvailable;
 });
 
@@ -4992,13 +7192,21 @@ ipcMain.handle('is-popup-hotkey-available', (event) => {
 const PORTAL_ENTITY_SHORTCUT_PREFIX = 'entity.';
 const PORTAL_POPUP_SHORTCUT_ID = 'popup-toggle';
 const PORTAL_SYNC_DEBOUNCE_MS = 25;
+const PORTAL_RECONNECT_DELAY_MS = 5000;
 let portalShortcutsController = null;
 let portalShortcutsActive = false;
+let portalShortcutsInitPromise = null;
 let portalSyncTimer = null;
+let portalReconnectTimer = null;
+let portalSyncWaiters = [];
 
 function handlePortalShortcutActivated(shortcutId) {
   log.info(`Portal shortcut activated: ${shortcutId}`);
   if (shortcutId === PORTAL_POPUP_SHORTCUT_ID) {
+    // A stale portal session can emit briefly after an unregister/rebind
+    // failure. Persisted config is authoritative, so a removed shortcut is
+    // inert even if that old session still exists.
+    if (!String(config?.popupHotkey || '').trim()) return;
     linuxPopupHotkeyController.handleShortcut();
     return;
   }
@@ -5043,73 +7251,125 @@ function collectPortalShortcuts() {
   return shortcuts;
 }
 
-// Debounced so back-to-back register/unregister calls (e.g. an IPC handler that clears
-// then saves config) collapse into one portal rebind reading the settled config.
-function syncPortalShortcuts() {
-  if (!portalShortcutsActive || !portalShortcutsController) return false;
-  if (portalSyncTimer) clearTimeout(portalSyncTimer);
-  portalSyncTimer = setTimeout(() => {
+function reportPortalShortcutSyncResult(result, shortcuts) {
+  if (result.success) {
+    if (result.bound.length) {
+      const summary = result.bound
+        .map((entry) => `${entry.id} -> ${entry.trigger || 'unset'}`)
+        .join(', ');
+      log.info(`Portal shortcuts bound: ${summary}`);
+    }
+    // A bind the user once dismissed stays approved with no active trigger; the
+    // desktop reuses that saved state on every rebind without showing its dialog
+    // again, so the only fix is assigning keys in the system shortcut settings.
+    const unset = result.bound.filter((entry) => !entry.trigger);
+    if (unset.length) {
+      log.warn(
+        `Portal shortcuts have no active trigger: ${unset.map((entry) => entry.id).join(', ')}. ` +
+          'Assign them in your desktop\'s shortcut settings (e.g. KDE System Settings -> Shortcuts -> "HA Desktop Widget").'
+      );
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        unset.forEach((entry) => {
+          if (entry.id.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) {
+            const entityId = entry.id.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length);
+            const shortcut = shortcuts.find((candidate) => candidate.id === entry.id);
+            mainWindow.webContents.send('hotkey-registration-failed', {
+              entityId,
+              hotkey: shortcut?.accelerator || '',
+            });
+          }
+        });
+      }
+    }
+    return result;
+  }
+
+  log.warn(`Portal shortcut binding failed: ${result.error}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    shortcuts.forEach((shortcut) => {
+      if (shortcut.id.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) {
+        mainWindow.webContents.send('hotkey-registration-failed', {
+          entityId: shortcut.id.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length),
+          hotkey: shortcut.accelerator,
+        });
+      }
+    });
+  }
+  return result;
+}
+
+async function flushPortalShortcutSync() {
+  if (portalSyncTimer) {
+    clearTimeout(portalSyncTimer);
     portalSyncTimer = null;
-    const shortcuts = collectPortalShortcuts();
-    portalShortcutsController
-      .syncShortcuts(shortcuts)
-      .then((result) => {
-        if (result.success) {
-          if (result.bound.length) {
-            const summary = result.bound
-              .map((entry) => `${entry.id} -> ${entry.trigger || 'unset'}`)
-              .join(', ');
-            log.info(`Portal shortcuts bound: ${summary}`);
-          }
-          // A bind the user once dismissed stays approved with no active trigger; the
-          // desktop reuses that saved state on every rebind without showing its dialog
-          // again, so the only fix is assigning keys in the system shortcut settings.
-          const unset = result.bound.filter((entry) => !entry.trigger);
-          if (unset.length) {
-            log.warn(
-              `Portal shortcuts have no active trigger: ${unset.map((entry) => entry.id).join(', ')}. ` +
-                'Assign them in your desktop\'s shortcut settings (e.g. KDE System Settings -> Shortcuts -> "HA Desktop Widget").'
-            );
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              unset.forEach((entry) => {
-                if (entry.id.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) {
-                  const entityId = entry.id.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length);
-                  const shortcut = shortcuts.find((candidate) => candidate.id === entry.id);
-                  mainWindow.webContents.send('hotkey-registration-failed', {
-                    entityId,
-                    hotkey: shortcut?.accelerator || '',
-                  });
-                }
-              });
-            }
-          }
-          return;
-        }
-        log.warn(`Portal shortcut binding failed: ${result.error}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          shortcuts.forEach((shortcut) => {
-            if (shortcut.id.startsWith(PORTAL_ENTITY_SHORTCUT_PREFIX)) {
-              mainWindow.webContents.send('hotkey-registration-failed', {
-                entityId: shortcut.id.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length),
-                hotkey: shortcut.accelerator,
-              });
-            }
-          });
-        }
-      })
-      .catch((error) => log.error('Portal shortcut sync failed:', error));
-  }, PORTAL_SYNC_DEBOUNCE_MS);
-  return true;
+  }
+  const waiters = portalSyncWaiters;
+  portalSyncWaiters = [];
+  const shortcuts = collectPortalShortcuts();
+  let result;
+
+  try {
+    result = await portalShortcutsController.syncShortcuts(shortcuts);
+  } catch (error) {
+    result = {
+      success: false,
+      backend: PORTAL_SHORTCUTS_BACKEND,
+      bound: [],
+      error: error?.message || String(error),
+    };
+  }
+
+  reportPortalShortcutSyncResult(result, shortcuts);
+  waiters.forEach((resolve) => resolve(result));
+  return result;
+}
+
+// Debounced so back-to-back register/unregister calls collapse into one portal
+// rebind. Callers that need transactional registration can request an immediate
+// flush and await the portal's actual bind result.
+function syncPortalShortcuts({ immediate = false } = {}) {
+  if (!portalShortcutsActive || !portalShortcutsController) {
+    return Promise.resolve({
+      success: false,
+      backend: PORTAL_SHORTCUTS_BACKEND,
+      bound: [],
+      error: 'Global shortcuts portal is unavailable',
+    });
+  }
+
+  const completion = new Promise((resolve) => {
+    portalSyncWaiters.push(resolve);
+  });
+  if (portalSyncTimer) clearTimeout(portalSyncTimer);
+  if (immediate) {
+    void flushPortalShortcutSync();
+  } else {
+    portalSyncTimer = setTimeout(() => {
+      void flushPortalShortcutSync();
+    }, PORTAL_SYNC_DEBOUNCE_MS);
+  }
+  return completion;
+}
+
+function schedulePortalConnectionRecovery() {
+  if (isQuitting || !portalShortcutsActive || portalReconnectTimer) return;
+  portalReconnectTimer = setTimeout(() => {
+    portalReconnectTimer = null;
+    if (!isQuitting && portalShortcutsActive && portalShortcutsController) {
+      void syncPortalShortcuts({ immediate: true });
+    }
+  }, PORTAL_RECONNECT_DELAY_MS);
 }
 
 // On a Wayland session, switch entity + popup hotkeys onto the portal. No-op (keeping the
 // globalShortcut path) on X11, non-Linux, or when the compositor lacks the portal.
 async function initPortalShortcutsBackend() {
-  if (process.platform !== 'linux' || !isWaylandSession()) return;
+  if (!usesCompositorOwnedPlacement) return;
   try {
     portalShortcutsController = createPortalGlobalShortcutsController({
       log,
       onActivated: handlePortalShortcutActivated,
+      onConnectionLost: schedulePortalConnectionRecovery,
     });
     if (!(await portalShortcutsController.isAvailable())) {
       log.info(
@@ -5124,7 +7384,7 @@ async function initPortalShortcutsBackend() {
     // Drop the no-op globalShortcut registrations and rebind through the portal.
     unregisterGlobalHotkeys();
     linuxPopupHotkeyController.unregister();
-    syncPortalShortcuts();
+    await syncPortalShortcuts({ immediate: true });
   } catch (error) {
     portalShortcutsActive = false;
     portalShortcutsController = null;
@@ -5135,15 +7395,53 @@ async function initPortalShortcutsBackend() {
   }
 }
 
+function ensurePortalShortcutsBackendInitialized() {
+  if (!usesCompositorOwnedPlacement) {
+    return Promise.resolve(false);
+  }
+  if (portalShortcutsActive && portalShortcutsController) {
+    return Promise.resolve(true);
+  }
+  if (!portalShortcutsInitPromise) {
+    portalShortcutsInitPromise = initPortalShortcutsBackend().then(
+      () => {
+        const active = portalShortcutsActive;
+        if (!active) {
+          // A portal or session bus can be late during desktop startup. Do not
+          // cache that transient false forever; the next explicit availability
+          // check gets one fresh attempt while this promise still coalesces callers.
+          portalShortcutsInitPromise = null;
+        }
+        return active;
+      },
+      (error) => {
+        portalShortcutsInitPromise = null;
+        log.warn('Portal shortcut startup initialization failed:', error?.message || error);
+        return false;
+      }
+    );
+  }
+  return portalShortcutsInitPromise;
+}
+
 function registerGlobalHotkeys() {
   if (portalShortcutsActive) {
-    syncPortalShortcuts();
-    return;
+    return syncPortalShortcuts();
   }
   unregisterGlobalHotkeys();
-  if (!config.globalHotkeys.enabled) return;
+  if (!config.globalHotkeys.enabled) {
+    return { success: true, backend: 'globalShortcut' };
+  }
+  if (usesCompositorOwnedPlacement) {
+    return {
+      success: false,
+      backend: PORTAL_SHORTCUTS_BACKEND,
+      error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+    };
+  }
 
   // Register each configured hotkey
+  let allRegistered = true;
   Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
     const { hotkey, action } =
       typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
@@ -5157,6 +7455,7 @@ function registerGlobalHotkeys() {
         });
 
         if (!success) {
+          allRegistered = false;
           log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
@@ -5166,10 +7465,16 @@ function registerGlobalHotkeys() {
           log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
         }
       } catch (error) {
+        allRegistered = false;
         log.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
       }
     }
   });
+  return {
+    success: allRegistered,
+    backend: 'globalShortcut',
+    error: allRegistered ? '' : 'One or more entity hotkeys could not be registered',
+  };
 }
 
 function unregisterGlobalHotkeys() {
@@ -5206,9 +7511,10 @@ function validateHotkey(hotkey) {
     'commandorcontrol',
     'cmdorctrl',
   ];
-  const keys = hotkey.split('+');
+  const keys = hotkey.split('+').map((key) => key.trim());
+  const hasModifier = keys.some((key) => modifiers.includes(key.toLowerCase()));
   const nonModifiers = keys.filter((key) => !modifiers.includes(key.toLowerCase()));
-  if (nonModifiers.length === 0) {
+  if (!hasModifier || nonModifiers.length !== 1 || !nonModifiers[0].trim()) {
     return false;
   }
 
@@ -5385,6 +7691,43 @@ function acceleratorToUIOhookKey(accelerator) {
  * Linux uses Electron globalShortcut with press and toggle behavior. Other platforms use uiohook
  * for hold/release detection.
  */
+function cleanupUiohookPopupHotkeyRuntime() {
+  let cleanupError = null;
+  const removeHandler = (eventName, handler) => {
+    if (!handler || !uiohookAvailable) return;
+    try {
+      uIOhook.off(eventName, handler);
+    } catch (error) {
+      cleanupError ||= error;
+      log.warn(`Failed to remove popup ${eventName} handler:`, error.message);
+    }
+  };
+
+  removeHandler('keydown', popupHotkeyKeydownHandler);
+  removeHandler('keyup', popupHotkeyKeyupHandler);
+  popupHotkeyKeydownHandler = null;
+  popupHotkeyKeyupHandler = null;
+
+  if (uIOhookRunning && uiohookAvailable) {
+    try {
+      uIOhook.stop();
+      log.info('uIOhook stopped, popup hotkey unregistered');
+    } catch (error) {
+      cleanupError ||= error;
+      log.warn('Failed to stop uIOhook while cleaning up popup hotkey:', error.message);
+    } finally {
+      uIOhookRunning = false;
+    }
+  }
+
+  popupHotkeyConfig = null;
+  popupHotkeyPressed = false;
+  _popupHotkeyWindowVisible = false;
+  return cleanupError
+    ? { success: false, backend: 'uiohook', error: cleanupError?.message || String(cleanupError) }
+    : { success: true, backend: 'uiohook' };
+}
+
 function registerPopupHotkey() {
   if (!config.popupHotkey || config.popupHotkey.trim() === '') {
     log.debug('No popup hotkey configured, cleaning up');
@@ -5392,8 +7735,27 @@ function registerPopupHotkey() {
   }
 
   if (portalShortcutsActive) {
-    syncPortalShortcuts();
-    return { success: true, backend: PORTAL_SHORTCUTS_BACKEND };
+    return syncPortalShortcuts().then((result) => {
+      if (!result.success) return result;
+      const popupBinding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
+      if (!popupBinding?.trigger) {
+        return {
+          success: false,
+          backend: PORTAL_SHORTCUTS_BACKEND,
+          error:
+            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.',
+        };
+      }
+      return { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding: popupBinding };
+    });
+  }
+
+  if (usesCompositorOwnedPlacement) {
+    return {
+      success: false,
+      backend: PORTAL_SHORTCUTS_BACKEND,
+      error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+    };
   }
 
   if (usesLinuxPopupHotkeyBackend) {
@@ -5549,6 +7911,7 @@ function registerPopupHotkey() {
     return { success: true, backend: 'uiohook' };
   } catch (error) {
     log.error('Failed to register popup hotkey:', error);
+    cleanupUiohookPopupHotkeyRuntime();
     return { success: false, backend: 'uiohook', error: error?.message || String(error) };
   }
 }
@@ -5562,8 +7925,7 @@ function registerPopupHotkey() {
  */
 function unregisterPopupHotkey() {
   if (portalShortcutsActive) {
-    syncPortalShortcuts();
-    return { success: true, backend: PORTAL_SHORTCUTS_BACKEND };
+    return syncPortalShortcuts();
   }
 
   if (usesLinuxPopupHotkeyBackend) {
@@ -5571,38 +7933,13 @@ function unregisterPopupHotkey() {
   }
 
   if (!uiohookAvailable) {
-    return { success: true, backend: 'uiohook' };
-  }
-
-  try {
-    // Remove event listeners first before stopping uIOhook
-    if (popupHotkeyKeydownHandler) {
-      uIOhook.off('keydown', popupHotkeyKeydownHandler);
-      popupHotkeyKeydownHandler = null;
-      log.debug('Removed keydown handler');
-    }
-    if (popupHotkeyKeyupHandler) {
-      uIOhook.off('keyup', popupHotkeyKeyupHandler);
-      popupHotkeyKeyupHandler = null;
-      log.debug('Removed keyup handler');
-    }
-
-    // Stop uIOhook only if it's running
-    if (uIOhookRunning) {
-      uIOhook.stop();
-      uIOhookRunning = false;
-      log.info('uIOhook stopped, popup hotkey unregistered');
-    }
-
-    // Clear state
     popupHotkeyConfig = null;
     popupHotkeyPressed = false;
     _popupHotkeyWindowVisible = false;
     return { success: true, backend: 'uiohook' };
-  } catch (error) {
-    log.error('Failed to unregister popup hotkey:', error);
-    return { success: false, backend: 'uiohook', error: error?.message || String(error) };
   }
+
+  return cleanupUiohookPopupHotkeyRuntime();
 }
 
 // Entity Alert Management
@@ -5644,7 +7981,7 @@ function selectPortableRelease(releases, allowPrerelease) {
   );
 }
 
-async function checkPortableUpdate() {
+async function fetchGitHubUpdateRelease() {
   const repo = 'Robertg761/HA-Desktop-Widget';
   const allowPrerelease = !!getUpdatesConfig().allowPrerelease;
   const apiUrl = allowPrerelease
@@ -5659,9 +7996,50 @@ async function checkPortableUpdate() {
       timeout: 10000,
     });
 
-    const release = allowPrerelease
-      ? selectPortableRelease(response?.data, allowPrerelease)
-      : response?.data || {};
+    const releases = Array.isArray(response?.data) ? response.data : [response?.data];
+    return selectPortableRelease(releases, allowPrerelease);
+  } catch (error) {
+    throw new Error(error?.message || String(error));
+  }
+}
+
+async function checkManualReleaseUpdate() {
+  try {
+    const release = await fetchGitHubUpdateRelease();
+    if (!release) {
+      return { status: 'none', message: mainT('You are up to date!') };
+    }
+    const latestVersion = normalizeVersion(release.tag_name || release.name || '');
+    const downloadUrl =
+      release.html_url ||
+      (pkg.homepage && release.tag_name
+        ? `${pkg.homepage}/releases/tag/${encodeURIComponent(release.tag_name)}`
+        : pkg.homepage
+          ? `${pkg.homepage}/releases`
+          : '');
+    if (!latestVersion) {
+      return {
+        status: 'error',
+        error: 'Unable to determine the latest release version.',
+        downloadUrl,
+      };
+    }
+    return {
+      status: 'manual',
+      message: `${mainT(
+        'This package does not support in-app updates. Open Releases to download the latest build.'
+      )} v${latestVersion}`,
+      version: latestVersion,
+      downloadUrl,
+    };
+  } catch (error) {
+    return { status: 'error', error: error?.message || String(error) };
+  }
+}
+
+async function checkPortableUpdate() {
+  try {
+    const release = await fetchGitHubUpdateRelease();
     if (!release) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
@@ -5764,26 +8142,164 @@ function setupAutoUpdates() {
   }
 }
 
-app.on('before-quit', () => {
-  isQuitting = true;
-  closeDevReloadWatchers();
+function freezePendingWindowBoundsForShutdown() {
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer);
     windowStateSaveTimer = null;
   }
+  desktopPinWindows.forEach((pinWindow) => {
+    if (!pinWindow || pinWindow.isDestroyed()) return;
+    if (pinWindow.__desktopPinSaveTimer) {
+      clearTimeout(pinWindow.__desktopPinSaveTimer);
+      pinWindow.__desktopPinSaveTimer = null;
+    }
+  });
+}
+
+function capturePendingWindowBoundsForShutdown() {
+  let changed = false;
+  freezePendingWindowBoundsForShutdown();
+  if (pendingWindowBounds) {
+    if (!usesCompositorOwnedPlacement) {
+      config.windowPosition = {
+        x: pendingWindowBounds.x,
+        y: pendingWindowBounds.y,
+      };
+    }
+    config.windowSize = {
+      width: pendingWindowBounds.width,
+      height: pendingWindowBounds.height,
+    };
+    pendingWindowBounds = null;
+    changed = true;
+  }
+
+  desktopPinWindows.forEach((pinWindow, entityId) => {
+    if (!pinWindow || pinWindow.isDestroyed()) return;
+    if (!pinWindow.__desktopPinSaveTimer && !pinWindow.__desktopPinPendingBounds) return;
+    if (!usesCompositorOwnedPlacement) {
+      const bounds =
+        pinWindow.__desktopPinPendingBounds || getDesktopPinBounds(entityId, pinWindow.getBounds());
+      config.desktopPins = config.desktopPins || {};
+      config.desktopPins[entityId] = bounds;
+      changed = true;
+    }
+    pinWindow.__desktopPinPendingBounds = null;
+  });
+  return changed;
+}
+
+async function flushConfigForBoundedExit(actionLabel) {
+  if (quitFinalizationStarted || configMutationQueueClosed) {
+    throw new Error('An application shutdown is already in progress');
+  }
+  quitFinalizationStarted = true;
+  isQuitting = true;
+  freezePendingWindowBoundsForShutdown();
+  configMutationQueueClosed = true;
   clearProfileSyncTimers();
-  flushPendingConfigWriteSync();
+
+  const shutdownAttempt = { canceled: false };
+  const finalization = runSerializedConfigMutationUnchecked(() => {
+    if (shutdownAttempt.canceled) {
+      throw new Error(`The timed-out ${actionLabel} attempt was canceled`);
+    }
+    capturePendingWindowBoundsForShutdown();
+    if (!saveConfig({ allowDebouncedPush: false })) {
+      throw new Error(
+        lastConfigWriteError || `Failed to prepare configuration before ${actionLabel}`
+      );
+    }
+    const persistence = flushPendingConfigWriteSync({ shutdown: true });
+    if (!persistence.success) {
+      throw new Error(persistence.error || `Failed to save configuration before ${actionLabel}`);
+    }
+  });
+
+  let exitTimeout;
+  try {
+    await Promise.race([
+      finalization,
+      new Promise((_, reject) => {
+        exitTimeout = setTimeout(() => {
+          const error = new Error(
+            `Timed out waiting for an active settings or profile-sync operation before ${actionLabel}`
+          );
+          error.code = 'QUIT_FINALIZATION_TIMEOUT';
+          reject(error);
+        }, QUIT_FINALIZATION_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    shutdownAttempt.canceled = true;
+    configShutdownPending = false;
+    quitFinalizationStarted = false;
+    isQuitting = false;
+    configMutationQueueClosed = false;
+    if (error?.code === 'QUIT_FINALIZATION_TIMEOUT') {
+      void finalization
+        .catch(() => {})
+        .finally(() => {
+          if (!quitFinalizationStarted && !configMutationQueueClosed && !isQuitting) {
+            setupProfileSyncInterval();
+          }
+        });
+    } else {
+      setupProfileSyncInterval();
+    }
+    throw error;
+  } finally {
+    if (exitTimeout) clearTimeout(exitTimeout);
+  }
+}
+
+function shutDownRuntimeAfterConfigFlush() {
+  isQuitting = true;
+  closeDevReloadWatchers();
+  clearProfileSyncTimers();
   if (portalShortcutsController) {
     portalShortcutsActive = false;
     if (portalSyncTimer) {
       clearTimeout(portalSyncTimer);
       portalSyncTimer = null;
     }
+    if (portalReconnectTimer) {
+      clearTimeout(portalReconnectTimer);
+      portalReconnectTimer = null;
+    }
+    const shutdownPortalResult = {
+      success: false,
+      backend: PORTAL_SHORTCUTS_BACKEND,
+      bound: [],
+      error: 'Application is shutting down',
+    };
+    portalSyncWaiters.splice(0).forEach((resolve) => resolve(shutdownPortalResult));
     void portalShortcutsController.close();
     portalShortcutsController = null;
   }
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
+}
+
+app.on('before-quit', (event) => {
+  if (!gotSingleInstanceLock || !config) return;
+  if (quitFinalized) return;
+  event.preventDefault();
+  if (quitFinalizationStarted) return;
+
+  void flushConfigForBoundedExit('quitting')
+    .then(() => {
+      shutDownRuntimeAfterConfigFlush();
+      quitFinalized = true;
+      app.quit();
+    })
+    .catch((error) => {
+      log.error('Quit canceled because configuration could not be saved:', error);
+      dialog.showErrorBox(
+        'Could not save settings',
+        `The app stayed open because its configuration could not be saved.\n\n${error?.message || String(error)}`
+      );
+    });
 });
 
 // Register custom protocol before creating window
@@ -5800,42 +8316,57 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-app.whenReady().then(() => {
-  // An instance that lost the single-instance lock is already on its way out. It must not load the
-  // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
-  if (!gotSingleInstanceLock) return;
+app
+  .whenReady()
+  .then(() => {
+    // An instance that lost the single-instance lock is already on its way out. It must not load the
+    // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
+    if (!gotSingleInstanceLock) return;
+    startSmokeTestTimeout();
 
-  installApplicationMenu(Menu);
+    installApplicationMenu(Menu);
+    installSessionPermissionPolicy(session.defaultSession, {
+      rendererEntryPath: path.join(__dirname, 'index.html'),
+      isTrustedWebContents: isTrustedAppWebContents,
+    });
 
-  // Set app ID for Windows (helps with icon caching and taskbar behavior)
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
-  }
+    // Set app ID for Windows (helps with icon caching and taskbar behavior)
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
+    }
 
-  loadConfig({ deferSecureStorage: true });
-  enableDevelopmentClimateDemo();
-  startDevLiveReloadWatchers();
+    loadConfig({ deferSecureStorage: true });
+    enableDevelopmentClimateDemo();
+    startDevLiveReloadWatchers();
 
-  // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
-  try {
-    protocol.handle(
-      'ha',
-      createHaProtocolHandler({
-        getConfig: () => config,
-        fetchStream: (url, options) => net.fetch(url, options),
-        fetchBinary: createElectronNetBinaryFetcher(net),
-        isAllowedHlsProxyPath,
-        log,
-      })
-    );
-  } catch (error) {
-    log.error('Failed to register ha:// protocol', error);
-  }
+    // Camera proxy: ha://camera/<entityId> (snapshot) and ha://camera_stream/<entityId> (MJPEG)
+    try {
+      protocol.handle(
+        'ha',
+        createHaProtocolHandler({
+          getConfig: () => config,
+          fetchStream: (url, options) => net.fetch(url, options),
+          fetchBinary: createElectronNetBinaryFetcher(net),
+          isAllowedHlsProxyPath,
+          log,
+        })
+      );
+    } catch (error) {
+      log.error('Failed to register ha:// protocol', error);
+      if (IS_SMOKE_TEST_MODE) {
+        finishSmokeTest(false, `Failed to register ha:// protocol: ${error.message}`);
+        return;
+      }
+    }
 
-  createWindow();
-  setupAutoUpdates();
-  schedulePostWindowStartupTasks();
-});
+    createWindow();
+    setupAutoUpdates();
+    schedulePostWindowStartupTasks();
+  })
+  .catch((error) => {
+    log.error('Application startup failed:', error);
+    finishSmokeTest(false, error?.message || String(error));
+  });
 
 // XWayland cannot render at all on some machines (a driver stack where Chromium's GPU process
 // dies on startup), and the widget would then simply never appear. Rather than leave the user

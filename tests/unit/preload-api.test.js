@@ -20,6 +20,7 @@ describe('preload Electron API', () => {
     const api = createElectronApi(ipcRenderer, 'test-platform');
     const objectArg = { value: true };
     const cases = [
+      ['signalRendererReady', [], 'renderer-ready', []],
       ['getConfig', [], 'get-config', []],
       ['getLocaleBootstrap', [], 'get-locale-bootstrap', []],
       ['getLocalePacks', [], 'get-locale-packs', [false]],
@@ -66,9 +67,9 @@ describe('preload Electron API', () => {
       ['runProfileSync', ['push'], 'run-profile-sync', ['push']],
       [
         'setProfileSyncPassphrase',
-        ['secret', true],
+        ['secret', true, true],
         'set-profile-sync-passphrase',
-        ['secret', true],
+        ['secret', true, true],
       ],
       ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase', []],
       ['resolveProfileSyncFirstEnable', ['merge'], 'resolve-profile-sync-first-enable', ['merge']],
@@ -136,6 +137,7 @@ describe('preload Electron API', () => {
       ['onAutoUpdate', 'auto-update'],
       ['onProfileSyncStatus', 'profile-sync-status'],
       ['onConfigUpdated', 'config-updated'],
+      ['onConfigPersistenceWarning', 'config-persistence-warning'],
       ['onDesktopPinUpdate', 'desktop-pin-update'],
       ['onDesktopPinActionRequested', 'desktop-pin-action-requested'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
@@ -169,6 +171,63 @@ describe('preload Electron API', () => {
 
     expect(() => api.onConfigUpdated(null)).toThrow('config-updated listener requires a callback');
   });
+
+  it('buffers config echoes until concurrent renderer mutations settle and drops stale revisions', async () => {
+    const ipcRenderer = createIpcRenderer();
+    const resolvers = [];
+    ipcRenderer.invoke.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    const callback = jest.fn();
+    api.onConfigUpdated(callback);
+
+    const firstUpdate = api.updateConfig({ favoriteEntities: ['light.first'] });
+    const secondUpdate = api.updateConfig({ favoriteEntities: ['light.second'] });
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 1 });
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 2 });
+    expect(callback).not.toHaveBeenCalled();
+
+    resolvers[0]({ homeAssistant: {}, configRevision: 1 });
+    await firstUpdate;
+    expect(callback).not.toHaveBeenCalled();
+
+    resolvers[1]({ homeAssistant: {}, configRevision: 2 });
+    await secondUpdate;
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenLastCalledWith(expect.objectContaining({ configRevision: 2 }));
+
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 1 });
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['updateConfig', [{ theme: 'dark' }], 'update-config'],
+    ['clearTokenResetReason', [], 'clear-token-reset-reason'],
+    ['saveConfig', [{ theme: 'dark' }], 'save-config'],
+    ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase'],
+    ['restartApp', [], 'restart-app'],
+  ])(
+    'rejects %s when the main-process persistence contract reports failure',
+    async (method, args, channel) => {
+      const ipcRenderer = createIpcRenderer();
+      ipcRenderer.invoke.mockResolvedValue({
+        success: false,
+        error: 'disk unavailable',
+        config: { homeAssistant: {} },
+      });
+      const api = createElectronApi(ipcRenderer, 'test-platform');
+
+      await expect(api[method](...args)).rejects.toMatchObject({
+        message: 'disk unavailable',
+        result: expect.objectContaining({ success: false }),
+      });
+      expect(ipcRenderer.invoke).toHaveBeenCalledWith(channel, ...args);
+    }
+  );
 });
 
 describe('preload bootstrap', () => {

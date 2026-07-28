@@ -13,6 +13,9 @@ describe('Renderer first-run connection verification', () => {
   let mockElectronAPI;
   let mockState;
   let mockWebsocket;
+  let mockUiUtils;
+  let mockHotkeys;
+  let mockAlerts;
 
   const unconfiguredConfig = () => ({
     homeAssistant: {
@@ -67,16 +70,21 @@ describe('Renderer first-run connection verification', () => {
     await clickButton('Next');
   };
 
-  const loadRenderer = async () => {
+  const loadRenderer = async ({
+    config = unconfiguredConfig(),
+    configureApi,
+    bodyHtml = '<main class="widget-content"></main>',
+  } = {}) => {
     jest.resetModules();
     resetMockElectronAPI();
-    document.body.innerHTML = '<main class="widget-content"></main>';
+    document.body.innerHTML = bodyHtml;
     document.body.className = '';
     window.history.replaceState({}, '', 'http://localhost/');
 
     mockElectronAPI = createMockElectronAPI();
-    mockElectronAPI.getConfig.mockResolvedValue(unconfiguredConfig());
+    mockElectronAPI.getConfig.mockResolvedValue(config);
     mockElectronAPI.testHaConnection = jest.fn();
+    configureApi?.(mockElectronAPI);
     window.electronAPI = mockElectronAPI;
 
     mockState = {
@@ -119,18 +127,23 @@ describe('Renderer first-run connection verification', () => {
     }));
     jest.doMock('../../src/state.js', () => ({ __esModule: true, default: mockState }));
     jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: mockWebsocket }));
-    jest.doMock('../../src/hotkeys.js', () => ({
+    mockHotkeys = {
       __esModule: true,
       initializeHotkeys: jest.fn(),
       setupHotkeyEventListeners: jest.fn(),
       renderHotkeysTab: jest.fn(),
       assignHotkeyToEntity: jest.fn(),
-    }));
-    jest.doMock('../../src/alerts.js', () => ({
+      toggleHotkeys: jest.fn(),
+      captureHotkey: jest.fn(),
+    };
+    jest.doMock('../../src/hotkeys.js', () => mockHotkeys);
+    mockAlerts = {
       __esModule: true,
       initializeEntityAlerts: jest.fn(),
       checkEntityAlerts: jest.fn(),
-    }));
+      toggleAlerts: jest.fn(),
+    };
+    jest.doMock('../../src/alerts.js', () => mockAlerts);
     jest.doMock('../../src/notifications.js', () => ({
       __esModule: true,
       initializePersistentNotifications: jest.fn(),
@@ -163,7 +176,7 @@ describe('Renderer first-run connection verification', () => {
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
     }));
-    jest.doMock('../../src/ui-utils.js', () => ({
+    mockUiUtils = {
       __esModule: true,
       showLoading: jest.fn(),
       showToast: jest.fn(),
@@ -175,7 +188,8 @@ describe('Renderer first-run connection verification', () => {
       applyBackgroundTheme: jest.fn(),
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
-    }));
+    };
+    jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
       __esModule: true,
       reconcileConfigEntityIds: jest.fn((config) => ({ changed: false, config })),
@@ -184,7 +198,11 @@ describe('Renderer first-run connection verification', () => {
     jest.doMock('../../src/i18n.js', () => ({
       __esModule: true,
       setLocaleBootstrap: jest.fn(),
-      t: jest.fn((key) => key),
+      t: jest.fn((key, vars = {}) =>
+        String(key).replace(/\{\{(\w+)\}\}/g, (_match, name) =>
+          Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : `{{${name}}}`
+        )
+      ),
       translateDocument: jest.fn(),
     }));
     jest.doMock('../../src/icons.js', () => ({
@@ -206,6 +224,15 @@ describe('Renderer first-run connection verification', () => {
     jest.resetModules();
     delete window.electronAPI;
     document.body.innerHTML = '';
+  });
+
+  it('signals readiness through preload only after renderer configuration initializes', async () => {
+    await loadRenderer();
+
+    expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.getConfig.mock.invocationCallOrder[0]).toBeLessThan(
+      mockElectronAPI.signalRendererReady.mock.invocationCallOrder[0]
+    );
   });
 
   it('retests after credentials change and saves only the newly verified pair', async () => {
@@ -336,5 +363,168 @@ describe('Renderer first-run connection verification', () => {
 
     expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
     expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps onboarding open and shows the persistence error when Finish cannot save', async () => {
+    await loadRenderer();
+    mockElectronAPI.testHaConnection.mockResolvedValue({ success: true });
+    mockElectronAPI.updateConfig.mockRejectedValueOnce(new Error('disk unavailable'));
+    await reachConnectionTestStep({
+      url: 'http://ha.local:8123',
+      token: 'verified-token',
+    });
+
+    await clickButton('Test connection');
+    await clickButton('Next');
+    await clickButton('Finish');
+
+    const wizard = document.getElementById('first-run-onboarding');
+    const status = document.querySelector('.first-run-status');
+    expect(wizard.classList).not.toContain('hidden');
+    expect(status.dataset.status).toBe('error');
+    expect(status.textContent).toContain('disk unavailable');
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('disk unavailable'),
+      'error',
+      6000
+    );
+    expect(mockWebsocket.connect).not.toHaveBeenCalled();
+    expect(mockState.CONFIG.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
+  });
+
+  it('shows one runtime-only recovery warning with the quarantined config path', async () => {
+    await loadRenderer({
+      config: {
+        ...unconfiguredConfig(),
+        configRecovery: {
+          recovered: true,
+          backupPath: '/tmp/config.corrupt.2026-07-27.json',
+          error: '',
+        },
+      },
+    });
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/config.corrupt.2026-07-27.json'),
+      'warning',
+      20000
+    );
+    expect(mockState.CONFIG).not.toHaveProperty('configRecovery');
+
+    triggerMockEvent('configUpdated', {
+      ...mockState.CONFIG,
+      configRecovery: {
+        recovered: true,
+        backupPath: '/tmp/config.corrupt.2026-07-27.json',
+      },
+    });
+    await flushAsync();
+    expect(mockState.CONFIG).not.toHaveProperty('configRecovery');
+    expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows and strips token persistence warnings delivered after a save', async () => {
+    await loadRenderer();
+    mockUiUtils.showToast.mockClear();
+
+    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    await flushAsync();
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Token encryption is not available'),
+      'warning',
+      20000
+    );
+    expect(mockState.CONFIG).not.toHaveProperty('persistenceWarnings');
+  });
+
+  it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {
+    await loadRenderer({
+      config: {
+        ...unconfiguredConfig(),
+        tokenResetReason: 'decryption_failed',
+      },
+      configureApi(api) {
+        api.clearTokenResetReason.mockRejectedValueOnce(new Error('config is read-only'));
+      },
+    });
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('config is read-only'),
+      'error',
+      10000
+    );
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('needs to be re-entered'),
+      'warning',
+      20000
+    );
+    expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('reverts hotkey and alert controls when their main-process mutations fail', async () => {
+    await loadRenderer({
+      bodyHtml: `
+        <main class="widget-content"></main>
+        <input id="global-hotkeys-enabled" type="checkbox">
+        <section id="hotkeys-section" style="display: none"></section>
+        <input id="entity-alerts-enabled" type="checkbox">
+        <section id="alerts-section" style="display: none"></section>
+      `,
+    });
+    mockHotkeys.toggleHotkeys.mockResolvedValue(false);
+    mockAlerts.toggleAlerts.mockResolvedValue(false);
+
+    const hotkeyToggle = document.getElementById('global-hotkeys-enabled');
+    hotkeyToggle.checked = true;
+    hotkeyToggle.dispatchEvent(new Event('change'));
+    const alertToggle = document.getElementById('entity-alerts-enabled');
+    alertToggle.checked = true;
+    alertToggle.dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    expect(hotkeyToggle.checked).toBe(false);
+    expect(hotkeyToggle.disabled).toBe(false);
+    expect(document.getElementById('hotkeys-section').style.display).toBe('none');
+    expect(alertToggle.checked).toBe(false);
+    expect(alertToggle.disabled).toBe(false);
+    expect(document.getElementById('alerts-section').style.display).toBe('none');
+  });
+
+  it('keeps a hotkey visible and authoritative when clearing it fails', async () => {
+    const config = unconfiguredConfig();
+    config.globalHotkeys.hotkeys['light.office'] = {
+      hotkey: 'Ctrl+Shift+L',
+      action: 'toggle',
+    };
+    await loadRenderer({
+      config,
+      bodyHtml: `
+        <main class="widget-content"></main>
+        <div id="hotkeys-list">
+          <div>
+            <input class="hotkey-input" data-entity-id="light.office" value="Ctrl+Shift+L">
+            <button class="btn-clear-hotkey">Clear</button>
+          </div>
+        </div>
+      `,
+      configureApi(api) {
+        api.unregisterHotkey.mockResolvedValueOnce({
+          success: false,
+          error: 'Portal removal failed',
+        });
+      },
+    });
+
+    document.querySelector('.btn-clear-hotkey').click();
+    await flushAsync();
+
+    expect(document.querySelector('.hotkey-input').value).toBe('Ctrl+Shift+L');
+    expect(mockState.CONFIG.globalHotkeys.hotkeys['light.office']).toEqual({
+      hotkey: 'Ctrl+Shift+L',
+      action: 'toggle',
+    });
+    expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
   });
 });

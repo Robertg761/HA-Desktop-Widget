@@ -4,6 +4,7 @@ const {
   getMainWindowVisualOptions,
   isLinuxAppImage,
   shouldForceX11OzonePlatform,
+  shouldUseCompositorOwnedPlacement,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
   supportsElectronLoginItems,
@@ -29,7 +30,7 @@ describe('platform helpers', () => {
     );
     expect(supportsAutoUpdater('linux', {})).toBe(false);
     expect(supportsAutoUpdater('win32', {})).toBe(true);
-    expect(supportsAutoUpdater('darwin', {})).toBe(true);
+    expect(supportsAutoUpdater('darwin', {})).toBe(false);
   });
 
   test('uses opaque native windows on Linux unless explicitly overridden', () => {
@@ -148,6 +149,66 @@ describe('platform helpers', () => {
         env: withDisplay({ HA_WIDGET_LINUX_NATIVE_WAYLAND: '0' }),
       })
     ).toBe(true);
+  });
+
+  test('derives compositor-owned placement from the effective Ozone backend', () => {
+    const base = {
+      platform: 'linux',
+      env: { DISPLAY: ':0', WAYLAND_DISPLAY: 'wayland-0' },
+      waylandSession: true,
+      forcedX11Ozone: false,
+    };
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        argv: ['electron', '--ozone-platform=x11'],
+      })
+    ).toBe(false);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        argv: ['electron', '--ozone-platform', 'x11'],
+      })
+    ).toBe(false);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        argv: ['electron', '--ozone-platform=wayland'],
+      })
+    ).toBe(true);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        argv: ['electron', '--ozone-platform-hint=x11'],
+      })
+    ).toBe(false);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        argv: ['electron', '--ozone-platform-hint=wayland'],
+      })
+    ).toBe(true);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        env: { ...base.env, ELECTRON_OZONE_PLATFORM_HINT: 'x11' },
+        argv: [],
+      })
+    ).toBe(false);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        env: { ...base.env, ELECTRON_OZONE_PLATFORM_HINT: 'wayland' },
+        argv: [],
+      })
+    ).toBe(true);
+    expect(
+      shouldUseCompositorOwnedPlacement({
+        ...base,
+        argv: [],
+        forcedX11Ozone: true,
+      })
+    ).toBe(false);
   });
 
   test('keeps Windows transparent and resizable without frosted glass', () => {

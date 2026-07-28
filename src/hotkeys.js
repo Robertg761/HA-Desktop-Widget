@@ -229,8 +229,12 @@ async function toggleHotkeys(enabled) {
         'success',
         2000
       );
+      if (result.warning) {
+        showToast(result.warning, 'warning', 4000);
+      }
       return true;
     }
+    showToast(result?.error || t('Error toggling hotkeys'), 'error', 3000);
   } catch (error) {
     console.error('Error toggling hotkeys:', error);
     showToast(t('Error toggling hotkeys'), 'error', 2000);
@@ -451,24 +455,54 @@ function setupHotkeyEventListenersInternal() {
         // Save to config
         const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
         if (hotkeyConfig) {
-          // Update the action in the config
-          if (typeof hotkeyConfig === 'string') {
-            // Convert old format to new format
-            state.CONFIG.globalHotkeys.hotkeys[entityId] = {
-              hotkey: hotkeyConfig,
-              action: action,
-            };
-          } else {
-            hotkeyConfig.action = action;
+          const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
+          const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
+          const nextHotkeyConfig = nextConfig.globalHotkeys.hotkeys[entityId];
+          nextConfig.globalHotkeys.hotkeys[entityId] =
+            typeof nextHotkeyConfig === 'string'
+              ? { hotkey: nextHotkeyConfig, action }
+              : { ...nextHotkeyConfig, action };
+          let updatePersisted = false;
+
+          try {
+            const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+            if (!updatedConfig?.homeAssistant) {
+              throw new Error(updatedConfig?.error || 'Failed to save hotkey action');
+            }
+            state.setConfig(updatedConfig);
+            updatePersisted = true;
+
+            const registrationResult = await window.electronAPI.registerHotkeys();
+            if (registrationResult?.success === false) {
+              throw new Error(
+                registrationResult.error || 'Failed to activate the updated hotkey action'
+              );
+            }
+
+            showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
+          } catch (error) {
+            let failureMessage = error?.message || 'Failed to update hotkey action';
+            if (updatePersisted) {
+              try {
+                const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
+                if (!restoredConfig?.homeAssistant) {
+                  throw new Error(restoredConfig?.error || 'Failed to restore hotkey action');
+                }
+                state.setConfig(restoredConfig);
+                const rollbackRegistration = await window.electronAPI.registerHotkeys();
+                if (rollbackRegistration?.success === false) {
+                  throw new Error(
+                    rollbackRegistration.error ||
+                      'The previous hotkey action was restored, but its runtime binding was not'
+                  );
+                }
+              } catch (rollbackError) {
+                failureMessage = `${failureMessage}. ${rollbackError?.message || 'Rollback failed'}`;
+              }
+            }
+            renderHotkeysTab();
+            showToast(failureMessage, 'error', 4000);
           }
-
-          // Save the updated config
-          await window.electronAPI.updateConfig(state.CONFIG);
-
-          // Re-register hotkeys to apply the new action
-          await window.electronAPI.registerHotkeys();
-
-          showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
         }
       }
     };

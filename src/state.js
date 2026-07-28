@@ -22,7 +22,23 @@ let UNIT_SYSTEM = {
 // Setter functions
 export function setConfig(newConfig) {
   try {
-    CONFIG = newConfig;
+    if (
+      newConfig &&
+      typeof newConfig === 'object' &&
+      (Object.prototype.hasOwnProperty.call(newConfig, 'configRecovery') ||
+        Object.prototype.hasOwnProperty.call(newConfig, 'configRevision') ||
+        Object.prototype.hasOwnProperty.call(newConfig, 'persistenceWarnings') ||
+        Object.prototype.hasOwnProperty.call(newConfig, 'runtimeWarnings'))
+    ) {
+      const persistentConfig = { ...newConfig };
+      delete persistentConfig.configRecovery;
+      delete persistentConfig.configRevision;
+      delete persistentConfig.persistenceWarnings;
+      delete persistentConfig.runtimeWarnings;
+      CONFIG = persistentConfig;
+    } else {
+      CONFIG = newConfig;
+    }
   } catch (error) {
     console.error('Error setting config:', error);
   }

@@ -79,6 +79,7 @@ const eventListeners = {
   openSettings: [],
   profileSyncStatus: [],
   configUpdated: [],
+  configPersistenceWarning: [],
   desktopPinUpdate: [],
   desktopPinActionRequested: [],
   entityTileHotkeyRequested: [],
@@ -107,6 +108,7 @@ function createMockElectronAPI() {
 
   return {
     platform: 'test',
+    signalRendererReady: jest.fn(() => Promise.resolve({ success: true })),
 
     // Config Operations
     getConfig: jest.fn(() => Promise.resolve({ ...mockConfig })),
@@ -224,7 +226,7 @@ function createMockElectronAPI() {
       })
     ),
     runProfileSync: jest.fn((_direction) => Promise.resolve({ ok: true, action: 'none' })),
-    setProfileSyncPassphrase: jest.fn((_passphrase, _remember) =>
+    setProfileSyncPassphrase: jest.fn((_passphrase, _remember, _encryptionEnabled) =>
       Promise.resolve({ success: true })
     ),
     clearProfileSyncPassphrase: jest.fn(() => Promise.resolve({ success: true })),
@@ -353,6 +355,13 @@ function createMockElectronAPI() {
         if (index > -1) eventListeners.configUpdated.splice(index, 1);
       };
     }),
+    onConfigPersistenceWarning: jest.fn((callback) => {
+      eventListeners.configPersistenceWarning.push(callback);
+      return () => {
+        const index = eventListeners.configPersistenceWarning.indexOf(callback);
+        if (index > -1) eventListeners.configPersistenceWarning.splice(index, 1);
+      };
+    }),
     onDesktopPinUpdate: jest.fn((callback) => {
       eventListeners.desktopPinUpdate.push(callback);
       return () => {
@@ -462,6 +471,7 @@ function resetMockElectronAPI() {
   eventListeners.openSettings = [];
   eventListeners.profileSyncStatus = [];
   eventListeners.configUpdated = [];
+  eventListeners.configPersistenceWarning = [];
   eventListeners.desktopPinUpdate = [];
   eventListeners.desktopPinActionRequested = [];
 }

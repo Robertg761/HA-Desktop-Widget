@@ -51,6 +51,7 @@ function createPresenter(overrides = {}) {
     platform: overrides.platform || 'win32',
     getConfig: () => config,
     getWorkAreas: overrides.getWorkAreas || (() => [WORK_AREA]),
+    shouldReleaseElevationOnBlur: overrides.shouldReleaseElevationOnBlur || (() => false),
     log,
   });
   return { presenter, config, log };
@@ -206,6 +207,37 @@ describe('popup window presenter', () => {
     expect(presenter.handleWindowHidden(targetWindow)).toBe(true);
     expect(targetWindow.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
     expect(presenter.handleWindowHidden(targetWindow)).toBe(false);
+  });
+
+  test('releases sticky elevation on a later blur without breaking full-screen activation', () => {
+    const targetWindow = createWindowMock();
+    const { presenter } = createPresenter({
+      shouldReleaseElevationOnBlur: () => true,
+    });
+
+    presenter.showAboveFullScreen(targetWindow);
+    // A compositor can bounce focus during show; the activation raise must survive it.
+    expect(presenter.handleWindowBlur(targetWindow)).toBe(false);
+    expect(presenter.isElevated()).toBe(true);
+
+    jest.runOnlyPendingTimers();
+    expect(presenter.handleWindowBlur(targetWindow)).toBe(true);
+    expect(presenter.isElevated()).toBe(false);
+    expect(targetWindow.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+  });
+
+  test('keeps hold-mode elevation until key release even after blur', () => {
+    const targetWindow = createWindowMock();
+    const { presenter } = createPresenter({
+      shouldReleaseElevationOnBlur: () => false,
+    });
+
+    presenter.showAboveFullScreen(targetWindow);
+    jest.runOnlyPendingTimers();
+
+    expect(presenter.handleWindowBlur(targetWindow)).toBe(false);
+    expect(presenter.isElevated()).toBe(true);
+    expect(presenter.releaseElevation(targetWindow)).toBe(true);
   });
 
   test('keepElevated: false settles back to the preference after the raise passes', () => {

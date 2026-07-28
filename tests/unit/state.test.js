@@ -56,6 +56,20 @@ describe('State Module', () => {
         state.setConfig(null);
         expect(state.CONFIG).toBeNull();
       });
+
+      test('keeps runtime-only response metadata out of persistent renderer state', () => {
+        state.setConfig({
+          homeAssistant: { url: 'http://test.local' },
+          configRecovery: { recovered: true },
+          configRevision: 42,
+          persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
+          runtimeWarnings: [{ code: 'runtime_side_effect_failed' }],
+        });
+
+        expect(state.CONFIG).toEqual({
+          homeAssistant: { url: 'http://test.local' },
+        });
+      });
     });
 
     describe('setWs', () => {

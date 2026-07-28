@@ -2175,7 +2175,7 @@ describe('Settings + Config Integration', () => {
           rememberPassphrase: true,
         })
       );
-      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
+      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true, true);
     });
 
     test('should persist the passphrase after saving encrypted sync config', async () => {
@@ -2250,7 +2250,7 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true);
+      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', true, true);
       // The settings themselves are still persisted even though the secret failed.
       expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
       expect(state.CONFIG.profileSync).toEqual(
@@ -2261,9 +2261,9 @@ describe('Settings + Config Integration', () => {
         })
       );
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Settings were saved, but the sync passphrase could not be stored.',
+        'Passphrase persistence failed',
         'warning',
-        3600
+        5000
       );
     });
 
@@ -2368,8 +2368,53 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('abcd1234', false);
+      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith(
+        'abcd1234',
+        false,
+        true
+      );
       expect(mockElectronAPI.clearProfileSyncPassphrase).not.toHaveBeenCalled();
+    });
+
+    test('should submit the disabled encryption mode with the current remote passphrase', async () => {
+      const config = state.CONFIG;
+      config.profileSync = buildProfileSync({
+        enabled: true,
+        provider: 'cloudFile',
+        cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+        encryptionEnabled: true,
+        rememberPassphrase: false,
+      });
+      state.setConfig(config);
+
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'cloudFile',
+          cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+          encryptionEnabled: true,
+          rememberPassphrase: false,
+          passphraseStored: false,
+        })
+      );
+      mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+        success: true,
+        remembered: false,
+        encrypted: false,
+      });
+
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      document.getElementById('profile-sync-passphrase').value = 'current-key';
+
+      await settings.saveSettings();
+
+      expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith(
+        'current-key',
+        false,
+        false
+      );
     });
 
     test('should forward selected provider when choosing sync folder', async () => {

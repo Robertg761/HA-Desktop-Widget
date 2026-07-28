@@ -435,11 +435,15 @@ describe('alerts module', () => {
     });
 
     it('should handle IPC failure', async () => {
-      mockElectronAPI.toggleAlerts.mockResolvedValue({ success: false });
+      mockElectronAPI.toggleAlerts.mockResolvedValue({
+        success: false,
+        error: 'Config is read-only',
+      });
 
       const result = await alerts.toggleAlerts(true);
 
       expect(result).toBe(false);
+      expect(showToast).toHaveBeenCalledWith('Config is read-only', 'error', 3000);
     });
 
     it('should handle IPC errors', async () => {
