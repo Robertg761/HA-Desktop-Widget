@@ -18,6 +18,122 @@ const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
   'unsupported',
 ]);
 
+const DESKTOP_PIN_FEATURES = Object.freeze({
+  fan: Object.freeze({
+    setPercentage: 1,
+    presetMode: 8,
+  }),
+  cover: Object.freeze({
+    open: 1,
+    close: 2,
+    setPosition: 4,
+    stop: 8,
+  }),
+  media: Object.freeze({
+    pause: 1,
+    previousTrack: 16,
+    nextTrack: 32,
+    play: 16384,
+  }),
+});
+
+function hasFeature(attributes, feature) {
+  const supportedFeatures = Number(attributes?.supported_features);
+  return (
+    Number.isFinite(supportedFeatures) &&
+    Number.isFinite(feature) &&
+    feature > 0 &&
+    (supportedFeatures & feature) === feature
+  );
+}
+
+function hasFiniteAttribute(attributes, attributeName) {
+  const rawValue = attributes?.[attributeName];
+  if (
+    rawValue === null ||
+    rawValue === undefined ||
+    (typeof rawValue === 'string' && rawValue.trim() === '')
+  ) {
+    return false;
+  }
+  const value = Number(rawValue);
+  return Number.isFinite(value);
+}
+
+function hasSupportedFeatureDeclaration(attributes) {
+  const rawValue = attributes?.supported_features;
+  if (
+    rawValue === null ||
+    rawValue === undefined ||
+    (typeof rawValue === 'string' && rawValue.trim() === '')
+  ) {
+    return false;
+  }
+  return Number.isFinite(Number(rawValue));
+}
+
+function getDesktopPinCapabilities(entity = null) {
+  const domain = getDesktopPinDomain(entity);
+  const attributes = entity?.attributes || {};
+  const colorModes = Array.isArray(attributes.supported_color_modes)
+    ? attributes.supported_color_modes
+    : [];
+  const hvacModes = Array.isArray(attributes.hvac_modes)
+    ? attributes.hvac_modes.filter(Boolean)
+    : [];
+
+  switch (domain) {
+    case 'light':
+      return {
+        canToggle: true,
+        canSetBrightness:
+          hasFeature(attributes, 1) ||
+          hasFiniteAttribute(attributes, 'brightness') ||
+          colorModes.some((mode) => mode && mode !== 'onoff' && mode !== 'unknown'),
+      };
+    case 'climate':
+      return {
+        canSetTemperature:
+          hasFiniteAttribute(attributes, 'temperature') &&
+          hasFiniteAttribute(attributes, 'min_temp') &&
+          hasFiniteAttribute(attributes, 'max_temp') &&
+          Number(attributes.min_temp) < Number(attributes.max_temp),
+        hvacModes,
+      };
+    case 'fan':
+      return {
+        canToggle: true,
+        canSetPercentage:
+          hasFeature(attributes, DESKTOP_PIN_FEATURES.fan.setPercentage) ||
+          (!hasSupportedFeatureDeclaration(attributes) &&
+            hasFiniteAttribute(attributes, 'percentage')),
+        canSetPreset:
+          hasFeature(attributes, DESKTOP_PIN_FEATURES.fan.presetMode) &&
+          Array.isArray(attributes.preset_modes) &&
+          attributes.preset_modes.length > 0,
+      };
+    case 'cover':
+      return {
+        canOpen: hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.open),
+        canClose: hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.close),
+        canSetPosition:
+          hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.setPosition) ||
+          (!hasSupportedFeatureDeclaration(attributes) &&
+            hasFiniteAttribute(attributes, 'current_position')),
+        canStop: hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.stop),
+      };
+    case 'media_player':
+      return {
+        canPause: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.pause),
+        canPreviousTrack: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.previousTrack),
+        canNextTrack: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.nextTrack),
+        canPlay: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.play),
+      };
+    default:
+      return {};
+  }
+}
+
 function normalizeEntityId(entityId) {
   if (typeof entityId !== 'string') return '';
   return entityId.trim();
@@ -231,7 +347,9 @@ function isDesktopPinSupported(entityOrEntityId = null) {
 }
 
 module.exports = {
+  DESKTOP_PIN_FEATURES,
   DESKTOP_PIN_SUPPORTED_FAMILIES,
+  getDesktopPinCapabilities,
   normalizeEntityId,
   getDesktopPinDomain,
   isTimerSensorEntity,

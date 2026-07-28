@@ -4,12 +4,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const nodeUtil = require('util');
 const {
   createMockElectronAPI,
   resetMockElectronAPI,
   getMockConfig,
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
+global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 
 // Setup mocks BEFORE loading modules
 const mockElectronAPI = createMockElectronAPI();
@@ -45,6 +48,8 @@ jest.mock('../../src/ui-utils.js', () => ({
   showConfirm: jest.fn().mockResolvedValue(false),
   showLoading: jest.fn(),
   setStatus: jest.fn(),
+  trapFocus: jest.fn(),
+  releaseFocusTrap: jest.fn(),
   applyTheme: jest.fn(),
   applyUiPreferences: jest.fn(),
   hexToRgb: jest.fn((hex) => {
@@ -99,12 +104,15 @@ jest.mock('sortablejs', () => ({
 // Mock WebSocket callService method
 const mockCallService = jest.fn().mockResolvedValue({});
 const mockCallServiceWithResponse = jest.fn().mockResolvedValue({});
+const mockRequest = jest.fn().mockResolvedValue({});
 
 jest.mock('../../src/websocket.js', () => ({
   callService: mockCallService,
   callServiceWithResponse: mockCallServiceWithResponse,
+  isConnected: jest.fn(() => true),
   on: jest.fn(),
   emit: jest.fn(),
+  request: mockRequest,
 }));
 
 // Import modules after mocks
@@ -139,6 +147,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
     mockCallServiceWithResponse.mockClear();
     mockCallServiceWithResponse.mockResolvedValue({});
+    mockRequest.mockClear();
+    mockRequest.mockResolvedValue({});
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -809,6 +819,111 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('dynamic control modal accessibility', () => {
+    it.each([
+      {
+        label: 'light',
+        entity: sampleStates['light.living_room'],
+        modalSelector: '.brightness-modal',
+        closeSelector: '#brightness-close',
+      },
+      {
+        label: 'climate',
+        entity: sampleStates['climate.thermostat'],
+        modalSelector: '.climate-modal',
+        closeSelector: '#climate-close',
+      },
+      {
+        label: 'fan',
+        entity: {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Office Fan',
+            percentage: 35,
+            supported_features: 1,
+          },
+        },
+        modalSelector: '.fan-modal',
+        closeSelector: '#fan-close',
+      },
+      {
+        label: 'cover',
+        entity: {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Living Room Blinds',
+            current_position: 60,
+            supported_features: 15,
+          },
+        },
+        modalSelector: '.cover-modal',
+        closeSelector: '#cover-close',
+      },
+      {
+        label: 'media',
+        entity: sampleStates['media_player.spotify'],
+        modalSelector: '.media-modal',
+        closeSelector: '#media-close',
+      },
+    ])('gives the $label dialog a focus lifecycle', ({ entity, modalSelector, closeSelector }) => {
+      jest.useFakeTimers();
+      try {
+        state.setStates({ [entity.entity_id]: entity });
+        ui.openEntityDetailModal(entity);
+        jest.advanceTimersByTime(0);
+
+        const modal = document.querySelector(modalSelector);
+        const labelledBy = modal?.getAttribute('aria-labelledby');
+        expect(modal?.getAttribute('role')).toBe('dialog');
+        expect(modal?.getAttribute('aria-modal')).toBe('true');
+        expect(labelledBy).toBeTruthy();
+        expect(modal?.querySelector('h2')?.id).toBe(labelledBy);
+        expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal);
+
+        modal.querySelector(closeSelector).click();
+        jest.advanceTimersByTime(250);
+
+        expect(uiUtils.releaseFocusTrap).toHaveBeenCalledWith(modal);
+        expect(modal.isConnected).toBe(false);
+      } finally {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not render media transport actions that are not advertised', () => {
+      jest.useFakeTimers();
+      try {
+        const entity = {
+          entity_id: 'media_player.status_only',
+          state: 'playing',
+          attributes: {
+            friendly_name: 'Status-only Player',
+            media_title: 'Read only',
+            supported_features: 0,
+          },
+        };
+        state.setStates({ [entity.entity_id]: entity });
+
+        ui.openEntityDetailModal(entity);
+
+        const modal = document.querySelector('.media-modal');
+        expect(modal.querySelector('.media-detail-prev-btn')).toBeNull();
+        expect(modal.querySelector('.media-detail-play-btn')).toBeNull();
+        expect(modal.querySelector('.media-detail-next-btn')).toBeNull();
+        expect(modal.querySelector('.media-detail-seek-btn')).toBeNull();
+        expect(modal.querySelector('.control-capability-note')).toBeTruthy();
+        modal.querySelector('#media-close').click();
+        jest.advanceTimersByTime(200);
+      } finally {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+  });
+
   // ==============================================================================
   // GROUP 2: Config Management (2 tests)
   // Note: toggleQuickAccess, saveQuickAccessOrder, removeFromQuickAccess not exported
@@ -842,6 +957,24 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'success',
         2000
       );
+    });
+  });
+
+  describe('update UI lifecycle', () => {
+    it('unsubscribes the previous auto-update listener before binding another one', () => {
+      const firstUnsubscribe = jest.fn();
+      const secondUnsubscribe = jest.fn();
+      mockElectronAPI.onAutoUpdate = jest
+        .fn()
+        .mockReturnValueOnce(firstUnsubscribe)
+        .mockReturnValueOnce(secondUnsubscribe);
+
+      ui.initUpdateUI();
+      ui.initUpdateUI();
+
+      expect(mockElectronAPI.onAutoUpdate).toHaveBeenCalledTimes(2);
+      expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
+      expect(secondUnsubscribe).not.toHaveBeenCalled();
     });
   });
 
@@ -946,6 +1079,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const windEl = document.getElementById('weather-wind');
       expect(windEl.textContent).toContain('10');
       expect(windEl.textContent).toContain('mph');
+    });
+
+    it('does not convert a global km/h value a second time', () => {
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'sunny',
+          attributes: {
+            temperature: 22,
+            humidity: 65,
+            wind_speed: 20,
+          },
+        },
+      });
+      state.setUnitSystem({ wind_speed: 'km/h' });
+
+      ui.updateWeatherFromHA();
+
+      expect(document.getElementById('weather-wind').textContent).toBe('20 km/h');
     });
 
     it('should set sunny icon for clear/sunny conditions', () => {
@@ -1435,6 +1587,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('media artwork proxy boundary', () => {
+    it.each([
+      [
+        'Home Assistant relative artwork',
+        '/api/media_player_proxy/media_player.spotify?token=abc123',
+        '/api/media_player_proxy/media_player.spotify?token=abc123',
+      ],
+      [
+        'external artwork',
+        'https://cdn.example.test/album.jpg',
+        'https://cdn.example.test/album.jpg',
+      ],
+    ])(
+      'preserves %s as the protocol authentication boundary',
+      (_label, artwork, expectedTarget) => {
+        state.setStates({
+          'media_player.spotify': {
+            ...sampleStates['media_player.spotify'],
+            attributes: {
+              ...sampleStates['media_player.spotify'].attributes,
+              entity_picture: artwork,
+            },
+          },
+        });
+
+        ui.updateMediaTile();
+
+        const src = document.querySelector('#media-tile-artwork img')?.getAttribute('src');
+        expect(src).toMatch(/^ha:\/\/media_artwork\//);
+        const encodedTarget = src.slice('ha://media_artwork/'.length).split('?t=')[0];
+        expect(Buffer.from(encodedTarget, 'base64').toString('utf8')).toBe(expectedTarget);
+      }
+    );
+  });
+
   // ==============================================================================
   // GROUP 4: Rendering Functions (1 test)
   // Note: renderQuickControls, createControlElement, createUnavailableElement not exported
@@ -1479,6 +1666,91 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('pauses an active timer and starts an idle timer on quick-access click', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['timer.kitchen'];
+      state.setConfig(config);
+      state.setStates({
+        'timer.kitchen': {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          attributes: { friendly_name: 'Kitchen Timer' },
+        },
+      });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="timer.kitchen"]').click();
+      expect(mockCallService).toHaveBeenLastCalledWith('timer', 'pause', {
+        entity_id: 'timer.kitchen',
+      });
+
+      const idleTimer = {
+        entity_id: 'timer.kitchen',
+        state: 'idle',
+        attributes: { friendly_name: 'Kitchen Timer' },
+      };
+      state.setEntityState(idleTimer);
+      ui.updateEntityInUI(idleTimer);
+      document.querySelector('[data-entity-id="timer.kitchen"]').click();
+      expect(mockCallService).toHaveBeenLastCalledWith('timer', 'start', {
+        entity_id: 'timer.kitchen',
+      });
+    });
+
+    it('toggles media playback on short click without opening the detail modal', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['media_player.spotify'];
+      state.setConfig(config);
+      state.setStates({
+        'media_player.spotify': sampleStates['media_player.spotify'],
+      });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="media_player.spotify"]').click();
+
+      expect(mockCallService).toHaveBeenLastCalledWith('media_player', 'media_pause', {
+        entity_id: 'media_player.spotify',
+      });
+      expect(document.querySelector('.media-detail-modal')).toBeNull();
+    });
+
+    it('does not send a quick-access media action that the entity does not advertise', () => {
+      const entity = {
+        entity_id: 'media_player.status_only',
+        state: 'playing',
+        attributes: {
+          friendly_name: 'Status-only Player',
+          media_title: 'Read only',
+          supported_features: 0,
+        },
+      };
+      state.setConfig({ ...state.CONFIG, favoriteEntities: [entity.entity_id] });
+      state.setStates({ [entity.entity_id]: entity });
+
+      ui.renderActiveTab();
+      document.querySelector(`[data-entity-id="${entity.entity_id}"]`).click();
+
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+
+    it('does not send a quick-access cover action that the entity does not advertise', () => {
+      const entity = {
+        entity_id: 'cover.status_only',
+        state: 'open',
+        attributes: {
+          friendly_name: 'Status-only Cover',
+          supported_features: 0,
+        },
+      };
+      state.setConfig({ ...state.CONFIG, favoriteEntities: [entity.entity_id] });
+      state.setStates({ [entity.entity_id]: entity });
+
+      ui.renderActiveTab();
+      document.querySelector(`[data-entity-id="${entity.entity_id}"]`).click();
+
+      expect(mockCallService).not.toHaveBeenCalled();
     });
 
     it('marks controllable quick access tiles as active while their entity is on', () => {
@@ -1758,6 +2030,51 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallServiceWithResponse).toHaveBeenCalledWith('todo', 'get_items', {
         entity_id: 'todo.shopping',
       });
+    });
+
+    it('queues a genuinely fresh forced todo read behind an older pending request', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['todo.race'];
+      state.setConfig(config);
+      state.setStates({
+        'todo.race': {
+          entity_id: 'todo.race',
+          state: '0',
+          attributes: { friendly_name: 'Shopping' },
+        },
+      });
+
+      let resolveInitialRequest;
+      mockCallServiceWithResponse
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveInitialRequest = resolve;
+            })
+        )
+        .mockResolvedValueOnce({
+          'todo.race': {
+            items: [{ uid: 'fresh', summary: 'Fresh item', status: 'needs_action' }],
+          },
+        });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="todo.race"]').click();
+      expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(1);
+
+      resolveInitialRequest({
+        'todo.race': {
+          items: [{ uid: 'stale', summary: 'Stale item', status: 'needs_action' }],
+        },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('.todo-item-summary')?.textContent).toBe('Fresh item');
     });
 
     it('renders calendar tiles with next event details from attributes', () => {
@@ -2121,6 +2438,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerTile.querySelector('.control-sensor-value')).toBeNull();
     });
 
+    it('does not cache a success:false history response as fresh empty data', async () => {
+      const warningSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const entity = {
+        entity_id: 'sensor.audit_history',
+        state: '21.5',
+        attributes: {
+          friendly_name: 'Audit History',
+          unit_of_measurement: '°C',
+          device_class: 'temperature',
+        },
+      };
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: [entity.entity_id],
+      });
+      state.setStates({ [entity.entity_id]: entity });
+      mockRequest.mockResolvedValue({
+        success: false,
+        error: { message: 'Recorder unavailable' },
+      });
+
+      ui.renderActiveTab();
+      await Promise.resolve();
+      await Promise.resolve();
+      document.querySelector(`[data-entity-id="${entity.entity_id}"]`).click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+      expect(warningSpy).toHaveBeenCalledWith(
+        'Sensor history request failed:',
+        expect.objectContaining({ message: 'Recorder unavailable' })
+      );
+      warningSpy.mockRestore();
+    });
+
     it('does not apply quick access sensor readout formatting to primary entity cards', () => {
       document.body.insertAdjacentHTML('beforeend', '<div id="time-card"></div>');
       const config = state.CONFIG;
@@ -2249,6 +2602,31 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    it('rolls back an optimistic climate temperature when the service rejects', async () => {
+      jest.useFakeTimers();
+      try {
+        const airConditioner = sampleStates['climate.bedroom_air_conditioner'];
+        mockCallService.mockRejectedValueOnce(new Error('Permission denied'));
+
+        ui.executeEntityPrimaryAction(airConditioner);
+        const slider = document.querySelector('.climate-modal #climate-slider');
+        slider.value = '23';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        jest.advanceTimersByTime(300);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(slider.value).toBe('22');
+        expect(uiUtils.showToast).toHaveBeenCalledWith(
+          expect.stringContaining('Permission denied'),
+          'error',
+          4000
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('does not invent climate controls that an entity does not advertise', () => {
       ui.executeEntityPrimaryAction({
         entity_id: 'climate.read_only_air_conditioner',
@@ -2263,6 +2641,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal.querySelector('#climate-slider')).toBeNull();
       expect(modal.querySelectorAll('.climate-mode-btn')).toHaveLength(0);
       expect(modal.querySelector('.climate-controls-unavailable')).toBeTruthy();
+    });
+
+    it('treats null and blank climate numeric attributes as unadvertised', () => {
+      ui.executeEntityPrimaryAction({
+        entity_id: 'climate.null_target',
+        state: 'heat',
+        attributes: {
+          friendly_name: 'Null Target Climate',
+          current_temperature: 24,
+          temperature: null,
+          min_temp: 7,
+          max_temp: 35,
+          target_temp_step: '',
+        },
+      });
+
+      const modal = document.querySelector('.climate-modal');
+      expect(modal.querySelector('#climate-slider')).toBeNull();
+      expect(modal.querySelector('#climate-target-value').textContent).toBe('—');
     });
 
     it('updates timer tick targets when a visible sensor becomes timer-like', () => {
@@ -2457,6 +2854,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           })
         );
       });
+    });
+
+    it('does not derive desktop-pin controls from null or blank numeric attributes', () => {
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'light.null_brightness',
+          attributes: { brightness: null, supported_color_modes: ['onoff'] },
+        }).canSetBrightness
+      ).toBe(false);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'fan.null_percentage',
+          attributes: { percentage: '' },
+        }).canSetPercentage
+      ).toBe(false);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'cover.null_position',
+          attributes: { current_position: null, supported_features: '   ' },
+        }).canSetPosition
+      ).toBe(false);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'cover.legacy_position',
+          attributes: { current_position: 45, supported_features: '   ' },
+        }).canSetPosition
+      ).toBe(true);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'climate.null_target',
+          attributes: { temperature: null, min_temp: 7, max_temp: 35 },
+        }).canSetTemperature
+      ).toBe(false);
     });
 
     const setDesktopPinViewport = (width, height) => {
@@ -2682,6 +3112,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -2875,6 +3311,59 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('does not render desktop-pin controls that entities do not advertise', () => {
+      const light = {
+        entity_id: 'light.on_off_only',
+        state: 'on',
+        attributes: { friendly_name: 'On/off Light', supported_color_modes: ['onoff'] },
+      };
+      state.setStates({ [light.entity_id]: light });
+      ui.renderDesktopPinnedTile(light.entity_id, light);
+      expect(document.querySelector('.desktop-pin-light-power')).toBeTruthy();
+      expect(document.querySelector('.desktop-pin-light-slider')).toBeNull();
+      expect(document.querySelector('.desktop-pin-light-preset')).toBeNull();
+
+      const climate = {
+        entity_id: 'climate.read_only',
+        state: 'heat',
+        attributes: {
+          friendly_name: 'Read-only Climate',
+          current_temperature: 21,
+          temperature: null,
+          min_temp: 7,
+          max_temp: 35,
+        },
+      };
+      state.setStates({ [climate.entity_id]: climate });
+      ui.renderDesktopPinnedTile(climate.entity_id, climate);
+      expect(document.querySelector('.desktop-pin-climate-slider')).toBeNull();
+      expect(document.querySelector('.desktop-pin-climate-mode')).toBeNull();
+      expect(document.querySelector('.desktop-pin-climate-target-value')?.textContent).toBe('--');
+
+      const cover = {
+        entity_id: 'cover.read_only_position',
+        state: 'open',
+        attributes: {
+          friendly_name: 'Read-only Position Cover',
+          current_position: 55,
+          supported_features: 0,
+        },
+      };
+      state.setStates({ [cover.entity_id]: cover });
+      ui.renderDesktopPinnedTile(cover.entity_id, cover);
+      expect(document.querySelector('.desktop-pin-cover-slider')).toBeNull();
+      expect(document.querySelector('.desktop-pin-cover-action')).toBeNull();
+
+      const media = {
+        entity_id: 'media_player.status_only',
+        state: 'playing',
+        attributes: { friendly_name: 'Status-only Player', supported_features: 0 },
+      };
+      state.setStates({ [media.entity_id]: media });
+      ui.renderDesktopPinnedTile(media.entity_id, media);
+      expect(document.querySelector('.desktop-pin-media-action')).toBeNull();
+    });
+
     it('renders compact desktop light controls with inline presets', async () => {
       jest.useFakeTimers();
 
@@ -3021,6 +3510,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -3122,6 +3617,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           attributes: {
             friendly_name: 'Living Room Blinds',
             current_position: 55,
+            supported_features: 15,
           },
         },
       });
@@ -3194,7 +3690,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.layout).toBe('balanced');
       expect(control?.dataset.denseVariant).toBe('tight');
       expect(control?.querySelector('.desktop-pin-media-artist')).toBeNull();
-      expect(control?.querySelectorAll('.desktop-pin-media-action')).toHaveLength(3);
+      expect(control?.querySelectorAll('.desktop-pin-media-action')).toHaveLength(1);
+      expect(control?.querySelector('.desktop-pin-media-play')).toBeTruthy();
+      expect(
+        control?.querySelector('.desktop-pin-media-action[data-action="previous_track"]')
+      ).toBeNull();
+      expect(
+        control?.querySelector('.desktop-pin-media-action[data-action="next_track"]')
+      ).toBeNull();
     });
 
     it('replaces dense desktop pin markup when the viewport crosses the Stage 4 tight threshold', () => {
@@ -3202,6 +3705,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -3947,6 +4456,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -3979,6 +4494,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           ...sampleStates['climate.thermostat'].attributes,
           current_temperature: 22,
           temperature: 23,
+          min_temp: 10,
+          max_temp: 30,
+          target_temp_step: 0.5,
         },
       };
 

@@ -156,6 +156,7 @@ describe('hotkeys module', () => {
 
   describe('renderHotkeysTab', () => {
     beforeEach(() => {
+      hotkeys.cleanupHotkeyEventListeners();
       const config = getMockConfig();
       config.globalHotkeys = {
         enabled: true,
@@ -187,6 +188,38 @@ describe('hotkeys module', () => {
 
       document.body.removeChild(container);
       document.body.removeChild(searchInput);
+    });
+
+    it('supports arrow-key navigation and selection in the action listbox', async () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = 'living';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+
+      hotkeys.renderHotkeysTab();
+
+      const trigger = container.querySelector(
+        '[data-entity-id="light.living_room"] .custom-dropdown-trigger'
+      );
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+      const focusedOption = document.activeElement;
+      expect(focusedOption?.getAttribute('role')).toBe('option');
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+      focusedOption.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(trigger);
+      expect(
+        container.querySelector('.custom-dropdown-option.selected')?.getAttribute('aria-selected')
+      ).toBe('true');
     });
 
     it('should include script, button, and input_button action entities in the picker', () => {

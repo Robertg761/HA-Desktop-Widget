@@ -1361,7 +1361,13 @@ describe('Settings + Config Integration', () => {
       const allChoices = document.querySelectorAll(
         '[data-custom-icon-choice-entity="light.living_room"]'
       );
-      expect(allChoices.length).toBeGreaterThan(1000);
+      const renderedIcons = new Set(
+        Array.from(allChoices, (choice) => choice.dataset.customIconChoice)
+      );
+      expect(allChoices.length).toBeGreaterThanOrEqual(3953);
+      ['1️⃣', '🇨🇦', '🏳️‍🌈', '👨‍👩‍👧‍👦', '👩🏽‍💻', '🫷🏽'].forEach((emoji) => {
+        expect(renderedIcons).toContain(emoji);
+      });
     });
 
     test('should open picker with all icons when icon input is focused', async () => {

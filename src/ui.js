@@ -127,9 +127,10 @@ const DESKTOP_PIN_FAN_PRESETS_TIGHT = [
   { value: 66, label: 'Mid' },
   { value: 100, label: 'High' },
 ];
-const { resolveDesktopPinProfile } = desktopPinSupport;
+const { getDesktopPinCapabilities, resolveDesktopPinProfile } = desktopPinSupport;
 const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
 const sensorHistoryCache = new Map();
+let unsubscribeAutoUpdate = null;
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -231,6 +232,23 @@ function handleServiceError(error, entityName = null) {
   uiUtils.showToast(displayMessage, 'error', 4000);
 }
 
+function callServiceWithUiRollback(entity, domain, service, serviceData, rollback = null) {
+  return websocket
+    .callService(domain, service, serviceData)
+    .then((result) => ({ ok: true, result }))
+    .catch((error) => {
+      if (typeof rollback === 'function') {
+        try {
+          rollback();
+        } catch (rollbackError) {
+          console.error('Failed to roll back optimistic control state:', rollbackError);
+        }
+      }
+      handleServiceError(error, utils.getEntityDisplayName(entity));
+      return { ok: false, error };
+    });
+}
+
 function serializeDesktopPinActionError(error, fallbackMessage = 'Desktop pin action failed') {
   const message =
     typeof error?.message === 'string' && error.message.trim() ? error.message : fallbackMessage;
@@ -276,6 +294,7 @@ function shouldBlockInteraction(el) {
 let sortableInstance = null; // SortableJS instance for reorganize mode
 let quickAccessViewIdCounter = 0;
 let quickAccessRovingIndex = 0;
+let dialogModalIdCounter = 0;
 
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
@@ -1847,6 +1866,17 @@ function normalizeSensorHistoryResponse(response, entityId, { allowBareArray = t
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
+function assertSuccessfulWebSocketResponse(response, fallbackMessage) {
+  if (response?.success !== false) return response;
+  const message =
+    response?.error?.message ||
+    response?.error ||
+    response?.message ||
+    fallbackMessage ||
+    'Home Assistant request failed';
+  throw new Error(String(message));
+}
+
 /**
  * Drops samples older than the 24h window, but KEEPS the newest sample at or before the cutoff.
  *
@@ -1952,22 +1982,25 @@ async function fetchSensorHistoryBatch(entityIds) {
 
     const run = async () => {
       try {
-        const response = await websocket.request({
-          type: 'history/history_during_period',
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
-          entity_ids: batchIds,
-          minimal_response: !withAttributes,
-          no_attributes: !withAttributes,
-          // The entity's state at the start of the window, so every line can be drawn from the
-          // left edge rather than from its own first change.
-          include_start_time_state: true,
-          // Home Assistant defaults this to true, which drops rows its per-domain "significant
-          // change" rules consider uninteresting. For a weather entity only a CONDITION change is
-          // significant, so a temperature drifting 22°->31° under an unchanged sky records nothing
-          // — the outside series came back with 4 points a day. Ask for every recorded row.
-          significant_changes_only: false,
-        });
+        const response = assertSuccessfulWebSocketResponse(
+          await websocket.request({
+            type: 'history/history_during_period',
+            start_time: start.toISOString(),
+            end_time: end.toISOString(),
+            entity_ids: batchIds,
+            minimal_response: !withAttributes,
+            no_attributes: !withAttributes,
+            // The entity's state at the start of the window, so every line can be drawn from the
+            // left edge rather than from its own first change.
+            include_start_time_state: true,
+            // Home Assistant defaults this to true, which drops rows its per-domain "significant
+            // change" rules consider uninteresting. For a weather entity only a CONDITION change is
+            // significant, so a temperature drifting 22°->31° under an unchanged sky records nothing
+            // — the outside series came back with 4 points a day. Ask for every recorded row.
+            significant_changes_only: false,
+          }),
+          'Home Assistant history request failed'
+        );
 
         const completedAt = Date.now();
         batchIds.forEach((entityId) => {
@@ -3053,6 +3086,10 @@ function getDesktopPinSupportProfile(entityOrEntityId = null) {
   return resolveDesktopPinProfile(entityOrEntityId);
 }
 
+function getDesktopPinCapabilitySignature(entity) {
+  return JSON.stringify(getDesktopPinCapabilities(entity));
+}
+
 function getDesktopPinSupportInfo(entityOrEntityId = null) {
   const profile = getDesktopPinSupportProfile(entityOrEntityId);
   return {
@@ -3515,6 +3552,7 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (!root) return;
 
   const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
+  const canSetBrightness = root.dataset.canSetBrightness === 'true';
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty('--desktop-pin-light-level', String(safePct / 100));
   root.style.setProperty(
@@ -3534,7 +3572,13 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
 
   const status = root.querySelector('.desktop-pin-light-status');
   if (status) {
-    status.textContent = isOn ? `${safePct}% brightness` : 'Use slider or a preset';
+    status.textContent = canSetBrightness
+      ? isOn
+        ? `${safePct}% brightness`
+        : 'Use slider or a preset'
+      : isOn
+        ? 'On'
+        : 'Off';
   }
 
   const powerButton = root.querySelector('.desktop-pin-light-power');
@@ -3556,6 +3600,11 @@ function updateExistingDesktopPinLightControl(root, entity) {
   }
 
   const interaction = getDesktopPinLightInteraction(entity.entity_id);
+  const capabilitySignature = getDesktopPinCapabilitySignature(entity);
+  if (root.dataset.capabilitySignature !== capabilitySignature) {
+    root.replaceWith(createDesktopPinLightControlElement(entity));
+    return true;
+  }
   const layout = getDesktopPinLightLayout();
   const interactionBrightness = Number(interaction?.brightnessPct);
   const brightnessPct = Number.isFinite(interactionBrightness)
@@ -3604,6 +3653,7 @@ function queueDesktopPinLightBrightness(entity, brightnessPct) {
 
 function createDesktopPinLightControlElement(entity) {
   const div = document.createElement('div');
+  const capabilities = getDesktopPinCapabilities(entity);
   const layout = getDesktopPinLightLayout();
   const interaction = getDesktopPinLightInteraction(entity?.entity_id);
   const interactionBrightness = Number(interaction?.brightnessPct);
@@ -3619,6 +3669,8 @@ function createDesktopPinLightControlElement(entity) {
   div.dataset.desktopPin = 'true';
   div.dataset.entityId = entity.entity_id;
   div.dataset.layout = layout;
+  div.dataset.canSetBrightness = capabilities.canSetBrightness ? 'true' : 'false';
+  div.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
   div.title = 'Compact light controls';
   div.innerHTML = `
     <div class="desktop-pin-light-shell">
@@ -3626,11 +3678,21 @@ function createDesktopPinLightControlElement(entity) {
         <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
-          <div class="desktop-pin-light-status">${isOn ? `${brightnessPct}% brightness` : 'Use slider or a preset'}</div>
+          <div class="desktop-pin-light-status">${
+            capabilities.canSetBrightness
+              ? isOn
+                ? `${brightnessPct}% brightness`
+                : 'Use slider or a preset'
+              : isOn
+                ? 'On'
+                : 'Off'
+          }</div>
         </div>
         <button class="desktop-pin-light-power" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${isOn ? 'On' : 'Off'}</button>
       </div>
-      <div class="desktop-pin-light-brightness">
+      ${
+        capabilities.canSetBrightness
+          ? `<div class="desktop-pin-light-brightness">
         <div class="desktop-pin-light-brightness-head">
           <div class="desktop-pin-light-brightness-copy">
             <div class="desktop-pin-light-brightness-label">Brightness</div>
@@ -3647,7 +3709,9 @@ function createDesktopPinLightControlElement(entity) {
         <button class="desktop-pin-light-preset" type="button" data-brightness="50">50</button>
         <button class="desktop-pin-light-preset" type="button" data-brightness="75">75</button>
         <button class="desktop-pin-light-preset" type="button" data-brightness="100">100</button>
-      </div>
+      </div>`
+          : ''
+      }
     </div>
   `;
 
@@ -3826,37 +3890,40 @@ function createDesktopPinButtonMarkup({
   `;
 }
 
+function getOptionalFiniteControlNumber(rawValue) {
+  if (
+    rawValue === null ||
+    rawValue === undefined ||
+    (typeof rawValue === 'string' && rawValue.trim() === '')
+  ) {
+    return null;
+  }
+  const value = Number(rawValue);
+  return Number.isFinite(value) ? value : null;
+}
+
 function getDesktopPinClimateValue(entity) {
-  const currentTemp = Number(entity?.attributes?.current_temperature);
-  const targetTemp = Number(entity?.attributes?.temperature);
+  const capabilities = getDesktopPinCapabilities(entity);
+  const currentTemp = getOptionalFiniteControlNumber(entity?.attributes?.current_temperature);
+  const targetTemp = getOptionalFiniteControlNumber(entity?.attributes?.temperature);
   const interaction = getDesktopPinControlInteraction(entity?.entity_id);
-  const targetValue = Number(interaction?.value);
+  const targetValue = getOptionalFiniteControlNumber(interaction?.value);
+  const minTemp = getOptionalFiniteControlNumber(entity?.attributes?.min_temp);
+  const maxTemp = getOptionalFiniteControlNumber(entity?.attributes?.max_temp);
   return {
-    currentTemp: Number.isFinite(currentTemp) ? currentTemp : null,
-    targetTemp: Number.isFinite(targetValue)
-      ? targetValue
-      : Number.isFinite(targetTemp)
-        ? targetTemp
-        : Number.isFinite(currentTemp)
-          ? currentTemp
-          : 20,
+    currentTemp,
+    targetTemp: targetValue !== null ? targetValue : targetTemp !== null ? targetTemp : null,
     mode: interaction?.mode || entity?.state || 'off',
-    unit: entity?.attributes?.unit_of_measurement || '°',
-    minTemp: Number.isFinite(Number(entity?.attributes?.min_temp))
-      ? Number(entity.attributes.min_temp)
-      : 10,
-    maxTemp: Number.isFinite(Number(entity?.attributes?.max_temp))
-      ? Number(entity.attributes.max_temp)
-      : 30,
+    unit: entity?.attributes?.temperature_unit || entity?.attributes?.unit_of_measurement || '°',
+    minTemp,
+    maxTemp,
     targetTempStep:
       Number.isFinite(Number(entity?.attributes?.target_temp_step)) &&
       Number(entity.attributes.target_temp_step) > 0
         ? Number(entity.attributes.target_temp_step)
         : 0.5,
-    modes:
-      Array.isArray(entity?.attributes?.hvac_modes) && entity.attributes.hvac_modes.length
-        ? entity.attributes.hvac_modes
-        : ['off', 'heat', 'cool', 'auto'],
+    canSetTemperature: !!capabilities.canSetTemperature,
+    modes: capabilities.hvacModes || [],
   };
 }
 
@@ -3866,22 +3933,28 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   const denseVariant = root.dataset.denseVariant || 'standard';
   const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = mode || 'off';
+  const hasTargetRange =
+    Number.isFinite(targetTemp) &&
+    Number.isFinite(climateValue.minTemp) &&
+    Number.isFinite(climateValue.maxTemp);
   root.style.setProperty(
     '--desktop-pin-progress',
-    String(
-      Math.max(
-        0,
-        Math.min(
-          1,
-          (targetTemp - climateValue.minTemp) /
-            Math.max(1, climateValue.maxTemp - climateValue.minTemp)
+    hasTargetRange
+      ? String(
+          Math.max(
+            0,
+            Math.min(
+              1,
+              (targetTemp - climateValue.minTemp) /
+                Math.max(1, climateValue.maxTemp - climateValue.minTemp)
+            )
+          )
         )
-      )
-    )
+      : '0'
   );
 
   const target = root.querySelector('.desktop-pin-climate-target-value');
-  if (target) target.textContent = `${targetTemp}${unit}`;
+  if (target) target.textContent = targetTemp == null ? '--' : `${targetTemp}${unit}`;
 
   const current = root.querySelector('.desktop-pin-climate-current-value');
   if (current) current.textContent = currentTemp == null ? '--' : `${currentTemp}${unit}`;
@@ -3893,7 +3966,14 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
-  if (headerKpi) headerKpi.textContent = `${targetTemp}${unit}`;
+  if (headerKpi) {
+    headerKpi.textContent =
+      targetTemp == null
+        ? currentTemp == null
+          ? '--'
+          : `${currentTemp}${unit}`
+        : `${targetTemp}${unit}`;
+  }
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) {
@@ -3930,12 +4010,19 @@ function createDesktopPinClimateControlElement(entity) {
       : `Now ${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`;
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: climateStatus,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${
+          climateValue.targetTemp == null
+            ? climateValue.currentTemp == null
+              ? '--'
+              : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`
+            : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`
+        }</div>`,
       })}
       <div class="desktop-pin-panel-body">
         ${
@@ -3948,24 +4035,30 @@ function createDesktopPinClimateControlElement(entity) {
             </div>
             <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis">
               <span class="desktop-pin-panel-stat-label">Target</span>
-              <span class="desktop-pin-climate-target-value">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</span>
+              <span class="desktop-pin-climate-target-value">${climateValue.targetTemp == null ? '--' : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
             </div>
           </div>
         `
             : `
           <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis desktop-pin-climate-target-stat">
             <span class="desktop-pin-panel-stat-label">Target</span>
-            <span class="desktop-pin-climate-target-value">${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}</span>
+            <span class="desktop-pin-climate-target-value">${climateValue.targetTemp == null ? '--' : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
           </div>
         `
         }
         ${renderProfile.showCompactCurrent ? `<div class="desktop-pin-panel-caption desktop-pin-climate-inline-copy">${currentSummary}</div>` : ''}
-        <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
+        ${
+          climateValue.canSetTemperature
+            ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Cool</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="${climateValue.targetTempStep}" value="${climateValue.targetTemp}" aria-label="Target temperature" />
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Warm</span>' : ''}
-        </div>
-        <div class="desktop-pin-panel-actions desktop-pin-climate-modes">
+        </div>`
+            : ''
+        }
+        ${
+          renderProfile.modesToShow.length
+            ? `<div class="desktop-pin-panel-actions desktop-pin-climate-modes">
           ${renderProfile.modesToShow
             .map((mode) =>
               createDesktopPinButtonMarkup({
@@ -3978,7 +4071,9 @@ function createDesktopPinClimateControlElement(entity) {
               })
             )
             .join('')}
-        </div>
+        </div>`
+            : ''
+        }
       </div>
     </div>
   `;
@@ -4038,7 +4133,10 @@ function updateExistingDesktopPinClimateControl(root, entity) {
     return false;
   }
   const renderProfile = getDesktopPinClimateRenderProfile(entity);
-  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+  if (
+    (root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant ||
+    root.dataset.capabilitySignature !== getDesktopPinCapabilitySignature(entity)
+  ) {
     root.replaceWith(createDesktopPinClimateControlElement(entity));
     return true;
   }
@@ -4051,6 +4149,7 @@ function updateExistingDesktopPinClimateControl(root, entity) {
 }
 
 function getDesktopPinFanValue(entity) {
+  const capabilities = getDesktopPinCapabilities(entity);
   const interaction = getDesktopPinControlInteraction(entity?.entity_id);
   const interactionValue = Number(interaction?.value);
   const rawPercent = Number(entity?.attributes?.percentage);
@@ -4060,12 +4159,13 @@ function getDesktopPinFanValue(entity) {
       ? Math.max(0, Math.min(100, Math.round(rawPercent)))
       : 0;
   const isOn = interaction?.active ? percentage > 0 : entity?.state === 'on' || percentage > 0;
-  return { percentage, isOn };
+  return { percentage, isOn, canSetPercentage: !!capabilities.canSetPercentage };
 }
 
 function applyDesktopPinFanVisualState(root, fanValue) {
   if (!root || !fanValue) return;
   const { percentage, isOn } = fanValue;
+  const canSetPercentage = root.dataset.canSetPercentage === 'true';
   const denseVariant = root.dataset.denseVariant || 'standard';
   const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = isOn ? 'on' : 'off';
@@ -4075,10 +4175,11 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   );
 
   const headerKpi = root.querySelector('.desktop-pin-fan-kpi');
-  if (headerKpi) headerKpi.textContent = isOn ? `${percentage}%` : 'Off';
+  if (headerKpi)
+    headerKpi.textContent = isOn ? (canSetPercentage ? `${percentage}%` : 'On') : 'Off';
 
   const meterKpi = root.querySelector('.desktop-pin-fan-value');
-  if (meterKpi) meterKpi.textContent = isOn ? `${percentage}%` : 'Off';
+  if (meterKpi) meterKpi.textContent = isOn ? (canSetPercentage ? `${percentage}%` : 'On') : 'Off';
 
   const spinner = root.querySelector('.desktop-pin-fan-glyph');
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
@@ -4086,7 +4187,9 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status)
     status.textContent = isOn
-      ? `${percentage}% airflow`
+      ? canSetPercentage
+        ? `${percentage}% airflow`
+        : 'On'
       : compactStatus
         ? 'Ready'
         : 'Ready to start';
@@ -4105,6 +4208,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
 }
 
 function queueDesktopPinFanPercentage(entity, percentage) {
+  if (!getDesktopPinCapabilities(entity).canSetPercentage) return;
   queueDesktopPinServiceCall(
     `fan:${entity.entity_id}:percentage`,
     () => {
@@ -4132,6 +4236,7 @@ function queueDesktopPinFanPercentage(entity, percentage) {
 
 function createDesktopPinFanControlElement(entity) {
   const fanValue = getDesktopPinFanValue(entity);
+  const capabilities = getDesktopPinCapabilities(entity);
   const renderProfile = getDesktopPinFanRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-fan-control'], {
     domain: 'fan',
@@ -4140,12 +4245,16 @@ function createDesktopPinFanControlElement(entity) {
   });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.canSetPercentage = capabilities.canSetPercentage ? 'true' : 'false';
+  root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: fanValue.isOn
-          ? `${fanValue.percentage}% airflow`
+          ? capabilities.canSetPercentage
+            ? `${fanValue.percentage}% airflow`
+            : 'On'
           : renderProfile.isDenseTight || renderProfile.isDenseMicro
             ? 'Ready'
             : 'Ready to start',
@@ -4158,16 +4267,18 @@ function createDesktopPinFanControlElement(entity) {
               active: fanValue.isOn,
               title: 'Toggle fan',
             })}
-            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${fanValue.isOn ? `${fanValue.percentage}%` : 'Off'}</div>` : ''}
+            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : 'On') : 'Off'}</div>` : ''}
           </div>
         `,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
-          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${fanValue.isOn ? `${fanValue.percentage}%` : 'Off'}</div>
+          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : 'On') : 'Off'}</div>
         </div>
-        <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
+        ${
+          capabilities.canSetPercentage
+            ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Still</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-fan-slider" type="range" min="0" max="100" step="1" value="${fanValue.percentage}" aria-label="Fan speed" />
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Fast</span>' : ''}
@@ -4180,7 +4291,9 @@ function createDesktopPinFanControlElement(entity) {
           `
             )
             .join('')}
-        </div>
+        </div>`
+            : ''
+        }
       </div>
     </div>
   `;
@@ -4220,7 +4333,10 @@ function updateExistingDesktopPinFanControl(root, entity) {
     return false;
   }
   const renderProfile = getDesktopPinFanRenderProfile();
-  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+  if (
+    (root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant ||
+    root.dataset.capabilitySignature !== getDesktopPinCapabilitySignature(entity)
+  ) {
     root.replaceWith(createDesktopPinFanControlElement(entity));
     return true;
   }
@@ -4251,6 +4367,7 @@ function getDesktopPinCoverValue(entity) {
 
 function applyDesktopPinCoverVisualState(root, coverValue) {
   if (!root || !coverValue) return;
+  const canSetPosition = root.dataset.canSetPosition === 'true';
   root.dataset.state = coverValue.state || 'closed';
   root.style.setProperty(
     '--desktop-pin-progress',
@@ -4258,16 +4375,20 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   );
 
   const value = root.querySelector('.desktop-pin-cover-position');
-  if (value) value.textContent = `${coverValue.position}%`;
+  if (value)
+    value.textContent = canSetPosition
+      ? `${coverValue.position}%`
+      : formatDesktopPinClimateModeLabel(coverValue.state || 'closed');
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status)
-    status.textContent =
-      coverValue.position <= 0
+    status.textContent = canSetPosition
+      ? coverValue.position <= 0
         ? 'Closed'
         : coverValue.position >= 100
           ? 'Open'
-          : `${coverValue.position}% open`;
+          : `${coverValue.position}% open`
+      : formatDesktopPinClimateModeLabel(coverValue.state || 'closed');
 
   const slider = root.querySelector('.desktop-pin-cover-slider');
   if (slider && slider.value !== String(coverValue.position)) {
@@ -4281,6 +4402,7 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
 }
 
 function queueDesktopPinCoverPosition(entity, position) {
+  if (!getDesktopPinCapabilities(entity).canSetPosition) return;
   queueDesktopPinServiceCall(
     `cover:${entity.entity_id}:position`,
     () => {
@@ -4298,6 +4420,12 @@ function queueDesktopPinCoverPosition(entity, position) {
 
 function createDesktopPinCoverControlElement(entity) {
   const coverValue = getDesktopPinCoverValue(entity);
+  const capabilities = getDesktopPinCapabilities(entity);
+  const availableActions = [
+    capabilities.canClose ? { action: 'close_cover', label: 'Close' } : null,
+    capabilities.canStop ? { action: 'stop_cover', label: 'Stop' } : null,
+    capabilities.canOpen ? { action: 'open_cover', label: 'Open' } : null,
+  ].filter(Boolean);
   const renderProfile = getDesktopPinCoverRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-cover-control'], {
     domain: 'cover',
@@ -4306,21 +4434,28 @@ function createDesktopPinCoverControlElement(entity) {
   });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.canSetPosition = capabilities.canSetPosition ? 'true' : 'false';
+  root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText:
-          coverValue.position <= 0
+        statusText: capabilities.canSetPosition
+          ? coverValue.position <= 0
             ? 'Closed'
             : coverValue.position >= 100
               ? 'Open'
-              : `${coverValue.position}% open`,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>`,
+              : `${coverValue.position}% open`
+          : formatDesktopPinClimateModeLabel(coverValue.state || 'closed'),
+        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${
+          capabilities.canSetPosition
+            ? `${coverValue.position}%`
+            : formatDesktopPinClimateModeLabel(coverValue.state || 'closed')
+        }</div>`,
       })}
       <div class="desktop-pin-panel-body">
         ${
-          renderProfile.showVisual
+          renderProfile.showVisual && capabilities.canSetPosition
             ? `
           <div class="desktop-pin-cover-visual">
             <div class="desktop-pin-cover-frame">
@@ -4330,16 +4465,27 @@ function createDesktopPinCoverControlElement(entity) {
         `
             : ''
         }
-        <div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
+        ${
+          capabilities.canSetPosition
+            ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Closed</span>' : ''}
           <input class="desktop-pin-panel-slider desktop-pin-cover-slider" type="range" min="0" max="100" step="1" value="${coverValue.position}" aria-label="Cover position" />
           ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Open</span>' : ''}
-        </div>
-        <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="close_cover">Close</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="stop_cover">Stop</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="open_cover">Open</button>
-        </div>
+        </div>`
+            : ''
+        }
+        ${
+          availableActions.length
+            ? `<div class="desktop-pin-panel-actions">
+          ${availableActions
+            .map(
+              ({ action, label }) =>
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}">${label}</button>`
+            )
+            .join('')}
+        </div>`
+            : '<div class="desktop-pin-panel-caption">No position or movement controls advertised</div>'
+        }
       </div>
     </div>
   `;
@@ -4400,7 +4546,10 @@ function updateExistingDesktopPinCoverControl(root, entity) {
     return false;
   }
   const renderProfile = getDesktopPinCoverRenderProfile();
-  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+  if (
+    (root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant ||
+    root.dataset.capabilitySignature !== getDesktopPinCapabilitySignature(entity)
+  ) {
     root.replaceWith(createDesktopPinCoverControlElement(entity));
     return true;
   }
@@ -4471,6 +4620,21 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
 
 function createDesktopPinMediaControlElement(entity) {
   const mediaValue = getDesktopPinMediaValue(entity);
+  const capabilities = getDesktopPinCapabilities(entity);
+  const canTogglePlayback = mediaValue.playing ? capabilities.canPause : capabilities.canPlay;
+  const mediaActions = [
+    capabilities.canPreviousTrack
+      ? { action: 'previous_track', label: 'Prev', className: '' }
+      : null,
+    canTogglePlayback
+      ? {
+          action: mediaValue.playing ? 'pause' : 'play',
+          label: mediaValue.playing ? 'Pause' : 'Play',
+          className: 'desktop-pin-media-play',
+        }
+      : null,
+    capabilities.canNextTrack ? { action: 'next_track', label: 'Next', className: '' } : null,
+  ].filter(Boolean);
   const renderProfile = getDesktopPinMediaRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-media-control'], {
     domain: 'media_player',
@@ -4479,6 +4643,8 @@ function createDesktopPinMediaControlElement(entity) {
   });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
+  root.dataset.playbackActionAvailable = canTogglePlayback ? 'true' : 'false';
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
@@ -4496,11 +4662,18 @@ function createDesktopPinMediaControlElement(entity) {
         <div class="desktop-pin-panel-progress">
           <div class="desktop-pin-panel-progress-fill" style="width: ${mediaValue.progress}%"></div>
         </div>
-        <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action" type="button" data-action="previous_track">Prev</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action desktop-pin-media-play" type="button" data-action="${mediaValue.playing ? 'pause' : 'play'}" data-active="${mediaValue.playing ? 'true' : 'false'}" aria-pressed="${mediaValue.playing ? 'true' : 'false'}">${mediaValue.playing ? 'Pause' : 'Play'}</button>
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action" type="button" data-action="next_track">Next</button>
-        </div>
+        ${
+          mediaActions.length
+            ? `<div class="desktop-pin-panel-actions">
+          ${mediaActions
+            .map(
+              ({ action, label, className }) =>
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action ${className}" type="button" data-action="${action}" data-active="${action === 'pause' ? 'true' : 'false'}" aria-pressed="${action === 'pause' ? 'true' : 'false'}">${label}</button>`
+            )
+            .join('')}
+        </div>`
+            : '<div class="desktop-pin-panel-caption">No playback controls advertised</div>'
+        }
       </div>
     </div>
   `;
@@ -4520,7 +4693,14 @@ function updateExistingDesktopPinMediaControl(root, entity) {
     return false;
   }
   const renderProfile = getDesktopPinMediaRenderProfile();
-  if ((root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant) {
+  const capabilities = getDesktopPinCapabilities(entity);
+  const canTogglePlayback =
+    entity.state === 'playing' ? capabilities.canPause : capabilities.canPlay;
+  if (
+    (root.dataset.denseVariant || 'standard') !== renderProfile.denseVariant ||
+    root.dataset.capabilitySignature !== getDesktopPinCapabilitySignature(entity) ||
+    root.dataset.playbackActionAvailable !== (canTogglePlayback ? 'true' : 'false')
+  ) {
     root.replaceWith(createDesktopPinMediaControlElement(entity));
     return true;
   }
@@ -6246,7 +6426,13 @@ function fetchTodoItems(entityId, { force = false } = {}) {
   ) {
     return Promise.resolve(cached.items || []);
   }
-  if (todoItemsPendingByEntity.has(entityId)) return todoItemsPendingByEntity.get(entityId);
+  if (todoItemsPendingByEntity.has(entityId)) {
+    const pendingRequest = todoItemsPendingByEntity.get(entityId);
+    if (!force) return pendingRequest;
+    // A mutation can complete while an older get_items request is still in flight. Let that
+    // request settle, then issue a genuinely fresh read instead of caching its pre-mutation data.
+    return pendingRequest.then(() => fetchTodoItems(entityId, { force: true }));
+  }
 
   todoItemsCacheByEntity.set(entityId, {
     ...(cached || {}),
@@ -7416,16 +7602,40 @@ function showSensorDetails(entity) {
   }
 }
 
+function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' } = {}) {
+  if (!modal) return;
+  dialogModalIdCounter += 1;
+  const titleElement = modal.querySelector('h1, h2, h3');
+  if (titleElement) {
+    if (!titleElement.id) {
+      titleElement.id = `${titleIdPrefix}-${dialogModalIdCounter}`;
+    }
+    modal.setAttribute('aria-labelledby', titleElement.id);
+  }
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+
+  if (typeof uiUtils.trapFocus === 'function') {
+    setTimeout(() => {
+      if (modal.isConnected) uiUtils.trapFocus(modal);
+    }, 0);
+  }
+}
+
+function releaseAccessibleDialogModal(modal) {
+  if (typeof uiUtils.releaseFocusTrap === 'function') {
+    uiUtils.releaseFocusTrap(modal);
+  }
+}
+
 function createEntityDetailModal({ className, title }) {
   const modal = document.createElement('div');
   modal.className = `modal ${className}`;
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
   modal.innerHTML = `
     <div class="modal-content entity-detail-modal-content">
       <div class="modal-header">
         <h2></h2>
-        <button class="close-btn" type="button">×</button>
+        <button class="close-btn" type="button" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
       </div>
       <div class="modal-body"></div>
     </div>
@@ -7433,13 +7643,26 @@ function createEntityDetailModal({ className, title }) {
   const titleEl = modal.querySelector('h2');
   if (titleEl) titleEl.textContent = title;
 
-  const closeModal = () => modal.remove();
+  const closeModal = () => {
+    releaseAccessibleDialogModal(modal);
+    modal.remove();
+  };
   const closeBtn = modal.querySelector('.close-btn');
   if (closeBtn) closeBtn.onclick = closeModal;
+  modal.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeModal();
+    }
+  });
   modal.onclick = (event) => {
     if (event.target === modal) closeModal();
   };
   document.body.appendChild(modal);
+  activateAccessibleDialogModal(modal, { titleIdPrefix: 'entity-detail-title' });
+  if (typeof uiUtils.trapFocus !== 'function') {
+    closeBtn?.focus();
+  }
   return modal;
 }
 
@@ -7845,20 +8068,11 @@ function setupMediaPlayerControls(div, entity) {
       // Show artwork when media info is present (playing or paused with media loaded)
       // Only hide when idle/off or no media info available
       const hasMediaInfo = mediaTitle && !isOff;
-      if (hasMediaInfo && artworkUrl) {
-        // Use ha:// protocol to proxy artwork (handles external CDNs and HA paths with auth)
-        const baseUrl = state.CONFIG.homeAssistant.url.replace(/\/$/, '');
-
-        // Determine the full URL to encode
-        let urlToEncode;
-        if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
-          // Already a full URL (external CDN like Spotify, YouTube)
-          urlToEncode = artworkUrl;
-        } else {
-          // Relative path - construct full HA URL
-          const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : '/' + artworkUrl;
-          urlToEncode = baseUrl + imgUrl;
-        }
+      const normalizedArtworkTarget = normalizeMediaArtworkTarget(artworkUrl);
+      if (hasMediaInfo && normalizedArtworkTarget) {
+        // Keep HA-relative paths relative. The main-process protocol uses that boundary to decide
+        // whether the Home Assistant bearer token should be attached.
+        const urlToEncode = normalizedArtworkTarget;
 
         // Encode URL in base64 for the ha:// protocol
         const encodedUrl = utils.base64Encode(urlToEncode);
@@ -8143,7 +8357,9 @@ function showMediaDetail(entity) {
     const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
     const initialTimeline = getMediaTimeline(entity);
-    const seekControlsDisabled = canSeekMedia(entity) ? '' : ' disabled aria-disabled="true"';
+    const mediaCapabilities = getDesktopPinCapabilities(entity);
+    const supportsSeek = canSeekMedia(entity);
+    const supportsAnyPlaybackToggle = mediaCapabilities.canPlay || mediaCapabilities.canPause;
     const mediaAttributes = entity.attributes || {};
     const supportsVolumeSet = uiUtils.hasSupportedFeature(
       mediaAttributes.supported_features,
@@ -8207,7 +8423,7 @@ function showMediaDetail(entity) {
       <div class="modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="media-close">×</button>
+          <button class="close-btn" id="media-close" type="button" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div class="media-detail-info">
@@ -8225,11 +8441,19 @@ function showMediaDetail(entity) {
           </div>
           ${volumeControlsMarkup}
           <div class="media-detail-controls">
-            <button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous"></button>
-            <button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="Rewind 10 seconds" aria-label="Rewind 10 seconds"${seekControlsDisabled}>-10</button>
-            <button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="Play/Pause"></button>
-            <button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="Forward 10 seconds" aria-label="Forward 10 seconds"${seekControlsDisabled}>+10</button>
-            <button class="btn media-detail-next-btn" data-action="next_track" title="Next"></button>
+            ${mediaCapabilities.canPreviousTrack ? '<button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous" aria-label="Previous track"></button>' : ''}
+            ${supportsSeek ? '<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="Rewind 10 seconds" aria-label="Rewind 10 seconds">-10</button>' : ''}
+            ${supportsAnyPlaybackToggle ? '<button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="Play/Pause" aria-label="Play or pause"></button>' : ''}
+            ${supportsSeek ? '<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="Forward 10 seconds" aria-label="Forward 10 seconds">+10</button>' : ''}
+            ${mediaCapabilities.canNextTrack ? '<button class="btn media-detail-next-btn" data-action="next_track" title="Next" aria-label="Next track"></button>' : ''}
+            ${
+              !mediaCapabilities.canPreviousTrack &&
+              !supportsSeek &&
+              !supportsAnyPlaybackToggle &&
+              !mediaCapabilities.canNextTrack
+                ? '<span class="control-capability-note">This media player does not advertise transport controls.</span>'
+                : ''
+            }
           </div>
         </div>
         <div class="modal-footer">
@@ -8239,6 +8463,7 @@ function showMediaDetail(entity) {
     `;
 
     document.body.appendChild(modal);
+    activateAccessibleDialogModal(modal, { titleIdPrefix: 'media-detail-title' });
 
     // Set SVG icons for media controls
     // setIconContent already imported at top
@@ -8306,13 +8531,19 @@ function showMediaDetail(entity) {
     const updatePlayPauseBtn = () => {
       const currentEntity = state.STATES[entity.entity_id];
       const isCurrentlyPlaying = currentEntity?.state === 'playing';
+      const currentCapabilities = getDesktopPinCapabilities(currentEntity || entity);
+      const canTogglePlayback = isCurrentlyPlaying
+        ? currentCapabilities.canPause
+        : currentCapabilities.canPlay;
       const pp = modal.querySelector('.play-pause-btn');
       if (pp) {
         // setIconContent already imported at top
         setIconContent(pp, isCurrentlyPlaying ? 'pause' : 'play', { size: 24 });
         pp.classList.toggle('playing', isCurrentlyPlaying);
+        pp.disabled = !canTogglePlayback;
+        pp.setAttribute('aria-disabled', canTogglePlayback ? 'false' : 'true');
       }
-      return isCurrentlyPlaying;
+      return { canTogglePlayback, isCurrentlyPlaying };
     };
 
     modal.addEventListener('click', (e) => {
@@ -8326,8 +8557,9 @@ function showMediaDetail(entity) {
           deltaSeconds: Number(btn.dataset.seekDelta),
         });
       } else if (action === 'play_pause') {
-        const nowPlaying = updatePlayPauseBtn();
-        callMediaPlayerService(entity.entity_id, nowPlaying ? 'pause' : 'play');
+        const { canTogglePlayback, isCurrentlyPlaying } = updatePlayPauseBtn();
+        if (!canTogglePlayback) return;
+        callMediaPlayerService(entity.entity_id, isCurrentlyPlaying ? 'pause' : 'play');
         // Optimistically update UI
         setTimeout(() => updatePlayPauseBtn(), 100);
       }
@@ -8370,12 +8602,18 @@ function showMediaDetail(entity) {
     }, 500);
 
     // Close handlers
+    let isClosing = false;
     const closeModal = () => {
+      if (isClosing) return;
+      isClosing = true;
       modal.classList.add('modal-closing');
       if (tick) clearInterval(tick);
       if (updateInterval) clearInterval(updateInterval);
       if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
-      setTimeout(() => modal.remove(), 150);
+      setTimeout(() => {
+        releaseAccessibleDialogModal(modal);
+        modal.remove();
+      }, 150);
     };
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
     modal.addEventListener('keydown', (e) => {
@@ -8398,6 +8636,7 @@ function showMediaDetail(entity) {
     } else if (progressFill) {
       progressFill.style.width = '0%';
     }
+    updatePlayPauseBtn();
     updateVolumeControls();
     startTick();
 
@@ -8486,11 +8725,16 @@ function callMediaPlayerService(entityId, action, options = {}) {
     }
 
     if (serviceCall) {
-      serviceCall.catch((error) => handleServiceError(error, entityName));
+      return serviceCall.catch((error) => {
+        handleServiceError(error, entityName);
+        return null;
+      });
     }
+    return undefined;
   } catch (error) {
     console.error('Error calling media player service:', error);
     uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
+    return undefined;
   }
 }
 
@@ -8637,9 +8881,14 @@ function toggleEntity(entity) {
       case 'lock':
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
-      case 'cover':
-        service = entity.state === 'open' ? 'close_cover' : 'open_cover';
+      case 'cover': {
+        const capabilities = getDesktopPinCapabilities(entity);
+        const shouldClose = entity.state === 'open' || entity.state === 'opening';
+        if (shouldClose && !capabilities.canClose) return;
+        if (!shouldClose && !capabilities.canOpen) return;
+        service = shouldClose ? 'close_cover' : 'open_cover';
         break;
+      }
       case 'scene':
       case 'script':
         service = 'turn_on';
@@ -8690,13 +8939,20 @@ function toggleEntity(entity) {
   }
 }
 
+function toggleTimerEntity(entity) {
+  if (!entity?.entity_id?.startsWith('timer.')) return;
+  const service = entity.state === 'active' ? 'pause' : 'start';
+  websocket
+    .callService('timer', service, { entity_id: entity.entity_id })
+    .catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
+}
+
 function executeEntityPrimaryAction(entity, options = {}) {
   try {
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
     if (!liveEntity?.entity_id) return;
 
     const domain = getEntityDomain(liveEntity.entity_id);
-    const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
 
     emitUiDebug('entity.primary_action', {
       entityId: liveEntity.entity_id,
@@ -8711,7 +8967,14 @@ function executeEntityPrimaryAction(entity, options = {}) {
     }
 
     if (domain === 'media_player') {
-      showMediaDetail(liveEntity);
+      const capabilities = getDesktopPinCapabilities(liveEntity);
+      const action = liveEntity.state === 'playing' ? 'pause' : 'play';
+      if (
+        (action === 'pause' && capabilities.canPause) ||
+        (action === 'play' && capabilities.canPlay)
+      ) {
+        callMediaPlayerService(liveEntity.entity_id, action);
+      }
       return;
     }
 
@@ -8720,8 +8983,13 @@ function executeEntityPrimaryAction(entity, options = {}) {
       return;
     }
 
-    if (domain === 'sensor' && !isTimer) {
+    if (domain === 'sensor') {
       showSensorDetails(liveEntity);
+      return;
+    }
+
+    if (domain === 'timer') {
+      toggleTimerEntity(liveEntity);
       return;
     }
 
@@ -8945,15 +9213,16 @@ function updateWeatherFromHA() {
     } else {
       // Fall back to HA global unit system
       const haWindUnit = state.UNIT_SYSTEM?.wind_speed || 'm/s';
+      const normalizedWindUnit = String(haWindUnit).trim().toLowerCase();
 
-      if (haWindUnit === 'mph') {
-        // Imperial: display as-is in mph
-        windSpeed = Math.round(windSpeed);
-        windUnit = 'mph';
-      } else {
-        // Metric: HA uses m/s but display km/h for better UX
-        windSpeed = Math.round(windSpeed * 3.6); // m/s to km/h
+      if (normalizedWindUnit === 'm/s' || normalizedWindUnit === 'mps') {
+        windSpeed = Math.round(windSpeed * 3.6);
         windUnit = 'km/h';
+      } else {
+        // Home Assistant already reports the value in its configured unit. Preserve km/h, mph,
+        // knots, ft/s, and future units instead of treating every non-mph value as m/s.
+        windSpeed = Math.round(windSpeed);
+        windUnit = haWindUnit;
       }
     }
 
@@ -9044,6 +9313,8 @@ function populateWeatherEntitiesList() {
     const list = document.getElementById('weather-entities-list');
     const currentNameEl = document.getElementById('current-weather-name');
     if (!list) return;
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', t('Weather entities'));
 
     const weatherEntities = Object.values(state.STATES || {})
       .filter((e) => e.entity_id.startsWith('weather.'))
@@ -9096,6 +9367,9 @@ function populateWeatherEntitiesList() {
 
       const item = document.createElement('div');
       item.className = 'entity-item' + (isSelected ? ' selected' : '');
+      item.setAttribute('role', 'option');
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
 
       const icon = utils.getEntityIcon(entity);
       const displayName = utils.getEntityDisplayName(entity);
@@ -9115,6 +9389,11 @@ function populateWeatherEntitiesList() {
       item.onclick = () => {
         selectWeatherEntity(entityId);
       };
+      item.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        selectWeatherEntity(entityId);
+      });
 
       item.style.cursor = 'pointer';
 
@@ -9161,18 +9440,17 @@ async function selectWeatherEntity(entityId) {
   }
 }
 
+function normalizeMediaArtworkTarget(artworkUrl) {
+  const normalized = typeof artworkUrl === 'string' ? artworkUrl.trim() : '';
+  if (!normalized) return null;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
 function buildMediaArtworkProxyUrl(artworkUrl) {
   if (!artworkUrl || typeof artworkUrl !== 'string') return null;
-  const baseUrl = state.CONFIG?.homeAssistant?.url?.replace(/\/$/, '');
-  if (!baseUrl) return null;
-
-  let urlToEncode;
-  if (artworkUrl.startsWith('http://') || artworkUrl.startsWith('https://')) {
-    urlToEncode = artworkUrl;
-  } else {
-    const imgUrl = artworkUrl.startsWith('/') ? artworkUrl : `/${artworkUrl}`;
-    urlToEncode = baseUrl + imgUrl;
-  }
+  const urlToEncode = normalizeMediaArtworkTarget(artworkUrl);
+  if (!urlToEncode) return null;
 
   const encodedUrl = utils.base64Encode(urlToEncode);
   const cacheBuster = Math.floor(Date.now() / 30000);
@@ -9625,7 +9903,7 @@ function showBrightnessSlider(light) {
       <div class="modal-content brightness-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="brightness-close" title="Close">×</button>
+          <button class="close-btn" id="brightness-close" type="button" title="Close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="brightness-content">
@@ -9663,6 +9941,7 @@ function showBrightnessSlider(light) {
       </div>
     `;
     document.body.appendChild(modal);
+    activateAccessibleDialogModal(modal, { titleIdPrefix: 'brightness-title' });
 
     const slider = modal.querySelector('#brightness-slider');
     const valueLarge = modal.querySelector('#brightness-value-large');
@@ -9678,6 +9957,11 @@ function showBrightnessSlider(light) {
 
     // Track current light state
     let lightIsOn = light.state === 'on';
+    let confirmedLightIsOn = lightIsOn;
+    let confirmedBrightness = currentBrightness;
+    let confirmedColorTemp = currentColorTemp;
+    let confirmedColorHex = currentColorHex;
+    let brightnessDebounceTimer;
     let colorTempDebounceTimer;
     let colorDebounceTimer;
 
@@ -9690,11 +9974,18 @@ function showBrightnessSlider(light) {
     updateTurnButton();
 
     // Close handlers
+    let isClosing = false;
     const closeModal = () => {
+      if (isClosing) return;
+      isClosing = true;
       modal.classList.add('modal-closing');
+      if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
-      setTimeout(() => modal.remove(), 200);
+      setTimeout(() => {
+        releaseAccessibleDialogModal(modal);
+        modal.remove();
+      }, 200);
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -9704,12 +9995,6 @@ function showBrightnessSlider(light) {
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
-
-    // Keep focus within modal (basic)
-    setTimeout(() => {
-      const focusable = modal.querySelector('.brightness-slider') || closeBtn || cancelBtn;
-      if (focusable && focusable.focus) focusable.focus();
-    }, 0);
 
     // Update icon and accent based on brightness
     const updateIconAndAccent = (value) => {
@@ -9734,18 +10019,30 @@ function showBrightnessSlider(light) {
 
     // Slider behavior with debounce
     if (slider) {
-      let debounceTimer;
       const applyValue = (value) => {
         if (valueLarge) valueLarge.textContent = `${value}%`;
         updateIconAndAccent(value);
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
+        clearTimeout(brightnessDebounceTimer);
+        brightnessDebounceTimer = setTimeout(() => {
           const brightness = Math.round((value / 100) * 255);
-          if (brightness > 0) {
-            websocket.callService('light', 'turn_on', { entity_id: light.entity_id, brightness });
-          } else {
-            websocket.callService('light', 'turn_off', { entity_id: light.entity_id });
-          }
+          const nextIsOn = brightness > 0;
+          const service = nextIsOn ? 'turn_on' : 'turn_off';
+          const serviceData = nextIsOn
+            ? { entity_id: light.entity_id, brightness }
+            : { entity_id: light.entity_id };
+          callServiceWithUiRollback(light, 'light', service, serviceData, () => {
+            lightIsOn = confirmedLightIsOn;
+            slider.value = String(confirmedBrightness);
+            if (valueLarge) valueLarge.textContent = `${confirmedBrightness}%`;
+            updateIconAndAccent(confirmedBrightness);
+            updateTurnButton();
+          }).then(({ ok }) => {
+            if (!ok) return;
+            confirmedBrightness = value;
+            confirmedLightIsOn = nextIsOn;
+            lightIsOn = nextIsOn;
+            updateTurnButton();
+          });
         }, 120);
       };
       slider.addEventListener('input', (e) => {
@@ -9778,12 +10075,27 @@ function showBrightnessSlider(light) {
         if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
         clearTimeout(colorTempDebounceTimer);
         colorTempDebounceTimer = setTimeout(() => {
-          websocket.callService('light', 'turn_on', {
-            entity_id: light.entity_id,
-            color_temp_kelvin: kelvin,
-          });
           lightIsOn = true;
           updateTurnButton();
+          callServiceWithUiRollback(
+            light,
+            'light',
+            'turn_on',
+            {
+              entity_id: light.entity_id,
+              color_temp_kelvin: kelvin,
+            },
+            () => {
+              lightIsOn = confirmedLightIsOn;
+              colorTempSlider.value = String(confirmedColorTemp);
+              if (colorTempValue) colorTempValue.textContent = `${confirmedColorTemp}K`;
+              updateTurnButton();
+            }
+          ).then(({ ok }) => {
+            if (!ok) return;
+            confirmedColorTemp = kelvin;
+            confirmedLightIsOn = true;
+          });
         }, 150);
       });
     }
@@ -9794,12 +10106,26 @@ function showBrightnessSlider(light) {
       if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
       clearTimeout(colorDebounceTimer);
       colorDebounceTimer = setTimeout(() => {
-        websocket.callService('light', 'turn_on', {
-          entity_id: light.entity_id,
-          rgb_color: [rgb.r, rgb.g, rgb.b],
-        });
         lightIsOn = true;
         updateTurnButton();
+        callServiceWithUiRollback(
+          light,
+          'light',
+          'turn_on',
+          {
+            entity_id: light.entity_id,
+            rgb_color: [rgb.r, rgb.g, rgb.b],
+          },
+          () => {
+            lightIsOn = confirmedLightIsOn;
+            if (colorPicker) colorPicker.value = confirmedColorHex;
+            updateTurnButton();
+          }
+        ).then(({ ok }) => {
+          if (!ok) return;
+          confirmedColorHex = rgbToHex([rgb.r, rgb.g, rgb.b]);
+          confirmedLightIsOn = true;
+        });
       }, 150);
     };
 
@@ -9818,22 +10144,56 @@ function showBrightnessSlider(light) {
     // Turn off/on button
     if (turnOffBtn) {
       turnOffBtn.onclick = () => {
+        const previousLightIsOn = confirmedLightIsOn;
+        const previousBrightness = confirmedBrightness;
         if (lightIsOn) {
-          websocket.callService('light', 'turn_off', { entity_id: light.entity_id });
           lightIsOn = false;
           if (slider) slider.value = '0';
           if (valueLarge) valueLarge.textContent = '0%';
           updateIconAndAccent(0);
+          callServiceWithUiRollback(
+            light,
+            'light',
+            'turn_off',
+            { entity_id: light.entity_id },
+            () => {
+              lightIsOn = previousLightIsOn;
+              if (slider) slider.value = String(previousBrightness);
+              if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+              updateIconAndAccent(previousBrightness);
+              updateTurnButton();
+            }
+          ).then(({ ok }) => {
+            if (!ok) return;
+            confirmedLightIsOn = false;
+            confirmedBrightness = 0;
+          });
         } else {
           // Turn on to last brightness or 100%
           const brightness =
             currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
-          websocket.callService('light', 'turn_on', { entity_id: light.entity_id, brightness });
           lightIsOn = true;
           const targetValue = currentBrightness > 0 ? currentBrightness : 100;
           if (slider) slider.value = String(targetValue);
           if (valueLarge) valueLarge.textContent = `${targetValue}%`;
           updateIconAndAccent(targetValue);
+          callServiceWithUiRollback(
+            light,
+            'light',
+            'turn_on',
+            { entity_id: light.entity_id, brightness },
+            () => {
+              lightIsOn = previousLightIsOn;
+              if (slider) slider.value = String(previousBrightness);
+              if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+              updateIconAndAccent(previousBrightness);
+              updateTurnButton();
+            }
+          ).then(({ ok }) => {
+            if (!ok) return;
+            confirmedLightIsOn = true;
+            confirmedBrightness = targetValue;
+          });
         }
         updateTurnButton();
       };
@@ -9850,10 +10210,7 @@ function showBrightnessSlider(light) {
 
 function getClimateControlCapabilities(climateEntity) {
   const attributes = climateEntity?.attributes || {};
-  const finiteAttribute = (name) => {
-    const value = Number(attributes[name]);
-    return Number.isFinite(value) ? value : null;
-  };
+  const finiteAttribute = (name) => getOptionalFiniteControlNumber(attributes[name]);
   const supportedModes = (name) =>
     Array.from(
       new Set(
@@ -9926,7 +10283,7 @@ function showClimateControls(climateEntity) {
       <div class="modal-content climate-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="climate-close" title="Close">×</button>
+          <button class="close-btn" id="climate-close" type="button" title="Close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="climate-content">
@@ -10015,6 +10372,7 @@ function showClimateControls(climateEntity) {
       </div>
     `;
     document.body.appendChild(modal);
+    activateAccessibleDialogModal(modal, { titleIdPrefix: 'climate-title' });
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
@@ -10098,11 +10456,28 @@ function showClimateControls(climateEntity) {
     );
     const fanModeButtons = modal.querySelectorAll('.climate-fan-mode-btn');
     const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
+    let confirmedTargetTemp = targetTemp;
+    let confirmedMode = currentMode;
+    let confirmedFanMode = currentFanMode;
+    let confirmedPresetMode = currentPresetMode;
+    let temperatureDebounceTimer;
+    const setActiveClimateOption = (buttons, value) => {
+      buttons.forEach((button) => {
+        button.classList.toggle('active', button.getAttribute('data-mode') === value);
+      });
+    };
 
     // Close handlers
+    let isClosing = false;
     const closeModal = () => {
+      if (isClosing) return;
+      isClosing = true;
       modal.classList.add('modal-closing');
-      setTimeout(() => modal.remove(), 200);
+      if (temperatureDebounceTimer) clearTimeout(temperatureDebounceTimer);
+      setTimeout(() => {
+        releaseAccessibleDialogModal(modal);
+        modal.remove();
+      }, 200);
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -10115,16 +10490,26 @@ function showClimateControls(climateEntity) {
 
     // Temperature slider behavior with debounce
     if (slider) {
-      let debounceTimer;
       slider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
         if (targetValue) targetValue.textContent = `${value}${tempUnit}`;
 
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          websocket.callService('climate', 'set_temperature', {
-            entity_id: climateEntity.entity_id,
-            temperature: value,
+        clearTimeout(temperatureDebounceTimer);
+        temperatureDebounceTimer = setTimeout(() => {
+          callServiceWithUiRollback(
+            climateEntity,
+            'climate',
+            'set_temperature',
+            {
+              entity_id: climateEntity.entity_id,
+              temperature: value,
+            },
+            () => {
+              slider.value = String(confirmedTargetTemp);
+              if (targetValue) targetValue.textContent = `${confirmedTargetTemp}${tempUnit}`;
+            }
+          ).then(({ ok }) => {
+            if (ok) confirmedTargetTemp = value;
           });
         }, 300);
       });
@@ -10136,13 +10521,20 @@ function showClimateControls(climateEntity) {
         const mode = btn.getAttribute('data-mode');
 
         // Update UI immediately
-        modeButtons.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
+        setActiveClimateOption(modeButtons, mode);
 
         // Call service
-        websocket.callService('climate', 'set_hvac_mode', {
-          entity_id: climateEntity.entity_id,
-          hvac_mode: mode,
+        callServiceWithUiRollback(
+          climateEntity,
+          'climate',
+          'set_hvac_mode',
+          {
+            entity_id: climateEntity.entity_id,
+            hvac_mode: mode,
+          },
+          () => setActiveClimateOption(modeButtons, confirmedMode)
+        ).then(({ ok }) => {
+          if (ok) confirmedMode = mode;
         });
       });
     });
@@ -10150,11 +10542,18 @@ function showClimateControls(climateEntity) {
     fanModeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
-        fanModeButtons.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        websocket.callService('climate', 'set_fan_mode', {
-          entity_id: climateEntity.entity_id,
-          fan_mode: mode,
+        setActiveClimateOption(fanModeButtons, mode);
+        callServiceWithUiRollback(
+          climateEntity,
+          'climate',
+          'set_fan_mode',
+          {
+            entity_id: climateEntity.entity_id,
+            fan_mode: mode,
+          },
+          () => setActiveClimateOption(fanModeButtons, confirmedFanMode)
+        ).then(({ ok }) => {
+          if (ok) confirmedFanMode = mode;
         });
       });
     });
@@ -10162,11 +10561,18 @@ function showClimateControls(climateEntity) {
     presetModeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
-        presetModeButtons.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        websocket.callService('climate', 'set_preset_mode', {
-          entity_id: climateEntity.entity_id,
-          preset_mode: mode,
+        setActiveClimateOption(presetModeButtons, mode);
+        callServiceWithUiRollback(
+          climateEntity,
+          'climate',
+          'set_preset_mode',
+          {
+            entity_id: climateEntity.entity_id,
+            preset_mode: mode,
+          },
+          () => setActiveClimateOption(presetModeButtons, confirmedPresetMode)
+        ).then(({ ok }) => {
+          if (ok) confirmedPresetMode = mode;
         });
       });
     });
@@ -10182,6 +10588,7 @@ function showClimateControls(climateEntity) {
 
 function showFanControls(fanEntity) {
   try {
+    const capabilities = getDesktopPinCapabilities(fanEntity);
     const name = utils.escapeHtml(utils.getEntityDisplayName(fanEntity));
     const currentSpeedValue = Number(fanEntity.attributes.percentage);
     const currentSpeed = Number.isFinite(currentSpeedValue)
@@ -10195,17 +10602,19 @@ function showFanControls(fanEntity) {
       <div class="modal-content fan-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="fan-close" title="Close">×</button>
+          <button class="close-btn" id="fan-close" type="button" title="Close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="fan-content">
             <div class="fan-icon-wrapper">
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
             </div>
-            <div class="fan-speed-value" id="fan-speed-value">${currentSpeed}%</div>
-            <div class="fan-speed-label">Fan Speed</div>
+            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : isOn ? 'On' : 'Off'}</div>
+            <div class="fan-speed-label">${capabilities.canSetPercentage ? 'Fan Speed' : 'State'}</div>
 
-            <div class="fan-slider-wrapper">
+            ${
+              capabilities.canSetPercentage
+                ? `<div class="fan-slider-wrapper">
               <input
                 type="range"
                 min="0"
@@ -10223,7 +10632,9 @@ function showFanControls(fanEntity) {
               <button class="fan-preset-btn" data-speed="33">Low</button>
               <button class="fan-preset-btn" data-speed="66">Medium</button>
               <button class="fan-preset-btn" data-speed="100">High</button>
-            </div>
+            </div>`
+                : '<p class="control-capability-note">This fan does not advertise percentage control.</p>'
+            }
           </div>
         </div>
         <div class="modal-footer">
@@ -10232,6 +10643,7 @@ function showFanControls(fanEntity) {
       </div>
     `;
     document.body.appendChild(modal);
+    activateAccessibleDialogModal(modal, { titleIdPrefix: 'fan-title' });
 
     const slider = modal.querySelector('#fan-slider');
     const speedValue = modal.querySelector('#fan-speed-value');
@@ -10239,11 +10651,20 @@ function showFanControls(fanEntity) {
     const closeBtn = modal.querySelector('#fan-close');
     const cancelBtn = modal.querySelector('#fan-cancel');
     const presetButtons = modal.querySelectorAll('.fan-preset-btn');
+    let confirmedSpeed = currentSpeed;
+    let speedDebounceTimer;
 
     // Close handlers
+    let isClosing = false;
     const closeModal = () => {
+      if (isClosing) return;
+      isClosing = true;
       modal.classList.add('modal-closing');
-      setTimeout(() => modal.remove(), 200);
+      if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
+      setTimeout(() => {
+        releaseAccessibleDialogModal(modal);
+        modal.remove();
+      }, 200);
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -10266,24 +10687,25 @@ function showFanControls(fanEntity) {
 
     // Slider behavior with debounce
     if (slider) {
-      let debounceTimer;
       slider.addEventListener('input', (e) => {
         const speed = parseInt(e.target.value, 10);
         if (speedValue) speedValue.textContent = `${speed}%`;
         updateIcon(speed);
 
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          if (speed > 0) {
-            websocket.callService('fan', 'set_percentage', {
-              entity_id: fanEntity.entity_id,
-              percentage: speed,
-            });
-          } else {
-            websocket.callService('fan', 'turn_off', {
-              entity_id: fanEntity.entity_id,
-            });
-          }
+        clearTimeout(speedDebounceTimer);
+        speedDebounceTimer = setTimeout(() => {
+          const service = speed > 0 ? 'set_percentage' : 'turn_off';
+          const serviceData =
+            speed > 0
+              ? { entity_id: fanEntity.entity_id, percentage: speed }
+              : { entity_id: fanEntity.entity_id };
+          callServiceWithUiRollback(fanEntity, 'fan', service, serviceData, () => {
+            slider.value = String(confirmedSpeed);
+            if (speedValue) speedValue.textContent = `${confirmedSpeed}%`;
+            updateIcon(confirmedSpeed);
+          }).then(({ ok }) => {
+            if (ok) confirmedSpeed = speed;
+          });
         }, 200);
       });
     }
@@ -10310,6 +10732,12 @@ function showFanControls(fanEntity) {
 
 function showCoverControls(coverEntity) {
   try {
+    const capabilities = getDesktopPinCapabilities(coverEntity);
+    const availableActions = [
+      capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: 'Close' } : null,
+      capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: 'Stop' } : null,
+      capabilities.canOpen ? { action: 'open_cover', icon: '⬆', label: 'Open' } : null,
+    ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPositionValue = Number(coverEntity.attributes.current_position);
     const currentPosition = Number.isFinite(currentPositionValue)
@@ -10323,7 +10751,7 @@ function showCoverControls(coverEntity) {
       <div class="modal-content cover-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="cover-close" title="Close">×</button>
+          <button class="close-btn" id="cover-close" type="button" title="Close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="cover-content">
@@ -10333,10 +10761,12 @@ function showCoverControls(coverEntity) {
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
-            <div class="cover-position-value" id="cover-position-value">${currentPosition}%</div>
-            <div class="cover-position-label">Position</div>
+            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : formatDesktopPinClimateModeLabel(coverEntity.state || 'unknown')}</div>
+            <div class="cover-position-label">${capabilities.canSetPosition ? 'Position' : 'State'}</div>
 
-            <div class="cover-slider-wrapper">
+            ${
+              capabilities.canSetPosition
+                ? `<div class="cover-slider-wrapper">
               <input
                 type="range"
                 min="0"
@@ -10351,22 +10781,25 @@ function showCoverControls(coverEntity) {
                 <span>Closed</span>
                 <span>Open</span>
               </div>
-            </div>
+            </div>`
+                : ''
+            }
 
-            <div class="cover-actions">
-              <button class="cover-action-btn" data-action="close_cover">
-                <span class="cover-action-icon">⬇</span>
-                <span class="cover-action-label">Close</span>
-              </button>
-              <button class="cover-action-btn" data-action="stop_cover">
-                <span class="cover-action-icon">⏸</span>
-                <span class="cover-action-label">Stop</span>
-              </button>
-              <button class="cover-action-btn" data-action="open_cover">
-                <span class="cover-action-icon">⬆</span>
-                <span class="cover-action-label">Open</span>
-              </button>
-            </div>
+            ${
+              availableActions.length
+                ? `<div class="cover-actions">
+              ${availableActions
+                .map(
+                  ({ action, icon, label }) => `
+                <button class="cover-action-btn" type="button" data-action="${action}">
+                  <span class="cover-action-icon">${icon}</span>
+                  <span class="cover-action-label">${label}</span>
+                </button>`
+                )
+                .join('')}
+            </div>`
+                : '<p class="control-capability-note">This cover does not advertise movement controls.</p>'
+            }
           </div>
         </div>
         <div class="modal-footer">
@@ -10375,6 +10808,7 @@ function showCoverControls(coverEntity) {
       </div>
     `;
     document.body.appendChild(modal);
+    activateAccessibleDialogModal(modal, { titleIdPrefix: 'cover-title' });
 
     const slider = modal.querySelector('#cover-slider');
     const positionValue = modal.querySelector('#cover-position-value');
@@ -10382,11 +10816,20 @@ function showCoverControls(coverEntity) {
     const closeBtn = modal.querySelector('#cover-close');
     const cancelBtn = modal.querySelector('#cover-cancel');
     const actionButtons = modal.querySelectorAll('.cover-action-btn');
+    let confirmedPosition = currentPosition;
+    let positionDebounceTimer;
 
     // Close handlers
+    let isClosing = false;
     const closeModal = () => {
+      if (isClosing) return;
+      isClosing = true;
       modal.classList.add('modal-closing');
-      setTimeout(() => modal.remove(), 200);
+      if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
+      setTimeout(() => {
+        releaseAccessibleDialogModal(modal);
+        modal.remove();
+      }, 200);
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -10406,17 +10849,28 @@ function showCoverControls(coverEntity) {
 
     // Slider behavior with debounce
     if (slider) {
-      let debounceTimer;
       slider.addEventListener('input', (e) => {
         const position = parseInt(e.target.value, 10);
         if (positionValue) positionValue.textContent = `${position}%`;
         updateVisual(position);
 
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          websocket.callService('cover', 'set_cover_position', {
-            entity_id: coverEntity.entity_id,
-            position: position,
+        clearTimeout(positionDebounceTimer);
+        positionDebounceTimer = setTimeout(() => {
+          callServiceWithUiRollback(
+            coverEntity,
+            'cover',
+            'set_cover_position',
+            {
+              entity_id: coverEntity.entity_id,
+              position: position,
+            },
+            () => {
+              slider.value = String(confirmedPosition);
+              if (positionValue) positionValue.textContent = `${confirmedPosition}%`;
+              updateVisual(confirmedPosition);
+            }
+          ).then(({ ok }) => {
+            if (ok) confirmedPosition = position;
           });
         }, 300);
       });
@@ -10426,9 +10880,7 @@ function showCoverControls(coverEntity) {
     actionButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const action = btn.getAttribute('data-action');
-        websocket.callService('cover', action, {
-          entity_id: coverEntity.entity_id,
-        });
+        const previousPosition = confirmedPosition;
 
         // Visual feedback
         if (action === 'open_cover' && slider) {
@@ -10440,6 +10892,21 @@ function showCoverControls(coverEntity) {
           if (positionValue) positionValue.textContent = '0%';
           updateVisual(0);
         }
+        callServiceWithUiRollback(
+          coverEntity,
+          'cover',
+          action,
+          { entity_id: coverEntity.entity_id },
+          () => {
+            if (slider) slider.value = String(previousPosition);
+            if (positionValue) positionValue.textContent = `${previousPosition}%`;
+            updateVisual(previousPosition);
+          }
+        ).then(({ ok }) => {
+          if (!ok) return;
+          if (action === 'open_cover') confirmedPosition = 100;
+          if (action === 'close_cover') confirmedPosition = 0;
+        });
       });
     });
 
@@ -10672,7 +11139,11 @@ function initUpdateUI() {
     }
 
     // Listen for auto-update events from main process
-    window.electronAPI.onAutoUpdate((data) => {
+    if (typeof unsubscribeAutoUpdate === 'function') {
+      unsubscribeAutoUpdate();
+      unsubscribeAutoUpdate = null;
+    }
+    const disposeAutoUpdateListener = window.electronAPI.onAutoUpdate((data) => {
       try {
         if (!data) return;
 
@@ -10766,6 +11237,9 @@ function initUpdateUI() {
         console.error('Error handling auto-update event:', error);
       }
     });
+    if (typeof disposeAutoUpdateListener === 'function') {
+      unsubscribeAutoUpdate = disposeAutoUpdateListener;
+    }
 
     // Initialize with ready status
     if (updateStatusText) updateStatusText.textContent = t('Ready to check for updates');

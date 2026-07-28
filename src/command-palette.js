@@ -1,6 +1,7 @@
 import state from './state.js';
 import * as utils from './utils.js';
 import { openEntityDetailModal, getEntityDomain } from './ui.js';
+import { t } from './i18n.js';
 
 const MAX_RESULTS = 20;
 
@@ -11,13 +12,16 @@ let list = null;
 let emptyState = null;
 let results = [];
 let highlightedIndex = -1;
+let previouslyFocusedElement = null;
 
 function normalizeSearchValue(value) {
   return String(value ?? '')
+    .normalize('NFKD')
     .toLowerCase()
-    .replace(/[''`]/g, '')
+    .replace(/\p{M}+/gu, '')
+    .replace(/['’`]/g, '')
     .replace(/[_-]/g, ' ')
-    .replace(/[^\w\s.]/g, '')
+    .replace(/[^\p{L}\p{N}\s.]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -45,7 +49,7 @@ function scoreCommandPaletteMatch(text, query) {
   const normalizedText = normalizeSearchValue(text);
   const normalizedQuery = normalizeSearchValue(query);
 
-  if (!normalizedQuery) return 1;
+  if (!normalizedQuery) return String(query ?? '').trim() ? 0 : 1;
   if (!normalizedText) return 0;
   if (normalizedText === normalizedQuery) return 1000;
   if (normalizedText.startsWith(normalizedQuery)) {
@@ -110,7 +114,7 @@ function createPaletteShell() {
   const palettePanel = createElement('div', 'command-palette-panel');
   palettePanel.setAttribute('role', 'dialog');
   palettePanel.setAttribute('aria-modal', 'true');
-  palettePanel.setAttribute('aria-label', 'Command palette');
+  palettePanel.setAttribute('aria-label', t('Command palette'));
 
   const searchWrap = createElement('div', 'command-palette-search');
 
@@ -118,15 +122,17 @@ function createPaletteShell() {
   input.type = 'text';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.placeholder = 'Search entities';
-  input.setAttribute('aria-label', 'Search entities');
+  input.placeholder = t('Search entities');
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-label', t('Search entities'));
   input.setAttribute('aria-controls', 'command-palette-results');
   input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
 
   const closeButton = createElement('button', 'command-palette-close', '×');
   closeButton.type = 'button';
-  closeButton.title = 'Close';
-  closeButton.setAttribute('aria-label', 'Close command palette');
+  closeButton.title = t('Close');
+  closeButton.setAttribute('aria-label', t('Close command palette'));
   closeButton.addEventListener('click', closeCommandPalette);
 
   searchWrap.append(input, closeButton);
@@ -135,7 +141,7 @@ function createPaletteShell() {
   list.id = 'command-palette-results';
   list.setAttribute('role', 'listbox');
 
-  emptyState = createElement('div', 'command-palette-empty', 'No matching entities');
+  emptyState = createElement('div', 'command-palette-empty', t('No matching entities'));
   emptyState.hidden = true;
 
   palettePanel.append(searchWrap, list, emptyState);
@@ -176,6 +182,9 @@ function updateHighlightedResult(nextIndex) {
 function executeHighlightedResult() {
   const selected = results[highlightedIndex];
   if (!selected?.entity) return;
+  // Restore the element that launched the palette before opening a detail
+  // dialog. The dialog's focus trap can then return to that real launcher
+  // instead of recording the now-hidden palette input as its prior focus.
   closeCommandPalette();
   openEntityDetailModal(selected.entity, { source: 'command-palette' });
 }
@@ -236,8 +245,12 @@ function renderResults() {
 
 function openCommandPalette() {
   ensurePaletteShell();
+  if (!isPaletteOpen() && document.activeElement && document.activeElement !== document.body) {
+    previouslyFocusedElement = document.activeElement;
+  }
   overlay.classList.remove('hidden');
   overlay.setAttribute('aria-hidden', 'false');
+  input.setAttribute('aria-expanded', 'true');
   input.value = '';
   renderResults();
   requestAnimationFrame(() => {
@@ -246,11 +259,16 @@ function openCommandPalette() {
   });
 }
 
-function closeCommandPalette() {
+function closeCommandPalette({ restoreFocus = true } = {}) {
   if (!overlay) return;
   overlay.classList.add('hidden');
   overlay.setAttribute('aria-hidden', 'true');
+  input?.setAttribute('aria-expanded', 'false');
   input?.removeAttribute('aria-activedescendant');
+  if (restoreFocus && previouslyFocusedElement?.isConnected) {
+    previouslyFocusedElement.focus();
+  }
+  previouslyFocusedElement = null;
 }
 
 function handleGlobalKeydown(event) {
@@ -267,6 +285,32 @@ function handleGlobalKeydown(event) {
 
 function handlePaletteKeydown(event) {
   if (!isPaletteOpen()) return;
+
+  if (event.key === 'Tab') {
+    const focusable = Array.from(
+      overlay.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) {
+      event.preventDefault();
+      return;
+    }
+
+    if (
+      event.shiftKey &&
+      (document.activeElement === first || !overlay.contains(document.activeElement))
+    ) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+    return;
+  }
 
   if (event.key === 'Escape') {
     event.preventDefault();

@@ -715,6 +715,13 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
 function buildCustomEntityIconChoices(rgiEmojiData) {
   const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
 
+  Object.values(CUSTOM_ENTITY_ICON_KEYWORD_GROUPS).forEach((icons) => {
+    (Array.isArray(icons) ? icons : []).forEach((icon) => {
+      const normalized = normalizeCustomEntityIcon(icon);
+      if (normalized) iconSet.add(normalized);
+    });
+  });
+
   if (Array.isArray(rgiEmojiData?.strings)) {
     rgiEmojiData.strings.forEach((icon) => {
       const normalized = normalizeCustomEntityIcon(icon);
