@@ -4,7 +4,17 @@ const path = require('path');
 
 function copyProjectLicense(context) {
   const sourcePath = path.join(context.packager.projectDir, 'LICENSE');
-  const resourcesDir = path.join(context.appOutDir, 'resources');
+  // On macOS the packaged resources live inside the app bundle, not in a
+  // top-level resources/ directory next to it.
+  const resourcesDir =
+    context.electronPlatformName === 'darwin'
+      ? path.join(
+          context.appOutDir,
+          `${context.packager.appInfo.productFilename}.app`,
+          'Contents',
+          'Resources'
+        )
+      : path.join(context.appOutDir, 'resources');
   const destinationPath = path.join(resourcesDir, 'LICENSE.txt');
   fs.mkdirSync(resourcesDir, { recursive: true });
   fs.copyFileSync(sourcePath, destinationPath);

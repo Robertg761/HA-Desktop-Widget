@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -376,6 +376,19 @@
     "Command palette": "لوحة الأوامر",
     "Search entities": "البحث عن الكيانات",
     "Close command palette": "إغلاق لوحة الأوامر",
-    "No matching entities": "لا توجد كيانات مطابقة"
+    "No matching entities": "لا توجد كيانات مطابقة",
+    "The remote profile still needs its encryption update. Use Sync Up to retry.": "لا يزال الملف الشخصي البعيد بحاجة إلى تحديث التشفير. استخدم «مزامنة للأعلى» لإعادة المحاولة.",
+    "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "لا يزال التشفير في انتظار التفعيل. أدخل عبارة المرور الحالية واحفظ مرة أخرى، أو أعد خانة التشفير إلى وضعها السابق للإلغاء. المزامنة متوقفة مؤقتًا حتى يُحل هذا الأمر.",
+    "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "لا يزال التشفير في انتظار التعطيل. أدخل عبارة المرور الحالية واحفظ مرة أخرى، أو أعد خانة التشفير إلى وضعها السابق للإلغاء. المزامنة متوقفة مؤقتًا حتى يُحل هذا الأمر.",
+    "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.": "سجل استعادة مفتاح المزامنة المحمي غير صالح. المزامنة متوقفة مؤقتًا لمنع كتابة فوقية غير آمنة؛ استعد نسخة احتياطية موثوقة من الإعدادات قبل إعادة المحاولة.",
+    "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": "هناك استعادة معلقة لمفتاح المزامنة المحمي. استخدم «مزامنة للأعلى» لاستئنافها؛ وتبقى المزامنة متوقفة مؤقتًا إذا تغير الملف البعيد.",
+    "The first-time conflict check did not complete. Retry it before syncing.": "لم يكتمل فحص التعارض الأولي. أعد المحاولة قبل المزامنة.",
+    "Retry Conflict Check": "إعادة فحص التعارض",
+    "First-time conflict:": "تعارض أولي:",
+    "Both local and remote profiles have data.": "يحتوي الملفان المحلي والبعيد كلاهما على بيانات.",
+    "Keep Local (Upload)": "الاحتفاظ بالمحلي (رفع)",
+    "Settings were saved, but the sync passphrase could not be stored.": "حُفظت الإعدادات، لكن تعذر تخزين عبارة مرور المزامنة.",
+    "Failed to apply popup hotkey mode": "تعذر تطبيق وضع اختصار النافذة المنبثقة",
+    "Failed to apply popup hotkey behavior": "تعذر تطبيق سلوك اختصار النافذة المنبثقة"
   }
 }

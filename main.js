@@ -63,6 +63,7 @@ const {
 } = require('./src/main-security.cjs');
 const {
   createElectronNetBinaryFetcher,
+  createPinnedDnsBinaryFetcher,
   createHaProtocolHandler,
 } = require('./src/ha-protocol.cjs');
 const {
@@ -8347,6 +8348,7 @@ app
           getConfig: () => config,
           fetchStream: (url, options) => net.fetch(url, options),
           fetchBinary: createElectronNetBinaryFetcher(net),
+          fetchExternalBinary: createPinnedDnsBinaryFetcher(),
           isAllowedHlsProxyPath,
           log,
         })

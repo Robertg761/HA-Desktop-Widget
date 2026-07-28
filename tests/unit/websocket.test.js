@@ -692,6 +692,7 @@ describe('WebSocket Manager', () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
       await new Promise((resolve) => setTimeout(resolve, 20));
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
     });
 
     test('should call service with correct parameters', async () => {
@@ -829,6 +830,36 @@ describe('WebSocket Manager', () => {
         success: true,
         result: { context: { id: 'service-context' } },
       });
+    });
+
+    test('should reject direct service calls while the socket is open but unauthenticated', async () => {
+      wsManager.isAuthenticated = false;
+      const sentBefore = wsManager.ws.sentMessages.length;
+
+      await expect(
+        wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' })
+      ).rejects.toThrow('WebSocket not authenticated');
+      expect(wsManager.ws.sentMessages.length).toBe(sentBefore);
+    });
+
+    test('should proxy desktop-pin service calls while the socket is open but unauthenticated', async () => {
+      const requestDesktopPinAction = jest.fn().mockResolvedValue({
+        success: true,
+        result: { context: { id: 'service-context' } },
+      });
+      window.electronAPI = { requestDesktopPinAction };
+      window.history.replaceState(
+        {},
+        '',
+        'http://localhost/?mode=desktop-pin&entityId=light.living_room'
+      );
+      wsManager.isAuthenticated = false;
+      const sentBefore = wsManager.ws.sentMessages.length;
+
+      await wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' });
+
+      expect(requestDesktopPinAction).toHaveBeenCalled();
+      expect(wsManager.ws.sentMessages.length).toBe(sentBefore);
     });
 
     test('should reject desktop-pin service calls when the main renderer reports failure', async () => {

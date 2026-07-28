@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -376,6 +376,19 @@
     "Command palette": "Palette de commandes",
     "Search entities": "Rechercher des entités",
     "Close command palette": "Fermer la palette de commandes",
-    "No matching entities": "Aucune entité correspondante"
+    "No matching entities": "Aucune entité correspondante",
+    "The remote profile still needs its encryption update. Use Sync Up to retry.": "Le profil distant attend encore sa mise à jour de chiffrement. Utilisez Synchroniser vers le haut pour réessayer.",
+    "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "Le chiffrement est toujours en attente d'activation. Saisissez la phrase secrète actuelle et enregistrez à nouveau, ou rétablissez la case de chiffrement pour annuler. La synchronisation est en pause jusqu'à la résolution.",
+    "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "Le chiffrement est toujours en attente de désactivation. Saisissez la phrase secrète actuelle et enregistrez à nouveau, ou rétablissez la case de chiffrement pour annuler. La synchronisation est en pause jusqu'à la résolution.",
+    "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.": "L'enregistrement de récupération de la clé de synchronisation protégée est invalide. La synchronisation est en pause pour éviter un écrasement dangereux ; restaurez une sauvegarde de configuration fiable avant de réessayer.",
+    "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": "Une récupération de la clé de synchronisation protégée est en attente. Utilisez Synchroniser vers le haut pour la reprendre ; la synchronisation reste en pause si le distant a changé.",
+    "The first-time conflict check did not complete. Retry it before syncing.": "La vérification initiale des conflits ne s'est pas terminée. Réessayez avant de synchroniser.",
+    "Retry Conflict Check": "Réessayer la vérification des conflits",
+    "First-time conflict:": "Conflit initial :",
+    "Both local and remote profiles have data.": "Les profils local et distant contiennent tous deux des données.",
+    "Keep Local (Upload)": "Garder le local (téléverser)",
+    "Settings were saved, but the sync passphrase could not be stored.": "Les paramètres ont été enregistrés, mais la phrase secrète de synchronisation n'a pas pu être stockée.",
+    "Failed to apply popup hotkey mode": "Impossible d'appliquer le mode du raccourci de la fenêtre contextuelle",
+    "Failed to apply popup hotkey behavior": "Impossible d'appliquer le comportement du raccourci de la fenêtre contextuelle"
   }
 }

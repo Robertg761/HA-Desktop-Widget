@@ -27,4 +27,28 @@ describe('after-pack hook', () => {
       'project license\n'
     );
   });
+
+  it('ships the license inside the macOS app bundle', async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-after-pack-'));
+    const projectDir = path.join(rootDir, 'project');
+    const appOutDir = path.join(rootDir, 'mac-universal-x64-temp');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'LICENSE'), 'project license\n', 'utf8');
+
+    await afterPack({
+      electronPlatformName: 'darwin',
+      appOutDir,
+      packager: {
+        projectDir,
+        appInfo: { productFilename: 'HA Desktop Widget' },
+      },
+    });
+
+    expect(
+      fs.readFileSync(
+        path.join(appOutDir, 'HA Desktop Widget.app', 'Contents', 'Resources', 'LICENSE.txt'),
+        'utf8'
+      )
+    ).toBe('project license\n');
+  });
 });

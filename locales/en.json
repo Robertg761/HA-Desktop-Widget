@@ -231,8 +231,6 @@
   "Snapshot every 10 seconds": "Snapshot every 10 seconds",
   "Snapshot every 5 seconds (Frequent)": "Snapshot every 5 seconds (Frequent)",
   "Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.": "Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.",
-  "Live": "Live",
-  "Snapshot": "Snapshot",
   "Starting live stream…": "Starting live stream…",
   "Live now": "Live now",
   "Live preview paused": "Live preview paused",
@@ -371,5 +369,18 @@
   "Command palette": "Command palette",
   "Search entities": "Search entities",
   "Close command palette": "Close command palette",
-  "No matching entities": "No matching entities"
+  "No matching entities": "No matching entities",
+  "The remote profile still needs its encryption update. Use Sync Up to retry.": "The remote profile still needs its encryption update. Use Sync Up to retry.",
+  "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.",
+  "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.",
+  "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.": "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.",
+  "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.",
+  "The first-time conflict check did not complete. Retry it before syncing.": "The first-time conflict check did not complete. Retry it before syncing.",
+  "Retry Conflict Check": "Retry Conflict Check",
+  "First-time conflict:": "First-time conflict:",
+  "Both local and remote profiles have data.": "Both local and remote profiles have data.",
+  "Keep Local (Upload)": "Keep Local (Upload)",
+  "Settings were saved, but the sync passphrase could not be stored.": "Settings were saved, but the sync passphrase could not be stored.",
+  "Failed to apply popup hotkey mode": "Failed to apply popup hotkey mode",
+  "Failed to apply popup hotkey behavior": "Failed to apply popup hotkey behavior"
 }

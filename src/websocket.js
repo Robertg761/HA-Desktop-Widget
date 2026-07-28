@@ -378,7 +378,10 @@ class WebSocketManager extends EventEmitter {
     try {
       const shouldReturnResponse = options?.returnResponse === true;
       const proxyContext = getDesktopPinServiceProxyContext(serviceData);
-      if ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && proxyContext) {
+      // Use isConnected() rather than readyState alone: between onopen and
+      // auth_ok the socket is OPEN but not yet authenticated, and a
+      // call_service sent in that window would go out unauthenticated.
+      if (!this.isConnected() && proxyContext) {
         const proxiedPromise = window.electronAPI
           .requestDesktopPinAction(proxyContext.entityId, 'service-call', {
             domain,
@@ -409,6 +412,12 @@ class WebSocketManager extends EventEmitter {
           });
         proxiedPromise.id = null;
         return proxiedPromise;
+      }
+
+      if (this.ws && this.ws.readyState === WebSocket.OPEN && !this.isAuthenticated) {
+        const rejected = Promise.reject(new Error('WebSocket not authenticated'));
+        rejected.id = null;
+        return rejected;
       }
 
       const payload = {

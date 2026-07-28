@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -376,6 +376,19 @@
     "Command palette": "कमांड पैलेट",
     "Search entities": "एंटिटी खोजें",
     "Close command palette": "कमांड पैलेट बंद करें",
-    "No matching entities": "कोई मेल खाती एंटिटी नहीं"
+    "No matching entities": "कोई मेल खाती एंटिटी नहीं",
+    "The remote profile still needs its encryption update. Use Sync Up to retry.": "रिमोट प्रोफ़ाइल को अभी भी एन्क्रिप्शन अपडेट की ज़रूरत है। पुनः प्रयास के लिए Sync Up का उपयोग करें।",
+    "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "एन्क्रिप्शन अभी भी सक्षम होने की प्रतीक्षा में है। वर्तमान पासफ़्रेज़ दर्ज करें और फिर से सहेजें, या रद्द करने के लिए एन्क्रिप्शन चेकबॉक्स को पहले जैसा करें। इसके हल होने तक सिंक रुका हुआ है।",
+    "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "एन्क्रिप्शन अभी भी अक्षम होने की प्रतीक्षा में है। वर्तमान पासफ़्रेज़ दर्ज करें और फिर से सहेजें, या रद्द करने के लिए एन्क्रिप्शन चेकबॉक्स को पहले जैसा करें। इसके हल होने तक सिंक रुका हुआ है।",
+    "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.": "सुरक्षित सिंक-कुंजी पुनर्प्राप्ति रिकॉर्ड अमान्य है। असुरक्षित अधिलेखन से बचने के लिए सिंक रोका गया है; पुनः प्रयास से पहले कोई भरोसेमंद कॉन्फ़िग बैकअप बहाल करें।",
+    "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": "सुरक्षित सिंक-कुंजी की पुनर्प्राप्ति लंबित है। इसे फिर से शुरू करने के लिए Sync Up का उपयोग करें; यदि रिमोट बदला है तो सिंक रुका रहेगा।",
+    "The first-time conflict check did not complete. Retry it before syncing.": "पहली बार का विरोध-परीक्षण पूरा नहीं हुआ। सिंक करने से पहले इसे फिर से आज़माएँ।",
+    "Retry Conflict Check": "विरोध-परीक्षण फिर से करें",
+    "First-time conflict:": "पहली बार का विरोध:",
+    "Both local and remote profiles have data.": "स्थानीय और रिमोट दोनों प्रोफ़ाइलों में डेटा मौजूद है।",
+    "Keep Local (Upload)": "स्थानीय रखें (अपलोड)",
+    "Settings were saved, but the sync passphrase could not be stored.": "सेटिंग्स सहेज ली गईं, लेकिन सिंक पासफ़्रेज़ संग्रहीत नहीं हो सका।",
+    "Failed to apply popup hotkey mode": "पॉपअप हॉटकी मोड लागू नहीं हो सका",
+    "Failed to apply popup hotkey behavior": "पॉपअप हॉटकी व्यवहार लागू नहीं हो सका"
   }
 }

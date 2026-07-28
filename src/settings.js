@@ -2927,16 +2927,26 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     const warning = status.passphraseWarning || '';
     const errorText = status.lastSyncError || '';
     const rewriteWarning = status.remoteRewritePending
-      ? 'The remote profile still needs its encryption update. Use Sync Up to retry.'
+      ? t('The remote profile still needs its encryption update. Use Sync Up to retry.')
       : '';
     const pendingEncryptionWarning =
       typeof status.encryptionChangePending === 'boolean'
-        ? `Encryption is still ${status.encryptionChangePending ? 'waiting to be enabled' : 'waiting to be disabled'}. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.`
+        ? status.encryptionChangePending
+          ? t(
+              'Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+            )
+          : t(
+              'Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+            )
         : '';
     const recoveryWarning = status.rewriteRecoveryInvalid
-      ? 'The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.'
+      ? t(
+          'The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.'
+        )
       : status.rewriteRecoveryRequired
-        ? 'A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.'
+        ? t(
+            'A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.'
+          )
         : '';
     const composed = [warning, errorText, rewriteWarning, pendingEncryptionWarning, recoveryWarning]
       .filter(Boolean)
@@ -2952,17 +2962,17 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     const remoteButton = resolutionEl.querySelector('#profile-sync-resolve-remote');
     if (status.resolutionRetryRequired) {
       if (resolutionHelp) {
-        resolutionHelp.textContent =
-          'The first-time conflict check did not complete. Retry it before syncing.';
+        resolutionHelp.textContent = t(
+          'The first-time conflict check did not complete. Retry it before syncing.'
+        );
       }
-      if (uploadButton) uploadButton.textContent = 'Retry Conflict Check';
+      if (uploadButton) uploadButton.textContent = t('Retry Conflict Check');
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
-        resolutionHelp.innerHTML =
-          '<strong>First-time conflict:</strong> Both local and remote profiles have data.';
+        resolutionHelp.innerHTML = `<strong>${t('First-time conflict:')}</strong> ${t('Both local and remote profiles have data.')}`;
       }
-      if (uploadButton) uploadButton.textContent = 'Keep Local (Upload)';
+      if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');
     }
   }
@@ -4517,7 +4527,7 @@ async function saveSettings() {
         showToast(
           passphraseResult?.error ||
             passphraseError?.message ||
-            'Settings were saved, but the sync passphrase could not be stored.',
+            t('Settings were saved, but the sync passphrase could not be stored.'),
           'warning',
           5000
         );
@@ -5288,7 +5298,7 @@ async function initializePopupHotkey() {
               state.CONFIG.popupHotkey
             );
             if (registrationResult?.success !== true) {
-              throw new Error(registrationResult?.error || 'Failed to apply popup hotkey mode');
+              throw new Error(registrationResult?.error || t('Failed to apply popup hotkey mode'));
             }
           }
           toggleModeCheckbox.checked = requestedValue;
@@ -5348,7 +5358,9 @@ async function initializePopupHotkey() {
               state.CONFIG.popupHotkey
             );
             if (registrationResult?.success !== true) {
-              throw new Error(registrationResult?.error || 'Failed to apply popup hotkey behavior');
+              throw new Error(
+                registrationResult?.error || t('Failed to apply popup hotkey behavior')
+              );
             }
           }
           hideOnReleaseCheckbox.checked = requestedValue;

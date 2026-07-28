@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -376,6 +376,19 @@
     "Command palette": "Paleta de comandos",
     "Search entities": "Buscar entidades",
     "Close command palette": "Cerrar la paleta de comandos",
-    "No matching entities": "No hay entidades coincidentes"
+    "No matching entities": "No hay entidades coincidentes",
+    "The remote profile still needs its encryption update. Use Sync Up to retry.": "El perfil remoto todavía necesita su actualización de cifrado. Usa Subir sincronización para reintentarlo.",
+    "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "El cifrado sigue pendiente de activarse. Introduce la contraseña actual y guarda de nuevo, o restaura la casilla de cifrado para cancelar. La sincronización está en pausa hasta que se resuelva.",
+    "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "El cifrado sigue pendiente de desactivarse. Introduce la contraseña actual y guarda de nuevo, o restaura la casilla de cifrado para cancelar. La sincronización está en pausa hasta que se resuelva.",
+    "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.": "El registro de recuperación de la clave de sincronización protegida no es válido. La sincronización está en pausa para evitar una sobrescritura insegura; restaura una copia de seguridad de configuración fiable antes de reintentarlo.",
+    "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": "Hay una recuperación de la clave de sincronización protegida pendiente. Usa Subir sincronización para reanudarla; la sincronización permanece en pausa si el remoto cambió.",
+    "The first-time conflict check did not complete. Retry it before syncing.": "La comprobación de conflictos inicial no se completó. Reintenta antes de sincronizar.",
+    "Retry Conflict Check": "Reintentar comprobación de conflictos",
+    "First-time conflict:": "Conflicto inicial:",
+    "Both local and remote profiles have data.": "Tanto el perfil local como el remoto contienen datos.",
+    "Keep Local (Upload)": "Conservar local (subir)",
+    "Settings were saved, but the sync passphrase could not be stored.": "La configuración se guardó, pero la contraseña de sincronización no se pudo almacenar.",
+    "Failed to apply popup hotkey mode": "No se pudo aplicar el modo del atajo emergente",
+    "Failed to apply popup hotkey behavior": "No se pudo aplicar el comportamiento del atajo emergente"
   }
 }

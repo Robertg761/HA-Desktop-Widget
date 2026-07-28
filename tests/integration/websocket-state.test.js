@@ -258,6 +258,7 @@ describe('WebSocket + State Integration', () => {
       await openPromise;
 
       const ws = MockWebSocket.lastInstance;
+      ws.simulateMessage({ type: 'auth_ok' });
 
       const servicePromise = websocket.callService('light', 'turn_on', {
         entity_id: 'light.living_room',
@@ -292,6 +293,7 @@ describe('WebSocket + State Integration', () => {
       await openPromise;
 
       const ws = MockWebSocket.lastInstance;
+      ws.simulateMessage({ type: 'auth_ok' });
 
       const servicePromise = websocket.callService('light', 'turn_on', {
         entity_id: 'light.nonexistent',
@@ -322,6 +324,7 @@ describe('WebSocket + State Integration', () => {
       await openPromise;
 
       const ws = MockWebSocket.lastInstance;
+      ws.simulateMessage({ type: 'auth_ok' });
 
       const call1 = websocket.callService('light', 'turn_on', { entity_id: 'light.living_room' });
       const call2 = websocket.callService('switch', 'turn_off', { entity_id: 'switch.fan' });

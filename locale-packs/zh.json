@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -376,6 +376,19 @@
     "Command palette": "命令面板",
     "Search entities": "搜索实体",
     "Close command palette": "关闭命令面板",
-    "No matching entities": "没有匹配的实体"
+    "No matching entities": "没有匹配的实体",
+    "The remote profile still needs its encryption update. Use Sync Up to retry.": "远程配置文件仍需完成加密更新。请使用“向上同步”重试。",
+    "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "加密仍在等待启用。请输入当前密码短语并再次保存，或恢复加密复选框以取消。在此问题解决之前，同步将保持暂停。",
+    "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": "加密仍在等待停用。请输入当前密码短语并再次保存，或恢复加密复选框以取消。在此问题解决之前，同步将保持暂停。",
+    "The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.": "受保护的同步密钥恢复记录无效。为防止不安全的覆盖，同步已暂停；请先恢复一个可靠的配置备份再重试。",
+    "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": "有一个受保护的同步密钥恢复待处理。请使用“向上同步”继续；如果远程已更改，同步将保持暂停。",
+    "The first-time conflict check did not complete. Retry it before syncing.": "首次冲突检查未完成。请在同步前重试。",
+    "Retry Conflict Check": "重试冲突检查",
+    "First-time conflict:": "首次冲突：",
+    "Both local and remote profiles have data.": "本地和远程配置文件都包含数据。",
+    "Keep Local (Upload)": "保留本地（上传）",
+    "Settings were saved, but the sync passphrase could not be stored.": "设置已保存，但同步密码短语未能存储。",
+    "Failed to apply popup hotkey mode": "无法应用弹窗热键模式",
+    "Failed to apply popup hotkey behavior": "无法应用弹窗热键行为"
   }
 }
