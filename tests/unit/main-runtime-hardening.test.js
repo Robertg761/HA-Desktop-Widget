@@ -470,6 +470,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain(
       'error = `Failed to remove isolated smoke-test profile: ${cleanup.error}`'
     );
+    expect(mainSource).toContain('HA_WIDGET_SMOKE_TEST_PROFILE_RETAINED');
   });
 
   it('defers secure config resolution until after the first window can render', () => {

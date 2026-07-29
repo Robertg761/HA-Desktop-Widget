@@ -653,8 +653,15 @@ function finishSmokeTest(success, error = '') {
 
     const cleanup = removeSmokeTestProfile(smokeTestUserDataPath, smokeTestTempRootPath);
     if (!cleanup.success) {
-      success = false;
-      error = `Failed to remove isolated smoke-test profile: ${cleanup.error}`;
+      if (process.platform === 'win32') {
+        // Windows keeps profile files locked until this process exits, so the
+        // launcher is responsible for removing the retained directory afterwards.
+        log.warn(`HA_WIDGET_SMOKE_TEST_PROFILE_RETAINED: ${smokeTestUserDataPath}`);
+        console.warn(`HA_WIDGET_SMOKE_TEST_PROFILE_RETAINED: ${smokeTestUserDataPath}`);
+      } else {
+        success = false;
+        error = `Failed to remove isolated smoke-test profile: ${cleanup.error}`;
+      }
     } else {
       smokeTestUserDataPath = '';
     }

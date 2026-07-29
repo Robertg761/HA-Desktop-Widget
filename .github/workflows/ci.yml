@@ -57,6 +57,10 @@ jobs:
           $process = Start-Process -FilePath $executable -ArgumentList '--smoke-test' -PassThru -Wait `
             -RedirectStandardOutput smoke-stdout.log -RedirectStandardError smoke-stderr.log
           Get-Content smoke-stdout.log, smoke-stderr.log -ErrorAction SilentlyContinue
+          # The app cannot delete its own profile while Windows still holds its
+          # file handles, so remove any retained smoke profile after exit.
+          Get-ChildItem -Path $env:TEMP -Directory -Filter 'ha-desktop-widget-smoke-*' -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop }
           if ($process.ExitCode -ne 0) {
             throw "Packaged Windows smoke test failed with exit code $($process.ExitCode)."
           }
