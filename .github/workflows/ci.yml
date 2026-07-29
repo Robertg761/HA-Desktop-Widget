@@ -54,7 +54,9 @@ jobs:
         timeout-minutes: 2
         run: |
           $executable = (Resolve-Path 'dist/win-unpacked/HA Desktop Widget.exe').Path
-          $process = Start-Process -FilePath $executable -ArgumentList '--smoke-test' -PassThru -Wait
+          $process = Start-Process -FilePath $executable -ArgumentList '--smoke-test' -PassThru -Wait `
+            -RedirectStandardOutput smoke-stdout.log -RedirectStandardError smoke-stderr.log
+          Get-Content smoke-stdout.log, smoke-stderr.log -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) {
             throw "Packaged Windows smoke test failed with exit code $($process.ExitCode)."
           }

@@ -29,8 +29,10 @@ function removeSmokeTestProfile(profilePath, tempRoot, fsModule = fs) {
     fsModule.rmSync(path.resolve(profilePath), {
       recursive: true,
       force: true,
-      maxRetries: 3,
-      retryDelay: 50,
+      // Windows refuses to delete files the still-running Chromium process has
+      // open, so give EBUSY/EPERM retries a few seconds to let handles close.
+      maxRetries: 20,
+      retryDelay: 250,
     });
     return { success: true };
   } catch (error) {
