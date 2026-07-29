@@ -51,6 +51,31 @@ describe('main localization service', () => {
     expect(bootstrap.messages.Hello).toBe('Hello');
   });
 
+  it('quarantines a corrupt installed pack and falls back to English', () => {
+    const installedDir = path.join(userDataDir, 'locales');
+    fs.mkdirSync(installedDir, { recursive: true });
+    const installedPath = path.join(installedDir, 'fr.json');
+    fs.writeFileSync(installedPath, '{"locale":"fr","messages":', 'utf8');
+
+    const service = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      appVersion: '1.0.0',
+      getDetectedLocale: () => 'fr',
+      manifestUrl: 'https://example.test/manifest.json',
+    });
+
+    const bootstrap = service.getLocaleBootstrap('fr');
+    const quarantinedFiles = fs
+      .readdirSync(installedDir)
+      .filter((fileName) => fileName.startsWith('fr.json.corrupt-'));
+
+    expect(bootstrap.activeLocale).toBe('en');
+    expect(bootstrap.usingEnglishFallback).toBe(true);
+    expect(fs.existsSync(installedPath)).toBe(false);
+    expect(quarantinedFiles).toHaveLength(1);
+  });
+
   it('rejects unsafe locale codes before building installed pack paths', () => {
     const userConfigPath = path.join(userDataDir, 'config.json');
     fs.writeFileSync(userConfigPath, '{"safe":true}', 'utf8');
@@ -115,6 +140,11 @@ describe('main localization service', () => {
     expect(bootstrap.activeLocale).toBe('fr');
     expect(bootstrap.messages.Hello).toBe('Bonjour');
     expect(fs.existsSync(path.join(userDataDir, 'locales', 'fr.json'))).toBe(true);
+    expect(
+      fs
+        .readdirSync(path.join(userDataDir, 'locales'))
+        .filter((fileName) => fileName.endsWith('.tmp'))
+    ).toEqual([]);
   });
 
   it('rejects a locale pack when the integrity hash does not match', async () => {

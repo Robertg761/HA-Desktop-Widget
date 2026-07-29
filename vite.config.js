@@ -41,7 +41,7 @@ export default defineConfig(({ mode }) => {
         // service implementation cannot be included in shipped artifacts.
         '@dev-climate-demo': resolve(
           __dirname,
-          isProduction ? 'src/dev-climate-demo.production.js' : 'src/dev-climate-demo.js'
+          isProduction ? 'src/dev-climate-demo.production.js' : 'development/dev-climate-demo.js'
         ),
         '@': resolve(__dirname, 'src'),
         // Node.js polyfills for browser

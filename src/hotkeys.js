@@ -84,23 +84,26 @@ function createCustomDropdownHTML(options, selectedAction, entityId) {
   const selectedOption = options.find((opt) => opt.value === selectedAction) || options[0];
   const selectedLabel = escapeHtml(selectedOption.label);
   const escapedEntityId = escapeHtmlAttribute(entityId);
+  const listboxId = escapeHtmlAttribute(
+    `hotkey-action-options-${String(entityId || '').replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  );
 
   const optionsHTML = options
     .map(
       (opt) =>
-        `<div class="custom-dropdown-option ${opt.value === selectedAction ? 'selected' : ''}" role="option" data-value="${opt.value}">${escapeHtml(opt.label)}</div>`
+        `<div class="custom-dropdown-option ${opt.value === selectedAction ? 'selected' : ''}" role="option" tabindex="-1" aria-selected="${opt.value === selectedAction ? 'true' : 'false'}" data-value="${escapeHtmlAttribute(opt.value)}">${escapeHtml(opt.label)}</div>`
     )
     .join('');
 
   return `
         <div class="custom-dropdown hotkey-action-dropdown" data-entity-id="${escapedEntityId}">
-            <button type="button" class="custom-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <button type="button" class="custom-dropdown-trigger" aria-haspopup="listbox" aria-controls="${listboxId}" aria-expanded="false">
                 <span class="custom-dropdown-value">${selectedLabel}</span>
                 <svg class="custom-dropdown-arrow" width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             </button>
-            <div class="custom-dropdown-menu" role="listbox">
+            <div class="custom-dropdown-menu" id="${listboxId}" role="listbox" aria-label="${escapeHtmlAttribute(t('Hotkey action'))}">
                 ${optionsHTML}
             </div>
         </div>
@@ -147,7 +150,7 @@ function renderHotkeysTab() {
                 <div class="hotkey-input-container">
                     <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('No hotkey set'))}" data-entity-id="${escapedEntityId}">
                     ${dropdownHTML}
-                    <button class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
+                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
                 </div>
             `;
       container.appendChild(item);
@@ -226,8 +229,12 @@ async function toggleHotkeys(enabled) {
         'success',
         2000
       );
+      if (result.warning) {
+        showToast(result.warning, 'warning', 4000);
+      }
       return true;
     }
+    showToast(result?.error || t('Error toggling hotkeys'), 'error', 3000);
   } catch (error) {
     console.error('Error toggling hotkeys:', error);
     showToast(t('Error toggling hotkeys'), 'error', 2000);
@@ -436,8 +443,10 @@ function setupHotkeyEventListenersInternal() {
         // Update selected state
         dropdown.querySelectorAll('.custom-dropdown-option').forEach((opt) => {
           opt.classList.remove('selected');
+          opt.setAttribute('aria-selected', 'false');
         });
         option.classList.add('selected');
+        option.setAttribute('aria-selected', 'true');
 
         // Close dropdown
         dropdown.classList.remove('open');
@@ -446,24 +455,54 @@ function setupHotkeyEventListenersInternal() {
         // Save to config
         const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
         if (hotkeyConfig) {
-          // Update the action in the config
-          if (typeof hotkeyConfig === 'string') {
-            // Convert old format to new format
-            state.CONFIG.globalHotkeys.hotkeys[entityId] = {
-              hotkey: hotkeyConfig,
-              action: action,
-            };
-          } else {
-            hotkeyConfig.action = action;
+          const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
+          const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
+          const nextHotkeyConfig = nextConfig.globalHotkeys.hotkeys[entityId];
+          nextConfig.globalHotkeys.hotkeys[entityId] =
+            typeof nextHotkeyConfig === 'string'
+              ? { hotkey: nextHotkeyConfig, action }
+              : { ...nextHotkeyConfig, action };
+          let updatePersisted = false;
+
+          try {
+            const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+            if (!updatedConfig?.homeAssistant) {
+              throw new Error(updatedConfig?.error || 'Failed to save hotkey action');
+            }
+            state.setConfig(updatedConfig);
+            updatePersisted = true;
+
+            const registrationResult = await window.electronAPI.registerHotkeys();
+            if (registrationResult?.success === false) {
+              throw new Error(
+                registrationResult.error || 'Failed to activate the updated hotkey action'
+              );
+            }
+
+            showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
+          } catch (error) {
+            let failureMessage = error?.message || 'Failed to update hotkey action';
+            if (updatePersisted) {
+              try {
+                const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
+                if (!restoredConfig?.homeAssistant) {
+                  throw new Error(restoredConfig?.error || 'Failed to restore hotkey action');
+                }
+                state.setConfig(restoredConfig);
+                const rollbackRegistration = await window.electronAPI.registerHotkeys();
+                if (rollbackRegistration?.success === false) {
+                  throw new Error(
+                    rollbackRegistration.error ||
+                      'The previous hotkey action was restored, but its runtime binding was not'
+                  );
+                }
+              } catch (rollbackError) {
+                failureMessage = `${failureMessage}. ${rollbackError?.message || 'Rollback failed'}`;
+              }
+            }
+            renderHotkeysTab();
+            showToast(failureMessage, 'error', 4000);
           }
-
-          // Save the updated config
-          await window.electronAPI.updateConfig(state.CONFIG);
-
-          // Re-register hotkeys to apply the new action
-          await window.electronAPI.registerHotkeys();
-
-          showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
         }
       }
     };
@@ -493,11 +532,64 @@ function setupHotkeyEventListenersInternal() {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           trigger.click();
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          const dropdown = trigger.closest('.custom-dropdown');
+          dropdown.classList.add('open');
+          trigger.setAttribute('aria-expanded', 'true');
+          const options = Array.from(dropdown.querySelectorAll('.custom-dropdown-option'));
+          const selectedIndex = options.findIndex((option) =>
+            option.classList.contains('selected')
+          );
+          const nextIndex =
+            e.key === 'ArrowUp'
+              ? selectedIndex > 0
+                ? selectedIndex - 1
+                : options.length - 1
+              : selectedIndex >= 0 && selectedIndex < options.length - 1
+                ? selectedIndex + 1
+                : 0;
+          options[nextIndex]?.focus();
         } else if (e.key === 'Escape') {
           const dropdown = trigger.closest('.custom-dropdown');
           dropdown.classList.remove('open');
           trigger.setAttribute('aria-expanded', 'false');
         }
+        return;
+      }
+
+      const option = e.target.closest('.custom-dropdown-option');
+      if (option) {
+        const dropdown = option.closest('.custom-dropdown');
+        const options = Array.from(dropdown.querySelectorAll('.custom-dropdown-option'));
+        const currentIndex = options.indexOf(option);
+        let nextIndex = currentIndex;
+
+        if (e.key === 'ArrowDown') nextIndex = (currentIndex + 1) % options.length;
+        else if (e.key === 'ArrowUp')
+          nextIndex = (currentIndex - 1 + options.length) % options.length;
+        else if (e.key === 'Home') nextIndex = 0;
+        else if (e.key === 'End') nextIndex = options.length - 1;
+        else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          option.click();
+          dropdown.querySelector('.custom-dropdown-trigger')?.focus();
+          return;
+        } else if (e.key === 'Escape' || e.key === 'Tab') {
+          dropdown.classList.remove('open');
+          const dropdownTrigger = dropdown.querySelector('.custom-dropdown-trigger');
+          dropdownTrigger?.setAttribute('aria-expanded', 'false');
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            dropdownTrigger?.focus();
+          }
+          return;
+        } else {
+          return;
+        }
+
+        e.preventDefault();
+        options[nextIndex]?.focus();
       }
     };
     container.addEventListener('keydown', containerKeydownHandler);

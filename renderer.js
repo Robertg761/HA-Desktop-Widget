@@ -166,13 +166,26 @@ function isSecureStoragePending(targetConfig = state.CONFIG) {
 
 function flushPendingStateChangedEntities() {
   pendingStateChangedFlushId = null;
-  const entities = Array.from(pendingStateChangedEntities.values());
+  const changes = Array.from(pendingStateChangedEntities.values());
   pendingStateChangedEntities.clear();
+  const hasDeletion = changes.some(({ entity }) => !entity);
 
-  entities.forEach((entity) => {
-    window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
-      log.warn('Failed to publish HA entity update to main process:', error);
+  if (hasDeletion) {
+    // A full snapshot is the only renderer-to-main IPC operation that can remove
+    // an entity from the desktop-pin cache. It also carries every coalesced update
+    // in this flush, avoiding an update/snapshot ordering race.
+    window.electronAPI.publishHaSnapshot(state.STATES || {}).catch((error) => {
+      log.warn('Failed to publish HA snapshot after entity removal:', error);
     });
+  }
+
+  changes.forEach(({ entity }) => {
+    if (!entity) return;
+    if (!hasDeletion) {
+      window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
+        log.warn('Failed to publish HA entity update to main process:', error);
+      });
+    }
     if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
       renderCurrentMode();
     } else if (ui.isEntityVisible(entity.entity_id)) {
@@ -180,6 +193,15 @@ function flushPendingStateChangedEntities() {
     }
     alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
+
+  if (hasDeletion) {
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    } else {
+      ui.renderActiveTab();
+      renderMainWidgetState();
+    }
+  }
 
   nudgeUiTickScheduler();
 }
@@ -195,7 +217,20 @@ function scheduleStateChangedFlush() {
 function queueStateChangedEntity(entity) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
-  pendingStateChangedEntities.set(entity.entity_id, entity);
+  pendingStateChangedEntities.set(entity.entity_id, {
+    entity,
+  });
+  scheduleStateChangedFlush();
+}
+
+function queueDeletedEntity(entityId) {
+  const normalizedEntityId = typeof entityId === 'string' ? entityId.trim() : '';
+  if (!normalizedEntityId) return;
+  state.deleteEntityState(normalizedEntityId);
+  favoriteStalePreservation.delete(normalizedEntityId);
+  pendingStateChangedEntities.set(normalizedEntityId, {
+    entity: null,
+  });
   scheduleStateChangedFlush();
 }
 
@@ -490,6 +525,7 @@ function renderWizardStep() {
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
       firstRunWizard.urlInput = input;
+      invalidateWizardConnectionTest();
       updateWizardTokenButtonState();
     });
     firstRunWizard.urlInput = input;
@@ -538,6 +574,7 @@ function renderWizardStep() {
     input.value = getWizardToken();
     input.addEventListener('input', () => {
       firstRunWizard.tokenInput = input;
+      invalidateWizardConnectionTest();
     });
     firstRunWizard.tokenInput = input;
     content.appendChild(label);
@@ -586,10 +623,12 @@ function renderWizardStep() {
 async function runWizardConnectionTest() {
   const normalizedUrl = normalizeBaseUrl(getWizardUrl());
   const token = getWizardToken();
+  const testId = ++firstRunWizard.connectionTestId;
   if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
     const message = getConnectionTestMessage({ code: 'invalid-url' });
     setWizardStatus(message.text, message.type);
     firstRunWizard.lastTestSuccessful = false;
+    firstRunWizard.lastSuccessfulConnection = null;
     return false;
   }
 
@@ -603,58 +642,110 @@ async function runWizardConnectionTest() {
   setWizardStatus(t('Testing Home Assistant connection...'), 'pending');
   try {
     const result = await window.electronAPI.testHaConnection(normalizedUrl, token);
+    if (
+      !firstRunWizard ||
+      firstRunWizard.connectionTestId !== testId ||
+      normalizeBaseUrl(getWizardUrl()) !== normalizedUrl ||
+      getWizardToken() !== token
+    ) {
+      return false;
+    }
     const message = getConnectionTestMessage(result);
     setWizardStatus(message.text, message.type);
     firstRunWizard.lastTestSuccessful = !!result?.success;
+    firstRunWizard.lastSuccessfulConnection = result?.success
+      ? { url: normalizedUrl, token }
+      : null;
     return !!result?.success;
   } catch (error) {
+    if (!firstRunWizard || firstRunWizard.connectionTestId !== testId) {
+      return false;
+    }
     const message = getConnectionTestMessage(error);
     setWizardStatus(message.text, message.type);
     firstRunWizard.lastTestSuccessful = false;
+    firstRunWizard.lastSuccessfulConnection = null;
     return false;
   } finally {
-    if (firstRunWizard.testButton) {
-      firstRunWizard.testButton.disabled = false;
-      firstRunWizard.testButton.setAttribute('aria-busy', 'false');
-    }
-    if (firstRunWizard.testSpinner) {
-      firstRunWizard.testSpinner.classList.add('hidden');
+    if (firstRunWizard && firstRunWizard.connectionTestId === testId) {
+      if (firstRunWizard.testButton) {
+        firstRunWizard.testButton.disabled = false;
+        firstRunWizard.testButton.setAttribute('aria-busy', 'false');
+      }
+      if (firstRunWizard.testSpinner) {
+        firstRunWizard.testSpinner.classList.add('hidden');
+      }
     }
   }
 }
 
+function invalidateWizardConnectionTest() {
+  if (!firstRunWizard) return;
+  firstRunWizard.connectionTestId += 1;
+  firstRunWizard.lastTestSuccessful = false;
+  firstRunWizard.lastSuccessfulConnection = null;
+}
+
+function wizardConnectionWasTested(url, token) {
+  return (
+    firstRunWizard?.lastTestSuccessful === true &&
+    firstRunWizard.lastSuccessfulConnection?.url === url &&
+    firstRunWizard.lastSuccessfulConnection?.token === token
+  );
+}
+
 async function finishFirstRunWizard() {
+  if (!firstRunWizard || firstRunWizard.finishInProgress) return;
+  firstRunWizard.finishInProgress = true;
+  if (firstRunWizard.nextButton) {
+    firstRunWizard.nextButton.disabled = true;
+    firstRunWizard.nextButton.setAttribute('aria-busy', 'true');
+  }
+
   const normalizedUrl = normalizeBaseUrl(getWizardUrl());
   const token = getWizardToken();
-  if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
-    const message = getConnectionTestMessage({ code: 'invalid-url' });
-    setWizardStatus(message.text, message.type);
-    return;
-  }
+  try {
+    if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
+      const message = getConnectionTestMessage({ code: 'invalid-url' });
+      setWizardStatus(message.text, message.type);
+      return;
+    }
 
-  if (!firstRunWizard.lastTestSuccessful) {
-    const passed = await runWizardConnectionTest();
-    if (!passed) return;
-  }
+    if (!wizardConnectionWasTested(normalizedUrl, token)) {
+      const passed = await runWizardConnectionTest();
+      if (!passed || !wizardConnectionWasTested(normalizedUrl, token)) return;
+    }
 
-  const nextConfig = {
-    ...(state.CONFIG || {}),
-    homeAssistant: {
-      ...(state.CONFIG?.homeAssistant || {}),
-      url: normalizedUrl,
-      token,
-    },
-  };
-  const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-  applyRendererConfig(updatedConfig || nextConfig);
-  setFirstRunWizardVisible(false);
-  startUiTickScheduler();
-  hotkeys.initializeHotkeys();
-  hotkeys.setupHotkeyEventListeners();
-  alerts.initializeEntityAlerts();
-  notifications.initializePersistentNotifications();
-  renderCurrentMode();
-  connectWebSocket();
+    const nextConfig = {
+      ...(state.CONFIG || {}),
+      homeAssistant: {
+        ...(state.CONFIG?.homeAssistant || {}),
+        url: normalizedUrl,
+        token,
+      },
+    };
+    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+    applyRendererConfig(updatedConfig || nextConfig);
+    setFirstRunWizardVisible(false);
+    // update-config also broadcasts config-updated back to this renderer. Route both
+    // completion paths through the same idempotent startup gate so onboarding cannot
+    // initialize subscriptions or replace its just-opened WebSocket twice.
+    startConfiguredRuntime();
+  } catch (error) {
+    const detail = error?.message || t('Unknown error');
+    const message = t('Could not save settings. {{error}}', { error: detail });
+    log.error('Failed to finish first-run setup:', error);
+    setWizardStatus(message, 'error');
+    uiUtils.showToast(message, 'error', 6000);
+  } finally {
+    if (firstRunWizard) {
+      firstRunWizard.finishInProgress = false;
+      if (firstRunWizard.nextButton) {
+        firstRunWizard.nextButton.disabled = false;
+        firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
+      }
+    }
+  }
 }
 
 function maybeShowWizardAfterSettingsClose() {
@@ -741,6 +832,9 @@ function ensureFirstRunWizard() {
     step: 0,
     visible: false,
     lastTestSuccessful: false,
+    lastSuccessfulConnection: null,
+    connectionTestId: 0,
+    finishInProgress: false,
     urlInput: null,
     tokenInput: null,
     testButton: null,
@@ -758,7 +852,7 @@ function maybeShowFirstRunWizard() {
   }
   ensureFirstRunWizard();
   firstRunWizard.step = 0;
-  firstRunWizard.lastTestSuccessful = false;
+  invalidateWizardConnectionTest();
   renderWizardStep();
   setFirstRunWizardVisible(true);
   return true;
@@ -819,9 +913,50 @@ function startClimateDemoRuntime({ overlay = false } = {}) {
   return true;
 }
 
+let lastTokenPersistenceWarningAt = 0;
+let latestRendererConfigRevision = -1;
+
+function showConfigPersistenceWarnings(persistenceWarnings = []) {
+  if (
+    !Array.isArray(persistenceWarnings) ||
+    !persistenceWarnings.some((warning) => warning?.code === 'home_assistant_token_not_persisted')
+  ) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastTokenPersistenceWarningAt < 5000) return;
+  lastTokenPersistenceWarningAt = now;
+  uiUtils.showToast(
+    `${t('Your Home Assistant token needs to be re-entered. ')}${t(
+      'Token encryption is not available on this system.'
+    )}`,
+    'warning',
+    20000
+  );
+}
+
 function applyRendererConfig(nextConfig) {
   if (!nextConfig || !nextConfig.homeAssistant) return;
-  const normalizedQuickAccess = normalizeQuickAccessConfig(nextConfig, { withChanged: true });
+  const nextRevision = Number(nextConfig.configRevision);
+  if (Number.isFinite(nextRevision) && nextRevision < latestRendererConfigRevision) {
+    return false;
+  }
+  if (Number.isFinite(nextRevision)) {
+    latestRendererConfigRevision = Math.max(latestRendererConfigRevision, nextRevision);
+  }
+  const persistenceWarnings = nextConfig.persistenceWarnings;
+  const runtimeWarnings = Array.isArray(nextConfig.runtimeWarnings)
+    ? nextConfig.runtimeWarnings
+    : [];
+  const persistentConfig = { ...nextConfig };
+  delete persistentConfig.configRecovery;
+  delete persistentConfig.configRevision;
+  delete persistentConfig.persistenceWarnings;
+  delete persistentConfig.runtimeWarnings;
+  const normalizedQuickAccess = normalizeQuickAccessConfig(persistentConfig, {
+    withChanged: true,
+  });
   // Runs after the Quick Access pass because it reconciles graph tiles against the normalized tabs.
   const normalizedGraphs = normalizeComparisonGraphsConfig(normalizedQuickAccess.config, {
     withChanged: true,
@@ -842,6 +977,40 @@ function applyRendererConfig(nextConfig) {
   if (ui.updateWeatherEffects) {
     ui.updateWeatherEffects();
   }
+
+  showConfigPersistenceWarnings(persistenceWarnings);
+  runtimeWarnings.forEach((warning) => {
+    uiUtils.showToast(
+      t('Error: {{error}}', {
+        error: warning?.error || t('Unknown error'),
+      }),
+      'warning',
+      5000
+    );
+  });
+  return true;
+}
+
+function showConfigRecoveryNotice(recovery) {
+  if (!recovery || typeof recovery !== 'object') return;
+
+  if (recovery.recovered) {
+    const message = t(
+      'The previous configuration was invalid, so the app recovered with safe defaults. Backup: {{path}}',
+      { path: String(recovery.backupPath || '-') }
+    );
+    uiUtils.showToast(message, 'warning', 20000);
+    return;
+  }
+
+  const message = t(
+    'Configuration recovery could not be completed. Backup: {{path}} Error: {{error}}',
+    {
+      path: String(recovery.backupPath || '-'),
+      error: String(recovery.error || t('Unknown error')),
+    }
+  );
+  uiUtils.showToast(message, 'error', 20000);
 }
 
 async function refreshLocaleBootstrap() {
@@ -1122,15 +1291,12 @@ window.addEventListener('offline', () => {
   }
   showClassifiedConnectionToast(new Error('Browser reported offline'));
 
-  // Proactively close stale sockets so reconnect can start fresh once online.
-  if (websocket.ws) {
-    try {
-      websocket.ws.__intentionalClose = true;
-      websocket.ws.close();
-      websocket.ws = null;
-    } catch (error) {
-      log.warn('Error closing WebSocket after offline event:', error);
-    }
+  // Use the manager lifecycle so authentication and message subscription state are
+  // cleared before the browser delivers the socket's asynchronous close event.
+  try {
+    websocket.close();
+  } catch (error) {
+    log.warn('Error closing WebSocket after offline event:', error);
   }
 });
 
@@ -1171,7 +1337,11 @@ websocket.on('message', (msg) => {
       configReq.catch((err) => {
         log.error('get_config request failed:', err);
       });
-      websocket.request({ type: 'subscribe_events', event_type: 'state_changed' });
+      websocket
+        .request({ type: 'subscribe_events', event_type: 'state_changed' })
+        .catch((error) => {
+          log.warn('State change subscription request failed:', error);
+        });
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
       mainConnectionState = 'auth-failed';
@@ -1186,9 +1356,11 @@ websocket.on('message', (msg) => {
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
-      const entity = msg.event.data.new_state;
+      const entity = msg.event.data?.new_state;
       if (entity) {
         queueStateChangedEntity(entity);
+      } else {
+        queueDeletedEntity(msg.event.data?.entity_id || msg.event.data?.old_state?.entity_id);
       }
     } else if (msg.type === 'result') {
       log.debug(`Received result for message ID: ${msg.id}`);
@@ -1426,10 +1598,16 @@ window.electronAPI.onProfileSyncStatus((status) => {
 window.electronAPI.onConfigUpdated(async (nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
-    await refreshLocaleBootstrap();
     const wasConfigured = isConfigured(state.CONFIG);
     const wasSecureStoragePending = isSecureStoragePending();
-    applyRendererConfig(nextConfig);
+    if (applyRendererConfig(nextConfig) === false) return;
+    // Apply the versioned config synchronously before yielding. The preload
+    // buffers config echoes while writes are pending, and this avoids an older
+    // event resuming after a newer optimistic mutation.
+    await refreshLocaleBootstrap();
+    if (!IS_SPECIAL_PIN_MODE && configuredRuntimeStarted) {
+      alerts.initializeEntityAlerts();
+    }
     renderCurrentMode();
     const wizardShown = maybeShowFirstRunWizard();
     if (
@@ -1442,6 +1620,10 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }
+});
+
+window.electronAPI.onConfigPersistenceWarning((warnings) => {
+  showConfigPersistenceWarnings(warnings);
 });
 
 window.electronAPI.onDesktopPinActionRequested((payload) => {
@@ -1612,9 +1794,17 @@ async function init() {
       return;
     }
 
+    const configRecovery =
+      config.configRecovery && typeof config.configRecovery === 'object'
+        ? { ...config.configRecovery }
+        : null;
+    // Runtime recovery metadata is intentionally not part of renderer state so
+    // later update-config calls cannot echo it back into persisted settings.
+    delete config.configRecovery;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
+    showConfigRecoveryNotice(configRecovery);
 
     if (isClimateDemoConfig(state.CONFIG)) {
       const overlay = isClimateDemoOverlayConfig(state.CONFIG);
@@ -1629,7 +1819,16 @@ async function init() {
     if (state.CONFIG.tokenResetReason) {
       const reason = state.CONFIG.tokenResetReason;
       if (window.electronAPI.clearTokenResetReason) {
-        await window.electronAPI.clearTokenResetReason();
+        try {
+          await window.electronAPI.clearTokenResetReason();
+        } catch (error) {
+          log.error('Failed to acknowledge token recovery notice:', error);
+          const acknowledgementMessage = t(
+            'Could not save the token recovery acknowledgement. {{error}}',
+            { error: error?.message || t('Unknown error') }
+          );
+          uiUtils.showToast(acknowledgementMessage, 'error', 10000);
+        }
       }
       delete state.CONFIG.tokenResetReason;
 
@@ -1676,6 +1875,7 @@ async function init() {
   } catch (error) {
     log.error('Initialization error:', error);
     uiUtils.showLoading(false);
+    throw error;
   }
 }
 
@@ -1918,13 +2118,10 @@ function wireUI() {
       clearWeatherBtn.onclick = async () => {
         try {
           // Clear the selected weather entity (revert to default)
-          const updatedConfig = {
-            ...state.CONFIG,
+          const persistedConfig = await window.electronAPI.updateConfig({
             selectedWeatherEntity: undefined,
-          };
-
-          await window.electronAPI.updateConfig(updatedConfig);
-          state.setConfig(updatedConfig);
+          });
+          applyRendererConfig(persistedConfig);
 
           // Refresh weather display
           ui.updateWeatherFromHA();
@@ -1942,27 +2139,44 @@ function wireUI() {
 
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     if (globalHotkeysEnabled) {
-      globalHotkeysEnabled.onchange = (e) => {
+      globalHotkeysEnabled.onchange = async (e) => {
+        const requestedEnabled = !!e.target.checked;
+        const previousEnabled = !!state.CONFIG.globalHotkeys?.enabled;
         const hotkeysSection = document.getElementById('hotkeys-section');
-        if (hotkeysSection) {
-          hotkeysSection.style.display = e.target.checked ? 'block' : 'none';
+        e.target.disabled = true;
+        try {
+          const success = await hotkeys.toggleHotkeys(requestedEnabled);
+          const appliedEnabled = success ? requestedEnabled : previousEnabled;
+          e.target.checked = appliedEnabled;
+          if (hotkeysSection) {
+            hotkeysSection.style.display = appliedEnabled ? 'block' : 'none';
+          }
+        } finally {
+          e.target.disabled = false;
         }
-        hotkeys.toggleHotkeys(e.target.checked);
       };
     }
 
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     if (entityAlertsEnabled) {
-      entityAlertsEnabled.onchange = (e) => {
+      entityAlertsEnabled.onchange = async (e) => {
+        const requestedEnabled = !!e.target.checked;
+        const previousEnabled = !!state.CONFIG.entityAlerts?.enabled;
         const alertsSection = document.getElementById('alerts-section');
-        if (alertsSection) {
-          alertsSection.style.display = e.target.checked ? 'block' : 'none';
+        e.target.disabled = true;
+        try {
+          const success = await alerts.toggleAlerts(requestedEnabled);
+          const appliedEnabled = success ? requestedEnabled : previousEnabled;
+          e.target.checked = appliedEnabled;
+          if (alertsSection) {
+            alertsSection.style.display = appliedEnabled ? 'block' : 'none';
+          }
+          if (appliedEnabled) {
+            settings.renderAlertsListInline();
+          }
+        } finally {
+          e.target.disabled = false;
         }
-        // Render inline alerts list when enabled
-        if (e.target.checked) {
-          settings.renderAlertsListInline();
-        }
-        alerts.toggleAlerts(e.target.checked);
       };
     }
 
@@ -2039,10 +2253,22 @@ function wireUI() {
           const container = target.parentElement;
           const input = container.querySelector('.hotkey-input');
           const entityId = input.dataset.entityId;
-          await window.electronAPI.unregisterHotkey(entityId);
-          input.value = '';
-          delete state.CONFIG.globalHotkeys.hotkeys[entityId];
-          hotkeys.renderHotkeysTab();
+          try {
+            const result = await window.electronAPI.unregisterHotkey(entityId);
+            if (result?.success !== true) {
+              throw new Error(result?.error || t('Error toggling hotkeys'));
+            }
+            input.value = '';
+            delete state.CONFIG.globalHotkeys.hotkeys[entityId];
+            hotkeys.renderHotkeysTab();
+            if (result.warning) {
+              uiUtils.showToast(result.warning, 'warning', 4000);
+            }
+          } catch (error) {
+            log.error('Failed to clear entity hotkey:', error);
+            const errorMessage = error?.message || t('Error toggling hotkeys');
+            uiUtils.showToast(errorMessage, 'error', 3000);
+          }
         }
       });
     }
@@ -2191,10 +2417,23 @@ function wireDesktopPinUI() {
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  try {
-    init();
-  } catch (error) {
-    log.error('Error in DOMContentLoaded handler:', error);
-  }
-});
+window.addEventListener(
+  'DOMContentLoaded',
+  () => {
+    void init()
+      .then(async () => {
+        if (IS_DESKTOP_PIN_MODE) return;
+        if (typeof window.electronAPI?.signalRendererReady !== 'function') {
+          throw new Error('The preload renderer-ready bridge is unavailable');
+        }
+        const result = await window.electronAPI.signalRendererReady();
+        if (result?.success !== true) {
+          throw new Error(result?.error || 'The main process rejected renderer readiness');
+        }
+      })
+      .catch((error) => {
+        log.error('Error in DOMContentLoaded handler:', error);
+      });
+  },
+  { once: true }
+);

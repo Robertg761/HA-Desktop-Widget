@@ -240,6 +240,47 @@ describe('WebSocket Manager', () => {
       expect(closeSpy).toHaveBeenCalled();
     });
 
+    test('should ignore a superseded socket closing after its replacement authenticates', async () => {
+      state.setConfig(sampleConfig);
+
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const firstWs = wsManager.ws;
+      const delayedClose = firstWs.onclose;
+      firstWs.onclose = null;
+
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const replacementWs = wsManager.ws;
+      replacementWs.simulateMessage({ type: 'auth_ok' });
+
+      delayedClose();
+
+      expect(wsManager.ws).toBe(replacementWs);
+      expect(wsManager.isAuthenticated).toBe(true);
+    });
+
+    test('should ignore messages delivered by a superseded socket', async () => {
+      state.setConfig(sampleConfig);
+
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const firstWs = wsManager.ws;
+      const delayedMessage = firstWs.onmessage;
+      firstWs.onclose = null;
+      const messageHandler = jest.fn();
+      wsManager.on('message', messageHandler);
+
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      delayedMessage({ data: JSON.stringify({ type: 'auth_ok' }) });
+
+      expect(wsManager.isAuthenticated).toBe(false);
+      expect(messageHandler).not.toHaveBeenCalled();
+    });
+
     test('should emit close event when connection closes', async () => {
       state.setConfig(sampleConfig);
 
@@ -366,16 +407,23 @@ describe('WebSocket Manager', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
-    test('should send request with incremented ID', () => {
+    test('should send request with incremented ID', async () => {
       const initialId = wsManager.wsId;
 
-      wsManager.request({ type: 'get_states' });
+      const promise = wsManager.request({ type: 'get_states' });
 
       expect(wsManager.wsId).toBe(initialId + 1);
 
       const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
       expect(sentMessage.id).toBe(initialId);
       expect(sentMessage.type).toBe('get_states');
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        result: [],
+      });
+      await promise;
     });
 
     test('should return promise that resolves on response', async () => {
@@ -436,10 +484,12 @@ describe('WebSocket Manager', () => {
     });
 
     test('should clean up pending request on successful response', async () => {
+      jest.useFakeTimers();
       const promise = wsManager.request({ type: 'get_states' });
       const requestId = promise.id;
 
       expect(wsManager.pendingWs.has(requestId)).toBe(true);
+      expect(jest.getTimerCount()).toBe(1);
 
       wsManager.ws.simulateMessage({
         id: requestId,
@@ -451,13 +501,37 @@ describe('WebSocket Manager', () => {
       await promise;
 
       expect(wsManager.pendingWs.has(requestId)).toBe(false);
+      expect(jest.getTimerCount()).toBe(0);
+
+      jest.useRealTimers();
     });
 
-    test('should attach ID to returned promise', () => {
+    test('should reject and clear pending requests immediately when the socket closes', async () => {
+      jest.useFakeTimers();
+      const promise = wsManager.request({ type: 'get_states' });
+      const requestId = promise.id;
+
+      wsManager.ws.close();
+
+      await expect(promise).rejects.toThrow('WebSocket connection closed');
+      expect(wsManager.pendingWs.has(requestId)).toBe(false);
+      expect(jest.getTimerCount()).toBe(0);
+
+      jest.useRealTimers();
+    });
+
+    test('should attach ID to returned promise', async () => {
       const promise = wsManager.request({ type: 'get_states' });
 
       expect(promise.id).toBeDefined();
       expect(typeof promise.id).toBe('number');
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        result: [],
+      });
+      await promise;
     });
   });
 
@@ -525,7 +599,41 @@ describe('WebSocket Manager', () => {
       });
     });
 
-    test('should resubscribe active message subscriptions after reconnect auth_ok', async () => {
+    test('should unsubscribe a server subscription that completes after local cancellation', async () => {
+      const unsubscribe = wsManager.subscribeMessage(
+        { type: 'persistent_notification/subscribe' },
+        jest.fn()
+      );
+
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      const subscribeMessage = JSON.parse(wsManager.ws.sentMessages[0]);
+
+      unsubscribe();
+      expect(wsManager.ws.sentMessages).toHaveLength(1);
+
+      wsManager.ws.simulateMessage({
+        id: subscribeMessage.id,
+        type: 'result',
+        success: true,
+        result: null,
+      });
+      await Promise.resolve();
+
+      const unsubscribeMessage = JSON.parse(wsManager.ws.sentMessages[1]);
+      expect(unsubscribeMessage).toEqual({
+        id: 1001,
+        type: 'unsubscribe_events',
+        subscription: subscribeMessage.id,
+      });
+      wsManager.ws.simulateMessage({
+        id: unsubscribeMessage.id,
+        type: 'result',
+        success: true,
+        result: null,
+      });
+    });
+
+    test('should resubscribe after an explicit close when the socket close event is delayed', async () => {
       wsManager.subscribeMessage({ type: 'persistent_notification/subscribe' }, jest.fn());
 
       wsManager.ws.simulateMessage({ type: 'auth_ok' });
@@ -538,7 +646,15 @@ describe('WebSocket Manager', () => {
       });
       await Promise.resolve();
 
-      wsManager.ws.close();
+      const firstWs = wsManager.ws;
+      const delayedClose = firstWs.onclose;
+      firstWs.onclose = null;
+      wsManager.close();
+
+      const subscription = Array.from(wsManager.messageSubscriptions.values())[0];
+      expect(subscription.subscriptionId).toBeNull();
+      expect(wsManager.messageSubscriptionHandlers).toHaveProperty('size', 0);
+
       wsManager.connect();
       await new Promise((resolve) => setTimeout(resolve, 20));
       wsManager.ws.simulateMessage({ type: 'auth_ok' });
@@ -548,6 +664,37 @@ describe('WebSocket Manager', () => {
         id: 1001,
         type: 'persistent_notification/subscribe',
       });
+
+      delayedClose();
+      expect(wsManager.isAuthenticated).toBe(true);
+    });
+
+    test('should resubscribe when a replacement authenticates before the old close arrives', async () => {
+      wsManager.subscribeMessage({ type: 'persistent_notification/subscribe' }, jest.fn());
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      const firstSubscribe = JSON.parse(wsManager.ws.sentMessages[0]);
+      wsManager.ws.simulateMessage({
+        id: firstSubscribe.id,
+        type: 'result',
+        success: true,
+        result: null,
+      });
+      await Promise.resolve();
+
+      const firstWs = wsManager.ws;
+      const delayedClose = firstWs.onclose;
+      firstWs.onclose = null;
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+
+      expect(JSON.parse(wsManager.ws.sentMessages[0])).toEqual({
+        id: 1001,
+        type: 'persistent_notification/subscribe',
+      });
+
+      delayedClose();
+      expect(wsManager.isAuthenticated).toBe(true);
     });
   });
 
@@ -556,16 +703,26 @@ describe('WebSocket Manager', () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
       await new Promise((resolve) => setTimeout(resolve, 20));
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
     });
 
-    test('should call service with correct parameters', () => {
-      wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' });
+    test('should call service with correct parameters', async () => {
+      const promise = wsManager.callService('light', 'turn_on', {
+        entity_id: 'light.living_room',
+      });
 
       const sentMessage = JSON.parse(wsManager.ws.sentMessages[0]);
       expect(sentMessage.type).toBe('call_service');
       expect(sentMessage.domain).toBe('light');
       expect(sentMessage.service).toBe('turn_on');
       expect(sentMessage.service_data).toEqual({ entity_id: 'light.living_room' });
+      wsManager.ws.simulateMessage({
+        id: promise.id,
+        type: 'result',
+        success: true,
+        result: {},
+      });
+      await promise;
     });
 
     test('should return promise that resolves on success', async () => {
@@ -684,6 +841,36 @@ describe('WebSocket Manager', () => {
         success: true,
         result: { context: { id: 'service-context' } },
       });
+    });
+
+    test('should reject direct service calls while the socket is open but unauthenticated', async () => {
+      wsManager.isAuthenticated = false;
+      const sentBefore = wsManager.ws.sentMessages.length;
+
+      await expect(
+        wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' })
+      ).rejects.toThrow('WebSocket not authenticated');
+      expect(wsManager.ws.sentMessages.length).toBe(sentBefore);
+    });
+
+    test('should proxy desktop-pin service calls while the socket is open but unauthenticated', async () => {
+      const requestDesktopPinAction = jest.fn().mockResolvedValue({
+        success: true,
+        result: { context: { id: 'service-context' } },
+      });
+      window.electronAPI = { requestDesktopPinAction };
+      window.history.replaceState(
+        {},
+        '',
+        'http://localhost/?mode=desktop-pin&entityId=light.living_room'
+      );
+      wsManager.isAuthenticated = false;
+      const sentBefore = wsManager.ws.sentMessages.length;
+
+      await wsManager.callService('light', 'turn_on', { entity_id: 'light.living_room' });
+
+      expect(requestDesktopPinAction).toHaveBeenCalled();
+      expect(wsManager.ws.sentMessages.length).toBe(sentBefore);
     });
 
     test('should reject desktop-pin service calls when the main renderer reports failure', async () => {

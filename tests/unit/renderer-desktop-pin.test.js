@@ -302,6 +302,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(focusBtn?.disabled).toBe(false);
     expect(mockWebsocket.connect).not.toHaveBeenCalled();
     expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
+    expect(mockElectronAPI.signalRendererReady).not.toHaveBeenCalled();
 
     focusBtn.click();
 

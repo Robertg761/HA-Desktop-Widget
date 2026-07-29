@@ -7,7 +7,11 @@ const { EventEmitter } = require('events');
 const {
   MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
   createElectronNetBinaryFetcher,
+  createPinnedDnsBinaryFetcher,
   createHaProtocolHandler,
+  isPrivateOrReservedIp,
+  resolvePublicArtworkAddress,
+  validatePublicArtworkUrl,
 } = require('../../src/ha-protocol.cjs');
 const { isAllowedHlsProxyPath } = require('../../src/main-security.cjs');
 
@@ -36,6 +40,7 @@ function createHandler(overrides = {}) {
     fetchStream,
     fetchBinary,
     isAllowedHlsProxyPath,
+    validateExternalArtworkUrl: jest.fn(async () => true),
     log,
     ...overrides,
   };
@@ -362,7 +367,8 @@ describe('Home Assistant protocol handler', () => {
   });
 
   it('does not attach the Home Assistant token to external artwork requests', async () => {
-    const { handler, fetchBinary } = createHandler();
+    const validateExternalArtworkUrl = jest.fn(async () => true);
+    const { handler, fetchBinary } = createHandler({ validateExternalArtworkUrl });
     const artworkUrl = 'https://cdn.example.test/artwork.png';
     const encodedUrl = encodeURIComponent(Buffer.from(artworkUrl).toString('base64'));
 
@@ -370,6 +376,25 @@ describe('Home Assistant protocol handler', () => {
 
     expect(fetchBinary.mock.calls[0][0]).toBe(artworkUrl);
     expect(fetchBinary.mock.calls[0][1]).toEqual({});
+    expect(validateExternalArtworkUrl).toHaveBeenCalledWith(artworkUrl);
+    expect(fetchBinary.mock.calls[0][3].validateRedirectUrl).toBe(validateExternalArtworkUrl);
+  });
+
+  it('rejects external artwork that resolves to a private destination', async () => {
+    const validateExternalArtworkUrl = jest.fn(async () => {
+      const error = new Error('blocked');
+      error.statusCode = 403;
+      throw error;
+    });
+    const { handler, fetchBinary } = createHandler({ validateExternalArtworkUrl });
+    const encodedUrl = encodeURIComponent(
+      Buffer.from('http://169.254.169.254/latest/meta-data').toString('base64')
+    );
+
+    const response = await handler(createRequest(`ha://media_artwork/${encodedUrl}`));
+
+    expect(response.status).toBe(403);
+    expect(fetchBinary).not.toHaveBeenCalled();
   });
 
   it('fails closed for missing credentials, unknown hosts, and bounded-fetch errors', async () => {
@@ -400,6 +425,7 @@ describe('Electron net binary fetcher', () => {
     const request = new EventEmitter();
     request.setHeader = jest.fn();
     request.abort = jest.fn();
+    request.followRedirect = jest.fn();
     request.end = jest.fn(() => {
       const response = new EventEmitter();
       Object.assign(response, responseDefinition);
@@ -467,5 +493,200 @@ describe('Electron net binary fetcher', () => {
       statusCode: 415,
       code: 'MEDIA_ARTWORK_UNSUPPORTED_TYPE',
     });
+  });
+
+  it('validates a redirect before following it', async () => {
+    const { net, request } = createNet({
+      statusCode: 200,
+      headers: { 'content-type': ['image/png'], 'content-length': ['4'] },
+      chunks: [Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+    });
+    const validateRedirectUrl = jest.fn(async () => true);
+    const fetchPromise = createElectronNetBinaryFetcher(net)(
+      'https://example.test/start',
+      {},
+      1000,
+      {
+        validateRedirectUrl,
+      }
+    );
+
+    request.emit('redirect', 302, 'GET', 'https://cdn.example.test/image.png', {});
+    await Promise.resolve();
+    await Promise.resolve();
+    await fetchPromise;
+
+    expect(validateRedirectUrl).toHaveBeenCalledWith('https://cdn.example.test/image.png');
+    expect(request.followRedirect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('external artwork URL validation', () => {
+  it.each([
+    '127.0.0.1',
+    '10.0.0.8',
+    '169.254.169.254',
+    '192.168.1.20',
+    '::1',
+    'fd00::1',
+    'fe80::1',
+  ])('classifies %s as private or reserved', (address) => {
+    expect(isPrivateOrReservedIp(address)).toBe(true);
+  });
+
+  it('allows a hostname only when every resolved address is public', async () => {
+    const publicLookup = jest.fn(async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+    ]);
+    const privateLookup = jest.fn(async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '192.168.1.3', family: 4 },
+    ]);
+
+    await expect(
+      validatePublicArtworkUrl('https://images.example.test/cover.png', publicLookup)
+    ).resolves.toBe('https://images.example.test/cover.png');
+    await expect(
+      validatePublicArtworkUrl('https://images.example.test/cover.png', privateLookup)
+    ).rejects.toMatchObject({ statusCode: 403, code: 'MEDIA_ARTWORK_BLOCKED_URL' });
+  });
+
+  it.each([
+    'http://localhost/image.png',
+    'http://printer.local/image.png',
+    'http://169.254.169.254/latest/meta-data',
+    'https://user:password@example.test/image.png',
+  ])('blocks non-public URL %s before DNS lookup', async (url) => {
+    const lookup = jest.fn();
+    await expect(validatePublicArtworkUrl(url, lookup)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('returns the resolved address alongside the validated URL', async () => {
+    const lookup = jest.fn(async () => [{ address: '93.184.216.34', family: 4 }]);
+
+    await expect(
+      resolvePublicArtworkAddress('https://images.example.test/cover.png', lookup)
+    ).resolves.toEqual({
+      href: 'https://images.example.test/cover.png',
+      address: '93.184.216.34',
+      family: 4,
+    });
+  });
+});
+
+describe('pinned DNS binary fetcher', () => {
+  function createMockTransport(responsePlanByHost) {
+    const connections = [];
+    const request = jest.fn((parsedUrl, options, onResponse) => {
+      const connection = {
+        url: parsedUrl.toString(),
+        lookupResult: null,
+        destroyed: false,
+      };
+      options.lookup(parsedUrl.hostname, {}, (error, address, family) => {
+        connection.lookupResult = { address, family };
+      });
+      connections.push(connection);
+
+      const requestObject = new EventEmitter();
+      requestObject.destroy = () => {
+        connection.destroyed = true;
+      };
+      requestObject.end = () => {
+        const plan = responsePlanByHost[parsedUrl.hostname];
+        const response = new EventEmitter();
+        response.statusCode = plan.statusCode;
+        response.headers = plan.headers || {};
+        response.resume = () => {};
+        process.nextTick(() => {
+          onResponse(response);
+          if (plan.body !== undefined) {
+            response.emit('data', Buffer.from(plan.body));
+            response.emit('end');
+          }
+        });
+      };
+      return requestObject;
+    });
+    return { request, connections };
+  }
+
+  it('connects to the pre-validated address and re-pins each redirect hop', async () => {
+    const lookupsByHost = {
+      'cdn.example.test': [{ address: '93.184.216.34', family: 4 }],
+      'cdn2.example.test': [{ address: '151.101.1.140', family: 4 }],
+    };
+    const transport = createMockTransport({
+      'cdn.example.test': {
+        statusCode: 302,
+        headers: { location: 'https://cdn2.example.test/artwork.png' },
+      },
+      'cdn2.example.test': {
+        statusCode: 200,
+        headers: { 'content-type': 'image/png' },
+        body: 'artwork-bytes',
+      },
+    });
+    const fetchBinary = createPinnedDnsBinaryFetcher({
+      httpsModule: transport,
+      resolvePinnedAddress: (url) =>
+        resolvePublicArtworkAddress(url, async (hostname) => lookupsByHost[hostname]),
+    });
+
+    const result = await fetchBinary('https://cdn.example.test/artwork.png', {}, 1000, {
+      validateContentType: (contentType) => contentType === 'image/png',
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.data.toString()).toBe('artwork-bytes');
+    expect(transport.connections.map((connection) => connection.lookupResult.address)).toEqual([
+      '93.184.216.34',
+      '151.101.1.140',
+    ]);
+  });
+
+  it('blocks redirects whose hostname resolves to a private address', async () => {
+    const lookupsByHost = {
+      'cdn.example.test': [{ address: '93.184.216.34', family: 4 }],
+      'rebind.example.test': [{ address: '192.168.1.10', family: 4 }],
+    };
+    const transport = createMockTransport({
+      'cdn.example.test': {
+        statusCode: 302,
+        headers: { location: 'https://rebind.example.test/artwork.png' },
+      },
+    });
+    const fetchBinary = createPinnedDnsBinaryFetcher({
+      httpsModule: transport,
+      resolvePinnedAddress: (url) =>
+        resolvePublicArtworkAddress(url, async (hostname) => lookupsByHost[hostname]),
+    });
+
+    await expect(
+      fetchBinary('https://cdn.example.test/artwork.png', {}, 1000, {})
+    ).rejects.toMatchObject({ statusCode: 403, code: 'MEDIA_ARTWORK_BLOCKED_URL' });
+    expect(transport.connections).toHaveLength(1);
+  });
+
+  it('rejects when the redirect chain is too long', async () => {
+    const transport = createMockTransport({
+      'cdn.example.test': {
+        statusCode: 302,
+        headers: { location: 'https://cdn.example.test/artwork.png' },
+      },
+    });
+    const fetchBinary = createPinnedDnsBinaryFetcher({
+      httpsModule: transport,
+      resolvePinnedAddress: (url) =>
+        resolvePublicArtworkAddress(url, async () => [{ address: '93.184.216.34', family: 4 }]),
+    });
+
+    await expect(
+      fetchBinary('https://cdn.example.test/artwork.png', {}, 1000, { maxRedirects: 2 })
+    ).rejects.toMatchObject({ statusCode: 502, code: 'MEDIA_ARTWORK_TOO_MANY_REDIRECTS' });
   });
 });

@@ -13,4 +13,21 @@ describe('downloadable locale-pack manifest', () => {
       expect(pack.sha256).toBe(actualHash);
     }
   });
+
+  test('publishes every bundled English message in every downloadable pack', () => {
+    const packDir = path.resolve(__dirname, '../../locale-packs');
+    const englishMessages = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../locales/en.json'), 'utf8')
+    );
+    const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+    const englishKeys = Object.keys(englishMessages).sort();
+
+    for (const manifestEntry of manifest.packs) {
+      const pack = JSON.parse(
+        fs.readFileSync(path.join(packDir, `${manifestEntry.locale}.json`), 'utf8')
+      );
+      expect(pack.version).toBe(manifestEntry.version);
+      expect(Object.keys(pack.messages).sort()).toEqual(englishKeys);
+    }
+  });
 });

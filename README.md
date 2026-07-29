@@ -61,7 +61,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 
 ### Advanced Features
 
-- **Auto-Updates**: GitHub release checks for packaged builds, with manual download flow for portable builds
+- **Updates**: Automatic installation for Windows installer and Linux AppImage builds; portable, macOS, and Linux deb builds use a GitHub Releases download flow
 - **System Tray**: Minimize to tray with quick access menu
 - **Start at Login**: Optional OS login startup control
 - **Configuration**: Easy setup with Home Assistant URL and token
@@ -146,7 +146,7 @@ Planned for a future release:
 ### System Integration
 
 - **Minimize to Tray**: Click the minimize button to hide to system tray
-- **Auto-Updates**: Supported packaged builds check for updates in the background; portable builds offer a GitHub download link
+- **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Settings**: Access via the Settings button or right-click the tray icon
 
@@ -191,7 +191,7 @@ toggle it; press and hold it to exercise the target-temperature, mode, fan, and 
 This command only works with the development `--dev` launch path. It creates a fresh temporary
 Electron profile for that run, blocks all real Home Assistant service calls, and never reads or
 writes the normal app configuration, token, desktop pins, or profile-sync data. Remove the
-`dev:climate-demo` script and `src/dev-climate-demo.js` when the fixture is no longer useful.
+`dev:climate-demo` script and `development/dev-climate-demo.js` when the fixture is no longer useful.
 
 To test the card alongside a real Home Assistant connection, run
 `npm run dev:climate-overlay`. This development-only mode leaves the normal Electron profile and
@@ -207,10 +207,10 @@ cannot start while a copy of the widget is already running — quit that one fir
 
 ### Release Channels
 
-- **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release, and existing users receive it through the standard update path.
+- **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, and Linux deb users download it from GitHub Releases.
 - **Tester prereleases**: Push a SemVer prerelease tag like `v3.5.4-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings -> Application Updates are offered these builds.
 - **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
-- **Portable builds**: Portable users still update manually, but the update checker will show prerelease portable downloads when beta updates are enabled.
+- **Manual-update builds**: Portable, macOS, and Linux deb users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
 
 The minimum planned beta version is stored in `.github/beta-target`. It is currently set to
 `3.8.0`, so the active series starts at `v3.8.0-beta.1`. Once `v3.8.0` is stable, the workflow

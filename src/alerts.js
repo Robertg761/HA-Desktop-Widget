@@ -85,6 +85,7 @@ async function toggleAlerts(enabled) {
       );
       return true;
     }
+    showToast(result?.error || t('Error toggling alerts'), 'error', 3000);
   } catch (error) {
     console.error('Error toggling alerts:', error);
     showToast(t('Error toggling alerts'), 'error', 2000);

@@ -1743,5 +1743,146 @@ describe('Camera Module', () => {
       // HLS should be stopped
       expect(mockState.ACTIVE_HLS.size).toBe(0);
     });
+
+    it('should replace an MJPEG live source with a finite snapshot when stopped', async () => {
+      mockWebSocketRequest.mockResolvedValue({ success: false });
+      camera.openCamera('camera.front_door');
+
+      const liveBtn = document.querySelector('#live-btn');
+      liveBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const img = document.querySelector('.camera-img');
+      expect(img.getAttribute('src')).toContain('ha://camera_stream/');
+
+      liveBtn.click();
+
+      expect(img.getAttribute('src')).toBe('ha://camera/camera.front_door?t=1234567890');
+      expect(img.getAttribute('src')).not.toContain('camera_stream');
+      expect(liveBtn.textContent).toBe('Live');
+    });
+
+    it('should pause and clear a native HLS source when stopped', async () => {
+      mockWebSocketRequest.mockResolvedValue({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+      mockHls.isSupported.mockReturnValue(false);
+      const canPlayTypeSpy = jest
+        .spyOn(HTMLMediaElement.prototype, 'canPlayType')
+        .mockReturnValue('maybe');
+      camera.openCamera('camera.front_door');
+
+      const liveBtn = document.querySelector('#live-btn');
+      liveBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const video = document.querySelector('video.camera-video');
+      expect(video.hasAttribute('src')).toBe(true);
+
+      mediaPauseSpy.mockClear();
+      liveBtn.click();
+
+      expect(video.hasAttribute('src')).toBe(false);
+      expect(video.style.display).toBe('none');
+      expect(mediaPauseSpy).toHaveBeenCalled();
+      canPlayTypeSpy.mockRestore();
+    });
+
+    it('should not attach a stream after the modal closes during startup', async () => {
+      let resolveStreamRequest;
+      mockWebSocketRequest.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveStreamRequest = resolve;
+          })
+      );
+      camera.openCamera('camera.front_door');
+
+      document.querySelector('#live-btn').click();
+      await Promise.resolve();
+      document.querySelector('.close-btn').click();
+      resolveStreamRequest({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(document.querySelector('.camera-modal')).toBeNull();
+      expect(mockHls).not.toHaveBeenCalled();
+      expect(mockState.ACTIVE_HLS.size).toBe(0);
+    });
+
+    it('should treat a second click during startup as cancellation, not another start', async () => {
+      let resolveStreamRequest;
+      mockWebSocketRequest.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveStreamRequest = resolve;
+          })
+      );
+      camera.openCamera('camera.front_door');
+
+      const liveBtn = document.querySelector('#live-btn');
+      liveBtn.click();
+      liveBtn.click();
+      resolveStreamRequest({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockWebSocketRequest).toHaveBeenCalledTimes(1);
+      expect(mockHls).not.toHaveBeenCalled();
+      expect(document.querySelector('.camera-img').getAttribute('src')).toBe(
+        'ha://camera/camera.front_door?t=1234567890'
+      );
+      expect(liveBtn.textContent).toBe('Live');
+    });
+
+    it('should not report an intentional startup cancellation as a viewer failure', async () => {
+      const { showToast } = require('../../src/ui-utils.js');
+      let rejectStreamRequest;
+      mockWebSocketRequest.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectStreamRequest = reject;
+          })
+      );
+      camera.openCamera('camera.front_door');
+
+      const liveBtn = document.querySelector('#live-btn');
+      liveBtn.click();
+      await Promise.resolve();
+      liveBtn.click();
+      rejectStreamRequest(new Error('request cancelled'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(document.querySelector('.camera-img').getAttribute('src')).toBe(
+        'ha://camera/camera.front_door?t=1234567890'
+      );
+      expect(showToast).not.toHaveBeenCalledWith('Failed to open camera viewer', 'error', 2500);
+      expect(liveBtn.textContent).toBe('Live');
+    });
+
+    it('should destroy a partially initialized HLS instance when attachment throws', async () => {
+      const { showToast } = require('../../src/ui-utils.js');
+      mockWebSocketRequest.mockResolvedValue({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+      mockHlsInstance.attachMedia.mockImplementationOnce(() => {
+        throw new Error('attach failed');
+      });
+      camera.openCamera('camera.front_door');
+
+      document.querySelector('#live-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(mockState.ACTIVE_HLS.size).toBe(0);
+      expect(document.querySelector('.camera-img').getAttribute('src')).toBe(
+        'ha://camera/camera.front_door?t=1234567890'
+      );
+      expect(showToast).toHaveBeenCalledWith('Failed to open camera viewer', 'error', 2500);
+    });
   });
 });

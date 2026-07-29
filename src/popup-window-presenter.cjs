@@ -48,6 +48,7 @@ function createPopupWindowPresenter(options = {}) {
     // what getBounds() reports but never moves the window, so attempting a restore there
     // only feeds compositor-invented coordinates back into the saved position.
     supportsWindowPositioning = true,
+    shouldReleaseElevationOnBlur = () => false,
     log = console,
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
@@ -58,6 +59,10 @@ function createPopupWindowPresenter(options = {}) {
   // Set by a raise that must hold until the window hides, so a later one-off raise cannot
   // schedule a release underneath it (a desktop pin focusing the widget mid-popup, say).
   let stickyElevation = false;
+  // A full-screen application can briefly take focus back while the popup is still
+  // activating. Ignore that activation-time blur; a later blur is a real signal that
+  // the user moved on and the screen-saver level should no longer be sticky.
+  let blurReleaseArmed = false;
 
   function safeCall(targetWindow, method, ...args) {
     if (!targetWindow || typeof targetWindow[method] !== 'function') return undefined;
@@ -183,6 +188,7 @@ function createPopupWindowPresenter(options = {}) {
     if (!isUsableWindow(targetWindow)) return false;
 
     cancelPendingRaises();
+    blurReleaseArmed = false;
     const intendedPosition = resolveIntendedPosition(targetWindow);
 
     if (safeCall(targetWindow, 'isMinimized')) {
@@ -212,8 +218,14 @@ function createPopupWindowPresenter(options = {}) {
 
     stickyElevation = stickyElevation || keepElevated;
 
-    if (!stickyElevation) {
-      const releaseDelay = Math.max(...POPUP_RAISE_REASSERT_DELAYS_MS) + 1;
+    const releaseDelay = Math.max(...POPUP_RAISE_REASSERT_DELAYS_MS) + 1;
+    if (stickyElevation) {
+      if (shouldReleaseElevationOnBlur()) {
+        schedule(() => {
+          if (elevated && stickyElevation) blurReleaseArmed = true;
+        }, releaseDelay);
+      }
+    } else {
       schedule(() => {
         if (!elevated || !isUsableWindow(targetWindow)) return;
         releaseElevation(targetWindow);
@@ -229,6 +241,7 @@ function createPopupWindowPresenter(options = {}) {
     const wasElevated = elevated;
     elevated = false;
     stickyElevation = false;
+    blurReleaseArmed = false;
     if (!isUsableWindow(targetWindow)) return false;
     if (wasElevated) {
       setFullScreenVisibility(targetWindow, false);
@@ -243,6 +256,7 @@ function createPopupWindowPresenter(options = {}) {
     if (!isUsableWindow(targetWindow)) {
       elevated = false;
       stickyElevation = false;
+      blurReleaseArmed = false;
       return false;
     }
     // Release before hiding so a later show from the tray or menu does not inherit the
@@ -265,11 +279,25 @@ function createPopupWindowPresenter(options = {}) {
     return releaseElevation(targetWindow);
   }
 
+  /**
+   * Drop a sticky screen-saver raise after the user leaves the popup.
+   *
+   * The release is armed only after the full-screen activation/re-assert window, so a
+   * compositor's immediate focus bounce cannot undo the very raise needed to show the
+   * widget above a full-screen app.
+   */
+  function handleWindowBlur(targetWindow) {
+    if (!elevated || !stickyElevation || !blurReleaseArmed) return false;
+    if (!shouldReleaseElevationOnBlur()) return false;
+    return releaseElevation(targetWindow);
+  }
+
   return {
     showAboveFullScreen,
     hidePopup,
     releaseElevation,
     handleWindowHidden,
+    handleWindowBlur,
     cancelPendingRaises,
     isElevated: () => elevated,
   };

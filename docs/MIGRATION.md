@@ -28,8 +28,9 @@ If encryption is unavailable or decryption fails, you'll see a notification:
 ### 4. **Systems Without Encryption Support**
 
 - On some systems, `safeStorage` encryption may not be available
-- The token will be stored in plaintext (same as before)
-- The app logs this and continues working normally
+- The token remains available for the current session but is not written to `config.json`
+- The app notifies you that the token must be re-entered after restart
+- The app never silently falls back to storing a plaintext token
 
 ## Technical Details
 
@@ -37,11 +38,13 @@ If encryption is unavailable or decryption fails, you'll see a notification:
 
 1. **On Load**: If token is encrypted, decrypt it for runtime use
 2. **In Memory**: Token is always stored as plaintext
-3. **On Save**: Token is re-encrypted before writing to disk (if encryption available)
+3. **On Save**: Token is encrypted before writing to disk; if encryption is unavailable, it is omitted from the saved copy
 
 ### Storage Location
 
 - **Windows**: `%AppData%\Home Assistant Widget\config.json`
+- **macOS**: `~/Library/Application Support/HA Desktop Widget/config.json`
+- **Linux**: `~/.config/HA Desktop Widget/config.json`
 - The token field is base64-encoded encrypted data
 - The `tokenEncrypted: true` flag indicates encryption status
 
@@ -67,7 +70,7 @@ If the app won't connect after upgrading:
 
 - ✅ Tokens are encrypted using OS-level encryption (Windows Data Protection API)
 - ✅ Encryption keys are managed by the OS, not stored in the app
-- ✅ If encryption fails, app falls back to plaintext rather than breaking
+- ✅ If encryption fails, the app fails closed and does not persist the token
 - ✅ All HTML output is sanitized to prevent XSS attacks
 - ✅ Context isolation protects against malicious code execution
 

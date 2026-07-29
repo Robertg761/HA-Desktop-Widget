@@ -1,3 +1,6 @@
+const dns = require('dns');
+const nodeNet = require('net');
+
 const MEDIA_ARTWORK_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MEDIA_ARTWORK_GENERIC_CONTENT_TYPES = new Set([
   'application/octet-stream',
@@ -109,6 +112,116 @@ function resolveMediaArtworkContentType(headers, buffer) {
   return null;
 }
 
+function isPrivateOrReservedIp(address) {
+  const ipVersion = nodeNet.isIP(address);
+  if (ipVersion === 4) {
+    const parts = address.split('.').map((part) => Number.parseInt(part, 10));
+    const value = parts.reduce((result, part) => ((result << 8) | part) >>> 0, 0);
+    const inCidr = (base, prefixLength) => {
+      const baseValue = base
+        .split('.')
+        .map((part) => Number.parseInt(part, 10))
+        .reduce((result, part) => ((result << 8) | part) >>> 0, 0);
+      const mask = prefixLength === 0 ? 0 : (0xffffffff << (32 - prefixLength)) >>> 0;
+      return (value & mask) >>> 0 === (baseValue & mask) >>> 0;
+    };
+    return [
+      ['0.0.0.0', 8],
+      ['10.0.0.0', 8],
+      ['100.64.0.0', 10],
+      ['127.0.0.0', 8],
+      ['169.254.0.0', 16],
+      ['172.16.0.0', 12],
+      ['192.0.0.0', 24],
+      ['192.0.2.0', 24],
+      ['192.88.99.0', 24],
+      ['192.168.0.0', 16],
+      ['198.18.0.0', 15],
+      ['198.51.100.0', 24],
+      ['203.0.113.0', 24],
+      ['224.0.0.0', 4],
+      ['240.0.0.0', 4],
+    ].some(([base, prefixLength]) => inCidr(base, prefixLength));
+  }
+
+  if (ipVersion === 6) {
+    const normalized = address.toLowerCase().split('%')[0];
+    const mappedIpv4 = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+    if (mappedIpv4) return isPrivateOrReservedIp(mappedIpv4);
+    return (
+      normalized === '::' ||
+      normalized === '::1' ||
+      normalized.startsWith('::ffff:') ||
+      /^f[cd]/.test(normalized) ||
+      /^fe[89ab]/.test(normalized) ||
+      normalized.startsWith('ff') ||
+      normalized.startsWith('2001:db8:')
+    );
+  }
+
+  return true;
+}
+
+async function resolvePublicArtworkAddress(value, lookup = dns.promises.lookup) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw createProtocolError('Artwork URL is invalid', 400, 'MEDIA_ARTWORK_INVALID_URL');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw createProtocolError('Artwork URL is not allowed', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+  }
+
+  const hostname = parsed.hostname
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^\[|\]$/g, '');
+  if (
+    !hostname ||
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.home.arpa') ||
+    (!hostname.includes('.') && nodeNet.isIP(hostname) === 0)
+  ) {
+    throw createProtocolError('Artwork URL is not public', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+  }
+
+  if (nodeNet.isIP(hostname)) {
+    if (isPrivateOrReservedIp(hostname)) {
+      throw createProtocolError('Artwork URL is not public', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+    }
+    return { href: parsed.toString(), address: hostname, family: nodeNet.isIP(hostname) };
+  }
+
+  let addresses;
+  try {
+    addresses = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw createProtocolError('Artwork host could not be resolved', 502, 'MEDIA_ARTWORK_DNS_ERROR');
+  }
+  const resolved = Array.isArray(addresses) ? addresses : [addresses];
+  if (
+    resolved.length === 0 ||
+    resolved.some((entry) => isPrivateOrReservedIp(String(entry?.address || '')))
+  ) {
+    throw createProtocolError('Artwork URL is not public', 403, 'MEDIA_ARTWORK_BLOCKED_URL');
+  }
+
+  const first = resolved[0];
+  const address = String(first?.address || '');
+  const family = Number(first?.family) || nodeNet.isIP(address) || 4;
+  return { href: parsed.toString(), address, family };
+}
+
+async function validatePublicArtworkUrl(value, lookup = dns.promises.lookup) {
+  const { href } = await resolvePublicArtworkAddress(value, lookup);
+  return href;
+}
+
 function createElectronNetBinaryFetcher(net) {
   return function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000, options = {}) {
     return new Promise((resolve, reject) => {
@@ -120,11 +233,16 @@ function createElectronNetBinaryFetcher(net) {
         : null;
       const validateContentType =
         typeof options.validateContentType === 'function' ? options.validateContentType : null;
+      const validateRedirectUrl =
+        typeof options.validateRedirectUrl === 'function' ? options.validateRedirectUrl : null;
+      let redirectsRemaining = Number.isFinite(Number(options.maxRedirects))
+        ? Math.max(0, Math.floor(Number(options.maxRedirects)))
+        : 5;
 
       const request = net.request({
         method: 'GET',
         url,
-        redirect: 'follow',
+        redirect: 'manual',
       });
 
       Object.entries(headers || {}).forEach(([key, value]) => {
@@ -210,9 +328,220 @@ function createElectronNetBinaryFetcher(net) {
         response.on('error', rejectRequest);
       });
 
+      request.on('redirect', (_statusCode, _method, redirectUrl) => {
+        if (completed) return;
+        if (redirectsRemaining <= 0) {
+          rejectRequest(
+            createProtocolError(
+              'Artwork redirected too many times',
+              502,
+              'MEDIA_ARTWORK_TOO_MANY_REDIRECTS'
+            )
+          );
+          return;
+        }
+        redirectsRemaining -= 1;
+        Promise.resolve(validateRedirectUrl ? validateRedirectUrl(redirectUrl) : undefined)
+          .then(() => {
+            if (!completed) request.followRedirect();
+          })
+          .catch(rejectRequest);
+      });
+
       request.on('error', rejectRequest);
       request.end();
     });
+  };
+}
+
+const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
+
+function requestPinnedBinaryOnce(pinned, headers, deadline, options, httpModule, httpsModule) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(pinned.href);
+    } catch {
+      return reject(
+        createProtocolError('Artwork URL is invalid', 400, 'MEDIA_ARTWORK_INVALID_URL')
+      );
+    }
+    const transport = parsed.protocol === 'https:' ? httpsModule : httpModule;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return reject(new Error('Artwork request timeout'));
+    }
+
+    const requestHeaders = {
+      Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    };
+    Object.entries(headers || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      requestHeaders[key] = String(value);
+    });
+
+    let completed = false;
+    const chunks = [];
+    let receivedBytes = 0;
+    const maxBytes = options.maxBytes;
+    const validateContentType = options.validateContentType;
+
+    const request = transport.request(
+      parsed,
+      {
+        method: 'GET',
+        headers: requestHeaders,
+        // Connect to the address that was validated a moment ago instead of
+        // resolving the hostname again, so a DNS rebind between validation and
+        // connect cannot point the request at a private host. TLS certificate
+        // checks still run against the hostname from the URL.
+        lookup: (lookupHostname, lookupOptions, callback) => {
+          if (lookupOptions && lookupOptions.all) {
+            return callback(null, [{ address: pinned.address, family: pinned.family }]);
+          }
+          callback(null, pinned.address, pinned.family);
+        },
+      },
+      (response) => {
+        const statusCode = response.statusCode || 0;
+        const responseHeaders = response.headers || {};
+
+        if (REDIRECT_STATUS_CODES.has(statusCode)) {
+          finish(() => {
+            response.resume();
+            resolve({ status: statusCode, headers: responseHeaders, data: Buffer.alloc(0) });
+          });
+          return;
+        }
+
+        const shouldValidateBody = statusCode >= 200 && statusCode < 300;
+        if (
+          shouldValidateBody &&
+          validateContentType &&
+          !validateContentType(getHeaderValue(responseHeaders, 'content-type'))
+        ) {
+          fail(
+            createProtocolError(
+              'Artwork response is not an image',
+              415,
+              'MEDIA_ARTWORK_UNSUPPORTED_TYPE'
+            )
+          );
+          return;
+        }
+
+        const contentLength = getContentLength(responseHeaders);
+        if (maxBytes !== null && contentLength !== null && contentLength > maxBytes) {
+          fail(
+            createProtocolError('Artwork response is too large', 413, 'MEDIA_ARTWORK_TOO_LARGE')
+          );
+          return;
+        }
+
+        response.on('data', (chunk) => {
+          if (completed) return;
+          const chunkBuffer = Buffer.from(chunk);
+          receivedBytes += chunkBuffer.length;
+          if (maxBytes !== null && receivedBytes > maxBytes) {
+            fail(
+              createProtocolError('Artwork response is too large', 413, 'MEDIA_ARTWORK_TOO_LARGE')
+            );
+            return;
+          }
+          chunks.push(chunkBuffer);
+        });
+
+        response.on('end', () => {
+          finish(() => {
+            resolve({
+              status: statusCode,
+              headers: responseHeaders,
+              data: Buffer.concat(chunks, receivedBytes),
+            });
+          });
+        });
+
+        response.on('error', fail);
+      }
+    );
+
+    const timeoutId = setTimeout(() => {
+      fail(new Error(`Artwork request timeout after ${remainingMs}ms`));
+    }, remainingMs);
+
+    function finish(settle) {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      settle();
+    }
+
+    function fail(error) {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      try {
+        request.destroy();
+      } catch {
+        // The request may already have closed.
+      }
+      reject(error);
+    }
+
+    request.on('error', fail);
+    request.end();
+  });
+}
+
+// External artwork fetches go through Node's http/https instead of Electron's net
+// module because only Node lets the connection reuse the DNS answer that was just
+// validated. Every redirect hop is re-validated and re-pinned the same way.
+function createPinnedDnsBinaryFetcher({
+  httpModule = require('http'),
+  httpsModule = require('https'),
+  resolvePinnedAddress = resolvePublicArtworkAddress,
+} = {}) {
+  return async function fetchBinaryWithPinnedDns(
+    url,
+    headers = {},
+    timeoutMs = 10000,
+    options = {}
+  ) {
+    const maxBytes = Number.isFinite(Number(options.maxBytes))
+      ? Math.max(0, Math.floor(Number(options.maxBytes)))
+      : null;
+    const validateContentType =
+      typeof options.validateContentType === 'function' ? options.validateContentType : null;
+    let redirectsRemaining = Number.isFinite(Number(options.maxRedirects))
+      ? Math.max(0, Math.floor(Number(options.maxRedirects)))
+      : 5;
+    const deadline = Date.now() + (Number(timeoutMs) > 0 ? Number(timeoutMs) : 10000);
+
+    let currentUrl = url;
+    for (;;) {
+      const pinned = await resolvePinnedAddress(currentUrl);
+      const result = await requestPinnedBinaryOnce(
+        pinned,
+        headers,
+        deadline,
+        { maxBytes, validateContentType },
+        httpModule,
+        httpsModule
+      );
+      const location = getHeaderValue(result.headers, 'location');
+      if (!REDIRECT_STATUS_CODES.has(result.status) || !location) {
+        return result;
+      }
+      if (redirectsRemaining <= 0) {
+        throw createProtocolError(
+          'Artwork redirected too many times',
+          502,
+          'MEDIA_ARTWORK_TOO_MANY_REDIRECTS'
+        );
+      }
+      redirectsRemaining -= 1;
+      currentUrl = new URL(location, currentUrl).toString();
+    }
   };
 }
 
@@ -303,6 +632,8 @@ function createHaProtocolHandler({
   log = console,
   ResponseCtor = globalThis.Response,
   maxArtworkBytes = MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
+  validateExternalArtworkUrl = validatePublicArtworkUrl,
+  fetchExternalBinary = null,
 }) {
   if (typeof getConfig !== 'function') throw new TypeError('getConfig must be a function');
   if (typeof fetchStream !== 'function') throw new TypeError('fetchStream must be a function');
@@ -442,10 +773,27 @@ function createHaProtocolHandler({
         const upstream = isExternalUrl
           ? artworkUrl
           : `${haUrl}${artworkUrl.startsWith('/') ? artworkUrl : `/${artworkUrl}`}`;
+        if (isExternalUrl) {
+          await validateExternalArtworkUrl(upstream);
+        }
         const headers = isExternalUrl ? {} : { Authorization: `Bearer ${token}` };
-        const response = await fetchBinary(upstream, headers, 10000, {
+        const expectedHaOrigin = new URL(haUrl).origin;
+        const artworkFetch =
+          isExternalUrl && fetchExternalBinary ? fetchExternalBinary : fetchBinary;
+        const response = await artworkFetch(upstream, headers, 10000, {
           maxBytes: maxArtworkBytes,
           validateContentType: isPotentialMediaArtworkContentType,
+          validateRedirectUrl: isExternalUrl
+            ? validateExternalArtworkUrl
+            : (redirectUrl) => {
+                if (new URL(redirectUrl).origin !== expectedHaOrigin) {
+                  throw createProtocolError(
+                    'Authenticated artwork redirect changed origin',
+                    403,
+                    'MEDIA_ARTWORK_BLOCKED_REDIRECT'
+                  );
+                }
+              },
         });
 
         if (response.status < 200 || response.status >= 300) {
@@ -476,7 +824,11 @@ function createHaProtocolHandler({
 module.exports = {
   MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
   createElectronNetBinaryFetcher,
+  createPinnedDnsBinaryFetcher,
+  resolvePublicArtworkAddress,
   createHaProtocolHandler,
+  isPrivateOrReservedIp,
   isPotentialMediaArtworkContentType,
   resolveMediaArtworkContentType,
+  validatePublicArtworkUrl,
 };

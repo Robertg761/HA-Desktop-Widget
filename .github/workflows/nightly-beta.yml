@@ -113,6 +113,22 @@ jobs:
             exit 1
           fi
 
+          main_sha="$(git rev-parse HEAD)"
+          successful_ci_run="$(
+            gh run list \
+              --workflow ci.yml \
+              --commit "$main_sha" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty'
+          )"
+          if [[ -z "$successful_ci_run" ]]; then
+            echo "No successful CI run exists for main commit $main_sha." >&2
+            echo "The nightly beta will retry after CI passes." >&2
+            exit 1
+          fi
+
           if git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Release tag already exists: $RELEASE_TAG" >&2
             exit 1
@@ -124,6 +140,6 @@ jobs:
           git push origin "$RELEASE_TAG"
 
           gh workflow run release.yml \
-            --ref main \
+            --ref "$RELEASE_TAG" \
             --raw-field "release_tag=$RELEASE_TAG"
           echo "Dispatched the release workflow for $RELEASE_TAG."

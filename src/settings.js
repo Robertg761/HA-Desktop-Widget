@@ -74,6 +74,21 @@ const PERSONALIZATION_LAZY_SECTION_IDS = new Set([
 const personalizationSectionPersistTimers = new Map();
 const hydratedPersonalizationSections = new Set();
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
+
+function applyPersistedConfigResponse(updatedConfig) {
+  if (!updatedConfig || updatedConfig.success === false || !updatedConfig.homeAssistant) {
+    throw new Error(updatedConfig?.error || 'The main process rejected the settings update');
+  }
+
+  const persistentConfig = { ...updatedConfig };
+  delete persistentConfig.configRecovery;
+  delete persistentConfig.configRevision;
+  delete persistentConfig.persistenceWarnings;
+  delete persistentConfig.runtimeWarnings;
+  state.setConfig(persistentConfig);
+
+  return persistentConfig;
+}
 const CUSTOM_EDITOR_SCOPE_SELECTOR = [
   '#custom-color-picker',
   '#custom-color-r',
@@ -714,6 +729,13 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
 
 function buildCustomEntityIconChoices(rgiEmojiData) {
   const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
+
+  Object.values(CUSTOM_ENTITY_ICON_KEYWORD_GROUPS).forEach((icons) => {
+    (Array.isArray(icons) ? icons : []).forEach((icon) => {
+      const normalized = normalizeCustomEntityIcon(icon);
+      if (normalized) iconSet.add(normalized);
+    });
+  });
 
   if (Array.isArray(rgiEmojiData?.strings)) {
     rgiEmojiData.strings.forEach((icon) => {
@@ -2904,21 +2926,65 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   if (errorEl) {
     const warning = status.passphraseWarning || '';
     const errorText = status.lastSyncError || '';
-    const composed = [warning, errorText].filter(Boolean).join(' ');
+    const rewriteWarning = status.remoteRewritePending
+      ? t('The remote profile still needs its encryption update. Use Sync Up to retry.')
+      : '';
+    const pendingEncryptionWarning =
+      typeof status.encryptionChangePending === 'boolean'
+        ? status.encryptionChangePending
+          ? t(
+              'Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+            )
+          : t(
+              'Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+            )
+        : '';
+    const recoveryWarning = status.rewriteRecoveryInvalid
+      ? t(
+          'The protected sync-key recovery record is invalid. Sync is paused to prevent an unsafe overwrite; restore a known-good config backup before retrying.'
+        )
+      : status.rewriteRecoveryRequired
+        ? t(
+            'A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.'
+          )
+        : '';
+    const composed = [warning, errorText, rewriteWarning, pendingEncryptionWarning, recoveryWarning]
+      .filter(Boolean)
+      .join(' ');
     errorEl.textContent = composed;
     errorEl.classList.toggle('hidden', !composed);
   }
 
   if (resolutionEl) {
     resolutionEl.classList.toggle('hidden', !status.needsResolution);
+    const resolutionHelp = resolutionEl.querySelector('.help-text');
+    const uploadButton = resolutionEl.querySelector('#profile-sync-resolve-upload');
+    const remoteButton = resolutionEl.querySelector('#profile-sync-resolve-remote');
+    if (status.resolutionRetryRequired) {
+      if (resolutionHelp) {
+        resolutionHelp.textContent = t(
+          'The first-time conflict check did not complete. Retry it before syncing.'
+        );
+      }
+      if (uploadButton) uploadButton.textContent = t('Retry Conflict Check');
+      if (remoteButton) remoteButton.classList.add('hidden');
+    } else {
+      if (resolutionHelp) {
+        resolutionHelp.innerHTML = `<strong>${t('First-time conflict:')}</strong> ${t('Both local and remote profiles have data.')}`;
+      }
+      if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
+      if (remoteButton) remoteButton.classList.remove('hidden');
+    }
   }
 
   renderProfileSyncFolderWarnings(status);
 
   if (passphraseHint) {
+    const profileSync = ensureProfileSyncConfig();
     passphraseHint.classList.toggle(
       'hidden',
-      !status.enabled || !ensureProfileSyncConfig().encryptionEnabled
+      !status.enabled ||
+        (!profileSync.encryptionEnabled && typeof status.encryptionChangePending !== 'boolean')
     );
   }
 
@@ -3051,7 +3117,8 @@ function applyProfileSyncConfigToForm() {
   if (passphraseGroup)
     passphraseGroup.classList.toggle(
       'hidden',
-      !profileSync.enabled || !profileSync.encryptionEnabled
+      !profileSync.enabled ||
+        (!profileSync.encryptionEnabled && typeof profileSync.encryptionChangePending !== 'boolean')
     );
   if (passphraseInput) passphraseInput.value = '';
 
@@ -3126,7 +3193,14 @@ function bindProfileSyncSettingsUi() {
       const passphraseGroup = document.getElementById('profile-sync-passphrase-group');
       const encryptionEnabled = document.getElementById('profile-sync-encryption-enabled');
       if (passphraseGroup && encryptionEnabled) {
-        passphraseGroup.classList.toggle('hidden', !enabled.checked || !encryptionEnabled.checked);
+        const needsCurrentKeyToDisable =
+          enabled.checked &&
+          !encryptionEnabled.checked &&
+          !!state.CONFIG?.profileSync?.encryptionEnabled;
+        passphraseGroup.classList.toggle(
+          'hidden',
+          !enabled.checked || (!encryptionEnabled.checked && !needsCurrentKeyToDisable)
+        );
       }
     };
   }
@@ -3198,9 +3272,13 @@ function bindProfileSyncSettingsUi() {
       const enabledCheckbox = document.getElementById('profile-sync-enabled');
       const passphraseGroup = document.getElementById('profile-sync-passphrase-group');
       if (passphraseGroup) {
+        const needsCurrentKeyToDisable =
+          !!enabledCheckbox?.checked &&
+          !encryption.checked &&
+          !!state.CONFIG?.profileSync?.encryptionEnabled;
         passphraseGroup.classList.toggle(
           'hidden',
-          !enabledCheckbox?.checked || !encryption.checked
+          !enabledCheckbox?.checked || (!encryption.checked && !needsCurrentKeyToDisable)
         );
       }
     };
@@ -3491,7 +3569,7 @@ async function persistLanguageSelection(nextLanguage) {
   });
 
   if (updatedConfig) {
-    state.setConfig(updatedConfig);
+    applyPersistedConfigResponse(updatedConfig);
   } else {
     state.CONFIG.ui = nextUiConfig;
   }
@@ -3501,39 +3579,59 @@ async function persistLanguageSelection(nextLanguage) {
 
 async function persistDensitySelection(nextDensity) {
   const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
-  state.CONFIG.ui = state.CONFIG.ui || {};
+  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
   const nextUiConfig = {
-    ...state.CONFIG.ui,
+    ...previousUiConfig,
     density: normalizedDensity,
   };
 
-  state.CONFIG.ui = nextUiConfig;
   applyUiPreferences(nextUiConfig);
 
-  if (!window?.electronAPI?.updateConfig) return null;
-  const updatedConfig = await window.electronAPI.updateConfig({
-    ui: nextUiConfig,
-  });
-
-  if (updatedConfig) {
-    state.setConfig(updatedConfig);
+  if (!window?.electronAPI?.updateConfig) {
+    state.CONFIG.ui = nextUiConfig;
+    return null;
   }
 
-  return updatedConfig;
+  try {
+    const updatedConfig = await window.electronAPI.updateConfig({
+      ui: nextUiConfig,
+    });
+    if (updatedConfig) {
+      applyPersistedConfigResponse(updatedConfig);
+    }
+    return updatedConfig;
+  } catch (error) {
+    state.CONFIG.ui = previousUiConfig;
+    applyUiPreferences(previousUiConfig);
+    throw error;
+  }
 }
 
 async function persistActiveTileGlowSelection(enabled) {
-  state.CONFIG.ui = state.CONFIG.ui || {};
+  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
   const nextUiConfig = {
-    ...state.CONFIG.ui,
+    ...previousUiConfig,
     activeTileGlow: !!enabled,
   };
 
-  state.CONFIG.ui = nextUiConfig;
   applyUiPreferences(nextUiConfig);
 
-  if (!window?.electronAPI?.updateConfig) return null;
-  return window.electronAPI.updateConfig({ ui: nextUiConfig });
+  if (!window?.electronAPI?.updateConfig) {
+    state.CONFIG.ui = nextUiConfig;
+    return null;
+  }
+
+  try {
+    const updatedConfig = await window.electronAPI.updateConfig({ ui: nextUiConfig });
+    if (updatedConfig) {
+      applyPersistedConfigResponse(updatedConfig);
+    }
+    return updatedConfig;
+  } catch (error) {
+    state.CONFIG.ui = previousUiConfig;
+    applyUiPreferences(previousUiConfig);
+    throw error;
+  }
 }
 
 function bindAppearanceSettingsUi() {
@@ -3545,6 +3643,7 @@ function bindAppearanceSettingsUi() {
         await persistActiveTileGlowSelection(activeTileGlow.checked);
       } catch (error) {
         log.error('Failed to save tile glow setting:', error);
+        activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
         showToast(t('Failed to save tile glow setting'), 'warning', 3000);
       }
     };
@@ -3559,6 +3658,7 @@ function bindAppearanceSettingsUi() {
       await persistDensitySelection(densitySelect.value);
     } catch (error) {
       log.error('Failed to save layout density:', error);
+      densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
       showToast(t('Failed to save layout density'), 'warning', 3000);
     }
   };
@@ -4302,12 +4402,31 @@ async function saveSettings() {
 
     const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
     const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
+    const encryptionSettingChanged =
+      nextProfileSync.encryptionEnabled !== !!prevProfileSync.encryptionEnabled;
+    const pendingEncryptionChangeCancelled =
+      typeof prevProfileSync.encryptionChangePending === 'boolean' &&
+      nextProfileSync.encryptionEnabled === !!prevProfileSync.encryptionEnabled;
+    const disablingEncryption =
+      nextProfileSync.enabled &&
+      !!prevProfileSync.encryptionEnabled &&
+      !nextProfileSync.encryptionEnabled;
     const removingRememberedPassphrase =
       nextProfileSync.enabled &&
       nextProfileSync.encryptionEnabled &&
       !nextProfileSync.rememberPassphrase &&
       !!prevProfileSync.rememberPassphrase;
     let passphraseUpdatedThisSave = false;
+    let profileSyncCredentialOperationFailed = false;
+
+    if (disablingEncryption && !typedPassphrase && !hasSavedPassphrase) {
+      showToast(
+        t('Enter the current remote passphrase before disabling encrypted sync.'),
+        'error',
+        3400
+      );
+      return;
+    }
 
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
       const canReuseSavedPassphrase = hasSavedPassphrase && !removingRememberedPassphrase;
@@ -4337,23 +4456,31 @@ async function saveSettings() {
     }
 
     const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-    if (!updatedConfig || updatedConfig.success === false || !updatedConfig.homeAssistant) {
-      throw new Error(updatedConfig?.error || 'The main process rejected the settings update');
-    }
-    state.setConfig(updatedConfig);
+    applyPersistedConfigResponse(updatedConfig);
     configPersisted = true;
     setCustomThemes(state.CONFIG.ui?.customColors || []);
 
     // Store the sync passphrase only now that the config is safely persisted. If this
     // fails, the settings are still saved and the previously stored secret is untouched.
-    if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled && typedPassphrase) {
+    if (
+      nextProfileSync.enabled &&
+      (typedPassphrase || encryptionSettingChanged || pendingEncryptionChangeCancelled)
+    ) {
+      let passphraseResult = null;
       try {
-        const passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
+        passphraseResult = await window.electronAPI.setProfileSyncPassphrase(
           typedPassphrase,
-          !!nextProfileSync.rememberPassphrase
+          !!nextProfileSync.rememberPassphrase,
+          !!nextProfileSync.encryptionEnabled
         );
         if (!passphraseResult?.success) {
           throw new Error(passphraseResult?.error || 'Failed to save sync passphrase.');
+        }
+        if (passphraseResult.warning) {
+          showToast(passphraseResult.warning, 'warning', 5000);
+        }
+        if (passphraseResult.config) {
+          applyPersistedConfigResponse(passphraseResult.config);
         }
         passphraseUpdatedThisSave = true;
 
@@ -4383,17 +4510,26 @@ async function saveSettings() {
             ) {
               throw new Error(correctedResult?.error || 'Failed to persist passphrase metadata');
             }
-            state.setConfig(correctedResult);
+            applyPersistedConfigResponse(correctedResult);
           } catch (correctiveError) {
             log.error('Failed to persist updated passphrase metadata:', correctiveError);
           }
         }
       } catch (passphraseError) {
+        profileSyncCredentialOperationFailed = true;
+        if (passphraseResult?.config) {
+          applyPersistedConfigResponse(passphraseResult.config);
+        }
+        if (passphraseResult?.status) {
+          updateProfileSyncStatusUi(passphraseResult.status);
+        }
         log.error('Failed to store sync passphrase after saving settings:', passphraseError);
         showToast(
-          'Settings were saved, but the sync passphrase could not be stored.',
+          passphraseResult?.error ||
+            passphraseError?.message ||
+            t('Settings were saved, but the sync passphrase could not be stored.'),
           'warning',
-          3600
+          5000
         );
       }
     }
@@ -4418,16 +4554,26 @@ async function saveSettings() {
       );
     }
 
-    if (!nextProfileSync.encryptionEnabled && window.electronAPI?.clearProfileSyncPassphrase) {
-      await window.electronAPI.clearProfileSyncPassphrase();
-    } else if (
-      nextProfileSync.encryptionEnabled &&
-      !nextProfileSync.rememberPassphrase &&
-      prevProfileSync.rememberPassphrase &&
-      !passphraseUpdatedThisSave &&
-      window.electronAPI?.clearProfileSyncPassphrase
-    ) {
-      await window.electronAPI.clearProfileSyncPassphrase();
+    const shouldClearSavedPassphrase =
+      !!window.electronAPI?.clearProfileSyncPassphrase &&
+      !profileSyncCredentialOperationFailed &&
+      !state.CONFIG.profileSync?.remoteRewritePending &&
+      typeof state.CONFIG.profileSync?.encryptionChangePending !== 'boolean' &&
+      (!nextProfileSync.encryptionEnabled ||
+        (nextProfileSync.encryptionEnabled &&
+          !nextProfileSync.rememberPassphrase &&
+          prevProfileSync.rememberPassphrase &&
+          !passphraseUpdatedThisSave));
+    if (shouldClearSavedPassphrase) {
+      try {
+        await window.electronAPI.clearProfileSyncPassphrase();
+      } catch (error) {
+        log.error('Settings saved, but the sync passphrase could not be cleared:', error);
+        const warningMessage = t('Error: {{error}}', {
+          error: error?.message || t('Unknown error'),
+        });
+        showToast(warningMessage, 'warning', 5000);
+      }
     }
 
     await refreshProfileSyncStatusUi({ syncFormState: true });
@@ -4814,17 +4960,16 @@ async function saveAlert() {
     const specificStateRadio = modal.querySelector('input[value="specific-state"]');
     const targetStateInput = document.getElementById('target-state-input');
 
-    state.CONFIG.entityAlerts = state.CONFIG.entityAlerts || { enabled: false, alerts: {} };
-
     const alertConfig = {
       onStateChange: stateChangeRadio?.checked || false,
       onSpecificState: specificStateRadio?.checked || false,
       targetState: targetStateInput?.value.trim() || '',
     };
-
-    state.CONFIG.entityAlerts.alerts[currentAlertEntity] = alertConfig;
-
-    await window.electronAPI.updateConfig(state.CONFIG);
+    const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
+    nextConfig.entityAlerts = nextConfig.entityAlerts || { enabled: false, alerts: {} };
+    nextConfig.entityAlerts.alerts[currentAlertEntity] = alertConfig;
+    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+    applyPersistedConfigResponse(updatedConfig);
 
     closeAlertConfigModal();
     renderAlertsListInline();
@@ -4853,8 +4998,10 @@ async function removeAlert(entityId) {
     if (!confirmed) return;
 
     if (state.CONFIG.entityAlerts?.alerts[entityId]) {
-      delete state.CONFIG.entityAlerts.alerts[entityId];
-      await window.electronAPI.updateConfig(state.CONFIG);
+      const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
+      delete nextConfig.entityAlerts.alerts[entityId];
+      const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+      applyPersistedConfigResponse(updatedConfig);
       renderAlertsListInline();
 
       showToast('Alert removed', 'success', 2000);
@@ -5035,6 +5182,17 @@ async function initializePopupHotkey() {
     const platformNotice = document.getElementById('popup-hotkey-platform-notice');
 
     if (!input || !setBtn || !clearBtn) return;
+    const currentHotkey = state.CONFIG.popupHotkey || '';
+
+    if (isAvailable) {
+      container?.querySelector('.unavailable-notice')?.remove();
+      input.disabled = false;
+      input.value = currentHotkey;
+      input.placeholder = currentHotkey || 'Not set (click Set Hotkey)';
+      setBtn.disabled = false;
+      clearBtn.disabled = false;
+      clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
+    }
 
     if (usesLinuxShortcutBackend) {
       if (modeLabel) modeLabel.textContent = 'Popup Hotkey (Press to Bring Window to Front)';
@@ -5082,7 +5240,6 @@ async function initializePopupHotkey() {
     }
 
     // Load current popup hotkey
-    const currentHotkey = state.CONFIG.popupHotkey || '';
     if (currentHotkey) {
       input.value = currentHotkey;
       input.placeholder = currentHotkey;
@@ -5124,18 +5281,30 @@ async function initializePopupHotkey() {
       toggleModeCheckbox.checked = !!state.CONFIG.popupHotkeyToggleMode;
 
       toggleModeCheckbox.onchange = async () => {
-        state.CONFIG.popupHotkeyToggleMode = toggleModeCheckbox.checked;
-        updateMutualExclusivity();
+        const previousValue = !!state.CONFIG.popupHotkeyToggleMode;
+        const requestedValue = !!toggleModeCheckbox.checked;
+        let updatePersisted = false;
+        toggleModeCheckbox.disabled = true;
 
         try {
-          await window.electronAPI.updateConfig(state.CONFIG);
-          // Re-register hotkey to apply new mode
+          const updatedConfig = await window.electronAPI.updateConfig({
+            ...state.CONFIG,
+            popupHotkeyToggleMode: requestedValue,
+          });
+          applyPersistedConfigResponse(updatedConfig);
+          updatePersisted = true;
           if (state.CONFIG.popupHotkey) {
-            await window.electronAPI.registerPopupHotkey(state.CONFIG.popupHotkey);
+            const registrationResult = await window.electronAPI.registerPopupHotkey(
+              state.CONFIG.popupHotkey
+            );
+            if (registrationResult?.success !== true) {
+              throw new Error(registrationResult?.error || t('Failed to apply popup hotkey mode'));
+            }
           }
+          toggleModeCheckbox.checked = requestedValue;
           // showToast already imported at top
           showToast(
-            toggleModeCheckbox.checked
+            requestedValue
               ? 'Toggle mode enabled: tap to show/hide'
               : usesLinuxShortcutBackend
                 ? 'Press mode enabled: press to bring the window to front'
@@ -5145,6 +5314,25 @@ async function initializePopupHotkey() {
           );
         } catch (error) {
           log.error('Failed to save popup hotkey toggle mode setting:', error);
+          if (updatePersisted) {
+            try {
+              const restoredConfig = await window.electronAPI.updateConfig({
+                ...state.CONFIG,
+                popupHotkeyToggleMode: previousValue,
+              });
+              state.setConfig(restoredConfig);
+            } catch (rollbackError) {
+              log.error('Failed to restore popup hotkey toggle mode:', rollbackError);
+            }
+          }
+          toggleModeCheckbox.checked = previousValue;
+          const failureMessage = t('Error: {{error}}', {
+            error: error?.message || t('Unknown error'),
+          });
+          showToast(failureMessage, 'error', 3000);
+        } finally {
+          toggleModeCheckbox.disabled = false;
+          updateMutualExclusivity();
         }
       };
     }
@@ -5153,14 +5341,32 @@ async function initializePopupHotkey() {
       hideOnReleaseCheckbox.checked = !!state.CONFIG.popupHotkeyHideOnRelease;
 
       hideOnReleaseCheckbox.onchange = async () => {
-        state.CONFIG.popupHotkeyHideOnRelease = hideOnReleaseCheckbox.checked;
-        updateMutualExclusivity();
+        const previousValue = !!state.CONFIG.popupHotkeyHideOnRelease;
+        const requestedValue = !!hideOnReleaseCheckbox.checked;
+        let updatePersisted = false;
+        hideOnReleaseCheckbox.disabled = true;
 
         try {
-          await window.electronAPI.updateConfig(state.CONFIG);
+          const updatedConfig = await window.electronAPI.updateConfig({
+            ...state.CONFIG,
+            popupHotkeyHideOnRelease: requestedValue,
+          });
+          applyPersistedConfigResponse(updatedConfig);
+          updatePersisted = true;
+          if (state.CONFIG.popupHotkey) {
+            const registrationResult = await window.electronAPI.registerPopupHotkey(
+              state.CONFIG.popupHotkey
+            );
+            if (registrationResult?.success !== true) {
+              throw new Error(
+                registrationResult?.error || t('Failed to apply popup hotkey behavior')
+              );
+            }
+          }
+          hideOnReleaseCheckbox.checked = requestedValue;
           // showToast already imported at top
           showToast(
-            hideOnReleaseCheckbox.checked
+            requestedValue
               ? 'Window will hide when popup hotkey is released'
               : 'Window will stay visible when popup hotkey is released',
             'success',
@@ -5168,6 +5374,25 @@ async function initializePopupHotkey() {
           );
         } catch (error) {
           log.error('Failed to save popup hotkey setting:', error);
+          if (updatePersisted) {
+            try {
+              const restoredConfig = await window.electronAPI.updateConfig({
+                ...state.CONFIG,
+                popupHotkeyHideOnRelease: previousValue,
+              });
+              state.setConfig(restoredConfig);
+            } catch (rollbackError) {
+              log.error('Failed to restore popup hotkey release behavior:', rollbackError);
+            }
+          }
+          hideOnReleaseCheckbox.checked = previousValue;
+          const failureMessage = t('Error: {{error}}', {
+            error: error?.message || t('Unknown error'),
+          });
+          showToast(failureMessage, 'error', 3000);
+        } finally {
+          hideOnReleaseCheckbox.disabled = false;
+          updateMutualExclusivity();
         }
       };
     }
@@ -5195,6 +5420,9 @@ async function initializePopupHotkey() {
           state.CONFIG.popupHotkey = '';
           // showToast already imported at top
           showToast('Popup hotkey cleared', 'success');
+          if (result.warning) {
+            showToast(result.warning, 'warning', 4000);
+          }
         }
       } catch (error) {
         log.error('Failed to clear popup hotkey:', error);

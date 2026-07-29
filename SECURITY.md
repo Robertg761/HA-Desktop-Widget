@@ -53,7 +53,7 @@ Expected handling is best effort for a maintainer-run project:
 ### Local Data And Profile Sync
 
 - **Local by default**: Configuration is stored in Electron's user data directory on the local machine.
-- **Token storage**: Home Assistant tokens are encrypted with Electron `safeStorage` when the OS supports it. If encryption is unavailable or fails, the app may store the token in plaintext in the local config file.
+- **Token storage**: Home Assistant tokens are encrypted with Electron `safeStorage` when the OS supports it. If encryption is unavailable or fails, the token remains usable for the current session but is omitted from the saved config. The app asks the user to re-enter it instead of persisting plaintext.
 - **Profile Sync is opt-in**: Profile Sync writes selected personalization/settings data to a user-chosen JSON file. The app does not call Google Drive, iCloud, or Syncthing APIs directly; those labels use the same local/cloud-folder file model.
 - **Sync exclusions**: Home Assistant URL/token, window position/size, startup setting, and Profile Sync internals remain local.
 - **Sync encryption**: Profile Sync can encrypt the synced payload with a passphrase using `AES-256-GCM` and `scrypt` key derivation.
@@ -61,10 +61,10 @@ Expected handling is best effort for a maintainer-run project:
 ### Network Access
 
 - **Home Assistant**: The app connects to the configured Home Assistant URL with HTTP(S), WebSocket, and media/camera requests needed for entity control and display.
-- **Updates**: Packaged non-portable builds can check GitHub Releases through Electron updater and download updates in the background when supported. Portable builds use a GitHub release check and send the user to the portable download instead of self-installing.
+- **Updates**: Windows installer and Linux AppImage builds can download and install GitHub releases through Electron updater. Portable, macOS, and Linux deb builds check GitHub Releases and send the user to the matching download instead of self-installing.
 - **Language packs**: Packaged builds can fetch the language-pack manifest from the project GitHub repository and download selected language packs. Downloaded packs are validated, including SHA-256 verification when the manifest provides a hash.
 - **External links**: Actions such as Report Issue, Releases, and Profile Sync help can open GitHub pages in the user's default browser.
-- **Entity-provided media**: Home Assistant entity attributes may reference remote artwork, camera, or stream URLs. Those URLs should be treated as part of the user's Home Assistant environment.
+- **Entity-provided media**: Home Assistant entity attributes may reference remote artwork, camera, or stream URLs. Authenticated Home Assistant media remains restricted to the configured server. External artwork requests reject local, private, link-local, and reserved destinations, including redirect targets.
 
 ### Application Security
 
@@ -89,7 +89,7 @@ Expected handling is best effort for a maintainer-run project:
 ### Updates And Downloads
 
 - **External availability**: GitHub update and language-pack checks require network access and may fail offline.
-- **Portable updates are manual**: Portable builds do not replace themselves automatically.
+- **Manual-update packages**: Portable, macOS, and Linux deb builds do not replace themselves automatically.
 - **Release verification**: When in doubt, compare downloads against the release page and avoid third-party mirrors.
 
 ## Security Updates
@@ -111,4 +111,4 @@ Thank you to security researchers and community members who help keep HA Desktop
 
 ---
 
-**Last updated**: May 18, 2026
+**Last updated**: July 27, 2026

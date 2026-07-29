@@ -1,5 +1,6 @@
 import websocket from './websocket.js';
 import { t } from './i18n.js';
+import { releaseFocusTrap, trapFocus } from './ui-utils.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
 const MAX_BELL_COUNT = 99;
@@ -108,8 +109,10 @@ function getBellElements() {
 function closePersistentNotificationsPanel() {
   const modal = document.getElementById('persistent-notifications-modal');
   if (!modal) return;
+  const wasOpen = !modal.classList.contains('hidden');
   modal.classList.add('hidden');
   modal.style.display = 'none';
+  if (wasOpen) releaseFocusTrap(modal);
 }
 
 function openPersistentNotificationsPanel() {
@@ -118,6 +121,7 @@ function openPersistentNotificationsPanel() {
   if (!modal) return;
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
+  trapFocus(modal);
 }
 
 function dismissPersistentNotification(notificationId, button) {

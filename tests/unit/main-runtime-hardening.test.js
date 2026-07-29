@@ -12,11 +12,29 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain("webContents.on('will-navigate'");
     expect(mainSource).toContain('routeExternalHttpLink(url)');
     expect(mainSource).toContain('shell.openExternal');
+    expect(mainSource).toContain("webContents.on('select-bluetooth-device'");
+  });
+
+  it('installs a default-deny session permission policy before creating renderers', () => {
+    expect(mainSource).toContain("require('./src/session-permissions.cjs')");
+    expect(mainSource).toContain('function isTrustedAppWebContents');
+    expect(mainSource).toContain('candidate === mainWindow.webContents');
+    expect(mainSource).toContain('candidate === pinWindow.webContents');
+
+    const readyStart = mainSource.indexOf('app\n  .whenReady()');
+    const installPolicy = mainSource.indexOf(
+      'installSessionPermissionPolicy(session.defaultSession',
+      readyStart
+    );
+    const createWindow = mainSource.indexOf('createWindow();', installPolicy);
+    expect(installPolicy).toBeGreaterThan(readyStart);
+    expect(createWindow).toBeGreaterThan(installPolicy);
   });
 
   it('runs Wayland sessions through XWayland and keeps the recovery discoverable', () => {
     expect(mainSource).toContain('shouldForceX11OzonePlatform({');
-    expect(mainSource).toContain('waylandSession: isWaylandSession(),');
+    expect(mainSource).toContain('const waylandSession = isWaylandSession();');
+    expect(mainSource).toContain('waylandSession,');
     expect(mainSource).toContain("app.commandLine.appendSwitch('ozone-platform', 'x11')");
     // The popup presenter must know whether it can position the window at all.
     expect(mainSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
@@ -42,6 +60,9 @@ describe('main-process wiring safeguards', () => {
     // Minimize is routed through hide(), so the one 'hide' listener has to cover every way
     // the widget leaves the screen or a raise stays armed after it is gone.
     expect(mainSource).toContain("mainWindow.on('hide'");
+    expect(mainSource).toContain("mainWindow.on('blur'");
+    expect(mainSource).toContain('popupWindowPresenter.handleWindowBlur(mainWindow)');
+    expect(mainSource).toContain('shouldReleaseElevationOnBlur: () =>');
     const trayMenuStart = mainSource.indexOf('function buildTrayContextMenu');
     const trayMenuEnd = mainSource.indexOf('function createTray', trayMenuStart);
     const traySource = mainSource.slice(trayMenuStart, mainSource.indexOf('const contextMenu'));
@@ -76,7 +97,7 @@ describe('main-process wiring safeguards', () => {
     expect(secondInstanceSource).not.toContain('createWindow()');
     // The losing instance must not load config, take the tray, or claim the hotkeys.
     expect(mainSource).toContain('if (!gotSingleInstanceLock) return;');
-    const readyStart = mainSource.indexOf('app.whenReady().then(() => {');
+    const readyStart = mainSource.indexOf('app\n  .whenReady()');
     const readySource = mainSource.slice(readyStart, mainSource.indexOf('loadConfig(', readyStart));
     expect(readySource).toContain('if (!gotSingleInstanceLock) return;');
     // The lock has to be requested after the user data path is settled, so the climate demo's
@@ -122,6 +143,12 @@ describe('main-process wiring safeguards', () => {
     // The require must sit inside the `else` of the usesLinuxPopupHotkeyBackend gate.
     expect(elseIndex).toBeGreaterThan(guardIndex);
     expect(guardIndex).toBeGreaterThanOrEqual(0);
+
+    const registrationStart = mainSource.indexOf('function registerPopupHotkey');
+    const registrationEnd = mainSource.indexOf('function unregisterPopupHotkey', registrationStart);
+    const registrationSource = mainSource.slice(registrationStart, registrationEnd);
+    expect(mainSource).toContain('function cleanupUiohookPopupHotkeyRuntime');
+    expect(registrationSource).toContain('cleanupUiohookPopupHotkeyRuntime()');
   });
 
   it('routes Wayland global hotkeys through the portal while X11 keeps globalShortcut', () => {
@@ -129,27 +156,112 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain("require('./src/portal-global-shortcuts.cjs')");
     expect(mainSource).toContain('function initPortalShortcutsBackend');
     // The portal only activates on a Linux Wayland session; X11/other keep globalShortcut.
-    expect(mainSource).toContain(
-      "if (process.platform !== 'linux' || !isWaylandSession()) return;"
-    );
+    expect(mainSource).toContain('if (!usesCompositorOwnedPlacement) return;');
     expect(mainSource).toContain('handlePortalShortcutActivated');
     expect(mainSource).toContain('portalShortcutsActive');
+    expect(mainSource).toContain('portalShortcutsInitPromise');
+    expect(mainSource).toContain('await ensurePortalShortcutsBackendInitialized()');
+    expect(mainSource).toContain(
+      'The desktop does not provide the Global Shortcuts portal required on Wayland'
+    );
     // Digit hotkeys (Alt+1) must map to the real uiohook key names, not the absent DigitN.
     expect(mainSource).toContain("1: UiohookKey['1']");
     expect(mainSource).not.toMatch(/UiohookKey\.Digit\d/);
+
+    const activationStart = mainSource.indexOf('function handlePortalShortcutActivated');
+    const activationEnd = mainSource.indexOf('function collectPortalShortcuts', activationStart);
+    const activationSource = mainSource.slice(activationStart, activationEnd);
+    expect(activationSource).toContain("if (!String(config?.popupHotkey || '').trim()) return;");
+    expect(
+      activationSource.indexOf("if (!String(config?.popupHotkey || '').trim()) return;")
+    ).toBeLessThan(activationSource.indexOf('linuxPopupHotkeyController.handleShortcut()'));
   });
 
   it('persists a replacement popup hotkey only after successful registration', () => {
-    const handlerStart = mainSource.indexOf("ipcMain.handle('register-popup-hotkey'");
-    const handlerEnd = mainSource.indexOf("ipcMain.handle('unregister-popup-hotkey'", handlerStart);
+    const handlerStart = mainSource.indexOf("'register-popup-hotkey'");
+    const handlerEnd = mainSource.indexOf("'unregister-popup-hotkey'", handlerStart);
     const handlerSource = mainSource.slice(handlerStart, handlerEnd);
 
     expect(handlerSource).toContain('const previousHotkey = config.popupHotkey');
     expect(handlerSource).toContain('if (!registrationResult.success)');
+    expect(handlerSource).toContain('await Promise.resolve(unregisterPopupHotkey())');
     expect(handlerSource).toContain('config.popupHotkey = previousHotkey');
-    expect(handlerSource.indexOf('saveConfig()')).toBeGreaterThan(
+    expect(handlerSource.indexOf('saveConfigDurably()')).toBeGreaterThan(
       handlerSource.indexOf('if (!registrationResult.success)')
     );
+  });
+
+  it('uses target-specific registration success while keeping portal transactions authoritative', () => {
+    const handlerStart = mainSource.indexOf("'register-hotkey'");
+    const handlerEnd = mainSource.indexOf("'unregister-hotkey'", handlerStart);
+    const handlerSource = mainSource.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain('await syncPortalShortcuts({ immediate: true })');
+    expect(handlerSource).toContain('registrationResult.success && !!portalBinding?.trigger');
+    expect(handlerSource).toContain(
+      ': !usesCompositorOwnedPlacement && globalShortcut.isRegistered(hotkey)'
+    );
+    expect(handlerSource).not.toContain(
+      'registrationResult?.success !== false && globalShortcut.isRegistered(hotkey)'
+    );
+    expect(handlerSource.indexOf('saveConfigDurably()')).toBeGreaterThan(
+      handlerSource.indexOf('if (!registered)')
+    );
+  });
+
+  it('keeps native Wayland minimize and compositor-owned positions recoverable', () => {
+    const minimizeStart = mainSource.indexOf("ipcMain.handle('minimize-window'");
+    const minimizeEnd = mainSource.indexOf("ipcMain.handle('focus-window'", minimizeStart);
+    const minimizeSource = mainSource.slice(minimizeStart, minimizeEnd);
+    expect(minimizeSource).toContain('if (usesCompositorOwnedPlacement)');
+    expect(minimizeSource).toContain('hideMainWindowToTray()');
+    expect(minimizeSource).toContain('mainWindow.minimize()');
+
+    const changeWindowStart = mainSource.indexOf('const changeWin = () =>');
+    const changeWindowEnd = mainSource.indexOf(
+      '// Save position when window is moved',
+      changeWindowStart
+    );
+    const changeWindowSource = mainSource.slice(changeWindowStart, changeWindowEnd);
+    expect(changeWindowSource).toContain('if (!usesCompositorOwnedPlacement)');
+    expect(changeWindowSource.indexOf('config.windowPosition')).toBeGreaterThan(
+      changeWindowSource.indexOf('if (!usesCompositorOwnedPlacement)')
+    );
+
+    const createWindowStart = mainSource.indexOf('function createWindow()');
+    const browserWindowCreation = mainSource.indexOf(
+      'mainWindow = new BrowserWindow(windowOptions)',
+      createWindowStart
+    );
+    const createWindowSource = mainSource.slice(createWindowStart, browserWindowCreation);
+    expect(createWindowSource).toContain('const positionOptions = {}');
+    expect(createWindowSource).toContain('if (!usesCompositorOwnedPlacement)');
+    expect(createWindowSource).toContain('...positionOptions');
+
+    const trayStart = mainSource.indexOf('function buildTrayContextMenu');
+    const trayEnd = mainSource.indexOf('function createTray', trayStart);
+    const traySource = mainSource.slice(trayStart, trayEnd);
+    expect(traySource).toContain('enabled: !usesCompositorOwnedPlacement');
+    expect(traySource).toContain('if (usesCompositorOwnedPlacement) return;');
+
+    const clampStart = mainSource.indexOf('function clampDesktopPinBounds(');
+    const clampEnd = mainSource.indexOf('function applyDesktopPinBoundsToWindow', clampStart);
+    const clampSource = mainSource.slice(clampStart, clampEnd);
+    expect(clampSource).toContain('if (usesCompositorOwnedPlacement)');
+    expect(clampSource).toContain('Number.isFinite(Number(bounds.x))');
+    expect(clampSource).toContain('clampedBounds.x = Math.round(Number(bounds.x))');
+    expect(mainSource).toContain('shouldUseCompositorOwnedPlacement({');
+  });
+
+  it('requires a modifier for user-configured global accelerators', () => {
+    const validationStart = mainSource.indexOf('function validateHotkey');
+    const validationEnd = mainSource.indexOf(
+      'function findConfiguredEntityHotkey',
+      validationStart
+    );
+    const validationSource = mainSource.slice(validationStart, validationEnd);
+    expect(validationSource).toContain('const hasModifier =');
+    expect(validationSource).toContain('if (!hasModifier || nonModifiers.length !== 1');
   });
 
   it('preserves persisted desktop pins during config normalization even when favorites are stale', () => {
@@ -161,18 +273,210 @@ describe('main-process wiring safeguards', () => {
     expect(normalizeDesktopPinsConfigSource).not.toContain('favoriteSet.has');
   });
 
-  it('backs up config before first write and blocks default-like config clobbers', () => {
+  it('backs up config before first write and blocks writes only after an unsafe load', () => {
     expect(mainSource).toContain('ensureConfigBackupBeforeFirstWrite');
     expect(mainSource).toContain('configBackupCreatedThisRun');
     expect(mainSource).toContain('shouldBlockPotentialConfigClobber');
     expect(mainSource).toContain(
-      'Blocked config save because it would replace an existing user config with default-like data.'
+      'shouldBlockConfigWrite({ blockedReason: configWriteBlockedReason })'
     );
+    expect(mainSource).not.toContain('function hasMeaningfulConfigData');
+  });
+
+  it('quarantines malformed config and reports durable persistence failures', () => {
+    expect(mainSource).toContain('function quarantineCorruptConfig');
+    expect(mainSource).toContain('config.corrupt.${timestamp}.json');
+    expect(mainSource).toContain('configRecoveryNotice');
+    expect(mainSource).toContain('configWriteBlockedReason');
+    expect(mainSource).toContain('Configuration root must be a JSON object');
+    expect(mainSource).toContain('async function saveConfigDurably');
+
+    const updateStart = mainSource.indexOf("'update-config'");
+    const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
+    const updateSource = mainSource.slice(updateStart, updateEnd);
+    expect(updateSource).toContain('const persistence = await saveConfigDurably');
+    expect(updateSource).toContain('success: false');
+    expect(updateSource).toContain('config = prevConfig');
+    expect(mainSource).toContain('cloned.configRevision = configSnapshotVersion');
+    expect(mainSource).toContain('delete target.configRevision');
+  });
+
+  it('does not turn durable config changes into rejected IPC when runtime refreshes fail', () => {
+    expect(mainSource).toContain('async function runPostSaveSideEffect');
+
+    const pinStart = mainSource.indexOf('async function pinEntityToDesktopInternal');
+    const pinEnd = mainSource.indexOf('async function unpinEntityFromDesktopInternal', pinStart);
+    const pinSource = mainSource.slice(pinStart, pinEnd);
+    expect(pinSource).toContain(
+      "runPostSaveSideEffect(runtimeWarnings, 'desktop pin window creation'"
+    );
+    expect(pinSource).toContain('...(runtimeWarnings.length ? { runtimeWarnings } : {})');
+
+    const deprecatedStart = mainSource.indexOf("'save-config'");
+    const deprecatedEnd = mainSource.indexOf("'toggle-hotkeys'", deprecatedStart);
+    const deprecatedSource = mainSource.slice(deprecatedStart, deprecatedEnd);
+    expect(deprecatedSource).toContain(
+      "error: 'save-config is no longer supported; use update-config'"
+    );
+    expect(deprecatedSource).not.toContain('config =');
+
+    const syncStart = mainSource.indexOf('async function applySyncedProfileToConfig');
+    const syncEnd = mainSource.indexOf('function clearProfileSyncTimers', syncStart);
+    expect(mainSource.slice(syncStart, syncEnd)).toContain(
+      "runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings'"
+    );
+
+    const runtimeStart = mainSource.indexOf('async function applyRuntimeConfigSideEffects');
+    const runtimeEnd = mainSource.indexOf('function pushConfigToRenderer', runtimeStart);
+    const runtimeSource = mainSource.slice(runtimeStart, runtimeEnd);
+    expect(runtimeSource).toContain(
+      "failures.push(`portal shortcuts: ${result.error || 'activation failed'}`)"
+    );
+    expect(runtimeSource).toContain(
+      "failures.push(`entity hotkeys: ${result.error || 'activation failed'}`)"
+    );
+    expect(runtimeSource).toContain(
+      "failures.push(`popup hotkey: ${result.error || 'activation failed'}`)"
+    );
+    expect(runtimeSource).toContain('if (failures.length)');
+    expect(runtimeSource).toContain('throw new Error(');
+  });
+
+  it('keeps invalid opacity input finite before persisting it', () => {
+    const handlerStart = mainSource.indexOf("'set-opacity'");
+    const handlerEnd = mainSource.indexOf("'preview-window-effects'", handlerStart);
+    const handlerSource = mainSource.slice(handlerStart, handlerEnd);
+    expect(handlerSource).toContain('Number.isFinite(requestedOpacity)');
+    expect(handlerSource).toContain('Number(previousOpacity) || 1');
+  });
+
+  it('does not acknowledge passphrase or recovery mutations before durable persistence', () => {
+    const setPassphraseStart = mainSource.indexOf("'set-profile-sync-passphrase'");
+    const clearPassphraseStart = mainSource.indexOf(
+      "'clear-profile-sync-passphrase'",
+      setPassphraseStart
+    );
+    const resolveStart = mainSource.indexOf(
+      "'resolve-profile-sync-first-enable'",
+      clearPassphraseStart
+    );
+    const setPassphraseSource = mainSource.slice(setPassphraseStart, clearPassphraseStart);
+    const clearPassphraseSource = mainSource.slice(clearPassphraseStart, resolveStart);
+
+    expect(setPassphraseSource).toContain('const persistence = await saveConfigDurably()');
+    expect(setPassphraseSource).toContain(
+      'profileSync.storedPassphrase = previous.storedPassphrase'
+    );
+    expect(clearPassphraseSource).toContain('const persistence = await saveConfigDurably()');
+    expect(clearPassphraseSource).toContain(
+      'profileSyncRuntime.passphraseSession = previous.passphraseSession'
+    );
+  });
+
+  it('keeps credential metadata main-owned across the config/passphrase IPC boundary', () => {
+    const updateStart = mainSource.indexOf("'update-config'");
+    const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
+    const updateSource = mainSource.slice(updateStart, updateEnd);
+
+    expect(updateSource).toContain('const previousPassphraseMetadata = {');
+    expect(updateSource).toContain('Object.assign(profileSync, previousPassphraseMetadata)');
+    expect(updateSource).toContain('resolveProfileSyncEncryptionRequest({');
+    expect(mainSource).toContain('encryptionChangePending');
+  });
+
+  it('uses a crash-recoverable exact transaction for active key rewrites', () => {
+    expect(mainSource).toContain('async function stageProfileSyncRewrite');
+    expect(mainSource).toContain('oldPassphraseEncrypted');
+    expect(mainSource).toContain('newPassphraseEncrypted');
+    expect(mainSource).toContain('targetEnvelopeSerialized');
+    expect(mainSource).toContain('targetRemoteIdentity');
+    expect(mainSource).toContain('runProfileSyncRewriteRecovery({');
+    expect(mainSource).toContain('await executePendingProfileSyncRewrite();');
+    expect(mainSource).toContain("source === 'startup_rewrite_recovery'");
+    expect(mainSource).toContain('if (profileSync.passphraseTransition) {');
+  });
+
+  it('re-arms conflict preparation when an enabled sync target changes', () => {
+    const updateStart = mainSource.indexOf("'update-config'");
+    const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
+    const updateSource = mainSource.slice(updateStart, updateEnd);
+
+    expect(updateSource).toContain('const remoteTargetChanged =');
+    expect(updateSource).toContain('normalizedNextProvider !== previousProvider');
+    expect(updateSource).toContain('normalizedNextPath !== previousCloudFilePath');
+    expect(updateSource).toContain('const requiresInitialPreparation =');
+    expect(updateSource).toContain('profileSync.firstEnableResolutionPending = true');
+    expect(updateSource).toContain('prepareProfileSyncFirstEnableResolution()');
+  });
+
+  it('flushes the latest config before restart can bypass before-quit', () => {
+    const restartStart = mainSource.indexOf("'restart-app'");
+    const restartEnd = mainSource.indexOf("ipcMain.handle('minimize-window'", restartStart);
+    const restartSource = mainSource.slice(restartStart, restartEnd);
+    expect(restartSource).toContain("await flushConfigForBoundedExit('restarting')");
+    expect(restartSource.indexOf('app.relaunch()')).toBeLessThan(
+      restartSource.indexOf('app.exit(0)')
+    );
+
+    const boundedExitStart = mainSource.indexOf('async function flushConfigForBoundedExit');
+    const boundedExitEnd = mainSource.indexOf(
+      'function shutDownRuntimeAfterConfigFlush',
+      boundedExitStart
+    );
+    const boundedExitSource = mainSource.slice(boundedExitStart, boundedExitEnd);
+    expect(boundedExitSource).toContain('capturePendingWindowBoundsForShutdown()');
+    expect(boundedExitSource.indexOf('saveConfig({ allowDebouncedPush: false })')).toBeLessThan(
+      boundedExitSource.indexOf('flushPendingConfigWriteSync({ shutdown: true })')
+    );
+    expect(boundedExitSource).toContain('QUIT_FINALIZATION_TIMEOUT');
+    expect(boundedExitSource).toContain('void finalization');
+    expect(boundedExitSource).toContain('setupProfileSyncInterval()');
+
+    const asyncWriteStart = mainSource.indexOf('async function writeConfigSnapshotAsync');
+    const asyncWriteEnd = mainSource.indexOf(
+      'function emitConfigPersistenceWarnings',
+      asyncWriteStart
+    );
+    const asyncWriteSource = mainSource.slice(asyncWriteStart, asyncWriteEnd);
+    expect(asyncWriteSource).toContain('canCommitSnapshot(snapshot');
+    expect(asyncWriteSource).toContain('currentEpoch: configWriteEpoch');
+    expect(asyncWriteSource).toContain('fs.renameSync(snapshot.tempPath, snapshot.configPath)');
+    expect(asyncWriteSource).not.toContain(
+      'await fs.promises.rename(snapshot.tempPath, snapshot.configPath)'
+    );
+
+    const quitStart = mainSource.indexOf("app.on('before-quit'");
+    const quitEnd = mainSource.indexOf('// Register custom protocol', quitStart);
+    const quitSource = mainSource.slice(quitStart, quitEnd);
+    expect(quitSource).toContain("flushConfigForBoundedExit('quitting')");
+  });
+
+  it('runs packaged smoke tests in an isolated profile and fails closed on startup errors', () => {
+    expect(mainSource).toContain("process.argv.includes('--smoke-test')");
+    expect(mainSource).toContain('SMOKE_TEST_PROFILE_PREFIX');
+    expect(mainSource).toContain('removeSmokeTestProfile(smokeTestUserDataPath');
+    expect(mainSource).toContain('function startSmokeTestTimeout');
+    expect(mainSource).toContain("'did-fail-load'");
+    expect(mainSource).toContain("mainWindow.webContents.on('render-process-gone'");
+    expect(mainSource).toContain('smokeTestRendererLoaded &&');
+    expect(mainSource).toContain('smokeTestRendererReady &&');
+    expect(mainSource).toContain('smokeTestTrayReady &&');
+    expect(mainSource).toContain("ipcMain.handle('renderer-ready'");
+    expect(mainSource).toContain('smokeTestRendererReady = true');
+    expect(mainSource).toContain('HA_WIDGET_SMOKE_TEST_OK');
+    expect(mainSource).toContain('app.exit(success ? 0 : 1)');
+    expect(mainSource).toContain('setImmediate(async () =>');
+    expect(mainSource).toContain('await session.defaultSession.flushStorageData()');
+    expect(mainSource).toContain(
+      'error = `Failed to remove isolated smoke-test profile: ${cleanup.error}`'
+    );
+    expect(mainSource).toContain('HA_WIDGET_SMOKE_TEST_PROFILE_RETAINED');
   });
 
   it('defers secure config resolution until after the first window can render', () => {
     expect(mainSource).toContain('loadConfig({ deferSecureStorage: true });');
-    expect(mainSource).toContain('resolveDeferredSecureConfig({ notifyRenderer: true });');
+    expect(mainSource).toContain('runSerializedConfigMutation(() =>');
+    expect(mainSource).toContain('resolveDeferredSecureConfig({ notifyRenderer: true })');
 
     const getConfigStart = mainSource.indexOf("ipcMain.handle('get-config'");
     const getConfigEnd = mainSource.indexOf(
@@ -217,11 +521,45 @@ describe('main-process wiring safeguards', () => {
   it('supports opt-in prerelease update checks without moving stable users to prereleases', () => {
     expect(mainSource).toContain('function configureAutoUpdaterChannel');
     expect(mainSource).toContain('autoUpdater.allowPrerelease = allowPrerelease');
-    expect(mainSource).toContain('autoUpdater.checkForUpdates().catch');
+    expect(mainSource).toContain('await autoUpdater.checkForUpdates()');
     expect(mainSource).toContain('function selectPortableRelease');
     expect(mainSource).toContain('allowPrerelease || !release.prerelease');
     expect(mainSource).toContain('releases?per_page=20');
     expect(mainSource).toContain('/releases/latest');
+  });
+
+  it('routes tray and renderer update checks through the same package capability guard', () => {
+    const trayStart = mainSource.indexOf('function buildTrayContextMenu');
+    const trayEnd = mainSource.indexOf('function createTray', trayStart);
+    const traySource = mainSource.slice(trayStart, trayEnd);
+    const updateCheckStart = mainSource.indexOf('async function checkForUpdatesForCurrentPackage');
+    const updateCheckEnd = mainSource.indexOf(
+      "ipcMain.handle('quit-and-install'",
+      updateCheckStart
+    );
+    const updateCheckSource = mainSource.slice(updateCheckStart, updateCheckEnd);
+
+    expect(traySource).toContain('checkForUpdatesForCurrentPackage()');
+    expect(traySource).not.toContain('getAutoUpdater()');
+    expect(traySource).toContain("if (result.status === 'checking') return;");
+    expect(
+      updateCheckSource.indexOf('supportsAutoUpdater(process.platform, process.env)')
+    ).toBeLessThan(updateCheckSource.indexOf('getAutoUpdater()'));
+    expect(updateCheckSource).toContain('return checkManualReleaseUpdate()');
+    expect(mainSource).toContain('async function checkManualReleaseUpdate()');
+    expect(mainSource).toContain("status: 'manual'");
+  });
+
+  it('flushes config and pending window bounds before an update closes windows', () => {
+    const installStart = mainSource.indexOf("ipcMain.handle('quit-and-install'");
+    const installEnd = mainSource.indexOf('// Handle quit request from renderer', installStart);
+    const installSource = mainSource.slice(installStart, installEnd);
+
+    expect(installSource).toContain("await flushConfigForBoundedExit('installing the update')");
+    expect(
+      installSource.indexOf("flushConfigForBoundedExit('installing the update')")
+    ).toBeLessThan(installSource.indexOf('autoUpdater.quitAndInstall()'));
+    expect(installSource).toContain('quitFinalized = true');
   });
 
   it('migrates the legacy clock boolean and constrains configurable clock formats', () => {
@@ -244,6 +582,25 @@ describe('main-process wiring safeguards', () => {
       'omitting token from saved config so it is not written in plaintext'
     );
     expect(mainSource).not.toContain('Failed to encrypt token, saving as plaintext');
+
+    const loadMigrationStart = mainSource.indexOf(
+      'Detected plaintext token from pre-encryption version'
+    );
+    const loadMigrationEnd = mainSource.indexOf(
+      '// Migrate legacy config if present in app directory',
+      loadMigrationStart
+    );
+    const loadMigrationSource = mainSource.slice(loadMigrationStart, loadMigrationEnd);
+    const deferredMigrationStart = mainSource.indexOf('Detected plaintext token after startup');
+    const deferredMigrationEnd = mainSource.indexOf(
+      'if (deferredProfileSyncPassphraseDecryptPending)',
+      deferredMigrationStart
+    );
+    const deferredMigrationSource = mainSource.slice(deferredMigrationStart, deferredMigrationEnd);
+    expect(loadMigrationSource).not.toContain("encryptedBuffer.toString('base64')");
+    expect(deferredMigrationSource).not.toContain("encryptedBuffer.toString('base64')");
+    expect(loadMigrationSource).toContain('const migrationSnapshot = saveConfig()');
+    expect(deferredMigrationSource).toContain('const migrationSnapshot = saveConfig()');
   });
 
   it('guards privileged IPC senders and restricts desktop-pin channels', () => {
@@ -316,6 +673,20 @@ describe('main-process wiring safeguards', () => {
 });
 
 describe('profile sync runtime safeguards', () => {
+  it('reapplies runtime hotkey and alert state after a pulled profile is durable', () => {
+    const applyStart = mainSource.indexOf('async function applySyncedProfileToConfig');
+    const applyEnd = mainSource.indexOf('function clearProfileSyncTimers', applyStart);
+    const applySource = mainSource.slice(applyStart, applyEnd);
+
+    expect(applySource).toContain('await saveConfigDurably({ allowDebouncedPush: false })');
+    expect(applySource).toContain(
+      "applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')"
+    );
+    expect(mainSource).toContain('registerGlobalHotkeys()');
+    expect(mainSource).toContain('registerPopupHotkey()');
+    expect(mainSource).toContain('setupEntityAlerts()');
+  });
+
   it('identifies the post-pull renderer echo by content instead of by timing', () => {
     expect(mainSource).toContain('pendingPullEchoHash');
     expect(mainSource).not.toContain('suppressNextAutoPush');
@@ -350,7 +721,7 @@ describe('profile sync runtime safeguards', () => {
 
     // The guard has to run inside update-config, after the renderer payload is
     // merged and pruned but before the merged config is treated as authoritative.
-    const handlerStart = mainSource.indexOf("ipcMain.handle('update-config'");
+    const handlerStart = mainSource.indexOf("'update-config'");
     const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
     const guard = mainSource.indexOf('restoreProfileFromStalePullEcho(prevConfig)', handlerStart);
     const timestampOverride = mainSource.indexOf(
@@ -393,7 +764,8 @@ describe('profile sync runtime safeguards', () => {
     // A read failure must fail closed: returning false here would overwrite a
     // file that another device may be midway through replicating.
     expect(fn).toMatch(/catch[\s\S]*?return true;/);
-    expect(fn).toContain('updatedByDeviceId');
+    expect(fn).toContain('getSyncEnvelopeIdentity(currentResult)');
+    expect(mainSource).toContain('profileSyncCore.serializeSyncEnvelope(readResult.envelope)');
   });
 
   it('rate-limits focus and resume triggered syncs', () => {
@@ -445,6 +817,7 @@ describe('profile sync runtime safeguards', () => {
     expect(mainSource).toContain(
       'config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt'
     );
+    expect(mainSource).toContain('config.profileSync.profileUpdatedAt = localProfileUpdatedAtSeed');
     // Tracking must run before the snapshot is built so the timestamp lands in
     // the same save instead of trailing one save behind.
     expect(mainSource.indexOf('updateLocalProfileSyncTracking();')).toBeLessThan(
@@ -453,19 +826,34 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('resolves startup sync direction from content timestamps instead of forcing a pull', () => {
-    expect(mainSource).toContain("await runProfileSync('auto', 'startup')");
+    expect(mainSource).toContain("await runProfileSyncInternal('auto', 'startup')");
     expect(mainSource).not.toContain("runProfileSync('pull', 'startup')");
+  });
+
+  it('persists and enforces the first-enable conflict gate until preparation succeeds', () => {
+    expect(mainSource).toContain('firstEnableResolutionPending: false');
+    expect(mainSource).toContain('profileSync.firstEnableResolutionPending = true');
+    expect(mainSource).toContain('async function clearProfileSyncFirstEnableResolutionPending');
+    expect(mainSource).toContain(
+      'profileSyncRuntime.needsResolution || profileSync.firstEnableResolutionPending'
+    );
+    expect(mainSource).toContain(
+      'return runSerializedConfigMutation(initializeProfileSyncOnStartupInternal)'
+    );
   });
 
   it('backs up the local profile before applying a remote profile', () => {
     expect(mainSource).toContain('async function backupLocalProfileBeforePullApply');
     expect(mainSource).toContain('await backupLocalProfileBeforePullApply(remoteSyncScope);');
     expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");
+    expect(mainSource).toContain(
+      'Created local profile backup, but failed to prune older profile backups:'
+    );
   });
 
   it('enforces a stronger passphrase minimum and random device ids', () => {
     expect(mainSource).toContain('const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8');
-    expect(mainSource).toContain('passphrase.trim().length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH');
+    expect(mainSource).toContain('candidatePassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH');
     expect(mainSource).not.toContain('os.hostname');
     expect(mainSource).toContain('.randomBytes(16)');
   });

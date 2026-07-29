@@ -4,15 +4,19 @@
 
 const fs = require('fs');
 const path = require('path');
+const nodeUtil = require('util');
 const {
   createMockElectronAPI,
   resetMockElectronAPI,
   getMockConfig,
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
+global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 
 // Setup mocks BEFORE loading modules
 const mockElectronAPI = createMockElectronAPI();
+const defaultUpdateConfigImplementation = mockElectronAPI.updateConfig.getMockImplementation();
 window.electronAPI = mockElectronAPI;
 
 // Mock dependencies
@@ -45,6 +49,8 @@ jest.mock('../../src/ui-utils.js', () => ({
   showConfirm: jest.fn().mockResolvedValue(false),
   showLoading: jest.fn(),
   setStatus: jest.fn(),
+  trapFocus: jest.fn(),
+  releaseFocusTrap: jest.fn(),
   applyTheme: jest.fn(),
   applyUiPreferences: jest.fn(),
   hexToRgb: jest.fn((hex) => {
@@ -99,12 +105,15 @@ jest.mock('sortablejs', () => ({
 // Mock WebSocket callService method
 const mockCallService = jest.fn().mockResolvedValue({});
 const mockCallServiceWithResponse = jest.fn().mockResolvedValue({});
+const mockRequest = jest.fn().mockResolvedValue({});
 
 jest.mock('../../src/websocket.js', () => ({
   callService: mockCallService,
   callServiceWithResponse: mockCallServiceWithResponse,
+  isConnected: jest.fn(() => true),
   on: jest.fn(),
   emit: jest.fn(),
+  request: mockRequest,
 }));
 
 // Import modules after mocks
@@ -127,6 +136,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     jest.useRealTimers();
     jest.clearAllMocks();
     resetMockElectronAPI();
+    mockElectronAPI.updateConfig.mockReset();
+    mockElectronAPI.updateConfig.mockImplementation(defaultUpdateConfigImplementation);
     mockElectronAPI.respondDesktopPinActionRequest = jest.fn(() =>
       Promise.resolve({ success: true })
     );
@@ -139,6 +150,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
     mockCallServiceWithResponse.mockClear();
     mockCallServiceWithResponse.mockResolvedValue({});
+    mockRequest.mockClear();
+    mockRequest.mockResolvedValue({});
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -809,20 +822,200 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('dynamic control modal accessibility', () => {
+    it.each([
+      {
+        label: 'light',
+        entity: sampleStates['light.living_room'],
+        modalSelector: '.brightness-modal',
+        closeSelector: '#brightness-close',
+      },
+      {
+        label: 'climate',
+        entity: sampleStates['climate.thermostat'],
+        modalSelector: '.climate-modal',
+        closeSelector: '#climate-close',
+      },
+      {
+        label: 'fan',
+        entity: {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Office Fan',
+            percentage: 35,
+            supported_features: 1,
+          },
+        },
+        modalSelector: '.fan-modal',
+        closeSelector: '#fan-close',
+      },
+      {
+        label: 'cover',
+        entity: {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Living Room Blinds',
+            current_position: 60,
+            supported_features: 15,
+          },
+        },
+        modalSelector: '.cover-modal',
+        closeSelector: '#cover-close',
+      },
+      {
+        label: 'media',
+        entity: sampleStates['media_player.spotify'],
+        modalSelector: '.media-modal',
+        closeSelector: '#media-close',
+      },
+    ])('gives the $label dialog a focus lifecycle', ({ entity, modalSelector, closeSelector }) => {
+      jest.useFakeTimers();
+      try {
+        state.setStates({ [entity.entity_id]: entity });
+        ui.openEntityDetailModal(entity);
+        jest.advanceTimersByTime(0);
+
+        const modal = document.querySelector(modalSelector);
+        const labelledBy = modal?.getAttribute('aria-labelledby');
+        expect(modal?.getAttribute('role')).toBe('dialog');
+        expect(modal?.getAttribute('aria-modal')).toBe('true');
+        expect(labelledBy).toBeTruthy();
+        expect(modal?.querySelector('h2')?.id).toBe(labelledBy);
+        expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal);
+
+        modal.querySelector(closeSelector).click();
+        jest.advanceTimersByTime(250);
+
+        expect(uiUtils.releaseFocusTrap).toHaveBeenCalledWith(modal);
+        expect(modal.isConnected).toBe(false);
+      } finally {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not render media transport actions that are not advertised', () => {
+      jest.useFakeTimers();
+      try {
+        const entity = {
+          entity_id: 'media_player.status_only',
+          state: 'playing',
+          attributes: {
+            friendly_name: 'Status-only Player',
+            media_title: 'Read only',
+            supported_features: 0,
+          },
+        };
+        state.setStates({ [entity.entity_id]: entity });
+
+        ui.openEntityDetailModal(entity);
+
+        const modal = document.querySelector('.media-modal');
+        expect(modal.querySelector('.media-detail-prev-btn')).toBeNull();
+        expect(modal.querySelector('.media-detail-play-btn')).toBeNull();
+        expect(modal.querySelector('.media-detail-next-btn')).toBeNull();
+        expect(modal.querySelector('.media-detail-seek-btn')).toBeNull();
+        expect(modal.querySelector('.control-capability-note')).toBeTruthy();
+        modal.querySelector('#media-close').click();
+        jest.advanceTimersByTime(200);
+      } finally {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+  });
+
   // ==============================================================================
   // GROUP 2: Config Management (2 tests)
   // Note: toggleQuickAccess, saveQuickAccessOrder, removeFromQuickAccess not exported
   // ==============================================================================
 
   describe('selectWeatherEntity', () => {
-    it('should update config with selected weather entity', async () => {
+    it('sends a narrow patch and applies the authoritative config response', async () => {
+      const before = JSON.parse(JSON.stringify(state.CONFIG));
+      let authoritative = {
+        ...before,
+        selectedWeatherEntity: 'weather.home',
+        opacity: 0.73,
+        profileSync: {
+          ...before.profileSync,
+          lastSyncStatus: 'success',
+        },
+      };
+      mockElectronAPI.updateConfig.mockImplementation((patch) => {
+        authoritative = {
+          ...authoritative,
+          ...patch,
+        };
+        return Promise.resolve(authoritative);
+      });
+
       await ui.selectWeatherEntity('weather.home');
 
-      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedWeatherEntity: 'weather.home',
-        })
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({
+        selectedWeatherEntity: 'weather.home',
+      });
+      expect(state.CONFIG.selectedWeatherEntity).toBe('weather.home');
+      expect(state.CONFIG.opacity).toBe(0.73);
+      expect(state.CONFIG.profileSync.lastSyncStatus).toBe('success');
+    });
+
+    it('applies authoritative recovery and reports a rejected selection without success', async () => {
+      const before = {
+        ...JSON.parse(JSON.stringify(state.CONFIG)),
+        selectedWeatherEntity: 'weather.prior',
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+        favoriteEntities: [],
+      };
+      state.setConfig(before);
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'sunny',
+          attributes: { friendly_name: 'Home Weather' },
+        },
+        'weather.authoritative': {
+          entity_id: 'weather.authoritative',
+          state: 'rainy',
+          attributes: {
+            friendly_name: 'Authoritative Weather',
+            temperature: 8,
+            humidity: 92,
+          },
+        },
+      });
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'disk full',
+        config: {
+          ...before,
+          selectedWeatherEntity: 'weather.authoritative',
+          opacity: 0.68,
+        },
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        await ui.selectWeatherEntity('weather.home');
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({
+        selectedWeatherEntity: 'weather.home',
+      });
+      expect(state.CONFIG.selectedWeatherEntity).toBe('weather.authoritative');
+      expect(state.CONFIG.opacity).toBe(0.68);
+      expect(document.getElementById('weather-condition').textContent).toBe('rainy');
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        'Failed to save weather entity selection',
+        'error',
+        3000
       );
+      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('should show success toast when entity exists', async () => {
@@ -842,6 +1035,24 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'success',
         2000
       );
+    });
+  });
+
+  describe('update UI lifecycle', () => {
+    it('unsubscribes the previous auto-update listener before binding another one', () => {
+      const firstUnsubscribe = jest.fn();
+      const secondUnsubscribe = jest.fn();
+      mockElectronAPI.onAutoUpdate = jest
+        .fn()
+        .mockReturnValueOnce(firstUnsubscribe)
+        .mockReturnValueOnce(secondUnsubscribe);
+
+      ui.initUpdateUI();
+      ui.initUpdateUI();
+
+      expect(mockElectronAPI.onAutoUpdate).toHaveBeenCalledTimes(2);
+      expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
+      expect(secondUnsubscribe).not.toHaveBeenCalled();
     });
   });
 
@@ -946,6 +1157,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const windEl = document.getElementById('weather-wind');
       expect(windEl.textContent).toContain('10');
       expect(windEl.textContent).toContain('mph');
+    });
+
+    it('does not convert a global km/h value a second time', () => {
+      state.setStates({
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'sunny',
+          attributes: {
+            temperature: 22,
+            humidity: 65,
+            wind_speed: 20,
+          },
+        },
+      });
+      state.setUnitSystem({ wind_speed: 'km/h' });
+
+      ui.updateWeatherFromHA();
+
+      expect(document.getElementById('weather-wind').textContent).toBe('20 km/h');
     });
 
     it('should set sunny icon for clear/sunny conditions', () => {
@@ -1435,6 +1665,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('media artwork proxy boundary', () => {
+    it.each([
+      [
+        'Home Assistant relative artwork',
+        '/api/media_player_proxy/media_player.spotify?token=abc123',
+        '/api/media_player_proxy/media_player.spotify?token=abc123',
+      ],
+      [
+        'external artwork',
+        'https://cdn.example.test/album.jpg',
+        'https://cdn.example.test/album.jpg',
+      ],
+    ])(
+      'preserves %s as the protocol authentication boundary',
+      (_label, artwork, expectedTarget) => {
+        state.setStates({
+          'media_player.spotify': {
+            ...sampleStates['media_player.spotify'],
+            attributes: {
+              ...sampleStates['media_player.spotify'].attributes,
+              entity_picture: artwork,
+            },
+          },
+        });
+
+        ui.updateMediaTile();
+
+        const src = document.querySelector('#media-tile-artwork img')?.getAttribute('src');
+        expect(src).toMatch(/^ha:\/\/media_artwork\//);
+        const encodedTarget = src.slice('ha://media_artwork/'.length).split('?t=')[0];
+        expect(Buffer.from(encodedTarget, 'base64').toString('utf8')).toBe(expectedTarget);
+      }
+    );
+  });
+
   // ==============================================================================
   // GROUP 4: Rendering Functions (1 test)
   // Note: renderQuickControls, createControlElement, createUnavailableElement not exported
@@ -1479,6 +1744,91 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('pauses an active timer and starts an idle timer on quick-access click', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['timer.kitchen'];
+      state.setConfig(config);
+      state.setStates({
+        'timer.kitchen': {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          attributes: { friendly_name: 'Kitchen Timer' },
+        },
+      });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="timer.kitchen"]').click();
+      expect(mockCallService).toHaveBeenLastCalledWith('timer', 'pause', {
+        entity_id: 'timer.kitchen',
+      });
+
+      const idleTimer = {
+        entity_id: 'timer.kitchen',
+        state: 'idle',
+        attributes: { friendly_name: 'Kitchen Timer' },
+      };
+      state.setEntityState(idleTimer);
+      ui.updateEntityInUI(idleTimer);
+      document.querySelector('[data-entity-id="timer.kitchen"]').click();
+      expect(mockCallService).toHaveBeenLastCalledWith('timer', 'start', {
+        entity_id: 'timer.kitchen',
+      });
+    });
+
+    it('toggles media playback on short click without opening the detail modal', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['media_player.spotify'];
+      state.setConfig(config);
+      state.setStates({
+        'media_player.spotify': sampleStates['media_player.spotify'],
+      });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="media_player.spotify"]').click();
+
+      expect(mockCallService).toHaveBeenLastCalledWith('media_player', 'media_pause', {
+        entity_id: 'media_player.spotify',
+      });
+      expect(document.querySelector('.media-detail-modal')).toBeNull();
+    });
+
+    it('does not send a quick-access media action that the entity does not advertise', () => {
+      const entity = {
+        entity_id: 'media_player.status_only',
+        state: 'playing',
+        attributes: {
+          friendly_name: 'Status-only Player',
+          media_title: 'Read only',
+          supported_features: 0,
+        },
+      };
+      state.setConfig({ ...state.CONFIG, favoriteEntities: [entity.entity_id] });
+      state.setStates({ [entity.entity_id]: entity });
+
+      ui.renderActiveTab();
+      document.querySelector(`[data-entity-id="${entity.entity_id}"]`).click();
+
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+
+    it('does not send a quick-access cover action that the entity does not advertise', () => {
+      const entity = {
+        entity_id: 'cover.status_only',
+        state: 'open',
+        attributes: {
+          friendly_name: 'Status-only Cover',
+          supported_features: 0,
+        },
+      };
+      state.setConfig({ ...state.CONFIG, favoriteEntities: [entity.entity_id] });
+      state.setStates({ [entity.entity_id]: entity });
+
+      ui.renderActiveTab();
+      document.querySelector(`[data-entity-id="${entity.entity_id}"]`).click();
+
+      expect(mockCallService).not.toHaveBeenCalled();
     });
 
     it('marks controllable quick access tiles as active while their entity is on', () => {
@@ -1760,6 +2110,51 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('queues a genuinely fresh forced todo read behind an older pending request', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['todo.race'];
+      state.setConfig(config);
+      state.setStates({
+        'todo.race': {
+          entity_id: 'todo.race',
+          state: '0',
+          attributes: { friendly_name: 'Shopping' },
+        },
+      });
+
+      let resolveInitialRequest;
+      mockCallServiceWithResponse
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveInitialRequest = resolve;
+            })
+        )
+        .mockResolvedValueOnce({
+          'todo.race': {
+            items: [{ uid: 'fresh', summary: 'Fresh item', status: 'needs_action' }],
+          },
+        });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="todo.race"]').click();
+      expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(1);
+
+      resolveInitialRequest({
+        'todo.race': {
+          items: [{ uid: 'stale', summary: 'Stale item', status: 'needs_action' }],
+        },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('.todo-item-summary')?.textContent).toBe('Fresh item');
+    });
+
     it('renders calendar tiles with next event details from attributes', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['calendar.family'];
@@ -1929,6 +2324,143 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(sensorTile.dataset.valueSize).toBe('extra-large');
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
+    });
+
+    it('keeps tile settings and the editor intact when a narrow save is rejected', async () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.customEntityNames = {};
+      config.quickAccessTileOptions = {};
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      const nameInput = modal.querySelector('#rename-input');
+      const sizeSelect = modal.querySelector('#tile-value-size-select');
+      nameInput.value = 'Desk Temperature';
+      sizeSelect.value = 'extra-large';
+
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'disk full',
+        config: authoritativeBefore,
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        modal.querySelector('#save-rename-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({
+        customEntityNames: {
+          'sensor.office_temperature': 'Desk Temperature',
+        },
+        quickAccessTileOptions: {
+          'sensor.office_temperature': { valueSize: 'extra-large' },
+        },
+      });
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
+      expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toBeUndefined();
+      expect(document.querySelector('.rename-modal')).toBe(modal);
+      expect(nameInput.value).toBe('Desk Temperature');
+      expect(sizeSelect.value).toBe('extra-large');
+      expect(modal.querySelector('#save-rename-btn').disabled).toBe(false);
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('disk full'),
+        'error',
+        4000
+      );
+      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+    });
+
+    it('locks every Tile Settings action until a deferred save settles', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['sensor.office_temperature'],
+        customTabs: [
+          {
+            id: 'default',
+            name: 'All',
+            entityIds: ['sensor.office_temperature'],
+          },
+        ],
+        activeTabId: 'default',
+        customEntityNames: {},
+        quickAccessTileOptions: {},
+      });
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21.5',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      modal.querySelector('#rename-input').value = 'Desk Temperature';
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      let resolveSave;
+      let submittedPatch;
+      mockElectronAPI.updateConfig.mockImplementationOnce(
+        (patch) =>
+          new Promise((resolve) => {
+            submittedPatch = patch;
+            resolveSave = resolve;
+          })
+      );
+
+      modal.querySelector('#save-rename-btn').click();
+
+      expect(modal.querySelector('#save-rename-btn').disabled).toBe(true);
+      expect(modal.querySelector('#reset-rename-btn').disabled).toBe(true);
+      expect(modal.querySelector('#cancel-rename-btn').disabled).toBe(true);
+      expect(modal.querySelector('.close-btn').disabled).toBe(true);
+      modal.querySelector('#cancel-rename-btn').click();
+      modal.querySelector('#reset-rename-btn').click();
+      modal.querySelector('.close-btn').click();
+      modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(document.querySelector('.rename-modal')).toBe(modal);
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+
+      resolveSave({
+        ...authoritativeBefore,
+        ...submittedPatch,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(document.querySelector('.rename-modal')).toBeNull();
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBe('Desk Temperature');
     });
 
     it('resets quick access tile name and value font size from the pencil settings modal', async () => {
@@ -2121,6 +2653,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerTile.querySelector('.control-sensor-value')).toBeNull();
     });
 
+    it('does not cache a success:false history response as fresh empty data', async () => {
+      const warningSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const entity = {
+        entity_id: 'sensor.audit_history',
+        state: '21.5',
+        attributes: {
+          friendly_name: 'Audit History',
+          unit_of_measurement: '°C',
+          device_class: 'temperature',
+        },
+      };
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: [entity.entity_id],
+      });
+      state.setStates({ [entity.entity_id]: entity });
+      mockRequest.mockResolvedValue({
+        success: false,
+        error: { message: 'Recorder unavailable' },
+      });
+
+      ui.renderActiveTab();
+      await Promise.resolve();
+      await Promise.resolve();
+      document.querySelector(`[data-entity-id="${entity.entity_id}"]`).click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+      expect(warningSpy).toHaveBeenCalledWith(
+        'Sensor history request failed:',
+        expect.objectContaining({ message: 'Recorder unavailable' })
+      );
+      warningSpy.mockRestore();
+    });
+
     it('does not apply quick access sensor readout formatting to primary entity cards', () => {
       document.body.insertAdjacentHTML('beforeend', '<div id="time-card"></div>');
       const config = state.CONFIG;
@@ -2249,6 +2817,31 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    it('rolls back an optimistic climate temperature when the service rejects', async () => {
+      jest.useFakeTimers();
+      try {
+        const airConditioner = sampleStates['climate.bedroom_air_conditioner'];
+        mockCallService.mockRejectedValueOnce(new Error('Permission denied'));
+
+        ui.executeEntityPrimaryAction(airConditioner);
+        const slider = document.querySelector('.climate-modal #climate-slider');
+        slider.value = '23';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        jest.advanceTimersByTime(300);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(slider.value).toBe('22');
+        expect(uiUtils.showToast).toHaveBeenCalledWith(
+          expect.stringContaining('Permission denied'),
+          'error',
+          4000
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('does not invent climate controls that an entity does not advertise', () => {
       ui.executeEntityPrimaryAction({
         entity_id: 'climate.read_only_air_conditioner',
@@ -2263,6 +2856,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal.querySelector('#climate-slider')).toBeNull();
       expect(modal.querySelectorAll('.climate-mode-btn')).toHaveLength(0);
       expect(modal.querySelector('.climate-controls-unavailable')).toBeTruthy();
+    });
+
+    it('treats null and blank climate numeric attributes as unadvertised', () => {
+      ui.executeEntityPrimaryAction({
+        entity_id: 'climate.null_target',
+        state: 'heat',
+        attributes: {
+          friendly_name: 'Null Target Climate',
+          current_temperature: 24,
+          temperature: null,
+          min_temp: 7,
+          max_temp: 35,
+          target_temp_step: '',
+        },
+      });
+
+      const modal = document.querySelector('.climate-modal');
+      expect(modal.querySelector('#climate-slider')).toBeNull();
+      expect(modal.querySelector('#climate-target-value').textContent).toBe('—');
     });
 
     it('updates timer tick targets when a visible sensor becomes timer-like', () => {
@@ -2303,6 +2915,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const config = {
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
         desktopPins: {},
       };
       state.setConfig(config);
@@ -2356,6 +2970,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const config = {
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
         desktopPins: {
           'light.bedroom': { x: 10, y: 20, width: 168, height: 148 },
         },
@@ -2457,6 +3073,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           })
         );
       });
+    });
+
+    it('does not derive desktop-pin controls from null or blank numeric attributes', () => {
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'light.null_brightness',
+          attributes: { brightness: null, supported_color_modes: ['onoff'] },
+        }).canSetBrightness
+      ).toBe(false);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'fan.null_percentage',
+          attributes: { percentage: '' },
+        }).canSetPercentage
+      ).toBe(false);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'cover.null_position',
+          attributes: { current_position: null, supported_features: '   ' },
+        }).canSetPosition
+      ).toBe(false);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'cover.legacy_position',
+          attributes: { current_position: 45, supported_features: '   ' },
+        }).canSetPosition
+      ).toBe(true);
+      expect(
+        desktopPinSupport.getDesktopPinCapabilities({
+          entity_id: 'climate.null_target',
+          attributes: { temperature: null, min_temp: 7, max_temp: 35 },
+        }).canSetTemperature
+      ).toBe(false);
     });
 
     const setDesktopPinViewport = (width, height) => {
@@ -2682,6 +3331,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -2875,6 +3530,59 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('does not render desktop-pin controls that entities do not advertise', () => {
+      const light = {
+        entity_id: 'light.on_off_only',
+        state: 'on',
+        attributes: { friendly_name: 'On/off Light', supported_color_modes: ['onoff'] },
+      };
+      state.setStates({ [light.entity_id]: light });
+      ui.renderDesktopPinnedTile(light.entity_id, light);
+      expect(document.querySelector('.desktop-pin-light-power')).toBeTruthy();
+      expect(document.querySelector('.desktop-pin-light-slider')).toBeNull();
+      expect(document.querySelector('.desktop-pin-light-preset')).toBeNull();
+
+      const climate = {
+        entity_id: 'climate.read_only',
+        state: 'heat',
+        attributes: {
+          friendly_name: 'Read-only Climate',
+          current_temperature: 21,
+          temperature: null,
+          min_temp: 7,
+          max_temp: 35,
+        },
+      };
+      state.setStates({ [climate.entity_id]: climate });
+      ui.renderDesktopPinnedTile(climate.entity_id, climate);
+      expect(document.querySelector('.desktop-pin-climate-slider')).toBeNull();
+      expect(document.querySelector('.desktop-pin-climate-mode')).toBeNull();
+      expect(document.querySelector('.desktop-pin-climate-target-value')?.textContent).toBe('--');
+
+      const cover = {
+        entity_id: 'cover.read_only_position',
+        state: 'open',
+        attributes: {
+          friendly_name: 'Read-only Position Cover',
+          current_position: 55,
+          supported_features: 0,
+        },
+      };
+      state.setStates({ [cover.entity_id]: cover });
+      ui.renderDesktopPinnedTile(cover.entity_id, cover);
+      expect(document.querySelector('.desktop-pin-cover-slider')).toBeNull();
+      expect(document.querySelector('.desktop-pin-cover-action')).toBeNull();
+
+      const media = {
+        entity_id: 'media_player.status_only',
+        state: 'playing',
+        attributes: { friendly_name: 'Status-only Player', supported_features: 0 },
+      };
+      state.setStates({ [media.entity_id]: media });
+      ui.renderDesktopPinnedTile(media.entity_id, media);
+      expect(document.querySelector('.desktop-pin-media-action')).toBeNull();
+    });
+
     it('renders compact desktop light controls with inline presets', async () => {
       jest.useFakeTimers();
 
@@ -3021,6 +3729,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -3122,6 +3836,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           attributes: {
             friendly_name: 'Living Room Blinds',
             current_position: 55,
+            supported_features: 15,
           },
         },
       });
@@ -3194,7 +3909,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.layout).toBe('balanced');
       expect(control?.dataset.denseVariant).toBe('tight');
       expect(control?.querySelector('.desktop-pin-media-artist')).toBeNull();
-      expect(control?.querySelectorAll('.desktop-pin-media-action')).toHaveLength(3);
+      expect(control?.querySelectorAll('.desktop-pin-media-action')).toHaveLength(1);
+      expect(control?.querySelector('.desktop-pin-media-play')).toBeTruthy();
+      expect(
+        control?.querySelector('.desktop-pin-media-action[data-action="previous_track"]')
+      ).toBeNull();
+      expect(
+        control?.querySelector('.desktop-pin-media-action[data-action="next_track"]')
+      ).toBeNull();
     });
 
     it('replaces dense desktop pin markup when the viewport crosses the Stage 4 tight threshold', () => {
@@ -3202,6 +3924,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -3947,6 +4675,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({
         'climate.thermostat': {
           ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            target_temp_step: 0.5,
+          },
         },
       });
 
@@ -3979,6 +4713,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           ...sampleStates['climate.thermostat'].attributes,
           current_temperature: 22,
           temperature: 23,
+          min_temp: 10,
+          max_temp: 30,
+          target_temp_step: 0.5,
         },
       };
 
@@ -4435,7 +5172,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
     });
 
-    it('opens a themed add-page modal and creates a page from a preset chip', () => {
+    it('opens a themed add-page modal and creates a page from a preset chip', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
 
@@ -4461,8 +5198,324 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       // Saving creates the page and closes the modal.
       modal.querySelector('#add-page-save-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.getElementById('add-page-modal')).toBeNull();
       expect((state.CONFIG.customTabs || []).map((p) => p.name)).toContain('Bedroom');
+    });
+
+    it('persists only Quick Access fields and applies unrelated authoritative changes', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const before = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockImplementationOnce((patch) =>
+        Promise.resolve({
+          ...before,
+          ...patch,
+          opacity: 0.71,
+          profileSync: {
+            ...before.profileSync,
+            lastSyncStatus: 'success',
+          },
+        })
+      );
+
+      tabBar.querySelector('.qa-tab-add').click();
+      const modal = document.getElementById('add-page-modal');
+      modal.querySelector('#add-page-name').value = 'Bedroom';
+      modal.querySelector('#add-page-save-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      const patch = mockElectronAPI.updateConfig.mock.calls[0][0];
+      expect(Object.keys(patch).sort()).toEqual([
+        'activeTabId',
+        'comparisonGraphs',
+        'customTabs',
+        'favoriteEntities',
+      ]);
+      expect(patch.homeAssistant).toBeUndefined();
+      expect(patch.ui).toBeUndefined();
+      expect(state.CONFIG.customTabs.map((page) => page.name)).toContain('Bedroom');
+      expect(state.CONFIG.opacity).toBe(0.71);
+      expect(state.CONFIG.profileSync.lastSyncStatus).toBe('success');
+      expect(tabBar.querySelectorAll('.quick-access-tab')).toHaveLength(2);
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Page added', 'success', 1600);
+    });
+
+    it('rolls page state and tabs back to the authoritative config after rejection', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const authoritativeBefore = {
+        ...JSON.parse(JSON.stringify(state.CONFIG)),
+        opacity: 0.69,
+      };
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'profile changed elsewhere',
+        config: authoritativeBefore,
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        tabBar.querySelector('.qa-tab-add').click();
+        const modal = document.getElementById('add-page-modal');
+        modal.querySelector('#add-page-name').value = 'Bedroom';
+        modal.querySelector('#add-page-save-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      expect(Object.keys(mockElectronAPI.updateConfig.mock.calls[0][0]).sort()).toEqual([
+        'activeTabId',
+        'comparisonGraphs',
+        'customTabs',
+        'favoriteEntities',
+      ]);
+      expect(state.CONFIG.customTabs).toEqual([{ id: 'default', name: 'All', entityIds: [] }]);
+      expect(state.CONFIG.opacity).toBe(0.69);
+      expect(tabBar.querySelectorAll('.quick-access-tab')).toHaveLength(1);
+      expect(tabBar.querySelector('.quick-access-tab-link').textContent).toBe('All');
+      const retainedModal = document.getElementById('add-page-modal');
+      expect(retainedModal).not.toBeNull();
+      expect(retainedModal.querySelector('#add-page-name').value).toBe('Bedroom');
+      expect(retainedModal.querySelector('#add-page-save-btn').disabled).toBe(false);
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('profile changed elsewhere'),
+        'error',
+        4000
+      );
+      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+    });
+
+    it('sends complete Quick Access slices so a later write can carry an earlier optimistic edit', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'default'
+      );
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      let rejectFirst;
+      let resolveSecond;
+      const firstWrite = new Promise((_resolve, reject) => {
+        rejectFirst = reject;
+      });
+      const secondWrite = new Promise((resolve) => {
+        resolveSecond = resolve;
+      });
+      mockElectronAPI.updateConfig
+        .mockImplementationOnce(() => firstWrite)
+        .mockImplementationOnce(() => secondWrite);
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        tabBar.querySelector('.quick-access-tab.active .qa-tab-rename').click();
+        const renameInput = tabBar.querySelector('.qa-tab-rename-input');
+        renameInput.value = 'Whole Home';
+        renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        tabBar.querySelector('.quick-access-tab-link[data-tab="bedroom"]').click();
+
+        expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
+        mockElectronAPI.updateConfig.mock.calls.forEach(([patch]) => {
+          expect(Object.keys(patch).sort()).toEqual([
+            'activeTabId',
+            'comparisonGraphs',
+            'customTabs',
+            'favoriteEntities',
+          ]);
+        });
+        const secondPatch = mockElectronAPI.updateConfig.mock.calls[1][0];
+        expect(secondPatch.customTabs[0].name).toBe('Whole Home');
+        expect(secondPatch.activeTabId).toBe('bedroom');
+
+        rejectFirst(new Error('first write failed'));
+        await Promise.resolve();
+        resolveSecond({
+          ...authoritativeBefore,
+          ...secondPatch,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(state.CONFIG.customTabs[0].name).toBe('Whole Home');
+      expect(state.CONFIG.activeTabId).toBe('bedroom');
+    });
+
+    it('rolls overlapping failed Quick Access writes back to the pre-batch baseline', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'default'
+      );
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.toggleReorganizeMode();
+      mockElectronAPI.updateConfig.mockClear();
+
+      let rejectFirst;
+      let rejectSecond;
+      mockElectronAPI.updateConfig
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectFirst = reject;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectSecond = reject;
+            })
+        );
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        tabBar.querySelector('.quick-access-tab.active .qa-tab-rename').click();
+        const renameInput = tabBar.querySelector('.qa-tab-rename-input');
+        renameInput.value = 'Whole Home';
+        renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        tabBar.querySelector('.quick-access-tab-link[data-tab="bedroom"]').click();
+
+        rejectFirst(new Error('first write failed'));
+        await Promise.resolve();
+        rejectSecond(new Error('second write failed'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      expect(state.CONFIG.customTabs[0].name).toBe('All');
+      expect(state.CONFIG.activeTabId).toBe('default');
+      expect(tabBar.querySelector('.quick-access-tab-link.active').dataset.tab).toBe('default');
+    });
+
+    it('rolls an optimistic comparison graph addition back after rejection', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.renderActiveTab();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const authoritativeBefore = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({
+        success: false,
+        error: 'graph write failed',
+        config: authoritativeBefore,
+      });
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        await ui.addComparisonGraphTile();
+      } finally {
+        consoleError.mockRestore();
+      }
+
+      const patch = mockElectronAPI.updateConfig.mock.calls[0][0];
+      expect(patch.comparisonGraphs).toHaveLength(1);
+      expect(
+        Object.keys(patch).every((key) =>
+          ['activeTabId', 'comparisonGraphs', 'customTabs', 'favoriteEntities'].includes(key)
+        )
+      ).toBe(true);
+      expect(patch.homeAssistant).toBeUndefined();
+      expect(patch.ui).toBeUndefined();
+      expect(state.CONFIG.comparisonGraphs).toEqual([]);
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+      expect(document.querySelector('.comparison-graph-tile')).toBeNull();
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('graph write failed'),
+        'error',
+        4000
+      );
+    });
+
+    it('serializes comparison graph editor mutations while persistence is pending', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.renderActiveTab();
+      mockElectronAPI.updateConfig.mockClear();
+
+      const beforeAdd = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig.mockImplementationOnce((patch) =>
+        Promise.resolve({
+          ...beforeAdd,
+          ...patch,
+        })
+      );
+      await ui.addComparisonGraphTile();
+
+      const modal = document.querySelector('.comparison-graph-modal');
+      expect(modal).not.toBeNull();
+      mockElectronAPI.updateConfig.mockClear();
+      const beforeEdit = JSON.parse(JSON.stringify(state.CONFIG));
+      let resolveEdit;
+      let editPatch;
+      mockElectronAPI.updateConfig.mockImplementationOnce(
+        (patch) =>
+          new Promise((resolve) => {
+            editPatch = patch;
+            resolveEdit = resolve;
+          })
+      );
+
+      const nameInput = modal.querySelector('input.form-control');
+      const widthSelect = modal.querySelector('select.form-control');
+      nameInput.value = 'Rooms';
+      nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(nameInput.disabled).toBe(true);
+      expect(widthSelect.disabled).toBe(true);
+      expect(modal.querySelector('.comparison-graph-modal-footer button').disabled).toBe(true);
+      expect(modal.querySelector('.close-btn').disabled).toBe(true);
+      modal.querySelector('.close-btn').click();
+      modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(document.querySelector('.comparison-graph-modal')).toBe(modal);
+
+      widthSelect.value = '2';
+      widthSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+
+      resolveEdit({
+        ...beforeEdit,
+        ...editPatch,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(nameInput.disabled).toBe(false);
+      expect(widthSelect.disabled).toBe(false);
+      expect(state.CONFIG.comparisonGraphs[0].name).toBe('Rooms');
     });
 
     it('closes the add-page modal when leaving reorganize mode', () => {

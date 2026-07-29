@@ -22,7 +22,23 @@ let UNIT_SYSTEM = {
 // Setter functions
 export function setConfig(newConfig) {
   try {
-    CONFIG = newConfig;
+    if (
+      newConfig &&
+      typeof newConfig === 'object' &&
+      (Object.prototype.hasOwnProperty.call(newConfig, 'configRecovery') ||
+        Object.prototype.hasOwnProperty.call(newConfig, 'configRevision') ||
+        Object.prototype.hasOwnProperty.call(newConfig, 'persistenceWarnings') ||
+        Object.prototype.hasOwnProperty.call(newConfig, 'runtimeWarnings'))
+    ) {
+      const persistentConfig = { ...newConfig };
+      delete persistentConfig.configRecovery;
+      delete persistentConfig.configRevision;
+      delete persistentConfig.persistenceWarnings;
+      delete persistentConfig.runtimeWarnings;
+      CONFIG = persistentConfig;
+    } else {
+      CONFIG = newConfig;
+    }
   } catch (error) {
     console.error('Error setting config:', error);
   }
@@ -47,6 +63,19 @@ export function setEntityState(entity) {
     STATES[entity.entity_id] = entity;
   } catch (error) {
     console.error('Error setting entity state:', error);
+  }
+}
+export function deleteEntityState(entityId) {
+  try {
+    if (typeof entityId !== 'string' || !entityId.trim()) return false;
+    if (!STATES || typeof STATES !== 'object') return false;
+    const normalizedEntityId = entityId.trim();
+    if (!Object.prototype.hasOwnProperty.call(STATES, normalizedEntityId)) return false;
+    delete STATES[normalizedEntityId];
+    return true;
+  } catch (error) {
+    console.error('Error deleting entity state:', error);
+    return false;
   }
 }
 export function setServices(newServices) {
@@ -97,6 +126,7 @@ const state = {
   setWs,
   setStates,
   setEntityState,
+  deleteEntityState,
   setServices,
   setAreas,
   setUnitSystem,

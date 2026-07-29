@@ -24,7 +24,7 @@ module.exports = {
     '^.+\\.js$': 'babel-jest',
   },
   moduleNameMapper: {
-    '^@dev-climate-demo$': '<rootDir>/src/dev-climate-demo.js',
+    '^@dev-climate-demo$': '<rootDir>/development/dev-climate-demo.js',
   },
   transformIgnorePatterns: ['/node_modules/(?!(sortablejs|hls.js)/)'],
   coverageThreshold: {

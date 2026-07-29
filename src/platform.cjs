@@ -15,7 +15,11 @@ function isLinuxAppImage(env = process.env) {
 
 function supportsAutoUpdater(platform = process.platform, env = process.env) {
   if (platform === 'linux') return isLinuxAppImage(env);
-  return platform === 'win32' || platform === 'darwin';
+  // Current macOS artifacts are ad-hoc signed rather than Developer-ID signed/notarized.
+  // Keep those builds on the explicit Releases download path until the release pipeline
+  // can produce and smoke-test a trusted signature for Squirrel.Mac.
+  if (platform === 'darwin') return false;
+  return platform === 'win32';
 }
 
 function shouldUseTransparentWindow(platform = process.platform, env = process.env) {
@@ -73,6 +77,50 @@ function shouldForceX11OzonePlatform({
   return true;
 }
 
+function getExplicitOzonePlatform(env = process.env, argv = process.argv) {
+  const args = Array.isArray(argv) ? argv : [];
+  for (let index = args.length - 1; index >= 0; index -= 1) {
+    const argument = args[index];
+    if (typeof argument !== 'string') continue;
+    if (argument.startsWith('--ozone-platform=')) {
+      return argument.slice('--ozone-platform='.length).trim().toLowerCase();
+    }
+    if (argument.startsWith('--ozone-platform-hint=')) {
+      return argument.slice('--ozone-platform-hint='.length).trim().toLowerCase();
+    }
+    if (argument === '--ozone-platform' && typeof args[index + 1] === 'string') {
+      return args[index + 1].trim().toLowerCase();
+    }
+    if (argument === '--ozone-platform-hint' && typeof args[index + 1] === 'string') {
+      return args[index + 1].trim().toLowerCase();
+    }
+  }
+  return String(env?.ELECTRON_OZONE_PLATFORM_HINT || '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Return whether Electron is effectively using native Wayland window semantics.
+ *
+ * Session variables alone are insufficient: an app launched from a Wayland
+ * desktop may explicitly select the X11 Ozone backend. Command-line selection
+ * takes precedence over ELECTRON_OZONE_PLATFORM_HINT, matching Chromium.
+ */
+function shouldUseCompositorOwnedPlacement({
+  platform = process.platform,
+  env = process.env,
+  argv = process.argv,
+  waylandSession = false,
+  forcedX11Ozone = false,
+} = {}) {
+  if (platform !== 'linux' || !waylandSession || forcedX11Ozone) return false;
+  const explicitPlatform = getExplicitOzonePlatform(env, argv);
+  if (explicitPlatform === 'x11') return false;
+  if (explicitPlatform === 'wayland') return true;
+  return true;
+}
+
 function getMainWindowVisualOptions({
   platform = process.platform,
   frostedGlass = false,
@@ -105,6 +153,7 @@ module.exports = {
   getMainWindowVisualOptions,
   isLinuxAppImage,
   shouldForceX11OzonePlatform,
+  shouldUseCompositorOwnedPlacement,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
   supportsElectronLoginItems,

@@ -1,5 +1,14 @@
 function createElectronApi(ipcRenderer, platform) {
   const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
+  const invokeChecked = async (channel, ...args) => {
+    const result = await invoke(channel, ...args);
+    if (result && typeof result === 'object' && result.success === false) {
+      const error = new Error(result.error || `${channel} failed`);
+      error.result = result;
+      throw error;
+    }
+    return result;
+  };
   const subscribe = (channel, callback, { includeData = true } = {}) => {
     if (typeof callback !== 'function') {
       throw new TypeError(`${channel} listener requires a callback`);
@@ -8,18 +17,102 @@ function createElectronApi(ipcRenderer, platform) {
     ipcRenderer.on(channel, handler);
     return () => ipcRenderer.removeListener(channel, handler);
   };
+  let pendingConfigMutations = 0;
+  let latestSettledConfigRevision = -1;
+  let latestDeliveredConfigRevision = -1;
+  let deferredConfigUpdate = null;
+  const configUpdatedSubscribers = new Set();
+  let configUpdatedHandler = null;
+
+  const getConfigRevision = (value) => {
+    const revision = Number(value?.configRevision);
+    return Number.isFinite(revision) ? revision : null;
+  };
+  const deliverConfigUpdate = (nextConfig) => {
+    const revision = getConfigRevision(nextConfig);
+    if (
+      revision !== null &&
+      (revision < latestSettledConfigRevision || revision < latestDeliveredConfigRevision)
+    ) {
+      return;
+    }
+    if (revision !== null) {
+      latestDeliveredConfigRevision = Math.max(latestDeliveredConfigRevision, revision);
+    }
+    configUpdatedSubscribers.forEach((callback) => callback(nextConfig));
+  };
+  const flushDeferredConfigUpdate = () => {
+    if (pendingConfigMutations || !deferredConfigUpdate) return;
+    const nextConfig = deferredConfigUpdate;
+    deferredConfigUpdate = null;
+    deliverConfigUpdate(nextConfig);
+  };
+  const updateConfig = async (config) => {
+    pendingConfigMutations += 1;
+    try {
+      const result = await invokeChecked('update-config', config);
+      const revision = getConfigRevision(result);
+      if (revision !== null) {
+        latestSettledConfigRevision = Math.max(latestSettledConfigRevision, revision);
+      }
+      return result;
+    } catch (error) {
+      const revision = getConfigRevision(error?.result?.config);
+      if (revision !== null) {
+        latestSettledConfigRevision = Math.max(latestSettledConfigRevision, revision);
+      }
+      throw error;
+    } finally {
+      pendingConfigMutations = Math.max(0, pendingConfigMutations - 1);
+      flushDeferredConfigUpdate();
+    }
+  };
+  const subscribeConfigUpdated = (callback) => {
+    if (typeof callback !== 'function') {
+      throw new TypeError('config-updated listener requires a callback');
+    }
+    configUpdatedSubscribers.add(callback);
+    if (!configUpdatedHandler) {
+      configUpdatedHandler = (_event, nextConfig) => {
+        if (pendingConfigMutations) {
+          const deferredRevision = getConfigRevision(deferredConfigUpdate);
+          const nextRevision = getConfigRevision(nextConfig);
+          if (
+            !deferredConfigUpdate ||
+            nextRevision === null ||
+            deferredRevision === null ||
+            nextRevision >= deferredRevision
+          ) {
+            deferredConfigUpdate = nextConfig;
+          }
+          return;
+        }
+        deliverConfigUpdate(nextConfig);
+      };
+      ipcRenderer.on('config-updated', configUpdatedHandler);
+    }
+    return () => {
+      configUpdatedSubscribers.delete(callback);
+      if (!configUpdatedSubscribers.size && configUpdatedHandler) {
+        ipcRenderer.removeListener('config-updated', configUpdatedHandler);
+        configUpdatedHandler = null;
+        deferredConfigUpdate = null;
+      }
+    };
+  };
 
   return {
     platform,
 
+    signalRendererReady: () => invoke('renderer-ready'),
     getConfig: () => invoke('get-config'),
     getLocaleBootstrap: () => invoke('get-locale-bootstrap'),
     getLocalePacks: (forceRefresh = false) => invoke('get-locale-packs', forceRefresh),
     downloadLocalePack: (locale) => invoke('download-locale-pack', locale),
     removeLocalePack: (locale) => invoke('remove-locale-pack', locale),
-    updateConfig: (config) => invoke('update-config', config),
-    clearTokenResetReason: () => invoke('clear-token-reset-reason'),
-    saveConfig: (config) => invoke('save-config', config),
+    updateConfig,
+    clearTokenResetReason: () => invokeChecked('clear-token-reset-reason'),
+    saveConfig: (config) => invokeChecked('save-config', config),
     pinEntityToDesktop: (entityId, supportInfo = null) =>
       invoke('pin-entity-to-desktop', entityId, supportInfo),
     unpinEntityFromDesktop: (entityId) => invoke('unpin-entity-from-desktop', entityId),
@@ -42,21 +135,21 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('copy-profile-sync-file', fromPath, toPath, overwrite),
     getProfileSyncStatus: () => invoke('get-profile-sync-status'),
     runProfileSync: (direction) => invoke('run-profile-sync', direction),
-    setProfileSyncPassphrase: (passphrase, remember) =>
-      invoke('set-profile-sync-passphrase', passphrase, remember),
-    clearProfileSyncPassphrase: () => invoke('clear-profile-sync-passphrase'),
+    setProfileSyncPassphrase: (passphrase, remember, encryptionEnabled = null) =>
+      invoke('set-profile-sync-passphrase', passphrase, remember, encryptionEnabled),
+    clearProfileSyncPassphrase: () => invokeChecked('clear-profile-sync-passphrase'),
     resolveProfileSyncFirstEnable: (choice) => invoke('resolve-profile-sync-first-enable', choice),
 
-    setOpacity: (opacity) => invoke('set-opacity', opacity),
+    setOpacity: (opacity) => invokeChecked('set-opacity', opacity),
     previewWindowEffects: (effects) => invoke('preview-window-effects', effects),
-    setAlwaysOnTop: (value) => invoke('set-always-on-top', value),
+    setAlwaysOnTop: (value) => invokeChecked('set-always-on-top', value),
     getWindowState: () => invoke('get-window-state'),
     getLoginItemSettings: () => invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),
     minimizeWindow: () => invoke('minimize-window'),
     focusWindow: () => invoke('focus-window'),
     focusDesktopPin: (entityId) => invoke('focus-desktop-pin', entityId),
-    restartApp: () => invoke('restart-app'),
+    restartApp: () => invokeChecked('restart-app'),
     quitApp: () => invoke('quit-app'),
 
     registerHotkey: (entityId, hotkey, action) =>
@@ -88,7 +181,8 @@ function createElectronApi(ipcRenderer, platform) {
     onAutoUpdate: (callback) => subscribe('auto-update', callback),
     onOpenSettings: (callback) => subscribe('open-settings', callback, { includeData: false }),
     onProfileSyncStatus: (callback) => subscribe('profile-sync-status', callback),
-    onConfigUpdated: (callback) => subscribe('config-updated', callback),
+    onConfigUpdated: subscribeConfigUpdated,
+    onConfigPersistenceWarning: (callback) => subscribe('config-persistence-warning', callback),
     onDesktopPinUpdate: (callback) => subscribe('desktop-pin-update', callback),
     onDesktopPinActionRequested: (callback) => subscribe('desktop-pin-action-requested', callback),
     onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),

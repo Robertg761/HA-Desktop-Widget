@@ -15,10 +15,17 @@ jest.mock('../../src/i18n.js', () => ({
   t: jest.fn((key) => key),
 }));
 
+jest.mock('../../src/ui-utils.js', () => ({
+  releaseFocusTrap: jest.fn(),
+  trapFocus: jest.fn(),
+}));
+
 const {
   applyPersistentNotificationEvent,
   formatRelativeTime,
+  initializePersistentNotifications,
 } = require('../../src/notifications.js');
+const { releaseFocusTrap, trapFocus } = require('../../src/ui-utils.js');
 
 describe('persistent notification helpers', () => {
   test('merges current, added, updated, and removed notification events', () => {
@@ -88,5 +95,26 @@ describe('persistent notification helpers', () => {
     expect(formatRelativeTime('2026-07-06T09:00:00Z', now)).toBe('3h ago');
     expect(formatRelativeTime('2026-07-04T12:00:00Z', now)).toBe('2d ago');
     expect(formatRelativeTime('', now)).toBe('');
+  });
+
+  test('traps focus while the notification dialog is open and releases it on close', () => {
+    document.body.innerHTML = `
+      <button id="persistent-notifications-btn"></button>
+      <span id="persistent-notifications-count"></span>
+      <div id="persistent-notifications-modal" class="modal hidden">
+        <button id="close-persistent-notifications">Close</button>
+        <div id="persistent-notifications-list"></div>
+        <div id="persistent-notifications-empty"></div>
+      </div>
+    `;
+
+    initializePersistentNotifications();
+    document.getElementById('persistent-notifications-btn').click();
+
+    const modal = document.getElementById('persistent-notifications-modal');
+    expect(trapFocus).toHaveBeenCalledWith(modal);
+
+    document.getElementById('close-persistent-notifications').click();
+    expect(releaseFocusTrap).toHaveBeenCalledWith(modal);
   });
 });

@@ -1,8 +1,9 @@
 /* global process */
 import { t } from './i18n.js';
 
-let lastFocusedElement = null;
 const focusTrapHandlers = new WeakMap();
+const focusTrapPreviousFocus = new WeakMap();
+const activeFocusTrapModals = new Set();
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const MIN_BACKGROUND_OPACITY = 0.08;
@@ -649,7 +650,11 @@ function applyWindowEffects(config = {}) {
  */
 function trapFocus(modal) {
   try {
-    lastFocusedElement = document.activeElement;
+    const existingHandler = focusTrapHandlers.get(modal);
+    if (existingHandler) {
+      modal.removeEventListener('keydown', existingHandler);
+    }
+    focusTrapPreviousFocus.set(modal, document.activeElement);
     const focusable = modal.querySelectorAll(
       'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
     );
@@ -672,6 +677,8 @@ function trapFocus(modal) {
     };
     modal.addEventListener('keydown', handler);
     focusTrapHandlers.set(modal, handler);
+    activeFocusTrapModals.delete(modal);
+    activeFocusTrapModals.add(modal);
     setTimeout(() => first?.focus(), 0);
   } catch (error) {
     console.error('Error trapping focus:', error);
@@ -680,11 +687,30 @@ function trapFocus(modal) {
 
 function releaseFocusTrap(modal) {
   try {
-    const handler = focusTrapHandlers.get(modal);
-    if (handler) modal.removeEventListener('keydown', handler);
-    focusTrapHandlers.delete(modal);
-    if (lastFocusedElement && lastFocusedElement.focus) {
-      setTimeout(() => lastFocusedElement.focus(), 0);
+    let targetModal = modal;
+    if (!targetModal) {
+      const activeModals = Array.from(activeFocusTrapModals);
+      for (let index = activeModals.length - 1; index >= 0; index -= 1) {
+        const candidate = activeModals[index];
+        if (!candidate?.isConnected) {
+          activeFocusTrapModals.delete(candidate);
+          continue;
+        }
+        targetModal = candidate;
+        break;
+      }
+    }
+    if (!targetModal) return;
+
+    const handler = focusTrapHandlers.get(targetModal);
+    if (handler) targetModal.removeEventListener('keydown', handler);
+    focusTrapHandlers.delete(targetModal);
+    activeFocusTrapModals.delete(targetModal);
+
+    const previousFocus = focusTrapPreviousFocus.get(targetModal);
+    focusTrapPreviousFocus.delete(targetModal);
+    if (previousFocus?.isConnected && previousFocus.focus) {
+      setTimeout(() => previousFocus.focus(), 0);
     }
   } catch (error) {
     console.error('Error releasing focus trap:', error);

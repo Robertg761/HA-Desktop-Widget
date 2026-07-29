@@ -5,6 +5,73 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Packaged smoke-test mode now uses an isolated temporary profile, opens the real
+  window and tray, waits for a trusted renderer-ready handshake, and cleans up its
+  profile. CI exercises the packaged Windows, macOS, and Linux applications with
+  bounded timeouts.
+- Electron sessions now use a default-deny permission policy. Only top-level
+  notifications from the trusted local renderer are allowed; media capture, display
+  capture, hardware devices, and chooser-based grants are rejected.
+- Profile Sync key and encryption changes now use a recoverable, exact-envelope
+  transaction with OS-encrypted old and new credentials, endpoint and remote-identity
+  checks, identity-checked replacement, and restart recovery at every commit boundary.
+
+### Changed
+
+- Release automation now requires a successful CI run for the exact release commit,
+  validates tag ancestry and identity, checks out the validated SHA for every build and
+  publish job, and revalidates the remote tag immediately before publication. Nightly
+  and tag entry points dispatch the immutable tag rather than a mutable branch.
+- In-app update installation is limited to the Windows installer and Linux AppImage.
+  Portable, macOS, and Linux deb builds now use a truthful GitHub Releases download
+  flow; macOS remains ad-hoc signed and is not notarized.
+- Arabic, Chinese, French, Hindi, and Spanish packs are complete for the current
+  English catalog, include command/control accessibility text, and can recover safely
+  from missing, stale, or invalid downloaded packs.
+- Packaged applications include the project MIT license and exclude development-only
+  climate fixtures. Development dependency overrides were tightened so full and
+  production audits can be evaluated separately.
+
+### Fixed
+
+- Configuration mutations are serialized and acknowledge the exact durable snapshot
+  requested. Failed writes restore the authoritative config, post-save runtime failures
+  are reported separately, corrupt config recovery is explicit, and shutdown captures
+  pending window and desktop-pin bounds before the final synchronous flush.
+- Profile Sync now keeps first-enable conflict gates durable across restarts and errors,
+  rechecks remote identity before either conflict choice, rejects vanished provider
+  mounts, preserves a pre-pull recovery copy, distinguishes unlock from rekey, and
+  prevents timestamp, passphrase, endpoint, or shutdown races from overwriting unseen
+  remote or local changes.
+- Quick Access pages, order, tiles, comparison graphs, and weather selection now send
+  narrow owned patches, consume the authoritative response, roll back failed optimistic
+  changes, serialize editor mutations, and show success only after persistence.
+- Native Wayland no longer rewrites compositor-owned positions, handles hide-to-tray
+  semantics explicitly, and distinguishes native Wayland from user-selected X11.
+  Portal shortcuts rebind transactionally, reconnect after portal loss, and reject stale
+  activations after a shortcut is removed.
+- Popup, entity, and portal hotkeys now require modifiers, unregister the intended
+  target, release temporary elevation reliably, and report rollback failures instead of
+  claiming a binding was restored.
+- Renderer state now removes deleted entities, prevents stale first-run and config
+  snapshots from overwriting newer state, disposes replaced connections and camera
+  streams, and rejects stale to-do responses.
+- Climate, media, timer, to-do, desktop-pin, command-palette, and modal controls now
+  honor advertised capabilities, roll back failed actions, support keyboard operation,
+  restore focus, and expose localized accessible names and state.
+
+### Security
+
+- External media artwork proxy requests now reject private, loopback, link-local,
+  reserved, credential-bearing, and unsafe redirected targets, including DNS rebinding
+  attempts.
+- CI workflows declare least-privilege permissions, run the full dependency audit, and
+  prevent release assets from being published from an unvalidated or moving source.
+
 ## [3.8.0-beta.1] - 2026-07-26
 
 This is the first public beta of the 3.8.0 feature release.
@@ -247,6 +314,25 @@ This is the first public beta of the 3.8.0 feature release.
   after its initial request times out, and Aarlo reconnects wait for the entity to return to idle.
 - Expanded camera previews now remain open across Home Assistant camera-state updates instead of
   being mistaken for a disposed tile while their shared visual is temporarily outside the grid.
+
+## [3.7.2] - 2026-07-18
+
+### Added
+
+- Added opt-in camera visuals on Quick Access tiles: authenticated live streams or lower-usage
+  snapshots, with visibility-aware network cleanup and an expanded viewer.
+
+### Changed
+
+- Linux popup hotkeys moved to the desktop global-shortcut service, with press-to-front and
+  press-to-toggle behavior.
+
+### Fixed
+
+- Avoided the unstable native input hook on Linux and made popup shortcut registration durable.
+- Added authenticated HLS camera previews, bounded startup recovery, snapshot fallback, and Aarlo
+  reconnect handling.
+- Kept expanded camera previews alive across normal Home Assistant camera-state updates.
 
 ## [3.7.1] - 2026-07-16
 
@@ -759,6 +845,31 @@ Version 3.0.0 represents a massive overhaul of HA Desktop Widget with **over 15,
 This release represents months of development focused on stability, testing, and user experience. Special thanks to the Home Assistant community for feedback and bug reports.
 
 ---
+
+## [2.3.9] - 2025-10-26
+
+### Added
+
+- Added a polished light-brightness modal with presets and improved backdrop/close behavior.
+
+### Fixed
+
+- Escaped entity names in hotkey rows and made hotkey controls responsive in narrow windows.
+
+## [2.3.8] - 2025-10-25
+
+### Fixed
+
+- Restored the saved window size when reopening from the tray and corrected content-area focus.
+- Improved tile, clock, date, and entity-name overflow behavior in small windows.
+
+## [2.3.7] - 2025-10-24
+
+### Fixed
+
+- Prevented long entity names from overflowing tiles and restored typing in the rename modal.
+- Made opacity changes apply immediately and standardized the slider to a 1–100 scale.
+- Corrected camera, timer, WebSocket, state-management, CSS, and lint failures.
 
 ## [2.3.6] - 2025-10-21
 

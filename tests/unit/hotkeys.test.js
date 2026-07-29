@@ -133,11 +133,15 @@ describe('hotkeys module', () => {
     });
 
     it('should handle IPC failure', async () => {
-      mockElectronAPI.toggleHotkeys.mockResolvedValue({ success: false });
+      mockElectronAPI.toggleHotkeys.mockResolvedValue({
+        success: false,
+        error: 'Portal approval was denied',
+      });
 
       const result = await hotkeys.toggleHotkeys(true);
 
       expect(result).toBe(false);
+      expect(showToast).toHaveBeenCalledWith('Portal approval was denied', 'error', 3000);
     });
 
     it('should handle IPC errors', async () => {
@@ -156,6 +160,7 @@ describe('hotkeys module', () => {
 
   describe('renderHotkeysTab', () => {
     beforeEach(() => {
+      hotkeys.cleanupHotkeyEventListeners();
       const config = getMockConfig();
       config.globalHotkeys = {
         enabled: true,
@@ -187,6 +192,82 @@ describe('hotkeys module', () => {
 
       document.body.removeChild(container);
       document.body.removeChild(searchInput);
+    });
+
+    it('supports arrow-key navigation and selection in the action listbox', async () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = 'living';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+
+      hotkeys.renderHotkeysTab();
+
+      const trigger = container.querySelector(
+        '[data-entity-id="light.living_room"] .custom-dropdown-trigger'
+      );
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+      const focusedOption = document.activeElement;
+      expect(focusedOption?.getAttribute('role')).toBe('option');
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+      focusedOption.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(trigger);
+      expect(
+        container.querySelector('.custom-dropdown-option.selected')?.getAttribute('aria-selected')
+      ).toBe('true');
+    });
+
+    it('restores the persisted action when runtime hotkey registration fails', async () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = 'living';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+
+      const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
+      mockElectronAPI.updateConfig
+        .mockImplementationOnce((nextConfig) => Promise.resolve(nextConfig))
+        .mockImplementationOnce(() => Promise.resolve(previousConfig));
+      mockElectronAPI.registerHotkeys
+        .mockResolvedValueOnce({ success: false, error: 'Portal binding failed' })
+        .mockResolvedValueOnce({ success: true });
+
+      hotkeys.renderHotkeysTab();
+      container
+        .querySelector(
+          '[data-entity-id="light.living_room"] .custom-dropdown-option[data-value="turn_on"]'
+        )
+        .click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      expect(
+        mockElectronAPI.updateConfig.mock.calls[0][0].globalHotkeys.hotkeys['light.living_room']
+          .action
+      ).toBe('turn_on');
+      expect(
+        mockElectronAPI.updateConfig.mock.calls[1][0].globalHotkeys.hotkeys['light.living_room']
+          .action
+      ).toBe('toggle');
+      expect(mockElectronAPI.registerHotkeys).toHaveBeenCalledTimes(2);
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.living_room'].action).toBe('toggle');
+      expect(showToast).toHaveBeenCalledWith('Portal binding failed', 'error', 4000);
+      expect(showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('Action updated'),
+        'success',
+        2000
+      );
     });
 
     it('should include script, button, and input_button action entities in the picker', () => {

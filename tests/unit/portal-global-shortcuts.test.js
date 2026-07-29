@@ -18,11 +18,21 @@ const silentLog = { info() {}, debug() {}, warn() {}, error() {} };
 const waylandEnv = { XDG_SESSION_TYPE: 'wayland' };
 
 class FakeBus extends EventEmitter {
-  constructor({ version = 2, bindCode = 0 } = {}) {
+  constructor({
+    version = 2,
+    bindCode = 0,
+    bindCodes = null,
+    sessionHandles = null,
+    bindConnectionError = null,
+  } = {}) {
     super();
     this.name = ':1.99';
     this.version = version;
     this.bindCode = bindCode;
+    this.bindCodes = Array.isArray(bindCodes) ? [...bindCodes] : null;
+    this.sessionHandles = Array.isArray(sessionHandles) ? [...sessionHandles] : null;
+    this.bindConnectionError = bindConnectionError;
+    this.createdSessionCount = 0;
     this.calls = [];
     this.lastBindShortcuts = null;
     this.disconnected = false;
@@ -53,11 +63,17 @@ class FakeBus extends EventEmitter {
   }
 
   call(message) {
-    this.calls.push({ member: message.member, interface: message.interface, path: message.path });
+    this.calls.push({
+      member: message.member,
+      interface: message.interface,
+      path: message.path,
+      body: message.body,
+    });
 
     switch (message.member) {
       case 'GetId':
       case 'AddMatch':
+      case 'RemoveMatch':
       case 'Register':
       case 'Close':
         return Promise.resolve({ body: [] });
@@ -66,8 +82,14 @@ class FakeBus extends EventEmitter {
       case 'CreateSession': {
         const token = message.body[0].handle_token.value;
         const path = this.requestPath(token);
+        const sessionHandle =
+          this.sessionHandles?.[this.createdSessionCount] ||
+          (this.createdSessionCount === 0
+            ? SESSION_HANDLE
+            : `${SESSION_HANDLE}_${this.createdSessionCount + 1}`);
+        this.createdSessionCount += 1;
         setTimeout(() =>
-          this.emitResponse(path, 0, { session_handle: new Variant('s', SESSION_HANDLE) })
+          this.emitResponse(path, 0, { session_handle: new Variant('s', sessionHandle) })
         );
         return Promise.resolve({ body: [path] });
       }
@@ -79,11 +101,16 @@ class FakeBus extends EventEmitter {
           id,
           { trigger_description: new Variant('s', properties.preferred_trigger?.value || '') },
         ]);
-        setTimeout(() =>
-          this.emitResponse(path, this.bindCode, {
-            shortcuts: new Variant('a(sa{sv})', shortcuts),
-          })
-        );
+        const bindCode = this.bindCodes?.length ? this.bindCodes.shift() : this.bindCode;
+        if (this.bindConnectionError) {
+          setTimeout(() => this.emit('error', new Error(this.bindConnectionError)));
+        } else {
+          setTimeout(() =>
+            this.emitResponse(path, bindCode, {
+              shortcuts: new Variant('a(sa{sv})', shortcuts),
+            })
+          );
+        }
         return Promise.resolve({ body: [path] });
       }
       default:
@@ -220,6 +247,16 @@ describe('createPortalGlobalShortcutsController', () => {
     expect(tuples[0][0]).toBe('entity.scene.bright');
     expect(tuples[0][1].preferred_trigger.value).toBe('ALT+1');
     expect(bus.calls.map((call) => call.member)).toContain('Register');
+    const requestAdds = bus.calls.filter(
+      (call) => call.member === 'AddMatch' && call.body?.[0]?.includes(REQUEST_INTERFACE)
+    );
+    const requestRemovals = bus.calls.filter(
+      (call) => call.member === 'RemoveMatch' && call.body?.[0]?.includes(REQUEST_INTERFACE)
+    );
+    expect(requestRemovals.map((call) => call.body[0])).toEqual(
+      expect.arrayContaining(requestAdds.map((call) => call.body[0]))
+    );
+    expect(requestRemovals).toHaveLength(requestAdds.length);
   });
 
   test('dispatches Activated signals for the bound session only', async () => {
@@ -244,6 +281,26 @@ describe('createPortalGlobalShortcutsController', () => {
     expect(result.error).toMatch(/cancelled/);
   });
 
+  test('keeps the previously working session when a replacement bind is cancelled', async () => {
+    const { bus, controller } = createController({
+      busOptions: { bindCodes: [0, 1] },
+    });
+    await controller.syncShortcuts([
+      { id: 'entity.scene.bright', description: 'Bright', accelerator: 'Alt+1' },
+    ]);
+    expect(controller.getSessionHandle()).toBe(SESSION_HANDLE);
+
+    const result = await controller.syncShortcuts([
+      { id: 'entity.scene.bright', description: 'Bright', accelerator: 'Alt+2' },
+    ]);
+
+    expect(result.success).toBe(false);
+    expect(controller.getSessionHandle()).toBe(SESSION_HANDLE);
+    const closePaths = bus.calls.filter((call) => call.member === 'Close').map((call) => call.path);
+    expect(closePaths).toContain(`${SESSION_HANDLE}_2`);
+    expect(closePaths).not.toContain(SESSION_HANDLE);
+  });
+
   test('closes the previous session when rebinding and on empty sync', async () => {
     const { bus, controller } = createController();
     await controller.syncShortcuts([{ id: 'a', description: 'A', accelerator: 'Alt+1' }]);
@@ -266,6 +323,66 @@ describe('createPortalGlobalShortcutsController', () => {
     // An EventEmitter 'error' with no listener throws; this must be survivable.
     expect(bus.listenerCount('error')).toBeGreaterThanOrEqual(1);
     expect(() => bus.emit('error', new Error('socket closed'))).not.toThrow();
+  });
+
+  test('reconnects on the next sync after the session bus is lost', async () => {
+    const firstBus = new FakeBus();
+    const replacementBus = new FakeBus();
+    const onConnectionLost = jest.fn();
+    const createBus = jest.fn().mockReturnValueOnce(firstBus).mockReturnValueOnce(replacementBus);
+    const controller = createPortalGlobalShortcutsController({
+      log: silentLog,
+      env: waylandEnv,
+      createBus,
+      onConnectionLost,
+    });
+
+    await expect(controller.isAvailable()).resolves.toBe(true);
+    firstBus.emit('error', new Error('socket closed'));
+
+    expect(firstBus.disconnected).toBe(true);
+    expect(onConnectionLost).toHaveBeenCalledWith(expect.any(Error));
+    await expect(
+      controller.syncShortcuts([
+        { id: 'entity.scene.bright', description: 'Bright', accelerator: 'Alt+1' },
+      ])
+    ).resolves.toMatchObject({ success: true });
+    expect(createBus).toHaveBeenCalledTimes(2);
+  });
+
+  test('settles an in-flight portal request immediately when the bus connection is lost', async () => {
+    const firstBus = new FakeBus({ bindConnectionError: 'socket vanished' });
+    const replacementBus = new FakeBus();
+    const createBus = jest.fn().mockReturnValueOnce(firstBus).mockReturnValueOnce(replacementBus);
+    const controller = createPortalGlobalShortcutsController({
+      log: silentLog,
+      env: waylandEnv,
+      createBus,
+      bindShortcutsTimeoutMs: 1000,
+    });
+
+    const result = await Promise.race([
+      controller.syncShortcuts([
+        { id: 'entity.scene.bright', description: 'Bright', accelerator: 'Alt+1' },
+      ]),
+      new Promise((resolve) => {
+        setTimeout(() => resolve({ timedOutWaitingForRecovery: true }), 100);
+      }),
+    ]);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining('socket vanished'),
+    });
+    expect(result).not.toHaveProperty('timedOutWaitingForRecovery');
+    expect(firstBus.disconnected).toBe(true);
+
+    await expect(
+      controller.syncShortcuts([
+        { id: 'entity.scene.bright', description: 'Bright', accelerator: 'Alt+2' },
+      ])
+    ).resolves.toMatchObject({ success: true });
+    expect(createBus).toHaveBeenCalledTimes(2);
   });
 
   test('drops entries without ids and disconnects on close', async () => {

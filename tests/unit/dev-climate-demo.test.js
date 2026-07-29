@@ -4,7 +4,7 @@ const {
   installClimateDemo,
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
-} = require('../../src/dev-climate-demo.js');
+} = require('../../development/dev-climate-demo.js');
 
 describe('development climate demo', () => {
   test('is explicitly opt-in through the development demo config marker', () => {

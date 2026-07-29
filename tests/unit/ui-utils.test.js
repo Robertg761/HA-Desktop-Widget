@@ -575,6 +575,16 @@ describe('UI Utilities', () => {
       removeEventListenerSpy.mockRestore();
     });
 
+    it('releases the most recent connected focus trap when no modal is supplied', () => {
+      uiUtils.trapFocus(modal);
+      const removeEventListenerSpy = jest.spyOn(modal, 'removeEventListener');
+
+      uiUtils.releaseFocusTrap();
+
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
+      removeEventListenerSpy.mockRestore();
+    });
+
     it('should restore focus to last focused element', () => {
       const externalButton = document.createElement('button');
       externalButton.id = 'external';

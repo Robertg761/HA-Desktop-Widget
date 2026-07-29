@@ -56,6 +56,20 @@ describe('State Module', () => {
         state.setConfig(null);
         expect(state.CONFIG).toBeNull();
       });
+
+      test('keeps runtime-only response metadata out of persistent renderer state', () => {
+        state.setConfig({
+          homeAssistant: { url: 'http://test.local' },
+          configRecovery: { recovered: true },
+          configRevision: 42,
+          persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
+          runtimeWarnings: [{ code: 'runtime_side_effect_failed' }],
+        });
+
+        expect(state.CONFIG).toEqual({
+          homeAssistant: { url: 'http://test.local' },
+        });
+      });
     });
 
     describe('setWs', () => {
@@ -115,6 +129,33 @@ describe('State Module', () => {
         state.setEntityState({ entity_id: undefined, state: 'on' });
         state.setEntityState({ entity_id: '', state: 'on' });
 
+        expect(state.STATES).toEqual({
+          'light.living_room': sampleStates['light.living_room'],
+        });
+      });
+    });
+
+    describe('deleteEntityState', () => {
+      test('should remove only the requested entity', () => {
+        state.setStates({
+          'light.living_room': { ...sampleStates['light.living_room'] },
+          'light.bedroom': { ...sampleStates['light.bedroom'] },
+        });
+
+        expect(state.deleteEntityState(' light.living_room ')).toBe(true);
+        expect(state.STATES).toEqual({
+          'light.bedroom': sampleStates['light.bedroom'],
+        });
+      });
+
+      test('should ignore invalid or unknown entity IDs', () => {
+        state.setStates({
+          'light.living_room': { ...sampleStates['light.living_room'] },
+        });
+
+        expect(state.deleteEntityState('light.missing')).toBe(false);
+        expect(state.deleteEntityState('')).toBe(false);
+        expect(state.deleteEntityState(null)).toBe(false);
         expect(state.STATES).toEqual({
           'light.living_room': sampleStates['light.living_room'],
         });

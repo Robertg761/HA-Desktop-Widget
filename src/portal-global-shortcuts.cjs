@@ -183,6 +183,7 @@ function createPortalGlobalShortcutsController(options = {}) {
     },
     createSessionTimeoutMs = CREATE_SESSION_TIMEOUT_MS,
     bindShortcutsTimeoutMs = BIND_SHORTCUTS_TIMEOUT_MS,
+    onConnectionLost = () => {},
   } = options;
 
   let bus = null;
@@ -210,37 +211,83 @@ function createPortalGlobalShortcutsController(options = {}) {
     return dbusModule;
   }
 
+  function resetBusConnection(failedBus, error = null) {
+    if (!failedBus || bus !== failedBus) return;
+    bus = null;
+    registryRegistered = false;
+    sessionHandle = '';
+    activatedListenerInstalled = false;
+    availabilityPromise = null;
+    try {
+      failedBus.disconnect?.();
+    } catch {
+      // best effort cleanup
+    }
+    try {
+      onConnectionLost(error);
+    } catch (callbackError) {
+      log.warn?.(
+        `Portal shortcuts: connection-loss callback failed: ${callbackError?.message || callbackError}`
+      );
+    }
+  }
+
   async function ensureBus() {
     if (closed) throw new Error('Portal shortcuts controller is closed');
     if (bus) return bus;
-    bus = createBus();
+    const nextBus = createBus();
+    bus = nextBus;
     // dbus-next forwards connection/stream failures as 'error' events on the bus; an
     // EventEmitter 'error' without a listener is an uncaught exception that would crash
     // the whole app on a session-bus hiccup (logout, portal restart, closed socket).
-    bus.on('error', (error) => {
+    nextBus.on('error', (error) => {
       log.warn?.(`Portal shortcuts: D-Bus connection error: ${error?.message || error}`);
+      resetBusConnection(nextBus, error);
     });
-    // Any successful call completes the Hello handshake and populates bus.name.
-    await busCall({
-      destination: DBUS_BUS_NAME,
-      path: DBUS_OBJECT_PATH,
-      interface: DBUS_INTERFACE,
-      member: 'GetId',
-    });
-    return bus;
+    try {
+      // Any successful call completes the Hello handshake and populates bus.name.
+      await busCall({
+        destination: DBUS_BUS_NAME,
+        path: DBUS_OBJECT_PATH,
+        interface: DBUS_INTERFACE,
+        member: 'GetId',
+      });
+      return nextBus;
+    } catch (error) {
+      resetBusConnection(nextBus, error);
+      throw error;
+    }
+  }
+
+  function callOnBus(targetBus, messageFields) {
+    const dbus = getDbus();
+    if (!targetBus) {
+      throw new Error('D-Bus session connection is unavailable');
+    }
+    return targetBus.call(new dbus.Message(messageFields));
   }
 
   function busCall(messageFields) {
-    const dbus = getDbus();
-    return bus.call(new dbus.Message(messageFields));
+    return callOnBus(bus, messageFields);
   }
 
-  function addMatch(rule) {
-    return busCall({
+  function addMatch(rule, targetBus = bus) {
+    return callOnBus(targetBus, {
       destination: DBUS_BUS_NAME,
       path: DBUS_OBJECT_PATH,
       interface: DBUS_INTERFACE,
       member: 'AddMatch',
+      signature: 's',
+      body: [rule],
+    });
+  }
+
+  function removeMatch(rule, targetBus = bus) {
+    return callOnBus(targetBus, {
+      destination: DBUS_BUS_NAME,
+      path: DBUS_OBJECT_PATH,
+      interface: DBUS_INTERFACE,
+      member: 'RemoveMatch',
       signature: 's',
       body: [rule],
     });
@@ -279,14 +326,23 @@ function createPortalGlobalShortcutsController(options = {}) {
    */
   async function portalRequest({ member, signature, body, buildOptions, timeoutMs }) {
     const dbus = getDbus();
+    const requestBus = bus;
+    if (!requestBus) throw new Error('D-Bus session connection is unavailable');
     const token = nextToken();
     const expectedRequestPath = `${PORTAL_OBJECT_PATH}/request/${senderPathComponent()}/${token}`;
 
     let settle;
-    const responsePromise = new Promise((resolve) => {
+    let rejectResponse;
+    const responsePromise = new Promise((resolve, reject) => {
       settle = resolve;
+      rejectResponse = reject;
     });
 
+    const requestMatchRules = [];
+    const addRequestMatch = async (rule) => {
+      await addMatch(rule, requestBus);
+      requestMatchRules.push(rule);
+    };
     const watchedPaths = new Set([expectedRequestPath]);
     const onMessage = (message) => {
       if (
@@ -299,15 +355,19 @@ function createPortalGlobalShortcutsController(options = {}) {
         settle({ code: Number(code), results: results || {} });
       }
     };
-
-    // Subscribe before calling so a fast Response cannot be missed.
-    await addMatch(
-      `type='signal',interface='${REQUEST_INTERFACE}',member='Response',path='${expectedRequestPath}'`
-    );
-    bus.on('message', onMessage);
+    const onConnectionError = (error) => {
+      rejectResponse(new Error(`Portal D-Bus connection lost: ${error?.message || String(error)}`));
+    };
 
     try {
-      const reply = await busCall({
+      // Subscribe before calling so a fast Response cannot be missed.
+      await addRequestMatch(
+        `type='signal',interface='${REQUEST_INTERFACE}',member='Response',path='${expectedRequestPath}'`
+      );
+      requestBus.on('message', onMessage);
+      requestBus.on('error', onConnectionError);
+
+      const reply = await callOnBus(requestBus, {
         destination: PORTAL_BUS_NAME,
         path: PORTAL_OBJECT_PATH,
         interface: GLOBAL_SHORTCUTS_INTERFACE,
@@ -319,7 +379,7 @@ function createPortalGlobalShortcutsController(options = {}) {
       const actualRequestPath = reply.body?.[0];
       if (typeof actualRequestPath === 'string' && !watchedPaths.has(actualRequestPath)) {
         watchedPaths.add(actualRequestPath);
-        await addMatch(
+        await addRequestMatch(
           `type='signal',interface='${REQUEST_INTERFACE}',member='Response',path='${actualRequestPath}'`
         );
       }
@@ -336,7 +396,9 @@ function createPortalGlobalShortcutsController(options = {}) {
       clearTimeout(timeoutTimer);
       return response;
     } finally {
-      bus.off('message', onMessage);
+      requestBus.off('message', onMessage);
+      requestBus.off('error', onConnectionError);
+      await Promise.allSettled(requestMatchRules.map((rule) => removeMatch(rule, requestBus)));
     }
   }
 
@@ -365,14 +427,15 @@ function createPortalGlobalShortcutsController(options = {}) {
     activatedListenerInstalled = true;
   }
 
-  async function closeSession() {
-    if (!sessionHandle) return;
-    const staleHandle = sessionHandle;
-    sessionHandle = '';
+  async function closeSession(handle = sessionHandle) {
+    if (!handle) return;
+    if (handle === sessionHandle) {
+      sessionHandle = '';
+    }
     try {
       await busCall({
         destination: PORTAL_BUS_NAME,
-        path: staleHandle,
+        path: handle,
         interface: SESSION_INTERFACE,
         member: 'Close',
       });
@@ -414,9 +477,10 @@ function createPortalGlobalShortcutsController(options = {}) {
     await ensureBus();
     await ensureRegistryRegistration();
     await ensureActivatedListener();
-    await closeSession();
+    const previousSessionHandle = sessionHandle;
 
     if (!shortcuts.length) {
+      await closeSession(previousSessionHandle);
       return { success: true, backend: PORTAL_SHORTCUTS_BACKEND, bound: [] };
     }
 
@@ -438,8 +502,10 @@ function createPortalGlobalShortcutsController(options = {}) {
       return { success: false, backend: PORTAL_SHORTCUTS_BACKEND, bound: [], error };
     }
 
-    sessionHandle = String(variantValue(createResponse.results.session_handle) || '');
-    if (!sessionHandle) {
+    const candidateSessionHandle = String(
+      variantValue(createResponse.results.session_handle) || ''
+    );
+    if (!candidateSessionHandle) {
       return {
         success: false,
         backend: PORTAL_SHORTCUTS_BACKEND,
@@ -459,13 +525,19 @@ function createPortalGlobalShortcutsController(options = {}) {
       `Portal shortcuts: binding ${shortcuts.length} shortcut(s) — the desktop may ask for approval once`
     );
 
-    const bindResponse = await portalRequest({
-      member: 'BindShortcuts',
-      signature: 'oa(sa{sv})sa{sv}',
-      timeoutMs: bindShortcutsTimeoutMs,
-      buildOptions: (token) => ({ handle_token: new dbus.Variant('s', token) }),
-      body: (portalOptions) => [sessionHandle, shortcutTuples, '', portalOptions],
-    });
+    let bindResponse;
+    try {
+      bindResponse = await portalRequest({
+        member: 'BindShortcuts',
+        signature: 'oa(sa{sv})sa{sv}',
+        timeoutMs: bindShortcutsTimeoutMs,
+        buildOptions: (token) => ({ handle_token: new dbus.Variant('s', token) }),
+        body: (portalOptions) => [candidateSessionHandle, shortcutTuples, '', portalOptions],
+      });
+    } catch (error) {
+      await closeSession(candidateSessionHandle);
+      throw error;
+    }
 
     if (bindResponse.code !== 0) {
       const error = bindResponse.timedOut
@@ -473,7 +545,7 @@ function createPortalGlobalShortcutsController(options = {}) {
         : bindResponse.code === 1
           ? 'shortcut binding was cancelled'
           : `portal failed to bind shortcuts (code ${bindResponse.code})`;
-      await closeSession();
+      await closeSession(candidateSessionHandle);
       return { success: false, backend: PORTAL_SHORTCUTS_BACKEND, bound: [], error };
     }
 
@@ -485,6 +557,10 @@ function createPortalGlobalShortcutsController(options = {}) {
         trigger: String(variantValue(properties?.trigger_description) || ''),
       };
     });
+    sessionHandle = candidateSessionHandle;
+    if (previousSessionHandle && previousSessionHandle !== candidateSessionHandle) {
+      await closeSession(previousSessionHandle);
+    }
     return { success: true, backend: PORTAL_SHORTCUTS_BACKEND, bound };
   }
 

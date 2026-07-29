@@ -13,7 +13,8 @@ changes to pinned desktop tiles.
 - Dense control tiles: `light.`, `fan.`, `climate.`, and `cover.`
 - `camera.` action tiles
 - `media_player.` wide media tiles
-- Fallback display tiles for unsupported or unknown domains
+- Fallback display tiles for previously saved pins whose entity is now missing or unsupported.
+  New pins can only be created for supported domains.
 
 ## Expected Behavior
 
