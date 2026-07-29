@@ -15,7 +15,8 @@ describe('release workflow hardening', () => {
     expect(ci).toMatch(/permissions:\s*\n\s+contents: read/);
     expect(ci.match(/timeout-minutes: 2/g)).toHaveLength(3);
     expect(ci).toContain('timeout --kill-after=5s 30s xvfb-run');
-    expect(ci).toContain('npm audit --audit-level=high');
+    expect(ci).toContain('npm audit --omit=dev --audit-level=high');
+    expect(release).toContain('npm audit --omit=dev --audit-level=high');
   });
 
   test('pins validation and every release consumer to one tested tag commit', () => {

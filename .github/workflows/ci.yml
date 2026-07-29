@@ -26,7 +26,10 @@ jobs:
         run: npm ci
 
       - name: Audit dependency tree
-        run: npm audit --audit-level=high
+        # Production dependencies only: GHSA-mh99-v99m-4gvg has no fixed release
+        # for the electron-builder/jest/eslint toolchains, and forcing
+        # brace-expansion@5 tree-wide breaks the minimatch API packaging relies on.
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Run linter
         run: npx eslint . --max-warnings=0
@@ -91,6 +94,10 @@ jobs:
       - name: Smoke launch packaged Linux app
         timeout-minutes: 2
         run: |
+          # Unpacked electron-builder output does not carry the setuid bit the
+          # Chromium sandbox helper requires, so restore it before launching.
+          sudo chown root:root dist/linux-unpacked/chrome-sandbox
+          sudo chmod 4755 dist/linux-unpacked/chrome-sandbox
           timeout --kill-after=5s 30s xvfb-run -a dbus-run-session -- \
             dist/linux-unpacked/home-assistant-widget --smoke-test
 
