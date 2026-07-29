@@ -133,6 +133,19 @@ describe('renderer session permission policy', () => {
         requestingUrl: RENDERER_URL,
       })
     ).toBe(true);
+    expect(
+      targetSession.permissionCheckHandler(null, 'notifications', 'file://', {
+        isMainFrame: true,
+        requestingUrl: RENDERER_URL,
+      })
+    ).toBe(true);
+    expect(
+      targetSession.permissionCheckHandler(null, 'notifications', 'https://example.com', {
+        isMainFrame: true,
+        requestingUrl: RENDERER_URL,
+      })
+    ).toBe(false);
+
     const permissionCallback = jest.fn();
     targetSession.permissionRequestHandler(webContents, 'media', permissionCallback, {
       isMainFrame: true,
@@ -140,6 +153,14 @@ describe('renderer session permission policy', () => {
       mediaTypes: ['audio', 'video'],
     });
     expect(permissionCallback).toHaveBeenCalledWith(false);
+
+    const nullWebContentsCallback = jest.fn();
+    targetSession.permissionRequestHandler(null, 'notifications', nullWebContentsCallback, {
+      isMainFrame: true,
+      requestingUrl: RENDERER_URL,
+      securityOrigin: 'file://',
+    });
+    expect(nullWebContentsCallback).toHaveBeenCalledWith(false);
     expect(targetSession.devicePermissionHandler({ deviceType: 'usb' })).toBe(false);
 
     const displayCallback = jest.fn();

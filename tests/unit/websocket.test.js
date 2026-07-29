@@ -633,7 +633,7 @@ describe('WebSocket Manager', () => {
       });
     });
 
-    test('should resubscribe active message subscriptions after reconnect auth_ok', async () => {
+    test('should resubscribe after an explicit close when the socket close event is delayed', async () => {
       wsManager.subscribeMessage({ type: 'persistent_notification/subscribe' }, jest.fn());
 
       wsManager.ws.simulateMessage({ type: 'auth_ok' });
@@ -646,7 +646,15 @@ describe('WebSocket Manager', () => {
       });
       await Promise.resolve();
 
-      wsManager.ws.close();
+      const firstWs = wsManager.ws;
+      const delayedClose = firstWs.onclose;
+      firstWs.onclose = null;
+      wsManager.close();
+
+      const subscription = Array.from(wsManager.messageSubscriptions.values())[0];
+      expect(subscription.subscriptionId).toBeNull();
+      expect(wsManager.messageSubscriptionHandlers).toHaveProperty('size', 0);
+
       wsManager.connect();
       await new Promise((resolve) => setTimeout(resolve, 20));
       wsManager.ws.simulateMessage({ type: 'auth_ok' });
@@ -656,6 +664,9 @@ describe('WebSocket Manager', () => {
         id: 1001,
         type: 'persistent_notification/subscribe',
       });
+
+      delayedClose();
+      expect(wsManager.isAuthenticated).toBe(true);
     });
 
     test('should resubscribe when a replacement authenticates before the old close arrives', async () => {

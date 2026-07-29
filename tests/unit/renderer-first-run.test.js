@@ -527,4 +527,19 @@ describe('Renderer first-run connection verification', () => {
     expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
   });
+
+  it('closes the WebSocket through its lifecycle manager when the browser goes offline', async () => {
+    await loadRenderer();
+    const rawSocketClose = jest.fn();
+    mockWebsocket.ws = {
+      readyState: WebSocket.OPEN,
+      close: rawSocketClose,
+    };
+    mockWebsocket.close.mockClear();
+
+    window.dispatchEvent(new Event('offline'));
+
+    expect(mockWebsocket.close).toHaveBeenCalledTimes(1);
+    expect(rawSocketClose).not.toHaveBeenCalled();
+  });
 });

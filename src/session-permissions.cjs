@@ -27,16 +27,29 @@ function isLocalFileOrigin(rawOrigin) {
 function createRendererPermissionPolicy(options = {}) {
   const { rendererEntryPath, isTrustedWebContents = () => false } = options;
 
-  return ({ webContents, permission, requestingOrigin = '', details = {} } = {}) => {
+  return ({
+    webContents,
+    permission,
+    requestingOrigin = '',
+    details = {},
+    isPermissionCheck = false,
+  } = {}) => {
     if (permission !== ALLOWED_RENDERER_PERMISSION) return false;
-    if (!webContents || details?.isMainFrame !== true) return false;
+    if (details?.isMainFrame !== true) return false;
 
-    try {
-      if (!isTrustedWebContents(webContents)) return false;
-      if (webContents.isDestroyed?.()) return false;
-      if (!isTrustedRendererUrl(webContents.getURL?.(), rendererEntryPath)) return false;
-    } catch {
-      return false;
+    if (webContents === null) {
+      // Electron always supplies null WebContents for notification permission checks.
+      // Only the check handler may rely solely on the validated frame/origin details.
+      if (!isPermissionCheck) return false;
+    } else {
+      if (!webContents) return false;
+      try {
+        if (!isTrustedWebContents(webContents)) return false;
+        if (webContents.isDestroyed?.()) return false;
+        if (!isTrustedRendererUrl(webContents.getURL?.(), rendererEntryPath)) return false;
+      } catch {
+        return false;
+      }
     }
 
     if (!isTrustedRendererUrl(details?.requestingUrl, rendererEntryPath)) return false;
@@ -59,7 +72,13 @@ function installSessionPermissionPolicy(targetSession, options = {}) {
   const isAllowed = createRendererPermissionPolicy(options);
 
   targetSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) =>
-    isAllowed({ webContents, permission, requestingOrigin, details })
+    isAllowed({
+      webContents,
+      permission,
+      requestingOrigin,
+      details,
+      isPermissionCheck: true,
+    })
   );
   targetSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
     callback(

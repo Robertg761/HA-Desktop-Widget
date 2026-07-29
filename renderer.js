@@ -1291,15 +1291,12 @@ window.addEventListener('offline', () => {
   }
   showClassifiedConnectionToast(new Error('Browser reported offline'));
 
-  // Proactively close stale sockets so reconnect can start fresh once online.
-  if (websocket.ws) {
-    try {
-      websocket.ws.__intentionalClose = true;
-      websocket.ws.close();
-      websocket.ws = null;
-    } catch (error) {
-      log.warn('Error closing WebSocket after offline event:', error);
-    }
+  // Use the manager lifecycle so authentication and message subscription state are
+  // cleared before the browser delivers the socket's asynchronous close event.
+  try {
+    websocket.close();
+  } catch (error) {
+    log.warn('Error closing WebSocket after offline event:', error);
   }
 });
 
