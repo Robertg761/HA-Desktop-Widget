@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Entity tiles now adopt explicit Material Design icons supplied by Home Assistant,
+  while preserving user icon overrides and the existing domain icons as fallbacks.
 - Release automation now requires a successful CI run for the exact release commit,
   validates tag ancestry and identity, checks out the validated SHA for every build and
   publish job, and revalidates the remote tag immediately before publication. Nightly

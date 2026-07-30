@@ -535,7 +535,23 @@ body {
    * Note: backdrop-filter is NOT applied here by default.
    * It's only applied when frosted-glass class is present (see below).
    * This prevents double-blur effects and ensures proper transparency.
-   */
+  */
+}
+
+/* Home Assistant exposes explicit entity icons as Material Design Icons codepoints.
+   Keep the MDI font first only in icon containers so normal text and custom emoji
+   continue to use the platform's preferred fonts. */
+.control-icon,
+.entity-icon,
+.alert-icon,
+.sensor-detail-icon,
+.command-palette-result-icon,
+.desktop-pin-light-glyph,
+.desktop-pin-fan-glyph,
+.desktop-pin-panel-glyph,
+.desktop-pin-scene-emoji {
+  font-family:
+    'Material Design Icons', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
 }
 
 body:not(.desktop-pin-mode):not(.frosted-glass),

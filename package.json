@@ -157,6 +157,7 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@mdi/font": "7.4.47",
     "axios": "^1.11.0",
     "dbus-next": "^0.10.2",
     "electron-log": "^5.4.3",

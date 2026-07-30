@@ -79,6 +79,15 @@ describe('Utils Module', () => {
   });
 
   describe('getEntityIcon', () => {
+    beforeAll(() => {
+      const mdiStyles = document.createElement('style');
+      mdiStyles.textContent = `
+        .mdi-sofa::before { content: "\\F04B9"; }
+        .mdi-power-socket::before { content: "\\F0427"; }
+      `;
+      document.head.appendChild(mdiStyles);
+    });
+
     test('should return custom icon when configured', () => {
       state.CONFIG = {
         ...sampleConfig,
@@ -88,6 +97,61 @@ describe('Utils Module', () => {
       };
       const entity = { entity_id: 'light.test', state: 'on', attributes: {} };
       expect(utils.getEntityIcon(entity)).toBe('🛋️');
+    });
+
+    test('should adopt an icon supplied by Home Assistant', () => {
+      const entity = {
+        entity_id: 'switch.test',
+        state: 'on',
+        attributes: { icon: 'mdi:power-socket' },
+      };
+      expect(utils.getEntityIcon(entity)).toBe(String.fromCodePoint(0xf0427));
+    });
+
+    test('should keep a user override ahead of the Home Assistant icon', () => {
+      state.CONFIG = {
+        ...sampleConfig,
+        customEntityIcons: {
+          'light.test': '🛋️',
+        },
+      };
+      const entity = {
+        entity_id: 'light.test',
+        state: 'on',
+        attributes: { icon: 'mdi:sofa' },
+      };
+      expect(utils.getEntityIcon(entity)).toBe('🛋️');
+      expect(utils.getEntityIcon(entity, { ignoreCustomIcon: true })).toBe(
+        String.fromCodePoint(0xf04b9)
+      );
+    });
+
+    test('should fall back when Home Assistant supplies an invalid or unknown icon', () => {
+      const invalid = {
+        entity_id: 'light.test',
+        state: 'on',
+        attributes: { icon: 'https://example.com/icon.svg' },
+      };
+      const unknown = {
+        entity_id: 'light.test',
+        state: 'on',
+        attributes: { icon: 'mdi:not-in-the-bundled-font' },
+      };
+      expect(utils.getEntityIcon(invalid)).toBe('💡');
+      expect(utils.getEntityIcon(unknown)).toBe('💡');
+    });
+
+    test('should normalize only valid Home Assistant MDI icon names', () => {
+      expect(utils.normalizeHomeAssistantMdiIcon(' MDI:Lightbulb-Outline ')).toBe(
+        'lightbulb-outline'
+      );
+      expect(utils.normalizeHomeAssistantMdiIcon('hass:lightbulb')).toBeNull();
+      expect(utils.normalizeHomeAssistantMdiIcon('mdi:../lightbulb')).toBeNull();
+    });
+
+    test('should decode an MDI CSS content codepoint', () => {
+      expect(utils.decodeCssContent('"\\F050F"')).toBe(String.fromCodePoint(0xf050f));
+      expect(utils.decodeCssContent('none')).toBeNull();
     });
 
     test('should ignore invalid custom icon and fall back to default icon', () => {

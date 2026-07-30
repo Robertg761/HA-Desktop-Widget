@@ -3,6 +3,68 @@ const graphemeSegmenter =
   typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
     : null;
+const homeAssistantMdiGlyphs = new Map();
+
+function normalizeHomeAssistantMdiIcon(icon) {
+  if (typeof icon !== 'string') return null;
+  const match = /^mdi:([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(icon.trim().toLowerCase());
+  return match?.[1] || null;
+}
+
+function decodeCssContent(content) {
+  if (typeof content !== 'string') return null;
+  let value = content.trim();
+  if (!value || value === 'none' || value === 'normal') return null;
+
+  const quote = value[0];
+  if ((quote === '"' || quote === "'") && value[value.length - 1] === quote) {
+    value = value.slice(1, -1);
+  }
+
+  value = value
+    .replace(/\\([0-9a-f]{1,6})\s?/gi, (_match, codepoint) =>
+      String.fromCodePoint(Number.parseInt(codepoint, 16))
+    )
+    .replace(/\\(["'\\])/g, '$1');
+
+  return countGraphemes(value) === 1 ? value : null;
+}
+
+function collectHomeAssistantMdiGlyphsFromRules(rules) {
+  if (!rules) return;
+
+  for (const rule of rules) {
+    if (rule.cssRules) {
+      collectHomeAssistantMdiGlyphsFromRules(rule.cssRules);
+      continue;
+    }
+
+    if (!rule.selectorText || !rule.style) continue;
+    const glyph = decodeCssContent(rule.style.content);
+    if (!glyph) continue;
+
+    rule.selectorText.split(',').forEach((selector) => {
+      const match = /^\.mdi-([a-z0-9]+(?:-[a-z0-9]+)*)(?:::?before)$/.exec(selector.trim());
+      if (match) homeAssistantMdiGlyphs.set(match[1], glyph);
+    });
+  }
+}
+
+function getHomeAssistantMdiGlyph(icon) {
+  const iconName = normalizeHomeAssistantMdiIcon(icon);
+  if (!iconName || typeof document === 'undefined') return null;
+  if (homeAssistantMdiGlyphs.has(iconName)) return homeAssistantMdiGlyphs.get(iconName);
+
+  for (const stylesheet of Array.from(document.styleSheets || [])) {
+    try {
+      collectHomeAssistantMdiGlyphsFromRules(stylesheet.cssRules);
+    } catch {
+      // A stylesheet outside the app origin may deny CSSOM access. The bundled MDI sheet does not.
+    }
+  }
+
+  return homeAssistantMdiGlyphs.get(iconName) || null;
+}
 
 function countGraphemes(value) {
   if (!value || typeof value !== 'string') return 0;
@@ -65,6 +127,8 @@ function getEntityIcon(entity, options = {}) {
     const domain = entity.entity_id.split('.')[0];
     const entityState = entity.state;
     const attributes = entity.attributes || {};
+    const homeAssistantIcon = getHomeAssistantMdiGlyph(attributes.icon);
+    if (homeAssistantIcon) return homeAssistantIcon;
 
     switch (domain) {
       case 'light':
@@ -805,6 +869,8 @@ export {
   getEntityDisplayName,
   getEntityTypeDescription,
   getEntityIcon,
+  normalizeHomeAssistantMdiIcon,
+  decodeCssContent,
   formatDuration,
   getTimerEnd,
   getSearchScore,
