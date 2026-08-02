@@ -177,7 +177,9 @@ describe('Home Assistant OAuth', () => {
     );
     expect(credentialsBody).not.toContain('refresh-secret');
     expect(credentialsBody).not.toContain('access-for-');
-    expect(fs.statSync(path.join(userDataPath, OAUTH_CREDENTIALS_FILE)).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(path.join(userDataPath, OAUTH_CREDENTIALS_FILE)).mode & 0o777).toBe(0o600);
+    }
 
     await expect(client.restore()).resolves.toEqual({
       baseUrl: 'https://ha.example.test',
