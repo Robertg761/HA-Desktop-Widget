@@ -5,6 +5,37 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0-beta.1] - 2026-08-02
+
+This beta introduces native Home Assistant authorization and the first compatible client for the
+HA Desktop Widget Companion integration.
+
+### Added
+
+- Browser-based Home Assistant authorization uses a temporary loopback callback so normal setup no
+  longer requires users to create or paste a long-lived access token.
+- The optional HA Desktop Widget Companion connection registers a stable random installation ID,
+  reports online, visibility, and current-page state, and receives `show`, `hide`, `toggle`, and
+  `switch_page` commands from Home Assistant.
+- First-run setup and Settings now expose connection progress, reconnect, sign-out, and desktop-name
+  controls for the native authorization flow.
+
+### Changed
+
+- Long-lived access-token entry remains available only as an advanced compatibility fallback.
+- OAuth access tokens stay in memory. The refresh token is persisted separately through Electron's
+  OS-protected encryption API and is refreshed before expiry.
+
+### Security
+
+- Native authorization validates a 256-bit, single-use state value, binds its callback server to
+  `127.0.0.1`, validates the callback origin, applies a bounded timeout, and rejects oversized token
+  responses.
+- Companion commands use only the authenticated Home Assistant WebSocket connection and an explicit,
+  bounded allowlist. Expiry checks, command deduplication, and acknowledgements prevent stale or
+  repeated execution; there is no arbitrary process, filesystem, URL, JavaScript, or generic IPC
+  command surface.
+
 ## [3.8.0] - 2026-07-31
 
 This is the stable 3.8.0 release, consolidating the 3.8.0 beta series.

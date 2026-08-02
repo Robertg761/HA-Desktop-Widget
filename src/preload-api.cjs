@@ -174,6 +174,13 @@ function createElectronApi(ipcRenderer, platform) {
     openLogs: () => invoke('open-logs'),
     openExternal: (url) => invoke('open-external', url),
     testHaConnection: (url, token) => invoke('test-ha-connection', url, token),
+    startHomeAssistantOAuth: (url) => invokeChecked('start-home-assistant-oauth', url),
+    disconnectHomeAssistantOAuth: () => invokeChecked('disconnect-home-assistant-oauth'),
+    getDesktopCompanionRegistration: async () =>
+      (await invokeChecked('get-desktop-companion-registration')).registration,
+    getDesktopCompanionState: () => invoke('get-desktop-companion-state'),
+    applyDesktopCompanionCommand: async (action) =>
+      (await invokeChecked('apply-desktop-companion-command', action)).state,
     debugLog: (payload) => invoke('debug-log', payload),
 
     onHotkeyTriggered: (callback) => subscribe('hotkey-triggered', callback),
@@ -186,6 +193,8 @@ function createElectronApi(ipcRenderer, platform) {
     onDesktopPinUpdate: (callback) => subscribe('desktop-pin-update', callback),
     onDesktopPinActionRequested: (callback) => subscribe('desktop-pin-action-requested', callback),
     onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),
+    onDesktopCompanionStateChanged: (callback) =>
+      subscribe('desktop-companion-state-changed', callback),
   };
 }
 

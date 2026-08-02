@@ -16,18 +16,13 @@ import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
+import { DesktopCompanionClient } from './src/desktop-companion-client.js';
 import {
   installClimateDemo,
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
 } from '@dev-climate-demo';
-import {
-  buildHomeAssistantPathUrl,
-  classifyConnectionError as classifyConnectionTestError,
-  isConfigured,
-  isPlaceholderOrEmptyToken,
-  normalizeBaseUrl,
-} from './src/connection.js';
+import { isConfigured, normalizeBaseUrl } from './src/connection.js';
 
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
@@ -106,6 +101,7 @@ let firstRunWizard = null;
 let firstRunSettingsObserver = null;
 let configuredRuntimeStarted = false;
 let climateDemoController = null;
+let desktopCompanionClient = null;
 const pendingStateChangedEntities = new Map();
 let pendingStateChangedFlushId = null;
 const UI_TICK_ACTIVE_INTERVAL_MS = 1000;
@@ -422,33 +418,6 @@ function renderMainWidgetState() {
   removeWidgetStatePanel();
 }
 
-function getConnectionTestMessage(resultOrError) {
-  if (resultOrError?.success) {
-    return {
-      type: 'success',
-      text: t('Connection test succeeded. Home Assistant is reachable.'),
-    };
-  }
-
-  const code = classifyConnectionTestError(resultOrError);
-  if (code === 'invalid-url') {
-    return {
-      type: 'error',
-      text: t('Enter a valid Home Assistant URL and token before testing.'),
-    };
-  }
-  if (code === 'auth-failed') {
-    return {
-      type: 'error',
-      text: t('Authentication failed. Check your Long-Lived Access Token.'),
-    };
-  }
-  return {
-    type: 'error',
-    text: t('Could not reach Home Assistant at that URL.'),
-  };
-}
-
 function setFirstRunWizardVisible(visible) {
   if (!firstRunWizard?.overlay) return;
   firstRunWizard.visible = !!visible;
@@ -468,15 +437,6 @@ function getWizardUrl() {
   return firstRunWizard?.urlInput?.value || state.CONFIG?.homeAssistant?.url || '';
 }
 
-function getWizardToken() {
-  return (firstRunWizard?.tokenInput?.value || '').trim();
-}
-
-function updateWizardTokenButtonState() {
-  if (!firstRunWizard?.openTokenButton) return;
-  firstRunWizard.openTokenButton.disabled = !normalizeBaseUrl(getWizardUrl());
-}
-
 function renderWizardStep() {
   if (!firstRunWizard?.content) return;
   const stepIndex = firstRunWizard.step;
@@ -487,7 +447,7 @@ function renderWizardStep() {
   const stepLabel = createTextElement(
     'div',
     'first-run-step-label',
-    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 6 })
+    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 3 })
   );
   content.appendChild(stepLabel);
 
@@ -525,89 +485,28 @@ function renderWizardStep() {
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
       firstRunWizard.urlInput = input;
-      invalidateWizardConnectionTest();
-      updateWizardTokenButtonState();
     });
     firstRunWizard.urlInput = input;
     content.appendChild(label);
     content.appendChild(input);
-  } else if (stepIndex === 2) {
+  } else {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Create a Long-Lived Access Token'))
+      createTextElement('h2', 'first-run-title', t('Authorize in Home Assistant'))
     );
     content.appendChild(
       createTextElement(
         'p',
         'first-run-copy',
         t(
-          'In Home Assistant, open your profile security page, create a Long-Lived Access Token, then return here.'
+          'Continue to open Home Assistant in your browser. Sign in and approve HA Desktop Widget, then return here.'
         )
       )
     );
-    const button = createActionButton(t('Open token page'), 'btn btn-secondary', async () => {
-      const securityUrl = buildHomeAssistantPathUrl(getWizardUrl(), '/profile/security');
-      const profileUrl = buildHomeAssistantPathUrl(getWizardUrl(), '/profile');
-      if (!securityUrl || !profileUrl) return;
-      const result = await window.electronAPI.openExternal(securityUrl);
-      if (!result?.success) {
-        await window.electronAPI.openExternal(profileUrl);
-      }
-    });
-    firstRunWizard.openTokenButton = button;
-    content.appendChild(button);
-    updateWizardTokenButtonState();
-  } else if (stepIndex === 3) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Paste your access token')));
     content.appendChild(
       createTextElement(
         'p',
-        'first-run-copy',
-        t('The token is stored by the app and used only to connect to your Home Assistant server.')
-      )
-    );
-    const label = createTextElement('label', 'first-run-label', t('Long-Lived Access Token'));
-    label.setAttribute('for', 'first-run-ha-token');
-    const input = document.createElement('input');
-    input.id = 'first-run-ha-token';
-    input.type = 'password';
-    input.placeholder = t('Your long-lived access token');
-    input.value = getWizardToken();
-    input.addEventListener('input', () => {
-      firstRunWizard.tokenInput = input;
-      invalidateWizardConnectionTest();
-    });
-    firstRunWizard.tokenInput = input;
-    content.appendChild(label);
-    content.appendChild(input);
-  } else if (stepIndex === 4) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Test your connection')));
-    content.appendChild(
-      createTextElement(
-        'p',
-        'first-run-copy',
-        t('Make sure the URL and token work before finishing setup.')
-      )
-    );
-    const testRow = document.createElement('div');
-    testRow.className = 'first-run-test-row';
-    const testButton = createActionButton(t('Test connection'), 'btn btn-primary', () => {
-      void runWizardConnectionTest();
-    });
-    const spinner = document.createElement('span');
-    spinner.className = 'connection-test-spinner hidden';
-    spinner.setAttribute('aria-hidden', 'true');
-    firstRunWizard.testButton = testButton;
-    firstRunWizard.testSpinner = spinner;
-    testRow.appendChild(testButton);
-    testRow.appendChild(spinner);
-    content.appendChild(testRow);
-  } else {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Ready to connect')));
-    content.appendChild(
-      createTextElement(
-        'p',
-        'first-run-copy',
-        t('Finish setup to save these settings and start live updates.')
+        'first-run-security-note',
+        t('Your password never enters this app. Authorization can be revoked from Home Assistant.')
       )
     );
   }
@@ -616,82 +515,8 @@ function renderWizardStep() {
     firstRunWizard.backButton.disabled = stepIndex === 0;
   }
   if (firstRunWizard.nextButton) {
-    firstRunWizard.nextButton.textContent = stepIndex === 5 ? t('Finish') : t('Next');
+    firstRunWizard.nextButton.textContent = stepIndex === 2 ? t('Connect') : t('Next');
   }
-}
-
-async function runWizardConnectionTest() {
-  const normalizedUrl = normalizeBaseUrl(getWizardUrl());
-  const token = getWizardToken();
-  const testId = ++firstRunWizard.connectionTestId;
-  if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
-    const message = getConnectionTestMessage({ code: 'invalid-url' });
-    setWizardStatus(message.text, message.type);
-    firstRunWizard.lastTestSuccessful = false;
-    firstRunWizard.lastSuccessfulConnection = null;
-    return false;
-  }
-
-  if (firstRunWizard.testButton) {
-    firstRunWizard.testButton.disabled = true;
-    firstRunWizard.testButton.setAttribute('aria-busy', 'true');
-  }
-  if (firstRunWizard.testSpinner) {
-    firstRunWizard.testSpinner.classList.remove('hidden');
-  }
-  setWizardStatus(t('Testing Home Assistant connection...'), 'pending');
-  try {
-    const result = await window.electronAPI.testHaConnection(normalizedUrl, token);
-    if (
-      !firstRunWizard ||
-      firstRunWizard.connectionTestId !== testId ||
-      normalizeBaseUrl(getWizardUrl()) !== normalizedUrl ||
-      getWizardToken() !== token
-    ) {
-      return false;
-    }
-    const message = getConnectionTestMessage(result);
-    setWizardStatus(message.text, message.type);
-    firstRunWizard.lastTestSuccessful = !!result?.success;
-    firstRunWizard.lastSuccessfulConnection = result?.success
-      ? { url: normalizedUrl, token }
-      : null;
-    return !!result?.success;
-  } catch (error) {
-    if (!firstRunWizard || firstRunWizard.connectionTestId !== testId) {
-      return false;
-    }
-    const message = getConnectionTestMessage(error);
-    setWizardStatus(message.text, message.type);
-    firstRunWizard.lastTestSuccessful = false;
-    firstRunWizard.lastSuccessfulConnection = null;
-    return false;
-  } finally {
-    if (firstRunWizard && firstRunWizard.connectionTestId === testId) {
-      if (firstRunWizard.testButton) {
-        firstRunWizard.testButton.disabled = false;
-        firstRunWizard.testButton.setAttribute('aria-busy', 'false');
-      }
-      if (firstRunWizard.testSpinner) {
-        firstRunWizard.testSpinner.classList.add('hidden');
-      }
-    }
-  }
-}
-
-function invalidateWizardConnectionTest() {
-  if (!firstRunWizard) return;
-  firstRunWizard.connectionTestId += 1;
-  firstRunWizard.lastTestSuccessful = false;
-  firstRunWizard.lastSuccessfulConnection = null;
-}
-
-function wizardConnectionWasTested(url, token) {
-  return (
-    firstRunWizard?.lastTestSuccessful === true &&
-    firstRunWizard.lastSuccessfulConnection?.url === url &&
-    firstRunWizard.lastSuccessfulConnection?.token === token
-  );
 }
 
 async function finishFirstRunWizard() {
@@ -703,37 +528,20 @@ async function finishFirstRunWizard() {
   }
 
   const normalizedUrl = normalizeBaseUrl(getWizardUrl());
-  const token = getWizardToken();
   try {
-    if (!normalizedUrl || isPlaceholderOrEmptyToken(token)) {
-      const message = getConnectionTestMessage({ code: 'invalid-url' });
-      setWizardStatus(message.text, message.type);
+    if (!normalizedUrl) {
+      setWizardStatus(t('Enter a valid Home Assistant URL before connecting.'), 'error');
       return;
     }
-
-    if (!wizardConnectionWasTested(normalizedUrl, token)) {
-      const passed = await runWizardConnectionTest();
-      if (!passed || !wizardConnectionWasTested(normalizedUrl, token)) return;
-    }
-
-    const nextConfig = {
-      ...(state.CONFIG || {}),
-      homeAssistant: {
-        ...(state.CONFIG?.homeAssistant || {}),
-        url: normalizedUrl,
-        token,
-      },
-    };
-    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-    applyRendererConfig(updatedConfig || nextConfig);
+    setWizardStatus(t('Opening Home Assistant for authorization...'), 'pending');
+    const result = await window.electronAPI.startHomeAssistantOAuth(normalizedUrl);
+    if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
+    applyRendererConfig(result.config);
     setFirstRunWizardVisible(false);
-    // update-config also broadcasts config-updated back to this renderer. Route both
-    // completion paths through the same idempotent startup gate so onboarding cannot
-    // initialize subscriptions or replace its just-opened WebSocket twice.
     startConfiguredRuntime();
   } catch (error) {
     const detail = error?.message || t('Unknown error');
-    const message = t('Could not save settings. {{error}}', { error: detail });
+    const message = t('Could not connect to Home Assistant. {{error}}', { error: detail });
     log.error('Failed to finish first-run setup:', error);
     setWizardStatus(message, 'error');
     uiUtils.showToast(message, 'error', 6000);
@@ -804,11 +612,11 @@ function ensureFirstRunWizard() {
     renderWizardStep();
   });
   const nextButton = createActionButton(t('Next'), 'btn btn-primary', async () => {
-    if (firstRunWizard.step === 5) {
+    if (firstRunWizard.step === 2) {
       await finishFirstRunWizard();
       return;
     }
-    firstRunWizard.step = Math.min(5, firstRunWizard.step + 1);
+    firstRunWizard.step = Math.min(2, firstRunWizard.step + 1);
     renderWizardStep();
   });
 
@@ -831,31 +639,68 @@ function ensureFirstRunWizard() {
     nextButton,
     step: 0,
     visible: false,
-    lastTestSuccessful: false,
-    lastSuccessfulConnection: null,
-    connectionTestId: 0,
     finishInProgress: false,
     urlInput: null,
-    tokenInput: null,
-    testButton: null,
-    testSpinner: null,
-    openTokenButton: null,
   };
   renderWizardStep();
   return firstRunWizard;
 }
 
 function maybeShowFirstRunWizard() {
-  if (IS_DESKTOP_PIN_MODE || isConfigured(state.CONFIG) || isSecureStoragePending()) {
+  const oauthStatus = state.CONFIG?.homeAssistant?.oauthStatus;
+  const oauthRestorePending =
+    state.CONFIG?.homeAssistant?.authMethod === 'oauth' &&
+    (oauthStatus === 'restoring' || oauthStatus === 'offline');
+  if (
+    IS_DESKTOP_PIN_MODE ||
+    isConfigured(state.CONFIG) ||
+    isSecureStoragePending() ||
+    oauthRestorePending
+  ) {
     setFirstRunWizardVisible(false);
     return false;
   }
   ensureFirstRunWizard();
   firstRunWizard.step = 0;
-  invalidateWizardConnectionTest();
   renderWizardStep();
   setFirstRunWizardVisible(true);
   return true;
+}
+
+async function executeDesktopCompanionCommand({ action, payload }) {
+  if (action !== 'switch_page') {
+    return window.electronAPI.applyDesktopCompanionCommand(action);
+  }
+
+  const pageId = typeof payload?.page_id === 'string' ? payload.page_id.trim().slice(0, 128) : '';
+  const quickAccessConfig = normalizeQuickAccessConfig(state.CONFIG || {});
+  if (!pageId || !quickAccessConfig.customTabs.some((tab) => tab.id === pageId)) {
+    throw new Error(`Unknown Quick Access page: ${pageId || '(empty)'}`);
+  }
+  const pageResult = await ui.switchQuickAccessPage(pageId);
+  if (pageResult?.success === false) {
+    throw pageResult.error || new Error('Quick Access page change was not saved');
+  }
+  const mainState = await window.electronAPI.getDesktopCompanionState();
+  return { ...mainState, current_page: pageId };
+}
+
+function ensureDesktopCompanionClient() {
+  if (desktopCompanionClient) return desktopCompanionClient;
+  if (
+    typeof window.electronAPI?.getDesktopCompanionRegistration !== 'function' ||
+    typeof window.electronAPI?.getDesktopCompanionState !== 'function' ||
+    typeof window.electronAPI?.applyDesktopCompanionCommand !== 'function'
+  ) {
+    return null;
+  }
+  desktopCompanionClient = new DesktopCompanionClient({
+    websocket,
+    getRegistration: () => window.electronAPI.getDesktopCompanionRegistration(),
+    getState: () => window.electronAPI.getDesktopCompanionState(),
+    executeCommand: executeDesktopCompanionCommand,
+  });
+  return desktopCompanionClient;
 }
 
 function startConfiguredRuntime() {
@@ -867,6 +712,7 @@ function startConfiguredRuntime() {
   startUiTickScheduler();
 
   if (shouldInitializeRuntime) {
+    ensureDesktopCompanionClient()?.start();
     hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
@@ -1600,7 +1446,13 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     if (!nextConfig || !nextConfig.homeAssistant) return;
     const wasConfigured = isConfigured(state.CONFIG);
     const wasSecureStoragePending = isSecureStoragePending();
+    const previousConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
+      state.CONFIG?.homeAssistant?.token || ''
+    }`;
     if (applyRendererConfig(nextConfig) === false) return;
+    const nextConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
+      state.CONFIG?.homeAssistant?.token || ''
+    }`;
     // Apply the versioned config synchronously before yielding. The preload
     // buffers config echoes while writes are pending, and this avoids an older
     // event resuming after a newer optimistic mutation.
@@ -1610,12 +1462,20 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     }
     renderCurrentMode();
     const wizardShown = maybeShowFirstRunWizard();
-    if (
-      !wizardShown &&
-      isConfigured(state.CONFIG) &&
-      (!wasConfigured || wasSecureStoragePending || !configuredRuntimeStarted)
-    ) {
-      startConfiguredRuntime();
+    const nowConfigured = isConfigured(state.CONFIG);
+    if (!wizardShown && nowConfigured) {
+      if (!configuredRuntimeStarted) {
+        startConfiguredRuntime();
+      } else if (
+        !wasConfigured ||
+        wasSecureStoragePending ||
+        previousConnection !== nextConnection
+      ) {
+        websocket.close();
+        connectWebSocket();
+      }
+    } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
+      websocket.close();
     }
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
@@ -1634,6 +1494,14 @@ window.electronAPI.onDesktopPinActionRequested((payload) => {
 window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
   if (IS_DESKTOP_PIN_MODE || !entityId) return;
   hotkeys.assignHotkeyToEntity(entityId);
+});
+
+window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
+  void desktopCompanionClient?.reportState(null, nextState);
+});
+
+window.addEventListener('desktop-companion-page-changed', () => {
+  void desktopCompanionClient?.reportState();
 });
 
 window.electronAPI.onDesktopPinUpdate((payload) => {
@@ -1857,6 +1725,19 @@ async function init() {
       if (isSecureStoragePending()) {
         log.info('[Init] Secure config is pending; showing shell while saved credentials unlock.');
         setDisconnectedStatus(t('Unlocking saved Home Assistant credentials...'));
+        uiUtils.showLoading(false);
+        renderCurrentMode();
+        maybeShowFirstRunWizard();
+        return;
+      }
+
+      if (state.CONFIG?.homeAssistant?.authMethod === 'oauth') {
+        const detail = state.CONFIG.homeAssistant.oauthLastError;
+        setDisconnectedStatus(
+          state.CONFIG.homeAssistant.oauthStatus === 'restoring'
+            ? t('Restoring Home Assistant authorization...')
+            : detail || t('Home Assistant is offline. Authorization will retry automatically.')
+        );
         uiUtils.showLoading(false);
         renderCurrentMode();
         maybeShowFirstRunWizard();

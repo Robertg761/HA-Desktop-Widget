@@ -64,7 +64,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Updates**: Automatic installation for Windows installer and Linux AppImage builds; portable, macOS, and Linux deb builds use a GitHub Releases download flow
 - **System Tray**: Minimize to tray with quick access menu
 - **Start at Login**: Optional OS login startup control
-- **Configuration**: Easy setup with Home Assistant URL and token
+- **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
 - **Performance**: Optimized rendering and memory management
 - **Cross-Platform**: Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64 support with transparency effects where available
 - **Personalization**: Accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
@@ -101,15 +101,23 @@ Planned for a future release:
 ### First-Time Setup
 
 1. **Get your Home Assistant URL**: Usually `http://your-ha-ip:8123` or `https://your-ha-domain.com`
-2. **Create a Long-Lived Access Token**:
-   - Go to your Home Assistant profile (click your avatar)
-   - Scroll down to "Long-lived access tokens"
-   - Click "Create token" and give it a name like "Desktop Widget"
-   - Copy the generated token
-3. **Configure the widget**:
-   - Paste your HA URL and token in Settings
-   - Click "Save" - the widget will connect automatically
-4. **Add entities**: Click the "+" button to add your favorite entities to Quick Access
+2. **Connect the widget**: Enter that URL and click **Connect**. The app opens Home Assistant in
+   your system browser so you can sign in and approve it; your Home Assistant password never enters
+   the desktop app.
+3. **Return to the widget**: Authorization finishes through a temporary loopback callback on this
+   computer and live updates start automatically.
+4. **Add entities**: Click the "+" button to add your favorite entities to Quick Access.
+
+The legacy long-lived access-token form remains under **Settings > Legacy access token
+(advanced)** for compatibility. New setups should use browser authorization.
+
+### Home Assistant Companion Integration
+
+The optional `HA Desktop Widget Companion` custom integration makes registered desktops visible as
+native Home Assistant devices and supports `show`, `hide`, `toggle`, and `switch_page` actions. The
+desktop uses the same authenticated Home Assistant WebSocket connection for registration, state
+reporting, command delivery, and acknowledgements. It never accepts arbitrary shell commands,
+JavaScript, file access, URLs, or generic Electron IPC from Home Assistant.
 
 ## How to Use
 
@@ -213,8 +221,8 @@ cannot start while a copy of the widget is already running — quit that one fir
 - **Manual-update builds**: Portable, macOS, and Linux deb users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
 
 The minimum planned beta version is stored in `.github/beta-target`. It is currently set to
-`3.8.0`, so the active series starts at `v3.8.0-beta.1`. Once `v3.8.0` is stable, the workflow
-automatically moves to `v3.8.1-beta.N`; increasing the file starts a future minor series instead.
+`3.9.0`, so the active series starts at `v3.9.0-beta.1`. Once `v3.9.0` is stable, the workflow
+automatically moves to `v3.9.1-beta.N`; increasing the file starts a future minor series instead.
 
 Release builds align their package version from the tag. Manually prepared betas commit matching
 prerelease metadata before tagging; automated nightly betas align it only inside the build.
@@ -229,13 +237,16 @@ New GitHub releases automatically generate notes from merged pull requests and c
   - **macOS (packaged)**: `~/Library/Application Support/HA Desktop Widget/config.json`
   - **Linux (packaged)**: `~/.config/HA Desktop Widget/config.json`
   - **Development builds**: typically use `home-assistant-widget` as the folder name
-- **Config Contents**: `homeAssistant` (url, token, tokenEncrypted), `favoriteEntities`, `customEntityNames`,
+- **Config Contents**: `homeAssistant` (url and auth method; encrypted token fields only for legacy-token authentication), `desktopCompanion` (a random installation ID), `favoriteEntities`, `customEntityNames`,
   `desktopPins`, `customEntityIcons`, `quickAccessTileOptions`, `tileSpans`, `selectedWeatherEntity`, `primaryMediaPlayer`,
   `globalHotkeys`, `entityAlerts`, `popupHotkey`, `windowPosition`, `windowSize`, `opacity`, `ui` (theme, accent, background,
   language, customColors, timeFormat, dateFormat, use24HourClock, weatherEffectsEnabled, weatherOverride, enableInteractionDebugLogs),
   and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
   `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, `updates`, and `profileSync`.
-- **Security**: Tokens are never committed to version control and are encrypted at rest when supported by the OS
+- **Security**: OAuth refresh tokens are stored in a separate OS-encrypted credential file and
+  short-lived access tokens remain in memory. OAuth pairing fails closed when secure storage is
+  unavailable. Legacy tokens are encrypted at rest when supported by the OS and are never stored in
+  plaintext as a fallback.
 
 ### Profile Sync (Opt-in)
 
@@ -249,14 +260,14 @@ New GitHub releases automatically generate notes from merged pull requests and c
 - **Safety net**: Before a remote profile is applied, the previous local profile is backed up to `profile-sync-backups/` in the app's data folder (the last 5 are kept).
 - **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation); passphrases must be at least 8 characters.
 - **Schema compatibility**: Sync writes use profile sync schema v2; older app versions must update to participate in sync.
-- **Local-only data**: Home Assistant URL/token, window position/size, startup setting, and profile-sync internals remain local.
+- **Local-only data**: Home Assistant authorization, desktop installation ID, window position/size, startup setting, and profile-sync internals remain local.
 
 ## Troubleshooting
 
 ### Connection Issues
 
 - **Verify URL**: Ensure your Home Assistant URL is accessible from your computer
-- **Check Token**: Make sure your long-lived access token is valid and not expired
+- **Reconnect authorization**: In Settings, click **Reconnect with Home Assistant** if authorization expired. Legacy-token users should verify that token manually.
 - **Firewall**: Ensure your OS firewall allows the app to connect to your network
 - **Network**: Test connectivity by opening your HA URL in a web browser
 
@@ -268,7 +279,7 @@ New GitHub releases automatically generate notes from merged pull requests and c
 ### Common Solutions
 
 - **Restart**: Close and reopen the app if entities aren't updating
-- **Reconnect**: Go to Settings and click "Save" to reconnect to Home Assistant
+- **Reconnect**: Go to Settings and click **Reconnect with Home Assistant**
 - **Check Logs**: Use Settings > View Logs to open the log file location
 
 ## Contributing

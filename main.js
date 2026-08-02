@@ -109,6 +109,11 @@ const {
   removeSmokeTestProfile,
 } = require('./src/smoke-test-profile.cjs');
 const {
+  HomeAssistantOAuthClient,
+  normalizeHomeAssistantBaseUrl,
+  requestFormWithElectronNet,
+} = require('./src/ha-oauth.cjs');
+const {
   PORTAL_SHORTCUTS_BACKEND,
   createPortalGlobalShortcutsController,
   isWaylandSession,
@@ -436,6 +441,8 @@ const PROFILE_SYNC_CONFLICT_PATTERNS = [
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decryption_failed']);
+const HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS = 5 * 60 * 1000;
+const HOME_ASSISTANT_OAUTH_RETRY_MS = 60 * 1000;
 
 const profileSyncRuntime = {
   inFlight: false,
@@ -536,6 +543,8 @@ let deferredHomeAssistantTokenDecryptPending = false;
 let deferredPlaintextTokenMigrationPending = false;
 let deferredProfileSyncPassphraseDecryptPending = false;
 let deferredSecureConfigResolutionInProgress = false;
+let homeAssistantOAuthClient = null;
+let homeAssistantOAuthRefreshTimer = null;
 
 function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass) {
   return typeof overrideFrostedGlass === 'boolean'
@@ -2243,6 +2252,50 @@ function pushConfigToRenderer(extra = {}) {
   });
 }
 
+function getDesktopCompanionState() {
+  return {
+    visible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
+    current_page:
+      typeof config?.activeTabId === 'string' && config.activeTabId.trim()
+        ? config.activeTabId.trim().slice(0, 128)
+        : 'default',
+  };
+}
+
+function notifyDesktopCompanionStateChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('desktop-companion-state-changed', getDesktopCompanionState());
+}
+
+function getDesktopCompanionRegistration() {
+  const desktopId = config?.desktopCompanion?.desktopId || '';
+  if (!desktopId) return null;
+  const platformNames = {
+    darwin: 'macOS',
+    linux: 'Linux',
+    win32: 'Windows',
+  };
+  return {
+    desktop_id: desktopId,
+    name: `HA Desktop Widget (${platformNames[process.platform] || 'Desktop'})`,
+    platform: process.platform,
+    architecture: process.arch,
+    app_version: app.getVersion(),
+    capabilities: ['visibility', 'switch_page'],
+  };
+}
+
+function ensureDesktopCompanionIdentity() {
+  config.desktopCompanion =
+    config.desktopCompanion && typeof config.desktopCompanion === 'object'
+      ? config.desktopCompanion
+      : {};
+  if (!config.desktopCompanion.desktopId) {
+    config.desktopCompanion.desktopId = nodeCrypto.randomUUID();
+  }
+  return config.desktopCompanion.desktopId;
+}
+
 function buildProfileSyncStatus(extra = {}) {
   const profileSync = getProfileSyncConfig();
   const status = {
@@ -3232,6 +3285,10 @@ function loadConfig(options = {}) {
     homeAssistant: {
       url: 'http://homeassistant.local:8123',
       token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+      authMethod: 'token',
+    },
+    desktopCompanion: {
+      desktopId: '',
     },
     globalHotkeys: {
       enabled: false,
@@ -3334,6 +3391,11 @@ function loadConfig(options = {}) {
       config = {
         ...defaultConfig,
         ...userConfig,
+        homeAssistant: { ...defaultConfig.homeAssistant, ...(userConfig.homeAssistant || {}) },
+        desktopCompanion: {
+          ...defaultConfig.desktopCompanion,
+          ...(userConfig.desktopCompanion || {}),
+        },
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
         ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) },
@@ -3354,8 +3416,14 @@ function loadConfig(options = {}) {
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
 
-      // Handle token encryption/decryption
-      if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
+      // OAuth access tokens are short-lived runtime state. Ignore any stale copy
+      // that an earlier development build may have put in config.json.
+      if (config.homeAssistant?.authMethod === 'oauth') {
+        config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+        config.homeAssistant.tokenEncrypted = false;
+        config.homeAssistant.oauthStatus = 'restoring';
+        delete config.tokenResetReason;
+      } else if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
         if (deferSecureStorage) {
           preservedEncryptedTokenForRecovery = config.homeAssistant.token;
           config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
@@ -3783,8 +3851,17 @@ function buildConfigSnapshotForSave() {
   // Create a copy for saving with encrypted token
   const configToSave = JSON.parse(JSON.stringify(config));
   pruneConfig(configToSave);
-  const preserveRecoveryToken = shouldPreserveRecoveryTokenForSave(configToSave);
+  const usesOAuth = configToSave.homeAssistant?.authMethod === 'oauth';
+  const preserveRecoveryToken = !usesOAuth && shouldPreserveRecoveryTokenForSave(configToSave);
   const persistenceWarnings = [];
+
+  if (usesOAuth) {
+    delete configToSave.homeAssistant.token;
+    delete configToSave.homeAssistant.tokenEncrypted;
+    delete configToSave.homeAssistant.oauthExpiresAt;
+    delete configToSave.homeAssistant.oauthLastError;
+    delete configToSave.tokenResetReason;
+  }
 
   if (preserveRecoveryToken) {
     configToSave.homeAssistant = configToSave.homeAssistant || {};
@@ -3814,6 +3891,7 @@ function buildConfigSnapshotForSave() {
   // Encrypt token before saving
   // Note: Token is always stored as plaintext in memory (even if decrypted from encrypted storage)
   if (
+    !usesOAuth &&
     configToSave.homeAssistant?.token &&
     configToSave.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
   ) {
@@ -4748,7 +4826,9 @@ function createWindow() {
   // from the tray or menu does not inherit the above-full-screen z-order.
   mainWindow.on('hide', () => {
     popupWindowPresenter.handleWindowHidden(mainWindow);
+    notifyDesktopCompanionStateChanged();
   });
+  mainWindow.on('show', notifyDesktopCompanionStateChanged);
   mainWindow.on('blur', () => {
     popupWindowPresenter.handleWindowBlur(mainWindow);
   });
@@ -4926,10 +5006,10 @@ function schedulePostWindowStartupTasks() {
   postWindowStartupTasksScheduled = true;
 
   setTimeout(() => {
-    runBackgroundConfigMutation(
-      () => resolveDeferredSecureConfig({ notifyRenderer: true }),
-      'deferred secure config resolution'
-    );
+    runBackgroundConfigMutation(async () => {
+      resolveDeferredSecureConfig({ notifyRenderer: true });
+      await restoreHomeAssistantOAuthSession();
+    }, 'deferred secure config and OAuth resolution');
 
     try {
       syncDesktopPinWindowsWithConfig();
@@ -5059,6 +5139,8 @@ ipcMain.handle(
     };
     const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
     const prevSyncEnabled = !!config?.profileSync?.enabled;
+    const previousDesktopCompanion = { ...(config?.desktopCompanion || {}) };
+    const previousHomeAssistant = { ...(config?.homeAssistant || {}) };
     // Development demo state is an IPC-only marker. Never let an overlay renderer
     // write it back into the user's real configuration.
     delete newConfig.developmentDemo;
@@ -5153,7 +5235,26 @@ ipcMain.handle(
       }
     }
     const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
-    config = { ...config, ...newConfig, customTabs, profileSync, updates };
+    const homeAssistant = {
+      ...(config.homeAssistant || {}),
+      ...(newConfig.homeAssistant || {}),
+    };
+    if (previousHomeAssistant.authMethod === 'oauth') {
+      Object.assign(homeAssistant, previousHomeAssistant);
+    } else {
+      // Entering OAuth creates credentials and runtime state through the dedicated
+      // pairing IPC. A renderer config echo cannot opt itself into OAuth.
+      homeAssistant.authMethod = 'token';
+    }
+    config = {
+      ...config,
+      ...newConfig,
+      homeAssistant,
+      desktopCompanion: previousDesktopCompanion,
+      customTabs,
+      profileSync,
+      updates,
+    };
     ensureDateTimeFormatConfigDefaults(config);
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
@@ -5309,21 +5410,194 @@ ipcMain.handle(
 );
 
 function normalizeHomeAssistantBaseUrlForIpc(rawUrl) {
-  const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
-  if (!trimmed) return null;
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
-    return null;
+  return normalizeHomeAssistantBaseUrl(rawUrl);
+}
+
+function getHomeAssistantOAuthClient() {
+  if (!homeAssistantOAuthClient) {
+    homeAssistantOAuthClient = new HomeAssistantOAuthClient({
+      safeStorage,
+      platform: process.platform,
+      userDataPath: app.getPath('userData'),
+      openExternal: (url) => shell.openExternal(url),
+      postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
+      isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
+      log,
+    });
   }
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  return homeAssistantOAuthClient;
+}
+
+function clearHomeAssistantOAuthRefreshTimer() {
+  if (homeAssistantOAuthRefreshTimer) {
+    clearTimeout(homeAssistantOAuthRefreshTimer);
+    homeAssistantOAuthRefreshTimer = null;
+  }
+}
+
+function scheduleHomeAssistantOAuthRefresh(expiresAt, delayOverride = null) {
+  clearHomeAssistantOAuthRefreshTimer();
+  if (config?.homeAssistant?.authMethod !== 'oauth' || isQuitting) return;
+  const delay =
+    delayOverride === null
+      ? Math.max(30_000, Number(expiresAt || 0) - Date.now() - HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS)
+      : Math.max(1000, Number(delayOverride) || HOME_ASSISTANT_OAUTH_RETRY_MS);
+  homeAssistantOAuthRefreshTimer = setTimeout(() => {
+    homeAssistantOAuthRefreshTimer = null;
+    runBackgroundConfigMutation(
+      () => refreshHomeAssistantOAuthSession(),
+      'Home Assistant OAuth refresh'
+    );
+  }, delay);
+  homeAssistantOAuthRefreshTimer.unref?.();
+}
+
+async function applyHomeAssistantOAuthSession(session, options = {}) {
+  if (!session?.accessToken || !session?.baseUrl) {
+    throw new Error('Home Assistant OAuth did not return a usable session');
+  }
+  const previousConfig = config;
+  const nextConfig = {
+    ...config,
+    homeAssistant: {
+      ...(config?.homeAssistant || {}),
+      url: session.baseUrl,
+      token: session.accessToken,
+      tokenEncrypted: false,
+      authMethod: 'oauth',
+      oauthStatus: 'connected',
+      oauthExpiresAt: session.expiresAt,
+    },
+    desktopCompanion: { ...(config?.desktopCompanion || {}) },
+  };
+  delete nextConfig.homeAssistant.oauthLastError;
+  delete nextConfig.tokenResetReason;
+  config = nextConfig;
+  ensureDesktopCompanionIdentity();
+  preservedEncryptedTokenForRecovery = null;
+
+  if (options.persist === true) {
+    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+    if (!persistence.success) {
+      config = previousConfig;
+      throw new Error(`Failed to save Home Assistant authorization: ${persistence.error}`);
+    }
+  }
+
+  scheduleHomeAssistantOAuthRefresh(session.expiresAt);
+  pushConfigToRenderer();
+  broadcastDesktopPinConfigUpdate();
+  return sanitizeConfigForRenderer(config);
+}
+
+async function refreshHomeAssistantOAuthSession() {
+  if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
-    const parsed = new URL(withProtocol);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    if (!parsed.hostname) return null;
-    return parsed.origin.replace(/\/+$/, '');
-  } catch {
+    const session = await getHomeAssistantOAuthClient().refresh();
+    if (!session) throw new Error('Saved Home Assistant authorization was not found');
+    return applyHomeAssistantOAuthSession(session);
+  } catch (error) {
+    config.homeAssistant = config.homeAssistant || {};
+    config.homeAssistant.oauthStatus =
+      error?.code === 'OAUTH_INVALID_GRANT' ? 'reauth_required' : 'offline';
+    config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
+    if (error?.code === 'OAUTH_INVALID_GRANT') {
+      config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+      clearHomeAssistantOAuthRefreshTimer();
+    } else {
+      scheduleHomeAssistantOAuthRefresh(null, HOME_ASSISTANT_OAUTH_RETRY_MS);
+    }
+    pushConfigToRenderer();
     return null;
   }
 }
+
+async function restoreHomeAssistantOAuthSession() {
+  if (config?.homeAssistant?.authMethod !== 'oauth') return null;
+  config.homeAssistant.oauthStatus = 'restoring';
+  pushConfigToRenderer();
+  return refreshHomeAssistantOAuthSession();
+}
+
+ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
+  const sender = authorizeIpcSender(event, 'start-home-assistant-oauth');
+  if (!sender) return rejectUnauthorizedIpc('start-home-assistant-oauth');
+  try {
+    const session = await getHomeAssistantOAuthClient().pair(rawUrl);
+    return await runSerializedConfigMutation(async () => ({
+      success: true,
+      config: await applyHomeAssistantOAuthSession(session, { persist: true }),
+    }));
+  } catch (error) {
+    return {
+      success: false,
+      code: error?.code || 'OAUTH_PAIRING_FAILED',
+      error: error?.message || 'Home Assistant authorization failed',
+    };
+  }
+});
+
+ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
+  const sender = authorizeIpcSender(event, 'disconnect-home-assistant-oauth');
+  if (!sender) return rejectUnauthorizedIpc('disconnect-home-assistant-oauth');
+  const updateResult = await runSerializedConfigMutation(async () => {
+    const previousConfig = config;
+    clearHomeAssistantOAuthRefreshTimer();
+    config = {
+      ...config,
+      homeAssistant: {
+        url: config?.homeAssistant?.url || 'http://homeassistant.local:8123',
+        token: HOME_ASSISTANT_TOKEN_PLACEHOLDER,
+        tokenEncrypted: false,
+        authMethod: 'token',
+      },
+    };
+    delete config.tokenResetReason;
+    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+    if (!persistence.success) {
+      config = previousConfig;
+      return { success: false, error: `Failed to save disconnected state: ${persistence.error}` };
+    }
+    pushConfigToRenderer();
+    return { success: true, config: sanitizeConfigForRenderer(config) };
+  });
+  if (!updateResult.success) return updateResult;
+  const revocation = await getHomeAssistantOAuthClient().revoke();
+  return { ...updateResult, ...revocation };
+});
+
+ipcMain.handle('get-desktop-companion-registration', async (event) => {
+  const sender = authorizeIpcSender(event, 'get-desktop-companion-registration');
+  if (!sender) return rejectUnauthorizedIpc('get-desktop-companion-registration');
+  if (!config?.desktopCompanion?.desktopId) {
+    const result = await runSerializedConfigMutation(async () => {
+      ensureDesktopCompanionIdentity();
+      return saveConfigDurably({ allowDebouncedPush: false });
+    });
+    if (!result.success) return { success: false, error: result.error };
+  }
+  return { success: true, registration: getDesktopCompanionRegistration() };
+});
+
+ipcMain.handle('get-desktop-companion-state', (event) => {
+  const sender = authorizeIpcSender(event, 'get-desktop-companion-state');
+  if (!sender) return rejectUnauthorizedIpc('get-desktop-companion-state');
+  return getDesktopCompanionState();
+});
+
+ipcMain.handle('apply-desktop-companion-command', (event, action) => {
+  const sender = authorizeIpcSender(event, 'apply-desktop-companion-command');
+  if (!sender) return rejectUnauthorizedIpc('apply-desktop-companion-command');
+  if (!['show', 'hide', 'toggle'].includes(action)) {
+    return { success: false, error: 'Unsupported main-process desktop command' };
+  }
+  if (action === 'show' || (action === 'toggle' && !mainWindow?.isVisible())) {
+    showMainWindowFromTray();
+  } else {
+    hideMainWindowToTray();
+  }
+  return { success: true, state: getDesktopCompanionState() };
+});
 
 function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
   return new Promise((resolve) => {
@@ -8265,6 +8539,7 @@ function shutDownRuntimeAfterConfigFlush() {
   isQuitting = true;
   closeDevReloadWatchers();
   clearProfileSyncTimers();
+  clearHomeAssistantOAuthRefreshTimer();
   if (portalShortcutsController) {
     portalShortcutsActive = false;
     if (portalSyncTimer) {

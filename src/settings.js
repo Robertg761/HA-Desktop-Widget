@@ -3789,6 +3789,8 @@ async function openSettings(uiHooks) {
         uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
     }
+    bindHomeAssistantOAuthUi();
+    updateHomeAssistantAuthUi();
     bindConnectionTestUi();
     setSettingsConnectionTestStatus('', '');
     setSettingsConnectionTestBusy(false);
@@ -4104,6 +4106,122 @@ function setSettingsConnectionTestBusy(isBusy) {
   }
 }
 
+function setHomeAssistantOAuthStatus(message = '', type = '') {
+  const status = document.getElementById('ha-oauth-status');
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.status = type || '';
+  status.classList.toggle('hidden', !message);
+}
+
+function setHomeAssistantOAuthBusy(isBusy) {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
+  const spinner = document.getElementById('ha-oauth-spinner');
+  if (connectButton) {
+    connectButton.disabled = !!isBusy;
+    connectButton.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  }
+  if (disconnectButton) disconnectButton.disabled = !!isBusy;
+  if (spinner) spinner.classList.toggle('hidden', !isBusy);
+}
+
+function updateHomeAssistantAuthUi() {
+  const homeAssistant = state.CONFIG?.homeAssistant || {};
+  const usesOAuth = homeAssistant.authMethod === 'oauth';
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
+  const tokenInput = document.getElementById('ha-token');
+  const legacySettings = document.getElementById('legacy-ha-token-settings');
+
+  if (connectButton) {
+    connectButton.textContent = usesOAuth
+      ? t('Reconnect with Home Assistant')
+      : t('Connect with Home Assistant');
+  }
+  disconnectButton?.classList.toggle('hidden', !usesOAuth);
+  if (tokenInput) {
+    tokenInput.disabled = usesOAuth;
+    if (usesOAuth) tokenInput.value = '';
+  }
+  if (legacySettings && usesOAuth) legacySettings.open = false;
+
+  if (!usesOAuth) {
+    setHomeAssistantOAuthStatus(
+      t('Browser authorization is recommended. The legacy token option remains available below.'),
+      'pending'
+    );
+  } else if (homeAssistant.oauthStatus === 'connected') {
+    setHomeAssistantOAuthStatus(t('Connected with Home Assistant authorization.'), 'success');
+  } else if (homeAssistant.oauthStatus === 'restoring') {
+    setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
+  } else if (homeAssistant.oauthStatus === 'reauth_required') {
+    setHomeAssistantOAuthStatus(t('Authorization expired. Connect again to continue.'), 'error');
+  } else {
+    setHomeAssistantOAuthStatus(
+      homeAssistant.oauthLastError ||
+        t('Home Assistant is offline. Authorization will retry automatically.'),
+      'error'
+    );
+  }
+}
+
+async function startHomeAssistantOAuthFromSettings() {
+  const haUrl = document.getElementById('ha-url');
+  const validation = validateHomeAssistantUrl(haUrl?.value || '');
+  if (!validation.valid) {
+    setHomeAssistantOAuthStatus(validation.error, 'error');
+    return;
+  }
+  setHomeAssistantOAuthBusy(true);
+  setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
+  try {
+    const result = await window.electronAPI.startHomeAssistantOAuth(validation.url);
+    applyPersistedConfigResponse(result.config);
+    if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || validation.url;
+    updateHomeAssistantAuthUi();
+    showToast(t('Home Assistant authorization connected'), 'success', 2600);
+  } catch (error) {
+    setHomeAssistantOAuthStatus(
+      error?.message || t('Home Assistant authorization failed'),
+      'error'
+    );
+  } finally {
+    setHomeAssistantOAuthBusy(false);
+  }
+}
+
+async function disconnectHomeAssistantOAuthFromSettings() {
+  setHomeAssistantOAuthBusy(true);
+  try {
+    const result = await window.electronAPI.disconnectHomeAssistantOAuth();
+    applyPersistedConfigResponse(result.config);
+    updateHomeAssistantAuthUi();
+    if (result.warning) showToast(result.warning, 'warning', 5000);
+    else showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+  } catch (error) {
+    setHomeAssistantOAuthStatus(error?.message || t('Could not disconnect authorization'), 'error');
+  } finally {
+    setHomeAssistantOAuthBusy(false);
+  }
+}
+
+function bindHomeAssistantOAuthUi() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
+  if (connectButton && connectButton.dataset.initialized !== 'true') {
+    connectButton.addEventListener('click', () => void startHomeAssistantOAuthFromSettings());
+    connectButton.dataset.initialized = 'true';
+  }
+  if (disconnectButton && disconnectButton.dataset.initialized !== 'true') {
+    disconnectButton.addEventListener(
+      'click',
+      () => void disconnectHomeAssistantOAuthFromSettings()
+    );
+    disconnectButton.dataset.initialized = 'true';
+  }
+}
+
 async function runSettingsConnectionTest() {
   const haUrl = document.getElementById('ha-url');
   const haToken = document.getElementById('ha-token');
@@ -4190,8 +4308,12 @@ async function saveSettings() {
     const canProceedWithSave = await handlePendingCustomEditorChangesBeforeSave();
     if (!canProceedWithSave) return;
 
-    // Validate and save Home Assistant URL
-    if (haUrl && haUrl.value.trim()) {
+    const usesOAuth = currentConfig.homeAssistant?.authMethod === 'oauth';
+    // OAuth connection fields are main-process-owned and changed only through
+    // Connect/Disconnect. Saving unrelated settings must not echo access tokens.
+    if (usesOAuth) {
+      nextConfig.homeAssistant = { ...currentConfig.homeAssistant };
+    } else if (haUrl && haUrl.value.trim()) {
       const validation = validateHomeAssistantUrl(haUrl.value);
       if (!validation.valid) {
         showToast(validation.error, 'error', 4000);
@@ -4203,7 +4325,7 @@ async function saveSettings() {
       return;
     }
 
-    if (haToken) {
+    if (haToken && !usesOAuth) {
       const nextToken = haToken.value.trim();
       const currentToken = currentConfig.homeAssistant?.token || '';
       const shouldPreservePlaceholderToken =
@@ -4211,6 +4333,7 @@ async function saveSettings() {
 
       if (!shouldPreservePlaceholderToken) {
         nextConfig.homeAssistant.token = nextToken;
+        nextConfig.homeAssistant.authMethod = 'token';
       }
 
       // Clear tokenResetReason only after the user enters a replacement token.

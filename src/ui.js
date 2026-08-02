@@ -477,9 +477,13 @@ const QUICK_ACCESS_PAGE_PRESETS = [
   'Garage',
 ];
 
-function switchQuickAccessPage(tabId) {
+async function switchQuickAccessPage(tabId) {
   const nextConfig = setActiveQuickAccessView(state.CONFIG, tabId);
-  setQuickAccessConfig(nextConfig);
+  const result = await setQuickAccessConfig(nextConfig);
+  if (result?.success !== false) {
+    window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
+  }
+  return result;
 }
 
 function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
@@ -11598,4 +11602,5 @@ export {
   callMediaPlayerService,
   getMediaSeekTarget,
   getTodoActiveCount,
+  switchQuickAccessPage,
 };

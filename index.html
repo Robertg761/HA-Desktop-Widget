@@ -348,36 +348,70 @@
                   data-i18n-placeholder="http://homeassistant.local:8123"
                 />
               </div>
-              <div class="form-group">
-                <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
-                <input
-                  type="password"
-                  id="ha-token"
-                  placeholder="Your long-lived access token"
-                  data-i18n-placeholder="Your long-lived access token"
-                />
-              </div>
-              <div class="connection-test-row">
-                <button
-                  type="button"
-                  id="test-ha-connection-btn"
-                  class="btn btn-secondary"
-                  data-i18n="Test connection"
-                >
-                  Test connection
-                </button>
-                <span
-                  id="test-ha-connection-spinner"
-                  class="connection-test-spinner hidden"
-                  aria-hidden="true"
-                ></span>
-              </div>
               <div
-                id="test-ha-connection-status"
+                id="ha-oauth-status"
                 class="connection-test-status"
                 role="status"
                 aria-live="polite"
               ></div>
+              <div class="connection-test-row">
+                <button
+                  type="button"
+                  id="connect-ha-oauth-btn"
+                  class="btn btn-primary"
+                  data-i18n="Connect with Home Assistant"
+                >
+                  Connect with Home Assistant
+                </button>
+                <button
+                  type="button"
+                  id="disconnect-ha-oauth-btn"
+                  class="btn btn-secondary hidden"
+                  data-i18n="Disconnect"
+                >
+                  Disconnect
+                </button>
+                <span
+                  id="ha-oauth-spinner"
+                  class="connection-test-spinner hidden"
+                  aria-hidden="true"
+                ></span>
+              </div>
+              <details id="legacy-ha-token-settings" class="settings-details">
+                <summary data-i18n="Legacy access token (advanced)">
+                  Legacy access token (advanced)
+                </summary>
+                <div class="form-group">
+                  <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
+                  <input
+                    type="password"
+                    id="ha-token"
+                    placeholder="Your long-lived access token"
+                    data-i18n-placeholder="Your long-lived access token"
+                  />
+                </div>
+                <div class="connection-test-row">
+                  <button
+                    type="button"
+                    id="test-ha-connection-btn"
+                    class="btn btn-secondary"
+                    data-i18n="Test legacy token"
+                  >
+                    Test legacy token
+                  </button>
+                  <span
+                    id="test-ha-connection-spinner"
+                    class="connection-test-spinner hidden"
+                    aria-hidden="true"
+                  ></span>
+                </div>
+                <div
+                  id="test-ha-connection-status"
+                  class="connection-test-status"
+                  role="status"
+                  aria-live="polite"
+                ></div>
+              </details>
               <div class="form-group weather-entity-setting">
                 <label for="weather-entity-select" data-i18n="Weather source">
                   Weather source

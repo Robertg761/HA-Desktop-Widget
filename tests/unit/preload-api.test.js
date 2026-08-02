@@ -123,6 +123,16 @@ describe('preload Electron API', () => {
         'test-ha-connection',
         ['https://ha.test', 'token'],
       ],
+      [
+        'startHomeAssistantOAuth',
+        ['https://ha.test'],
+        'start-home-assistant-oauth',
+        ['https://ha.test'],
+      ],
+      ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth', []],
+      ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration', []],
+      ['getDesktopCompanionState', [], 'get-desktop-companion-state', []],
+      ['applyDesktopCompanionCommand', ['toggle'], 'apply-desktop-companion-command', ['toggle']],
       ['debugLog', [objectArg], 'debug-log', [objectArg]],
     ];
 
@@ -147,6 +157,7 @@ describe('preload Electron API', () => {
       ['onDesktopPinUpdate', 'desktop-pin-update'],
       ['onDesktopPinActionRequested', 'desktop-pin-action-requested'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
+      ['onDesktopCompanionStateChanged', 'desktop-companion-state-changed'],
     ];
 
     for (const [method, channel] of listeners) {
@@ -280,6 +291,10 @@ describe('preload Electron API', () => {
     ['clearTokenResetReason', [], 'clear-token-reset-reason'],
     ['saveConfig', [{ theme: 'dark' }], 'save-config'],
     ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase'],
+    ['startHomeAssistantOAuth', ['https://ha.test'], 'start-home-assistant-oauth'],
+    ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth'],
+    ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration'],
+    ['applyDesktopCompanionCommand', ['show'], 'apply-desktop-companion-command'],
     ['restartApp', [], 'restart-app'],
   ])(
     'rejects %s when the main-process persistence contract reports failure',

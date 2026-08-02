@@ -83,6 +83,7 @@ const eventListeners = {
   desktopPinUpdate: [],
   desktopPinActionRequested: [],
   entityTileHotkeyRequested: [],
+  desktopCompanionStateChanged: [],
 };
 
 /**
@@ -310,6 +311,47 @@ function createMockElectronAPI() {
     getAppVersion: jest.fn(() => Promise.resolve('1.0.0-test')),
     openLogs: jest.fn(() => Promise.resolve()),
     openExternal: jest.fn(() => Promise.resolve({ success: true })),
+    testHaConnection: jest.fn(() => Promise.resolve({ success: true, code: 'ok' })),
+    startHomeAssistantOAuth: jest.fn((url) => {
+      mockConfig = {
+        ...mockConfig,
+        homeAssistant: {
+          ...(mockConfig.homeAssistant || {}),
+          url,
+          token: 'mock_oauth_access_token',
+          authMethod: 'oauth',
+          oauthStatus: 'connected',
+        },
+      };
+      return Promise.resolve({ success: true, config: { ...mockConfig } });
+    }),
+    disconnectHomeAssistantOAuth: jest.fn(() => {
+      mockConfig = {
+        ...mockConfig,
+        homeAssistant: {
+          ...(mockConfig.homeAssistant || {}),
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          authMethod: 'token',
+        },
+      };
+      return Promise.resolve({ success: true, config: { ...mockConfig } });
+    }),
+    getDesktopCompanionRegistration: jest.fn(() =>
+      Promise.resolve({
+        desktop_id: 'desktop-1',
+        name: 'HA Desktop Widget (Test)',
+        platform: 'test',
+        architecture: 'x64',
+        app_version: '3.8.0',
+        capabilities: ['visibility', 'switch_page'],
+      })
+    ),
+    getDesktopCompanionState: jest.fn(() =>
+      Promise.resolve({ visible: true, current_page: 'default' })
+    ),
+    applyDesktopCompanionCommand: jest.fn(() =>
+      Promise.resolve({ visible: true, current_page: 'default' })
+    ),
     debugLog: jest.fn(() => Promise.resolve({ success: true })),
 
     // Event Listeners (Main → Renderer)
@@ -381,6 +423,13 @@ function createMockElectronAPI() {
       return () => {
         const index = eventListeners.entityTileHotkeyRequested.indexOf(callback);
         if (index > -1) eventListeners.entityTileHotkeyRequested.splice(index, 1);
+      };
+    }),
+    onDesktopCompanionStateChanged: jest.fn((callback) => {
+      eventListeners.desktopCompanionStateChanged.push(callback);
+      return () => {
+        const index = eventListeners.desktopCompanionStateChanged.indexOf(callback);
+        if (index > -1) eventListeners.desktopCompanionStateChanged.splice(index, 1);
       };
     }),
   };
@@ -474,6 +523,8 @@ function resetMockElectronAPI() {
   eventListeners.configPersistenceWarning = [];
   eventListeners.desktopPinUpdate = [];
   eventListeners.desktopPinActionRequested = [];
+  eventListeners.entityTileHotkeyRequested = [];
+  eventListeners.desktopCompanionStateChanged = [];
 }
 
 /**

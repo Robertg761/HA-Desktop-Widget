@@ -17,6 +17,7 @@ module.exports = [
       'babel.config.js',
       'scripts/*.cjs',
       'src/desktop-pin-ipc.cjs',
+      'src/ha-oauth.cjs',
       'src/ha-protocol.cjs',
       'src/i18n-main.cjs',
       'src/linux-startup.cjs',

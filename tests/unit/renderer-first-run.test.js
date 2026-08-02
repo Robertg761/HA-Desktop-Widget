@@ -9,7 +9,7 @@ const {
   triggerMockEvent,
 } = require('../mocks/electron.js');
 
-describe('Renderer first-run connection verification', () => {
+describe('Renderer first-run Home Assistant authorization', () => {
   let mockElectronAPI;
   let mockState;
   let mockWebsocket;
@@ -61,14 +61,21 @@ describe('Renderer first-run connection verification', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
-  const reachConnectionTestStep = async ({ url, token }) => {
+  const reachAuthorizationStep = async (url) => {
     await clickButton('Next');
     enterInput('#first-run-ha-url', url);
     await clickButton('Next');
-    await clickButton('Next');
-    enterInput('#first-run-ha-token', token);
-    await clickButton('Next');
   };
+
+  const oauthConfig = (url = 'http://ha.local:8123') => ({
+    ...unconfiguredConfig(),
+    homeAssistant: {
+      url,
+      token: 'short-lived-oauth-access-token',
+      authMethod: 'oauth',
+      oauthStatus: 'connected',
+    },
+  });
 
   const loadRenderer = async ({
     config = unconfiguredConfig(),
@@ -83,7 +90,6 @@ describe('Renderer first-run connection verification', () => {
 
     mockElectronAPI = createMockElectronAPI();
     mockElectronAPI.getConfig.mockResolvedValue(config);
-    mockElectronAPI.testHaConnection = jest.fn();
     configureApi?.(mockElectronAPI);
     window.electronAPI = mockElectronAPI;
 
@@ -168,6 +174,7 @@ describe('Renderer first-run connection verification', () => {
       handleDesktopPinActionRequest: jest.fn(),
       callMediaTileService: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
+      switchQuickAccessPage: jest.fn(),
     }));
     jest.doMock('../../src/settings.js', () => ({
       __esModule: true,
@@ -235,156 +242,103 @@ describe('Renderer first-run connection verification', () => {
     );
   });
 
-  it('retests after credentials change and saves only the newly verified pair', async () => {
+  it('uses a three-step browser authorization flow without asking for a token', async () => {
     await loadRenderer();
-    mockElectronAPI.updateConfig.mockClear();
-    mockElectronAPI.testHaConnection.mockResolvedValue({ success: true });
-    await reachConnectionTestStep({
-      url: 'http://ha-one.local:8123',
-      token: 'token-one',
-    });
 
-    await clickButton('Test connection');
-    await clickButton('Next');
-    await clickButton('Back');
-    await clickButton('Back');
-    enterInput('#first-run-ha-token', 'token-two');
-    await clickButton('Next');
-    await clickButton('Next');
-    await clickButton('Finish');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 3');
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(document.getElementById('first-run-onboarding').textContent).not.toContain(
+      'Long-Lived Access Token'
+    );
 
-    expect(mockElectronAPI.testHaConnection).toHaveBeenNthCalledWith(
-      1,
-      'http://ha-one.local:8123',
-      'token-one'
-    );
-    expect(mockElectronAPI.testHaConnection).toHaveBeenNthCalledWith(
-      2,
-      'http://ha-one.local:8123',
-      'token-two'
-    );
-    expect(mockElectronAPI.updateConfig).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        homeAssistant: expect.objectContaining({
-          url: 'http://ha-one.local:8123',
-          token: 'token-two',
-        }),
-      })
+    await reachAuthorizationStep('http://ha-one.local:8123');
+
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 3');
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(document.getElementById('first-run-onboarding').textContent).toContain(
+      'Authorize in Home Assistant'
     );
   });
 
-  it('ignores a stale in-flight result after the token changes', async () => {
-    await loadRenderer();
-    mockElectronAPI.updateConfig.mockClear();
-    let resolveOldTest;
-    const oldTest = new Promise((resolve) => {
-      resolveOldTest = resolve;
+  it('authorizes the normalized URL and starts the configured runtime', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockResolvedValueOnce({
+          success: true,
+          config: oauthConfig('http://ha.local:8123'),
+        });
+      },
     });
-    mockElectronAPI.testHaConnection
-      .mockImplementationOnce(() => oldTest)
-      .mockResolvedValueOnce({ success: true });
+    await reachAuthorizationStep('ha.local:8123/path');
+    await clickButton('Connect');
 
-    await reachConnectionTestStep({
-      url: 'http://ha.local:8123',
-      token: 'old-token',
-    });
-    document.querySelector('.first-run-test-row button').click();
-    await flushAsync();
-
-    await clickButton('Back');
-    enterInput('#first-run-ha-token', 'new-token');
-    await clickButton('Next');
-    await clickButton('Test connection');
-    resolveOldTest({ success: false, code: 'auth-failed' });
-    await flushAsync();
-
-    expect(document.querySelector('.first-run-status').textContent).toBe(
-      'Connection test succeeded. Home Assistant is reachable.'
-    );
-    await clickButton('Next');
-    await clickButton('Finish');
-    expect(mockElectronAPI.testHaConnection).toHaveBeenCalledTimes(2);
-    expect(mockElectronAPI.updateConfig).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        homeAssistant: expect.objectContaining({ token: 'new-token' }),
-      })
-    );
-  });
-
-  it('coalesces duplicate Finish clicks while verification is pending', async () => {
-    await loadRenderer();
-    mockElectronAPI.updateConfig.mockClear();
-    let resolveTest;
-    mockElectronAPI.testHaConnection.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveTest = resolve;
-        })
-    );
-    await reachConnectionTestStep({
-      url: 'http://ha.local:8123',
-      token: 'only-token',
-    });
-    await clickButton('Next');
-
-    const finishButton = Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Finish'
-    );
-    finishButton.click();
-    finishButton.click();
-    await flushAsync();
-
-    expect(mockElectronAPI.testHaConnection).toHaveBeenCalledTimes(1);
-    expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-
-    resolveTest({ success: true });
-    await flushAsync();
-
-    expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
-  });
-
-  it('starts the configured runtime once when saving also broadcasts config-updated', async () => {
-    await loadRenderer();
-    mockElectronAPI.testHaConnection.mockResolvedValue({ success: true });
-    mockElectronAPI.updateConfig.mockImplementationOnce(async (nextConfig) => {
-      triggerMockEvent('configUpdated', nextConfig);
-      await Promise.resolve();
-      return nextConfig;
-    });
-    await reachConnectionTestStep({
-      url: 'http://ha.local:8123',
-      token: 'verified-token',
-    });
-
-    await clickButton('Test connection');
-    await clickButton('Next');
-    await clickButton('Finish');
-    await flushAsync();
-
-    expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
+    expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
+    expect(mockElectronAPI.testHaConnection).not.toHaveBeenCalled();
+    expect(mockState.CONFIG.homeAssistant.authMethod).toBe('oauth');
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
     expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps onboarding open and shows the persistence error when Finish cannot save', async () => {
+  it('coalesces duplicate Connect clicks while browser authorization is pending', async () => {
     await loadRenderer();
-    mockElectronAPI.testHaConnection.mockResolvedValue({ success: true });
-    mockElectronAPI.updateConfig.mockRejectedValueOnce(new Error('disk unavailable'));
-    await reachConnectionTestStep({
-      url: 'http://ha.local:8123',
-      token: 'verified-token',
-    });
+    let resolveAuthorization;
+    mockElectronAPI.startHomeAssistantOAuth.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAuthorization = resolve;
+        })
+    );
+    await reachAuthorizationStep('http://ha.local:8123');
 
-    await clickButton('Test connection');
-    await clickButton('Next');
-    await clickButton('Finish');
+    const connectButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Connect'
+    );
+    connectButton.click();
+    connectButton.click();
+    await flushAsync();
+
+    expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+    expect(mockWebsocket.connect).not.toHaveBeenCalled();
+
+    resolveAuthorization({ success: true, config: oauthConfig() });
+    await flushAsync();
+
+    expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts the runtime once when OAuth completion also broadcasts config-updated', async () => {
+    await loadRenderer();
+    mockElectronAPI.startHomeAssistantOAuth.mockImplementationOnce(async () => {
+      const nextConfig = oauthConfig();
+      triggerMockEvent('configUpdated', nextConfig);
+      await Promise.resolve();
+      return { success: true, config: nextConfig };
+    });
+    await reachAuthorizationStep('http://ha.local:8123');
+
+    await clickButton('Connect');
+    await flushAsync();
+
+    expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalled();
+    expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps onboarding open and shows the pairing error when authorization fails', async () => {
+    await loadRenderer();
+    mockElectronAPI.startHomeAssistantOAuth.mockRejectedValueOnce(
+      new Error('authorization denied')
+    );
+    await reachAuthorizationStep('http://ha.local:8123');
+
+    await clickButton('Connect');
 
     const wizard = document.getElementById('first-run-onboarding');
     const status = document.querySelector('.first-run-status');
     expect(wizard.classList).not.toContain('hidden');
     expect(status.dataset.status).toBe('error');
-    expect(status.textContent).toContain('disk unavailable');
+    expect(status.textContent).toContain('authorization denied');
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('disk unavailable'),
+      expect.stringContaining('authorization denied'),
       'error',
       6000
     );

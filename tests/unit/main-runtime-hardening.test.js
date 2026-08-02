@@ -858,6 +858,36 @@ describe('profile sync runtime safeguards', () => {
     expect(mainSource).toContain('.randomBytes(16)');
   });
 
+  it('keeps OAuth and desktop companion authority in the main process', () => {
+    expect(mainSource).toContain("require('./src/ha-oauth.cjs')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'start-home-assistant-oauth')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'disconnect-home-assistant-oauth')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'get-desktop-companion-registration')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'apply-desktop-companion-command')");
+    expect(mainSource).toContain("!['show', 'hide', 'toggle'].includes(action)");
+    expect(mainSource).toContain('config.desktopCompanion.desktopId = nodeCrypto.randomUUID()');
+    expect(mainSource).toContain("capabilities: ['visibility', 'switch_page']");
+    expect(mainSource).not.toContain('os.hostname');
+
+    const snapshotStart = mainSource.indexOf('function buildConfigSnapshotForSave');
+    const snapshotEnd = mainSource.indexOf(
+      'async function writeConfigSnapshotAsync',
+      snapshotStart
+    );
+    const snapshotSource = mainSource.slice(snapshotStart, snapshotEnd);
+    expect(snapshotSource).toContain("homeAssistant?.authMethod === 'oauth'");
+    expect(snapshotSource).toContain('delete configToSave.homeAssistant.token');
+    expect(snapshotSource.indexOf('delete configToSave.homeAssistant.token')).toBeLessThan(
+      snapshotSource.indexOf('serializedConfig: JSON.stringify(configToSave')
+    );
+
+    const updateStart = mainSource.indexOf("'update-config'");
+    const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
+    const updateSource = mainSource.slice(updateStart, updateEnd);
+    expect(updateSource).toContain('Object.assign(homeAssistant, previousHomeAssistant)');
+    expect(updateSource).toContain('desktopCompanion: previousDesktopCompanion');
+  });
+
   it('cleans up temp sync files and restricts copy sources and destinations', () => {
     expect(mainSource).toContain('await fs.promises.unlink(tempPath).catch(() => {});');
     expect(mainSource).toContain('allowedSourceFolders: [configuredSyncFolder');

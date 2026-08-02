@@ -188,8 +188,17 @@ function createSettingsModalDOM() {
       <label for="ha-url">Home Assistant URL</label>
       <input type="text" id="ha-url" />
 
+      <div id="ha-oauth-status" class="hidden"></div>
+      <button type="button" id="connect-ha-oauth-btn">Connect with Home Assistant</button>
+      <button type="button" id="disconnect-ha-oauth-btn" class="hidden">Disconnect</button>
+      <span id="ha-oauth-spinner" class="hidden"></span>
+      <details id="legacy-ha-token-settings">
       <label for="ha-token">Access Token</label>
       <input type="password" id="ha-token" />
+      <button type="button" id="test-ha-connection-btn">Test legacy token</button>
+      <span id="test-ha-connection-spinner" class="hidden"></span>
+      <div id="test-ha-connection-status" class="hidden"></div>
+      </details>
 
       <label for="weather-entity-select">Weather source</label>
       <select id="weather-entity-select"></select>
@@ -541,6 +550,64 @@ describe('Settings + Config Integration', () => {
 
       expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(modal);
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
+    });
+
+    test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+
+      await settings.openSettings();
+
+      const tokenInput = document.getElementById('ha-token');
+      expect(tokenInput.value).toBe('');
+      expect(tokenInput.disabled).toBe(true);
+      expect(document.getElementById('disconnect-ha-oauth-btn').classList).not.toContain('hidden');
+      expect(document.getElementById('ha-oauth-status').textContent).toBe(
+        'Connected with Home Assistant authorization.'
+      );
+
+      document.getElementById('always-on-top').checked = false;
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          homeAssistant: expect.objectContaining({
+            authMethod: 'oauth',
+            token: 'short-lived-access-token',
+          }),
+        })
+      );
+    });
+
+    test('connect button delegates OAuth pairing to the main process', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'https://ha.example.test';
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: true,
+        config: {
+          ...state.CONFIG,
+          homeAssistant: {
+            url: 'https://ha.example.test',
+            token: 'short-lived-access-token',
+            authMethod: 'oauth',
+            oauthStatus: 'connected',
+          },
+        },
+      });
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith(
+        'https://ha.example.test'
+      );
+      expect(state.CONFIG.homeAssistant.authMethod).toBe('oauth');
+      expect(document.getElementById('ha-token').disabled).toBe(true);
     });
 
     test('discovers available weather entities and selects the saved source', async () => {
