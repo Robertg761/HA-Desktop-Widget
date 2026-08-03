@@ -7,6 +7,7 @@
   "main": "main.js",
   "scripts": {
     "build:renderer": "vite build --mode production",
+    "build:panel": "node scripts/build-panel.cjs",
     "build:renderer:dev": "vite build --mode development",
     "start": "npm run build:renderer && node scripts/start-electron.cjs",
     "watch:renderer": "vite build --mode development --watch",

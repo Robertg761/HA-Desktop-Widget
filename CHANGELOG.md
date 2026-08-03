@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `active_profile_id` and `profile_revision` through companion state so Home Assistant can
   detect revision drift.
 
+- `npm run build:panel` builds the Home Assistant panel preview: the real widget renderer
+  (ui.js, the shared stylesheet, MDI icons) packaged as an iframe page whose widget skeleton is
+  extracted from index.html at build time so the preview and the desktop cannot drift. The
+  bundle ships inside the companion integration and runs read-only against live Home Assistant
+  entities, with camera and artwork tiles resolved through Home Assistant's own image proxy.
+
 ### Changed
 
 - Internal: the browser-safe renderer modules (Quick Access tabs, comparison graphs, primary

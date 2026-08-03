@@ -27,6 +27,7 @@ module.exports = {
   moduleNameMapper: {
     '^@dev-climate-demo$': '<rootDir>/development/dev-climate-demo.js',
     '^@hadw/renderer/(.*)$': '<rootDir>/packages/widget-renderer/src/$1',
+    '\\.css$': '<rootDir>/tests/mocks/style-stub.js',
   },
   transformIgnorePatterns: ['/node_modules/(?!(sortablejs|hls.js)/)'],
   coverageThreshold: {

@@ -5,7 +5,14 @@ const globals = require('globals');
 module.exports = [
   // Global ignores (applied to all configs)
   {
-    ignores: ['node_modules/**', 'dist/**', 'dist-renderer/**', 'dist-preload/**', 'coverage/**'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'dist-renderer/**',
+      'dist-preload/**',
+      'dist-panel/**',
+      'coverage/**',
+    ],
   },
   js.configs.recommended,
   prettier,
@@ -73,7 +80,7 @@ module.exports = [
   },
   // Vite configs (ES Modules, Node.js globals)
   {
-    files: ['vite.config.js', 'vite.preload.config.js'],
+    files: ['vite.config.js', 'vite.preload.config.js', 'vite.panel.config.js'],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'module',
@@ -88,7 +95,12 @@ module.exports = [
   },
   // Renderer process files (ES Modules - bundled by Vite)
   {
-    files: ['renderer.js', 'src/**/*.js', 'packages/widget-renderer/src/**/*.js'],
+    files: [
+      'renderer.js',
+      'src/**/*.js',
+      'packages/widget-renderer/src/**/*.js',
+      'preview/**/*.js',
+    ],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'module',

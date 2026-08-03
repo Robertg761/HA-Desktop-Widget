@@ -46,6 +46,9 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
+      - name: Build panel preview
+        run: npm run build:panel
+
       - name: Package Windows app
         run: npx electron-builder --dir --win --x64 --publish never
 

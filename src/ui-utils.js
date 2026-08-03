@@ -956,7 +956,9 @@ function setStatus(connected, detailMessage = '') {
   }
 }
 
-window.electronAPI.onHotkeyRegistrationFailed(({ hotkey }) => {
+// Hotkeys are desktop-only; browser hosts (the HA panel preview) have no
+// electronAPI, so this module-load hook must stay optional.
+window.electronAPI?.onHotkeyRegistrationFailed?.(({ hotkey }) => {
   showToast(
     t('Hotkey "{{hotkey}}" is already in use by another application.', { hotkey }),
     'error',

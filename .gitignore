@@ -71,3 +71,7 @@ todo.md
 improvement_suggestions.md
 testing-progress.md
 /dist-preload/
+
+# Generated panel preview artifacts
+preview/preview.html
+dist-panel/
