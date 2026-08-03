@@ -1,10 +1,15 @@
 /**
- * Bootstrap for the Home Assistant panel preview iframe.
+ * Home Assistant panel preview: the real desktop app on a virtual desktop.
  *
- * Runs the real widget renderer (ui.js and the shared @hadw/renderer modules)
- * against a profile document and entity states supplied by the parent panel.
- * The parent talks to `window.__hadwPreview`; this page never opens its own
- * Home Assistant connection and can never persist configuration.
+ * This page boots the widget's actual composition root (renderer.js) — so
+ * every button, modal, and settings control is wired by the same code as the
+ * desktop — against two thin virtual seams:
+ *   - a virtual main process (window.electronAPI): config persists in memory
+ *     and flows back through the app's own config-updated pipeline;
+ *   - a virtual Home Assistant socket: authenticates instantly and answers
+ *     bootstrap requests from states the parent panel provides.
+ * Because only these seams are virtual, desktop app changes are reflected
+ * here automatically on the next panel bundle build.
  */
 
 import '@mdi/font/css/materialdesignicons.min.css';
@@ -12,15 +17,15 @@ import '../styles.css';
 import Sortable from 'sortablejs';
 import state from '@hadw/renderer/state.js';
 import { buildProfileDocumentFromConfig } from '@hadw/renderer/profile-schema.js';
-import { setRendererHost } from '@hadw/renderer/host.js';
-import { normalizeQuickAccessConfig } from '@hadw/renderer/quick-access-tabs.js';
-import { normalizeComparisonGraphsConfig } from '@hadw/renderer/comparison-graphs.js';
-import * as ui from '../src/ui.js';
-import * as uiUtils from '../src/ui-utils.js';
-import * as settings from '../src/settings.js';
+import websocket from '../src/websocket.js';
 
-const BASE_CONFIG = Object.freeze({
-  homeAssistant: { url: '', token: '', authMethod: 'token' },
+// --- virtual main process ---------------------------------------------------
+
+let previewConfig = {
+  homeAssistant: { url: 'http://preview.invalid:8123', token: 'preview', authMethod: 'token' },
+  desktopCompanion: { desktopId: '' },
+  globalHotkeys: { enabled: false, hotkeys: {} },
+  entityAlerts: { enabled: false, alerts: {} },
   ui: {
     theme: 'auto',
     accent: 'original',
@@ -43,42 +48,66 @@ const BASE_CONFIG = Object.freeze({
   desktopPins: {},
   customEntityIcons: {},
   quickAccessTileOptions: {},
+  updates: { allowPrerelease: false },
   opacity: 0.95,
   frostedGlass: true,
-});
+};
+let configRevision = 1;
+const configListeners = new Set();
+let notifyParent = () => {};
 
-/**
- * In-memory replacement for the main process's update-config: merge the patch,
- * re-render, and surface the result to the parent panel as a document change.
- */
-async function previewUpdateConfig(patch) {
-  if (!patch || typeof patch !== 'object') return { success: false, error: 'Invalid config' };
-  const current = state.CONFIG || {};
-  const merged = {
-    ...current,
-    ...patch,
-    ui: { ...(current.ui || {}), ...(patch.ui || {}) },
-    homeAssistant: current.homeAssistant || BASE_CONFIG.homeAssistant,
-    desktopPins: {},
-  };
-  const config = applyProfile(buildProfileDocumentFromConfig(merged));
-  emitChange();
-  return { success: true, config };
+function snapshotConfig() {
+  return JSON.parse(JSON.stringify(previewConfig));
 }
 
-// The widget's settings UI talks to window.electronAPI directly. This virtual
-// desktop implements config persistence in memory and answers everything
-// machine-local with harmless defaults so the real settings modal can run
-// unmodified inside Home Assistant.
-function installPreviewElectronApi() {
+function currentDocument() {
+  return buildProfileDocumentFromConfig(previewConfig);
+}
+
+async function virtualUpdateConfig(patch) {
+  if (!patch || typeof patch !== 'object') return { success: false, error: 'Invalid config' };
+  const cleaned = { ...patch };
+  // Machine truths the virtual desktop owns.
+  delete cleaned.configRevision;
+  delete cleaned.developmentDemo;
+  previewConfig = {
+    ...previewConfig,
+    ...cleaned,
+    homeAssistant: previewConfig.homeAssistant,
+    desktopCompanion: previewConfig.desktopCompanion,
+    ui: { ...previewConfig.ui, ...(cleaned.ui || {}) },
+    desktopPins: {},
+  };
+  configRevision += 1;
+  const authoritative = { ...snapshotConfig(), configRevision };
+  // The app's own pipeline (applyRendererConfig) re-renders from this event.
+  for (const listener of [...configListeners]) {
+    try {
+      listener(authoritative);
+    } catch (error) {
+      console.warn('Preview config listener failed:', error?.message || error);
+    }
+  }
+  notifyParent();
+  return { success: true, config: authoritative };
+}
+
+function installVirtualElectronApi() {
   const stubs = {
     platform: 'linux',
-    getConfig: async () => JSON.parse(JSON.stringify(state.CONFIG || {})),
-    updateConfig: previewUpdateConfig,
-    saveConfig: previewUpdateConfig,
+    getConfig: async () => ({ ...snapshotConfig(), configRevision }),
+    updateConfig: virtualUpdateConfig,
+    saveConfig: virtualUpdateConfig,
+    onConfigUpdated: (callback) => {
+      configListeners.add(callback);
+      return () => configListeners.delete(callback);
+    },
+    signalRendererReady: async () => {},
+    clearTokenResetReason: async () => {},
     getAppVersion: async () =>
-      `${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : ''} (preview)`,
+      `${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'} (preview)`,
     getLoginItemSettings: async () => ({ openAtLogin: false }),
+    setLoginItemSettings: async () => ({ success: true }),
     getWindowState: async () => ({ alwaysOnTop: false }),
     getProfileSyncStatus: async () => ({ enabled: false, provider: 'folder' }),
     getLocaleBootstrap: async () => null,
@@ -86,12 +115,16 @@ function installPreviewElectronApi() {
     isPopupHotkeyAvailable: async () => false,
     getPopupHotkey: async () => '',
     validateHotkey: async () => ({ valid: false, error: 'Hotkeys are desktop-only' }),
+    registerHotkeys: async () => ({ success: true, failed: [] }),
     getDesktopCompanionRegistration: async () => null,
     getDesktopCompanionState: async () => ({ visible: true, current_page: 'default' }),
     testHaConnection: async () => ({
       success: false,
-      error: 'Connection settings are desktop-only',
+      error: 'Connection settings live on the desktop',
     }),
+    setOpacity: async () => {},
+    previewWindowEffects: async () => {},
+    setAlwaysOnTop: async () => {},
     debugLog: async () => {},
   };
   window.electronAPI = new Proxy(stubs, {
@@ -103,139 +136,104 @@ function installPreviewElectronApi() {
   });
 }
 
-function settingsUiHooks() {
-  return {
-    initUpdateUI: ui.initUpdateUI,
-    renderActiveTab: ui.renderActiveTab,
-    updateMediaTile: ui.updateMediaTile,
-    renderPrimaryCards: ui.renderPrimaryCards,
-    updateWeatherEffects: ui.updateWeatherEffects,
-    exitReorganizeMode: () => {
-      const container = document.getElementById('quick-controls');
-      if (container?.classList.contains('reorganize-mode')) ui.toggleReorganizeMode();
-    },
+// --- virtual Home Assistant socket ------------------------------------------
+
+function installVirtualSocket() {
+  let connected = false;
+  websocket.connect = () => {
+    connected = true;
+    websocket.ws = {
+      readyState: typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1,
+      send: (raw) => {
+        try {
+          const message = JSON.parse(raw);
+          if (message.type === 'auth') {
+            setTimeout(() => websocket.emit('message', { type: 'auth_ok' }), 0);
+          }
+        } catch {
+          /* no-op */
+        }
+      },
+      close: () => {},
+    };
+    setTimeout(() => websocket.emit('open'), 0);
   };
-}
-
-function openSettings() {
-  return settings.openSettings(settingsUiHooks());
-}
-
-function createPreviewHost() {
-  return {
-    capabilities: Object.freeze({
-      isElectron: false,
-      isPreview: true,
-      supportsPins: false,
-      supportsFrostedGlass: false,
-      supportsDrag: false,
-    }),
-    canPersistConfig: true,
-    getConfig: async () => state.CONFIG,
-    updateConfig: previewUpdateConfig,
-    onConfigUpdated: () => () => {},
-    debugLog: () => {},
-    showEntityContextMenu: null,
-    resolveMediaUrl(spec) {
-      // Same-origin Home Assistant URLs replace the desktop's ha:// protocol.
-      if (spec?.kind === 'media_artwork') return spec.url || '';
-      if (spec?.kind === 'camera_snapshot' || spec?.kind === 'camera_stream') {
-        return state.STATES?.[spec.entityId]?.attributes?.entity_picture || '';
-      }
-      return '';
-    },
-  };
-}
-
-function buildPreviewConfig(profileDocument) {
-  const document_ = profileDocument && typeof profileDocument === 'object' ? profileDocument : {};
-  const merged = {
-    ...BASE_CONFIG,
-    ...document_,
-    ui: { ...BASE_CONFIG.ui, ...(document_.ui || {}) },
-    desktopPins: {},
-  };
-  return normalizeComparisonGraphsConfig(normalizeQuickAccessConfig(merged));
-}
-
-function renderAll() {
-  const steps = [
-    () => ui.renderPrimaryCards(),
-    () => ui.renderActiveTab(),
-    () => ui.updateWeatherFromHA(),
-    () => ui.updateTimeDisplay(),
-    () => ui.updateMediaTile(),
-  ];
-  for (const step of steps) {
-    try {
-      step();
-    } catch (error) {
-      console.warn('Preview render step failed:', error?.message || error);
+  websocket.isConnected = () => connected;
+  websocket.close = () => {};
+  let requestId = 1000;
+  websocket.request = async (payload) => {
+    const id = (requestId += 1);
+    switch (payload?.type) {
+      case 'get_states':
+        return { id, success: true, result: Object.values(state.STATES || {}) };
+      case 'get_services':
+        return { id, success: true, result: {} };
+      case 'get_config':
+        return { id, success: true, result: { unit_system: { temperature: '°C' } } };
+      case 'config/area_registry/list':
+        return { id, success: true, result: [] };
+      default:
+        return { id, success: true, result: {} };
     }
-  }
+  };
+  websocket.subscribeMessage = () => () => {};
+  websocket.callService = async () => ({ success: true, preview: true });
+  websocket.callServiceWithResponse = async () => ({ success: true, response: {} });
 }
+
+// --- parent bridge ----------------------------------------------------------
 
 function applyProfile(profileDocument) {
-  const config = buildPreviewConfig(profileDocument);
-  state.setConfig(config);
-  try {
-    uiUtils.applyTheme(config.ui?.theme || 'auto');
-    uiUtils.setCustomThemes(config.ui?.customColors || []);
-    uiUtils.applyAccentTheme(config.ui?.accent || 'original');
-    uiUtils.applyBackgroundTheme(config.ui?.background || 'original');
-    uiUtils.applyUiPreferences(config.ui || {});
-    uiUtils.applyWindowEffects(config);
-  } catch (error) {
-    console.warn('Preview theme apply failed:', error?.message || error);
-  }
-  renderAll();
-  return config;
+  const document_ = profileDocument && typeof profileDocument === 'object' ? profileDocument : {};
+  return virtualUpdateConfig({
+    customTabs: [],
+    activeTabId: '',
+    favoriteEntities: [],
+    comparisonGraphs: [],
+    customEntityIcons: {},
+    quickAccessTileOptions: {},
+    ...document_,
+  });
 }
 
 function setStates(entities) {
-  state.setStates(entities && typeof entities === 'object' ? entities : {});
-  renderAll();
+  state.setStates(entities && typeof entities === 'object' ? { ...entities } : {});
+  // Re-run the app's own render entry via a config echo (cheap, idempotent).
+  void virtualUpdateConfig({});
 }
 
 function setEntityState(entity) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
-  try {
-    ui.updateEntityInUI(entity);
-  } catch (error) {
-    console.warn('Preview entity update failed:', error?.message || error);
-  }
+  websocket.emit('message', {
+    type: 'event',
+    event: {
+      event_type: 'state_changed',
+      data: { entity_id: entity.entity_id, new_state: entity },
+    },
+  });
 }
 
-// --- WYSIWYG editing -------------------------------------------------------
+// --- WYSIWYG editing --------------------------------------------------------
 
 const editState = { enabled: false, sortable: null, api: null };
 
-function currentDocument() {
-  return buildProfileDocumentFromConfig(state.CONFIG);
-}
-
 function emitChange() {
-  const document_ = currentDocument();
   try {
-    editState.api?.onDocumentChange?.(JSON.parse(JSON.stringify(document_)));
+    editState.api?.onDocumentChange?.(JSON.parse(JSON.stringify(currentDocument())));
   } catch (error) {
     console.warn('Preview change callback failed:', error?.message || error);
   }
 }
 
-function activeTabOf(document_) {
-  const tabs = Array.isArray(document_.customTabs) ? document_.customTabs : [];
-  return tabs.find((tab) => tab.id === document_.activeTabId) || tabs[0] || null;
-}
-
 function mutateActiveTab(mutate) {
   const document_ = currentDocument();
-  const tab = activeTabOf(document_);
+  const tab =
+    (document_.customTabs || []).find((t) => t.id === document_.activeTabId) ||
+    (document_.customTabs || [])[0];
   if (!tab) return false;
   mutate(tab, document_);
-  applyProfile(document_);
-  emitChange();
+  void applyProfile(document_);
   return true;
 }
 
@@ -246,12 +244,10 @@ function addEntity(entityId) {
     if (!tab.entityIds.includes(cleanId)) tab.entityIds.push(cleanId);
   });
   if (added) return true;
-  // A brand-new profile has no pages yet; start one with this entity.
   const document_ = currentDocument();
   document_.customTabs = [{ id: 'default', name: 'Home', entityIds: [cleanId] }];
   document_.activeTabId = 'default';
-  applyProfile(document_);
-  emitChange();
+  void applyProfile(document_);
   return true;
 }
 
@@ -264,7 +260,6 @@ function removeEntity(entityId) {
 function handleEditClick(event) {
   if (!editState.enabled) return;
   const tile = event.target.closest?.('.control-item');
-  // Block tile actions while editing; the top-right corner removes the tile.
   event.preventDefault();
   event.stopPropagation();
   if (!tile?.dataset.entityId) return;
@@ -298,8 +293,8 @@ function setEditing(enabled) {
   return editState.enabled;
 }
 
-const EDIT_STYLE = `
-  /* Machine-local settings make no sense remotely. */
+const PREVIEW_STYLE = `
+  /* Machine-local surfaces make no sense remotely. */
   .hadw-preview [data-tab="hotkeys"], .hadw-preview [data-tab="alerts"],
   .hadw-preview [data-tab="advanced"], .hadw-preview #minimize-btn,
   .hadw-preview #close-btn { display: none !important; }
@@ -311,29 +306,7 @@ const EDIT_STYLE = `
   }
 `;
 
-function initPreview() {
-  installPreviewElectronApi();
-  setRendererHost(createPreviewHost());
-  // The preview never opens its own HA connection; the parent panel feeds it
-  // states directly, so the boot overlay must not wait for one.
-  try {
-    uiUtils.showLoading(false);
-    const status = document.getElementById('connection-status');
-    if (status) {
-      status.textContent = '';
-      status.title = 'Preview — entity data comes from this Home Assistant';
-    }
-  } catch {
-    /* no-op */
-  }
-  const style = document.createElement('style');
-  style.textContent = EDIT_STYLE;
-  document.head.appendChild(style);
-  document.getElementById('quick-controls')?.addEventListener('click', handleEditClick, true);
-  document.getElementById('settings-btn')?.addEventListener('click', () => {
-    openSettings().catch((error) => console.warn('Preview settings failed:', error));
-  });
-  applyProfile({});
+function installPreviewApi() {
   const api = {
     ready: true,
     applyProfile,
@@ -342,20 +315,50 @@ function initPreview() {
     setEditing,
     addEntity,
     removeEntity,
-    openSettings,
     getDocument: currentDocument,
     onDocumentChange: null,
   };
   editState.api = api;
+  notifyParent = emitChange;
   window.__hadwPreview = api;
   window.dispatchEvent(new CustomEvent('hadw-preview-ready'));
   return api;
 }
 
-// In the built iframe page the skeleton is present when this module runs; the
-// jsdom tests install the skeleton first and then call initPreview themselves.
-if (typeof window !== 'undefined' && document.getElementById('quick-controls')) {
-  initPreview();
+function initPreview() {
+  const style = document.createElement('style');
+  style.textContent = PREVIEW_STYLE;
+  document.head.appendChild(style);
+  document.getElementById('quick-controls')?.addEventListener('click', handleEditClick, true);
+  return installPreviewApi();
 }
 
-export { applyProfile, buildPreviewConfig, createPreviewHost, initPreview, setStates };
+installVirtualElectronApi();
+installVirtualSocket();
+
+// Boot the real app. Its DOMContentLoaded handler wires every control exactly
+// as on the desktop; module evaluation order guarantees our seams exist first.
+import('../renderer.js')
+  .then(() => {
+    // The dynamic import can resolve after DOMContentLoaded already fired, in
+    // which case the app's wiring listener would never run — replay it.
+    if (document.readyState !== 'loading') {
+      document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+    }
+    initPreview();
+  })
+  .catch((error) => {
+    console.error('Preview failed to boot the renderer:', error);
+    initPreview();
+  });
+
+export {
+  applyProfile,
+  currentDocument as getDocument,
+  initPreview,
+  installVirtualElectronApi,
+  installVirtualSocket,
+  setEntityState,
+  setStates,
+  virtualUpdateConfig,
+};

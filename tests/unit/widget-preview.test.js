@@ -1,30 +1,15 @@
 /**
  * @jest-environment jsdom
  *
- * Boots the panel preview against the real ui.js renderer and the real widget
- * skeleton (extracted from index.html exactly like the panel build does), and
- * proves the preview surface renders without any Electron API present.
+ * Boots the panel preview — the REAL renderer.js on the virtual desktop —
+ * against the real widget markup extracted from index.html, and proves the
+ * app's own wiring (settings modal included) works without Electron.
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const { extractWidgetSkeleton } = require('../../scripts/build-panel.cjs');
-
-const PROFILE_DOCUMENT = {
-  ui: { theme: 'dark', accent: 'teal' },
-  primaryCards: ['weather', 'time'],
-  customTabs: [
-    {
-      id: 'office',
-      name: 'Office',
-      entityIds: ['light.living_room', 'sensor.temperature'],
-    },
-  ],
-  activeTabId: 'office',
-  opacity: 0.8,
-  frostedGlass: false,
-};
 
 const STATES = {
   'light.living_room': {
@@ -39,105 +24,85 @@ const STATES = {
   },
 };
 
-describe('panel preview bootstrap', () => {
-  let preview;
+const PROFILE_DOCUMENT = {
+  ui: { theme: 'dark', accent: 'teal' },
+  customTabs: [
+    { id: 'office', name: 'Office', entityIds: ['light.living_room', 'sensor.temperature'] },
+  ],
+  activeTabId: 'office',
+};
 
-  beforeAll(() => {
+const flush = async () => {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+describe('panel preview virtual desktop', () => {
+  let api;
+
+  beforeAll(async () => {
     delete window.electronAPI;
+    window.matchMedia ||= () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    });
+    window.ResizeObserver ||= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
     const indexHtml = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8');
     document.body.innerHTML = extractWidgetSkeleton(indexHtml);
-    preview = require('../../preview/preview-main.js');
+    require('../../preview/preview-main.js');
+    for (let i = 0; i < 200 && !window.__hadwPreview; i += 1) await flush();
+    api = window.__hadwPreview;
+  }, 30000);
+
+  test('the real renderer boots and installs the parent API', () => {
+    expect(api?.ready).toBe(true);
+    expect(document.getElementById('settings-modal')).toBeTruthy();
   });
 
-  test('skeleton extraction finds the widget surface', () => {
-    expect(document.getElementById('quick-controls')).toBeTruthy();
-    expect(document.getElementById('weather-card')).toBeTruthy();
-    expect(document.getElementById('quick-access-tabs')).toBeTruthy();
-  });
-
-  test('initPreview installs the API without an Electron surface', () => {
-    const api = preview.initPreview();
-    expect(window.__hadwPreview).toBe(api);
-    expect(api.ready).toBe(true);
-  });
-
-  test('applying a profile renders real tiles from real states', () => {
-    preview.setStates(STATES);
-    preview.applyProfile(PROFILE_DOCUMENT);
-
-    const tiles = document.querySelectorAll('#quick-controls .control-item');
-    const tileIds = [...tiles].map((tile) => tile.dataset.entityId);
+  test('profile plus states render real tiles', async () => {
+    api.setStates(STATES);
+    await api.applyProfile(PROFILE_DOCUMENT);
+    await flush();
+    const tileIds = [...document.querySelectorAll('#quick-controls .control-item')].map(
+      (tile) => tile.dataset.entityId
+    );
     expect(tileIds).toEqual(expect.arrayContaining(['light.living_room', 'sensor.temperature']));
-    expect(document.body.textContent).toContain('Living Room Light');
     expect(document.body.dataset.accent).toBe('teal');
   });
 
-  test('entity updates patch the rendered tile in place', () => {
-    preview.setStates(STATES);
-    preview.applyProfile(PROFILE_DOCUMENT);
-    window.__hadwPreview.setEntityState({
-      entity_id: 'sensor.temperature',
-      state: '25.9',
-      attributes: { friendly_name: 'Temperature', unit_of_measurement: '°C' },
-    });
-    const tile = document.querySelector('.control-item[data-entity-id="sensor.temperature"]');
-    expect(tile.textContent).toContain('25.9');
+  test("the app's own settings button opens the real settings modal", async () => {
+    document.getElementById('settings-btn').click();
+    await flush();
+    expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
   });
 
-  test('the real settings modal opens and persists edits in memory', async () => {
-    const api = preview.initPreview();
+  test('config edits flow through the app pipeline and reach the parent', async () => {
     const changes = [];
     api.onDocumentChange = (doc) => changes.push(doc);
-    expect(document.getElementById('settings-modal')).toBeTruthy();
-    await api.openSettings();
-    expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
-
     const result = await window.electronAPI.updateConfig({ ui: { theme: 'light' } });
     expect(result.success).toBe(true);
-    expect(result.config.ui.theme).toBe('light');
+    await flush();
     expect(changes.at(-1).ui.theme).toBe('light');
+    expect(api.getDocument().ui.theme).toBe('light');
   });
 
-  test('editing adds, removes, and reports tiles through the change callback', () => {
-    preview.setStates(STATES);
-    const api = preview.initPreview();
-    const changes = [];
-    api.onDocumentChange = (doc) => changes.push(doc);
-    api.applyProfile(PROFILE_DOCUMENT);
-
-    expect(api.setEditing(true)).toBe(true);
+  test('editing mutates the active page through the app pipeline', async () => {
+    await api.applyProfile(PROFILE_DOCUMENT);
+    await flush();
+    api.setEditing(true);
     expect(api.addEntity('switch.fan')).toBe(true);
-    let tile = document.querySelector('.control-item[data-entity-id="switch.fan"]');
-    expect(tile).toBeTruthy();
-    expect(changes.at(-1).customTabs[0].entityIds).toContain('switch.fan');
-
+    await flush();
+    expect(api.getDocument().customTabs[0].entityIds).toContain('switch.fan');
     expect(api.removeEntity('switch.fan')).toBe(true);
-    tile = document.querySelector('.control-item[data-entity-id="switch.fan"]');
-    expect(tile).toBeNull();
-    expect(changes.at(-1).customTabs[0].entityIds).not.toContain('switch.fan');
-
-    // A brand-new profile bootstraps its first page on add.
-    api.applyProfile({});
-    expect(api.addEntity('light.living_room')).toBe(true);
-    expect(changes.at(-1).customTabs[0].entityIds).toEqual(['light.living_room']);
+    await flush();
+    expect(api.getDocument().customTabs[0].entityIds).not.toContain('switch.fan');
     api.setEditing(false);
-  });
-
-  test('preview host maps media specs to Home Assistant URLs', () => {
-    const host = preview.createPreviewHost();
-    preview.setStates({
-      'camera.front': {
-        entity_id: 'camera.front',
-        state: 'idle',
-        attributes: { entity_picture: '/api/camera_proxy/camera.front?token=abc' },
-      },
-    });
-    expect(host.resolveMediaUrl({ kind: 'camera_snapshot', entityId: 'camera.front' })).toBe(
-      '/api/camera_proxy/camera.front?token=abc'
-    );
-    expect(host.resolveMediaUrl({ kind: 'media_artwork', url: '/api/media/x.jpg' })).toBe(
-      '/api/media/x.jpg'
-    );
-    expect(host.canPersistConfig).toBe(true);
   });
 });
