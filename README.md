@@ -114,10 +114,23 @@ The legacy long-lived access-token form remains under **Settings > Legacy access
 ### Home Assistant Companion Integration
 
 The optional `HA Desktop Widget Companion` custom integration makes registered desktops visible as
-native Home Assistant devices and supports `show`, `hide`, `toggle`, and `switch_page` actions. The
-desktop uses the same authenticated Home Assistant WebSocket connection for registration, state
-reporting, command delivery, and acknowledgements. It never accepts arbitrary shell commands,
-JavaScript, file access, URLs, or generic Electron IPC from Home Assistant.
+native Home Assistant devices and supports `show`, `hide`, `toggle`, `switch_page`, and
+`apply_profile` actions. The desktop uses the same authenticated Home Assistant WebSocket
+connection for registration, state reporting, command delivery, and acknowledgements. It never
+accepts arbitrary shell commands, JavaScript, file access, URLs, or generic Electron IPC from
+Home Assistant.
+
+`apply_profile` applies a named profile authored in Home Assistant: a bounded configuration
+document covering appearance (theme, accent, background, opacity, frosted glass), primary cards,
+Quick Access pages and tiles, comparison graphs, custom icons, and tile options. Profiles never
+carry credentials, hotkeys, window geometry, desktop pins, or file-sync settings; those stay
+local to each machine. The desktop reports which profile revision it last applied so Home
+Assistant can flag out-of-date desktops.
+
+> [!NOTE]
+> A Home Assistant profile overwrites the sections it contains. If the folder-based profile sync
+> feature is also enabled for the same sections, whichever mechanism writes last wins — avoid
+> managing the same settings with both at once.
 
 ## How to Use
 

@@ -17,6 +17,7 @@ import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import { DesktopCompanionClient } from './src/desktop-companion-client.js';
+import { buildConfigPatchFromApplyPayload } from './src/profile-schema.js';
 import {
   installClimateDemo,
   isClimateDemoConfig,
@@ -668,6 +669,20 @@ function maybeShowFirstRunWizard() {
 }
 
 async function executeDesktopCompanionCommand({ action, payload }) {
+  if (action === 'apply_profile') {
+    const patch = buildConfigPatchFromApplyPayload(payload, state.CONFIG);
+    const result = await window.electronAPI.updateConfig(patch);
+    if (result?.success === false) {
+      throw new Error(result?.error || 'Profile could not be saved on this desktop');
+    }
+    const mainState = await window.electronAPI.getDesktopCompanionState();
+    return {
+      ...mainState,
+      active_profile_id: patch.haProfile.activeProfileId,
+      profile_revision: patch.haProfile.revision,
+    };
+  }
+
   if (action !== 'switch_page') {
     return window.electronAPI.applyDesktopCompanionCommand(action);
   }

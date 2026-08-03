@@ -1132,6 +1132,33 @@ function ensureUpdateConfigDefaults(target) {
   return target;
 }
 
+/**
+ * Keep the Home Assistant profile marker bounded and well-typed. The marker
+ * records which HA-authored profile this desktop last applied, for revision
+ * drift reporting through the companion protocol.
+ */
+function ensureHaProfileConfigDefaults(target) {
+  if (!target || typeof target !== 'object') return target;
+  const haProfile =
+    target.haProfile && typeof target.haProfile === 'object' ? target.haProfile : {};
+  const activeProfileId =
+    typeof haProfile.activeProfileId === 'string'
+      ? haProfile.activeProfileId.trim().slice(0, 64)
+      : '';
+  target.haProfile = {
+    activeProfileId,
+    revision:
+      activeProfileId && Number.isInteger(haProfile.revision) && haProfile.revision >= 0
+        ? haProfile.revision
+        : 0,
+    appliedAt:
+      activeProfileId && typeof haProfile.appliedAt === 'string'
+        ? haProfile.appliedAt.slice(0, 64)
+        : '',
+  };
+  return target;
+}
+
 const TIME_DISPLAY_FORMATS = new Set(['system', '12-hour', '24-hour']);
 const DATE_DISPLAY_FORMATS = new Set(['system', 'weekday-short', 'long', 'numeric']);
 
@@ -2253,13 +2280,21 @@ function pushConfigToRenderer(extra = {}) {
 }
 
 function getDesktopCompanionState() {
-  return {
+  const state = {
     visible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
     current_page:
       typeof config?.activeTabId === 'string' && config.activeTabId.trim()
         ? config.activeTabId.trim().slice(0, 128)
         : 'default',
   };
+  const haProfile = config?.haProfile;
+  if (typeof haProfile?.activeProfileId === 'string' && haProfile.activeProfileId.trim()) {
+    state.active_profile_id = haProfile.activeProfileId.trim().slice(0, 64);
+    if (Number.isInteger(haProfile.revision) && haProfile.revision >= 0) {
+      state.profile_revision = haProfile.revision;
+    }
+  }
+  return state;
 }
 
 function notifyDesktopCompanionStateChanged() {
@@ -2281,7 +2316,7 @@ function getDesktopCompanionRegistration() {
     platform: process.platform,
     architecture: process.arch,
     app_version: app.getVersion(),
-    capabilities: ['visibility', 'switch_page'],
+    capabilities: ['visibility', 'switch_page', 'apply_profile'],
   };
 }
 
@@ -3290,6 +3325,11 @@ function loadConfig(options = {}) {
     desktopCompanion: {
       desktopId: '',
     },
+    haProfile: {
+      activeProfileId: '',
+      revision: 0,
+      appliedAt: '',
+    },
     globalHotkeys: {
       enabled: false,
       hotkeys: {}, // entityId -> hotkey combination
@@ -3360,6 +3400,7 @@ function loadConfig(options = {}) {
         ensureDateTimeFormatConfigDefaults(config);
         ensureProfileSyncConfigDefaults(config);
         ensureUpdateConfigDefaults(config);
+        ensureHaProfileConfigDefaults(config);
         normalizeDesktopPinsConfig(config);
 
         if (recovery.success) {
@@ -3396,6 +3437,7 @@ function loadConfig(options = {}) {
           ...defaultConfig.desktopCompanion,
           ...(userConfig.desktopCompanion || {}),
         },
+        haProfile: { ...defaultConfig.haProfile, ...(userConfig.haProfile || {}) },
         globalHotkeys: { ...defaultConfig.globalHotkeys, ...(userConfig.globalHotkeys || {}) },
         entityAlerts: { ...defaultConfig.entityAlerts, ...(userConfig.entityAlerts || {}) },
         ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) },
@@ -3415,6 +3457,7 @@ function loadConfig(options = {}) {
       });
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
+      ensureHaProfileConfigDefaults(config);
 
       // OAuth access tokens are short-lived runtime state. Ignore any stale copy
       // that an earlier development build may have put in config.json.
@@ -5258,6 +5301,7 @@ ipcMain.handle(
     ensureDateTimeFormatConfigDefaults(config);
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
+    ensureHaProfileConfigDefaults(config);
     normalizeDesktopPinsConfig(config);
     pruneConfig(config);
     restoreProfileFromStalePullEcho(prevConfig);

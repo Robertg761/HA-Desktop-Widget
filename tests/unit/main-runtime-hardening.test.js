@@ -866,7 +866,7 @@ describe('profile sync runtime safeguards', () => {
     expect(mainSource).toContain("authorizeIpcSender(event, 'apply-desktop-companion-command')");
     expect(mainSource).toContain("!['show', 'hide', 'toggle'].includes(action)");
     expect(mainSource).toContain('config.desktopCompanion.desktopId = nodeCrypto.randomUUID()');
-    expect(mainSource).toContain("capabilities: ['visibility', 'switch_page']");
+    expect(mainSource).toContain("capabilities: ['visibility', 'switch_page', 'apply_profile']");
     expect(mainSource).not.toContain('os.hostname');
 
     const snapshotStart = mainSource.indexOf('function buildConfigSnapshotForSave');

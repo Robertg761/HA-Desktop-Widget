@@ -3,7 +3,7 @@ import log from './logger.js';
 const PROTOCOL_VERSION = 1;
 const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const MAX_COMMAND_HISTORY = 100;
-const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page']);
+const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page', 'apply_profile']);
 
 function boundedString(value, maximum = 128) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : '';
@@ -14,6 +14,12 @@ function normalizeState(value) {
   if (typeof value?.visible === 'boolean') state.visible = value.visible;
   const currentPage = boundedString(value?.current_page ?? value?.currentPage);
   if (currentPage) state.current_page = currentPage;
+  const activeProfileId = boundedString(value?.active_profile_id ?? value?.activeProfileId, 64);
+  if (activeProfileId) state.active_profile_id = activeProfileId;
+  const profileRevision = Number(value?.profile_revision ?? value?.profileRevision);
+  if (Number.isInteger(profileRevision) && profileRevision >= 0) {
+    state.profile_revision = profileRevision;
+  }
   return state;
 }
 

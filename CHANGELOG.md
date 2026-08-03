@@ -5,6 +5,28 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The HA Desktop Widget Companion connection now advertises and executes the `apply_profile`
+  command: Home Assistant can push a named, revision-controlled profile (appearance, primary
+  cards, Quick Access pages and tiles, comparison graphs, custom icons, tile options, opacity,
+  and frosted glass) that the desktop validates, normalizes, and persists through the normal
+  config pipeline.
+- `src/profile-schema.js` defines the canonical profile schema (version 1) shared with the
+  companion integration, including the section allowlist and per-section normalization.
+- The desktop records the applied profile identity in config (`haProfile`) and reports
+  `active_profile_id` and `profile_revision` through companion state so Home Assistant can
+  detect revision drift.
+
+### Security
+
+- Profiles are configuration data only: unknown sections are dropped, machine-local settings
+  (credentials, hotkeys, window geometry, desktop pins, profile sync, updates) can never be set
+  by a profile, and unsupported profile schema versions are rejected with a failed
+  acknowledgement.
+
 ## [3.9.0-beta.1] - 2026-08-02
 
 This beta introduces native Home Assistant authorization and the first compatible client for the
