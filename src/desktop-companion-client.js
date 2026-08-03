@@ -20,6 +20,10 @@ function normalizeState(value) {
   if (Number.isInteger(profileRevision) && profileRevision >= 0) {
     state.profile_revision = profileRevision;
   }
+  for (const key of ['window_width', 'window_height']) {
+    const size = Number(value?.[key]);
+    if (Number.isInteger(size) && size >= 100 && size <= 10000) state[key] = size;
+  }
   return state;
 }
 

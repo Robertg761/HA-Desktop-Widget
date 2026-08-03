@@ -2287,6 +2287,14 @@ function getDesktopCompanionState() {
         ? config.activeTabId.trim().slice(0, 128)
         : 'default',
   };
+  // The window size drives tile wrapping, so Home Assistant's preview needs it
+  // to reproduce the layout faithfully.
+  const bounds =
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : config?.windowSize || {};
+  if (Number.isInteger(bounds?.width) && bounds.width > 0 && Number.isInteger(bounds?.height)) {
+    state.window_width = Math.max(100, Math.min(bounds.width, 10000));
+    state.window_height = Math.max(100, Math.min(bounds.height, 10000));
+  }
   const haProfile = config?.haProfile;
   if (typeof haProfile?.activeProfileId === 'string' && haProfile.activeProfileId.trim()) {
     state.active_profile_id = haProfile.activeProfileId.trim().slice(0, 64);
