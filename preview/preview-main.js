@@ -18,6 +18,7 @@ import Sortable from 'sortablejs';
 import state from '@hadw/renderer/state.js';
 import { buildProfileDocumentFromConfig } from '@hadw/renderer/profile-schema.js';
 import websocket from '../src/websocket.js';
+import * as ui from '../src/ui.js';
 
 // --- virtual main process ---------------------------------------------------
 
@@ -55,6 +56,7 @@ let previewConfig = {
 let configRevision = 1;
 const configListeners = new Set();
 let notifyParent = () => {};
+let suppressParentNotify = false;
 
 function snapshotConfig() {
   return JSON.parse(JSON.stringify(previewConfig));
@@ -80,7 +82,7 @@ async function virtualUpdateConfig(patch) {
   };
   configRevision += 1;
   const authoritative = { ...snapshotConfig(), configRevision };
-  // The app's own pipeline (applyRendererConfig) re-renders from this event.
+  // The app's own pipeline (applyRendererConfig) re-themes from this event...
   for (const listener of [...configListeners]) {
     try {
       listener(authoritative);
@@ -88,7 +90,22 @@ async function virtualUpdateConfig(patch) {
       console.warn('Preview config listener failed:', error?.message || error);
     }
   }
-  notifyParent();
+  // ...but tile re-renders flow through other desktop paths, so the virtual
+  // desktop triggers the app's own render entry explicitly.
+  for (const step of [
+    () => ui.renderPrimaryCards(),
+    () => ui.renderActiveTab(),
+    () => ui.updateWeatherFromHA(),
+    () => ui.updateTimeDisplay(),
+    () => ui.updateMediaTile(),
+  ]) {
+    try {
+      step();
+    } catch (error) {
+      console.warn('Preview render step failed:', error?.message || error);
+    }
+  }
+  if (!suppressParentNotify) notifyParent();
   return { success: true, config: authoritative };
 }
 
@@ -183,23 +200,32 @@ function installVirtualSocket() {
 
 // --- parent bridge ----------------------------------------------------------
 
-function applyProfile(profileDocument) {
+async function applyProfile(profileDocument) {
   const document_ = profileDocument && typeof profileDocument === 'object' ? profileDocument : {};
-  return virtualUpdateConfig({
-    customTabs: [],
-    activeTabId: '',
-    favoriteEntities: [],
-    comparisonGraphs: [],
-    customEntityIcons: {},
-    quickAccessTileOptions: {},
-    ...document_,
-  });
+  // Parent-initiated pushes are not user edits; don't echo them back.
+  suppressParentNotify = true;
+  try {
+    return await virtualUpdateConfig({
+      customTabs: [],
+      activeTabId: '',
+      favoriteEntities: [],
+      comparisonGraphs: [],
+      customEntityIcons: {},
+      quickAccessTileOptions: {},
+      ...document_,
+    });
+  } finally {
+    suppressParentNotify = false;
+  }
 }
 
 function setStates(entities) {
   state.setStates(entities && typeof entities === 'object' ? { ...entities } : {});
+  suppressParentNotify = true;
   // Re-run the app's own render entry via a config echo (cheap, idempotent).
-  void virtualUpdateConfig({});
+  void virtualUpdateConfig({}).finally(() => {
+    suppressParentNotify = false;
+  });
 }
 
 function setEntityState(entity) {
