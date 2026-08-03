@@ -18,18 +18,12 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 function extractWidgetSkeleton(indexHtml) {
-  const lines = indexHtml.split('\n');
-  const start = lines.findIndex((line) => line.includes('class="widget-content"'));
-  if (start === -1) throw new Error('widget-content block not found in index.html');
-  let depth = 0;
-  for (let i = start; i < lines.length; i += 1) {
-    depth += (lines[i].match(/<div\b/g) || []).length;
-    depth -= (lines[i].match(/<\/div>/g) || []).length;
-    if (depth === 0 && i > start) {
-      return lines.slice(start, i + 1).join('\n');
-    }
-  }
-  throw new Error('widget-content block not closed in index.html');
+  // The full body ships so the widget's real settings modal (and every other
+  // modal ui.js/settings.js expect) exists in the preview; scripts are
+  // stripped because the preview has its own bootstrap.
+  const match = indexHtml.match(/<body[^>]*>([\s\S]*)<\/body>/);
+  if (!match) throw new Error('body not found in index.html');
+  return match[1].replace(/<script[\s\S]*?<\/script>/g, '');
 }
 
 function buildPreviewHtml() {

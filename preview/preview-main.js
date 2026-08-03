@@ -17,6 +17,7 @@ import { normalizeQuickAccessConfig } from '@hadw/renderer/quick-access-tabs.js'
 import { normalizeComparisonGraphsConfig } from '@hadw/renderer/comparison-graphs.js';
 import * as ui from '../src/ui.js';
 import * as uiUtils from '../src/ui-utils.js';
+import * as settings from '../src/settings.js';
 
 const BASE_CONFIG = Object.freeze({
   homeAssistant: { url: '', token: '', authMethod: 'token' },
@@ -46,6 +47,80 @@ const BASE_CONFIG = Object.freeze({
   frostedGlass: true,
 });
 
+/**
+ * In-memory replacement for the main process's update-config: merge the patch,
+ * re-render, and surface the result to the parent panel as a document change.
+ */
+async function previewUpdateConfig(patch) {
+  if (!patch || typeof patch !== 'object') return { success: false, error: 'Invalid config' };
+  const current = state.CONFIG || {};
+  const merged = {
+    ...current,
+    ...patch,
+    ui: { ...(current.ui || {}), ...(patch.ui || {}) },
+    homeAssistant: current.homeAssistant || BASE_CONFIG.homeAssistant,
+    desktopPins: {},
+  };
+  const config = applyProfile(buildProfileDocumentFromConfig(merged));
+  emitChange();
+  return { success: true, config };
+}
+
+// The widget's settings UI talks to window.electronAPI directly. This virtual
+// desktop implements config persistence in memory and answers everything
+// machine-local with harmless defaults so the real settings modal can run
+// unmodified inside Home Assistant.
+function installPreviewElectronApi() {
+  const stubs = {
+    platform: 'linux',
+    getConfig: async () => JSON.parse(JSON.stringify(state.CONFIG || {})),
+    updateConfig: previewUpdateConfig,
+    saveConfig: previewUpdateConfig,
+    getAppVersion: async () =>
+      `${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : ''} (preview)`,
+    getLoginItemSettings: async () => ({ openAtLogin: false }),
+    getWindowState: async () => ({ alwaysOnTop: false }),
+    getProfileSyncStatus: async () => ({ enabled: false, provider: 'folder' }),
+    getLocaleBootstrap: async () => null,
+    getLocalePacks: async () => ({ packs: [] }),
+    isPopupHotkeyAvailable: async () => false,
+    getPopupHotkey: async () => '',
+    validateHotkey: async () => ({ valid: false, error: 'Hotkeys are desktop-only' }),
+    getDesktopCompanionRegistration: async () => null,
+    getDesktopCompanionState: async () => ({ visible: true, current_page: 'default' }),
+    testHaConnection: async () => ({
+      success: false,
+      error: 'Connection settings are desktop-only',
+    }),
+    debugLog: async () => {},
+  };
+  window.electronAPI = new Proxy(stubs, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
+      if (typeof prop === 'string' && prop.startsWith('on')) return () => () => {};
+      return async () => ({ success: false, error: 'Not available in the preview' });
+    },
+  });
+}
+
+function settingsUiHooks() {
+  return {
+    initUpdateUI: ui.initUpdateUI,
+    renderActiveTab: ui.renderActiveTab,
+    updateMediaTile: ui.updateMediaTile,
+    renderPrimaryCards: ui.renderPrimaryCards,
+    updateWeatherEffects: ui.updateWeatherEffects,
+    exitReorganizeMode: () => {
+      const container = document.getElementById('quick-controls');
+      if (container?.classList.contains('reorganize-mode')) ui.toggleReorganizeMode();
+    },
+  };
+}
+
+function openSettings() {
+  return settings.openSettings(settingsUiHooks());
+}
+
 function createPreviewHost() {
   return {
     capabilities: Object.freeze({
@@ -55,9 +130,9 @@ function createPreviewHost() {
       supportsFrostedGlass: false,
       supportsDrag: false,
     }),
-    canPersistConfig: false,
+    canPersistConfig: true,
     getConfig: async () => state.CONFIG,
-    updateConfig: async () => ({ success: true, config: state.CONFIG }),
+    updateConfig: previewUpdateConfig,
     onConfigUpdated: () => () => {},
     debugLog: () => {},
     showEntityContextMenu: null,
@@ -224,6 +299,10 @@ function setEditing(enabled) {
 }
 
 const EDIT_STYLE = `
+  /* Machine-local settings make no sense remotely. */
+  .hadw-preview [data-tab="hotkeys"], .hadw-preview [data-tab="alerts"],
+  .hadw-preview [data-tab="advanced"], .hadw-preview #minimize-btn,
+  .hadw-preview #close-btn { display: none !important; }
   body.hadw-editing .control-item { cursor: grab; }
   body.hadw-editing .control-item::after {
     content: '\\2715'; position: absolute; top: 4px; right: 6px; width: 20px; height: 20px;
@@ -233,11 +312,15 @@ const EDIT_STYLE = `
 `;
 
 function initPreview() {
+  installPreviewElectronApi();
   setRendererHost(createPreviewHost());
   const style = document.createElement('style');
   style.textContent = EDIT_STYLE;
   document.head.appendChild(style);
   document.getElementById('quick-controls')?.addEventListener('click', handleEditClick, true);
+  document.getElementById('settings-btn')?.addEventListener('click', () => {
+    openSettings().catch((error) => console.warn('Preview settings failed:', error));
+  });
   applyProfile({});
   const api = {
     ready: true,
@@ -247,6 +330,7 @@ function initPreview() {
     setEditing,
     addEntity,
     removeEntity,
+    openSettings,
     getDocument: currentDocument,
     onDocumentChange: null,
   };

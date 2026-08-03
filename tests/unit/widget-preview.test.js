@@ -84,6 +84,20 @@ describe('panel preview bootstrap', () => {
     expect(tile.textContent).toContain('25.9');
   });
 
+  test('the real settings modal opens and persists edits in memory', async () => {
+    const api = preview.initPreview();
+    const changes = [];
+    api.onDocumentChange = (doc) => changes.push(doc);
+    expect(document.getElementById('settings-modal')).toBeTruthy();
+    await api.openSettings();
+    expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+
+    const result = await window.electronAPI.updateConfig({ ui: { theme: 'light' } });
+    expect(result.success).toBe(true);
+    expect(result.config.ui.theme).toBe('light');
+    expect(changes.at(-1).ui.theme).toBe('light');
+  });
+
   test('editing adds, removes, and reports tiles through the change callback', () => {
     preview.setStates(STATES);
     const api = preview.initPreview();
@@ -124,6 +138,6 @@ describe('panel preview bootstrap', () => {
     expect(host.resolveMediaUrl({ kind: 'media_artwork', url: '/api/media/x.jpg' })).toBe(
       '/api/media/x.jpg'
     );
-    expect(host.canPersistConfig).toBe(false);
+    expect(host.canPersistConfig).toBe(true);
   });
 });
