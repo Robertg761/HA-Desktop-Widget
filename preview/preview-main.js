@@ -314,6 +314,18 @@ const EDIT_STYLE = `
 function initPreview() {
   installPreviewElectronApi();
   setRendererHost(createPreviewHost());
+  // The preview never opens its own HA connection; the parent panel feeds it
+  // states directly, so the boot overlay must not wait for one.
+  try {
+    uiUtils.showLoading(false);
+    const status = document.getElementById('connection-status');
+    if (status) {
+      status.textContent = '';
+      status.title = 'Preview — entity data comes from this Home Assistant';
+    }
+  } catch {
+    /* no-op */
+  }
   const style = document.createElement('style');
   style.textContent = EDIT_STYLE;
   document.head.appendChild(style);
