@@ -294,10 +294,8 @@ function setEditing(enabled) {
 }
 
 const PREVIEW_STYLE = `
-  /* Machine-local surfaces make no sense remotely. */
-  .hadw-preview [data-tab="hotkeys"], .hadw-preview [data-tab="alerts"],
-  .hadw-preview [data-tab="advanced"], .hadw-preview #minimize-btn,
-  .hadw-preview #close-btn { display: none !important; }
+  /* Window chrome cannot act on an iframe; every settings tab stays 1:1. */
+  .hadw-preview #minimize-btn, .hadw-preview #close-btn { display: none !important; }
   body.hadw-editing .control-item { cursor: grab; }
   body.hadw-editing .control-item::after {
     content: '\\2715'; position: absolute; top: 4px; right: 6px; width: 20px; height: 20px;
