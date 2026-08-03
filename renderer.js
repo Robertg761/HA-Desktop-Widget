@@ -17,7 +17,10 @@ import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import { DesktopCompanionClient } from './src/desktop-companion-client.js';
-import { buildConfigPatchFromApplyPayload } from './src/profile-schema.js';
+import {
+  buildConfigPatchFromApplyPayload,
+  buildProfileDocumentFromConfig,
+} from './src/profile-schema.js';
 import { createElectronHost } from '@hadw/renderer/electron-host.js';
 import { setRendererHost } from '@hadw/renderer/host.js';
 import {
@@ -720,6 +723,7 @@ function ensureDesktopCompanionClient() {
     websocket,
     getRegistration: () => window.electronAPI.getDesktopCompanionRegistration(),
     getState: () => window.electronAPI.getDesktopCompanionState(),
+    getConfigDocument: () => buildProfileDocumentFromConfig(state.CONFIG),
     executeCommand: executeDesktopCompanionCommand,
   });
   return desktopCompanionClient;
@@ -845,6 +849,9 @@ function applyRendererConfig(nextConfig) {
   if (ui.updateWeatherEffects) {
     ui.updateWeatherEffects();
   }
+
+  // Keep Home Assistant's stored layout snapshot current (deduplicated in the client).
+  void desktopCompanionClient?.reportConfigSnapshot();
 
   showConfigPersistenceWarnings(persistenceWarnings);
   runtimeWarnings.forEach((warning) => {

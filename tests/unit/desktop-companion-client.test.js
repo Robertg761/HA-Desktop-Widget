@@ -289,6 +289,35 @@ describe('DesktopCompanionClient', () => {
     client.stop();
   });
 
+  test('reports the layout snapshot once per unique document', async () => {
+    const websocket = new FakeWebSocket();
+    const getConfigDocument = jest.fn(async () => ({ ui: { theme: 'dark' } }));
+    const client = new DesktopCompanionClient({
+      websocket,
+      getRegistration: jest.fn(async () => ({ desktop_id: 'desktop-1', name: 'X' })),
+      getState: jest.fn(async () => ({ visible: true })),
+      getConfigDocument,
+      executeCommand: jest.fn(),
+      heartbeatIntervalMs: 60_000,
+      logger: mockLogger,
+    });
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const snapshots = () =>
+      websocket.requests.filter((r) => r.type === 'ha_desktop_widget/put_config_snapshot');
+    expect(snapshots()).toHaveLength(1);
+    expect(snapshots()[0].document).toEqual({ ui: { theme: 'dark' } });
+
+    await client.reportConfigSnapshot();
+    expect(snapshots()).toHaveLength(1);
+
+    getConfigDocument.mockResolvedValue({ ui: { theme: 'light' } });
+    await client.reportConfigSnapshot();
+    expect(snapshots()).toHaveLength(2);
+    client.stop();
+  });
+
   test('resets subscriptions and heartbeat state on socket close', async () => {
     jest.useFakeTimers();
     const { client, websocket } = createClient();

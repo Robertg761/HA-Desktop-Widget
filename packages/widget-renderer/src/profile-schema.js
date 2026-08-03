@@ -176,9 +176,23 @@ function buildConfigPatchFromApplyPayload(payload, currentConfig = {}) {
   return patch;
 }
 
+/**
+ * Project a full desktop config down to its shareable profile sections, so the
+ * desktop can report its current layout to Home Assistant as a snapshot.
+ */
+function buildProfileDocumentFromConfig(config) {
+  const source = isPlainObject(config) ? config : {};
+  const document = {};
+  for (const key of PROFILE_SECTION_KEYS) {
+    if (key in source) document[key] = source[key];
+  }
+  return normalizeProfileDocument(document);
+}
+
 export {
   PROFILE_SCHEMA_VERSION,
   PROFILE_SECTION_KEYS,
   buildConfigPatchFromApplyPayload,
+  buildProfileDocumentFromConfig,
   normalizeProfileDocument,
 };

@@ -37,6 +37,7 @@ class DesktopCompanionClient {
     websocket,
     getRegistration,
     getState,
+    getConfigDocument = null,
     executeCommand,
     heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
     logger = log,
@@ -44,6 +45,8 @@ class DesktopCompanionClient {
     this.websocket = websocket;
     this.getRegistration = getRegistration;
     this.getState = getState;
+    this.getConfigDocument = getConfigDocument;
+    this.lastConfigSnapshot = null;
     this.executeCommand = executeCommand;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.log = logger;
@@ -131,8 +134,10 @@ class DesktopCompanionClient {
         (command) => void this.handleCommand(registration.desktop_id, command)
       );
       await this.reportState(registration.desktop_id);
+      await this.reportConfigSnapshot(registration.desktop_id);
       this.heartbeatTimer = setInterval(() => {
         void this.reportState(registration.desktop_id);
+        void this.reportConfigSnapshot(registration.desktop_id);
       }, this.heartbeatIntervalMs);
       this.log.info('Registered this desktop with HA Desktop Widget Companion');
       return true;
@@ -162,6 +167,36 @@ class DesktopCompanionClient {
       return true;
     } catch (error) {
       this.log.warn('Failed to report desktop companion state:', error?.message || error);
+      return false;
+    }
+  }
+
+  async reportConfigSnapshot(desktopId = null) {
+    if (!this.started || !this.websocket.isConnected?.()) return false;
+    if (typeof this.getConfigDocument !== 'function') return false;
+    const registration = desktopId ? null : await this.getRegistration();
+    const resolvedDesktopId = boundedString(desktopId || registration?.desktop_id);
+    if (!resolvedDesktopId) return false;
+    try {
+      const document = await this.getConfigDocument();
+      if (!document || typeof document !== 'object') return false;
+      const serialized = JSON.stringify(document);
+      if (serialized === this.lastConfigSnapshot) return true;
+      assertSuccessfulResponse(
+        await this.websocket.request({
+          type: 'ha_desktop_widget/put_config_snapshot',
+          desktop_id: resolvedDesktopId,
+          document,
+        }),
+        'Desktop layout snapshot failed'
+      );
+      this.lastConfigSnapshot = serialized;
+      return true;
+    } catch (error) {
+      // Older Home Assistant integrations do not know this command; stay quiet
+      // after the first refusal instead of warning every heartbeat.
+      this.lastConfigSnapshot = 'unsupported';
+      this.log.warn('Desktop layout snapshot was not accepted:', error?.message || error);
       return false;
     }
   }
