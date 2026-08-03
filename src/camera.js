@@ -3,6 +3,7 @@ import websocket from './websocket.js';
 import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
 import { showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
+import { getRendererHost } from '@hadw/renderer/host.js';
 
 const CAMERA_PREVIEW_REFRESH_OPTIONS = Object.freeze([
   { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
@@ -347,8 +348,12 @@ function requestCameraSnapshot(record, { liveFallback = false } = {}) {
   target.onerror = failSnapshot;
 
   cameraPreviewSequence += 1;
-  const entityPath = encodeURIComponent(record.entityId);
-  target.src = `ha://camera/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
+  target.src = getRendererHost().resolveMediaUrl({
+    kind: 'camera_snapshot',
+    entityId: record.entityId,
+    preview: cameraPreviewSequence,
+    cacheKey: Date.now(),
+  });
   armCameraPreviewLoadTimeout(record, requestId, failSnapshot);
 }
 
@@ -508,8 +513,12 @@ function requestCameraMjpegPreview(record, requestId) {
   target.onerror = () => failMjpegProbe('mjpeg-error');
 
   cameraPreviewSequence += 1;
-  const entityPath = encodeURIComponent(record.entityId);
-  target.src = `ha://camera_stream/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
+  target.src = getRendererHost().resolveMediaUrl({
+    kind: 'camera_stream',
+    entityId: record.entityId,
+    preview: cameraPreviewSequence,
+    cacheKey: Date.now(),
+  });
   armCameraPreviewLoadTimeout(
     record,
     requestId,
@@ -549,8 +558,12 @@ function requestCameraWarmupSnapshot(record, requestId) {
   };
 
   cameraPreviewSequence += 1;
-  const entityPath = encodeURIComponent(record.entityId);
-  target.src = `ha://camera/${entityPath}?preview=${cameraPreviewSequence}&t=${Date.now()}`;
+  target.src = getRendererHost().resolveMediaUrl({
+    kind: 'camera_snapshot',
+    entityId: record.entityId,
+    preview: cameraPreviewSequence,
+    cacheKey: Date.now(),
+  });
 }
 
 function useCameraLiveCompatibilityFallback(record, requestId) {
@@ -1161,7 +1174,11 @@ async function getHlsStreamUrl(entityId) {
         (state.CONFIG && state.CONFIG.homeAssistant && state.CONFIG.homeAssistant.url) || ''
       );
       // Proxy through ha://hls to keep Authorization header handling in main
-      return `ha://hls${abs.pathname}${abs.search || ''}`;
+      return getRendererHost().resolveMediaUrl({
+        kind: 'camera_hls',
+        path: abs.pathname,
+        search: abs.search || '',
+      });
     }
     console.warn(
       `Camera stream URL unavailable (${entityId}): ${res?.error?.message || 'camera/stream returned no url'}`
@@ -1316,7 +1333,11 @@ async function openCamera(cameraId, options = {}) {
         showLoading(false);
         showToast(t('Could not load camera snapshot'), 'error', 2500);
       };
-      img.src = `ha://camera/${cameraId}?t=${Date.now()}`;
+      img.src = getRendererHost().resolveMediaUrl({
+        kind: 'camera_snapshot',
+        entityId: cameraId,
+        cacheKey: Date.now(),
+      });
     };
 
     const startLive = async () => {
@@ -1386,7 +1407,11 @@ async function openCamera(cameraId, options = {}) {
                 video.removeAttribute('src');
                 video.style.display = 'none';
                 img.style.display = 'block';
-                img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
+                img.src = getRendererHost().resolveMediaUrl({
+                  kind: 'camera_stream',
+                  entityId: cameraId,
+                  cacheKey: Date.now(),
+                });
                 showLoading(false);
               }
             });
@@ -1439,7 +1464,11 @@ async function openCamera(cameraId, options = {}) {
         }
 
         img.style.display = 'block';
-        img.src = `ha://camera_stream/${cameraId}?t=${Date.now()}`;
+        img.src = getRendererHost().resolveMediaUrl({
+          kind: 'camera_stream',
+          entityId: cameraId,
+          cacheKey: Date.now(),
+        });
 
         // Hide loading when MJPEG starts
         img.onload = () => {

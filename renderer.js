@@ -18,12 +18,19 @@ import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import { DesktopCompanionClient } from './src/desktop-companion-client.js';
 import { buildConfigPatchFromApplyPayload } from './src/profile-schema.js';
+import { createElectronHost } from '@hadw/renderer/electron-host.js';
+import { setRendererHost } from '@hadw/renderer/host.js';
 import {
   installClimateDemo,
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
 } from '@dev-climate-demo';
 import { isConfigured, normalizeBaseUrl } from './src/connection.js';
+
+// Shared renderer modules reach the desktop surface only through this host.
+if (window.electronAPI) {
+  setRendererHost(createElectronHost(window.electronAPI));
+}
 
 const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';

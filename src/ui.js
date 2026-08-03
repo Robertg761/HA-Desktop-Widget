@@ -22,6 +22,7 @@ import {
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import { getNextQuickAccessFocusIndex } from './quick-access-ui-helpers.js';
+import { getRendererHost } from '@hadw/renderer/host.js';
 import {
   COMPARISON_GRAPH_SPAN_OPTIONS,
   MAX_COMPARISON_GRAPH_SERIES,
@@ -158,11 +159,9 @@ function emitUiDebug(event, details = {}) {
     };
 
     console.info('[UI DEBUG]', event, payload.details);
-    if (window?.electronAPI?.debugLog) {
-      window.electronAPI.debugLog(payload).catch(() => {
-        /* no-op */
-      });
-    }
+    Promise.resolve(getRendererHost().debugLog(payload)).catch(() => {
+      /* no-op */
+    });
   } catch {
     // no-op: debug logging must never break UI execution
   }
@@ -335,13 +334,12 @@ function requireAuthoritativeConfig(response) {
 }
 
 async function persistAuthoritativeConfig(nextConfig) {
-  if (!window?.electronAPI?.updateConfig) {
+  const host = getRendererHost();
+  if (!host.canPersistConfig) {
     throw new Error('Configuration updates are unavailable on this build.');
   }
   try {
-    const authoritativeConfig = requireAuthoritativeConfig(
-      await window.electronAPI.updateConfig(nextConfig)
-    );
+    const authoritativeConfig = requireAuthoritativeConfig(await host.updateConfig(nextConfig));
     state.setConfig(authoritativeConfig);
     return state.CONFIG;
   } catch (error) {
@@ -380,7 +378,8 @@ async function persistQuickAccessConfigSnapshot(
   { rollbackOnFailure = true } = {}
 ) {
   const revision = ++quickAccessPersistenceRevision;
-  if (!window?.electronAPI?.updateConfig) {
+  const host = getRendererHost();
+  if (!host.canPersistConfig) {
     return { success: true, config: nextConfig, revision, isCurrent: true };
   }
 
@@ -392,7 +391,7 @@ async function persistQuickAccessConfigSnapshot(
 
   try {
     const authoritativeConfig = requireAuthoritativeConfig(
-      await window.electronAPI.updateConfig(buildQuickAccessConfigPatch(nextConfig))
+      await host.updateConfig(buildQuickAccessConfigPatch(nextConfig))
     );
     const isCurrent = revision === quickAccessPersistenceRevision;
     if (revision >= quickAccessAuthoritativeFallbackRevision) {
@@ -7375,11 +7374,14 @@ function createControlElement(entity, options = {}) {
       if (div.dataset.desktopPin === 'true') return;
       event.preventDefault();
       event.stopPropagation();
-      window.electronAPI
-        .showEntityTileMenu(entity.entity_id, getDesktopPinSupportInfo(entity))
-        .catch((error) => {
-          console.error('Error opening entity tile menu:', error);
-        });
+      Promise.resolve(
+        getRendererHost().showEntityContextMenu?.(
+          entity.entity_id,
+          getDesktopPinSupportInfo(entity)
+        )
+      ).catch((error) => {
+        console.error('Error opening entity tile menu:', error);
+      });
     });
     emitUiDebug('quick_access.create_control', {
       entityId: entity.entity_id,
@@ -8385,7 +8387,11 @@ function setupMediaPlayerControls(div, entity) {
         const now = Date.now();
         pruneExpiredArtworkRetryEntries(now);
         const cacheBuster = Math.floor(now / 30000);
-        const proxyUrl = `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+        const proxyUrl = getRendererHost().resolveMediaUrl({
+          kind: 'media_artwork',
+          url: urlToEncode,
+          cacheKey: cacheBuster,
+        });
         const retryAt = failedMediaArtworkRetryAtByUrl.get(retryKey) || 0;
         const skipForRecentFailure = retryAt > now;
 
@@ -9752,9 +9758,12 @@ function buildMediaArtworkProxyUrl(artworkUrl) {
   const urlToEncode = normalizeMediaArtworkTarget(artworkUrl);
   if (!urlToEncode) return null;
 
-  const encodedUrl = utils.base64Encode(urlToEncode);
   const cacheBuster = Math.floor(Date.now() / 30000);
-  return `ha://media_artwork/${encodedUrl}?t=${cacheBuster}`;
+  return getRendererHost().resolveMediaUrl({
+    kind: 'media_artwork',
+    url: urlToEncode,
+    cacheKey: cacheBuster,
+  });
 }
 
 // --- Media Player Tile ---

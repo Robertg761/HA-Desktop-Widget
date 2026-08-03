@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `active_profile_id` and `profile_revision` through companion state so Home Assistant can
   detect revision drift.
 
+### Changed
+
+- Internal: the browser-safe renderer modules (Quick Access tabs, comparison graphs, primary
+  cards, icons, utils, i18n, state, the profile schema, and friends) moved into a workspace
+  package, `packages/widget-renderer` (`@hadw/renderer`), consumed by the app through
+  re-export shims. Renderer access to Electron-only features (config persistence, debug
+  logging, entity context menus) and all `ha://` media URL construction now route through an
+  injectable `RendererHost`, so the same modules can later run inside the Home Assistant
+  panel preview. No user-visible behavior change.
+
 ### Security
 
 - Profiles are configuration data only: unknown sections are dropped, machine-local settings

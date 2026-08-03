@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => {
           isProduction ? 'src/dev-climate-demo.production.js' : 'development/dev-climate-demo.js'
         ),
         '@': resolve(__dirname, 'src'),
+        '@hadw/renderer': resolve(__dirname, 'packages/widget-renderer/src'),
         // Node.js polyfills for browser
         events: 'events',
         // Use the lighter HLS build in renderer bundles.

@@ -1,6 +1,9 @@
 {
   "name": "home-assistant-widget",
   "version": "3.9.0-beta.1",
+  "workspaces": [
+    "packages/*"
+  ],
   "main": "main.js",
   "scripts": {
     "build:renderer": "vite build --mode production",
@@ -64,6 +67,7 @@
       "main.js",
       "profile-sync-core.js",
       "src/**/*",
+      "packages/widget-renderer/**/*",
       "dist-preload/**/*",
       "dist-renderer/**/*",
       "styles.css",

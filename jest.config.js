@@ -10,6 +10,7 @@ module.exports = {
     'preload.js',
     'profile-sync-core.js',
     'src/**/*.{js,cjs}',
+    'packages/widget-renderer/src/**/*.js',
   ],
   roots: ['<rootDir>'],
   testPathIgnorePatterns: [
@@ -25,6 +26,7 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@dev-climate-demo$': '<rootDir>/development/dev-climate-demo.js',
+    '^@hadw/renderer/(.*)$': '<rootDir>/packages/widget-renderer/src/$1',
   },
   transformIgnorePatterns: ['/node_modules/(?!(sortablejs|hls.js)/)'],
   coverageThreshold: {

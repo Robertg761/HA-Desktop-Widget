@@ -3,11 +3,12 @@
  */
 
 const utils = require('../../src/utils');
-const state = require('../../src/state');
+const state = require('../../packages/widget-renderer/src/state');
 const { sampleConfig, sampleStates } = require('../fixtures/ha-data');
 
-// Mock the state module
-jest.mock('../../src/state', () => ({
+// Mock the state module at its real (package) path — utils lives in the
+// package and resolves './state.js' there, not through the src/ shim.
+jest.mock('../../packages/widget-renderer/src/state', () => ({
   CONFIG: null,
   setConfig: jest.fn(),
 }));

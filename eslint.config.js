@@ -88,7 +88,7 @@ module.exports = [
   },
   // Renderer process files (ES Modules - bundled by Vite)
   {
-    files: ['renderer.js', 'src/**/*.js'],
+    files: ['renderer.js', 'src/**/*.js', 'packages/widget-renderer/src/**/*.js'],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'module',

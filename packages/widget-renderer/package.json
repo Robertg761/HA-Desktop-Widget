@@ -1,0 +1,9 @@
+{
+  "name": "@hadw/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-safe HA Desktop Widget renderer modules shared by the Electron app and the Home Assistant panel preview",
+  "exports": {
+    "./*": "./src/*.js"
+  }
+}
