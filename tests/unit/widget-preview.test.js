@@ -84,6 +84,31 @@ describe('panel preview bootstrap', () => {
     expect(tile.textContent).toContain('25.9');
   });
 
+  test('editing adds, removes, and reports tiles through the change callback', () => {
+    preview.setStates(STATES);
+    const api = preview.initPreview();
+    const changes = [];
+    api.onDocumentChange = (doc) => changes.push(doc);
+    api.applyProfile(PROFILE_DOCUMENT);
+
+    expect(api.setEditing(true)).toBe(true);
+    expect(api.addEntity('switch.fan')).toBe(true);
+    let tile = document.querySelector('.control-item[data-entity-id="switch.fan"]');
+    expect(tile).toBeTruthy();
+    expect(changes.at(-1).customTabs[0].entityIds).toContain('switch.fan');
+
+    expect(api.removeEntity('switch.fan')).toBe(true);
+    tile = document.querySelector('.control-item[data-entity-id="switch.fan"]');
+    expect(tile).toBeNull();
+    expect(changes.at(-1).customTabs[0].entityIds).not.toContain('switch.fan');
+
+    // A brand-new profile bootstraps its first page on add.
+    api.applyProfile({});
+    expect(api.addEntity('light.living_room')).toBe(true);
+    expect(changes.at(-1).customTabs[0].entityIds).toEqual(['light.living_room']);
+    api.setEditing(false);
+  });
+
   test('preview host maps media specs to Home Assistant URLs', () => {
     const host = preview.createPreviewHost();
     preview.setStates({

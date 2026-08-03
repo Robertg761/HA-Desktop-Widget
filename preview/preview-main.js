@@ -9,7 +9,9 @@
 
 import '@mdi/font/css/materialdesignicons.min.css';
 import '../styles.css';
+import Sortable from 'sortablejs';
 import state from '@hadw/renderer/state.js';
+import { buildProfileDocumentFromConfig } from '@hadw/renderer/profile-schema.js';
 import { setRendererHost } from '@hadw/renderer/host.js';
 import { normalizeQuickAccessConfig } from '@hadw/renderer/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from '@hadw/renderer/comparison-graphs.js';
@@ -130,10 +132,125 @@ function setEntityState(entity) {
   }
 }
 
+// --- WYSIWYG editing -------------------------------------------------------
+
+const editState = { enabled: false, sortable: null, api: null };
+
+function currentDocument() {
+  return buildProfileDocumentFromConfig(state.CONFIG);
+}
+
+function emitChange() {
+  const document_ = currentDocument();
+  try {
+    editState.api?.onDocumentChange?.(JSON.parse(JSON.stringify(document_)));
+  } catch (error) {
+    console.warn('Preview change callback failed:', error?.message || error);
+  }
+}
+
+function activeTabOf(document_) {
+  const tabs = Array.isArray(document_.customTabs) ? document_.customTabs : [];
+  return tabs.find((tab) => tab.id === document_.activeTabId) || tabs[0] || null;
+}
+
+function mutateActiveTab(mutate) {
+  const document_ = currentDocument();
+  const tab = activeTabOf(document_);
+  if (!tab) return false;
+  mutate(tab, document_);
+  applyProfile(document_);
+  emitChange();
+  return true;
+}
+
+function addEntity(entityId) {
+  const cleanId = typeof entityId === 'string' ? entityId.trim().slice(0, 128) : '';
+  if (!cleanId) return false;
+  const added = mutateActiveTab((tab) => {
+    if (!tab.entityIds.includes(cleanId)) tab.entityIds.push(cleanId);
+  });
+  if (added) return true;
+  // A brand-new profile has no pages yet; start one with this entity.
+  const document_ = currentDocument();
+  document_.customTabs = [{ id: 'default', name: 'Home', entityIds: [cleanId] }];
+  document_.activeTabId = 'default';
+  applyProfile(document_);
+  emitChange();
+  return true;
+}
+
+function removeEntity(entityId) {
+  return mutateActiveTab((tab) => {
+    tab.entityIds = tab.entityIds.filter((id) => id !== entityId);
+  });
+}
+
+function handleEditClick(event) {
+  if (!editState.enabled) return;
+  const tile = event.target.closest?.('.control-item');
+  // Block tile actions while editing; the top-right corner removes the tile.
+  event.preventDefault();
+  event.stopPropagation();
+  if (!tile?.dataset.entityId) return;
+  const rect = tile.getBoundingClientRect();
+  if (event.clientX >= rect.right - 30 && event.clientY <= rect.top + 30) {
+    removeEntity(tile.dataset.entityId);
+  }
+}
+
+function setEditing(enabled) {
+  const grid = document.getElementById('quick-controls');
+  if (!grid) return false;
+  editState.enabled = enabled === true;
+  document.body.classList.toggle('hadw-editing', editState.enabled);
+  if (editState.enabled && !editState.sortable) {
+    editState.sortable = Sortable.create(grid, {
+      animation: 120,
+      onEnd: () => {
+        const order = [...grid.querySelectorAll('.control-item[data-entity-id]')].map(
+          (tile) => tile.dataset.entityId
+        );
+        mutateActiveTab((tab) => {
+          tab.entityIds = order.filter((id) => tab.entityIds.includes(id));
+        });
+      },
+    });
+  } else if (!editState.enabled && editState.sortable) {
+    editState.sortable.destroy();
+    editState.sortable = null;
+  }
+  return editState.enabled;
+}
+
+const EDIT_STYLE = `
+  body.hadw-editing .control-item { cursor: grab; }
+  body.hadw-editing .control-item::after {
+    content: '\\2715'; position: absolute; top: 4px; right: 6px; width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    border-radius: 50%; background: rgba(220, 60, 60, 0.85); color: #fff; z-index: 5;
+  }
+`;
+
 function initPreview() {
   setRendererHost(createPreviewHost());
+  const style = document.createElement('style');
+  style.textContent = EDIT_STYLE;
+  document.head.appendChild(style);
+  document.getElementById('quick-controls')?.addEventListener('click', handleEditClick, true);
   applyProfile({});
-  const api = { ready: true, applyProfile, setStates, setEntityState };
+  const api = {
+    ready: true,
+    applyProfile,
+    setStates,
+    setEntityState,
+    setEditing,
+    addEntity,
+    removeEntity,
+    getDocument: currentDocument,
+    onDocumentChange: null,
+  };
+  editState.api = api;
   window.__hadwPreview = api;
   window.dispatchEvent(new CustomEvent('hadw-preview-ready'));
   return api;
