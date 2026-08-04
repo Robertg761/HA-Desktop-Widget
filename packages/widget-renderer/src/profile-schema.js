@@ -24,6 +24,7 @@ const PROFILE_SECTION_KEYS = Object.freeze([
   'comparisonGraphs',
   'quickAccessTileOptions',
   'customEntityIcons',
+  'customEntityNames',
   'opacity',
   'frostedGlass',
 ]);
@@ -127,6 +128,13 @@ function normalizeProfileDocument(document) {
     normalized.customEntityIcons = normalizeObjectMap(document.customEntityIcons, (entry) => {
       const icon = boundedString(entry);
       return icon || undefined;
+    });
+  }
+
+  if ('customEntityNames' in document) {
+    normalized.customEntityNames = normalizeObjectMap(document.customEntityNames, (entry) => {
+      const name = boundedString(entry);
+      return name || undefined;
     });
   }
 
