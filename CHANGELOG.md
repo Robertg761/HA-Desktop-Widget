@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Home Assistant browser authorization can be cancelled: a **Cancel** button appears next to the
+  connect button while the app waits for the browser, aborts the loopback callback listener in the
+  main process, and returns Settings to its previous state instead of leaving the request pending
+  until the five-minute timeout.
+
 - The HA Desktop Widget Companion connection now advertises and executes the `apply_profile`
   command: Home Assistant can push a named, revision-controlled profile (appearance, primary
   cards, Quick Access pages and tiles, comparison graphs, custom icons, tile options, opacity,

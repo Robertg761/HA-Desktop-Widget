@@ -861,6 +861,7 @@ describe('profile sync runtime safeguards', () => {
   it('keeps OAuth and desktop companion authority in the main process', () => {
     expect(mainSource).toContain("require('./src/ha-oauth.cjs')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'start-home-assistant-oauth')");
+    expect(mainSource).toContain("authorizeIpcSender(event, 'cancel-home-assistant-oauth')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'disconnect-home-assistant-oauth')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'get-desktop-companion-registration')");
     expect(mainSource).toContain("authorizeIpcSender(event, 'apply-desktop-companion-command')");

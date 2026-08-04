@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -30,6 +30,9 @@
     "Home Assistant authorization connected": "Home Assistant authorization connected",
     "Home Assistant authorization disconnected": "Home Assistant authorization disconnected",
     "Home Assistant authorization failed": "Home Assistant authorization failed",
+    "Canceling Home Assistant authorization...": "Cancelando la autorización de Home Assistant...",
+    "Home Assistant authorization canceled": "Autorización de Home Assistant cancelada",
+    "Could not cancel Home Assistant authorization": "No se pudo cancelar la autorización de Home Assistant",
     "Could not disconnect authorization": "Could not disconnect authorization",
     "Authorize in Home Assistant": "Authorize in Home Assistant",
     "Continue to open Home Assistant in your browser. Sign in and approve HA Desktop Widget, then return here.": "Continue to open Home Assistant in your browser. Sign in and approve HA Desktop Widget, then return here.",

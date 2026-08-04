@@ -83,6 +83,7 @@ async function authorizeWithLoopback({
   baseUrl,
   openExternal,
   exchangeCode,
+  signal = null,
   timeoutMs = OAUTH_PAIRING_TIMEOUT_MS,
   createServer = http.createServer,
   randomBytes = nodeCrypto.randomBytes,
@@ -93,6 +94,12 @@ async function authorizeWithLoopback({
   }
   if (typeof openExternal !== 'function' || typeof exchangeCode !== 'function') {
     throw new TypeError('OAuth browser and token exchange callbacks are required');
+  }
+  if (signal?.aborted) {
+    throw createOAuthError(
+      'Home Assistant authorization was canceled',
+      'OAUTH_AUTHORIZATION_CANCELED'
+    );
   }
 
   const state = randomBytes(32).toString('base64url');
@@ -106,6 +113,17 @@ async function authorizeWithLoopback({
   // Register a handler immediately so a fast callback cannot surface as an
   // unhandled rejection while the operating system is still opening a browser.
   callbackPromise.catch(() => {});
+
+  // Cancelling settles the same way a rejected callback would, so the loopback
+  // server is torn down by the shared cleanup path below.
+  const onAbort = () => {
+    if (settled) return;
+    settled = true;
+    rejectCallback(
+      createOAuthError('Home Assistant authorization was canceled', 'OAUTH_AUTHORIZATION_CANCELED')
+    );
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
 
   const server = createServer((request, response) => {
     const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
@@ -173,17 +191,23 @@ async function authorizeWithLoopback({
     settleCallback(code);
   });
 
-  await new Promise((resolve, reject) => {
-    const onError = (error) => reject(error);
-    server.once('error', onError);
-    server.listen(0, '127.0.0.1', () => {
-      server.removeListener('error', onError);
-      resolve();
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = (error) => reject(error);
+      server.once('error', onError);
+      server.listen(0, '127.0.0.1', () => {
+        server.removeListener('error', onError);
+        resolve();
+      });
     });
-  });
+  } catch (error) {
+    signal?.removeEventListener('abort', onAbort);
+    throw error;
+  }
 
   const address = server.address();
   if (!address || typeof address === 'string') {
+    signal?.removeEventListener('abort', onAbort);
     server.close();
     throw createOAuthError('Could not open a local OAuth callback', 'OAUTH_CALLBACK_FAILED');
   }
@@ -212,6 +236,10 @@ async function authorizeWithLoopback({
     });
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', onAbort);
+    // A cancelled pairing may still hold an idle keep-alive socket, which would
+    // otherwise keep server.close() from ever calling back.
+    if (signal?.aborted) server.closeAllConnections?.();
     await new Promise((resolve) => server.close(() => resolve()));
   }
 }
@@ -344,6 +372,7 @@ class HomeAssistantOAuthClient {
     this.session = null;
     this.refreshPromise = null;
     this.pairingPromise = null;
+    this.pairingController = null;
   }
 
   assertSecureStorage() {
@@ -474,8 +503,11 @@ class HomeAssistantOAuthClient {
   async pair(baseUrl) {
     if (this.pairingPromise) return this.pairingPromise;
     this.assertSecureStorage();
+    const controller = new AbortController();
+    this.pairingController = controller;
     this.pairingPromise = authorizeWithLoopback({
       baseUrl,
+      signal: controller.signal,
       openExternal: this.openExternal,
       exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
         const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
@@ -498,7 +530,15 @@ class HomeAssistantOAuthClient {
       return await this.pairingPromise;
     } finally {
       this.pairingPromise = null;
+      if (this.pairingController === controller) this.pairingController = null;
     }
+  }
+
+  cancelPairing() {
+    const controller = this.pairingController;
+    if (!controller || controller.signal.aborted) return false;
+    controller.abort();
+    return true;
   }
 
   async restore() {

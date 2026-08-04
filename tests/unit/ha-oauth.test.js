@@ -120,6 +120,77 @@ describe('Home Assistant OAuth', () => {
     ).rejects.toMatchObject({ code: 'OAUTH_STATE_MISMATCH' });
   });
 
+  test('abandons a pairing attempt and releases the loopback port when cancelled', async () => {
+    const controller = new AbortController();
+    const exchangeCode = jest.fn();
+    let callbackOrigin;
+
+    await expect(
+      authorizeWithLoopback({
+        baseUrl: 'http://ha.local:8123',
+        signal: controller.signal,
+        timeoutMs: 20000,
+        openExternal: async (rawAuthorizationUrl) => {
+          const authorizationUrl = new URL(rawAuthorizationUrl);
+          callbackOrigin = new URL(authorizationUrl.searchParams.get('redirect_uri')).origin;
+          controller.abort();
+        },
+        exchangeCode,
+      })
+    ).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+
+    expect(exchangeCode).not.toHaveBeenCalled();
+    await expect(requestCallback(`${callbackOrigin}/oauth/callback`)).rejects.toMatchObject({
+      code: 'ECONNREFUSED',
+    });
+  });
+
+  test('rejects immediately when pairing starts with an already-cancelled signal', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const openExternal = jest.fn();
+
+    await expect(
+      authorizeWithLoopback({
+        baseUrl: 'http://ha.local:8123',
+        signal: controller.signal,
+        openExternal,
+        exchangeCode: jest.fn(),
+      })
+    ).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  test('cancelPairing only reports work when a pairing attempt is in flight', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    let releaseBrowser;
+    const browserOpened = new Promise((resolve) => {
+      releaseBrowser = resolve;
+    });
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: jest.fn(async () => {
+        releaseBrowser();
+      }),
+      postForm: jest.fn(),
+      isSecureStorageAvailable: () => true,
+    });
+
+    expect(client.cancelPairing()).toBe(false);
+
+    const pairing = client.pair('http://ha.local:8123');
+    pairing.catch(() => {});
+    await browserOpened;
+
+    expect(client.cancelPairing()).toBe(true);
+    expect(client.cancelPairing()).toBe(false);
+    await expect(pairing).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    expect(client.cancelPairing()).toBe(false);
+  });
+
   test('validates successful and rejected token responses', () => {
     expect(
       parseTokenResponse(

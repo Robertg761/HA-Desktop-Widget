@@ -175,6 +175,7 @@ function createElectronApi(ipcRenderer, platform) {
     openExternal: (url) => invoke('open-external', url),
     testHaConnection: (url, token) => invoke('test-ha-connection', url, token),
     startHomeAssistantOAuth: (url) => invokeChecked('start-home-assistant-oauth', url),
+    cancelHomeAssistantOAuth: () => invokeChecked('cancel-home-assistant-oauth'),
     disconnectHomeAssistantOAuth: () => invokeChecked('disconnect-home-assistant-oauth'),
     getDesktopCompanionRegistration: async () =>
       (await invokeChecked('get-desktop-companion-registration')).registration,

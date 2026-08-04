@@ -18,6 +18,7 @@ import {
   showConfirm,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
 import * as utils from './utils.js';
 import {
   PRIMARY_CARD_DEFAULTS,
@@ -4087,43 +4088,39 @@ function getConnectionTestMessage(resultOrError) {
 }
 
 function setSettingsConnectionTestStatus(message = '', type = '') {
-  const status = document.getElementById('test-ha-connection-status');
-  if (!status) return;
-  status.textContent = message;
-  status.dataset.status = type || '';
-  status.classList.toggle('hidden', !message);
+  renderConnectionStatus(document.getElementById('test-ha-connection-status'), message, type);
 }
 
 function setSettingsConnectionTestBusy(isBusy) {
   const button = document.getElementById('test-ha-connection-btn');
-  const spinner = document.getElementById('test-ha-connection-spinner');
   if (button) {
     button.disabled = !!isBusy;
     button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
   }
-  if (spinner) {
-    spinner.classList.toggle('hidden', !isBusy);
-  }
+  setConnectionStatusBusy(document.getElementById('test-ha-connection-status'), isBusy);
 }
 
 function setHomeAssistantOAuthStatus(message = '', type = '') {
-  const status = document.getElementById('ha-oauth-status');
-  if (!status) return;
-  status.textContent = message;
-  status.dataset.status = type || '';
-  status.classList.toggle('hidden', !message);
+  renderConnectionStatus(document.getElementById('ha-oauth-status'), message, type);
 }
 
-function setHomeAssistantOAuthBusy(isBusy) {
+function setHomeAssistantOAuthBusy(isBusy, { cancellable = false } = {}) {
   const connectButton = document.getElementById('connect-ha-oauth-btn');
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
-  const spinner = document.getElementById('ha-oauth-spinner');
+  const cancelButton = document.getElementById('cancel-ha-oauth-btn');
   if (connectButton) {
     connectButton.disabled = !!isBusy;
     connectButton.setAttribute('aria-busy', isBusy ? 'true' : 'false');
   }
   if (disconnectButton) disconnectButton.disabled = !!isBusy;
-  if (spinner) spinner.classList.toggle('hidden', !isBusy);
+  if (cancelButton) {
+    // Only a pairing attempt can be abandoned, and its own button must stay
+    // clickable while everything else is disabled.
+    const showCancel = !!isBusy && cancellable;
+    cancelButton.classList.toggle('hidden', !showCancel);
+    cancelButton.disabled = !showCancel;
+  }
+  setConnectionStatusBusy(document.getElementById('ha-oauth-status'), isBusy);
 }
 
 function updateHomeAssistantAuthUi() {
@@ -4173,7 +4170,7 @@ async function startHomeAssistantOAuthFromSettings() {
     setHomeAssistantOAuthStatus(validation.error, 'error');
     return;
   }
-  setHomeAssistantOAuthBusy(true);
+  setHomeAssistantOAuthBusy(true, { cancellable: true });
   setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
   try {
     const result = await window.electronAPI.startHomeAssistantOAuth(validation.url);
@@ -4182,12 +4179,36 @@ async function startHomeAssistantOAuthFromSettings() {
     updateHomeAssistantAuthUi();
     showToast(t('Home Assistant authorization connected'), 'success', 2600);
   } catch (error) {
-    setHomeAssistantOAuthStatus(
-      error?.message || t('Home Assistant authorization failed'),
-      'error'
-    );
+    if (error?.result?.code === 'OAUTH_AUTHORIZATION_CANCELED') {
+      // The user abandoned the attempt on purpose, so restore the real auth
+      // state rather than reporting a failure. A previously connected account is
+      // untouched by a cancelled reconnect, so leave its status line alone.
+      updateHomeAssistantAuthUi();
+      if (state.CONFIG?.homeAssistant?.oauthStatus !== 'connected') {
+        setHomeAssistantOAuthStatus(t('Home Assistant authorization canceled'), 'pending');
+      }
+    } else {
+      setHomeAssistantOAuthStatus(
+        error?.message || t('Home Assistant authorization failed'),
+        'error'
+      );
+    }
   } finally {
     setHomeAssistantOAuthBusy(false);
+  }
+}
+
+async function cancelHomeAssistantOAuthFromSettings() {
+  const cancelButton = document.getElementById('cancel-ha-oauth-btn');
+  if (cancelButton) cancelButton.disabled = true;
+  setHomeAssistantOAuthStatus(t('Canceling Home Assistant authorization...'), 'pending');
+  try {
+    await window.electronAPI.cancelHomeAssistantOAuth();
+  } catch (error) {
+    setHomeAssistantOAuthStatus(
+      error?.message || t('Could not cancel Home Assistant authorization'),
+      'error'
+    );
   }
 }
 
@@ -4209,6 +4230,11 @@ async function disconnectHomeAssistantOAuthFromSettings() {
 function bindHomeAssistantOAuthUi() {
   const connectButton = document.getElementById('connect-ha-oauth-btn');
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
+  const cancelButton = document.getElementById('cancel-ha-oauth-btn');
+  if (cancelButton && cancelButton.dataset.initialized !== 'true') {
+    cancelButton.addEventListener('click', () => void cancelHomeAssistantOAuthFromSettings());
+    cancelButton.dataset.initialized = 'true';
+  }
   if (connectButton && connectButton.dataset.initialized !== 'true') {
     connectButton.addEventListener('click', () => void startHomeAssistantOAuthFromSettings());
     connectButton.dataset.initialized = 'true';

@@ -5589,6 +5589,15 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   }
 });
 
+ipcMain.handle('cancel-home-assistant-oauth', async (event) => {
+  const sender = authorizeIpcSender(event, 'cancel-home-assistant-oauth');
+  if (!sender) return rejectUnauthorizedIpc('cancel-home-assistant-oauth');
+  // Never constructs a client just to cancel: with no pairing in flight there is
+  // nothing to abort.
+  if (!homeAssistantOAuthClient) return { success: true, canceled: false };
+  return { success: true, canceled: homeAssistantOAuthClient.cancelPairing() };
+});
+
 ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
   const sender = authorizeIpcSender(event, 'disconnect-home-assistant-oauth');
   if (!sender) return rejectUnauthorizedIpc('disconnect-home-assistant-oauth');

@@ -105,7 +105,8 @@ Planned for a future release:
    your system browser so you can sign in and approve it; your Home Assistant password never enters
    the desktop app.
 3. **Return to the widget**: Authorization finishes through a temporary loopback callback on this
-   computer and live updates start automatically.
+   computer and live updates start automatically. If you change your mind, **Cancel** next to the
+   connect button stops waiting and closes the loopback callback.
 4. **Add entities**: Click the "+" button to add your favorite entities to Quick Access.
 
 The legacy long-lived access-token form remains under **Settings > Legacy access token

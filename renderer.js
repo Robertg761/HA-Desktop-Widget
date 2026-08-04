@@ -29,6 +29,7 @@ import {
   isClimateDemoOverlayConfig,
 } from '@dev-climate-demo';
 import { isConfigured, normalizeBaseUrl } from './src/connection.js';
+import { renderConnectionStatus, setConnectionStatusBusy } from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
 if (window.electronAPI) {
@@ -439,9 +440,10 @@ function setFirstRunWizardVisible(visible) {
 
 function setWizardStatus(message = '', type = '') {
   if (!firstRunWizard?.status) return;
-  firstRunWizard.status.textContent = message;
-  firstRunWizard.status.dataset.status = type || '';
-  firstRunWizard.status.classList.toggle('hidden', !message);
+  // 'pending' here always means waiting on Home Assistant authorization in the
+  // browser, so it carries the same sweep indicator the settings panel uses.
+  setConnectionStatusBusy(firstRunWizard.status, type === 'pending');
+  renderConnectionStatus(firstRunWizard.status, message, type);
 }
 
 function getWizardUrl() {

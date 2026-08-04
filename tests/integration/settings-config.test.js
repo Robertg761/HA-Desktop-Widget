@@ -191,12 +191,11 @@ function createSettingsModalDOM() {
       <div id="ha-oauth-status" class="hidden"></div>
       <button type="button" id="connect-ha-oauth-btn">Connect with Home Assistant</button>
       <button type="button" id="disconnect-ha-oauth-btn" class="hidden">Disconnect</button>
-      <span id="ha-oauth-spinner" class="hidden"></span>
+      <button type="button" id="cancel-ha-oauth-btn" class="hidden">Cancel</button>
       <details id="legacy-ha-token-settings">
       <label for="ha-token">Access Token</label>
       <input type="password" id="ha-token" />
       <button type="button" id="test-ha-connection-btn">Test legacy token</button>
-      <span id="test-ha-connection-spinner" class="hidden"></span>
       <div id="test-ha-connection-status" class="hidden"></div>
       </details>
 
@@ -443,6 +442,7 @@ function createSettingsModalDOM() {
 
 describe('Settings + Config Integration', () => {
   const settings = require('../../src/settings.js');
+  const connectionStatus = require('../../src/connection-status.js');
   const state = require('../../src/state.js').default;
   const profileSyncFixture = JSON.parse(JSON.stringify(sampleConfig.profileSync));
   const waitForLanguagePackRefresh = async () => {
@@ -608,6 +608,68 @@ describe('Settings + Config Integration', () => {
       );
       expect(state.CONFIG.homeAssistant.authMethod).toBe('oauth');
       expect(document.getElementById('ha-token').disabled).toBe(true);
+    });
+
+    test('cancel button abandons an in-flight OAuth pairing and clears the busy state', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'https://ha.example.test';
+
+      let rejectPairing;
+      mockElectronAPI.startHomeAssistantOAuth.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPairing = reject;
+          })
+      );
+
+      const cancelButton = document.getElementById('cancel-ha-oauth-btn');
+      const status = document.getElementById('ha-oauth-status');
+      expect(cancelButton.classList.contains('hidden')).toBe(true);
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+
+      expect(cancelButton.classList.contains('hidden')).toBe(false);
+      expect(cancelButton.disabled).toBe(false);
+      expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(true);
+      expect(status.dataset.busy).toBe('true');
+      expect(status.querySelectorAll('.connection-progress')).toHaveLength(1);
+      expect(status.textContent).toBe('Opening Home Assistant for authorization...');
+
+      cancelButton.click();
+      await Promise.resolve();
+      expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalled();
+
+      const cancellation = new Error('Home Assistant authorization was canceled');
+      cancellation.result = { success: false, code: 'OAUTH_AUTHORIZATION_CANCELED' };
+      rejectPairing(cancellation);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(cancelButton.classList.contains('hidden')).toBe(true);
+      expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(false);
+      expect(status.dataset.busy).toBeUndefined();
+      expect(status.querySelector('.connection-progress')).toBeNull();
+      expect(status.textContent).toBe('Home Assistant authorization canceled');
+    });
+
+    test('the waiting indicator is not duplicated across status updates', async () => {
+      await settings.openSettings();
+      const status = document.getElementById('ha-oauth-status');
+
+      connectionStatus.setConnectionStatusBusy(status, true);
+      connectionStatus.renderConnectionStatus(status, 'Waiting one', 'pending');
+      connectionStatus.renderConnectionStatus(status, 'Waiting two', 'pending');
+
+      expect(status.querySelectorAll('.connection-progress')).toHaveLength(1);
+      expect(status.textContent).toBe('Waiting two');
+      // The track must trail the message so it reads as a footer, not a bullet.
+      expect(status.lastElementChild.className).toBe('connection-progress');
+
+      connectionStatus.renderConnectionStatus(status, '', '');
+      expect(status.classList.contains('hidden')).toBe(true);
+      expect(status.querySelector('.connection-progress')).toBeNull();
     });
 
     test('discovers available weather entities and selects the saved source', async () => {

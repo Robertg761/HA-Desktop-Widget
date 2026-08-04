@@ -325,6 +325,7 @@ function createMockElectronAPI() {
       };
       return Promise.resolve({ success: true, config: { ...mockConfig } });
     }),
+    cancelHomeAssistantOAuth: jest.fn(() => Promise.resolve({ success: true, canceled: false })),
     disconnectHomeAssistantOAuth: jest.fn(() => {
       mockConfig = {
         ...mockConfig,
