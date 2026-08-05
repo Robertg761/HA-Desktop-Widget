@@ -47,11 +47,11 @@ function createElectronApi(ipcRenderer, platform) {
     deferredConfigUpdate = null;
     deliverConfigUpdate(nextConfig);
   };
-  const updateConfig = async (config) => {
+  const invokeConfigMutation = async (channel, ...args) => {
     pendingConfigMutations += 1;
     try {
-      const result = await invokeChecked('update-config', config);
-      const revision = getConfigRevision(result);
+      const result = await invokeChecked(channel, ...args);
+      const revision = getConfigRevision(result?.config || result);
       if (revision !== null) {
         latestSettledConfigRevision = Math.max(latestSettledConfigRevision, revision);
       }
@@ -67,6 +67,9 @@ function createElectronApi(ipcRenderer, platform) {
       flushDeferredConfigUpdate();
     }
   };
+  const updateConfig = (config) => invokeConfigMutation('update-config', config);
+  const replaceConfigEntityId = (oldEntityId, newEntityId) =>
+    invokeConfigMutation('replace-config-entity-id', oldEntityId, newEntityId);
   const subscribeConfigUpdated = (callback) => {
     if (typeof callback !== 'function') {
       throw new TypeError('config-updated listener requires a callback');
@@ -111,6 +114,7 @@ function createElectronApi(ipcRenderer, platform) {
     downloadLocalePack: (locale) => invoke('download-locale-pack', locale),
     removeLocalePack: (locale) => invoke('remove-locale-pack', locale),
     updateConfig,
+    replaceConfigEntityId,
     clearTokenResetReason: () => invokeChecked('clear-token-reset-reason'),
     saveConfig: (config) => invokeChecked('save-config', config),
     pinEntityToDesktop: (entityId, supportInfo = null) =>

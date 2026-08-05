@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { extractWidgetSkeleton } = require('../../scripts/build-panel.cjs');
+const { extractWidgetSkeleton, resolveViteCli } = require('../../scripts/build-panel.cjs');
 
 const STATES = {
   'light.living_room': {
@@ -36,6 +36,12 @@ const flush = async () => {
   for (let i = 0; i < 20; i += 1) await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
+
+test('panel builds invoke the installed Vite CLI through Node', () => {
+  const viteCli = resolveViteCli();
+  expect(path.basename(viteCli)).toBe('vite.js');
+  expect(fs.existsSync(viteCli)).toBe(true);
+});
 
 describe('panel preview virtual desktop', () => {
   let api;

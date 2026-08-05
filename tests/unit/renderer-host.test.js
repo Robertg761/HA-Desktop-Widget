@@ -40,12 +40,18 @@ describe('renderer host seam', () => {
     expect(host.showEntityContextMenu).toBeNull();
     expect(host.resolveMediaUrl({ kind: 'camera_snapshot', entityId: 'camera.x' })).toBe('');
     await expect(host.updateConfig({})).resolves.toEqual({ success: true });
+    await expect(host.replaceConfigEntityId('light.old', 'light.new')).resolves.toEqual({
+      success: true,
+    });
     expect(host.onConfigUpdated(() => {})()).toBeUndefined();
   });
 
   test('electron host resolves media specs to the ha:// protocol', () => {
     const { createElectronHost } = require('@hadw/renderer/electron-host.js');
-    const host = createElectronHost({ updateConfig: jest.fn() });
+    const host = createElectronHost({
+      updateConfig: jest.fn(),
+      replaceConfigEntityId: jest.fn(),
+    });
     expect(
       host.resolveMediaUrl({
         kind: 'camera_snapshot',
@@ -80,6 +86,7 @@ describe('renderer host seam', () => {
     const api = {
       getConfig: jest.fn(async () => ({ opacity: 1 })),
       updateConfig: jest.fn(async () => ({ success: true })),
+      replaceConfigEntityId: jest.fn(async () => ({ success: true })),
       onConfigUpdated: jest.fn(() => () => {}),
       debugLog: jest.fn(async () => {}),
       showEntityTileMenu: jest.fn(async () => {}),
@@ -88,11 +95,13 @@ describe('renderer host seam', () => {
     expect(host.capabilities.isElectron).toBe(true);
     await host.getConfig();
     await host.updateConfig({ opacity: 0.7 });
+    await host.replaceConfigEntityId('light.old', 'light.new');
     host.onConfigUpdated('cb');
     await host.debugLog({ event: 'x' });
     await host.showEntityContextMenu('light.desk', { supported: true });
     expect(api.getConfig).toHaveBeenCalled();
     expect(api.updateConfig).toHaveBeenCalledWith({ opacity: 0.7 });
+    expect(api.replaceConfigEntityId).toHaveBeenCalledWith('light.old', 'light.new');
     expect(api.onConfigUpdated).toHaveBeenCalledWith('cb');
     expect(api.debugLog).toHaveBeenCalledWith({ event: 'x' });
     expect(api.showEntityTileMenu).toHaveBeenCalledWith('light.desk', { supported: true });

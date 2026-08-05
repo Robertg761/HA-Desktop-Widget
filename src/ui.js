@@ -351,6 +351,25 @@ async function persistAuthoritativeConfig(nextConfig) {
   }
 }
 
+async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId) {
+  const host = getRendererHost();
+  if (!host.canPersistConfig || typeof host.replaceConfigEntityId !== 'function') {
+    throw new Error('Configuration updates are unavailable on this build.');
+  }
+  try {
+    const result = await host.replaceConfigEntityId(oldEntityId, newEntityId);
+    const authoritativeConfig = requireAuthoritativeConfig(result?.config);
+    state.setConfig(authoritativeConfig);
+    return { changed: result?.changed === true, config: state.CONFIG };
+  } catch (error) {
+    const recoveredConfig = error?.result?.config;
+    if (recoveredConfig?.homeAssistant) {
+      state.setConfig(recoveredConfig);
+    }
+    throw error;
+  }
+}
+
 function showConfigPersistenceError(error) {
   const message = t('Error: {{error}}', {
     error: error?.message || t('Unknown error'),
@@ -999,6 +1018,14 @@ function renderPrimaryEntityCard(cardEl, entityId) {
   const control = entity ? createControlElement(entity) : createUnavailableElement(entityId);
 
   control.dataset.primaryCard = 'true';
+  if (!entity && control.classList.contains('repairable')) {
+    control.setAttribute('tabindex', '0');
+    control.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      control.click();
+    });
+  }
 
   cardEl.classList.add('primary-entity-card');
   cardEl.classList.toggle('primary-light-card', resolvedEntityId.startsWith('light.'));
@@ -7625,7 +7652,8 @@ function createUnavailableElement(entityId) {
 
     // Get custom name if available, otherwise use entity ID
     const customName = state.CONFIG.customEntityNames?.[entityId];
-    const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
+    const objectId = entityId.includes('.') ? entityId.split('.')[1] : entityId;
+    const displayName = customName || objectId.replace(/_/g, ' ');
     applyQuickAccessTileAccessibility(div, {
       entity_id: entityId,
       attributes: { friendly_name: displayName },
@@ -7635,11 +7663,15 @@ function createUnavailableElement(entityId) {
       <div class="control-icon unavailable-icon">⚠️</div>
       <div class="control-info">
         <div class="control-name">${utils.escapeHtml(displayName)}</div>
-        <div class="control-state unavailable-state">Unavailable</div>
+        <div class="control-state unavailable-state"></div>
       </div>
     `;
 
-    div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
+    applyUnavailableRepairAffordance(div, entityId, displayName);
+    div.addEventListener('click', () => {
+      if (isReorganizeMode || !canRepairUnavailableEntities()) return;
+      openEntityRepairModal(entityId);
+    });
     emitUiDebug('quick_access.create_unavailable', { entityId });
 
     return div;
@@ -7659,13 +7691,211 @@ function applyQuickAccessTileAccessibility(div, entity) {
 function updateExistingUnavailableControl(div, entityId) {
   if (!div || !div.classList.contains('unavailable-entity')) return false;
   const customName = state.CONFIG.customEntityNames?.[entityId];
-  const displayName = customName || entityId.split('.')[1].replace(/_/g, ' ');
+  const objectId = entityId.includes('.') ? entityId.split('.')[1] : entityId;
+  const displayName = customName || objectId.replace(/_/g, ' ');
   div.dataset.entityId = entityId;
-  div.setAttribute('aria-label', displayName);
   const name = div.querySelector('.control-name');
   if (name) name.textContent = displayName;
-  div.title = `Entity ${entityId} is unavailable. It may have been deleted or renamed in Home Assistant.`;
+  applyUnavailableRepairAffordance(div, entityId, displayName);
   return true;
+}
+
+/**
+ * Whether an unavailable tile can offer the repair picker.
+ *
+ * The picker lists replacements out of `state.STATES`, so it is only useful once Home Assistant
+ * has actually delivered its entities. While the connection is down (or has not completed its
+ * first `get_states` yet) every favorite renders as unavailable, and advertising "Click to repair"
+ * on all of them would only open a dialog saying there is nothing to pick.
+ *
+ * @returns {boolean}
+ */
+function canRepairUnavailableEntities() {
+  return Object.keys(state.STATES || {}).length > 0;
+}
+
+/**
+ * Apply the unavailable tile's label, tooltip, and accessible name, gated on whether repair is
+ * currently possible. Shared by the create and reuse paths so a tile rendered while disconnected
+ * picks up the repair affordance as soon as entities arrive.
+ *
+ * @param {HTMLElement} div - The unavailable tile element.
+ * @param {string} entityId - The unavailable entity ID.
+ * @param {string} displayName - The name shown on the tile.
+ */
+function applyUnavailableRepairAffordance(div, entityId, displayName) {
+  const repairable = canRepairUnavailableEntities();
+  div.classList.toggle('repairable', repairable);
+  const unavailableState = div.querySelector('.unavailable-state');
+  if (unavailableState) {
+    unavailableState.textContent = repairable ? t('Click to repair') : t('Unavailable');
+  }
+  div.setAttribute(
+    'aria-label',
+    repairable
+      ? t('{{name}} is unavailable. Click to choose its replacement.', { name: displayName })
+      : t('{{name}} is unavailable.', { name: displayName })
+  );
+  div.title = repairable
+    ? t('Entity {{entityId}} is unavailable. Click to repair it.', { entityId })
+    : t(
+        'Entity {{entityId}} is unavailable. It may have been deleted or renamed in Home Assistant.',
+        {
+          entityId,
+        }
+      );
+}
+
+function openEntityRepairModal(staleEntityId) {
+  if (typeof staleEntityId !== 'string' || !staleEntityId.trim()) return;
+
+  document.getElementById('entity-repair-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'entity-repair-modal';
+  modal.className = 'modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'entity-repair-title');
+
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  const header = document.createElement('div');
+  header.className = 'modal-header';
+  const title = document.createElement('h2');
+  title.id = 'entity-repair-title';
+  title.textContent = t('Repair unavailable entity');
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'close-btn';
+  closeButton.setAttribute('aria-label', t('Close'));
+  closeButton.textContent = '×';
+  header.append(title, closeButton);
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+  const explanation = document.createElement('p');
+  explanation.textContent = t(
+    'Choose the entity that replaces {{entityId}}. Favorites, pages, pins, hotkeys, alerts, graphs, and saved display settings will all be updated.',
+    { entityId: staleEntityId }
+  );
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'form-control';
+  search.placeholder = t('Search replacement entities...');
+  search.setAttribute('aria-label', t('Search replacement entities'));
+  const list = document.createElement('div');
+  list.className = 'entity-selector-list';
+  body.append(explanation, search, list);
+  content.append(header, body);
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+
+  let repairInFlight = false;
+  const close = () => {
+    if (repairInFlight) return;
+    // Release before removing: the no-argument fallback skips disconnected modals, so a detached
+    // modal would leave focus unrestored and could tear down another modal's trap instead.
+    uiUtils.releaseFocusTrap(modal);
+    modal.remove();
+  };
+
+  const persistReplacement = async (replacementEntityId) => {
+    repairInFlight = true;
+    modal.querySelectorAll('button, input').forEach((control) => {
+      control.disabled = true;
+    });
+    try {
+      await persistAuthoritativeEntityIdReplacement(staleEntityId, replacementEntityId);
+      renderActiveTab();
+      renderPrimaryCards();
+      updateWeatherFromHA();
+      updateMediaTile();
+      uiUtils.showToast(
+        t('Replaced {{oldEntityId}} with {{newEntityId}}', {
+          oldEntityId: staleEntityId,
+          newEntityId: replacementEntityId,
+        }),
+        'success',
+        4000
+      );
+      repairInFlight = false;
+      close();
+    } catch (error) {
+      repairInFlight = false;
+      modal.querySelectorAll('button, input').forEach((control) => {
+        control.disabled = false;
+      });
+      showConfigPersistenceError(error);
+    }
+  };
+
+  const renderCandidates = () => {
+    const query = search.value.trim().toLowerCase();
+    const staleDomain = staleEntityId.split('.')[0];
+    const candidates = Object.values(state.STATES || {})
+      .filter(
+        (entity) =>
+          entity?.entity_id &&
+          entity.entity_id !== staleEntityId &&
+          (!query ||
+            entity.entity_id.toLowerCase().includes(query) ||
+            utils.getEntityDisplayName(entity).toLowerCase().includes(query))
+      )
+      .sort((left, right) => {
+        const leftSameDomain = left.entity_id.startsWith(`${staleDomain}.`) ? 1 : 0;
+        const rightSameDomain = right.entity_id.startsWith(`${staleDomain}.`) ? 1 : 0;
+        if (leftSameDomain !== rightSameDomain) return rightSameDomain - leftSameDomain;
+        return utils.getEntityDisplayName(left).localeCompare(utils.getEntityDisplayName(right));
+      });
+
+    list.replaceChildren();
+    if (!candidates.length) {
+      const empty = document.createElement('p');
+      empty.className = 'form-help';
+      empty.textContent = t('No matching replacement entities found.');
+      list.appendChild(empty);
+      return;
+    }
+
+    candidates.forEach((entity) => {
+      const item = document.createElement('div');
+      item.className = 'entity-item';
+      const main = document.createElement('div');
+      main.className = 'entity-item-main';
+      const info = document.createElement('div');
+      info.className = 'entity-item-info';
+      const name = document.createElement('span');
+      name.className = 'entity-name';
+      name.textContent = utils.getEntityDisplayName(entity);
+      const id = document.createElement('span');
+      id.className = 'entity-id';
+      id.textContent = entity.entity_id;
+      info.append(name, id);
+      main.appendChild(info);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'entity-selector-btn add';
+      button.dataset.entityId = entity.entity_id;
+      button.textContent = t('Use');
+      button.addEventListener('click', () => {
+        void persistReplacement(entity.entity_id);
+      });
+      item.append(main, button);
+      list.appendChild(item);
+    });
+  };
+
+  closeButton.addEventListener('click', close);
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) close();
+  });
+  modal.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') close();
+  });
+  search.addEventListener('input', renderCandidates);
+  renderCandidates();
+  uiUtils.trapFocus(modal);
 }
 
 function updateExistingQuickAccessControl(div, entity, options = {}) {

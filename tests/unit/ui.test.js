@@ -674,6 +674,73 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         entity_id: 'switch.bedroom',
       });
     });
+
+    it('lets non-admin users repair an unavailable entity with an explicit replacement', async () => {
+      const replacement = {
+        ...sampleStates['light.bedroom'],
+        entity_id: 'light.desk_lamp',
+        attributes: {
+          ...sampleStates['light.bedroom'].attributes,
+          friendly_name: 'Desk Lamp',
+        },
+      };
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['light.old_lamp'],
+        customTabs: [{ id: 'main', name: 'Main', entityIds: ['light.old_lamp'] }],
+        activeTabId: 'main',
+        customEntityNames: { 'light.old_lamp': 'Old Lamp' },
+        desktopPins: { 'light.old_lamp': { x: 10, y: 20 } },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: { 'light.old_lamp': { hotkey: 'Ctrl+1', action: 'toggle' } },
+        },
+      });
+      state.setStates({ [replacement.entity_id]: replacement });
+      const authoritativeConfig = {
+        ...state.CONFIG,
+        favoriteEntities: ['light.desk_lamp'],
+        customTabs: [{ id: 'main', name: 'Main', entityIds: ['light.desk_lamp'] }],
+        customEntityNames: { 'light.desk_lamp': 'Old Lamp' },
+        desktopPins: { 'light.desk_lamp': { x: 10, y: 20 } },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: { 'light.desk_lamp': { hotkey: 'Ctrl+1', action: 'toggle' } },
+        },
+      };
+      mockElectronAPI.replaceConfigEntityId.mockResolvedValueOnce({
+        success: true,
+        changed: true,
+        config: authoritativeConfig,
+      });
+
+      ui.renderActiveTab();
+      document.querySelector('[data-entity-id="light.old_lamp"]').click();
+
+      const modal = document.getElementById('entity-repair-modal');
+      expect(modal).not.toBeNull();
+      expect(modal.textContent).toContain('light.old_lamp');
+
+      modal.querySelector('[data-entity-id="light.desk_lamp"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockElectronAPI.replaceConfigEntityId).toHaveBeenCalledWith(
+        'light.old_lamp',
+        'light.desk_lamp'
+      );
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.favoriteEntities).toEqual(['light.desk_lamp']);
+      expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.desk_lamp']);
+      expect(state.CONFIG.customEntityNames['light.desk_lamp']).toBe('Old Lamp');
+      expect(state.CONFIG.desktopPins['light.desk_lamp']).toBeDefined();
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk_lamp']).toBeDefined();
+      expect(document.getElementById('entity-repair-modal')).toBeNull();
+      expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('light.desk_lamp'),
+        'success',
+        4000
+      );
+    });
   });
 
   describe('callMediaTileService', () => {

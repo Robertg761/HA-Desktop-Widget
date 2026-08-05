@@ -6,6 +6,8 @@
  * to match the async IPC behavior.
  */
 
+const { replaceConfigEntityIdReferences } = require('../../src/config-entity-references.cjs');
+
 // Mock configuration storage
 let mockConfig = {
   windowPosition: { x: 100, y: 100 },
@@ -187,6 +189,15 @@ function createMockElectronAPI() {
         delete mockConfig.tokenResetReason;
       }
       return Promise.resolve({ ...mockConfig });
+    }),
+    replaceConfigEntityId: jest.fn((oldEntityId, newEntityId) => {
+      const replacement = replaceConfigEntityIdReferences(mockConfig, oldEntityId, newEntityId);
+      if (replacement.changed) mockConfig = replacement.config;
+      return Promise.resolve({
+        success: true,
+        changed: replacement.changed,
+        config: { ...mockConfig },
+      });
     }),
     clearTokenResetReason: jest.fn(() => {
       delete mockConfig.tokenResetReason;

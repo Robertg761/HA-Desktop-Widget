@@ -28,6 +28,12 @@ describe('preload Electron API', () => {
       ['downloadLocalePack', ['fr'], 'download-locale-pack', ['fr']],
       ['removeLocalePack', ['fr'], 'remove-locale-pack', ['fr']],
       ['updateConfig', [objectArg], 'update-config', [objectArg]],
+      [
+        'replaceConfigEntityId',
+        ['light.old', 'light.new'],
+        'replace-config-entity-id',
+        ['light.old', 'light.new'],
+      ],
       ['clearTokenResetReason', [], 'clear-token-reset-reason', []],
       ['saveConfig', [objectArg], 'save-config', [objectArg]],
       ['pinEntityToDesktop', ['light.office'], 'pin-entity-to-desktop', ['light.office', null]],
@@ -249,6 +255,35 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
+  it('tracks the authoritative revision returned by an atomic entity replacement', async () => {
+    const ipcRenderer = createIpcRenderer();
+    let resolveReplacement;
+    ipcRenderer.invoke.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveReplacement = resolve;
+        })
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    const callback = jest.fn();
+    api.onConfigUpdated(callback);
+
+    const replacement = api.replaceConfigEntityId('light.old', 'light.new');
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 8 });
+    expect(callback).not.toHaveBeenCalled();
+
+    resolveReplacement({
+      success: true,
+      changed: true,
+      config: { homeAssistant: {}, configRevision: 8 },
+    });
+    await expect(replacement).resolves.toMatchObject({ changed: true });
+    expect(callback).toHaveBeenCalledWith({ homeAssistant: {}, configRevision: 8 });
+
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 7 });
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
   it('drops a deferred config echo older than the authoritative failed-write revision', async () => {
     const ipcRenderer = createIpcRenderer();
     let rejectUpdate;
@@ -289,6 +324,7 @@ describe('preload Electron API', () => {
 
   it.each([
     ['updateConfig', [{ theme: 'dark' }], 'update-config'],
+    ['replaceConfigEntityId', ['light.old', 'light.new'], 'replace-config-entity-id'],
     ['clearTokenResetReason', [], 'clear-token-reset-reason'],
     ['saveConfig', [{ theme: 'dark' }], 'save-config'],
     ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase'],

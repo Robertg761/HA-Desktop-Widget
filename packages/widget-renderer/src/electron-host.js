@@ -28,6 +28,10 @@ function createElectronHost(electronAPI) {
     canPersistConfig: typeof electronAPI.updateConfig === 'function',
     getConfig: () => electronAPI.getConfig(),
     updateConfig: (patch) => electronAPI.updateConfig(patch),
+    replaceConfigEntityId:
+      typeof electronAPI.replaceConfigEntityId === 'function'
+        ? (oldEntityId, newEntityId) => electronAPI.replaceConfigEntityId(oldEntityId, newEntityId)
+        : null,
     onConfigUpdated: (callback) => electronAPI.onConfigUpdated(callback),
     debugLog: (...args) => electronAPI.debugLog?.(...args),
     showEntityContextMenu: (entityId, supportInfo) =>

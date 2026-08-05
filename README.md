@@ -100,7 +100,7 @@ Planned for a future release:
 
 ### First-Time Setup
 
-1. **Get your Home Assistant URL**: Usually `http://your-ha-ip:8123` or `https://your-ha-domain.com`
+1. **Get your Home Assistant URL**: Use the exact address you normally open in your browser, such as `http://homeassistant.local`, a legacy `http://your-ha-ip:8123` address, or `https://your-ha-domain.com`
 2. **Connect the widget**: Enter that URL and click **Connect**. The app opens Home Assistant in
    your system browser so you can sign in and approve it; your Home Assistant password never enters
    the desktop app.

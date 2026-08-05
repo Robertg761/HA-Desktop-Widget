@@ -27,6 +27,8 @@ describe('Renderer stale favorite state handling', () => {
   let mockWebsocket;
   let mockAlerts;
   let mockUi;
+  let mockUtils;
+  let mockLog;
   let requestLog;
   let now;
   let dateNowSpy;
@@ -102,27 +104,32 @@ describe('Renderer stale favorite state handling', () => {
     mockWebsocket = new EventEmitter();
     mockWebsocket.connect = jest.fn();
     mockWebsocket.request = jest.fn((payload) => {
-      const request = {
-        id: ++requestId,
-        catch: jest.fn(),
-      };
-      requestLog.push({ payload, request });
+      // Mirrors WebSocketManager.request(): a promise carrying the request id that resolves with
+      // the `result` message — including `success: false` answers, which never reject.
+      const id = ++requestId;
+      let settle;
+      const request = new Promise((resolve) => {
+        settle = resolve;
+      });
+      request.id = id;
+      requestLog.push({ payload, request, resolveWith: (result) => settle({ id, ...result }) });
       return request;
     });
     mockWebsocket.callService = jest.fn();
     mockWebsocket.close = jest.fn();
     mockWebsocket.ws = null;
 
+    mockLog = {
+      errorHandler: { startCatching: jest.fn() },
+      transports: { console: {} },
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
     jest.doMock('../../src/logger.js', () => ({
       __esModule: true,
-      default: {
-        errorHandler: { startCatching: jest.fn() },
-        transports: { console: {} },
-        info: jest.fn(),
-        debug: jest.fn(),
-        warn: jest.fn(),
-        error: jest.fn(),
-      },
+      default: mockLog,
     }));
     jest.doMock('../../src/state.js', () => ({ __esModule: true, default: mockState }));
     jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: mockWebsocket }));
@@ -181,11 +188,12 @@ describe('Renderer stale favorite state handling', () => {
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
     }));
-    jest.doMock('../../src/utils.js', () => ({
+    mockUtils = {
       __esModule: true,
       reconcileConfigEntityIds: jest.fn((config) => ({ changed: false, config })),
       resolveEntityId: jest.fn((entityId) => entityId),
-    }));
+    };
+    jest.doMock('../../src/utils.js', () => mockUtils);
     jest.doMock('../../src/i18n.js', () => ({
       __esModule: true,
       setLocaleBootstrap: jest.fn(),
@@ -340,5 +348,70 @@ describe('Renderer stale favorite state handling', () => {
 
     expect(mockState.CONFIG.entityAlerts).toEqual(nextConfig.entityAlerts);
     expect(mockAlerts.initializeEntityAlerts).toHaveBeenCalledTimes(1);
+  });
+
+  it('subscribes to entity-registry updates and persists exact rename mappings', async () => {
+    await loadRenderer();
+    const renamedConfig = {
+      ...createConfig(),
+      favoriteEntities: ['light.favorite_renamed'],
+    };
+    mockElectronAPI.replaceConfigEntityId.mockResolvedValueOnce({
+      success: true,
+      changed: true,
+      config: renamedConfig,
+    });
+
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+
+    expect(requestLog.map(({ payload }) => payload)).toContainEqual({
+      type: 'subscribe_events',
+      event_type: 'entity_registry_updated',
+    });
+
+    mockWebsocket.emit('message', {
+      type: 'event',
+      event: {
+        event_type: 'entity_registry_updated',
+        data: {
+          action: 'update',
+          old_entity_id: 'light.favorite',
+          entity_id: 'light.favorite_renamed',
+          changes: { entity_id: 'light.favorite' },
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(mockElectronAPI.replaceConfigEntityId).toHaveBeenCalledWith(
+      'light.favorite',
+      'light.favorite_renamed'
+    );
+    expect(mockState.CONFIG.favoriteEntities).toEqual(['light.favorite_renamed']);
+    expect(mockUi.renderActiveTab).toHaveBeenCalled();
+  });
+
+  it('reports an entity-registry subscription that Home Assistant refuses', async () => {
+    await loadRenderer();
+
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+
+    // Home Assistant answers a non-admin subscription with an unsuccessful result rather than
+    // dropping the connection, so the refusal arrives as a resolution and not a rejection.
+    const subscription = requestLog.find(
+      ({ payload }) =>
+        payload.type === 'subscribe_events' && payload.event_type === 'entity_registry_updated'
+    );
+    subscription.resolveWith({
+      type: 'result',
+      success: false,
+      error: { code: 'unauthorized', message: 'Unauthorized' },
+    });
+    await flushPromises();
+
+    expect(mockLog.info).toHaveBeenCalledWith(
+      'Automatic entity rename tracking is unavailable for this account:',
+      expect.objectContaining({ code: 'unauthorized' })
+    );
   });
 });

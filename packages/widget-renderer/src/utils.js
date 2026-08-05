@@ -651,14 +651,29 @@ function resolveEntityId(entityId, states = state.STATES) {
 /**
  * Reconcile entity IDs stored in local config against live Home Assistant states.
  * IDs are only rewritten when a concrete matching entity exists in `states`.
+ * Trusted explicit mappings, such as an entity-registry rename event or a user-selected
+ * replacement, take precedence and do not require the destination state to have arrived yet.
  * @param {Object} config
  * @param {Object.<string, any>} [states]
+ * @param {Object.<string, string>|Map<string, string>} [explicitMappings]
  * @returns {{ config: Object, changed: boolean }}
  */
-function reconcileConfigEntityIds(config, states = state.STATES) {
+function reconcileConfigEntityIds(config, states = state.STATES, explicitMappings = {}) {
   if (!config || typeof config !== 'object' || !states || typeof states !== 'object') {
     return { config, changed: false };
   }
+
+  const getExplicitMapping = (entityId) => {
+    const mapped =
+      explicitMappings instanceof Map
+        ? explicitMappings.get(entityId)
+        : explicitMappings &&
+            typeof explicitMappings === 'object' &&
+            Object.prototype.hasOwnProperty.call(explicitMappings, entityId)
+          ? explicitMappings[entityId]
+          : null;
+    return typeof mapped === 'string' && mapped.trim() ? mapped.trim() : null;
+  };
 
   const sameArray = (a, b) =>
     Array.isArray(a) &&
@@ -668,6 +683,8 @@ function reconcileConfigEntityIds(config, states = state.STATES) {
 
   const remapEntityId = (value) => {
     if (typeof value !== 'string') return value;
+    const explicitMapping = getExplicitMapping(value);
+    if (explicitMapping) return explicitMapping;
     return resolveEntityId(value, states) || value;
   };
 

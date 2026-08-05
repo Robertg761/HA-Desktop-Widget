@@ -260,6 +260,34 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
+  it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {
+    await loadRenderer();
+
+    await clickButton('Next');
+    const input = document.getElementById('first-run-ha-url');
+
+    expect(input.value).toBe('');
+    expect(input.placeholder).toBe('http://homeassistant.local');
+  });
+
+  it('authorizes a fresh Home Assistant 2026.8 install without adding the legacy port', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockResolvedValueOnce({
+          success: true,
+          config: oauthConfig('http://homeassistant.local'),
+        });
+      },
+    });
+
+    await reachAuthorizationStep('homeassistant.local');
+    await clickButton('Connect');
+
+    expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith(
+      'http://homeassistant.local'
+    );
+  });
+
   it('authorizes the normalized URL and starts the configured runtime', async () => {
     await loadRenderer({
       configureApi(api) {

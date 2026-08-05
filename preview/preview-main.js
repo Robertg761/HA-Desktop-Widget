@@ -19,6 +19,9 @@ import state from '@hadw/renderer/state.js';
 import { buildProfileDocumentFromConfig } from '@hadw/renderer/profile-schema.js';
 import websocket from '../src/websocket.js';
 import * as ui from '../src/ui.js';
+import configEntityReferences from '../src/config-entity-references.cjs';
+
+const { replaceConfigEntityIdReferences } = configEntityReferences;
 
 // --- virtual main process ---------------------------------------------------
 
@@ -109,11 +112,25 @@ async function virtualUpdateConfig(patch) {
   return { success: true, config: authoritative };
 }
 
+async function virtualReplaceConfigEntityId(oldEntityId, newEntityId) {
+  const replacement = replaceConfigEntityIdReferences(previewConfig, oldEntityId, newEntityId);
+  if (!replacement.changed) {
+    return {
+      success: true,
+      changed: false,
+      config: { ...snapshotConfig(), configRevision },
+    };
+  }
+  const authoritative = await virtualUpdateConfig(replacement.config);
+  return { success: true, changed: true, config: authoritative.config };
+}
+
 function installVirtualElectronApi() {
   const stubs = {
     platform: 'linux',
     getConfig: async () => ({ ...snapshotConfig(), configRevision }),
     updateConfig: virtualUpdateConfig,
+    replaceConfigEntityId: virtualReplaceConfigEntityId,
     saveConfig: virtualUpdateConfig,
     onConfigUpdated: (callback) => {
       configListeners.add(callback);

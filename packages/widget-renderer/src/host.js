@@ -26,6 +26,7 @@ function createNullHost() {
     canPersistConfig: false,
     getConfig: async () => ({}),
     updateConfig: async () => ({ success: true }),
+    replaceConfigEntityId: async () => ({ success: true }),
     onConfigUpdated: () => () => {},
     debugLog: () => {},
     showEntityContextMenu: null,

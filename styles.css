@@ -3539,6 +3539,11 @@ body.first-run-active .widget-content > * {
   cursor: not-allowed;
 }
 
+/* Only the tiles that can actually open the repair picker advertise a click. */
+.control-item.unavailable-entity.repairable {
+  cursor: pointer;
+}
+
 .control-item.unavailable-entity:hover {
   transform: none;
   background: linear-gradient(135deg, rgba(158, 158, 158, 0.12), rgba(97, 97, 97, 0.06));

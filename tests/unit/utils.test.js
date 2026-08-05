@@ -744,6 +744,58 @@ describe('Utils Module', () => {
       });
     });
 
+    test('should migrate every saved reference from a trusted entity rename', () => {
+      const config = {
+        favoriteEntities: ['light.old_name'],
+        customTabs: [{ id: 'main', name: 'Main', entityIds: ['light.old_name'] }],
+        comparisonGraphs: [{ id: 'graph:power', name: 'Power', entityIds: ['light.old_name'] }],
+        primaryMediaPlayer: 'light.old_name',
+        selectedWeatherEntity: 'light.old_name',
+        primaryCards: ['weather', 'light.old_name'],
+        desktopPins: { 'light.old_name': { x: 10, y: 20 } },
+        customEntityNames: { 'light.old_name': 'Desk Lamp' },
+        customEntityIcons: { 'light.old_name': 'mdi:desk-lamp' },
+        tileSpans: { 'light.old_name': 2 },
+        quickAccessTileOptions: { 'light.old_name': { valueSize: 'large' } },
+        globalHotkeys: {
+          enabled: true,
+          hotkeys: { 'light.old_name': { hotkey: 'Ctrl+1', action: 'toggle' } },
+        },
+        entityAlerts: {
+          enabled: true,
+          alerts: { 'light.old_name': { onStateChange: true } },
+        },
+      };
+
+      const result = utils.reconcileConfigEntityIds(
+        config,
+        {},
+        {
+          'light.old_name': 'light.new_name',
+        }
+      );
+
+      expect(result.changed).toBe(true);
+      expect(result.config.favoriteEntities).toEqual(['light.new_name']);
+      expect(result.config.customTabs[0].entityIds).toEqual(['light.new_name']);
+      expect(result.config.comparisonGraphs[0].entityIds).toEqual(['light.new_name']);
+      expect(result.config.primaryMediaPlayer).toBe('light.new_name');
+      expect(result.config.selectedWeatherEntity).toBe('light.new_name');
+      expect(result.config.primaryCards).toEqual(['weather', 'light.new_name']);
+      [
+        'desktopPins',
+        'customEntityNames',
+        'customEntityIcons',
+        'tileSpans',
+        'quickAccessTileOptions',
+      ].forEach((field) => {
+        expect(result.config[field]['light.new_name']).toBeDefined();
+        expect(result.config[field]['light.old_name']).toBeUndefined();
+      });
+      expect(result.config.globalHotkeys.hotkeys['light.new_name']).toBeDefined();
+      expect(result.config.entityAlerts.alerts['light.new_name']).toBeDefined();
+    });
+
     test('should not change config when no IDs can be safely remapped', () => {
       const states = {
         'light.kitchen': { entity_id: 'light.kitchen' },

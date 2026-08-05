@@ -10,6 +10,7 @@ describe('connection helpers', () => {
     });
 
     test('adds http when the protocol is omitted', () => {
+      expect(normalizeBaseUrl('homeassistant.local')).toBe('http://homeassistant.local');
       expect(normalizeBaseUrl('homeassistant.local:8123')).toBe('http://homeassistant.local:8123');
     });
 

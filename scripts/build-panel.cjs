@@ -17,6 +17,18 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 
+function resolveViteCli() {
+  const packageJsonPath = require.resolve('vite/package.json');
+  const vitePackage = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const viteBin = typeof vitePackage.bin === 'string' ? vitePackage.bin : vitePackage.bin?.vite;
+
+  if (!viteBin) throw new Error('Could not resolve the Vite CLI from vite/package.json');
+
+  const viteCli = path.resolve(path.dirname(packageJsonPath), viteBin);
+  if (!fs.existsSync(viteCli)) throw new Error(`Vite CLI not found at ${viteCli}`);
+  return viteCli;
+}
+
 function extractWidgetSkeleton(indexHtml) {
   // The full body ships so the widget's real settings modal (and every other
   // modal ui.js/settings.js expect) exists in the preview; scripts are
@@ -51,7 +63,7 @@ function main() {
   const copyTo = copyToIndex !== -1 ? args[copyToIndex + 1] : null;
 
   fs.writeFileSync(path.join(ROOT, 'preview', 'preview.html'), buildPreviewHtml());
-  execFileSync('npx', ['vite', 'build', '--config', 'vite.panel.config.js'], {
+  execFileSync(process.execPath, [resolveViteCli(), 'build', '--config', 'vite.panel.config.js'], {
     cwd: ROOT,
     stdio: 'inherit',
   });
@@ -80,4 +92,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { buildPreviewHtml, extractWidgetSkeleton };
+module.exports = { buildPreviewHtml, extractWidgetSkeleton, resolveViteCli };

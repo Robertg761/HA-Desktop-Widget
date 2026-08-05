@@ -50,6 +50,77 @@ let desktopPinBounds = null;
 let desktopPinHasSnapshot = false;
 let desktopPinConnectionIssue = '';
 const favoriteStalePreservation = new Map();
+let entityRenameMigrationQueue = Promise.resolve();
+
+async function persistEntityRegistryRename(eventData = {}) {
+  const oldEntityId =
+    typeof eventData.old_entity_id === 'string' ? eventData.old_entity_id.trim() : '';
+  const newEntityId = typeof eventData.entity_id === 'string' ? eventData.entity_id.trim() : '';
+  if (
+    eventData.action !== 'update' ||
+    !oldEntityId ||
+    !newEntityId ||
+    oldEntityId === newEntityId
+  ) {
+    return;
+  }
+
+  try {
+    const replacement = await window.electronAPI.replaceConfigEntityId(oldEntityId, newEntityId);
+    const authoritativeConfig = replacement?.config;
+    favoriteStalePreservation.delete(oldEntityId);
+    if (authoritativeConfig?.homeAssistant) {
+      applyRendererConfig(authoritativeConfig);
+    }
+    if (!replacement?.changed) {
+      emitRendererDebug('config.entity_registry_rename.no_references', {
+        oldEntityId,
+        newEntityId,
+      });
+      return;
+    }
+    if (configuredRuntimeStarted) alerts.initializeEntityAlerts();
+    renderCurrentMode();
+    uiUtils.showToast(
+      t('Updated saved references from {{oldEntityId}} to {{newEntityId}}', {
+        oldEntityId,
+        newEntityId,
+      }),
+      'success',
+      5000
+    );
+    emitRendererDebug('config.entity_registry_rename.persisted', {
+      oldEntityId,
+      newEntityId,
+    });
+  } catch (error) {
+    log.error(
+      `Failed to persist Home Assistant entity rename ${oldEntityId} -> ${newEntityId}:`,
+      error
+    );
+    uiUtils.showToast(
+      t(
+        'Could not update saved references for {{oldEntityId}}. Click its unavailable tile to repair it.',
+        {
+          oldEntityId,
+        }
+      ),
+      'warning',
+      10000
+    );
+    emitRendererDebug('config.entity_registry_rename.persist_error', {
+      oldEntityId,
+      newEntityId,
+      error: error?.message || String(error),
+    });
+  }
+}
+
+function queueEntityRegistryRename(eventData) {
+  entityRenameMigrationQueue = entityRenameMigrationQueue
+    .catch(() => {})
+    .then(() => persistEntityRegistryRename(eventData));
+}
 
 function emitRendererDebug(event, details = {}) {
   try {
@@ -493,7 +564,7 @@ function renderWizardStep() {
     const input = document.createElement('input');
     input.id = 'first-run-ha-url';
     input.type = 'text';
-    input.placeholder = t('http://homeassistant.local:8123');
+    input.placeholder = t('http://homeassistant.local');
     input.value =
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
@@ -1219,6 +1290,25 @@ websocket.on('message', (msg) => {
         .catch((error) => {
           log.warn('State change subscription request failed:', error);
         });
+      if (!IS_SPECIAL_PIN_MODE) {
+        websocket
+          .request({ type: 'subscribe_events', event_type: 'entity_registry_updated' })
+          .then((response) => {
+            // Home Assistant answers an unauthorized subscription with a `success: false` result
+            // rather than dropping the connection, so the failure arrives here and not in catch().
+            // Home Assistant limits this event to administrators. Non-admin users can repair
+            // an unavailable Quick Access tile through the explicit replacement picker.
+            if (response?.success === false) {
+              log.info(
+                'Automatic entity rename tracking is unavailable for this account:',
+                response.error || response
+              );
+            }
+          })
+          .catch((error) => {
+            log.info('Automatic entity rename tracking is unavailable for this account:', error);
+          });
+      }
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
       mainConnectionState = 'auth-failed';
@@ -1232,6 +1322,8 @@ websocket.on('message', (msg) => {
       uiUtils.showToast(authFailureMessage, 'error', 15000);
       // Render the UI so user can access settings
       renderCurrentMode();
+    } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
+      queueEntityRegistryRename(msg.event.data);
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       const entity = msg.event.data?.new_state;
       if (entity) {

@@ -89,6 +89,7 @@ const {
   createLatestTaskCoalescer,
 } = require('./src/serialized-task-runner.cjs');
 const { shouldBlockConfigWrite } = require('./src/config-write-guard.cjs');
+const { replaceConfigEntityIdReferences } = require('./src/config-entity-references.cjs');
 const { requireExistingSyncParentDirectory } = require('./src/cloud-sync-path.cjs');
 const {
   createProfileSyncRewriteTransaction,
@@ -3326,7 +3327,9 @@ function loadConfig(options = {}) {
     opacity: 0.95,
     frostedGlass: true,
     homeAssistant: {
-      url: 'http://homeassistant.local:8123',
+      // Home Assistant OS 2026.8+ fresh installs use the standard HTTP port by default.
+      // Existing saved URLs, including legacy :8123 installs, are merged over this value.
+      url: '',
       token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
       authMethod: 'token',
     },
@@ -5174,6 +5177,98 @@ ipcMain.handle('remove-locale-pack', async (event, locale) => {
 });
 
 ipcMain.handle(
+  'replace-config-entity-id',
+  serializeConfigMutationHandler(async (event, rawOldEntityId, rawNewEntityId) => {
+    const sender = authorizeIpcSender(event, 'replace-config-entity-id');
+    if (!sender) return rejectUnauthorizedIpc('replace-config-entity-id');
+
+    const oldEntityId = normalizeIpcEntityIdForKey(rawOldEntityId);
+    const newEntityId = normalizeIpcEntityIdForKey(rawNewEntityId);
+    if (!oldEntityId || !newEntityId) {
+      return {
+        success: false,
+        error: 'Invalid entity ID replacement',
+        config: sanitizeConfigForRenderer(config),
+      };
+    }
+    if (oldEntityId === newEntityId) {
+      return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+    }
+
+    // This transformation runs inside the same serialized queue as update-config,
+    // so it always starts from the latest authoritative main-process snapshot.
+    const previousConfig = config;
+    const previousRuntimeTracking = {
+      localProfileHash: profileSyncRuntime.localProfileHash,
+      localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+      pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    };
+    const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
+    if (!replacement.changed) {
+      return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+    }
+
+    config = {
+      ...replacement.config,
+      profileSync: { ...(replacement.config.profileSync || {}) },
+    };
+    normalizeDesktopPinsConfig(config);
+    pruneConfig(config);
+    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+    if (!persistence.success) {
+      config = previousConfig;
+      Object.assign(profileSyncRuntime, previousRuntimeTracking);
+      return {
+        success: false,
+        error: `Failed to save entity replacement: ${persistence.error}`,
+        config: sanitizeConfigForRenderer(config),
+      };
+    }
+
+    const runtimeWarnings = [];
+    await runPostSaveSideEffect(
+      runtimeWarnings,
+      'entity replacement profile sync scheduling',
+      () => {
+        if (profileSyncRuntime.localProfileHash !== previousRuntimeTracking.localProfileHash) {
+          scheduleDebouncedProfileSyncPush('config_change');
+        }
+      }
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement runtime settings', () =>
+      applyRuntimeConfigSideEffects(previousConfig, config, 'entity ID replacement')
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement desktop pin windows', () =>
+      syncDesktopPinWindowsWithConfig()
+    );
+
+    const rendererConfig = sanitizeConfigForRenderer(config);
+    if (persistence.persistenceWarnings?.length) {
+      rendererConfig.persistenceWarnings = persistence.persistenceWarnings;
+    }
+    if (runtimeWarnings.length) {
+      rendererConfig.runtimeWarnings = runtimeWarnings;
+    }
+    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement renderer broadcast', () =>
+      pushConfigToRenderer({
+        persistenceWarnings: persistence.persistenceWarnings,
+        runtimeWarnings,
+      })
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement desktop pin broadcast', () =>
+      broadcastDesktopPinConfigUpdate()
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement profile sync broadcast', () =>
+      emitProfileSyncStatus()
+    );
+    if (runtimeWarnings.length) {
+      rendererConfig.runtimeWarnings = runtimeWarnings;
+    }
+    return { success: true, changed: true, config: rendererConfig };
+  })
+);
+
+ipcMain.handle(
   'update-config',
   serializeConfigMutationHandler(async (event, newConfig) => {
     const sender = authorizeIpcSender(event, 'update-config');
@@ -5607,7 +5702,7 @@ ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
     config = {
       ...config,
       homeAssistant: {
-        url: config?.homeAssistant?.url || 'http://homeassistant.local:8123',
+        url: config?.homeAssistant?.url || '',
         token: HOME_ASSISTANT_TOKEN_PLACEHOLDER,
         tokenEncrypted: false,
         authMethod: 'token',

@@ -60,12 +60,14 @@ describe('Test Environment Setup', () => {
         expect(electronAPI).toBeDefined();
         expect(typeof electronAPI.getConfig).toBe('function');
         expect(typeof electronAPI.updateConfig).toBe('function');
+        expect(typeof electronAPI.replaceConfigEntityId).toBe('function');
         expect(typeof electronAPI.saveConfig).toBe('function');
       });
 
       it('should have all config operations', () => {
         expect(electronAPI.getConfig).toBeDefined();
         expect(electronAPI.updateConfig).toBeDefined();
+        expect(electronAPI.replaceConfigEntityId).toBeDefined();
         expect(electronAPI.saveConfig).toBeDefined();
       });
 
