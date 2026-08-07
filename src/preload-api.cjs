@@ -196,6 +196,7 @@ function createElectronApi(ipcRenderer, platform) {
     onConfigUpdated: subscribeConfigUpdated,
     onConfigPersistenceWarning: (callback) => subscribe('config-persistence-warning', callback),
     onDesktopPinUpdate: (callback) => subscribe('desktop-pin-update', callback),
+    onDesktopPinSnapshotNeeded: (callback) => subscribe('desktop-pin-snapshot-needed', callback),
     onDesktopPinActionRequested: (callback) => subscribe('desktop-pin-action-requested', callback),
     onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),
     onDesktopCompanionStateChanged: (callback) =>

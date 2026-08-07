@@ -1,6 +1,7 @@
 {
   "name": "home-assistant-widget",
   "version": "3.9.0-beta.1",
+  "appId": "com.github.robertg761.hadesktopwidget",
   "workspaces": [
     "packages/*"
   ],
@@ -54,96 +55,6 @@
   "bugs": {
     "url": "https://github.com/Robertg761/HA-Desktop-Widget/issues"
   },
-  "build": {
-    "productName": "HA Desktop Widget",
-    "appId": "com.github.robertg761.hadesktopwidget",
-    "directories": {
-      "buildResources": "build",
-      "output": "dist"
-    },
-    "afterPack": "scripts/after-pack-mac-adhoc-sign.cjs",
-    "files": [
-      "index.html",
-      "locales/**/*",
-      "main.js",
-      "profile-sync-core.js",
-      "src/**/*",
-      "packages/widget-renderer/**/*",
-      "dist-preload/**/*",
-      "dist-renderer/**/*",
-      "styles.css",
-      "build/icon.ico",
-      "build/icon.png",
-      "package.json",
-      "!node_modules/usocket/**/*"
-    ],
-    "asar": true,
-    "compression": "normal",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Robertg761",
-        "repo": "HA-Desktop-Widget",
-        "releaseType": "release"
-      }
-    ],
-    "mac": {
-      "minimumSystemVersion": "12.0",
-      "x64ArchFiles": "**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node"
-    },
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "artifactName": "${productName}-${version}-win-${arch}-Setup.${ext}",
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
-      "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true,
-      "shortcutName": "Home Assistant Widget"
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}-win-${arch}-Portable.${ext}"
-    },
-    "linux": {
-      "icon": "build/icon.png",
-      "category": "Utility",
-      "maintainer": "Robertg761",
-      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    }
-  },
   "devDependencies": {
     "@babel/core": "^7.28.6",
     "@babel/preset-env": "^7.28.6",
@@ -154,22 +65,21 @@
     "electron-builder": "^26.15.6",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",
+    "events": "^3.3.0",
     "globals": "^15.9.0",
+    "hls.js": "^1.4.12",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "prettier": "^3.9.5",
     "regenerate-unicode-properties": "10.2.2",
+    "sortablejs": "^1.15.6",
     "vite": "^7.3.1"
   },
   "dependencies": {
     "@mdi/font": "7.4.47",
-    "axios": "^1.11.0",
     "dbus-next": "^0.10.2",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2",
-    "events": "^3.3.0",
-    "hls.js": "^1.4.12",
-    "sortablejs": "^1.15.6"
+    "electron-updater": "^6.6.2"
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"

@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -174,6 +174,7 @@
     "Connecting": "正在连接",
     "Waiting for first live update": "等待首次实时更新",
     "Waiting for live Home Assistant data...": "正在等待 Home Assistant 实时数据...",
+    "Your desktop environment controls where this tile sits. Size changes still apply.": "桌面环境决定此卡片的位置。大小调整仍然有效。",
     "Auto-updates only work in packaged builds": "自动更新仅适用于打包版本",
     "Download Portable Update": "下载便携版更新",
     "Downloading update...": "正在下载更新...",

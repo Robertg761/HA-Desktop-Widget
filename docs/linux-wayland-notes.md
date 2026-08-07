@@ -54,7 +54,18 @@ file to try XWayland again, for instance after a driver update.
 
 Global hotkeys are unaffected by that switch: `isWaylandSession()` reads the session
 environment, not the rendering backend, so a Wayland session keeps using the XDG
-GlobalShortcuts portal, which works regardless of how the app draws.
+GlobalShortcuts portal, which works regardless of how the app draws. One exception: a
+portal bind the user once dismissed stays approved with no trigger and rebinding never
+re-prompts, so when shortcuts were requested and the portal assigns no active trigger to
+any of them — or the bind fails outright — a session running through XWayland falls back
+to the partial X grabs instead of leaving every hotkey inert. The fallback is sticky for
+the rest of the session (re-probing the portal on every hotkey change would tear the
+working grabs down for the length of a bind round trip each time); assigning the
+shortcuts in the desktop's shortcut settings and restarting the app adopts the portal
+again. A session with no hotkeys configured stays on the portal, and native Wayland has
+no X-grab fallback, so there the portal stays active either way. A single assigned
+trigger also keeps the portal: it is demonstrably approved, and the remaining triggers
+can be assigned in the desktop's shortcut settings.
 
 ## Keeping the position on native Wayland: a KWin rule
 
@@ -64,8 +75,11 @@ on a native Wayland session, and it was verified on the machine above: move the 
 show it, and it comes back where it was.
 
 The main window sets a stable `title: 'HA Desktop Widget'` and blocks `page-title-updated`
-precisely so a rule can match it. Desktop pins load the same `index.html` and keep Chromium's
-default title, so a rule for the widget does not catch them.
+precisely so a rule can match it. Desktop pins load the same `index.html` but each sets its own
+stable `HA Pin: <entity id>` title and blocks the same event, so a rule for the widget does not
+catch them and a second rule matching one pin's title can remember that pin's position
+individually. The pin titles deliberately do not contain the main window's title, so even a
+substring match on `HA Desktop Widget` skips every pin.
 
 In System Settings, this is Window Management -> Window Rules -> Add New, then "Detect Window
 Properties" on the widget, match on window title, and add Position -> Remember. The equivalent
@@ -103,5 +117,8 @@ XWayland is unavailable:
   `config.windowPosition` corrupts the position the user chose on other platforms.
 - Anything that unmaps the main window (`hide()`, close-to-tray, the tray toggle) loses its
   position, and the widget's opacity setting does nothing.
+- Desktop pin windows cannot place themselves either: drags are not persisted and saved pin
+  positions are not applied, though size edits still work. Their edit mode says so in the tile
+  itself, and the per-pin titles above are what let a KWin rule remember each pin's position.
 - Never call `minimize()` on the main window without a plan for bringing it back; the app
   cannot unminimize itself.

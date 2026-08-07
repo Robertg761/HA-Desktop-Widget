@@ -296,6 +296,11 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: release-macos
+          # Keep latest-mac.yml and blockmaps: builds v3.5.1 through v3.8.0-beta.1 still run
+          # autoUpdater.checkForUpdatesAndNotify() on darwin and fetch latest-mac.yml from the
+          # latest release on every launch. Dropping it 404s their update checks and strands
+          # them with no in-app update discovery, even though current builds disable
+          # Squirrel.Mac while macOS builds are ad-hoc signed (src/platform.cjs).
           path: |
             dist/*.dmg
             dist/*-mac.zip

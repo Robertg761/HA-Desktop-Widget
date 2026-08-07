@@ -316,6 +316,7 @@
   "Unlocking saved Home Assistant credentials...": "Unlocking saved Home Assistant credentials...",
   "Waiting for first live update": "Waiting for first live update",
   "Waiting for live Home Assistant data...": "Waiting for live Home Assistant data...",
+  "Your desktop environment controls where this tile sits. Size changes still apply.": "Your desktop environment controls where this tile sits. Size changes still apply.",
   "Development climate demo — no Home Assistant connection": "Development climate demo — no Home Assistant connection",
   "Development demo": "Development demo",
   "Ends {{time}}": "Ends {{time}}",

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const nodeCrypto = require('crypto');
 const { fileURLToPath, pathToFileURL } = require('url');
-const axios = require('axios');
+const { fetchChecked } = require('./net-fetch.cjs');
 
 function normalizeLocaleCode(locale) {
   if (!locale || typeof locale !== 'string') return '';
@@ -76,6 +76,8 @@ function createLocalizationService(options = {}) {
     appVersion = '0.0.0',
     getDetectedLocale = () => 'en',
     manifestUrl = '',
+    // Injectable for tests; main.js supplies Electron's net.fetch.
+    fetchImpl = (url, init) => fetch(url, init),
   } = options;
 
   const bundledCache = new Map();
@@ -97,24 +99,16 @@ function createLocalizationService(options = {}) {
     if (isFileSource(source)) {
       return readJsonFile(getFileSourcePath(source));
     }
-    const response = await axios.get(source, {
-      responseType: 'json',
-      timeout: 15000,
-      validateStatus: (status) => status >= 200 && status < 300,
-    });
-    return response.data;
+    const response = await fetchChecked(fetchImpl, source, { timeoutMs: 15000 });
+    return response.json();
   }
 
   async function readTextSource(source) {
     if (isFileSource(source)) {
       return fs.readFileSync(getFileSourcePath(source), 'utf8');
     }
-    const response = await axios.get(source, {
-      responseType: 'text',
-      timeout: 20000,
-      validateStatus: (status) => status >= 200 && status < 300,
-    });
-    return typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+    const response = await fetchChecked(fetchImpl, source, { timeoutMs: 20000 });
+    return response.text();
   }
 
   function getBundledMessages(locale) {

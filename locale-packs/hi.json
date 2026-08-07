@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -174,6 +174,7 @@
     "Connecting": "कनेक्ट हो रहा है",
     "Waiting for first live update": "पहली लाइव अपडेट की प्रतीक्षा",
     "Waiting for live Home Assistant data...": "लाइव Home Assistant डेटा की प्रतीक्षा...",
+    "Your desktop environment controls where this tile sits. Size changes still apply.": "आपका डेस्कटॉप वातावरण तय करता है कि यह टाइल कहाँ रहेगी। आकार में बदलाव अब भी लागू होते हैं।",
     "Auto-updates only work in packaged builds": "ऑटो-अपडेट केवल पैकेज्ड बिल्ड में काम करते हैं",
     "Download Portable Update": "पोर्टेबल अपडेट डाउनलोड करें",
     "Downloading update...": "अपडेट डाउनलोड हो रहा है...",

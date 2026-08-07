@@ -724,6 +724,38 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-resize-handle {
   display: flex;
 }
 
+/* Compositor-owned placement (native Wayland): drags are not remembered, so edit mode
+   says who really controls the position. Never shown outside edit mode. */
+.desktop-pin-placement-notice {
+  display: none;
+}
+
+body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
+  .desktop-pin-placement-notice {
+  display: block;
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 2;
+  max-width: calc(100% - 24px);
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(8, 12, 20, 0.78);
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+}
+
+@media (max-width: 160px), (max-height: 120px) {
+  body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
+    .desktop-pin-placement-notice {
+    display: none;
+  }
+}
+
 .desktop-pin-header {
   display: flex;
   align-items: center;

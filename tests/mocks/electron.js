@@ -83,6 +83,7 @@ const eventListeners = {
   configUpdated: [],
   configPersistenceWarning: [],
   desktopPinUpdate: [],
+  desktopPinSnapshotNeeded: [],
   desktopPinActionRequested: [],
   entityTileHotkeyRequested: [],
   desktopCompanionStateChanged: [],
@@ -289,7 +290,9 @@ function createMockElectronAPI() {
       })
     ),
     getDesktopPinBootstrap: jest.fn((_entityId) => Promise.resolve(null)),
-    publishHaSnapshot: jest.fn((_states) => Promise.resolve()),
+    // Mirrors main's accepted-publish response; the renderer's snapshot coalescing
+    // re-publishes when a joined publish resolves falsy or `discarded`.
+    publishHaSnapshot: jest.fn((_states) => Promise.resolve({ success: true, count: 0 })),
     publishHaEntityUpdate: jest.fn((_entity) => Promise.resolve()),
     requestDesktopPinAction: jest.fn((_entityId, _action, _payload) =>
       Promise.resolve({ success: true })
@@ -423,6 +426,13 @@ function createMockElectronAPI() {
         if (index > -1) eventListeners.desktopPinUpdate.splice(index, 1);
       };
     }),
+    onDesktopPinSnapshotNeeded: jest.fn((callback) => {
+      eventListeners.desktopPinSnapshotNeeded.push(callback);
+      return () => {
+        const index = eventListeners.desktopPinSnapshotNeeded.indexOf(callback);
+        if (index > -1) eventListeners.desktopPinSnapshotNeeded.splice(index, 1);
+      };
+    }),
     onDesktopPinActionRequested: jest.fn((callback) => {
       eventListeners.desktopPinActionRequested.push(callback);
       return () => {
@@ -461,6 +471,12 @@ function triggerMockEvent(eventType, data) {
  * Reset mock state (useful between tests)
  */
 function resetMockElectronAPI() {
+  // Listener arrays are module-level, so instances registered by a previous test's
+  // renderer would otherwise keep receiving triggerMockEvent dispatches and publish
+  // through whatever window.electronAPI is current when they fire.
+  Object.values(eventListeners).forEach((listeners) => {
+    listeners.length = 0;
+  });
   mockConfig = {
     windowPosition: { x: 100, y: 100 },
     windowSize: { width: 500, height: 600 },

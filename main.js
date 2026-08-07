@@ -25,10 +25,10 @@ const { pathToFileURL, fileURLToPath } = require('url');
 // directly leaves the renderer with no window.electronAPI at all.
 const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
-const axios = require('axios');
 const pkg = require('./package.json');
 const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
+const { fetchChecked } = require('./src/net-fetch.cjs');
 const {
   normalizeEntityId,
   getDesktopPinBaseBounds,
@@ -71,7 +71,9 @@ const {
   getAppIconPath,
   getMainWindowVisualOptions,
   shouldForceX11OzonePlatform,
+  hasGlobalShortcutFallback,
   shouldUseCompositorOwnedPlacement,
+  shouldUsePortalGlobalShortcuts,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
@@ -241,6 +243,11 @@ const processStartedAt = Date.now();
 // Window managers match rules against this, so it must stay stable across releases and locales.
 const MAIN_WINDOW_TITLE = 'HA Desktop Widget';
 
+// Same contract for desktop pins, one title per entity so a rule can single out one pin.
+// The format must never contain MAIN_WINDOW_TITLE: window rules can match on substrings,
+// and a rule aimed at the widget must not catch every pin as well.
+const getDesktopPinWindowTitle = (entityId) => `HA Pin: ${entityId}`;
+
 // Try to load uiohook-napi for platforms that support hold/release detection. Linux uses
 // Electron's globalShortcut instead so a native hook failure cannot terminate the main process.
 let uIOhook, UiohookKey;
@@ -348,6 +355,22 @@ if (forcedX11Ozone) {
 // The compositor only owns placement when we are really running on Wayland; under XWayland
 // the widget can position itself again.
 const usesCompositorOwnedPlacement = shouldUseCompositorOwnedPlacement({
+  platform: process.platform,
+  env: process.env,
+  argv: process.argv,
+  waylandSession,
+  forcedX11Ozone,
+});
+
+// Hotkeys follow the session, not the rendering backend: the compositor owns global shortcuts
+// on any Wayland session, and under the forced-XWayland default globalShortcut's XGrabKey
+// grabs only fire while another X11 client has focus.
+const usesPortalGlobalShortcuts = shouldUsePortalGlobalShortcuts({ waylandSession });
+
+// Whether globalShortcut/XGrabKey can serve as a (partial) hotkey fallback when the
+// portal is unavailable or declines to assign triggers — false only on native Wayland.
+// Deliberately distinct from usesCompositorOwnedPlacement (window-placement policy).
+const hasLegacyGlobalShortcutFallback = hasGlobalShortcutFallback({
   platform: process.platform,
   env: process.env,
   argv: process.argv,
@@ -503,7 +526,15 @@ const pendingDesktopPinActionRequests = new Map();
 let nextDesktopPinActionRequestId = 1;
 const latestEntityStates = new Map();
 let hasPublishedHaSnapshot = false;
+// Coalesces 'desktop-pin-snapshot-needed' requests: pin windows created in one burst
+// (repin-all, profile sync) each bootstrap before the first publish round-trips, and
+// every request costs the renderer a full state-map serialization. Time-based rather
+// than a pending flag so a request lost to a renderer reload stays retryable, and
+// monotonic (performance.now) so a backwards wall-clock step cannot suppress requests.
+let desktopPinSnapshotRequestedAt = Number.NEGATIVE_INFINITY;
+const DESKTOP_PIN_SNAPSHOT_REQUEST_COALESCE_MS = 5000;
 let desktopPinEditMode = false;
+const hasConfiguredDesktopPins = () => Object.keys(config?.desktopPins || {}).length > 0;
 const localizationService = createLocalizationService({
   bundledDir: path.join(__dirname, 'locales'),
   getUserDataDir: () => app.getPath('userData'),
@@ -516,6 +547,9 @@ const localizationService = createLocalizationService({
     }
   },
   manifestUrl: getLocalePackManifestSource(),
+  // Locale pack downloads only run from IPC handlers, so the app is always ready by the time
+  // net.fetch is invoked here.
+  fetchImpl: (url, init) => net.fetch(url, init),
 });
 const DEV_RENDERER_BUNDLE_PATH = path.join(__dirname, 'dist-renderer', 'renderer.bundle.js');
 const DEV_RELOAD_DEBOUNCE_MS = 220;
@@ -1806,6 +1840,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
     entity: latestEntityStates.get(entityId) || null,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[entityId] || null,
+    supportsWindowPositioning: !usesCompositorOwnedPlacement,
     config: createDesktopPinRendererConfig(config),
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
@@ -2009,6 +2044,9 @@ function createDesktopPinWindow(entityId, options = {}) {
     transparent: transparencyOptions.transparent,
     backgroundColor: transparencyOptions.backgroundColor,
     frame: false,
+    // A stable per-entity title, so a compositor window rule can target a single pin
+    // (see docs/linux-wayland-notes.md for the KWin rule that keeps a position on Wayland).
+    title: getDesktopPinWindowTitle(normalizedEntityId),
     hasShadow: false,
     alwaysOnTop: false,
     skipTaskbar: true,
@@ -2047,6 +2085,12 @@ function createDesktopPinWindow(entityId, options = {}) {
   pinWindow.setMenuBarVisibility(false);
   pinWindow.__desktopPinEntityId = normalizedEntityId;
   desktopPinWindows.set(normalizedEntityId, pinWindow);
+
+  // index.html would rename the window to its <title> as it loads, which would fold every
+  // pin back into one name and leave window rules nothing per-pin to match.
+  pinWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
 
   try {
     const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
@@ -2132,6 +2176,16 @@ function createDesktopPinWindow(entityId, options = {}) {
 
 function syncDesktopPinWindowsWithConfig(options = {}) {
   const desiredPins = Object.keys(config?.desktopPins || {});
+
+  // Pin windows are the only consumer of the published entity states, and the renderer
+  // stops publishing while no pins are configured, so drop the cached map rather than
+  // holding a full stale copy of the HA state. hasPublishedHaSnapshot resets with it,
+  // keeping the bootstrap's hasSnapshot truthful for the next pin created later.
+  if (desiredPins.length === 0) {
+    latestEntityStates.clear();
+    hasPublishedHaSnapshot = false;
+    desktopPinSnapshotRequestedAt = Number.NEGATIVE_INFINITY;
+  }
 
   desktopPinWindows.forEach((_window, entityId) => {
     if (!desiredPins.includes(entityId)) {
@@ -2233,7 +2287,7 @@ async function applyRuntimeConfigSideEffects(previousConfig, nextConfig, source 
   const failures = [];
 
   try {
-    if (usesCompositorOwnedPlacement && (entityHotkeysChanged || popupHotkeyChanged)) {
+    if (usesPortalGlobalShortcuts && (entityHotkeysChanged || popupHotkeyChanged)) {
       await ensurePortalShortcutsBackendInitialized();
     }
     if (portalShortcutsActive && (entityHotkeysChanged || popupHotkeyChanged)) {
@@ -4798,9 +4852,10 @@ function createWindow() {
   applyFrostedGlass();
   wireWindowEffectsRefresh(mainWindow, () => config);
 
-  // index.html carries no <title>, so Chromium would name the window after the file and window
-  // rules would have nothing stable to match. Desktop pins load the same file and deliberately
-  // keep that default title, so a rule for the widget cannot catch them.
+  // index.html carries no <title>, so Chromium would name the window after the file and
+  // window rules would have nothing stable to match. Desktop pins load the same file but
+  // carry their own per-entity titles, so a rule for the widget cannot catch them and a
+  // rule can single out one pin.
   mainWindow.on('page-title-updated', (event) => {
     event.preventDefault();
   });
@@ -5883,11 +5938,26 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
+  // The cache can be empty here even though pins exist: an unpin-then-repin pair whose
+  // config broadcasts coalesced in the preload echo buffer never shows the main renderer
+  // an empty-pin state, so its transition detector stays quiet. Asking it directly makes
+  // the bootstrap independent of the renderer observing every intermediate config.
+  const now = performance.now();
+  if (
+    !hasPublishedHaSnapshot &&
+    now - desktopPinSnapshotRequestedAt >= DESKTOP_PIN_SNAPSHOT_REQUEST_COALESCE_MS &&
+    mainWindow &&
+    !mainWindow.isDestroyed()
+  ) {
+    desktopPinSnapshotRequestedAt = now;
+    mainWindow.webContents.send('desktop-pin-snapshot-needed');
+  }
   return {
     entityId: normalizedEntityId,
     entity: latestEntityStates.get(normalizedEntityId) || null,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[normalizedEntityId] || null,
+    supportsWindowPositioning: !usesCompositorOwnedPlacement,
     config: createDesktopPinRendererConfig(config),
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
@@ -5900,7 +5970,15 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
   const sender = authorizeIpcSender(event, 'publish-ha-snapshot');
   if (!sender) return rejectUnauthorizedIpc('publish-ha-snapshot');
+  // A publish can already be in flight while the last pin is removed; caching it would
+  // recreate the state map syncDesktopPinWindowsWithConfig just dropped. `discarded`
+  // tells the renderer's coalescing that joining this publish did not deliver a
+  // snapshot, so a request that raced it re-publishes instead of stalling.
+  if (!hasConfiguredDesktopPins()) {
+    return { success: true, count: 0, discarded: true };
+  }
   hasPublishedHaSnapshot = true;
+  desktopPinSnapshotRequestedAt = Number.NEGATIVE_INFINITY;
   latestEntityStates.clear();
   if (isPlainObject(states)) {
     Object.entries(states).forEach(([entityId, entity]) => {
@@ -5923,6 +6001,9 @@ ipcMain.handle('publish-ha-entity-update', (event, entity) => {
   const normalizedEntityId = normalizeEntityId(entity?.entity_id);
   if (!normalizedEntityId || !isPlainObject(entity)) {
     return { success: false, error: 'Invalid entity payload' };
+  }
+  if (!hasConfiguredDesktopPins()) {
+    return { success: true };
   }
 
   latestEntityStates.set(normalizedEntityId, entity);
@@ -7168,7 +7249,7 @@ ipcMain.handle(
       return { success: false, error: `Hotkey already assigned to ${entityName}` };
     }
 
-    if (config.globalHotkeys.enabled && usesCompositorOwnedPlacement) {
+    if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
       await ensurePortalShortcutsBackendInitialized();
     }
 
@@ -7183,9 +7264,23 @@ ipcMain.handle(
       const portalBinding = registrationResult?.bound?.find(
         (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
       );
-      const registered = portalShortcutsActive
+      let registered = portalShortcutsActive
         ? registrationResult.success && !!portalBinding?.trigger
-        : !usesCompositorOwnedPlacement && globalShortcut.isRegistered(hotkey);
+        : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
+
+      // A trigger-less portal bind at runtime (first hotkey ever, or a dismissed
+      // approval) must not hard-fail where X grabs would work: engage the session
+      // fallback, which re-registers every configured hotkey including the
+      // candidate this handler already wrote into config.
+      if (
+        !registered &&
+        portalShortcutsActive &&
+        deactivatePortalShortcutsForLegacyFallback(
+          `The desktop portal did not assign a trigger for hotkey ${hotkey}.`
+        )
+      ) {
+        registered = globalShortcut.isRegistered(hotkey);
+      }
 
       if (!registered) {
         log.warn(
@@ -7295,7 +7390,7 @@ ipcMain.handle(
 ipcMain.handle('register-hotkeys', async (event) => {
   const sender = authorizeIpcSender(event, 'register-hotkeys');
   if (!sender) return rejectUnauthorizedIpc('register-hotkeys');
-  if (usesCompositorOwnedPlacement) {
+  if (usesPortalGlobalShortcuts) {
     await ensurePortalShortcutsBackendInitialized();
   }
   // Re-register all hotkeys (useful after config changes)
@@ -7323,7 +7418,7 @@ ipcMain.handle(
   serializeConfigMutationHandler(async (event, enabled) => {
     const sender = authorizeIpcSender(event, 'toggle-hotkeys');
     if (!sender) return rejectUnauthorizedIpc('toggle-hotkeys');
-    if (enabled && usesCompositorOwnedPlacement) {
+    if (enabled && usesPortalGlobalShortcuts) {
       await ensurePortalShortcutsBackendInitialized();
     }
     const previousEnabled = !!config.globalHotkeys.enabled;
@@ -7464,10 +7559,10 @@ ipcMain.handle(
   serializeConfigMutationHandler(async (event, hotkey) => {
     const sender = authorizeIpcSender(event, 'register-popup-hotkey');
     if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
-    if (usesCompositorOwnedPlacement) {
+    if (usesPortalGlobalShortcuts) {
       await ensurePortalShortcutsBackendInitialized();
     }
-    if (usesCompositorOwnedPlacement && !portalShortcutsActive) {
+    if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
       return {
         success: false,
         error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
@@ -7495,7 +7590,7 @@ ipcMain.handle(
       unregisterPopupHotkey();
     }
     config.popupHotkey = hotkey;
-    const registrationResult = await Promise.resolve(
+    let registrationResult = await Promise.resolve(
       portalShortcutsActive
         ? syncPortalShortcuts({ immediate: true }).then((result) => {
             if (!result.success) return result;
@@ -7511,6 +7606,18 @@ ipcMain.handle(
           })
         : registerPopupHotkey()
     );
+
+    // Same runtime fallback as entity hotkeys: a portal that will not assign a popup
+    // trigger must not hard-fail while X grabs can serve it.
+    if (
+      !registrationResult.success &&
+      registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
+      deactivatePortalShortcutsForLegacyFallback(
+        'The desktop portal did not assign an active popup shortcut.'
+      )
+    ) {
+      registrationResult = await Promise.resolve(registerPopupHotkey());
+    }
 
     if (!registrationResult.success) {
       if (!portalShortcutsActive) {
@@ -7610,9 +7717,12 @@ ipcMain.handle('get-popup-hotkey', (event) => {
 ipcMain.handle('is-popup-hotkey-available', async (event) => {
   const sender = authorizeIpcSender(event, 'is-popup-hotkey-available');
   if (!sender) return rejectUnauthorizedIpc('is-popup-hotkey-available');
-  if (usesCompositorOwnedPlacement) {
+  if (usesPortalGlobalShortcuts) {
     await ensurePortalShortcutsBackendInitialized();
-    return portalShortcutsActive;
+    if (portalShortcutsActive) return true;
+    // Without the portal, native Wayland has no popup hotkey at all, while the forced-XWayland
+    // default keeps the partial globalShortcut fallback below.
+    if (!hasLegacyGlobalShortcutFallback) return false;
   }
   return usesLinuxPopupHotkeyBackend || uiohookAvailable;
 });
@@ -7621,11 +7731,14 @@ ipcMain.handle('is-popup-hotkey-available', async (event) => {
 //
 // Coverage across Linux desktops (no native input hook — uiohook crashed Linux, see 3.7.2):
 //   - X11 sessions: Electron globalShortcut (works, invisible to the compositor's settings).
-//   - Wayland sessions: globalShortcut is a silent no-op (KWin/Mutter own global shortcuts),
-//     so entity + popup hotkeys are routed through the XDG GlobalShortcuts portal instead.
-//     Bound shortcuts then show up in the compositor's shortcut settings.
-//   - Wayland without a GlobalShortcuts portal (some wlroots compositors): no global hotkeys,
-//     but the app degrades gracefully rather than crashing.
+//   - Wayland sessions: KWin/Mutter own global shortcuts whichever Ozone backend renders —
+//     globalShortcut is a silent no-op on native Wayland, and under the forced-XWayland
+//     default its XGrabKey grabs only fire while another X11 client has focus — so entity +
+//     popup hotkeys are routed through the XDG GlobalShortcuts portal instead. Bound
+//     shortcuts then show up in the compositor's shortcut settings.
+//   - Wayland without a GlobalShortcuts portal (some wlroots compositors): native Wayland
+//     gets no global hotkeys but degrades gracefully; forced XWayland keeps the partial
+//     globalShortcut grabs.
 // Windows/macOS are unaffected and keep globalShortcut.
 const PORTAL_ENTITY_SHORTCUT_PREFIX = 'entity.';
 const PORTAL_POPUP_SHORTCUT_ID = 'popup-toggle';
@@ -7756,8 +7869,18 @@ async function flushPortalShortcutSync() {
       error: error?.message || String(error),
     };
   }
+  // How many shortcuts this flush actually submitted; consumers must not re-derive
+  // it from config, which can change during the bind round trip.
+  result.requested = shortcuts.length;
 
-  reportPortalShortcutSyncResult(result, shortcuts);
+  // Reporting must never leave the waiters unresolved: a throw here (e.g. a renderer
+  // destroyed between the isDestroyed check and the send) would otherwise deadlock
+  // every caller awaiting this flush.
+  try {
+    reportPortalShortcutSyncResult(result, shortcuts);
+  } catch (error) {
+    log.warn('Portal shortcut sync reporting failed:', error?.message || error);
+  }
   waiters.forEach((resolve) => resolve(result));
   return result;
 }
@@ -7799,10 +7922,56 @@ function schedulePortalConnectionRecovery() {
   }, PORTAL_RECONNECT_DELAY_MS);
 }
 
+// Once the portal has demonstrated it will not assign triggers, re-running init on a
+// later hotkey IPC would tear the working X grabs down again for the length of a
+// BindShortcuts round trip (minutes, if the compositor shows an approval dialog), so
+// the fallback is sticky for the rest of the session; the portal gets a fresh chance
+// on the next launch.
+let portalShortcutsFallbackLatched = false;
+
+// A bind the user once dismissed stays approved with no trigger, and rebinding never
+// re-prompts, so a portal that assigns nothing would leave every hotkey inert. Under
+// forced XWayland the partial X-grab fallback beats that; native Wayland has no
+// fallback, so there the portal always stays active for its recovery paths. Returns
+// whether the fallback was (already) engaged.
+function deactivatePortalShortcutsForLegacyFallback(reason) {
+  if (!hasLegacyGlobalShortcutFallback) return false;
+  if (portalShortcutsFallbackLatched) return true;
+  portalShortcutsFallbackLatched = true;
+  portalShortcutsActive = false;
+  log.warn(
+    `${reason} Falling back to X11 grabs for this session. Assign the shortcuts in ` +
+      "your desktop's shortcut settings and restart the app to use the portal instead."
+  );
+  if (portalSyncTimer) {
+    clearTimeout(portalSyncTimer);
+    portalSyncTimer = null;
+  }
+  if (portalReconnectTimer) {
+    clearTimeout(portalReconnectTimer);
+    portalReconnectTimer = null;
+  }
+  portalSyncWaiters.splice(0).forEach((resolve) =>
+    resolve({
+      success: false,
+      backend: PORTAL_SHORTCUTS_BACKEND,
+      bound: [],
+      error: 'The desktop portal did not assign active shortcut triggers',
+    })
+  );
+  if (portalShortcutsController) {
+    void portalShortcutsController.close();
+    portalShortcutsController = null;
+  }
+  registerGlobalHotkeys();
+  void registerPopupHotkey();
+  return true;
+}
+
 // On a Wayland session, switch entity + popup hotkeys onto the portal. No-op (keeping the
 // globalShortcut path) on X11, non-Linux, or when the compositor lacks the portal.
 async function initPortalShortcutsBackend() {
-  if (!usesCompositorOwnedPlacement) return;
+  if (!usesPortalGlobalShortcuts || portalShortcutsFallbackLatched) return;
   try {
     portalShortcutsController = createPortalGlobalShortcutsController({
       log,
@@ -7822,20 +7991,59 @@ async function initPortalShortcutsBackend() {
     // Drop the no-op globalShortcut registrations and rebind through the portal.
     unregisterGlobalHotkeys();
     linuxPopupHotkeyController.unregister();
-    await syncPortalShortcuts({ immediate: true });
+    const syncResult = await syncPortalShortcuts({ immediate: true });
+    // syncResult.requested counts the shortcuts the flush actually submitted (config
+    // can change during the bind round trip). One assigned trigger keeps the portal:
+    // it is demonstrably approved and usable, the remaining triggers stay assignable
+    // in system settings, and the X grabs it would trade for are equally partial.
+    const portalBoundNoTriggers =
+      (syncResult.requested || 0) > 0 &&
+      (!syncResult.success || !(syncResult.bound || []).some((entry) => entry.trigger));
+    if (portalBoundNoTriggers) {
+      deactivatePortalShortcutsForLegacyFallback(
+        'The GlobalShortcuts portal assigned no active triggers.'
+      );
+    }
   } catch (error) {
     portalShortcutsActive = false;
-    portalShortcutsController = null;
-    log.warn(
-      'GlobalShortcuts portal init failed; keeping globalShortcut:',
-      error?.message || error
-    );
+    if (portalShortcutsController) {
+      try {
+        void portalShortcutsController.close();
+      } catch {
+        // best-effort teardown
+      }
+      portalShortcutsController = null;
+    }
+    // The try block may already have dropped the X grabs; put them back where the
+    // platform has them.
+    if (hasLegacyGlobalShortcutFallback) {
+      try {
+        registerGlobalHotkeys();
+        void registerPopupHotkey();
+      } catch (restoreError) {
+        log.warn(
+          'Failed to restore legacy hotkeys after portal init error:',
+          restoreError?.message || restoreError
+        );
+      }
+      log.warn(
+        'GlobalShortcuts portal init failed; falling back to globalShortcut:',
+        error?.message || error
+      );
+    } else {
+      log.warn('GlobalShortcuts portal init failed:', error?.message || error);
+    }
   }
 }
 
 function ensurePortalShortcutsBackendInitialized() {
-  if (!usesCompositorOwnedPlacement) {
+  if (!usesPortalGlobalShortcuts || portalShortcutsFallbackLatched) {
     return Promise.resolve(false);
+  }
+  if (portalShortcutsInitPromise) {
+    // While an init is still binding, callers must await its trigger-check decision
+    // rather than trusting the transient portalShortcutsActive flag.
+    return portalShortcutsInitPromise;
   }
   if (portalShortcutsActive && portalShortcutsController) {
     return Promise.resolve(true);
@@ -7870,7 +8078,7 @@ function registerGlobalHotkeys() {
   if (!config.globalHotkeys.enabled) {
     return { success: true, backend: 'globalShortcut' };
   }
-  if (usesCompositorOwnedPlacement) {
+  if (!hasLegacyGlobalShortcutFallback) {
     return {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
@@ -8188,7 +8396,7 @@ function registerPopupHotkey() {
     });
   }
 
-  if (usesCompositorOwnedPlacement) {
+  if (!hasLegacyGlobalShortcutFallback) {
     return {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
@@ -8426,15 +8634,17 @@ async function fetchGitHubUpdateRelease() {
     ? `https://api.github.com/repos/${repo}/releases?per_page=20`
     : `https://api.github.com/repos/${repo}/releases/latest`;
   try {
-    const response = await axios.get(apiUrl, {
+    const response = await fetchChecked((url, init) => net.fetch(url, init), apiUrl, {
+      timeoutMs: 10000,
       headers: {
         'User-Agent': 'HA-Desktop-Widget',
         Accept: 'application/vnd.github+json',
       },
-      timeout: 10000,
+      errorPrefix: 'GitHub release request failed',
     });
 
-    const releases = Array.isArray(response?.data) ? response.data : [response?.data];
+    const data = await response.json();
+    const releases = Array.isArray(data) ? data : [data];
     return selectPortableRelease(releases, allowPrerelease);
   } catch (error) {
     throw new Error(error?.message || String(error));
@@ -8772,6 +8982,14 @@ app
     // Set app ID for Windows (helps with icon caching and taskbar behavior)
     if (process.platform === 'win32') {
       app.setAppUserModelId('com.github.robertg761.hadesktopwidget');
+    }
+
+    // skipTaskbar is a no-op on macOS, so hiding the Dock icon is what gives this
+    // tray-controlled widget the same treatment there. The application menu installed above
+    // must stay: it is what keeps the Cmd+C/V/Q accelerators working for an app that no
+    // longer shows a menu bar of its own.
+    if (process.platform === 'darwin') {
+      app.dock?.hide();
     }
 
     loadConfig({ deferSecureStorage: true });

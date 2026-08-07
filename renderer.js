@@ -48,6 +48,7 @@ const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 let desktopPinEditMode = false;
 let desktopPinBounds = null;
 let desktopPinHasSnapshot = false;
+let desktopPinSupportsWindowPositioning = true;
 let desktopPinConnectionIssue = '';
 const favoriteStalePreservation = new Map();
 let entityRenameMigrationQueue = Promise.resolve();
@@ -187,6 +188,8 @@ let climateDemoController = null;
 let desktopCompanionClient = null;
 const pendingStateChangedEntities = new Map();
 let pendingStateChangedFlushId = null;
+let desktopPinStatePublishingActive = false;
+let haStatesSnapshotReceived = false;
 const UI_TICK_ACTIVE_INTERVAL_MS = 1000;
 const UI_TICK_IDLE_POLL_INTERVAL_MS = 15000;
 const UI_TICK_MINUTE_BUFFER_MS = 50;
@@ -243,24 +246,84 @@ function isSecureStoragePending(targetConfig = state.CONFIG) {
   return targetConfig?.secureStoragePending === true;
 }
 
+function hasDesktopPinsConfigured() {
+  const desktopPins = state.CONFIG?.desktopPins;
+  return !!desktopPins && Object.keys(desktopPins).length > 0;
+}
+
+let inflightDesktopPinSnapshotPublish = null;
+function publishDesktopPinSnapshotNow() {
+  const publish = window.electronAPI
+    .publishHaSnapshot(state.STATES || {})
+    .catch((error) => {
+      log.warn('Failed to publish HA snapshot to main process:', error);
+      return null;
+    })
+    .finally(() => {
+      if (inflightDesktopPinSnapshotPublish === publish) {
+        inflightDesktopPinSnapshotPublish = null;
+      }
+    });
+  inflightDesktopPinSnapshotPublish = publish;
+  return publish;
+}
+
+// Serializing the full state map over IPC is the most expensive renderer-to-main call,
+// and duplicate triggers (a pin-add transition plus main's snapshot request for the same
+// moment, or several pin windows bootstrapping in one burst) would each pay it. Callers
+// that merely need *a* snapshot delivered coalesce onto the in-flight publish; callers
+// with a fresh state map (reconnect, entity deletion) must not, since the in-flight
+// clone predates it. Joining is only proof of delivery if main accepted the publish:
+// main discards publishes that race an unpin (`discarded`), and a rejected invoke
+// resolves null here — in both cases the joiner still owes main a snapshot, so it
+// re-publishes once.
+function publishDesktopPinSnapshot({ coalesce = false } = {}) {
+  if (coalesce && inflightDesktopPinSnapshotPublish) {
+    return inflightDesktopPinSnapshotPublish.then((result) => {
+      if (result && !result.discarded) return result;
+      if (!hasDesktopPinsConfigured() || !haStatesSnapshotReceived) return result;
+      // One fresh attempt; sibling joiners of the failed publish share it instead of
+      // stacking further retries.
+      return inflightDesktopPinSnapshotPublish || publishDesktopPinSnapshotNow();
+    });
+  }
+  return publishDesktopPinSnapshotNow();
+}
+
+// Desktop pin windows are the only consumer of the renderer-to-main state publishes, so
+// publishing pauses entirely while no pins are configured and main drops its cached copy.
+// The first pin after such a pause needs a full snapshot before per-entity updates mean
+// anything again, whether it was added here or arrived through a synced profile. This is
+// the only writer of desktopPinStatePublishingActive; callers that need a publish even
+// without an inactive→active transition pass force.
+function refreshDesktopPinStatePublishing({ force = false, coalesce = true } = {}) {
+  if (IS_DESKTOP_PIN_MODE) return;
+  const active = hasDesktopPinsConfigured();
+  const becameActive = active !== desktopPinStatePublishingActive;
+  desktopPinStatePublishingActive = active;
+  if (!becameActive && !force) return;
+  if (!active || !haStatesSnapshotReceived) return;
+  publishDesktopPinSnapshot({ coalesce });
+}
+
 function flushPendingStateChangedEntities() {
   pendingStateChangedFlushId = null;
   const changes = Array.from(pendingStateChangedEntities.values());
   pendingStateChangedEntities.clear();
   const hasDeletion = changes.some(({ entity }) => !entity);
+  const publishForDesktopPins = hasDesktopPinsConfigured();
 
-  if (hasDeletion) {
+  if (hasDeletion && publishForDesktopPins) {
     // A full snapshot is the only renderer-to-main IPC operation that can remove
     // an entity from the desktop-pin cache. It also carries every coalesced update
-    // in this flush, avoiding an update/snapshot ordering race.
-    window.electronAPI.publishHaSnapshot(state.STATES || {}).catch((error) => {
-      log.warn('Failed to publish HA snapshot after entity removal:', error);
-    });
+    // in this flush, avoiding an update/snapshot ordering race. No coalescing: the
+    // map just lost an entity that an in-flight publish still carries.
+    void publishDesktopPinSnapshot();
   }
 
   changes.forEach(({ entity }) => {
     if (!entity) return;
-    if (!hasDeletion) {
+    if (!hasDeletion && publishForDesktopPins) {
       window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
         log.warn('Failed to publish HA entity update to main process:', error);
       });
@@ -907,6 +970,7 @@ function applyRendererConfig(nextConfig) {
     withChanged: true,
   });
   state.setConfig(normalizedGraphs.config);
+  refreshDesktopPinStatePublishing();
   if ((normalizedQuickAccess.changed || normalizedGraphs.changed) && !IS_DESKTOP_PIN_MODE) {
     window.electronAPI.updateConfig(normalizedGraphs.config).catch((error) => {
       log.error('Failed to persist Quick Access view migration:', error);
@@ -973,6 +1037,10 @@ function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
+    document.body.classList.toggle(
+      'desktop-pin-compositor-placement',
+      !desktopPinSupportsWindowPositioning
+    );
     ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, {
       hasSnapshot: desktopPinHasSnapshot,
       connectionIssue: desktopPinConnectionIssue,
@@ -1007,6 +1075,10 @@ async function handleDesktopPinUpdate(message = {}) {
 
     if (Object.prototype.hasOwnProperty.call(message, 'hasSnapshot')) {
       desktopPinHasSnapshot = !!message.hasSnapshot;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'supportsWindowPositioning')) {
+      desktopPinSupportsWindowPositioning = message.supportsWindowPositioning !== false;
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
@@ -1358,9 +1430,10 @@ websocket.on('message', (msg) => {
               favoriteCount,
             });
             state.setStates(mergedStates);
-            // Home Assistant replaces the full state map after authentication.
-            // Restore the renderer-local overlay immediately without publishing it
-            // back through the HA snapshot path below.
+            // Home Assistant replaces the full state map after authentication. Restore
+            // the renderer-local overlay immediately; setEntityState writes into the
+            // same map that the snapshot publish below serializes, which is intended —
+            // a pinned demo entity stays in main's pin cache across reconnects.
             if (isClimateDemoOverlayConfig(state.CONFIG)) {
               climateDemoController?.ensureEntity();
             }
@@ -1368,9 +1441,10 @@ websocket.on('message', (msg) => {
               desktopPinHasSnapshot = true;
             }
             setDesktopPinConnectionIssue('');
-            window.electronAPI.publishHaSnapshot(mergedStates).catch((error) => {
-              log.warn('Failed to publish HA snapshot to main process:', error);
-            });
+            haStatesSnapshotReceived = true;
+            // No coalescing: this map is fresh from get_states and may drop deleted
+            // entities that an in-flight publish still carries.
+            refreshDesktopPinStatePublishing({ force: true, coalesce: false });
 
             const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
             if (reconciliation.changed) {
@@ -1631,6 +1705,14 @@ window.electronAPI.onDesktopPinUpdate((payload) => {
   void handleDesktopPinUpdate(payload);
 });
 
+// Main asks for a snapshot when a pin window boots against an empty cache. The
+// empty→non-empty pin transition can hide inside a coalesced config broadcast, so the
+// transition detector in refreshDesktopPinStatePublishing alone cannot be trusted to
+// have seen it.
+window.electronAPI.onDesktopPinSnapshotNeeded?.(() => {
+  refreshDesktopPinStatePublishing({ force: true });
+});
+
 /**
  * Replace all emoji icons with SVG icons
  * This runs once on initialization to modernize the UI
@@ -1704,6 +1786,7 @@ async function initializeDesktopPinMode() {
     desktopPinEditMode = !!bootstrap?.editMode;
     desktopPinBounds = bootstrap?.pinBounds || null;
     desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
+    desktopPinSupportsWindowPositioning = bootstrap?.supportsWindowPositioning !== false;
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);
@@ -1742,18 +1825,21 @@ async function init() {
     log.info('Initializing application');
     document.body.classList.toggle('desktop-pin-mode', IS_DESKTOP_PIN_MODE);
 
-    // Initialize weather background effects
-    try {
-      window.weatherEffects = new WeatherEffectsManager('weather-effects-canvas');
-    } catch (e) {
-      log.error('Failed to initialize weather background effects:', e);
-    }
-
     await refreshLocaleBootstrap();
     uiUtils.showLoading(true);
     if (IS_DESKTOP_PIN_MODE) {
       await initializeDesktopPinMode();
       return;
+    }
+
+    // Initialize weather background effects. Pin windows skip this above: they render a
+    // single tile with no weather surface, and the manager's constructor allocates a
+    // window-sized canvas backing store. Every window.weatherEffects consumer already
+    // tolerates it being absent.
+    try {
+      window.weatherEffects = new WeatherEffectsManager('weather-effects-canvas');
+    } catch (e) {
+      log.error('Failed to initialize weather background effects:', e);
     }
 
     uiUtils.initializeConnectionStatusTooltip();

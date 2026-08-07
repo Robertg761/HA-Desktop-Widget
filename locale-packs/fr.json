@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -174,6 +174,7 @@
     "Connecting": "Connexion",
     "Waiting for first live update": "En attente de la première mise à jour en direct",
     "Waiting for live Home Assistant data...": "En attente des données Home Assistant en direct...",
+    "Your desktop environment controls where this tile sits. Size changes still apply.": "Votre environnement de bureau contrôle l'emplacement de cette vignette. Les changements de taille s'appliquent toujours.",
     "Auto-updates only work in packaged builds": "Les mises à jour automatiques fonctionnent uniquement dans les versions empaquetées",
     "Download Portable Update": "Télécharger la mise à jour portable",
     "Downloading update...": "Téléchargement de la mise à jour...",

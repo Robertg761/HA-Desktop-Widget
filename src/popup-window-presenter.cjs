@@ -108,7 +108,8 @@ function createPopupWindowPresenter(options = {}) {
 
   // macOS puts another app's full-screen window in its own Space, so the widget can only
   // draw over it when it is allowed onto full-screen Spaces. Skipping the process-type
-  // transform keeps the app from flickering through the Dock while that flag changes.
+  // transform keeps the flag change from turning the widget back into a regular app,
+  // which would bring back the Dock icon that app.dock.hide() removed.
   function setFullScreenVisibility(targetWindow, visible) {
     if (platform !== 'darwin') return;
     safeCall(targetWindow, 'setVisibleOnAllWorkspaces', visible, {

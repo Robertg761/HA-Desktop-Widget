@@ -162,6 +162,7 @@ describe('preload Electron API', () => {
       ['onConfigUpdated', 'config-updated'],
       ['onConfigPersistenceWarning', 'config-persistence-warning'],
       ['onDesktopPinUpdate', 'desktop-pin-update'],
+      ['onDesktopPinSnapshotNeeded', 'desktop-pin-snapshot-needed'],
       ['onDesktopPinActionRequested', 'desktop-pin-action-requested'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
       ['onDesktopCompanionStateChanged', 'desktop-companion-state-changed'],

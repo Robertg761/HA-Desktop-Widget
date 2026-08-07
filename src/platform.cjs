@@ -121,6 +121,44 @@ function shouldUseCompositorOwnedPlacement({
   return true;
 }
 
+/**
+ * Return whether global hotkeys should route through the XDG GlobalShortcuts portal.
+ *
+ * Unlike window placement, this follows the session rather than the Ozone backend: the
+ * compositor owns global shortcuts on any Wayland session, and under XWayland an XGrabKey
+ * grab only fires while another X11 client has focus, so globalShortcut is not a full
+ * substitute there either. Whether the portal actually exists on the compositor is the
+ * portal controller's own availability check.
+ */
+function shouldUsePortalGlobalShortcuts({
+  platform = process.platform,
+  waylandSession = false,
+} = {}) {
+  return platform === 'linux' && waylandSession;
+}
+
+/**
+ * Return whether the legacy globalShortcut / XGrabKey hotkey backends can register
+ * at all when the GlobalShortcuts portal is unavailable.
+ *
+ * On a native-Wayland Electron session globalShortcut is a hard no-op with no
+ * XGrabKey fallback; under forced XWayland the fallback exists but its grabs only
+ * fire while an X11 client has focus. This intentionally re-states the native-Wayland
+ * test from shouldUseCompositorOwnedPlacement instead of delegating to it: window
+ * placement and hotkey-backend capability are different questions, and a future
+ * change to placement policy must not silently flip hotkey availability.
+ */
+function hasGlobalShortcutFallback({
+  platform = process.platform,
+  env = process.env,
+  argv = process.argv,
+  waylandSession = false,
+  forcedX11Ozone = false,
+} = {}) {
+  if (platform !== 'linux' || !waylandSession || forcedX11Ozone) return true;
+  return getExplicitOzonePlatform(env, argv) === 'x11';
+}
+
 function getMainWindowVisualOptions({
   platform = process.platform,
   frostedGlass = false,
@@ -151,9 +189,11 @@ module.exports = {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  hasGlobalShortcutFallback,
   isLinuxAppImage,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,
+  shouldUsePortalGlobalShortcuts,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
   supportsElectronLoginItems,

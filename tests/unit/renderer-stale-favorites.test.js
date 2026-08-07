@@ -39,12 +39,17 @@ describe('Renderer stale favorite state handling', () => {
     await Promise.resolve();
   };
 
-  const createConfig = () => ({
+  const createConfig = (overrides = {}) => ({
     homeAssistant: {
       url: 'http://homeassistant.local:8123',
       token: 'valid-token',
     },
     favoriteEntities: [favoriteEntity.entity_id],
+    // Publishing entity state to the main process only happens for desktop pin windows,
+    // so the baseline config pins an entity to keep the publish pipeline active.
+    desktopPins: {
+      [favoriteEntity.entity_id]: { x: 24, y: 24, width: 220, height: 140 },
+    },
     entityAlerts: {
       enabled: false,
       alerts: {},
@@ -57,9 +62,10 @@ describe('Renderer stale favorite state handling', () => {
       theme: 'auto',
       enableInteractionDebugLogs: false,
     },
+    ...overrides,
   });
 
-  const loadRenderer = async () => {
+  const loadRenderer = async (config = createConfig()) => {
     jest.resetModules();
     resetMockElectronAPI();
     jest.useFakeTimers();
@@ -71,7 +77,7 @@ describe('Renderer stale favorite state handling', () => {
     window.history.replaceState({}, '', 'http://localhost/');
 
     mockElectronAPI = createMockElectronAPI();
-    mockElectronAPI.getConfig.mockResolvedValue(createConfig());
+    mockElectronAPI.getConfig.mockResolvedValue(config);
     window.electronAPI = mockElectronAPI;
 
     mockState = {
@@ -328,6 +334,173 @@ describe('Renderer stale favorite state handling', () => {
     expect(mockState.STATES).toEqual({
       [otherEntity.entity_id]: otherEntity,
     });
+  });
+
+  it('does not publish entity state to main while no desktop pins are configured', async () => {
+    await loadRenderer(createConfig({ desktopPins: {} }));
+
+    receiveStates([favoriteEntity, otherEntity]);
+    expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+
+    mockWebsocket.emit('message', {
+      type: 'event',
+      event: {
+        event_type: 'state_changed',
+        data: {
+          entity_id: otherEntity.entity_id,
+          old_state: otherEntity,
+          new_state: { ...otherEntity, state: '73' },
+        },
+      },
+    });
+    await jest.advanceTimersByTimeAsync(20);
+
+    expect(mockElectronAPI.publishHaEntityUpdate).not.toHaveBeenCalled();
+
+    mockWebsocket.emit('message', {
+      type: 'event',
+      event: {
+        event_type: 'state_changed',
+        data: {
+          entity_id: favoriteEntity.entity_id,
+          old_state: favoriteEntity,
+          new_state: null,
+        },
+      },
+    });
+    await jest.advanceTimersByTimeAsync(20);
+
+    expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('publishes a full snapshot when the first desktop pin arrives through a config update', async () => {
+    await loadRenderer(createConfig({ desktopPins: {} }));
+    receiveStates([favoriteEntity, otherEntity]);
+    expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+
+    triggerMockEvent('configUpdated', createConfig());
+    await flushPromises();
+
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
+      [favoriteEntity.entity_id]: favoriteEntity,
+      [otherEntity.entity_id]: otherEntity,
+    });
+
+    mockWebsocket.emit('message', {
+      type: 'event',
+      event: {
+        event_type: 'state_changed',
+        data: {
+          entity_id: otherEntity.entity_id,
+          old_state: otherEntity,
+          new_state: { ...otherEntity, state: '73' },
+        },
+      },
+    });
+    await jest.advanceTimersByTimeAsync(20);
+
+    expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ entity_id: otherEntity.entity_id, state: '73' })
+    );
+  });
+
+  it('stops publishing entity state after the last desktop pin is removed', async () => {
+    await loadRenderer();
+    receiveStates([favoriteEntity, otherEntity]);
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalled();
+
+    triggerMockEvent('configUpdated', createConfig({ desktopPins: {} }));
+    await flushPromises();
+    mockElectronAPI.publishHaSnapshot.mockClear();
+    mockElectronAPI.publishHaEntityUpdate.mockClear();
+
+    mockWebsocket.emit('message', {
+      type: 'event',
+      event: {
+        event_type: 'state_changed',
+        data: {
+          entity_id: otherEntity.entity_id,
+          old_state: otherEntity,
+          new_state: { ...otherEntity, state: '73' },
+        },
+      },
+    });
+    await jest.advanceTimersByTimeAsync(20);
+
+    expect(mockElectronAPI.publishHaEntityUpdate).not.toHaveBeenCalled();
+    expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('republishes a snapshot when main reports a pin booted against an empty cache', async () => {
+    await loadRenderer();
+    receiveStates([favoriteEntity, otherEntity]);
+    // Settle the get_states publish first: a request arriving while it is still in
+    // flight is deliberately answered by that in-flight publish instead of a new one.
+    await flushPromises();
+    mockElectronAPI.publishHaSnapshot.mockClear();
+
+    // An unpin-then-repin whose config broadcasts coalesced in the preload echo buffer
+    // never shows this renderer an empty-pin config, so only the main-process request
+    // can trigger the republish.
+    triggerMockEvent('desktopPinSnapshotNeeded');
+    await flushPromises();
+
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
+      [favoriteEntity.entity_id]: favoriteEntity,
+      [otherEntity.entity_id]: otherEntity,
+    });
+  });
+
+  it('coalesces snapshot requests onto a publish already in flight', async () => {
+    await loadRenderer();
+    receiveStates([favoriteEntity, otherEntity]);
+    // Several pin windows bootstrapping in one burst each make main request a
+    // snapshot; while the get_states publish is unresolved they must all ride on it.
+    triggerMockEvent('desktopPinSnapshotNeeded');
+    triggerMockEvent('desktopPinSnapshotNeeded');
+    await flushPromises();
+
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-publishes when a coalesced request joined a publish that main discarded', async () => {
+    await loadRenderer();
+    // Main discards a publish that raced the last unpin; a request that joined that
+    // in-flight publish still owes main a snapshot.
+    mockElectronAPI.publishHaSnapshot.mockImplementationOnce(() =>
+      Promise.resolve({ success: true, count: 0, discarded: true })
+    );
+    receiveStates([favoriteEntity, otherEntity]);
+    triggerMockEvent('desktopPinSnapshotNeeded');
+    // The join-verify-republish chain is deeper than one flush (catch + finally +
+    // joiner hops before the retry even starts).
+    await flushPromises();
+    await flushPromises();
+
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledTimes(2);
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith({
+      [favoriteEntity.entity_id]: favoriteEntity,
+      [otherEntity.entity_id]: otherEntity,
+    });
+  });
+
+  it('ignores a snapshot request before entity states have arrived', async () => {
+    await loadRenderer();
+
+    triggerMockEvent('desktopPinSnapshotNeeded');
+    await flushPromises();
+
+    expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('ignores a snapshot request when no desktop pins are configured', async () => {
+    await loadRenderer(createConfig({ desktopPins: {} }));
+    receiveStates([favoriteEntity, otherEntity]);
+
+    triggerMockEvent('desktopPinSnapshotNeeded');
+    await flushPromises();
+
+    expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
   });
 
   it('reinitializes entity alerts when a running renderer receives updated config', async () => {

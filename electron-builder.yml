@@ -1,0 +1,94 @@
+# electron-builder configuration (moved out of package.json's "build" key so the
+# dbus-next exclusion list below can be defined once and shared via a YAML anchor).
+productName: HA Desktop Widget
+# Keep in sync with the top-level "appId" in package.json: src/windows-startup.cjs and
+# src/linux-startup.cjs read it at runtime to name the Windows Run-key value and the
+# Linux autostart .desktop file, and a mismatch orphans existing users' autostart entries.
+appId: com.github.robertg761.hadesktopwidget
+directories:
+  buildResources: build
+  output: dist
+afterPack: scripts/after-pack-mac-adhoc-sign.cjs
+files:
+  - index.html
+  - locales/**/*
+  - main.js
+  - profile-sync-core.js
+  - src/**/*
+  - packages/widget-renderer/**/*
+  - dist-preload/**/*
+  - dist-renderer/**/*
+  - styles.css
+  - build/icon.ico
+  - build/icon.png
+  - package.json
+  - '!node_modules/usocket/**/*'
+asar: true
+compression: normal
+publish:
+  - provider: github
+    owner: Robertg761
+    repo: HA-Desktop-Widget
+    releaseType: release
+
+mac:
+  minimumSystemVersion: '12.0'
+  x64ArchFiles: '**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node'
+  # dbus-next and its exclusive transitive dependency subtree (per package-lock.json:
+  # event-stream and its stream helpers, xml2js/xmlbuilder, long, jsbi, hexy,
+  # @nornagon/put). It is only required lazily by src/portal-global-shortcuts.cjs on
+  # Linux Wayland, so mac/win packages strip it (win reuses this list via the YAML
+  # alias below). Do NOT hoist these into the top-level `files` list: top-level and
+  # per-platform lists are additive, so that would strip dbus-next from Linux builds
+  # too and break portal global shortcuts at runtime. When upgrading dbus-next,
+  # re-derive this list from package-lock.json. The alias makes mac.files and
+  # win.files one shared array instance; do not reuse the anchor under top-level
+  # files/extraFiles/extraResources — app-builder-lib normalizes those in place,
+  # which would corrupt the shared list for the platform sections.
+  files: &dbusNextExcludes
+    - '!node_modules/dbus-next/**/*'
+    - '!node_modules/event-stream/**/*'
+    - '!node_modules/hexy/**/*'
+    - '!node_modules/jsbi/**/*'
+    - '!node_modules/long/**/*'
+    - '!node_modules/@nornagon/put/**/*'
+    - '!node_modules/xml2js/**/*'
+    - '!node_modules/xmlbuilder/**/*'
+    - '!node_modules/through/**/*'
+    - '!node_modules/duplexer/**/*'
+    - '!node_modules/from/**/*'
+    - '!node_modules/map-stream/**/*'
+    - '!node_modules/pause-stream/**/*'
+    - '!node_modules/split/**/*'
+    - '!node_modules/stream-combiner/**/*'
+win:
+  icon: build/icon.ico
+  files: *dbusNextExcludes
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  artifactName: '${productName}-${version}-win-${arch}-Setup.${ext}'
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Home Assistant Widget
+portable:
+  artifactName: '${productName}-${version}-win-${arch}-Portable.${ext}'
+linux:
+  icon: build/icon.png
+  category: Utility
+  maintainer: Robertg761
+  artifactName: '${productName}-${version}-linux-${arch}.${ext}'
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]

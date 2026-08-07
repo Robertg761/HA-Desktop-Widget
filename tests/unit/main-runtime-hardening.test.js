@@ -68,8 +68,9 @@ describe('main-process wiring safeguards', () => {
     const traySource = mainSource.slice(trayMenuStart, mainSource.indexOf('const contextMenu'));
     expect(trayMenuEnd).toBeGreaterThan(trayMenuStart);
     expect(traySource).not.toContain('mainWindow.show()');
-    // Desktop pins must keep Chromium's default title, or a window rule written for the widget
-    // would match them too and drag them to the widget's remembered position.
+    // Desktop pins carry their own per-entity titles and never MAIN_WINDOW_TITLE, or a window
+    // rule written for the widget would match them too and drag them to the widget's
+    // remembered position.
     const pinOptionsStart = mainSource.indexOf('function createDesktopPinWindow');
     const pinOptionsEnd = mainSource.indexOf(
       'hardenRendererNavigation(pinWindow)',
@@ -155,8 +156,23 @@ describe('main-process wiring safeguards', () => {
     // Wayland: globalShortcut is a silent no-op, so entity + popup hotkeys use the portal.
     expect(mainSource).toContain("require('./src/portal-global-shortcuts.cjs')");
     expect(mainSource).toContain('function initPortalShortcutsBackend');
-    // The portal only activates on a Linux Wayland session; X11/other keep globalShortcut.
-    expect(mainSource).toContain('if (!usesCompositorOwnedPlacement) return;');
+    // The portal gate follows the session, not the Ozone backend: the forced-XWayland
+    // default must still hand hotkeys to the portal, because XGrabKey grabs only fire while
+    // another X11 client has focus. X11 sessions and other platforms keep globalShortcut.
+    expect(mainSource).toContain(
+      'const usesPortalGlobalShortcuts = shouldUsePortalGlobalShortcuts({ waylandSession })'
+    );
+    const portalBackendStart = mainSource.indexOf('async function initPortalShortcutsBackend');
+    const portalBackendEnd = mainSource.indexOf('function registerGlobalHotkeys');
+    const portalBackendSource = mainSource.slice(portalBackendStart, portalBackendEnd);
+    expect(portalBackendEnd).toBeGreaterThan(portalBackendStart);
+    expect(portalBackendSource).toContain(
+      'if (!usesPortalGlobalShortcuts || portalShortcutsFallbackLatched) return;'
+    );
+    expect(portalBackendSource).toContain(
+      'if (!usesPortalGlobalShortcuts || portalShortcutsFallbackLatched) {'
+    );
+    expect(portalBackendSource).not.toContain('usesCompositorOwnedPlacement');
     expect(mainSource).toContain('handlePortalShortcutActivated');
     expect(mainSource).toContain('portalShortcutsActive');
     expect(mainSource).toContain('portalShortcutsInitPromise');
@@ -164,6 +180,13 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain(
       'The desktop does not provide the Global Shortcuts portal required on Wayland'
     );
+    // Without the portal, native Wayland is a hard failure, but the forced-XWayland default
+    // keeps the partial globalShortcut fallback instead of reporting no hotkeys at all.
+    const registerStart = mainSource.indexOf('function registerGlobalHotkeys');
+    const registerEnd = mainSource.indexOf('function unregisterGlobalHotkeys');
+    const registerSource = mainSource.slice(registerStart, registerEnd);
+    expect(registerEnd).toBeGreaterThan(registerStart);
+    expect(registerSource).toContain('if (!hasLegacyGlobalShortcutFallback) {');
     // Digit hotkeys (Alt+1) must map to the real uiohook key names, not the absent DigitN.
     expect(mainSource).toContain("1: UiohookKey['1']");
     expect(mainSource).not.toMatch(/UiohookKey\.Digit\d/);
@@ -199,7 +222,7 @@ describe('main-process wiring safeguards', () => {
     expect(handlerSource).toContain('await syncPortalShortcuts({ immediate: true })');
     expect(handlerSource).toContain('registrationResult.success && !!portalBinding?.trigger');
     expect(handlerSource).toContain(
-      ': !usesCompositorOwnedPlacement && globalShortcut.isRegistered(hotkey)'
+      ': hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey)'
     );
     expect(handlerSource).not.toContain(
       'registrationResult?.success !== false && globalShortcut.isRegistered(hotkey)'
@@ -251,6 +274,52 @@ describe('main-process wiring safeguards', () => {
     expect(clampSource).toContain('Number.isFinite(Number(bounds.x))');
     expect(clampSource).toContain('clampedBounds.x = Math.round(Number(bounds.x))');
     expect(mainSource).toContain('shouldUseCompositorOwnedPlacement({');
+  });
+
+  it('gives desktop pins rule-targetable titles and reports compositor placement to them', () => {
+    expect(mainSource).toContain(
+      'const getDesktopPinWindowTitle = (entityId) => `HA Pin: ${entityId}`'
+    );
+
+    const createPinStart = mainSource.indexOf('function createDesktopPinWindow(');
+    const createPinEnd = mainSource.indexOf(
+      'function syncDesktopPinWindowsWithConfig(',
+      createPinStart
+    );
+    const createPinSource = mainSource.slice(createPinStart, createPinEnd);
+    expect(createPinSource).toContain('title: getDesktopPinWindowTitle(normalizedEntityId)');
+    expect(createPinSource).toContain("pinWindow.on('page-title-updated'");
+
+    const pinUpdateStart = mainSource.indexOf('function sendDesktopPinUpdate(');
+    const pinUpdateEnd = mainSource.indexOf(
+      'function broadcastDesktopPinConfigUpdate(',
+      pinUpdateStart
+    );
+    const pinUpdateSource = mainSource.slice(pinUpdateStart, pinUpdateEnd);
+    expect(pinUpdateSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
+
+    const bootstrapStart = mainSource.indexOf("ipcMain.handle('get-desktop-pin-bootstrap'");
+    const bootstrapEnd = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'", bootstrapStart);
+    const bootstrapSource = mainSource.slice(bootstrapStart, bootstrapEnd);
+    expect(bootstrapSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
+  });
+
+  it('drops the published entity-state cache when the last desktop pin is removed', () => {
+    const syncStart = mainSource.indexOf('function syncDesktopPinWindowsWithConfig(');
+    const syncEnd = mainSource.indexOf('function applyMainWindowSettingSideEffects(', syncStart);
+    const syncSource = mainSource.slice(syncStart, syncEnd);
+    expect(syncSource).toContain('if (desiredPins.length === 0)');
+    expect(syncSource).toContain('latestEntityStates.clear()');
+    expect(syncSource).toContain('hasPublishedHaSnapshot = false');
+
+    // A publish already in flight when the last pin is removed must not rebuild the cache.
+    const publishStart = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'");
+    const publishBoundary = mainSource.indexOf("ipcMain.handle('publish-ha-entity-update'");
+    const publishEnd = mainSource.indexOf("ipcMain.handle('request-desktop-pin-action'");
+    const snapshotSource = mainSource.slice(publishStart, publishBoundary);
+    const entityUpdateSource = mainSource.slice(publishBoundary, publishEnd);
+    expect(snapshotSource).toContain('if (!hasConfiguredDesktopPins())');
+    expect(entityUpdateSource).toContain('if (!hasConfiguredDesktopPins())');
   });
 
   it('requires a modifier for user-configured global accelerators', () => {

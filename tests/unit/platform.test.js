@@ -2,9 +2,11 @@ const path = require('path');
 const {
   getAppIconPath,
   getMainWindowVisualOptions,
+  hasGlobalShortcutFallback,
   isLinuxAppImage,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,
+  shouldUsePortalGlobalShortcuts,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
   supportsElectronLoginItems,
@@ -209,6 +211,38 @@ describe('platform helpers', () => {
         forcedX11Ozone: true,
       })
     ).toBe(false);
+  });
+
+  test('routes Wayland-session hotkeys through the portal regardless of Ozone backend', () => {
+    // The compositor owns global shortcuts on the whole session, so the forced-XWayland
+    // default must not steer hotkeys away from the portal.
+    expect(shouldUsePortalGlobalShortcuts({ platform: 'linux', waylandSession: true })).toBe(true);
+    expect(shouldUsePortalGlobalShortcuts({ platform: 'linux', waylandSession: false })).toBe(
+      false
+    );
+    expect(shouldUsePortalGlobalShortcuts({ platform: 'win32', waylandSession: true })).toBe(false);
+    expect(shouldUsePortalGlobalShortcuts({ platform: 'darwin', waylandSession: true })).toBe(
+      false
+    );
+  });
+
+  test('offers the legacy globalShortcut fallback everywhere except native Wayland', () => {
+    const base = { platform: 'linux', env: {}, argv: [], waylandSession: true };
+    // Native Wayland: globalShortcut is a hard no-op, no XGrabKey fallback exists.
+    expect(hasGlobalShortcutFallback(base)).toBe(false);
+    expect(
+      hasGlobalShortcutFallback({
+        ...base,
+        env: { ELECTRON_OZONE_PLATFORM_HINT: 'wayland' },
+      })
+    ).toBe(false);
+    // Forced or explicit XWayland keeps the partial X-grab fallback.
+    expect(hasGlobalShortcutFallback({ ...base, forcedX11Ozone: true })).toBe(true);
+    expect(hasGlobalShortcutFallback({ ...base, argv: ['--ozone-platform=x11'] })).toBe(true);
+    // X11 sessions and other platforms always have globalShortcut.
+    expect(hasGlobalShortcutFallback({ ...base, waylandSession: false })).toBe(true);
+    expect(hasGlobalShortcutFallback({ platform: 'win32', waylandSession: true })).toBe(true);
+    expect(hasGlobalShortcutFallback({ platform: 'darwin' })).toBe(true);
   });
 
   test('keeps Windows transparent and resizable without frosted glass', () => {

@@ -29,6 +29,7 @@ module.exports = [
       'src/i18n-main.cjs',
       'src/linux-startup.cjs',
       'src/main-logging.cjs',
+      'src/net-fetch.cjs',
       'src/platform.cjs',
       'src/preload-api.cjs',
       'src/windows-startup.cjs',

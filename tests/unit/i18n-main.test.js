@@ -4,9 +4,6 @@ const path = require('path');
 const nodeCrypto = require('crypto');
 const { pathToFileURL } = require('url');
 
-jest.mock('axios');
-const axios = require('axios');
-
 const { createLocalizationService } = require('../../src/i18n-main.cjs');
 
 function createTempDir() {
@@ -17,9 +14,10 @@ describe('main localization service', () => {
   let rootDir;
   let bundledDir;
   let userDataDir;
+  let fetchMock;
 
   beforeEach(() => {
-    axios.get.mockReset();
+    fetchMock = jest.fn();
     rootDir = createTempDir();
     bundledDir = path.join(rootDir, 'locales');
     userDataDir = path.join(rootDir, 'user');
@@ -107,9 +105,11 @@ describe('main localization service', () => {
     const serializedPack = JSON.stringify(packPayload);
     const sha256 = nodeCrypto.createHash('sha256').update(serializedPack).digest('hex');
 
-    axios.get
+    fetchMock
       .mockResolvedValueOnce({
-        data: {
+        ok: true,
+        status: 200,
+        json: async () => ({
           packs: [
             {
               locale: 'fr',
@@ -121,9 +121,9 @@ describe('main localization service', () => {
               sha256,
             },
           ],
-        },
+        }),
       })
-      .mockResolvedValueOnce({ data: serializedPack });
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => serializedPack });
 
     const service = createLocalizationService({
       bundledDir,
@@ -131,6 +131,7 @@ describe('main localization service', () => {
       appVersion: '1.0.0',
       getDetectedLocale: () => 'en',
       manifestUrl: 'https://example.test/manifest.json',
+      fetchImpl: fetchMock,
     });
 
     const pack = await service.downloadLocalePack('fr');
@@ -148,9 +149,11 @@ describe('main localization service', () => {
   });
 
   it('rejects a locale pack when the integrity hash does not match', async () => {
-    axios.get
+    fetchMock
       .mockResolvedValueOnce({
-        data: {
+        ok: true,
+        status: 200,
+        json: async () => ({
           packs: [
             {
               locale: 'fr',
@@ -162,13 +165,16 @@ describe('main localization service', () => {
               sha256: 'bad-hash',
             },
           ],
-        },
+        }),
       })
       .mockResolvedValueOnce({
-        data: JSON.stringify({
-          locale: 'fr',
-          messages: { Hello: 'Bonjour' },
-        }),
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            locale: 'fr',
+            messages: { Hello: 'Bonjour' },
+          }),
       });
 
     const service = createLocalizationService({
@@ -177,6 +183,7 @@ describe('main localization service', () => {
       appVersion: '1.0.0',
       getDetectedLocale: () => 'en',
       manifestUrl: 'https://example.test/manifest.json',
+      fetchImpl: fetchMock,
     });
 
     await expect(service.downloadLocalePack('fr')).rejects.toThrow('integrity verification');
@@ -254,7 +261,7 @@ describe('main localization service', () => {
       'utf8'
     );
 
-    axios.get.mockRejectedValue(new Error('manifest unavailable'));
+    fetchMock.mockRejectedValue(new Error('manifest unavailable'));
 
     const service = createLocalizationService({
       bundledDir,
@@ -262,6 +269,7 @@ describe('main localization service', () => {
       appVersion: '1.0.0',
       getDetectedLocale: () => 'en',
       manifestUrl: 'https://example.test/manifest.json',
+      fetchImpl: fetchMock,
     });
 
     await expect(service.listLocalePacks(true)).rejects.toMatchObject({
