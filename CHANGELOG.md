@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   injectable `RendererHost`, so the same modules can later run inside the Home Assistant
   panel preview. No user-visible behavior change.
 
+### Fixed
+
+- The popup hotkey brings the widget to the front again on KDE Plasma running the native
+  Wayland backend. Wayland gives the app no way to raise or focus a window that is already
+  on screen (`moveTop`, `setAlwaysOnTop`, and `focus` all silently do nothing there), so the
+  hotkey looked dead whenever the widget was visible but behind other windows. The popup
+  presenter now also asks KWin over its D-Bus scripting interface to activate the window by
+  its stable title, which raises and focuses it in place — the window keeps its position
+  instead of being re-placed the way a hide/show cycle would. On compositors without that
+  interface (GNOME, wlroots) the request is a harmless no-op and behavior is unchanged;
+  X11/XWayland, Windows, and macOS keep their existing raise path.
+
 ### Security
 
 - Profiles are configuration data only: unknown sections are dropped, machine-local settings

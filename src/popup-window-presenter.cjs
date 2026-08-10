@@ -49,6 +49,11 @@ function createPopupWindowPresenter(options = {}) {
     // only feeds compositor-invented coordinates back into the saved position.
     supportsWindowPositioning = true,
     shouldReleaseElevationOnBlur = () => false,
+    // Native Wayland gives the client no raise or focus lever at all for a mapped
+    // window. When set, this asks the compositor itself to activate the window (KWin
+    // scripting, see kwin-window-raise.cjs). Async and best-effort: a failure must
+    // never break the show path.
+    requestCompositorRaise = null,
     log = console,
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
@@ -85,6 +90,18 @@ function createPopupWindowPresenter(options = {}) {
       callback();
     }, delay);
     pendingTimers.add(timer);
+  }
+
+  function raiseViaCompositor(targetWindow) {
+    if (typeof requestCompositorRaise !== 'function') return;
+    try {
+      const result = requestCompositorRaise(targetWindow);
+      if (result && typeof result.catch === 'function') {
+        result.catch((error) => log.debug?.('Compositor raise failed:', error?.message || error));
+      }
+    } catch (error) {
+      log.debug?.('Compositor raise failed:', error?.message || error);
+    }
   }
 
   function applyPopupLevel(targetWindow) {
@@ -205,6 +222,7 @@ function createPopupWindowPresenter(options = {}) {
     safeCall(targetWindow, 'show');
     safeCall(targetWindow, 'focus');
     safeCall(targetWindow, 'moveTop');
+    raiseViaCompositor(targetWindow);
     restorePosition(targetWindow, intendedPosition);
 
     POPUP_RAISE_REASSERT_DELAYS_MS.forEach((delay) => {
@@ -213,6 +231,7 @@ function createPopupWindowPresenter(options = {}) {
         if (safeCall(targetWindow, 'isVisible') === false) return;
         applyPopupLevel(targetWindow);
         safeCall(targetWindow, 'moveTop');
+        raiseViaCompositor(targetWindow);
         restorePosition(targetWindow, intendedPosition);
       }, delay);
     });

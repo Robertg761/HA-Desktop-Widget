@@ -52,6 +52,7 @@ function createPresenter(overrides = {}) {
     getConfig: () => config,
     getWorkAreas: overrides.getWorkAreas || (() => [WORK_AREA]),
     shouldReleaseElevationOnBlur: overrides.shouldReleaseElevationOnBlur || (() => false),
+    requestCompositorRaise: overrides.requestCompositorRaise || null,
     log,
   });
   return { presenter, config, log };
@@ -78,6 +79,36 @@ describe('popup window presenter', () => {
     expect(raiseOrder).toBeLessThan(showOrder);
     expect(targetWindow.setAlwaysOnTop).toHaveBeenCalledWith(true, POPUP_WINDOW_TOP_LEVEL);
     expect(presenter.isElevated()).toBe(true);
+  });
+
+  test('asks the compositor to raise on show and on each re-assert pass', () => {
+    const targetWindow = createWindowMock();
+    const requestCompositorRaise = jest.fn(() => Promise.resolve(true));
+    const { presenter } = createPresenter({ requestCompositorRaise });
+
+    presenter.showAboveFullScreen(targetWindow);
+    expect(requestCompositorRaise).toHaveBeenCalledTimes(1);
+    expect(requestCompositorRaise).toHaveBeenCalledWith(targetWindow);
+
+    jest.runOnlyPendingTimers();
+    expect(requestCompositorRaise).toHaveBeenCalledTimes(3);
+  });
+
+  test('a failing compositor raise never breaks the show path', () => {
+    const targetWindow = createWindowMock();
+    const rejected = jest.fn(() => Promise.reject(new Error('kwin gone')));
+    const throwing = jest.fn(() => {
+      throw new Error('kwin gone');
+    });
+
+    const { presenter } = createPresenter({ requestCompositorRaise: rejected });
+    expect(presenter.showAboveFullScreen(targetWindow)).toBe(true);
+
+    const { presenter: throwingPresenter } = createPresenter({
+      requestCompositorRaise: throwing,
+    });
+    expect(throwingPresenter.showAboveFullScreen(createWindowMock())).toBe(true);
+    expect(throwing).toHaveBeenCalled();
   });
 
   test('holds the raise across the re-assert passes while the window stays visible', () => {

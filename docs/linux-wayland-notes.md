@@ -67,6 +67,33 @@ no X-grab fallback, so there the portal stays active either way. A single assign
 trigger also keeps the portal: it is demonstrably approved, and the remaining triggers
 can be assigned in the desktop's shortcut settings.
 
+## Raising the popup on native Wayland: KWin scripting
+
+Bringing an already-mapped window to the front is the other thing a Wayland client cannot
+do: `moveTop()` is X11-only, `setAlwaysOnTop()` is advisory, and `focus()` needs an
+xdg-activation token the compositor only grants around real user input into this client —
+the GlobalShortcuts portal's `Activated` signal carries no token, and Electron exposes no
+way to spend one anyway. So on native Wayland the popup hotkey's raise branch used to be a
+silent no-op whenever the widget was visible but occluded: the log said "window shown" and
+nothing moved. (Hiding still worked, and showing from hidden worked because a fresh map is
+placed on top, which made the hotkey feel half-broken rather than dead.)
+
+`src/kwin-window-raise.cjs` closes the gap the same way kdotool does: it loads a one-shot
+script through `org.kde.KWin /Scripting` that assigns `workspace.activeWindow` (Plasma 6;
+`activeClient` on Plasma 5) for the window with the widget's exact title. KWin treats that
+as a compositor-side activation — focus and raise, in place, no re-placement — so the
+window never loses its position the way a hide/show remap would. Verified on the machine
+above with the widget occluded and unfocused. The activation also hands the widget focus,
+which is what lets the next hotkey press take the toggle's hide branch.
+
+The presenter fires the request on show and again on each raise re-assert pass, wired only
+when the compositor owns placement (`usesCompositorOwnedPlacement`). Mutter and wlroots
+compositors have no equivalent interface (`org.kde.KWin` has no owner there, probed once
+per session), so the request degrades to a no-op and those sessions keep the previous
+behavior. A deliberately rejected alternative: unmapping and re-mapping the window would
+raise it everywhere, but re-runs compositor placement and re-centers the widget for anyone
+without the KWin rule below.
+
 ## Keeping the position on native Wayland: a KWin rule
 
 A compositor that will not let the app place its window will still place it itself, and KWin can

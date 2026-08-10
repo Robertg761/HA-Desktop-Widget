@@ -85,6 +85,7 @@ const {
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
+const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const {
   createSerializedTaskRunner,
@@ -500,6 +501,12 @@ let uIOhookRunning = false; // Track whether uIOhook is currently running
 let _popupHotkeyWindowVisible = false; // Toggle mode: track whether window is currently shown via hotkey
 let popupHotkeyLastShownTime = null;
 const registeredEntityHotkeyAccelerators = new Set();
+// On native Wayland none of the client-side raise calls (moveTop, setAlwaysOnTop,
+// focus) can lift an already-mapped window, so the presenter asks KWin to activate it
+// by its stable title instead — in place, keeping its position, where a hide()/show()
+// remap would let the compositor re-place it. Harmless no-op on compositors without
+// the KWin scripting interface.
+const kwinWindowRaiser = usesCompositorOwnedPlacement ? createKWinWindowRaiser({ log }) : null;
 // Owns the window level, full-screen visibility, and saved position for every path that
 // pops the widget up, so a hotkey press lands above full-screen video instead of behind it.
 const popupWindowPresenter = createPopupWindowPresenter({
@@ -511,6 +518,9 @@ const popupWindowPresenter = createPopupWindowPresenter({
   // holding Electron's screen-saver window level.
   shouldReleaseElevationOnBlur: () =>
     usesLinuxPopupHotkeyBackend || !!config?.popupHotkeyToggleMode,
+  requestCompositorRaise: kwinWindowRaiser
+    ? (targetWindow) => kwinWindowRaiser.raiseWindowByTitle(targetWindow.getTitle())
+    : null,
   log,
 });
 const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
@@ -8928,6 +8938,7 @@ function shutDownRuntimeAfterConfigFlush() {
   }
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
+  kwinWindowRaiser?.close();
 }
 
 app.on('before-quit', (event) => {
