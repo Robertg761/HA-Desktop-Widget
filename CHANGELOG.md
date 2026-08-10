@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal: unpackaged development runs (`npm run dev` and friends) use their own persistent
+  profile, `<userData>-dev`, instead of the installed widget's. The single-instance lock lives
+  in the profile, so a dev launch used to hand off to a running installed widget and exit
+  immediately; now the two run side by side. The dev profile is seeded from the production
+  `config.json` (and the `xwayland-unavailable` marker) on first use, and dev-run config
+  changes no longer touch the real profile.
 - Internal: the browser-safe renderer modules (Quick Access tabs, comparison graphs, primary
   cards, icons, utils, i18n, state, the profile schema, and friends) moved into a workspace
   package, `packages/widget-renderer` (`@hadw/renderer`), consumed by the app through

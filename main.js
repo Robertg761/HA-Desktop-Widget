@@ -300,6 +300,30 @@ if (IS_CLIMATE_DEMO_MODE) {
   );
   app.setPath('userData', smokeTestUserDataPath);
   log.info(`Starting isolated packaged-runtime smoke test: ${smokeTestUserDataPath}`);
+} else if (IS_DEV_MODE && !app.isPackaged) {
+  // The single-instance lock lives in the profile, so a dev run sharing the installed
+  // widget's profile would just hand off to it and exit. A persistent sibling profile
+  // lets `npm run dev` start alongside the real widget. Persistent rather than a temp
+  // dir so dev settings survive between runs; seeded from the production profile on
+  // first use so a dev run opens the user's real dashboard instead of onboarding.
+  // (xwayland-unavailable is a machine fact, not a setting; copying it spares the dev
+  // profile the GPU-crash-and-relaunch probe that wrote it.)
+  const devUserDataPath = `${app.getPath('userData')}-dev`;
+  if (!fs.existsSync(devUserDataPath)) {
+    fs.mkdirSync(devUserDataPath, { recursive: true });
+    for (const seedFile of ['config.json', 'xwayland-unavailable']) {
+      const seedSource = path.join(app.getPath('userData'), seedFile);
+      try {
+        if (fs.existsSync(seedSource)) {
+          fs.copyFileSync(seedSource, path.join(devUserDataPath, seedFile));
+        }
+      } catch (error) {
+        log.warn(`Could not seed dev profile with ${seedFile}:`, error?.message || error);
+      }
+    }
+  }
+  app.setPath('userData', devUserDataPath);
+  log.info(`Development run using isolated profile: ${devUserDataPath}`);
 }
 
 // Set cache paths before app is ready to avoid access issues
@@ -310,7 +334,8 @@ app.setPath('sessionData', path.join(userDataPath, 'session'));
 // One widget per user data directory. Without this a second launch raised a second tray icon and
 // a second window writing the same config file, so the two instances fought over it and the loser's
 // state won whichever happened to save last. The lock lives in the user data directory, and the
-// climate demo redirects that above, so an isolated demo still runs alongside the real widget.
+// climate demo and unpackaged dev runs redirect that above, so an isolated demo or a dev build
+// still runs alongside the real widget.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   log.info('Another instance already owns this profile; handing the request to it and exiting');
