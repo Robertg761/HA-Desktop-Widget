@@ -56,6 +56,8 @@ const desiredStateByEntity = new Map();
 const inFlightByEntity = new Map();
 const lastRequestedStateByEntity = new Map();
 const optimisticStateByEntity = new Map();
+const onOffToggleConfirmationTimers = new Map();
+const lastKnownLightBrightnessByEntity = new Map();
 const failedMediaArtworkRetryAtByUrl = new Map();
 const desktopPinLightBrightnessTimers = new Map();
 const desktopPinLightInteractionState = new Map();
@@ -63,6 +65,7 @@ const desktopPinControlTimers = new Map();
 const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
+const ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS = 8000;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
@@ -194,20 +197,79 @@ function getEffectiveOnOffState(entityId, fallbackState = 'off') {
   return isOnOffStateValue(fallbackState) ? fallbackState : 'off';
 }
 
+function clearOnOffToggleConfirmationTimer(entityId) {
+  const timer = onOffToggleConfirmationTimers.get(entityId);
+  if (timer != null) {
+    clearTimeout(timer);
+    onOffToggleConfirmationTimers.delete(entityId);
+  }
+}
+
 function clearPendingOnOffToggle(entityId) {
+  clearOnOffToggleConfirmationTimer(entityId);
   desiredStateByEntity.delete(entityId);
   optimisticStateByEntity.delete(entityId);
+  lastRequestedStateByEntity.delete(entityId);
+}
+
+function rememberLightBrightness(entity) {
+  if (getEntityDomain(entity?.entity_id) !== 'light') return;
+  const brightness = Number(entity?.attributes?.brightness);
+  if (Number.isFinite(brightness) && brightness > 0) {
+    lastKnownLightBrightnessByEntity.set(entity.entity_id, brightness);
+  }
 }
 
 function getEntityForDisplay(entity) {
   if (!entity || typeof entity !== 'object' || !entity.entity_id) return entity;
   const domain = getEntityDomain(entity.entity_id);
+  if (domain === 'light') rememberLightBrightness(entity);
   if (!isOnOffToggleDomain(domain)) return entity;
 
   const optimisticState = optimisticStateByEntity.get(entity.entity_id);
   if (!isOnOffStateValue(optimisticState)) return entity;
-  if (entity.state === optimisticState) return entity;
-  return { ...entity, state: optimisticState };
+
+  const cachedBrightness = lastKnownLightBrightnessByEntity.get(entity.entity_id);
+  const needsCachedBrightness =
+    domain === 'light' &&
+    optimisticState === 'on' &&
+    Number.isFinite(cachedBrightness) &&
+    !(Number(entity.attributes?.brightness) > 0);
+
+  if (entity.state === optimisticState && !needsCachedBrightness) return entity;
+  return {
+    ...entity,
+    state: optimisticState,
+    ...(needsCachedBrightness
+      ? { attributes: { ...(entity.attributes || {}), brightness: cachedBrightness } }
+      : {}),
+  };
+}
+
+function scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState) {
+  clearOnOffToggleConfirmationTimer(entityId);
+  const timer = setTimeout(() => {
+    if (onOffToggleConfirmationTimers.get(entityId) !== timer) return;
+    onOffToggleConfirmationTimers.delete(entityId);
+    if (desiredStateByEntity.get(entityId) !== desiredState) return;
+
+    desiredStateByEntity.delete(entityId);
+    optimisticStateByEntity.delete(entityId);
+    lastRequestedStateByEntity.delete(entityId);
+
+    const serverEntity = state.STATES?.[entityId];
+    if (serverEntity) {
+      updateEntityInUI(serverEntity, { skipQueueReconcile: true });
+    }
+    emitUiDebug('entity.toggle_confirmation_timeout', {
+      entityId,
+      domain,
+      desiredState,
+      receivedState: serverEntity?.state || null,
+    });
+  }, ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS);
+  timer?.unref?.();
+  onOffToggleConfirmationTimers.set(entityId, timer);
 }
 
 /**
@@ -1684,7 +1746,7 @@ function updateEntityInUI(entity, options = {}) {
           });
         } else {
           optimisticStateByEntity.set(entityId, desiredState);
-          renderEntity = { ...entity, state: desiredState };
+          renderEntity = getEntityForDisplay(entity);
           emitUiDebug('entity.toggle_reconcile_pending', {
             entityId,
             domain,
@@ -1816,6 +1878,7 @@ function applyQuickAccessTileActiveState(element, entity) {
 }
 
 function getControlRenderSignature(entity) {
+  entity = getEntityForDisplay(entity);
   if (!entity || !entity.entity_id) return '';
   const attrs = entity.attributes || {};
   const domain = getEntityDomain(entity.entity_id);
@@ -9318,16 +9381,13 @@ async function processPendingOnOffToggle(entityId, domain) {
     const latestDesiredState = desiredStateByEntity.get(entityId);
     if (latestDesiredState === desiredState) {
       const currentEntity = state.STATES?.[entityId];
-      if (currentEntity) {
-        const committedEntity =
-          currentEntity.state === desiredState
-            ? currentEntity
-            : { ...currentEntity, state: desiredState };
-        state.setEntityState(committedEntity);
+      if (!currentEntity) {
         clearPendingOnOffToggle(entityId);
-        updateEntityInUI(committedEntity, { skipQueueReconcile: true });
       } else {
-        clearPendingOnOffToggle(entityId);
+        // A successful service response only confirms that Home Assistant accepted the call.
+        // Keep the requested visual state until the matching state_changed event arrives so an
+        // older entity update cannot briefly repaint the tile with stale data.
+        scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState);
       }
     }
 
@@ -9385,6 +9445,8 @@ function queueOnOffToggle(entity) {
 
   const effectiveState = getEffectiveOnOffState(entityId, entity.state);
   const desiredState = effectiveState === 'on' ? 'off' : 'on';
+  clearOnOffToggleConfirmationTimer(entityId);
+  rememberLightBrightness(state.STATES?.[entityId] || entity);
   desiredStateByEntity.set(entityId, desiredState);
   optimisticStateByEntity.set(entityId, desiredState);
 

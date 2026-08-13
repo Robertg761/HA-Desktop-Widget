@@ -230,6 +230,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     afterEach(() => {
+      jest.runOnlyPendingTimers();
       jest.useRealTimers();
     });
 
@@ -599,6 +600,94 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       resolveFirstCall({});
       await flushAsync();
+    });
+
+    it('should keep the optimistic level after service acknowledgement until HA confirms the state', async () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({
+        'light.bedroom': getBedroomLightOnState(),
+      });
+      ui.renderActiveTab();
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      await flushAsync();
+
+      // The service response has settled, but an older state update must not restore 78%.
+      ui.updateEntityInUI(getBedroomLightOnState());
+      expect(
+        document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state')
+          .textContent
+      ).toBe('Off');
+
+      ui.updateEntityInUI(getBedroomLightOffState());
+      expect(
+        document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state')
+          .textContent
+      ).toBe('Off');
+    });
+
+    it('should ignore an out-of-order off update after a rapid toggle back on', async () => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({
+        'light.bedroom': getBedroomLightOnState(),
+      });
+      ui.renderActiveTab();
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      await flushAsync();
+      await flushAsync();
+
+      ui.updateEntityInUI(getBedroomLightOffState());
+      expect(
+        document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state')
+          .textContent
+      ).toBe('78%');
+
+      ui.updateEntityInUI(getBedroomLightOnState());
+      expect(
+        document.querySelector('.control-item[data-entity-id="light.bedroom"] .control-state')
+          .textContent
+      ).toBe('78%');
+    });
+
+    it('should reuse the last confirmed brightness while an off light is turning on', () => {
+      const entityId = 'light.cached_brightness';
+      const onState = {
+        entity_id: entityId,
+        state: 'on',
+        attributes: { friendly_name: 'Cached Brightness', brightness: 128 },
+      };
+      const offState = {
+        entity_id: entityId,
+        state: 'off',
+        attributes: { friendly_name: 'Cached Brightness' },
+      };
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: [entityId],
+      });
+      state.setStates({ [entityId]: onState });
+      ui.renderActiveTab();
+
+      state.setEntityState(offState);
+      ui.updateEntityInUI(offState);
+      mockCallService.mockImplementationOnce(() => new Promise(() => {}));
+      ui.executeHotkeyAction(state.STATES[entityId], 'toggle');
+
+      expect(
+        document.querySelector(`.control-item[data-entity-id="${entityId}"] .control-state`)
+          .textContent
+      ).toBe('50%');
     });
 
     it('should revert optimistic state when service call fails', async () => {
