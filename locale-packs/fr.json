@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -430,6 +430,7 @@
     "Keep Local (Upload)": "Garder le local (téléverser)",
     "Settings were saved, but the sync passphrase could not be stored.": "Les paramètres ont été enregistrés, mais la phrase secrète de synchronisation n'a pas pu être stockée.",
     "Failed to apply popup hotkey mode": "Impossible d'appliquer le mode du raccourci de la fenêtre contextuelle",
-    "Failed to apply popup hotkey behavior": "Impossible d'appliquer le comportement du raccourci de la fenêtre contextuelle"
+    "Failed to apply popup hotkey behavior": "Impossible d'appliquer le comportement du raccourci de la fenêtre contextuelle",
+    "Connecting to Home Assistant...": "Connexion à Home Assistant..."
   }
 }

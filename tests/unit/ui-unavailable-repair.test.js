@@ -15,7 +15,10 @@ jest.mock('../../src/camera.js', () => ({
   pruneCameraPreviews: jest.fn(),
   refreshCameraPreview: jest.fn(),
 }));
-jest.mock('../../src/icons.js', () => ({ setIconContent: jest.fn() }));
+jest.mock('../../src/icons.js', () => ({
+  setIconContent: jest.fn(),
+  applyCloseButtonIcons: jest.fn(),
+}));
 jest.mock('sortablejs', () => ({ create: jest.fn(() => ({ destroy: jest.fn() })) }));
 
 const mockReleaseCalls = [];
@@ -36,6 +39,16 @@ jest.mock('../../src/ui-utils.js', () => ({
   hasSupportedFeature: jest.fn(() => false),
   trapFocus: jest.fn(),
   releaseFocusTrap: (...args) => mockReleaseFocusTrap(...args),
+  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
+  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
+    if (modal) {
+      modal.classList.remove('modal-closing');
+      if (remove) modal.remove();
+      else modal.classList.add('hidden');
+      onClosed?.();
+    }
+    return Promise.resolve();
+  }),
 }));
 
 jest.mock('../../src/websocket.js', () => ({

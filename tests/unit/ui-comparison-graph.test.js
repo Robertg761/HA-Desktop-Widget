@@ -15,7 +15,10 @@ jest.mock('../../src/camera.js', () => ({
   pruneCameraPreviews: jest.fn(),
   refreshCameraPreview: jest.fn(),
 }));
-jest.mock('../../src/icons.js', () => ({ setIconContent: jest.fn() }));
+jest.mock('../../src/icons.js', () => ({
+  setIconContent: jest.fn(),
+  applyCloseButtonIcons: jest.fn(),
+}));
 jest.mock('sortablejs', () => ({ create: jest.fn(() => ({ destroy: jest.fn() })) }));
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),

@@ -82,6 +82,24 @@ const mockUiUtils = {
   getAccentThemes: jest.fn(() => [...BASE_THEMES, ...mockCustomThemes]),
   trapFocus: jest.fn(),
   releaseFocusTrap: jest.fn(),
+  // Mirrors the real shared modal helpers: class-based visibility plus the inline display the
+  // legacy call sites still assert on.
+  closeModal: jest.fn((modal, { releaseFocus = false } = {}) => {
+    if (modal) {
+      modal.classList.remove('modal-closing');
+      modal.classList.add('hidden');
+      if (modal.style.display) modal.style.display = 'none';
+      if (releaseFocus) mockUiUtils.releaseFocusTrap(modal);
+    }
+    return Promise.resolve();
+  }),
+  openModal: jest.fn((modal, { display = 'flex' } = {}) => {
+    if (!modal) return;
+    modal.classList.remove('modal-closing');
+    modal.classList.remove('hidden');
+    if (display) modal.style.display = display;
+    else modal.style.removeProperty('display');
+  }),
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(true),
 };

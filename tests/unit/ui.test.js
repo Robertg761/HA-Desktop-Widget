@@ -44,47 +44,73 @@ jest.mock('../../src/camera.js', () => ({
   refreshCameraPreview: jest.fn(),
 }));
 
-jest.mock('../../src/ui-utils.js', () => ({
-  showToast: jest.fn(),
-  showConfirm: jest.fn().mockResolvedValue(false),
-  showLoading: jest.fn(),
-  setStatus: jest.fn(),
-  trapFocus: jest.fn(),
-  releaseFocusTrap: jest.fn(),
-  applyTheme: jest.fn(),
-  applyUiPreferences: jest.fn(),
-  hexToRgb: jest.fn((hex) => {
-    if (!hex || typeof hex !== 'string') return null;
-    const normalized = hex.replace('#', '').trim();
-    if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-    const value =
-      normalized.length === 3
-        ? normalized
-            .split('')
-            .map((ch) => ch + ch)
-            .join('')
-        : normalized;
-    return {
-      r: Number.parseInt(value.slice(0, 2), 16),
-      g: Number.parseInt(value.slice(2, 4), 16),
-      b: Number.parseInt(value.slice(4, 6), 16),
-    };
-  }),
-  miredsToKelvin: jest.fn((mireds) => {
-    const value = Number(mireds);
-    return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
-  }),
-  hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
-    const features = Number(supportedFeatures);
-    const flag = Number(featureFlag);
-    return (
-      Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
-    );
-  }),
-}));
+jest.mock('../../src/ui-utils.js', () => {
+  const releaseFocusTrap = jest.fn();
+  return {
+    showToast: jest.fn(),
+    showConfirm: jest.fn().mockResolvedValue(false),
+    showLoading: jest.fn(),
+    setStatus: jest.fn(),
+    trapFocus: jest.fn(),
+    releaseFocusTrap,
+    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
+    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
+      if (modal) {
+        modal.classList.remove('modal-closing');
+        if (remove) {
+          modal.remove();
+        } else {
+          modal.classList.add('hidden');
+          if (modal.style.display) modal.style.display = 'none';
+        }
+        if (releaseFocus) releaseFocusTrap(modal);
+        onClosed?.();
+      }
+      return Promise.resolve();
+    }),
+    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
+      if (!modal) return;
+      modal.classList.remove('modal-closing');
+      modal.classList.remove('hidden');
+      if (display) modal.style.display = display;
+      else modal.style.removeProperty('display');
+    }),
+    applyTheme: jest.fn(),
+    applyUiPreferences: jest.fn(),
+    hexToRgb: jest.fn((hex) => {
+      if (!hex || typeof hex !== 'string') return null;
+      const normalized = hex.replace('#', '').trim();
+      if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
+      const value =
+        normalized.length === 3
+          ? normalized
+              .split('')
+              .map((ch) => ch + ch)
+              .join('')
+          : normalized;
+      return {
+        r: Number.parseInt(value.slice(0, 2), 16),
+        g: Number.parseInt(value.slice(2, 4), 16),
+        b: Number.parseInt(value.slice(4, 6), 16),
+      };
+    }),
+    miredsToKelvin: jest.fn((mireds) => {
+      const value = Number(mireds);
+      return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
+    }),
+    hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
+      const features = Number(supportedFeatures);
+      const flag = Number(featureFlag);
+      return (
+        Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
+      );
+    }),
+  };
+});
 
 jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
+  applyCloseButtonIcons: jest.fn(),
 }));
 
 jest.mock('../../src/weather-icons.js', () => ({

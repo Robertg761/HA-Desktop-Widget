@@ -298,4 +298,25 @@ function setIconContent(element, iconName, options = {}) {
   return icon;
 }
 
-export { createIcon, Icons, replaceWithIcon, setIconContent };
+/**
+ * Give every `.close-btn` inside a root its SVG icon.
+ *
+ * Modal dialogs are built from markup that still carries a literal `×`, and they are created long
+ * after start-up, so a one-shot pass over the document at init would never reach them. Call this
+ * with a freshly built modal to swap its close button before the dialog is ever painted.
+ *
+ * @param {ParentNode} [root=document] - Element or document to scan.
+ * @param {Object} [options] - Icon options forwarded to `setIconContent`.
+ * @param {number} [options.size=20] - Icon size in pixels.
+ * @returns {void}
+ */
+function applyCloseButtonIcons(root = document, options = {}) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  const { size = 20, ...rest } = options;
+  root.querySelectorAll('.close-btn').forEach((button) => {
+    if (button.querySelector('svg')) return;
+    setIconContent(button, 'close', { size, ...rest });
+  });
+}
+
+export { createIcon, Icons, replaceWithIcon, setIconContent, applyCloseButtonIcons };

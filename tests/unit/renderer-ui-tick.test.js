@@ -147,6 +147,7 @@ describe('Renderer UI tick scheduler', () => {
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,
       setIconContent: jest.fn(),
+      applyCloseButtonIcons: jest.fn(),
     }));
     jest.doMock('../../src/constants.js', () => ({
       __esModule: true,

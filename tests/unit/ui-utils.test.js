@@ -83,12 +83,16 @@ describe('UI Utilities', () => {
       toastContainer.id = 'toast-container';
       document.body.appendChild(toastContainer);
 
+      // The exit animation is skipped under NODE_ENV=test, so opt back into it to keep asserting
+      // on `.toast-closing` and the fallback timer.
+      uiUtils.__forceAnimatedModalTransitions(true);
       jest.useFakeTimers();
     });
 
     afterEach(() => {
       jest.runOnlyPendingTimers();
       jest.useRealTimers();
+      uiUtils.__forceAnimatedModalTransitions(false);
     });
 
     it('should display toast with message', () => {
@@ -143,11 +147,52 @@ describe('UI Utilities', () => {
       jest.advanceTimersByTime(2000);
 
       const toast = toastContainer.querySelector('.toast');
-      expect(toast.style.opacity).toBe('0');
+      expect(toast.classList.contains('toast-closing')).toBe(true);
 
       // Fast-forward fade-out animation
       jest.advanceTimersByTime(300);
 
+      expect(toastContainer.children.length).toBe(0);
+    });
+
+    it('should lead with an aria-hidden status icon matching the type', () => {
+      uiUtils.showToast('Saved', 'success', 2000);
+
+      const toast = toastContainer.querySelector('.toast');
+      const icon = toast.firstElementChild;
+      expect(icon.classList.contains('toast-icon')).toBe(true);
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+      expect(icon.querySelector('svg')).toBeTruthy();
+      expect(icon.querySelector('svg').getAttribute('aria-label')).toBe('Success');
+    });
+
+    it('should use the error icon for error toasts', () => {
+      uiUtils.showToast('Broken', 'error', 2000);
+
+      const icon = toastContainer.querySelector('.toast .toast-icon svg');
+      expect(icon.getAttribute('aria-label')).toBe('Error');
+    });
+
+    it('should dismiss a toast when it is clicked', () => {
+      uiUtils.showToast('Click me', 'info', 5000);
+
+      const toast = toastContainer.querySelector('.toast');
+      toast.click();
+      expect(toast.classList.contains('toast-closing')).toBe(true);
+
+      jest.advanceTimersByTime(300);
+      expect(toastContainer.children.length).toBe(0);
+    });
+
+    it('should not remove a clicked toast twice when its timeout also fires', () => {
+      uiUtils.showToast('Click me', 'info', 1000);
+
+      const toast = toastContainer.querySelector('.toast');
+      toast.click();
+      jest.advanceTimersByTime(300);
+      expect(toastContainer.children.length).toBe(0);
+
+      expect(() => jest.advanceTimersByTime(2000)).not.toThrow();
       expect(toastContainer.children.length).toBe(0);
     });
 
@@ -603,6 +648,32 @@ describe('UI Utilities', () => {
 
       focusSpy.mockRestore();
       document.body.removeChild(externalButton);
+    });
+
+    it('does not steal focus back when another dialog has already claimed it', () => {
+      const externalButton = document.createElement('button');
+      externalButton.id = 'external';
+      document.body.appendChild(externalButton);
+      const nextDialogField = document.createElement('input');
+      document.body.appendChild(nextDialogField);
+
+      externalButton.focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+
+      const focusSpy = jest.spyOn(externalButton, 'focus');
+      uiUtils.releaseFocusTrap(modal);
+      // The close handler opened a replacement dialog, which focused its own first field before
+      // the deferred release ran.
+      nextDialogField.focus();
+      jest.advanceTimersByTime(0);
+
+      expect(focusSpy).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(nextDialogField);
+
+      focusSpy.mockRestore();
+      document.body.removeChild(externalButton);
+      document.body.removeChild(nextDialogField);
     });
 
     it('should handle modal without active trap', () => {
@@ -1213,6 +1284,164 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('frosted-glass')).toBe(false);
       expect(Number(document.body.style.getPropertyValue('--window-bg-alpha'))).toBeLessThan(1);
       expect(document.body.style.opacity).toBe('');
+    });
+  });
+
+  describe('animated closeModal/openModal', () => {
+    const createModal = () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = '<div class="modal-content"><button class="field">Field</button></div>';
+      document.body.appendChild(modal);
+      modal.style.display = 'flex';
+      return modal;
+    };
+
+    const endExitAnimation = (modal) => {
+      modal.dispatchEvent(new Event('animationend'));
+    };
+
+    beforeEach(() => {
+      // NODE_ENV=test normally settles every close synchronously, which would skip the entire
+      // animated branch these tests exist to cover.
+      uiUtils.__forceAnimatedModalTransitions(true);
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+      uiUtils.__forceAnimatedModalTransitions(false);
+    });
+
+    it('hides the modal only once the exit animation ends', async () => {
+      const modal = createModal();
+      const onClosed = jest.fn();
+
+      const closed = uiUtils.closeModal(modal, { onClosed });
+
+      expect(modal.classList.contains('modal-closing')).toBe(true);
+      expect(modal.classList.contains('hidden')).toBe(false);
+      expect(onClosed).not.toHaveBeenCalled();
+
+      endExitAnimation(modal);
+      await closed;
+
+      expect(modal.classList.contains('modal-closing')).toBe(false);
+      expect(modal.classList.contains('hidden')).toBe(true);
+      expect(modal.style.display).toBe('none');
+      expect(onClosed).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides the modal on the fallback timer when animationend never arrives', async () => {
+      const modal = createModal();
+      const onClosed = jest.fn();
+
+      const closed = uiUtils.closeModal(modal, { onClosed });
+
+      jest.advanceTimersByTime(299);
+      expect(modal.classList.contains('hidden')).toBe(false);
+      expect(onClosed).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(1);
+      await closed;
+
+      expect(modal.classList.contains('hidden')).toBe(true);
+      expect(onClosed).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a modal re-opened mid-close visible when the stale animation settles', async () => {
+      const modal = createModal();
+      const onClosed = jest.fn();
+
+      const closed = uiUtils.closeModal(modal, { onClosed });
+      uiUtils.openModal(modal);
+      await closed;
+
+      expect(modal.classList.contains('modal-closing')).toBe(false);
+      expect(modal.classList.contains('hidden')).toBe(false);
+
+      endExitAnimation(modal);
+      jest.advanceTimersByTime(300);
+
+      expect(modal.classList.contains('hidden')).toBe(false);
+      expect(modal.style.display).toBe('flex');
+      expect(onClosed).not.toHaveBeenCalled();
+    });
+
+    it('abandons the close when the exit class is cleared without going through openModal', async () => {
+      const modal = createModal();
+      const onClosed = jest.fn();
+
+      const closed = uiUtils.closeModal(modal, { onClosed });
+      modal.classList.remove('modal-closing');
+
+      endExitAnimation(modal);
+      await closed;
+
+      expect(modal.classList.contains('hidden')).toBe(false);
+      expect(modal.style.display).toBe('flex');
+      expect(onClosed).not.toHaveBeenCalled();
+    });
+
+    it('disarms the first close so a close/open/close within the fallback window completes its own close', async () => {
+      const modal = createModal();
+      const firstOnClosed = jest.fn();
+      const secondOnClosed = jest.fn();
+
+      const firstClose = uiUtils.closeModal(modal, { onClosed: firstOnClosed });
+      jest.advanceTimersByTime(100);
+      uiUtils.openModal(modal);
+      await firstClose;
+
+      const secondClose = uiUtils.closeModal(modal, { onClosed: secondOnClosed });
+      // The first close's fallback timer is due right here; it must no longer be armed.
+      jest.advanceTimersByTime(200);
+      expect(modal.classList.contains('hidden')).toBe(false);
+      expect(firstOnClosed).not.toHaveBeenCalled();
+      expect(secondOnClosed).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(100);
+      await secondClose;
+
+      expect(modal.classList.contains('hidden')).toBe(true);
+      expect(secondOnClosed).toHaveBeenCalledTimes(1);
+      expect(firstOnClosed).not.toHaveBeenCalled();
+    });
+
+    it('lets a second close supersede an in-flight one and run its own options', async () => {
+      const modal = createModal();
+      const firstOnClosed = jest.fn();
+      const secondOnClosed = jest.fn();
+
+      const firstClose = uiUtils.closeModal(modal, { onClosed: firstOnClosed });
+      const secondClose = uiUtils.closeModal(modal, { remove: true, onClosed: secondOnClosed });
+
+      endExitAnimation(modal);
+      await Promise.all([firstClose, secondClose]);
+
+      expect(secondOnClosed).toHaveBeenCalledTimes(1);
+      expect(firstOnClosed).not.toHaveBeenCalled();
+      expect(modal.isConnected).toBe(false);
+    });
+
+    it('releases the focus trap only after the exit animation ends', async () => {
+      const opener = document.createElement('button');
+      document.body.appendChild(opener);
+      opener.focus();
+
+      const modal = createModal();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+
+      const closed = uiUtils.closeModal(modal, { remove: true, releaseFocus: true });
+      expect(document.activeElement).toBe(modal.querySelector('.field'));
+
+      endExitAnimation(modal);
+      await closed;
+      jest.advanceTimersByTime(0);
+
+      expect(document.activeElement).toBe(opener);
     });
   });
 

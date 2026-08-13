@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -430,6 +430,7 @@
     "Keep Local (Upload)": "स्थानीय रखें (अपलोड)",
     "Settings were saved, but the sync passphrase could not be stored.": "सेटिंग्स सहेज ली गईं, लेकिन सिंक पासफ़्रेज़ संग्रहीत नहीं हो सका।",
     "Failed to apply popup hotkey mode": "पॉपअप हॉटकी मोड लागू नहीं हो सका",
-    "Failed to apply popup hotkey behavior": "पॉपअप हॉटकी व्यवहार लागू नहीं हो सका"
+    "Failed to apply popup hotkey behavior": "पॉपअप हॉटकी व्यवहार लागू नहीं हो सका",
+    "Connecting to Home Assistant...": "Home Assistant से कनेक्ट हो रहा है..."
   }
 }

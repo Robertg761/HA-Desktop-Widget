@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -430,6 +430,7 @@
     "Keep Local (Upload)": "الاحتفاظ بالمحلي (رفع)",
     "Settings were saved, but the sync passphrase could not be stored.": "حُفظت الإعدادات، لكن تعذر تخزين عبارة مرور المزامنة.",
     "Failed to apply popup hotkey mode": "تعذر تطبيق وضع اختصار النافذة المنبثقة",
-    "Failed to apply popup hotkey behavior": "تعذر تطبيق سلوك اختصار النافذة المنبثقة"
+    "Failed to apply popup hotkey behavior": "تعذر تطبيق سلوك اختصار النافذة المنبثقة",
+    "Connecting to Home Assistant...": "جارٍ الاتصال بـ Home Assistant..."
   }
 }

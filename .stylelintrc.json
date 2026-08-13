@@ -1,0 +1,48 @@
+{
+  "comment": [
+    "Design-token guard for styles.css. Deliberately narrow: it does not lint",
+    "formatting (prettier already owns that) and it does not police every",
+    "property. It only enforces that the four axes with a real token scale in",
+    ":root -- type size, corner radius, app-wide stacking order and motion",
+    "easing -- are never re-invented inline. Custom property declarations",
+    "(--font-size-*, --radius-*, --z-*, --ease-*) are not matched by these",
+    "rules, so the token definitions themselves stay editable."
+  ],
+  "ignoreFiles": [
+    "node_modules/**",
+    "dist/**",
+    "dist-panel/**",
+    "dist-preload/**",
+    "dist-renderer/**",
+    "coverage/**"
+  ],
+  "rules": {
+    "declaration-property-value-allowed-list": {
+      "font-size": [
+        "/^var\\(--font-size-/",
+        "/^var\\(--desktop-pin-/",
+        "/^clamp\\(/",
+        "/^calc\\(/",
+        "/^[0-9.]+em$/",
+        "inherit",
+        "0"
+      ],
+      "border-radius": [
+        "/^var\\(--radius-/",
+        "/^var\\(--desktop-pin-/",
+        "/var\\(--radius-/",
+        "/^calc\\(/",
+        "inherit",
+        "50%",
+        "0"
+      ],
+      "z-index": ["/^var\\(--z-/", "/^calc\\(var\\(--z-/", "/^-?[0-9]{1,2}$/"],
+      "transition-timing-function": ["/^var\\(--ease-/", "linear", "/^steps\\(/"],
+      "animation-timing-function": ["/^var\\(--ease-/", "linear", "/^steps\\(/"]
+    },
+    "declaration-property-value-disallowed-list": {
+      "transition": ["/cubic-bezier\\(/", "/(^|\\s)[0-9.]+m?s(\\s|,|$)/"],
+      "animation": ["/cubic-bezier\\(/"]
+    }
+  }
+}

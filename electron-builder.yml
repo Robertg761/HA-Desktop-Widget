@@ -11,6 +11,10 @@ directories:
 afterPack: scripts/after-pack-mac-adhoc-sign.cjs
 files:
   - index.html
+  # Self-hosted Inter / Plus Jakarta Sans woff2 subsets referenced by the
+  # @font-face block at the top of styles.css. Without these the packaged app
+  # falls back to system sans, because the CSP no longer allows fonts.gstatic.com.
+  - fonts/**/*
   - locales/**/*
   - main.js
   - profile-sync-core.js

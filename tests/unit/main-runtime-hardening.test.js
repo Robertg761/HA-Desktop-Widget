@@ -956,6 +956,15 @@ describe('profile sync runtime safeguards', () => {
     const updateSource = mainSource.slice(updateStart, updateEnd);
     expect(updateSource).toContain('Object.assign(homeAssistant, previousHomeAssistant)');
     expect(updateSource).toContain('desktopCompanion: previousDesktopCompanion');
+
+    const disconnectStart = mainSource.indexOf("'disconnect-home-assistant-oauth'");
+    const disconnectEnd = mainSource.indexOf(
+      "'get-desktop-companion-registration'",
+      disconnectStart
+    );
+    const disconnectSource = mainSource.slice(disconnectStart, disconnectEnd);
+    expect(disconnectSource).toContain('IS_DEV_MODE && !app.isPackaged');
+    expect(disconnectSource).toContain('getHomeAssistantOAuthClient().clearCredentials()');
   });
 
   it('cleans up temp sync files and restricts copy sources and destinations', () => {

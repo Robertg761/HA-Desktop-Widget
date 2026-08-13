@@ -49,6 +49,9 @@ jobs:
       - name: Run linter
         run: npx eslint . --max-warnings=0
 
+      - name: Lint stylesheets
+        run: npm run lint:css
+
       - name: Check formatting
         run: npm run format:check
 
@@ -105,6 +108,9 @@ jobs:
 
       - name: Run linter
         run: npx eslint . --max-warnings=0
+
+      - name: Lint stylesheets
+        run: npm run lint:css
 
       - name: Run tests with coverage
         run: npm run test:coverage -- --runInBand

@@ -19,6 +19,11 @@ export default defineConfig({
     target: 'es2022',
     minify: true,
     sourcemap: false,
+    // Emit every asset as a file, never a data: URI. The HA companion
+    // integration serves this panel under a font-src 'self' CSP, which blocks
+    // inlined fonts outright; Vite's 4 KB default would quietly inline the
+    // smaller woff2 subsets.
+    assetsInlineLimit: 0,
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

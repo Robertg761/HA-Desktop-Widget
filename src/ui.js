@@ -4,7 +4,7 @@ import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import { formatDate, formatTime, t } from './i18n.js';
-import { setIconContent } from './icons.js';
+import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
@@ -745,6 +745,8 @@ function createQuickAccessPage(name) {
   });
 }
 
+// Teardown rather than a user-facing dismissal: this runs before re-opening the dialog and when
+// reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
   const modal = document.getElementById('add-page-modal');
   if (modal) modal.remove();
@@ -786,6 +788,7 @@ function showAddPageModal() {
     </div>
   `;
   document.body.appendChild(modal);
+  applyCloseButtonIcons(modal);
 
   const input = modal.querySelector('#add-page-name');
   const saveBtn = modal.querySelector('#add-page-save-btn');
@@ -804,7 +807,7 @@ function showAddPageModal() {
     );
   };
   const close = () => {
-    if (!submissionInFlight) modal.remove();
+    if (!submissionInFlight) void uiUtils.closeModal(modal, { remove: true });
   };
   const submit = async () => {
     if (submissionInFlight) return;
@@ -816,7 +819,7 @@ function showAddPageModal() {
     setSubmissionInFlight(true);
     const result = await createQuickAccessPage(name);
     if (result.success) {
-      modal.remove();
+      void uiUtils.closeModal(modal, { remove: true });
       return;
     }
     if (modal.isConnected) {
@@ -1428,7 +1431,7 @@ function showRenameModal(entityId) {
       <div class="modal-content">
         <div class="modal-header">
           <h2>${utils.escapeHtml(t('Tile Settings'))}</h2>
-          <button class="close-btn">×</button>
+          <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -1446,6 +1449,7 @@ function showRenameModal(entityId) {
       </div>
     `;
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
 
     const input = modal.querySelector('#rename-input');
     const valueSizeSelect = modal.querySelector('#tile-value-size-select');
@@ -1467,6 +1471,12 @@ function showRenameModal(entityId) {
     };
 
     let tileSettingsMutationInFlight = false;
+    let tileSettingsModalClosing = false;
+    const closeTileSettingsModal = () => {
+      if (tileSettingsModalClosing) return;
+      tileSettingsModalClosing = true;
+      void uiUtils.closeModal(modal, { remove: true });
+    };
     const setTileSettingsMutationInFlight = (inFlight) => {
       tileSettingsMutationInFlight = inFlight;
       [
@@ -1543,7 +1553,7 @@ function showRenameModal(entityId) {
         }
 
         if (!changed) {
-          modal.remove();
+          closeTileSettingsModal();
           return;
         }
 
@@ -1558,13 +1568,15 @@ function showRenameModal(entityId) {
             ? t('Renamed to "{{name}}"', { name: newName })
             : t('Tile settings saved');
           uiUtils.showToast(toastMessage, 'success', 2000);
-          modal.remove();
+          closeTileSettingsModal();
         } catch (error) {
           console.error('Failed to save Quick Access tile settings:', error);
           reconcileRecoveredTileSettings(error);
           showConfigPersistenceError(error);
         } finally {
-          if (modal.isConnected) setTileSettingsMutationInFlight(false);
+          if (!tileSettingsModalClosing && modal.isConnected) {
+            setTileSettingsMutationInFlight(false);
+          }
         }
       };
     }
@@ -1595,7 +1607,7 @@ function showRenameModal(entityId) {
         }
 
         if (!changed) {
-          modal.remove();
+          closeTileSettingsModal();
           return;
         }
 
@@ -1607,31 +1619,33 @@ function showRenameModal(entityId) {
           });
           refreshQuickAccessAfterTileSettingsChange();
           uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);
-          modal.remove();
+          closeTileSettingsModal();
         } catch (error) {
           console.error('Failed to reset Quick Access tile settings:', error);
           reconcileRecoveredTileSettings(error);
           showConfigPersistenceError(error);
         } finally {
-          if (modal.isConnected) setTileSettingsMutationInFlight(false);
+          if (!tileSettingsModalClosing && modal.isConnected) {
+            setTileSettingsMutationInFlight(false);
+          }
         }
       };
     }
 
     if (cancelBtn) {
       cancelBtn.onclick = () => {
-        if (!tileSettingsMutationInFlight) modal.remove();
+        if (!tileSettingsMutationInFlight) closeTileSettingsModal();
       };
     }
 
     if (closeBtn) {
       closeBtn.onclick = () => {
-        if (!tileSettingsMutationInFlight) modal.remove();
+        if (!tileSettingsMutationInFlight) closeTileSettingsModal();
       };
     }
 
     modal.onclick = (e) => {
-      if (e.target === modal && !tileSettingsMutationInFlight) modal.remove();
+      if (e.target === modal && !tileSettingsMutationInFlight) closeTileSettingsModal();
     };
   } catch (error) {
     console.error('Error showing rename modal:', error);
@@ -3074,7 +3088,7 @@ function showComparisonGraphModal(graphId) {
   if (!body) return;
   const removeGraphModal = () => {
     releaseAccessibleDialogModal(modal);
-    modal.remove();
+    void uiUtils.closeModal(modal, { remove: true });
   };
 
   const nameGroup = document.createElement('div');
@@ -7812,6 +7826,9 @@ function applyUnavailableRepairAffordance(div, entityId, displayName) {
 function openEntityRepairModal(staleEntityId) {
   if (typeof staleEntityId !== 'string' || !staleEntityId.trim()) return;
 
+  // Teardown rather than a user-facing dismissal: the dialog is rebuilt from scratch on every
+  // open, so a leftover instance detaches immediately instead of animating out alongside (and
+  // under the same id as) its replacement.
   document.getElementById('entity-repair-modal')?.remove();
 
   const modal = document.createElement('div');
@@ -7853,6 +7870,7 @@ function openEntityRepairModal(staleEntityId) {
   content.append(header, body);
   modal.appendChild(content);
   document.body.appendChild(modal);
+  applyCloseButtonIcons(modal);
 
   let repairInFlight = false;
   const close = () => {
@@ -7860,7 +7878,7 @@ function openEntityRepairModal(staleEntityId) {
     // Release before removing: the no-argument fallback skips disconnected modals, so a detached
     // modal would leave focus unrestored and could tear down another modal's trap instead.
     uiUtils.releaseFocusTrap(modal);
-    modal.remove();
+    void uiUtils.closeModal(modal, { remove: true });
   };
 
   const persistReplacement = async (replacementEntityId) => {
@@ -8243,7 +8261,7 @@ function createEntityDetailModal({ className, title }) {
 
   const closeModal = () => {
     releaseAccessibleDialogModal(modal);
-    modal.remove();
+    void uiUtils.closeModal(modal, { remove: true });
   };
   const closeBtn = modal.querySelector('.close-btn');
   if (closeBtn) closeBtn.onclick = closeModal;
@@ -8257,6 +8275,7 @@ function createEntityDetailModal({ className, title }) {
     if (event.target === modal) closeModal();
   };
   document.body.appendChild(modal);
+  applyCloseButtonIcons(modal);
   activateAccessibleDialogModal(modal, { titleIdPrefix: 'entity-detail-title' });
   if (typeof uiUtils.trapFocus !== 'function') {
     closeBtn?.focus();
@@ -9065,6 +9084,7 @@ function showMediaDetail(entity) {
     `;
 
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'media-detail-title' });
 
     // Set SVG icons for media controls
@@ -9208,14 +9228,13 @@ function showMediaDetail(entity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
-      modal.classList.add('modal-closing');
       if (tick) clearInterval(tick);
       if (updateInterval) clearInterval(updateInterval);
       if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
-      setTimeout(() => {
-        releaseAccessibleDialogModal(modal);
-        modal.remove();
-      }, 150);
+      void uiUtils.closeModal(modal, {
+        remove: true,
+        onClosed: () => releaseAccessibleDialogModal(modal),
+      });
     };
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
     modal.addEventListener('keydown', (e) => {
@@ -10542,6 +10561,7 @@ function showBrightnessSlider(light) {
       </div>
     `;
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'brightness-title' });
 
     const slider = modal.querySelector('#brightness-slider');
@@ -10579,14 +10599,13 @@ function showBrightnessSlider(light) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
-      modal.classList.add('modal-closing');
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
-      setTimeout(() => {
-        releaseAccessibleDialogModal(modal);
-        modal.remove();
-      }, 200);
+      void uiUtils.closeModal(modal, {
+        remove: true,
+        onClosed: () => releaseAccessibleDialogModal(modal),
+      });
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -10973,6 +10992,7 @@ function showClimateControls(climateEntity) {
       </div>
     `;
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'climate-title' });
 
     const slider = modal.querySelector('#climate-slider');
@@ -11073,12 +11093,11 @@ function showClimateControls(climateEntity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
-      modal.classList.add('modal-closing');
       if (temperatureDebounceTimer) clearTimeout(temperatureDebounceTimer);
-      setTimeout(() => {
-        releaseAccessibleDialogModal(modal);
-        modal.remove();
-      }, 200);
+      void uiUtils.closeModal(modal, {
+        remove: true,
+        onClosed: () => releaseAccessibleDialogModal(modal),
+      });
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -11244,6 +11263,7 @@ function showFanControls(fanEntity) {
       </div>
     `;
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'fan-title' });
 
     const slider = modal.querySelector('#fan-slider');
@@ -11260,12 +11280,11 @@ function showFanControls(fanEntity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
-      modal.classList.add('modal-closing');
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
-      setTimeout(() => {
-        releaseAccessibleDialogModal(modal);
-        modal.remove();
-      }, 200);
+      void uiUtils.closeModal(modal, {
+        remove: true,
+        onClosed: () => releaseAccessibleDialogModal(modal),
+      });
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -11409,6 +11428,7 @@ function showCoverControls(coverEntity) {
       </div>
     `;
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'cover-title' });
 
     const slider = modal.querySelector('#cover-slider');
@@ -11425,12 +11445,11 @@ function showCoverControls(coverEntity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
-      modal.classList.add('modal-closing');
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
-      setTimeout(() => {
-        releaseAccessibleDialogModal(modal);
-        modal.remove();
-      }, 200);
+      void uiUtils.closeModal(modal, {
+        remove: true,
+        onClosed: () => releaseAccessibleDialogModal(modal),
+      });
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -11852,11 +11871,20 @@ function initUpdateUI() {
 // ESC key handler for reorganize mode
 function handleEscapeKey(e) {
   if (e.key !== 'Escape' || !isReorganizeMode) return;
-  // Let nested interactions own Escape instead of exiting reorganize mode.
-  if (document.getElementById('add-page-modal')) return;
+  // Let nested interactions own Escape instead of exiting reorganize mode. A modal playing its
+  // exit animation still carries `.modal-closing` (and, until the animation ends, neither
+  // `.hidden` nor detachment), so treat that as already closed or it swallows one Escape press.
+  const addPageModal = document.getElementById('add-page-modal');
+  if (addPageModal && !addPageModal.classList.contains('modal-closing')) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
   const confirmModal = document.getElementById('confirm-modal');
-  if (confirmModal && !confirmModal.classList.contains('hidden')) return;
+  if (
+    confirmModal &&
+    !confirmModal.classList.contains('hidden') &&
+    !confirmModal.classList.contains('modal-closing')
+  ) {
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   toggleReorganizeMode();

@@ -1,6 +1,6 @@
 import websocket from './websocket.js';
 import { t } from './i18n.js';
-import { releaseFocusTrap, trapFocus } from './ui-utils.js';
+import { closeModal, openModal, trapFocus } from './ui-utils.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
 const MAX_BELL_COUNT = 99;
@@ -108,19 +108,19 @@ function getBellElements() {
 
 function closePersistentNotificationsPanel() {
   const modal = document.getElementById('persistent-notifications-modal');
-  if (!modal) return;
+  if (!modal) return Promise.resolve();
   const wasOpen = !modal.classList.contains('hidden');
-  modal.classList.add('hidden');
-  modal.style.display = 'none';
-  if (wasOpen) releaseFocusTrap(modal);
+  if (!wasOpen) return Promise.resolve();
+  return closeModal(modal, { releaseFocus: true });
 }
 
 function openPersistentNotificationsPanel() {
   renderPersistentNotifications();
   const modal = document.getElementById('persistent-notifications-modal');
   if (!modal) return;
-  modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  // Visibility is class-driven; an inline display would fight both `.hidden` and the exit
+  // animation the shared close helper runs.
+  openModal(modal, { display: null });
   trapFocus(modal);
 }
 

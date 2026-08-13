@@ -215,6 +215,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,
       setIconContent: jest.fn(),
+      applyCloseButtonIcons: jest.fn(),
     }));
     jest.doMock('../../src/constants.js', () => ({
       __esModule: true,

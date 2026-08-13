@@ -423,5 +423,6 @@
   "Keep Local (Upload)": "Keep Local (Upload)",
   "Settings were saved, but the sync passphrase could not be stored.": "Settings were saved, but the sync passphrase could not be stored.",
   "Failed to apply popup hotkey mode": "Failed to apply popup hotkey mode",
-  "Failed to apply popup hotkey behavior": "Failed to apply popup hotkey behavior"
+  "Failed to apply popup hotkey behavior": "Failed to apply popup hotkey behavior",
+  "Connecting to Home Assistant...": "Connecting to Home Assistant..."
 }

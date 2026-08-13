@@ -12,6 +12,16 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
+  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
+  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
+    if (modal) {
+      modal.classList.remove('modal-closing');
+      if (remove) modal.remove();
+      else modal.classList.add('hidden');
+      onClosed?.();
+    }
+    return Promise.resolve();
+  }),
 }));
 
 jest.mock('../../src/utils.js', () => ({

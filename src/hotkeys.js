@@ -1,5 +1,5 @@
 import state from './state.js';
-import { showToast } from './ui-utils.js';
+import { closeModal, showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { t } from './i18n.js';
 
@@ -310,7 +310,9 @@ function captureHotkey() {
                 </div>
             `;
       document.body.appendChild(modal);
-      const previewBox = document.getElementById('hotkey-preview');
+      // Scoped rather than by id: the overlay now animates out, so a previous capture's node can
+      // still be in the document when the next one opens.
+      const previewBox = modal.querySelector('#hotkey-preview');
 
       const onKeyDown = (e) => {
         e.preventDefault();
@@ -341,9 +343,14 @@ function captureHotkey() {
         }
       };
 
+      let cleanedUp = false;
+      // Both exit paths (a captured combination and Escape) funnel through here, so the overlay
+      // animates out through the shared close and is only detached once.
       const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
         document.removeEventListener('keydown', onKeyDown, true);
-        document.body.removeChild(modal);
+        void closeModal(modal, { remove: true });
       };
 
       document.addEventListener('keydown', onKeyDown, true);

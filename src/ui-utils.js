@@ -1,14 +1,29 @@
 /* global process */
 import { t } from './i18n.js';
+import { setIconContent } from './icons.js';
 
 const focusTrapHandlers = new WeakMap();
 const focusTrapPreviousFocus = new WeakMap();
 const activeFocusTrapModals = new Set();
+// One entry per modal that is currently animating out, so a later close (or a re-open) can take
+// the in-flight timer and listener away from the call that installed them.
+const pendingModalCloses = new WeakMap();
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const MIN_BACKGROUND_OPACITY = 0.08;
 const BACKGROUND_OPACITY_CURVE = 1.35;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
+// The shared modal exit animation runs for var(--duration-base) (200ms); the fallback timer only
+// exists for hosts that never deliver `animationend` (reduced-motion overrides, background tabs,
+// jsdom).
+const MODAL_EXIT_FALLBACK_MS = 300;
+const TOAST_EXIT_FALLBACK_MS = 300;
+const TOAST_ICON_NAMES = {
+  success: 'checkCircle',
+  error: 'error',
+  warning: 'warning',
+  info: 'info',
+};
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
   { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
@@ -465,27 +480,260 @@ function isLightThemeActive() {
 }
 
 /**
+ * Report whether the host asked for reduced motion.
+ *
+ * Exit animations are skipped entirely when this is true so dialogs and toasts disappear at once
+ * instead of easing out.
+ * @returns {boolean} True when `prefers-reduced-motion: reduce` matches.
+ */
+function prefersReducedMotion() {
+  try {
+    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect the Jest environment, where CSS animations never run and close paths must settle
+ * synchronously for assertions made straight after a click.
+ * @returns {boolean} True when running under `NODE_ENV=test`.
+ */
+function isTestEnvironment() {
+  return typeof process !== 'undefined' && !!process.env && process.env.NODE_ENV === 'test';
+}
+
+// Set by the test hook below so the animated close/open branch — the one that never runs under
+// `NODE_ENV=test` — can still be exercised by unit tests.
+let forceAnimatedModalTransitions = false;
+
+/**
+ * Test hook: force the animated exit paths (modals and toasts) even under `NODE_ENV=test`.
+ *
+ * Without this the `isTestEnvironment()` short-circuit settles every close synchronously, leaving
+ * the `.modal-closing` animation, its fallback timer and the overlapping-call handling untested.
+ * @param {boolean} [enabled=true] - True to animate, false to restore the synchronous test path.
+ * @returns {void}
+ */
+function __forceAnimatedModalTransitions(enabled = true) {
+  forceAnimatedModalTransitions = !!enabled;
+}
+
+/**
+ * Decide whether animations should be skipped and the transition settled synchronously.
+ * @returns {boolean} True when the caller should short-circuit straight to the end state.
+ */
+function shouldSkipExitAnimation() {
+  if (forceAnimatedModalTransitions) return false;
+  return isTestEnvironment() || prefersReducedMotion();
+}
+
+/**
+ * Run the shared exit animation for a modal and then hide or remove it.
+ *
+ * Every modal animates open through `modalSlideIn`; without this helper the close paths flip
+ * `.hidden` (a `display: none !important` rule) and the dialog snaps shut. The `.modal-closing`
+ * class drives the paired fade/slide-out, and the modal is only hidden once that animation ends
+ * (or the fallback timer fires). Reduced-motion hosts and tests skip the animation entirely.
+ *
+ * Only one close can be in flight per element: a second call supersedes the first, taking over its
+ * timer, listener and awaiting callers so the earlier request can never complete this one early
+ * (which would drop this call's `onClosed`) and no `await` is left hanging.
+ *
+ * @param {HTMLElement} modal - The modal overlay element (the `.modal` container, not its content).
+ * @param {Object} [options] - Close behaviour.
+ * @param {boolean} [options.remove=false] - Remove the modal from the DOM instead of hiding it with `.hidden`.
+ * @param {boolean} [options.releaseFocus=false] - Release the modal's focus trap once it is hidden.
+ * @param {Function} [options.onClosed] - Callback invoked after the modal is hidden or removed.
+ * @returns {Promise<void>} Resolves once the modal has been hidden or removed.
+ */
+function closeModal(modal, { remove = false, releaseFocus = false, onClosed = null } = {}) {
+  return new Promise((resolve) => {
+    if (!modal || typeof modal.classList?.add !== 'function') {
+      resolve();
+      return;
+    }
+
+    const content = modal.querySelector?.('.modal-content') || null;
+    // Callers awaiting this close, plus any inherited from a close this one supersedes.
+    const waiters = [resolve];
+    let settled = false;
+    let animating = false;
+    let fallbackTimer = null;
+
+    const handleAnimationEnd = (event) => {
+      if (event.target !== modal && event.target !== content) return;
+      finish();
+    };
+
+    function detach() {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      modal.removeEventListener?.('animationend', handleAnimationEnd);
+      if (pendingModalCloses.get(modal) === pendingClose) pendingModalCloses.delete(modal);
+    }
+
+    function settleWaiters() {
+      waiters.splice(0, waiters.length).forEach((notify) => notify());
+    }
+
+    // Stop this close without completing it, handing its awaiting callers to whoever took over.
+    const pendingClose = {
+      supersede() {
+        if (settled) return [];
+        settled = true;
+        detach();
+        return waiters.splice(0, waiters.length);
+      },
+    };
+
+    function finish() {
+      if (settled) return;
+      settled = true;
+      detach();
+      // `openModal` disarms this close outright, but anything that reveals the dialog by clearing
+      // `.modal-closing` directly still has to be honoured: without this check the pending close
+      // would hide the dialog the user just asked for.
+      if (animating && !modal.classList.contains('modal-closing')) {
+        settleWaiters();
+        return;
+      }
+      try {
+        modal.classList.remove('modal-closing');
+        if (remove) {
+          modal.remove();
+        } else {
+          modal.classList.add('hidden');
+          // Only modals opened by writing an inline display get one written back, so class-only
+          // visibility toggles are not silently pinned shut by a stale inline style.
+          if (modal.style?.display) modal.style.display = 'none';
+        }
+        if (releaseFocus) releaseFocusTrap(modal);
+        onClosed?.();
+      } catch (error) {
+        console.error('Error closing modal:', error);
+      }
+      settleWaiters();
+    }
+
+    const superseded = pendingModalCloses.get(modal);
+    if (superseded) waiters.push(...superseded.supersede());
+
+    if (shouldSkipExitAnimation()) {
+      finish();
+      return;
+    }
+
+    animating = true;
+    pendingModalCloses.set(modal, pendingClose);
+    modal.addEventListener?.('animationend', handleAnimationEnd);
+    modal.classList.add('modal-closing');
+    fallbackTimer = setTimeout(finish, MODAL_EXIT_FALLBACK_MS);
+  });
+}
+
+/**
+ * Reveal a modal, cancelling any exit animation still in flight.
+ *
+ * Pairs with {@link closeModal}: a pending close is disarmed outright (its fallback timer would
+ * otherwise outlive the re-open and could complete a *later* close ahead of time), and clearing
+ * `.modal-closing` restores the entry animation.
+ *
+ * @param {HTMLElement} modal - The modal overlay element.
+ * @param {Object} [options] - Open behaviour.
+ * @param {string|null} [options.display='flex'] - Inline display to write, or null to leave visibility to CSS.
+ */
+function openModal(modal, { display = 'flex' } = {}) {
+  if (!modal || typeof modal.classList?.remove !== 'function') return;
+  const pendingClose = pendingModalCloses.get(modal);
+  // No close is coming, so the abandoned callers settle here rather than waiting forever.
+  if (pendingClose) pendingClose.supersede().forEach((notify) => notify());
+  modal.classList.remove('modal-closing');
+  modal.classList.remove('hidden');
+  if (display) {
+    modal.style.display = display;
+  } else {
+    modal.style?.removeProperty?.('display');
+  }
+}
+
+/**
+ * Play the toast exit animation and then detach the toast.
+ *
+ * Safe to call repeatedly: the first call marks the toast as dismissing so the auto-dismiss timer
+ * and a user click cannot double-remove it.
+ * @param {HTMLElement} toast - The toast element to dismiss.
+ */
+function dismissToast(toast) {
+  if (!toast || toast.dataset?.dismissing === 'true') return;
+  if (toast.dataset) toast.dataset.dismissing = 'true';
+
+  let settled = false;
+  let fallbackTimer = null;
+
+  const handleAnimationEnd = (event) => {
+    if (event.target !== toast) return;
+    finish();
+  };
+
+  function finish() {
+    if (settled) return;
+    settled = true;
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    toast.removeEventListener?.('animationend', handleAnimationEnd);
+    toast.remove();
+  }
+
+  if (shouldSkipExitAnimation()) {
+    finish();
+    return;
+  }
+
+  toast.addEventListener?.('animationend', handleAnimationEnd);
+  toast.classList.add('toast-closing');
+  fallbackTimer = setTimeout(finish, TOAST_EXIT_FALLBACK_MS);
+}
+
+/**
  * Display a transient toast notification in the element with id "toast-container".
  *
+ * The toast leads with a status icon matching its type, is dismissible by clicking it, and exits
+ * through the shared `.toast-closing` animation.
+ *
  * @param {string} message - Text to show inside the toast.
- * @param {string} [type='success'] - Visual variant/class to apply (e.g., 'success', 'error', 'info').
- * @param {number} [timeout=2000] - Time in milliseconds before the toast begins fading out.
+ * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
+ * @param {number} [timeout=2000] - Time in milliseconds before the toast begins animating out.
+ * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
  */
 function showToast(message, type = 'success', timeout = 2000) {
   try {
     const container = document.getElementById('toast-container');
-    if (!container) return;
+    if (!container) return undefined;
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
+
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    setIconContent(icon, TOAST_ICON_NAMES[type] || TOAST_ICON_NAMES.info, { size: 16 });
+    toast.appendChild(icon);
+
+    const text = document.createElement('span');
+    text.className = 'toast-message';
+    text.textContent = message;
+    toast.appendChild(text);
+
+    // A toast that outlasts its usefulness should be dismissible rather than merely waited out.
+    toast.addEventListener('click', () => dismissToast(toast));
+
     container.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.3s';
-      setTimeout(() => container.removeChild(toast), 300);
-    }, timeout);
+    setTimeout(() => dismissToast(toast), timeout);
+    return toast;
   } catch (error) {
     console.error('Error showing toast:', error);
+    return undefined;
   }
 }
 
@@ -685,6 +933,29 @@ function trapFocus(modal) {
   }
 }
 
+/**
+ * Decide whether a modal being released still owns the focus it is about to hand back.
+ *
+ * {@link closeModal} defers the release until the exit animation ends, so a handler that closes one
+ * dialog in order to open another (entity picker -> alert config) will already have focused the new
+ * dialog's first field by the time the release runs. Restoring the old focus there would drop the
+ * caret behind an open `aria-modal` dialog, so only restore when nothing else has claimed focus:
+ * either it sits on `document.body` (the browser's landing spot once a focused element is hidden or
+ * detached) or it is still inside the modal being released.
+ *
+ * @param {HTMLElement} modal - The modal whose focus trap is being released.
+ * @returns {boolean} True when the previously focused element should be refocused.
+ */
+function canRestorePreviousFocus(modal) {
+  try {
+    const active = document.activeElement;
+    if (!active || active === document.body) return true;
+    return !!modal?.contains?.(active);
+  } catch {
+    return true;
+  }
+}
+
 function releaseFocusTrap(modal) {
   try {
     let targetModal = modal;
@@ -710,7 +981,11 @@ function releaseFocusTrap(modal) {
     const previousFocus = focusTrapPreviousFocus.get(targetModal);
     focusTrapPreviousFocus.delete(targetModal);
     if (previousFocus?.isConnected && previousFocus.focus) {
-      setTimeout(() => previousFocus.focus(), 0);
+      setTimeout(() => {
+        if (!previousFocus.isConnected) return;
+        if (!canRestorePreviousFocus(targetModal)) return;
+        previousFocus.focus();
+      }, 0);
     }
   } catch (error) {
     console.error('Error releasing focus trap:', error);
@@ -1015,21 +1290,7 @@ function showConfirm(title, message, options = {}) {
         modal.removeEventListener('click', handleBackdropClick);
         document.removeEventListener('keydown', handleKeydown);
 
-        const closeImmediate = () => {
-          modal.classList.add('hidden');
-          modal.style.display = 'none';
-          releaseFocusTrap(modal);
-          modal.classList.remove('modal-closing');
-        };
-
-        const isTest =
-          typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
-        if (isTest) {
-          closeImmediate();
-        } else {
-          modal.classList.add('modal-closing');
-          setTimeout(closeImmediate, 180);
-        }
+        void closeModal(modal, { releaseFocus: true });
       };
 
       const handleBackdropClick = (e) => {
@@ -1045,8 +1306,7 @@ function showConfirm(title, message, options = {}) {
       document.addEventListener('keydown', handleKeydown);
 
       // Show modal
-      modal.classList.remove('hidden');
-      modal.style.display = 'flex';
+      openModal(modal);
       trapFocus(modal);
     } catch (error) {
       console.error('Error showing confirm dialog:', error);
@@ -1057,6 +1317,9 @@ function showConfirm(title, message, options = {}) {
 
 export {
   showToast,
+  dismissToast,
+  closeModal,
+  openModal,
   applyTheme,
   setCustomThemes,
   applyAccentTheme,
@@ -1076,4 +1339,5 @@ export {
   hexToRgb,
   miredsToKelvin,
   hasSupportedFeature,
+  __forceAnimatedModalTransitions,
 };

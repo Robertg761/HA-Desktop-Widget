@@ -1,4 +1,3 @@
-/* global process */
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -13,7 +12,8 @@ import {
   applyUiPreferences,
   applyWindowEffects,
   trapFocus,
-  releaseFocusTrap,
+  closeModal,
+  openModal,
   showToast,
   showConfirm,
 } from './ui-utils.js';
@@ -3981,8 +3981,7 @@ async function openSettings(uiHooks) {
     // Initialize popup hotkey UI
     initializePopupHotkey();
 
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    openModal(modal);
     requestAnimationFrame(() => {
       refreshPersonalizationSectionHeights();
       requestAnimationFrame(() => {
@@ -4039,21 +4038,7 @@ function closeSettings() {
 
     const modal = document.getElementById('settings-modal');
     if (modal) {
-      const closeImmediate = () => {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-        releaseFocusTrap(modal);
-        modal.classList.remove('modal-closing');
-      };
-
-      const isTest =
-        typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
-      if (isTest) {
-        closeImmediate();
-      } else {
-        modal.classList.add('modal-closing');
-        setTimeout(closeImmediate, 180);
-      }
+      void closeModal(modal, { releaseFocus: true });
     }
   } catch (error) {
     log.error('Error closing settings:', error);
@@ -4899,8 +4884,7 @@ function openAlertEntityPicker() {
     populateAlertEntityPicker();
     const modal = document.getElementById('alert-entity-picker-modal');
     if (modal) {
-      modal.classList.remove('hidden');
-      modal.style.display = 'flex';
+      openModal(modal);
       trapFocus(modal);
     }
   } catch (error) {
@@ -4912,9 +4896,7 @@ function closeAlertEntityPicker() {
   try {
     const modal = document.getElementById('alert-entity-picker-modal');
     if (modal) {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-      releaseFocusTrap(modal);
+      void closeModal(modal, { releaseFocus: true });
     }
   } catch (error) {
     log.error('Error closing alert entity picker:', error);
@@ -5078,8 +5060,7 @@ function openAlertConfigModal(entityId) {
       };
     }
 
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    openModal(modal);
     trapFocus(modal);
   } catch (error) {
     log.error('Error opening alert config modal:', error);
@@ -5090,10 +5071,8 @@ function closeAlertConfigModal() {
   try {
     const modal = document.getElementById('alert-config-modal');
     if (modal) {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-      releaseFocusTrap(modal);
       currentAlertEntity = null;
+      void closeModal(modal, { releaseFocus: true });
     }
   } catch (error) {
     log.error('Error closing alert config modal:', error);

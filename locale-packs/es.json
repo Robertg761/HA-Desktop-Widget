@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -430,6 +430,7 @@
     "Keep Local (Upload)": "Conservar local (subir)",
     "Settings were saved, but the sync passphrase could not be stored.": "La configuración se guardó, pero la contraseña de sincronización no se pudo almacenar.",
     "Failed to apply popup hotkey mode": "No se pudo aplicar el modo del atajo emergente",
-    "Failed to apply popup hotkey behavior": "No se pudo aplicar el comportamiento del atajo emergente"
+    "Failed to apply popup hotkey behavior": "No se pudo aplicar el comportamiento del atajo emergente",
+    "Connecting to Home Assistant...": "Conectando con Home Assistant..."
   }
 }

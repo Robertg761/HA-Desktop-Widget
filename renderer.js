@@ -11,7 +11,7 @@ import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
 import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
-import { setIconContent } from './src/icons.js';
+import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
@@ -453,8 +453,7 @@ function openQuickAccessModal() {
   ui.populateQuickControlsList();
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
-  modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  uiUtils.openModal(modal);
   uiUtils.trapFocus(modal);
 }
 
@@ -1714,32 +1713,23 @@ window.electronAPI.onDesktopPinSnapshotNeeded?.(() => {
 });
 
 /**
- * Replace all emoji icons with SVG icons
- * This runs once on initialization to modernize the UI
+ * Give the statically authored controls their SVG icons.
+ *
+ * The header controls carry their SVG in index.html so the first paint never flashes an emoji.
+ * Modal close buttons still ship a literal `×` and are swapped at runtime — statically authored
+ * ones by the `applyCloseButtonIcons(document)` pass below, dynamically built ones by the module
+ * that creates them. What remains here are the elements whose icon depends on runtime state or
+ * that only exist once a view is rendered.
  */
 function replaceEmojiIcons() {
   try {
-    log.info('Replacing emoji icons with SVG icons');
-
-    // Header Controls
-    const settingsBtn = document.getElementById('settings-btn');
-    if (settingsBtn) setIconContent(settingsBtn, 'settings', { size: 18 });
-
-    const persistentNotificationsIcon = document.getElementById('persistent-notifications-icon');
-    if (persistentNotificationsIcon)
-      setIconContent(persistentNotificationsIcon, 'notifications', { size: 16 });
+    log.info('Applying SVG icons to runtime controls');
 
     const humidityIcon = document.querySelector('.detail-icon-humidity');
     if (humidityIcon) setIconContent(humidityIcon, 'waterDrop', { size: 13 });
 
     const windIcon = document.querySelector('.detail-icon-wind');
     if (windIcon) setIconContent(windIcon, 'wind', { size: 14 });
-
-    const minimizeBtn = document.getElementById('minimize-btn');
-    if (minimizeBtn) setIconContent(minimizeBtn, 'minimize', { size: 18 });
-
-    const closeBtn = document.getElementById('close-btn');
-    if (closeBtn) setIconContent(closeBtn, 'close', { size: 18 });
 
     // Quick Access Controls
     const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
@@ -1758,17 +1748,13 @@ function replaceEmojiIcons() {
     const mediaNextBtn = document.getElementById('media-tile-next');
     if (mediaNextBtn) setIconContent(mediaNextBtn, 'skipNext', { size: 20 });
 
-    // Modal Close Buttons (with × emoji)
-    const closeButtons = document.querySelectorAll('.close-btn');
-    closeButtons.forEach((btn) => {
-      if (btn.textContent.includes('×')) {
-        setIconContent(btn, 'close', { size: 20 });
-      }
-    });
+    // Close buttons in the statically authored modals. Dialogs built at runtime call
+    // applyCloseButtonIcons themselves so they never paint the literal ×.
+    applyCloseButtonIcons(document);
 
-    log.info('Successfully replaced emoji icons with SVG icons');
+    log.info('Successfully applied SVG icons');
   } catch (error) {
-    log.error('Error replacing emoji icons:', error);
+    log.error('Error applying SVG icons:', error);
   }
 }
 
@@ -2096,11 +2082,9 @@ function wireUI() {
     const closeQuickControlsBtn = document.getElementById('close-quick-controls');
     const closeQuickControlsModal = () => {
       const modal = document.getElementById('quick-controls-modal');
-      if (modal) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-        uiUtils.releaseFocusTrap(); // Release focus trap and restore previous focus
-      }
+      if (!modal) return Promise.resolve();
+      // Release focus trap and restore previous focus once the exit animation finishes.
+      return uiUtils.closeModal(modal, { releaseFocus: true });
     };
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
@@ -2108,9 +2092,10 @@ function wireUI() {
 
     const addComparisonGraphBtn = document.getElementById('add-comparison-graph-btn');
     if (addComparisonGraphBtn) {
-      addComparisonGraphBtn.onclick = () => {
-        // Close the picker first so the new graph's editor isn't stacked behind it.
-        closeQuickControlsModal();
+      addComparisonGraphBtn.onclick = async () => {
+        // Close the picker first so the new graph's editor isn't stacked behind it. The close is
+        // animated, so it has to be awaited: the editor's own open resolves sooner than that.
+        await closeQuickControlsModal();
         ui.addComparisonGraphTile();
       };
     }
@@ -2135,8 +2120,7 @@ function wireUI() {
           const modal = document.getElementById('weather-config-modal');
           if (modal) {
             ui.populateWeatherEntitiesList();
-            modal.classList.remove('hidden');
-            modal.style.display = 'flex';
+            uiUtils.openModal(modal);
           }
         }, 500);
       };
@@ -2197,8 +2181,7 @@ function wireUI() {
       closeWeatherConfigBtn.onclick = () => {
         const modal = document.getElementById('weather-config-modal');
         if (modal) {
-          modal.classList.add('hidden');
-          modal.style.display = 'none';
+          void uiUtils.closeModal(modal);
         }
       };
     }

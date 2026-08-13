@@ -117,6 +117,7 @@ const {
   normalizeHomeAssistantBaseUrl,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
+const { cloneProductionProfile } = require('./src/dev-profile-clone.cjs');
 const {
   PORTAL_SHORTCUTS_BACKEND,
   createPortalGlobalShortcutsController,
@@ -303,27 +304,22 @@ if (IS_CLIMATE_DEMO_MODE) {
 } else if (IS_DEV_MODE && !app.isPackaged) {
   // The single-instance lock lives in the profile, so a dev run sharing the installed
   // widget's profile would just hand off to it and exit. A persistent sibling profile
-  // lets `npm run dev` start alongside the real widget. Persistent rather than a temp
-  // dir so dev settings survive between runs; seeded from the production profile on
-  // first use so a dev run opens the user's real dashboard instead of onboarding.
-  // (xwayland-unavailable is a machine fact, not a setting; copying it spares the dev
-  // profile the GPU-crash-and-relaunch probe that wrote it.)
-  const devUserDataPath = `${app.getPath('userData')}-dev`;
-  if (!fs.existsSync(devUserDataPath)) {
-    fs.mkdirSync(devUserDataPath, { recursive: true });
-    for (const seedFile of ['config.json', 'xwayland-unavailable']) {
-      const seedSource = path.join(app.getPath('userData'), seedFile);
-      try {
-        if (fs.existsSync(seedSource)) {
-          fs.copyFileSync(seedSource, path.join(devUserDataPath, seedFile));
-        }
-      } catch (error) {
-        log.warn(`Could not seed dev profile with ${seedFile}:`, error?.message || error);
-      }
-    }
-  }
+  // lets `npm run dev` start alongside the real widget. Refresh the clone on every
+  // launch so development sees the current dashboard, HA-owned profile assignment,
+  // desktop identity, and encrypted OAuth credential. Writes after startup remain in
+  // the sibling profile and cannot modify production settings.
+  const productionUserDataPath = app.getPath('userData');
+  const devUserDataPath = `${productionUserDataPath}-dev`;
+  const cloneResult = cloneProductionProfile({
+    productionUserDataPath,
+    developmentUserDataPath: devUserDataPath,
+    log,
+  });
   app.setPath('userData', devUserDataPath);
-  log.info(`Development run using isolated profile: ${devUserDataPath}`);
+  log.info(
+    `Development run using isolated production clone: ${devUserDataPath} ` +
+      `(copied: ${cloneResult.copied.join(', ') || 'none'})`
+  );
 }
 
 // Set cache paths before app is ready to avoid access issues
@@ -5808,6 +5804,12 @@ ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
     return { success: true, config: sanitizeConfigForRenderer(config) };
   });
   if (!updateResult.success) return updateResult;
+  if (IS_DEV_MODE && !app.isPackaged) {
+    // The dev profile borrows a copy of production's encrypted refresh token. Remove
+    // only the local copy; remotely revoking it would also disconnect production.
+    getHomeAssistantOAuthClient().clearCredentials();
+    return { ...updateResult, revokedRemotely: false };
+  }
   const revocation = await getHomeAssistantOAuthClient().revoke();
   return { ...updateResult, ...revocation };
 });

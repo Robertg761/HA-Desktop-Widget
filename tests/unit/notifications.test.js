@@ -15,10 +15,23 @@ jest.mock('../../src/i18n.js', () => ({
   t: jest.fn((key) => key),
 }));
 
-jest.mock('../../src/ui-utils.js', () => ({
-  releaseFocusTrap: jest.fn(),
-  trapFocus: jest.fn(),
-}));
+jest.mock('../../src/ui-utils.js', () => {
+  const releaseFocusTrap = jest.fn();
+  return {
+    releaseFocusTrap,
+    trapFocus: jest.fn(),
+    // Mirrors the real helper closely enough for visibility/focus assertions.
+    closeModal: jest.fn((modal, { releaseFocus = false } = {}) => {
+      modal?.classList.add('hidden');
+      if (releaseFocus) releaseFocusTrap(modal);
+      return Promise.resolve();
+    }),
+    openModal: jest.fn((modal) => {
+      modal?.classList.remove('modal-closing');
+      modal?.classList.remove('hidden');
+    }),
+  };
+});
 
 const {
   applyPersistentNotificationEvent,

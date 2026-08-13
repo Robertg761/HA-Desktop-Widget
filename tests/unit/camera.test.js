@@ -35,6 +35,16 @@ jest.mock('hls.js', () => mockHls, { virtual: true });
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
+  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
+  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
+    if (modal) {
+      modal.classList.remove('modal-closing');
+      if (remove) modal.remove();
+      else modal.classList.add('hidden');
+      onClosed?.();
+    }
+    return Promise.resolve();
+  }),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -1447,7 +1457,7 @@ describe('Camera Module', () => {
       img.onerror();
 
       expect(showToast).toHaveBeenCalledWith('Could not load camera snapshot', 'error', 2500);
-      expect(document.getElementById('camera-loading').style.display).toBe('none');
+      expect(document.getElementById('camera-loading').classList.contains('show')).toBe(false);
     });
 
     it('should close modal when close button clicked', () => {

@@ -1,7 +1,8 @@
 import state from './state.js';
 import websocket from './websocket.js';
 import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
-import { showToast } from './ui-utils.js';
+import { applyCloseButtonIcons } from './icons.js';
+import { closeModal as closeModalAnimated, showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
@@ -1233,7 +1234,7 @@ async function openCamera(cameraId, options = {}) {
       <div class="modal-content camera-content">
         <div class="modal-header">
           <h2>${escapeHtml(getEntityDisplayName(camera))}</h2>
-          <button class="close-btn">×</button>
+          <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div style="position: relative;">
@@ -1256,6 +1257,7 @@ async function openCamera(cameraId, options = {}) {
     `;
 
     document.body.appendChild(modal);
+    applyCloseButtonIcons(modal);
 
     const previouslyFocused = document.activeElement;
     // Escape closed the expanded preview but not this viewer, which is the one most people reach.
@@ -1276,11 +1278,11 @@ async function openCamera(cameraId, options = {}) {
     let streamGeneration = 0;
     let closed = false;
 
+    // `.camera-loading` is hidden by default and revealed by `.show`, so no inline display is
+    // written here; the stylesheet stays the single source of truth for the overlay's layout.
     const showLoading = (show) => {
       if (closed) return;
-      if (loadingEl) {
-        loadingEl.style.display = show ? 'flex' : 'none';
-      }
+      loadingEl?.classList.toggle('show', show);
     };
 
     const stopLive = () => {
@@ -1358,7 +1360,11 @@ async function openCamera(cameraId, options = {}) {
 
       if (hlsUrl) {
         const modalBody = modal.querySelector('.modal-body');
-        if (!modalBody) return;
+        if (!modalBody) {
+          // Bail out without parking the viewer on a spinner that nothing will ever clear.
+          showLoading(false);
+          return;
+        }
         let video = modalBody.querySelector('video.camera-video');
         if (!video) {
           video = document.createElement('video');
@@ -1517,7 +1523,7 @@ async function openCamera(cameraId, options = {}) {
       closed = true;
       stopLive();
       document.removeEventListener('keydown', handleModalKeydown, true);
-      modal.remove();
+      void closeModalAnimated(modal, { remove: true });
       if (previouslyFocused?.isConnected && typeof previouslyFocused.focus === 'function') {
         previouslyFocused.focus({ preventScroll: true });
       }
