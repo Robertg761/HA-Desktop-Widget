@@ -525,12 +525,23 @@ jobs:
               )"
             fi
 
-            notes_flags=(--generate-notes)
-            if [[ -n "$notes_start_tag" ]]; then
-              notes_flags+=(--notes-start-tag "$notes_start_tag")
-              echo "Generating release notes from $notes_start_tag to $RELEASE_TAG."
+            release_notes_file="$RUNNER_TEMP/release-notes.md"
+            if node scripts/extract-release-notes.cjs "$RELEASE_VERSION" > "$release_notes_file"; then
+              changelog_url="https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/CHANGELOG.md"
+              printf '\n[Full changelog](%s)\n' "$changelog_url" >> "$release_notes_file"
+              notes_flags=(--notes-file "$release_notes_file")
+              echo "Using the CHANGELOG.md section for $RELEASE_VERSION as the release notes."
+            elif [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+              notes_flags=(--generate-notes)
+              if [[ -n "$notes_start_tag" ]]; then
+                notes_flags+=(--notes-start-tag "$notes_start_tag")
+                echo "Generating prerelease notes from $notes_start_tag to $RELEASE_TAG."
+              else
+                echo "No previous published release was found; GitHub will choose the prerelease-notes baseline."
+              fi
             else
-              echo "No previous published release was found; GitHub will choose the release-notes baseline."
+              echo "Stable releases require a non-empty CHANGELOG.md section for $RELEASE_VERSION." >&2
+              exit 1
             fi
 
             gh release create "$RELEASE_TAG" "${artifacts[@]}" \

@@ -5,6 +5,48 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.1] - 2026-08-14
+
+This stable release promotes the dashboard polish and light-state fixes validated in the 3.9.1
+beta.
+
+### Changed
+
+- Refined the dashboard design system with consistent typography, spacing, radii, motion, stacking,
+  and contrast across the main widget and dialogs.
+- Added animated open and close transitions across Settings, Quick Access, notifications, camera,
+  media, entity, brightness, climate, fan, cover, alert, confirmation, and hotkey dialogs, while
+  respecting reduced-motion preferences.
+- Improved toast notifications with status icons, click-to-dismiss behavior, accessible
+  announcements, and reliable placement above loading overlays.
+- Replaced text close glyphs with reusable SVG icons, improved empty states, and restored focus
+  after dialogs close.
+- Updated the Arabic, Spanish, French, Hindi, and Simplified Chinese locale packs for the new and
+  revised interface text.
+- Internal: stylesheet design-token linting now runs in Windows and Linux CI.
+- Internal: stable releases now require and publish the matching `CHANGELOG.md` section, while
+  undocumented nightly prereleases retain generated-note fallback behavior.
+
+### Fixed
+
+- Optimistic light state and brightness updates no longer flicker or revert when Home Assistant
+  sends stale or out-of-order state changes during a toggle or brightness adjustment.
+- Camera dialogs now report loading state consistently and close cleanly through the close button
+  or Escape key.
+- Linux launchers now use the app's stable desktop identity for their filename and
+  `StartupWMClass`, allowing desktop environments to associate running windows with the installed
+  application entry reliably.
+- Refreshing an isolated development profile from production no longer allows a development
+  disconnect to revoke the production Home Assistant session.
+
+### Security
+
+- Inter and Plus Jakarta Sans are bundled locally for both the desktop and Home Assistant panel
+  builds. The renderer no longer contacts Google Fonts, and its Content Security Policy no longer
+  permits remote font loading.
+- Updated the locked development and build dependency tree to patched `brace-expansion`,
+  `fast-uri`, `nanoid`, and `undici` releases.
+
 ## [3.9.0] - 2026-08-10
 
 This is the stable 3.9.0 release, consolidating the 3.9.0 beta series.

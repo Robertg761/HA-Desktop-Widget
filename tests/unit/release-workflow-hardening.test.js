@@ -48,4 +48,16 @@ describe('release workflow hardening', () => {
     expect(tagRelease).not.toContain('--ref main');
     expect(nightlyBeta).not.toContain('--ref main');
   });
+
+  test('publishes stable release notes from the matching changelog section', () => {
+    expect(release).toContain(
+      'node scripts/extract-release-notes.cjs "$RELEASE_VERSION" > "$release_notes_file"'
+    );
+    expect(release).toContain('notes_flags=(--notes-file "$release_notes_file")');
+    expect(release).toContain(
+      'Stable releases require a non-empty CHANGELOG.md section for $RELEASE_VERSION.'
+    );
+    expect(release).toContain('notes_flags=(--generate-notes)');
+    expect(release).toContain('Generating prerelease notes from $notes_start_tag to $RELEASE_TAG.');
+  });
 });

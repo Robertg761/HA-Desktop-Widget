@@ -34,6 +34,18 @@ describe('Linux startup helpers', () => {
     ).toBe('com.github.robertg761.hadesktopwidget.desktop');
   });
 
+  test('keeps the packaged Linux desktop identity aligned with autostart', () => {
+    const pkg = require('../../package.json');
+    const builderConfig = fs.readFileSync(
+      path.resolve(__dirname, '../../electron-builder.yml'),
+      'utf8'
+    );
+
+    expect(pkg.desktopName).toBe(`${pkg.appId}.desktop`);
+    expect(builderConfig).toContain(`appId: ${pkg.appId}`);
+    expect(builderConfig).toContain('  syncDesktopName: true');
+  });
+
   test('quotes executable paths for XDG desktop Exec entries', () => {
     expect(quoteDesktopExecArg('/opt/HA Desktop Widget/ha-widget')).toBe(
       '"/opt/HA Desktop Widget/ha-widget"'

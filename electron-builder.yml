@@ -90,6 +90,9 @@ linux:
   icon: build/icon.png
   category: Utility
   maintainer: Robertg761
+  # Match Electron's runtime app id, the installed launcher, and the app's
+  # existing XDG autostart file so desktop environments associate its windows.
+  syncDesktopName: true
   artifactName: '${productName}-${version}-linux-${arch}.${ext}'
   target:
     - target: AppImage
