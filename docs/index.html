@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HA Desktop Widget — Home Assistant, on your desktop</title>
+    <meta
+      name="description"
+      content="A semi-transparent Home Assistant widget that lives on your desktop. Lights, sensors, cameras and media, live over a WebSocket. Free and open source for Windows, macOS and Linux."
+    />
+    <link rel="canonical" href="https://robertg761.github.io/HA-Desktop-Widget/" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#0a0c11" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="HA Desktop Widget — Home Assistant, on your desktop" />
+    <meta
+      property="og:description"
+      content="A semi-transparent Home Assistant widget that lives on your desktop. Free and open source for Windows, macOS and Linux."
+    />
+    <meta property="og:url" content="https://robertg761.github.io/HA-Desktop-Widget/" />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/images/Main_View.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link
+      rel="preload"
+      href="fonts/plus-jakarta-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="site.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <!-- ============================ THE SCREEN ============================ -->
+    <div class="screen">
+      <div class="screen__wallpaper" aria-hidden="true">
+        <svg
+          class="wallpaper"
+          viewBox="0 0 1440 860"
+          preserveAspectRatio="xMidYMax slice"
+          role="presentation"
+          focusable="false"
+        >
+          <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#070a18" />
+              <stop offset="42%" stop-color="#141d42" />
+              <stop offset="72%" stop-color="#3a2f55" />
+              <stop offset="90%" stop-color="#6b4152" />
+              <stop offset="100%" stop-color="#8a5346" />
+            </linearGradient>
+            <radialGradient id="moonglow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ffeccd" stop-opacity="0.34" />
+              <stop offset="100%" stop-color="#ffeccd" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="ridge" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#241d3a" />
+              <stop offset="100%" stop-color="#161129" />
+            </linearGradient>
+          </defs>
+
+          <rect width="1440" height="860" fill="url(#sky)" />
+
+          <circle cx="1318" cy="152" r="240" fill="url(#moonglow)" />
+          <circle cx="1318" cy="152" r="36" fill="#fbf3e2" />
+
+          <g fill="#ffffff">
+            <circle cx="180" cy="96" r="1.6" opacity="0.75" />
+            <circle cx="332" cy="58" r="1.2" opacity="0.55" />
+            <circle cx="470" cy="128" r="1.5" opacity="0.6" />
+            <circle cx="640" cy="72" r="1.1" opacity="0.5" />
+            <circle cx="812" cy="118" r="1.6" opacity="0.65" />
+            <circle cx="962" cy="62" r="1.2" opacity="0.45" />
+            <circle cx="86" cy="192" r="1.2" opacity="0.4" />
+            <circle cx="1402" cy="206" r="1.3" opacity="0.45" />
+          </g>
+
+          <path
+            d="M0 596 L118 552 L246 588 L392 534 L536 580 L688 540 L844 586 L1002 546 L1160 592 L1306 556 L1440 594 L1440 700 L0 700 Z"
+            fill="url(#ridge)"
+            opacity="0.85"
+          />
+
+          <g fill="#0c0f1c">
+            <path d="M60 720 L60 640 L128 592 L196 640 L196 720 Z" />
+            <path d="M212 720 L212 664 L268 664 L268 720 Z" />
+            <path d="M300 720 L300 618 L372 566 L444 618 L444 720 Z" />
+            <path d="M470 720 L470 652 L540 652 L540 720 Z" />
+            <path d="M566 720 L566 632 L634 584 L702 632 L702 720 Z" />
+            <path d="M726 720 L726 670 L790 670 L790 720 Z" />
+            <path d="M818 720 L818 624 L892 572 L966 624 L966 720 Z" />
+            <path d="M992 720 L992 660 L1058 660 L1058 720 Z" />
+            <path d="M1084 720 L1084 616 L1156 566 L1228 616 L1228 720 Z" />
+            <path d="M1252 720 L1252 656 L1318 656 L1318 720 Z" />
+            <path d="M1344 720 L1344 630 L1404 588 L1440 612 L1440 720 Z" />
+          </g>
+
+          <g>
+            <rect x="82" y="656" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.92" />
+            <rect x="112" y="656" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="146" y="656" width="16" height="20" rx="1.5" fill="#ffb45a" opacity="0.85" />
+            <rect x="82" y="690" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="146" y="690" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.7" />
+            <rect x="228" y="682" width="14" height="18" rx="1.5" fill="#ffcf8c" opacity="0.9" />
+            <rect x="322" y="632" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="358" y="632" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.95" />
+            <rect x="396" y="632" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="322" y="672" width="16" height="20" rx="1.5" fill="#ffb45a" opacity="0.8" />
+            <rect x="396" y="672" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.6" />
+            <rect x="490" y="672" width="14" height="18" rx="1.5" fill="#2a2438" />
+            <rect x="514" y="672" width="14" height="18" rx="1.5" fill="#ffcf8c" opacity="0.85" />
+            <rect x="588" y="648" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.9" />
+            <rect x="624" y="648" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.55" />
+            <rect x="660" y="648" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="588" y="686" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="660" y="686" width="16" height="20" rx="1.5" fill="#ffb45a" opacity="0.75" />
+            <rect x="744" y="686" width="14" height="18" rx="1.5" fill="#ffcf8c" opacity="0.8" />
+            <rect x="842" y="640" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="880" y="640" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.92" />
+            <rect x="918" y="640" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="880" y="680" width="16" height="20" rx="1.5" fill="#ffb45a" opacity="0.7" />
+            <rect x="1012" y="678" width="14" height="18" rx="1.5" fill="#ffcf8c" opacity="0.88" />
+            <rect x="1106" y="632" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.85" />
+            <rect x="1144" y="632" width="16" height="20" rx="1.5" fill="#2a2438" />
+            <rect x="1182" y="632" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.6" />
+            <rect x="1144" y="674" width="16" height="20" rx="1.5" fill="#ffb45a" opacity="0.8" />
+            <rect x="1272" y="674" width="14" height="18" rx="1.5" fill="#2a2438" />
+            <rect x="1296" y="674" width="14" height="18" rx="1.5" fill="#ffcf8c" opacity="0.75" />
+            <rect x="1364" y="648" width="16" height="20" rx="1.5" fill="#ffc477" opacity="0.9" />
+            <rect x="1400" y="648" width="16" height="20" rx="1.5" fill="#2a2438" />
+          </g>
+
+          <rect x="0" y="716" width="1440" height="144" fill="#070911" />
+          <rect x="0" y="714" width="1440" height="2" fill="#1a1526" opacity="0.9" />
+        </svg>
+      </div>
+
+      <div class="screen__inner">
+        <!-- menu bar, doubling as the site nav -->
+        <header class="menubar">
+          <a class="menubar__brand" href="./">
+            <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+              <path
+                d="M8.5 16.4 16 9.6l7.5 6.8"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M10.6 16.6v6.4h10.8v-6.4"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>HA Desktop Widget</span>
+          </a>
+          <nav class="menubar__nav" aria-label="Main">
+            <a href="#features">Features</a>
+            <a href="#setup">Setup</a>
+            <a href="https://github.com/Robertg761/HA-Desktop-Widget">Source</a>
+          </nav>
+          <p class="menubar__meta">
+            <span>MIT</span>
+            <span aria-hidden="true">·</span>
+            <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">v3.9.1</a>
+          </p>
+        </header>
+
+        <!-- the desk -->
+        <div class="hero">
+          <div class="hero__copy">
+            <h1 class="hero__title">It doesn&rsquo;t open.<br />It&rsquo;s just there.</h1>
+            <p class="hero__lede">
+              Home Assistant, sunk into your wallpaper. Every light, sensor and camera you actually
+              touch, live on a WebSocket, one glance from whatever you were already doing.
+            </p>
+            <div class="hero__actions">
+              <a
+                class="btn btn--light"
+                href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                  <path
+                    d="M12 3.5v11.5m0 0 4.5-4.5M12 15 7.5 10.5"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M4.5 16.5v2.2a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8v-2.2"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <span>Put it on my desktop</span>
+              </a>
+              <p class="hero__platforms">Windows &middot; macOS &middot; Linux</p>
+            </div>
+          </div>
+
+          <div class="stage">
+            <div class="pins">
+              <div class="pin-group">
+                <div class="pin">
+                  <div class="pin__head">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <path
+                        d="M12 3.2a6 6 0 0 0-3.5 10.9c.6.5.9 1.1.9 1.8v.5h5.2v-.5c0-.7.3-1.3.9-1.8A6 6 0 0 0 12 3.2Z"
+                        fill="rgba(255,213,79,0.3)"
+                        stroke="#ffd54f"
+                        stroke-width="1.7"
+                        stroke-linejoin="round"
+                      />
+                      <path
+                        d="M9.9 19h4.2"
+                        stroke="#ffd54f"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <span class="pin__label">Living room</span>
+                    <span class="pin__value">78%</span>
+                  </div>
+                  <div class="pin__track"><span style="width: 78%"></span></div>
+                </div>
+                <p class="caption">Any tile can be torn off and left anywhere on screen.</p>
+              </div>
+
+              <div class="pin pin--camera">
+                <div class="pin__thumb">
+                  <svg viewBox="0 0 176 92" fill="none" aria-hidden="true" focusable="false">
+                    <rect width="176" height="92" fill="#0e131c" />
+                    <rect x="20" y="26" width="52" height="66" fill="#161d29" />
+                    <rect x="30" y="40" width="32" height="52" rx="2" fill="#0c1119" />
+                    <circle cx="56" cy="66" r="1.8" fill="#7cc3f8" />
+                    <path d="M96 92 L96 44 L124 28 L152 44 L152 92 Z" fill="#141b26" />
+                    <rect x="112" y="56" width="22" height="26" fill="#ffc477" opacity="0.5" />
+                  </svg>
+                  <span class="pin__live"><span aria-hidden="true"></span>Live</span>
+                </div>
+                <span class="pin__label">Front door</span>
+              </div>
+            </div>
+
+            <div class="stage__widget">
+              <!-- a recreation of the running widget, built from the app's own tokens -->
+              <div class="widget">
+                <div class="widget__bar">
+                  <span class="widget__title">Home Assistant</span>
+                  <span class="widget__dot" aria-hidden="true"></span>
+                  <div class="widget__controls" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                      <circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.8" />
+                      <path
+                        d="M12 3.4v2.2M12 18.4v2.2M20.6 12h-2.2M5.6 12H3.4M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6M18.1 18.1l-1.6-1.6M7.5 7.5 5.9 5.9"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                      <path
+                        d="M5 12.5h14"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                      <path
+                        d="M6 6l12 12M18 6 6 18"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                <div class="widget__primary">
+                  <div class="wcard wcard--weather">
+                    <svg
+                      class="wcard__glyph"
+                      viewBox="0 0 48 48"
+                      fill="none"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <circle cx="18" cy="17" r="6.4" stroke="#ffb74d" stroke-width="2.3" />
+                      <path
+                        d="M18 5.4v2.6M18 26v2.6M29.6 17H27M9 17H6.4M26.2 8.8l-1.9 1.9M11.7 23.3l-1.9 1.9M26.2 25.2l-1.9-1.9M11.7 10.7 9.8 8.8"
+                        stroke="#ffb74d"
+                        stroke-width="2.3"
+                        stroke-linecap="round"
+                      />
+                      <path
+                        d="M20.4 38.6a6.2 6.2 0 0 1 .8-12.3 8.4 8.4 0 0 1 15.7 2.2 5 5 0 0 1-1.1 10.1H20.4Z"
+                        fill="#d3dbe6"
+                        stroke="#f0f4f8"
+                        stroke-width="1.8"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    <div class="wcard__body">
+                      <p class="wcard__temp">4&deg;C</p>
+                      <p class="wcard__sub">Cloudy</p>
+                      <p class="wcard__pills">
+                        <span class="wpill">
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                            <path
+                              d="M12 3.4c3.4 4 6.1 7 6.1 10.2A6.1 6.1 0 0 1 12 19.7a6.1 6.1 0 0 1-6.1-6.1C5.9 10.4 8.6 7.4 12 3.4Z"
+                              stroke="#7cc3f8"
+                              stroke-width="1.9"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                          89%
+                        </span>
+                        <span class="wpill">
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                            <path
+                              d="M3.6 9.2h10.6a2.9 2.9 0 1 0-2.9-2.9M3.6 14.4h13.9a2.9 2.9 0 1 1-2.9 2.9"
+                              stroke="#b9c8d8"
+                              stroke-width="1.9"
+                              stroke-linecap="round"
+                            />
+                          </svg>
+                          25 km/h
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <div class="wcard wcard--clock">
+                    <p class="wcard__time">11:42 PM</p>
+                    <span class="wcard__rule" aria-hidden="true"></span>
+                    <p class="wcard__date">Mon, Jun 1</p>
+                  </div>
+                </div>
+
+                <div class="wcard wcard--media">
+                  <span class="wmedia__art" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                      <path
+                        d="M9.4 17.4V6.2l8.4-1.7v11.1"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linejoin="round"
+                      />
+                      <circle cx="7.2" cy="17.6" r="2.3" stroke="currentColor" stroke-width="1.8" />
+                      <circle
+                        cx="15.6"
+                        cy="15.6"
+                        r="2.3"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      />
+                    </svg>
+                  </span>
+                  <span class="wmedia__body">
+                    <span class="wmedia__label">Kitchen speaker &middot; paused</span>
+                    <span class="wmedia__seek">
+                      <span>1:12</span><span class="wmedia__bar"></span><span>3:48</span>
+                    </span>
+                  </span>
+                  <span class="wmedia__controls" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor" focusable="false">
+                      <path d="M18.5 5.5v13l-9.5-6.5 9.5-6.5ZM6.6 5.5h2v13h-2z" />
+                    </svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" focusable="false">
+                      <path d="M7.5 4.8 19 12 7.5 19.2V4.8Z" />
+                    </svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" focusable="false">
+                      <path d="M5.5 5.5 15 12l-9.5 6.5v-13ZM15.4 5.5h2v13h-2z" />
+                    </svg>
+                  </span>
+                </div>
+
+                <p class="widget__section">Quick access</p>
+
+                <div class="widget__grid">
+                  <div class="wtile">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <path
+                        d="M12 3.2a6 6 0 0 0-3.5 10.9c.6.5.9 1.1.9 1.8v.5h5.2v-.5c0-.7.3-1.3.9-1.8A6 6 0 0 0 12 3.2Z"
+                        fill="rgba(255,213,79,0.28)"
+                        stroke="#ffd54f"
+                        stroke-width="1.6"
+                        stroke-linejoin="round"
+                      />
+                      <path
+                        d="M9.9 19h4.2M10.5 21.2h3"
+                        stroke="#ffd54f"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <span class="wtile__name">Living room</span>
+                    <span class="wtile__state">78%</span>
+                  </div>
+                  <div class="wtile">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <path
+                        d="M12 3.2l1.9 5.1 5.1 1.9-5.1 1.9L12 17.2l-1.9-5.1L5 10.2l5.1-1.9L12 3.2Z"
+                        fill="rgba(255,183,77,0.22)"
+                        stroke="#ffb74d"
+                        stroke-width="1.6"
+                        stroke-linejoin="round"
+                      />
+                      <path
+                        d="M18.6 15.4l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8.8-2.1Z"
+                        fill="#ffb74d"
+                      />
+                    </svg>
+                    <span class="wtile__name">Evening</span>
+                  </div>
+                  <div class="wtile">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <rect
+                        x="4.6"
+                        y="10.6"
+                        width="14.8"
+                        height="10.4"
+                        rx="2.6"
+                        stroke="#81c784"
+                        stroke-width="1.6"
+                      />
+                      <path
+                        d="M8.2 10.6V7.8a3.8 3.8 0 0 1 7.6 0v2.8"
+                        stroke="#81c784"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                      />
+                      <circle cx="12" cy="15.6" r="1.5" fill="#81c784" />
+                    </svg>
+                    <span class="wtile__name">Front door</span>
+                    <span class="wtile__state">locked</span>
+                  </div>
+                  <div class="wtile">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <path
+                        d="M14.2 13.6V5.8a2.2 2.2 0 1 0-4.4 0v7.8a4.2 4.2 0 1 0 4.4 0Z"
+                        stroke="#7cc3f8"
+                        stroke-width="1.6"
+                        stroke-linejoin="round"
+                      />
+                      <circle cx="12" cy="17.4" r="1.9" fill="#7cc3f8" />
+                    </svg>
+                    <span class="wtile__name">Study</span>
+                    <span class="wtile__state">21.4&deg;C</span>
+                  </div>
+                  <div class="wtile">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <circle cx="12" cy="13.4" r="7.6" stroke="#b9c8d8" stroke-width="1.6" />
+                      <path
+                        d="M12 9.4v4l2.4 1.6M9.4 2.8h5.2"
+                        stroke="#b9c8d8"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <span class="wtile__name">Kitchen</span>
+                    <span class="wtile__state">12:04</span>
+                  </div>
+                  <div class="wtile">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <rect
+                        x="2.8"
+                        y="6.6"
+                        width="18.4"
+                        height="12.6"
+                        rx="2.6"
+                        stroke="#b9c8d8"
+                        stroke-width="1.6"
+                      />
+                      <path
+                        d="M8.6 6.6l1.4-2.4h4l1.4 2.4"
+                        stroke="#b9c8d8"
+                        stroke-width="1.6"
+                        stroke-linejoin="round"
+                      />
+                      <circle cx="12" cy="13" r="3.4" stroke="#b9c8d8" stroke-width="1.6" />
+                    </svg>
+                    <span class="wtile__name">Driveway</span>
+                  </div>
+                </div>
+              </div>
+              <p class="caption">
+                Frosted glass, your accent colour, your opacity &mdash; the wallpaper still reads
+                through it.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- dock -->
+        <div class="dock">
+          <div class="dock__tray">
+            <span class="dock__icon dock__icon--files" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                <path
+                  d="M3.6 10.6h16.8M5.4 10.6 7 5.6h10l1.6 5M6.4 15.4h3.2"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <rect
+                  x="3.6"
+                  y="10.6"
+                  width="16.8"
+                  height="8"
+                  rx="2"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                />
+              </svg>
+            </span>
+            <span class="dock__icon dock__icon--term" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                <path
+                  d="M6.4 8.4 10 12l-3.6 3.6M12.4 15.6h5.2"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="dock__icon dock__icon--web" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                <circle cx="12" cy="12" r="8.4" stroke="currentColor" stroke-width="1.7" />
+                <path
+                  d="M12 3.6c2.6 2.4 2.6 14.4 0 16.8M12 3.6c-2.6 2.4-2.6 14.4 0 16.8M4.2 9.6h15.6M4.2 14.4h15.6"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  opacity="0.7"
+                />
+              </svg>
+            </span>
+            <span class="dock__sep" aria-hidden="true"></span>
+            <span class="dock__icon dock__icon--app" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none" focusable="false">
+                <path
+                  d="M8.5 16.4 16 9.6l7.5 6.8"
+                  stroke="currentColor"
+                  stroke-width="2.3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M10.6 16.6v6.4h10.8v-6.4"
+                  stroke="currentColor"
+                  stroke-width="2.3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="dock__sep" aria-hidden="true"></span>
+            <a
+              class="btn btn--primary btn--dock"
+              href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                <path
+                  d="M12 3.5v11.5m0 0 4.5-4.5M12 15 7.5 10.5"
+                  stroke="currentColor"
+                  stroke-width="2.1"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M4.5 16.5v2.2a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8v-2.2"
+                  stroke="currentColor"
+                  stroke-width="2.1"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <span>Download 3.9.1</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <main id="main">
+      <!-- ============================ FEATURES ============================ -->
+      <section class="section" id="features">
+        <h2 class="section__title">Three things a browser tab can&rsquo;t do.</h2>
+        <div class="cards">
+          <article class="win">
+            <div class="win__bar">
+              <span class="win__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="win__name">live.socket</span>
+            </div>
+            <div class="win__body">
+              <h3>Never stale</h3>
+              <p>
+                One WebSocket, held open. A light someone flips upstairs moves here without you
+                asking for it.
+              </p>
+            </div>
+          </article>
+          <article class="win">
+            <div class="win__bar">
+              <span class="win__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="win__name">pins.desktop</span>
+            </div>
+            <div class="win__body">
+              <h3>Tear a tile off</h3>
+              <p>
+                The camera by the door, the lamp you dim at night &mdash; pull them out as their own
+                movable, resizable tiles.
+              </p>
+            </div>
+          </article>
+          <article class="win">
+            <div class="win__bar">
+              <span class="win__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="win__name">hotkeys.global</span>
+            </div>
+            <div class="win__body">
+              <h3>Without even looking</h3>
+              <p>
+                Bind entities to system-wide shortcuts. Kill the lights from inside a full-screen
+                game.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============================ SETUP ============================ -->
+      <section class="section" id="setup">
+        <article class="win">
+          <div class="win__bar">
+            <span class="win__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="win__name">Connect to Home Assistant</span>
+          </div>
+          <div class="win__body win__body--wide">
+            <h2>Your password never enters this app.</h2>
+            <p class="lede">
+              Authorization happens in your own browser, the way Home Assistant intends, and comes
+              back through a temporary loopback on your machine.
+            </p>
+            <ol class="steps">
+              <li>
+                <span class="steps__n">Step 01</span>
+                <h3>Type the address you already use</h3>
+                <p>homeassistant.local, a local IP, or your own domain.</p>
+              </li>
+              <li>
+                <span class="steps__n">Step 02</span>
+                <h3>Approve it in the browser</h3>
+                <p>Sign in where you always sign in. The widget picks the session up from there.</p>
+              </li>
+              <li>
+                <span class="steps__n">Step 03</span>
+                <h3>Drag in what you care about</h3>
+                <p>Reorder, rename, re-icon, and pin the few you reach for most.</p>
+              </li>
+            </ol>
+          </div>
+        </article>
+      </section>
+
+      <!-- ============================ DOWNLOAD ============================ -->
+      <section class="cta" id="download">
+        <h2>Leave it open. Forget it&rsquo;s there.</h2>
+        <p class="lede">Free and open source, MIT licensed. No account to create.</p>
+        <div class="cta__buttons">
+          <a
+            class="btn btn--primary"
+            href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"
+            >Windows installer</a
+          >
+          <a
+            class="btn btn--ghost"
+            href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"
+            >macOS universal</a
+          >
+          <a
+            class="btn btn--ghost"
+            href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"
+            >Linux AppImage &middot; deb</a
+          >
+        </div>
+        <p class="cta__note">
+          The macOS builds are not yet Developer-ID signed &mdash; first launch needs Control-click,
+          then Open.
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        Not affiliated with the Home Assistant project. Version 3.9.1 &middot; MIT &middot; built by
+        <a href="https://github.com/robertg761">robertg761</a>
+      </p>
+      <nav aria-label="Footer">
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget">GitHub</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md"
+          >Changelog</a
+        >
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/SECURITY.md">Security</a>
+        <a href="https://github.com/sponsors/robertg761">Sponsor</a>
+      </nav>
+    </footer>
+  </body>
+</html>
