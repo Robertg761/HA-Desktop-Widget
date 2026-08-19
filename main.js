@@ -5092,8 +5092,7 @@ function buildTrayContextMenu() {
             }
           })
           .catch((error) => {
-            const payload = { status: 'error', error: error?.message || String(error) };
-            log.warn('Tray update check failed:', payload.error);
+            const payload = { status: 'error', error: describeUpdateError(error) };
             if (mainWindow) {
               mainWindow.webContents.send('auto-update', payload);
             }
@@ -7102,7 +7101,7 @@ async function checkForUpdatesForCurrentPackage() {
     const info = await autoUpdater.checkForUpdates();
     return { status: 'checking', info };
   } catch (e) {
-    return { status: 'error', error: e?.message };
+    return { status: 'error', error: describeUpdateError(e) };
   }
 }
 
@@ -8688,6 +8687,30 @@ async function fetchGitHubUpdateRelease() {
   }
 }
 
+// electron-updater errors carry full HTTP headers and stack traces; the
+// settings pane should only ever show a short human-readable summary while the
+// log keeps the raw detail.
+function describeUpdateError(error) {
+  const raw = (error?.message || String(error ?? '')).trim();
+  log.warn('Update check failed:', raw);
+  if (/404|cannot find .* in the latest release/i.test(raw)) {
+    return mainT('Update information is not available for this version yet. Try again later.');
+  }
+  if (
+    /enotfound|econnrefused|econnreset|etimedout|eai_again|net::err|socket hang up|internetdisconnected/i.test(
+      raw
+    )
+  ) {
+    return mainT('Could not reach GitHub to check for updates. Check your internet connection.');
+  }
+  if (/sha512|checksum|corrupt/i.test(raw)) {
+    return mainT('The downloaded update appears to be corrupted. Please try checking again.');
+  }
+  const firstLine = raw.split('\n', 1)[0].trim();
+  if (!firstLine) return mainT('Unknown error');
+  return firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
+}
+
 async function checkManualReleaseUpdate() {
   try {
     const release = await fetchGitHubUpdateRelease();
@@ -8718,7 +8741,7 @@ async function checkManualReleaseUpdate() {
       downloadUrl,
     };
   } catch (error) {
-    return { status: 'error', error: error?.message || String(error) };
+    return { status: 'error', error: describeUpdateError(error) };
   }
 }
 
@@ -8773,7 +8796,7 @@ async function checkPortableUpdate() {
       downloadUrl,
     };
   } catch (error) {
-    return { status: 'error', error: error?.message || String(error) };
+    return { status: 'error', error: describeUpdateError(error) };
   }
 }
 
@@ -8817,7 +8840,10 @@ function setupAutoUpdates() {
     });
     autoUpdater.on('error', (err) => {
       autoUpdateDownloaded = false;
-      mainWindow?.webContents.send('auto-update', { status: 'error', error: err?.message });
+      mainWindow?.webContents.send('auto-update', {
+        status: 'error',
+        error: describeUpdateError(err),
+      });
     });
 
     // Keep the first packaged-launch window responsive before doing network/update work.

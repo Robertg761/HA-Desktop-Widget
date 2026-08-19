@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -183,6 +183,9 @@
     "Update v{{version}} ready to install": "Mise à jour v{{version}} prête à être installée",
     "Portable builds do not support in-app updates.": "Les versions portables ne prennent pas en charge les mises à jour intégrées.",
     "Error checking for updates": "Erreur lors de la recherche de mises à jour",
+    "Update information is not available for this version yet. Try again later.": "Les informations de mise à jour ne sont pas encore disponibles pour cette version. Réessayez plus tard.",
+    "Could not reach GitHub to check for updates. Check your internet connection.": "Impossible de joindre GitHub pour rechercher des mises à jour. Vérifiez votre connexion Internet.",
+    "The downloaded update appears to be corrupted. Please try checking again.": "La mise à jour téléchargée semble corrompue. Veuillez relancer la vérification.",
     "Error: {{error}}": "Erreur : {{error}}",
     "Unknown error": "Erreur inconnue",
     "Could not save settings. {{error}}": "Impossible d'enregistrer les paramètres. {{error}}",

@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -183,6 +183,9 @@
     "Update v{{version}} ready to install": "التحديث v{{version}} جاهز للتثبيت",
     "Portable builds do not support in-app updates.": "الإصدارات المحمولة لا تدعم التحديثات داخل التطبيق.",
     "Error checking for updates": "خطأ أثناء التحقق من التحديثات",
+    "Update information is not available for this version yet. Try again later.": "معلومات التحديث غير متوفرة لهذا الإصدار بعد. حاول مرة أخرى لاحقًا.",
+    "Could not reach GitHub to check for updates. Check your internet connection.": "تعذر الوصول إلى GitHub للتحقق من التحديثات. تحقق من اتصالك بالإنترنت.",
+    "The downloaded update appears to be corrupted. Please try checking again.": "يبدو أن التحديث الذي تم تنزيله تالف. يرجى المحاولة مرة أخرى.",
     "Error: {{error}}": "خطأ: {{error}}",
     "Unknown error": "خطأ غير معروف",
     "Could not save settings. {{error}}": "تعذر حفظ الإعدادات. {{error}}",

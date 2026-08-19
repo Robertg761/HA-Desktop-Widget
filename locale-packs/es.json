@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -183,6 +183,9 @@
     "Update v{{version}} ready to install": "Actualización v{{version}} lista para instalar",
     "Portable builds do not support in-app updates.": "Las versiones portátiles no admiten actualizaciones dentro de la aplicación.",
     "Error checking for updates": "Error al buscar actualizaciones",
+    "Update information is not available for this version yet. Try again later.": "La información de actualización aún no está disponible para esta versión. Inténtalo de nuevo más tarde.",
+    "Could not reach GitHub to check for updates. Check your internet connection.": "No se pudo conectar con GitHub para buscar actualizaciones. Comprueba tu conexión a Internet.",
+    "The downloaded update appears to be corrupted. Please try checking again.": "La actualización descargada parece estar dañada. Vuelve a intentarlo.",
     "Error: {{error}}": "Error: {{error}}",
     "Unknown error": "Error desconocido",
     "Could not save settings. {{error}}": "No se pudo guardar la configuración. {{error}}",
