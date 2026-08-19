@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  # Lets any failing job cancel the rest of the run.
+  actions: write
 
 jobs:
   # Kept separate from lint-and-test so a newly published advisory fails on its
@@ -30,6 +32,12 @@ jobs:
         # for the electron-builder/jest/eslint toolchains, and forcing
         # brace-expansion@5 tree-wide breaks the minimatch API packaging relies on.
         run: npm audit --omit=dev --audit-level=high
+
+      - name: Cancel remaining CI jobs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
 
   lint-and-test:
     runs-on: windows-latest
@@ -86,6 +94,13 @@ jobs:
             throw "Packaged Windows smoke test failed with exit code $($process.ExitCode)."
           }
 
+      - name: Cancel remaining CI jobs
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+
   lint-and-test-linux:
     runs-on: ubuntu-latest
     steps:
@@ -131,6 +146,12 @@ jobs:
           timeout --kill-after=5s 30s xvfb-run -a dbus-run-session -- \
             dist/linux-unpacked/home-assistant-widget --smoke-test
 
+      - name: Cancel remaining CI jobs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+
   package-macos:
     runs-on: macos-latest
     steps:
@@ -169,3 +190,9 @@ jobs:
             echo "Expected a universal macOS executable; found architectures: $architectures" >&2
             exit 1
           fi
+
+      - name: Cancel remaining CI jobs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
