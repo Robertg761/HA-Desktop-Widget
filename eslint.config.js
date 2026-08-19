@@ -12,6 +12,7 @@ module.exports = [
       'dist-preload/**',
       'dist-panel/**',
       'coverage/**',
+      'website/**',
     ],
   },
   js.configs.recommended,
