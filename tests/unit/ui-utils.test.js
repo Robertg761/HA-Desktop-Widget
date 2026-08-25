@@ -12,6 +12,7 @@ window.electronAPI = mockElectronAPI;
 // Mock matchMedia for theme detection
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
+  configurable: true,
   value: jest.fn().mockImplementation((query) => ({
     matches: false,
     media: query,
