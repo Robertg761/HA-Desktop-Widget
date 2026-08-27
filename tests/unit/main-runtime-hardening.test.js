@@ -479,13 +479,17 @@ describe('main-process wiring safeguards', () => {
   });
 
   it('flushes the latest config before restart can bypass before-quit', () => {
-    const restartStart = mainSource.indexOf("'restart-app'");
+    // The restart sequence lives in restartApplication(), shared by the
+    // 'restart-app' IPC handler and the tray's monitor selection.
+    const restartStart = mainSource.indexOf('async function restartApplication');
     const restartEnd = mainSource.indexOf("ipcMain.handle('minimize-window'", restartStart);
     const restartSource = mainSource.slice(restartStart, restartEnd);
     expect(restartSource).toContain("await flushConfigForBoundedExit('restarting')");
     expect(restartSource.indexOf('app.relaunch()')).toBeLessThan(
       restartSource.indexOf('app.exit(0)')
     );
+    // The IPC handler must go through that sequence, not around it.
+    expect(restartSource).toContain('await restartApplication()');
 
     const boundedExitStart = mainSource.indexOf('async function flushConfigForBoundedExit');
     const boundedExitEnd = mainSource.indexOf(

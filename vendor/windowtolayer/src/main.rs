@@ -1261,15 +1261,197 @@ fn check_upstream_layer_shell(upstream_path: &OsStr) -> Result<(), String> {
     }
 }
 
+/** Scan the upstream display's wl_outputs and return (name, description) pairs
+ * in the order the compositor advertised them. Same short blocking-connection
+ * style as [check_upstream_layer_shell]: one roundtrip collects the globals, a
+ * second — after binding each output at version 4 — collects their names.
+ * Outputs advertised below version 4 have no name event and are skipped. A
+ * fresh scan per call keeps the answer correct across monitor hotplug. */
+fn scan_upstream_outputs(upstream_path: &OsStr) -> Result<Vec<(String, String)>, String> {
+    use std::io::{ErrorKind, Read, Write};
+    let timeout = std::time::Duration::from_secs(2);
+    let mut stream: std::os::unix::net::UnixStream = connect_to_upstream_path(upstream_path)
+        .map_err(|e| {
+            format!(
+                "Cannot connect to Wayland display {:?}: {:?}",
+                upstream_path, e
+            )
+        })?
+        .into();
+    stream
+        .set_nonblocking(false)
+        .map_err(|e| format!("Failed to configure output-scan socket: {}", e))?;
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+
+    /* wl_display.get_registry(new_id=2), then wl_display.sync(new_id=3). */
+    let mut req = Vec::with_capacity(24);
+    for (opcode, new_id) in [(1u32, 2u32), (0u32, 3u32)] {
+        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&((12u32 << 16) | opcode).to_le_bytes());
+        req.extend_from_slice(&new_id.to_le_bytes());
+    }
+    stream.write_all(&req).map_err(|e| {
+        format!(
+            "Failed to write to Wayland display {:?}: {}",
+            upstream_path, e
+        )
+    })?;
+
+    struct PendingOutput {
+        obj: u32,
+        name: Option<String>,
+        description: String,
+    }
+    /* (global numeric name, advertised version) per wl_output global. */
+    let mut output_globals: Vec<(u32, u32)> = Vec::new();
+    let mut pending: Vec<PendingOutput> = Vec::new();
+    let mut phase2 = false;
+    let mut done_id = 3u32;
+
+    let mut buf: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let mut off = 0usize;
+        while buf.len() - off >= 8 {
+            let obj = u32::from_le_bytes(buf[off..off + 4].try_into().unwrap());
+            let word = u32::from_le_bytes(buf[off + 4..off + 8].try_into().unwrap());
+            let len = (word >> 16) as usize;
+            let opcode = word & 0xffff;
+            if len < 8 || buf.len() - off < len {
+                break;
+            }
+            let body = &buf[off + 8..off + len];
+            if obj == 1 && opcode == 0 {
+                return Err(format!(
+                    "Wayland display {:?} reported a protocol error during the output scan",
+                    upstream_path
+                ));
+            } else if !phase2 && obj == 2 && opcode == 0 {
+                /* wl_registry.global: name u32, interface string (length includes
+                 * the NUL terminator, padded to 4), version u32 */
+                if body.len() >= 8 {
+                    let global_name = u32::from_le_bytes(body[0..4].try_into().unwrap());
+                    let slen = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
+                    let spad = (slen + 3) & !3;
+                    if slen > 0
+                        && body.len() >= 8 + spad + 4
+                        && &body[8..8 + slen - 1] == b"wl_output"
+                    {
+                        let version =
+                            u32::from_le_bytes(body[8 + spad..8 + spad + 4].try_into().unwrap());
+                        output_globals.push((global_name, version));
+                    }
+                }
+            } else if obj == done_id && opcode == 0 {
+                if phase2 {
+                    return Ok(pending
+                        .into_iter()
+                        .filter_map(|p| p.name.map(|n| (n, p.description)))
+                        .collect());
+                }
+                /* First roundtrip done: bind every v4+ output, then sync again. */
+                phase2 = true;
+                let mut next_id = 4u32;
+                let mut req2: Vec<u8> = Vec::new();
+                for (global_name, version) in &output_globals {
+                    if *version < 4 {
+                        continue;
+                    }
+                    /* wl_registry.bind(name, "wl_output", 4, new_id) — bind's
+                     * new_id argument is untyped on the wire, so it carries the
+                     * interface string and version explicitly. */
+                    const IFACE: &[u8] = b"wl_output\0";
+                    let pad = (IFACE.len() + 3) & !3;
+                    let mlen = (8 + 4 + 4 + pad + 4 + 4) as u32;
+                    req2.extend_from_slice(&2u32.to_le_bytes());
+                    req2.extend_from_slice(&(mlen << 16).to_le_bytes());
+                    req2.extend_from_slice(&global_name.to_le_bytes());
+                    req2.extend_from_slice(&(IFACE.len() as u32).to_le_bytes());
+                    req2.extend_from_slice(IFACE);
+                    req2.extend(std::iter::repeat(0u8).take(pad - IFACE.len()));
+                    req2.extend_from_slice(&4u32.to_le_bytes());
+                    req2.extend_from_slice(&next_id.to_le_bytes());
+                    pending.push(PendingOutput {
+                        obj: next_id,
+                        name: None,
+                        description: String::new(),
+                    });
+                    next_id += 1;
+                }
+                done_id = next_id;
+                req2.extend_from_slice(&1u32.to_le_bytes());
+                req2.extend_from_slice(&((12u32 << 16) | 0u32).to_le_bytes());
+                req2.extend_from_slice(&done_id.to_le_bytes());
+                stream.write_all(&req2).map_err(|e| {
+                    format!(
+                        "Failed to write to Wayland display {:?}: {}",
+                        upstream_path, e
+                    )
+                })?;
+            } else if phase2 && (opcode == 4 || opcode == 5) {
+                /* wl_output.name (4) / wl_output.description (5): one string */
+                if let Some(p) = pending.iter_mut().find(|p| p.obj == obj) {
+                    if body.len() >= 4 {
+                        let slen = u32::from_le_bytes(body[0..4].try_into().unwrap()) as usize;
+                        if slen > 0 && body.len() >= 4 + slen {
+                            let value =
+                                String::from_utf8_lossy(&body[4..4 + slen - 1]).into_owned();
+                            if opcode == 4 {
+                                p.name = Some(value);
+                            } else {
+                                p.description = value;
+                            }
+                        }
+                    }
+                }
+            }
+            off += len;
+        }
+        buf.drain(..off);
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "Timed out scanning outputs on Wayland display {:?}",
+                upstream_path
+            ));
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) => {
+                return Err(format!(
+                    "Wayland display {:?} closed the connection during the output scan",
+                    upstream_path
+                ))
+            }
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut => {
+                return Err(format!(
+                    "Timed out reading outputs from Wayland display {:?}",
+                    upstream_path
+                ))
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Failed to read from Wayland display {:?}: {}",
+                    upstream_path, e
+                ))
+            }
+        }
+    }
+}
+
 /* Serve a listening socket in XDG_RUNTIME_DIR, translating each connection made through it
  * on its own thread, until the spawned command exits. */
 /* Accept one connection on the control socket and act on its command. Line
  * protocol, one command per connection: "raise" moves every layer surface to
  * the overlay layer (above fullscreen windows, matching the popup hotkey's
  * screen-saver level semantics elsewhere), "restore" returns them to the
- * configured layer. Best-effort by design: the popup path in the app must
- * degrade to a no-op, never break the session. */
-fn handle_control_connection(ctl_listener: &OwnedFd, cfg: &ProxyConfig) {
+ * configured layer, "outputs" answers with one "name\tdescription" line per
+ * monitor (from a fresh registry scan, so hotplug stays correct). Best-effort
+ * by design: the popup path in the app must degrade to a no-op, never break
+ * the session. */
+fn handle_control_connection(ctl_listener: &OwnedFd, cfg: &ProxyConfig, upstream_path: &OsStr) {
     let conn = match net::accept_with(ctl_listener, net::SocketFlags::NONBLOCK) {
         Ok(c) => c,
         Err(e) => {
@@ -1302,6 +1484,31 @@ fn handle_control_connection(ctl_listener: &OwnedFd, cfg: &ProxyConfig) {
         }
     };
     let command = buf[..nread].trim_ascii();
+    if command == b"outputs" {
+        /* Reply with one "name\tdescription" line per monitor and close. The
+         * scan blocks this thread for up to ~2s, which only delays other
+         * control clients, never the proxying threads. */
+        match scan_upstream_outputs(upstream_path) {
+            Ok(outputs) => {
+                use std::io::Write;
+                let mut reply = String::new();
+                for (name, description) in &outputs {
+                    reply.push_str(&name.replace(['\t', '\n'], " "));
+                    reply.push('\t');
+                    reply.push_str(&description.replace(['\t', '\n'], " "));
+                    reply.push('\n');
+                }
+                let mut stream: std::os::unix::net::UnixStream = conn.into();
+                let _ = stream.set_nonblocking(false);
+                let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(2)));
+                if let Err(e) = stream.write_all(reply.as_bytes()) {
+                    debug!("Failed to write outputs reply: {}", e);
+                }
+            }
+            Err(e) => eprintln!("Output scan for control connection failed: {}", e),
+        }
+        return;
+    }
     let layer = match command {
         b"raise" => ZwlrLayerShellV1Layer::Overlay,
         b"restore" => cfg.layer,
@@ -1499,7 +1706,7 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], mut cfg: ProxyConfig) {
         let _ = event::poll(&mut pfds[..], Some(&timeout));
         if let Some(ctl) = &ctl_listener {
             if pfds[1].revents().contains(event::PollFlags::IN) {
-                handle_control_connection(ctl, &cfg);
+                handle_control_connection(ctl, &cfg, upstream_path.as_os_str());
             }
         }
         if pfds[0].revents().contains(event::PollFlags::IN) {

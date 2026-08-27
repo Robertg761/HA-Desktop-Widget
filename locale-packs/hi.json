@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -75,6 +75,8 @@
     "Show/Hide": "दिखाएं/छुपाएं",
     "Always on Top": "हमेशा सामने रखें",
     "Reset Position": "स्थिति रीसेट करें",
+    "Move to Monitor": "मॉनिटर पर ले जाएँ",
+    "Automatic": "स्वचालित",
     "DevTools": "DevTools",
     "Reload": "रीलोड",
     "Open Settings": "सेटिंग्स खोलें",

@@ -17,6 +17,7 @@ const {
   isProcessAlive,
   layerShellSocketName,
   materializeLayerShellHelper,
+  readInitialLayerShellOutputName,
   readInitialLayerShellWindowSize,
   resolveLayerShellHelperPath,
   restoreLayerShellParentEnv,
@@ -657,6 +658,23 @@ describe('buildLayerShellSpawnPlan', () => {
     expect(plan.args).toContain('-5,0,10,-20');
   });
 
+  test('passes the saved monitor choice as --output-name, with the env override winning', () => {
+    const plan = buildLayerShellSpawnPlan({ ...basePlanInput, outputName: 'DP-2' });
+    expect(plan.args[plan.args.indexOf('--output-name') + 1]).toBe('DP-2');
+
+    // The env variable stays a debugging knob that outranks the saved choice.
+    const overridden = buildLayerShellSpawnPlan({
+      ...basePlanInput,
+      outputName: 'DP-2',
+      env: { WAYLAND_DISPLAY: 'wayland-1', [LAYER_SHELL_OUTPUT_ENV]: 'HDMI-A-1' },
+    });
+    expect(overridden.args[overridden.args.indexOf('--output-name') + 1]).toBe('HDMI-A-1');
+    expect(overridden.args).not.toContain('DP-2');
+
+    const blank = buildLayerShellSpawnPlan({ ...basePlanInput, outputName: '   ' });
+    expect(blank.args).not.toContain('--output-name');
+  });
+
   test('relaunches the AppImage itself, not the doomed FUSE-mounted binary', () => {
     // Inside an AppImage, execPath lives in a /tmp/.mount_* FUSE mount that vanishes
     // when this process exits; the helper must launch the AppImage so the runtime
@@ -722,6 +740,33 @@ describe('readInitialLayerShellWindowSize', () => {
         readFileSync: () => JSON.stringify({ windowSize: { width: 'x', height: null } }),
       })
     ).toEqual(DEFAULT_WINDOW_SIZE);
+  });
+});
+
+describe('readInitialLayerShellOutputName', () => {
+  test('reads the saved monitor choice from config.json', () => {
+    const readFileSync = (file) => {
+      expect(file).toBe(path.join('/data', 'config.json'));
+      return JSON.stringify({ layerShellOutputName: '  DP-1  ' });
+    };
+    expect(readInitialLayerShellOutputName('/data', { readFileSync })).toBe('DP-1');
+  });
+
+  test('falls back to automatic on a missing, corrupt, or non-string value', () => {
+    expect(
+      readInitialLayerShellOutputName('/data', {
+        readFileSync: () => {
+          throw new Error('ENOENT');
+        },
+      })
+    ).toBe('');
+    expect(readInitialLayerShellOutputName('/data', { readFileSync: () => 'not json' })).toBe('');
+    expect(
+      readInitialLayerShellOutputName('/data', {
+        readFileSync: () => JSON.stringify({ layerShellOutputName: 7 }),
+      })
+    ).toBe('');
+    expect(readInitialLayerShellOutputName('/data', { readFileSync: () => '{}' })).toBe('');
   });
 });
 
@@ -845,5 +890,59 @@ describe('createLayerShellRaiser', () => {
     const errorHandler = sockets[0].on.mock.calls.find(([event]) => event === 'error')?.[1];
     expect(typeof errorHandler).toBe('function');
     expect(() => errorHandler(new Error('EPIPE'))).not.toThrow();
+  });
+
+  test('listOutputs parses the tab-separated reply into name/description pairs', async () => {
+    const { connect, sockets } = createConnectMock();
+    const raiser = createLayerShellRaiser({
+      controlSocketPath: '/run/user/1000/sock.ctl',
+      connect,
+      log: { debug: jest.fn() },
+    });
+
+    const promise = raiser.listOutputs();
+    expect(sockets[0].end).toHaveBeenCalledWith('outputs\n');
+    const handlerFor = (event) => sockets[0].on.mock.calls.find(([e]) => e === event)?.[1];
+    // The reply may arrive in arbitrary chunks, including one that splits a line.
+    handlerFor('data')(Buffer.from('DP-1\tLG ULTRAWIDE (DP-1)\nHDMI-'));
+    handlerFor('data')(Buffer.from('A-1\tOptix MAG27CQ (HDMI-A-1)\n'));
+    handlerFor('close')();
+
+    await expect(promise).resolves.toEqual([
+      { name: 'DP-1', description: 'LG ULTRAWIDE (DP-1)' },
+      { name: 'HDMI-A-1', description: 'Optix MAG27CQ (HDMI-A-1)' },
+    ]);
+  });
+
+  test('listOutputs resolves to an empty list on failure, empty reply, or a helper that predates the command', async () => {
+    const log = { debug: jest.fn() };
+    // Synchronous connect failure.
+    const deadRaiser = createLayerShellRaiser({
+      controlSocketPath: '/run/user/1000/sock.ctl',
+      connect: () => {
+        throw new Error('ECONNREFUSED');
+      },
+      log,
+    });
+    await expect(deadRaiser.listOutputs()).resolves.toEqual([]);
+
+    // Async error, then the close that follows it: must settle exactly once.
+    const { connect, sockets } = createConnectMock();
+    const raiser = createLayerShellRaiser({
+      controlSocketPath: '/run/user/1000/sock.ctl',
+      connect,
+      log,
+    });
+    const errored = raiser.listOutputs();
+    const handlerFor = (index, event) =>
+      sockets[index].on.mock.calls.find(([e]) => e === event)?.[1];
+    handlerFor(0, 'error')(new Error('EPIPE'));
+    handlerFor(0, 'close')();
+    await expect(errored).resolves.toEqual([]);
+
+    // An old helper logs "unknown command" and closes without writing anything.
+    const silent = raiser.listOutputs();
+    handlerFor(1, 'close')();
+    await expect(silent).resolves.toEqual([]);
   });
 });

@@ -261,6 +261,18 @@ Operational notes:
   GlobalShortcuts portal rejects the registration ("An app id is required"), so
   the hotkey itself only binds in packaged builds; the raise mechanism can be
   exercised directly with `raise`/`restore` lines to the control socket.
+- Moving the widget to another monitor happens through the tray menu, not by
+  dragging: the compositor owns a layer surface's placement, so a Super+drag
+  passes straight through to the window behind it. The tray's "Move to
+  Monitor" submenu asks the helper for the session's monitors (`outputs`
+  control command, PATCHES.md item 8), saves the chosen `wl_output` name as
+  `config.layerShellOutputName` ('' = compositor decides, the default), and
+  restarts through a fresh helper spawned with `--output-name`. The submenu
+  only appears when the helper answers the query — an old helper degrades to
+  no menu item. A saved name whose monitor was unplugged or renamed is
+  handled helper-side: it warns and falls back to the compositor's choice
+  rather than killing the connection. `HA_WIDGET_LAYER_SHELL_OUTPUT` still
+  outranks the saved choice as a debugging knob.
 - Desktop pin windows pass through the same helper and become bottom-layer surfaces
   with the same anchor, so they stack in the same corner as the widget instead of
   taking their saved positions. Pins already cannot position themselves on native

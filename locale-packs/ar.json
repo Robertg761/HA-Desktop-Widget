@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -75,6 +75,8 @@
     "Show/Hide": "إظهار/إخفاء",
     "Always on Top": "دائمًا في المقدمة",
     "Reset Position": "إعادة تعيين الموضع",
+    "Move to Monitor": "نقل إلى شاشة",
+    "Automatic": "تلقائي",
     "DevTools": "أدوات المطور",
     "Reload": "إعادة تحميل",
     "Open Settings": "فتح الإعدادات",

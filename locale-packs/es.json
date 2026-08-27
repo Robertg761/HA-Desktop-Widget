@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -75,6 +75,8 @@
     "Show/Hide": "Mostrar/Ocultar",
     "Always on Top": "Siempre visible",
     "Reset Position": "Restablecer posición",
+    "Move to Monitor": "Mover a un monitor",
+    "Automatic": "Automático",
     "DevTools": "Herramientas de desarrollo",
     "Reload": "Recargar",
     "Open Settings": "Abrir configuración",

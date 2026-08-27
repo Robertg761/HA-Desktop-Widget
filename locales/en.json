@@ -108,6 +108,8 @@
   "Show/Hide": "Show/Hide",
   "Always on Top": "Always on Top",
   "Reset Position": "Reset Position",
+  "Move to Monitor": "Move to Monitor",
+  "Automatic": "Automatic",
   "DevTools": "DevTools",
   "Reload": "Reload",
   "Open Settings": "Open Settings",

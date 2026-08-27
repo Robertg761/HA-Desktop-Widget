@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -75,6 +75,8 @@
     "Show/Hide": "Afficher/Masquer",
     "Always on Top": "Toujours au premier plan",
     "Reset Position": "Réinitialiser la position",
+    "Move to Monitor": "Déplacer vers un écran",
+    "Automatic": "Automatique",
     "DevTools": "Outils de développement",
     "Reload": "Recharger",
     "Open Settings": "Ouvrir les paramètres",

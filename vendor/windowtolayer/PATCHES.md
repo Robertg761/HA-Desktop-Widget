@@ -97,6 +97,18 @@ unconditionally above tiled ones. See issue #79 and
    surfaces created afterwards, and a control-socket bind failure only
    disables runtime raising, never startup.
 
+8. Monitor selection support on the control channel, plus a softened
+   `--output-name` failure mode: an `outputs` control command answers with one
+   `name\tdescription` line per monitor and closes the connection (from a
+   fresh registry scan over a short-lived upstream connection, in the style of
+   the preflight in item 5, so hotplug stays correct; outputs advertised
+   below `wl_output` version 4 have no name event and are skipped). And when
+   `--output-name` names a monitor that does not exist — a saved choice can
+   outlive the monitor it named — the helper now logs a warning and lets the
+   compositor choose, instead of killing the client's connection. Together
+   these let the app offer a "move widget to monitor" menu: query names,
+   save one, relaunch with `--output-name`.
+
 These changes are intended to be submitted upstream. If upstream gains
 equivalent functionality, prefer depending on an upstream release and drop
 this vendored copy.

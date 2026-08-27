@@ -1151,8 +1151,12 @@ fn process_request_w2l(
                             .collect();
                         output_list.sort();
 
-                        return Err(WaylandError::Other(format!(
-                            "Output \"{}\" was not found, exiting. There {} {} {}: {}",
+                        /* A saved output choice can outlive the monitor it named
+                         * (unplugged, renamed): letting the compositor pick keeps
+                         * the client alive instead of killing its connection. */
+                        warn!(
+                            "Output \"{}\" was not found (there {} {} {}: {}); \
+                            letting the compositor choose",
                             name,
                             if output_list.len() == 1 { "is" } else { "are" },
                             output_list.len(),
@@ -1162,7 +1166,8 @@ fn process_request_w2l(
                                 "outputs"
                             },
                             QuotedStrings(output_list)
-                        )));
+                        );
+                        UpstreamID(0)
                     } else {
                         return Ok(WaitForOtherDirection);
                     }

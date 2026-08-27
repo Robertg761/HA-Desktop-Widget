@@ -240,6 +240,26 @@ function readInitialLayerShellWindowSize(
 }
 
 /**
+ * Best-effort read of the saved monitor choice (wl_output name, e.g. "DP-1")
+ * for the same reason and with the same caveats as the window size above: the
+ * handoff decision runs before loadConfig(). '' means "let the compositor
+ * choose". The helper itself falls back to the compositor's choice when the
+ * saved name no longer matches a monitor, so a stale value cannot break launch.
+ */
+function readInitialLayerShellOutputName(
+  userDataPath,
+  { readFileSync = require('fs').readFileSync } = {}
+) {
+  try {
+    const raw = readFileSync(path.join(userDataPath, CONFIG_FILE_NAME), 'utf8');
+    const name = JSON.parse(raw)?.layerShellOutputName;
+    return typeof name === 'string' ? name.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Copy the helper out of a type-2 AppImage's FUSE mount before spawning it. The
  * mount lives only as long as the runtime's direct child — this process, which
  * exits right after the handoff — while the helper must outlive it. A demand-paged
@@ -407,9 +427,49 @@ function createLayerShellRaiser({
       log.debug?.(`Layer-shell ${command} failed:`, error?.message || error);
     }
   };
+  /**
+   * Ask the helper for the session's monitors. Resolves to
+   * [{ name, description }] in the compositor's order, or [] on any failure —
+   * callers (the tray's monitor submenu) must treat "no answer" as "offer
+   * nothing", same degrade-to-no-op contract as raise/restore. The generous
+   * timeout covers the helper's fresh registry scan (itself capped at ~2s).
+   */
+  const listOutputs = ({ timeoutMs = 4000 } = {}) =>
+    new Promise((resolve) => {
+      let settled = false;
+      const finish = (outputs) => {
+        if (settled) return;
+        settled = true;
+        resolve(outputs);
+      };
+      try {
+        const socket = connect({ path: controlSocketPath });
+        const chunks = [];
+        socket.on('error', (error) => {
+          log.debug?.('Layer-shell outputs query failed:', error?.message || error);
+          finish([]);
+        });
+        socket.setTimeout?.(timeoutMs, () => socket.destroy());
+        socket.on('data', (chunk) => chunks.push(chunk));
+        socket.on('close', () => {
+          const outputs = [];
+          for (const line of Buffer.concat(chunks).toString('utf8').split('\n')) {
+            const [name = '', description = ''] = line.split('\t');
+            if (name.trim()) outputs.push({ name: name.trim(), description: description.trim() });
+          }
+          finish(outputs);
+        });
+        // end() flushes the command and half-closes; the helper replies then closes.
+        socket.end('outputs\n');
+      } catch (error) {
+        log.debug?.('Layer-shell outputs query failed:', error?.message || error);
+        finish([]);
+      }
+    });
   return {
     raise: () => send('raise'),
     restore: () => send('restore'),
+    listOutputs,
   };
 }
 
@@ -445,6 +505,9 @@ function buildLayerShellSpawnPlan({
   argv = process.argv,
   env = process.env,
   windowSize = DEFAULT_WINDOW_SIZE,
+  // Saved monitor choice (wl_output name) from config; '' lets the compositor
+  // decide. The env override below wins over it, keeping the debugging knob.
+  outputName = '',
   pid = process.pid,
   onInvalidOverride = null,
 } = {}) {
@@ -477,8 +540,9 @@ function buildLayerShellSpawnPlan({
     '--namespace',
     'ha-widget',
   ];
-  const outputName = String(env?.[LAYER_SHELL_OUTPUT_ENV] || '').trim();
-  if (outputName) helperArgs.push('--output-name', outputName);
+  const chosenOutput =
+    String(env?.[LAYER_SHELL_OUTPUT_ENV] || '').trim() || String(outputName || '').trim();
+  if (chosenOutput) helperArgs.push('--output-name', chosenOutput);
 
   const childArgv = (argv || []).slice(1).filter((arg) => typeof arg === 'string');
   if (!getOzonePlatformArgvValue(childArgv)) {
@@ -535,6 +599,7 @@ module.exports = {
   isProcessAlive,
   layerShellSocketName,
   materializeLayerShellHelper,
+  readInitialLayerShellOutputName,
   readInitialLayerShellWindowSize,
   resolveLayerShellHelperPath,
   restoreLayerShellParentEnv,

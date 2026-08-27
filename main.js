@@ -48,6 +48,7 @@ const {
   getLayerShellControlSocketPath,
   isLayerShellChild,
   materializeLayerShellHelper,
+  readInitialLayerShellOutputName,
   readInitialLayerShellWindowSize,
   resolveLayerShellHelperPath,
   restoreLayerShellParentEnv,
@@ -147,6 +148,7 @@ function spawnLayerShellHelper() {
   const plan = buildLayerShellSpawnPlan({
     helperPath,
     windowSize: readInitialLayerShellWindowSize(userDataPath),
+    outputName: readInitialLayerShellOutputName(userDataPath),
     onInvalidOverride: (name, raw, fallback) =>
       log.warn(`Ignoring invalid ${name}=${JSON.stringify(raw)}; using "${fallback}"`),
   });
@@ -680,6 +682,31 @@ const kwinWindowRaiser = usesCompositorOwnedPlacement ? createKWinWindowRaiser({
 const layerShellRaiser = isLayerShellChildProcess
   ? createLayerShellRaiser({ controlSocketPath: layerShellControlSocketPath, log })
   : null;
+// Monitors the layer-shell helper reported, for the tray's "Move to Monitor"
+// submenu. A layer surface cannot be dragged between monitors (the compositor
+// owns its placement, so Super+drag falls through to the window behind it) —
+// moving it means saving a wl_output name and relaunching through the helper
+// with --output-name. The list is queried asynchronously and cached because
+// tray menus are built synchronously; createTray() refreshes it and rebuilds
+// the menu when the answer differs.
+let layerShellMonitors = [];
+let layerShellMonitorRefreshInFlight = false;
+function refreshLayerShellMonitors() {
+  if (!layerShellRaiser || layerShellMonitorRefreshInFlight) return;
+  layerShellMonitorRefreshInFlight = true;
+  layerShellRaiser
+    .listOutputs()
+    .then((outputs) => {
+      layerShellMonitorRefreshInFlight = false;
+      if (JSON.stringify(outputs) === JSON.stringify(layerShellMonitors)) return;
+      layerShellMonitors = outputs;
+      if (tray && !tray.isDestroyed?.()) createTray();
+    })
+    .catch((error) => {
+      layerShellMonitorRefreshInFlight = false;
+      log.debug?.('Layer-shell monitor refresh failed:', error?.message || error);
+    });
+}
 // Owns the window level, full-screen visibility, and saved position for every path that
 // pops the widget up, so a hotkey press lands above full-screen video instead of behind it.
 const popupWindowPresenter = createPopupWindowPresenter({
@@ -3624,6 +3651,11 @@ function loadConfig(options = {}) {
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
     popupHotkeyToggleMode: false, // Press once to show, press again to hide (instead of hold)
+    // wl_output name (e.g. "DP-1") the layer-shell surface should appear on;
+    // '' lets the compositor choose. Only meaningful on tiling Wayland
+    // compositors — a layer surface cannot be dragged between monitors, so
+    // this is set from the tray's monitor submenu and applied via relaunch.
+    layerShellOutputName: '',
     profileSync: getDefaultProfileSyncConfig(),
   };
 
@@ -5158,6 +5190,32 @@ function createWindow() {
   });
 }
 
+// Save the monitor choice ('' = compositor decides) and relaunch through a fresh
+// helper so the layer surface is created on that wl_output. The restart happens
+// outside the config-mutation lock: flushConfigForBoundedExit does its own config
+// flushing and must not run under the same serialization.
+function applyLayerShellMonitorChoice(outputName) {
+  runSerializedConfigMutation(async () => {
+    const previousValue = config.layerShellOutputName || '';
+    if (previousValue === outputName) return false;
+    config.layerShellOutputName = outputName;
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.layerShellOutputName = previousValue;
+      log.warn(`Failed to save layer-shell monitor choice: ${persistence.error}`);
+      // The unchanged radio state must win over the click's optimistic toggle.
+      createTray();
+      return false;
+    }
+    log.info(`Layer-shell monitor choice saved: ${outputName || 'automatic'}; restarting`);
+    return true;
+  })
+    .then((saved) => (saved ? restartApplication() : undefined))
+    .catch((error) => {
+      log.warn('Failed to apply layer-shell monitor choice:', error.message);
+    });
+}
+
 function buildTrayContextMenu() {
   return Menu.buildFromTemplate([
     {
@@ -5212,6 +5270,30 @@ function buildTrayContextMenu() {
         });
       },
     },
+    // A layer surface cannot be dragged between monitors, so moving it is a
+    // config choice plus a relaunch. Shown only when the helper answered the
+    // monitor query — an old or wedged helper degrades to no menu item.
+    ...(layerShellRaiser && layerShellMonitors.length
+      ? [
+          {
+            label: mainT('Move to Monitor'),
+            submenu: [
+              {
+                label: mainT('Automatic'),
+                type: 'radio',
+                checked: !String(config.layerShellOutputName || '').trim(),
+                click: () => applyLayerShellMonitorChoice(''),
+              },
+              ...layerShellMonitors.map((monitor) => ({
+                label: monitor.description || monitor.name,
+                type: 'radio',
+                checked: String(config.layerShellOutputName || '').trim() === monitor.name,
+                click: () => applyLayerShellMonitorChoice(monitor.name),
+              })),
+            ],
+          },
+        ]
+      : []),
     { type: 'separator' },
     {
       label: mainT('DevTools'),
@@ -5294,6 +5376,10 @@ function createTray() {
   const contextMenu = buildTrayContextMenu();
   tray.setToolTip(mainT('Home Assistant Widget'));
   tray.setContextMenu(contextMenu);
+  // Rebuilds this menu with the monitor submenu once the helper answers (and
+  // again after hotplug, next time the tray is rebuilt). Self-terminating: the
+  // rebuild only happens when the monitor list actually changed.
+  refreshLayerShellMonitors();
   if (IS_SMOKE_TEST_MODE) {
     smokeTestTrayReady = true;
     maybeFinishSmokeTest();
@@ -7199,36 +7285,40 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   }
 });
 
+async function restartApplication() {
+  log.info('Restarting application');
+  await flushConfigForBoundedExit('restarting');
+  shutDownRuntimeAfterConfigFlush();
+  quitFinalized = true;
+  // Inside a layer-shell child, restart through a fresh helper so the new instance
+  // is a layer surface again (the parent environment was restored at whenReady, so
+  // the spawn plan reconnects to the real compositor). The old helper's socket must
+  // not outlive this process as the app's display, so hand off before exiting. If
+  // the helper cannot start, plain app.relaunch() redetects the compositor afresh.
+  let replacedByLayerShellHelper = false;
+  if (isLayerShellChildProcess) {
+    replacedByLayerShellHelper = spawnLayerShellHelper();
+  }
+  if (replacedByLayerShellHelper) {
+    // The helper's child is booting right now; holding the lock until exit would
+    // make it lose the race and quit immediately. Release only after the spawn
+    // succeeded: dropping it first would leave a window where an unrelated launch
+    // could take the lock while this restart can still fail back to relaunch().
+    app.releaseSingleInstanceLock();
+  } else {
+    // app.relaunch() spawns the successor only after this process exits, which is
+    // also what frees the lock — no explicit release needed, and holding it until
+    // then keeps the single-instance guarantee unbroken.
+    app.relaunch();
+  }
+  app.exit(0);
+}
+
 ipcMain.handle('restart-app', async (event) => {
   const sender = authorizeIpcSender(event, 'restart-app');
   if (!sender) return rejectUnauthorizedIpc('restart-app');
-  log.info('Restarting application');
   try {
-    await flushConfigForBoundedExit('restarting');
-    shutDownRuntimeAfterConfigFlush();
-    quitFinalized = true;
-    // Inside a layer-shell child, restart through a fresh helper so the new instance
-    // is a layer surface again (the parent environment was restored at whenReady, so
-    // the spawn plan reconnects to the real compositor). The old helper's socket must
-    // not outlive this process as the app's display, so hand off before exiting. If
-    // the helper cannot start, plain app.relaunch() redetects the compositor afresh.
-    let replacedByLayerShellHelper = false;
-    if (isLayerShellChildProcess) {
-      replacedByLayerShellHelper = spawnLayerShellHelper();
-    }
-    if (replacedByLayerShellHelper) {
-      // The helper's child is booting right now; holding the lock until exit would
-      // make it lose the race and quit immediately. Release only after the spawn
-      // succeeded: dropping it first would leave a window where an unrelated launch
-      // could take the lock while this restart can still fail back to relaunch().
-      app.releaseSingleInstanceLock();
-    } else {
-      // app.relaunch() spawns the successor only after this process exits, which is
-      // also what frees the lock — no explicit release needed, and holding it until
-      // then keeps the single-instance guarantee unbroken.
-      app.relaunch();
-    }
-    app.exit(0);
+    await restartApplication();
     return { success: true };
   } catch (error) {
     log.warn('Failed to restart app:', error.message);
