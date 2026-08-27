@@ -142,6 +142,8 @@ function spawnLayerShellHelper() {
   const plan = buildLayerShellSpawnPlan({
     helperPath,
     windowSize: readInitialLayerShellWindowSize(userDataPath),
+    onInvalidOverride: (name, raw, fallback) =>
+      log.warn(`Ignoring invalid ${name}=${JSON.stringify(raw)}; using "${fallback}"`),
   });
   // The helper's stderr is the only diagnostic when it cannot bind its socket or
   // reach the compositor, so keep it out of the void. Rotate once past ~1MB so a
@@ -172,11 +174,12 @@ function spawnLayerShellHelper() {
       log.warn('Layer-shell helper failed after spawn:', error.message);
     });
     // A successful handoff exits this process in the same tick as returning, so wait
-    // here — synchronously — until the helper has bound its private socket. The helper
-    // preflights the upstream display (reachable, advertises wlr-layer-shell) before
-    // binding and exits nonzero when it cannot serve, so a failure here means "keep
-    // running as a normal window", never "exit into nothing".
-    if (!waitForLayerShellHelperReady(helper, plan.socketPath)) {
+    // here — synchronously — until the helper writes its pid-stamped ready marker
+    // (bound, listening, child spawned). The helper preflights the upstream display
+    // (reachable, advertises wlr-layer-shell) before binding and exits nonzero when
+    // it cannot serve, so a failure here means "keep running as a normal window",
+    // never "exit into nothing".
+    if (!waitForLayerShellHelperReady(helper, plan.readyPath)) {
       log.warn(`Layer-shell helper did not become ready (see ${helperLogPath}); not handing off`);
       try {
         helper.kill();
@@ -200,8 +203,24 @@ function spawnLayerShellHelper() {
     }
   }
 }
-if (shouldRelaunchIntoLayerShell({ waylandSession: isWaylandSession() })) {
-  const compositor = detectTilingLayerShellCompositor() || 'compositor forced by env override';
+const layerShellCompositor = detectTilingLayerShellCompositor();
+if (
+  shouldRelaunchIntoLayerShell({
+    waylandSession: isWaylandSession(),
+    detectedCompositor: layerShellCompositor,
+  })
+) {
+  const compositor = layerShellCompositor || 'compositor forced by env override';
+  // If another instance already owns the single-instance lock, don't pay for a
+  // helper spawn whose child will just lose that lock and quit: probe the lock
+  // now, wake the running instance, and stop. On a successful probe release it
+  // again immediately — the child spawned through the helper must be the one to
+  // take it (see the comment above spawnLayerShellHelper).
+  if (!app.requestSingleInstanceLock()) {
+    log.info('Another instance is already running; skipping the layer-shell handoff');
+    app.exit(0);
+  }
+  app.releaseSingleInstanceLock();
   if (spawnLayerShellHelper()) {
     log.info(
       `Tiling Wayland compositor (${compositor}); relaunching as a bottom-layer surface through the windowtolayer helper`
@@ -280,7 +299,7 @@ const {
   createSerializedTaskRunner,
   createLatestTaskCoalescer,
 } = require('./src/serialized-task-runner.cjs');
-const { shouldBlockConfigWrite } = require('./src/config-write-guard.cjs');
+const { CONFIG_FILE_NAME, shouldBlockConfigWrite } = require('./src/config-write-guard.cjs');
 const { replaceConfigEntityIdReferences } = require('./src/config-entity-references.cjs');
 const { requireExistingSyncParentDirectory } = require('./src/cloud-sync-path.cjs');
 const {
@@ -3522,7 +3541,7 @@ function loadConfig(options = {}) {
   configWriteBlockedReason = '';
   const deferSecureStorage = !!options.deferSecureStorage;
   const userDataDir = app.getPath('userData');
-  const configPath = path.join(userDataDir, 'config.json');
+  const configPath = path.join(userDataDir, CONFIG_FILE_NAME);
   preservedEncryptedTokenForRecovery = null;
   deferredHomeAssistantTokenDecryptPending = false;
   deferredPlaintextTokenMigrationPending = false;
@@ -3826,7 +3845,7 @@ function loadConfig(options = {}) {
       }
     } else {
       // Migrate legacy config if present in app directory
-      const legacyPath = path.join(__dirname, 'config.json');
+      const legacyPath = path.join(__dirname, CONFIG_FILE_NAME);
       let migrated = false;
       if (fs.existsSync(legacyPath)) {
         try {
@@ -4059,7 +4078,7 @@ function getSafeConfigBackupLabel(reason) {
 // Backup configuration before migration or first write in a process.
 function backupConfig(reason = 'migration') {
   const userDataDir = app.getPath('userData');
-  const configPath = path.join(userDataDir, 'config.json');
+  const configPath = path.join(userDataDir, CONFIG_FILE_NAME);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupLabel = getSafeConfigBackupLabel(reason);
   const backupPath = path.join(userDataDir, 'config.backup.json');
@@ -4105,7 +4124,7 @@ function buildConfigSnapshotForSave() {
     throw new Error(configWriteBlockedReason);
   }
   const userDataDir = app.getPath('userData');
-  const configPath = path.join(userDataDir, 'config.json');
+  const configPath = path.join(userDataDir, CONFIG_FILE_NAME);
   const snapshotVersion = ++configSnapshotVersion;
   const tempPath = `${configPath}.${snapshotVersion}.tmp`;
 
@@ -7176,12 +7195,20 @@ ipcMain.handle('restart-app', async (event) => {
     // the spawn plan reconnects to the real compositor). The old helper's socket must
     // not outlive this process as the app's display, so hand off before exiting. If
     // the helper cannot start, plain app.relaunch() redetects the compositor afresh.
+    let replacedByLayerShellHelper = false;
     if (isLayerShellChildProcess) {
-      // The relaunch replaces this instance; holding the lock until exit would make
-      // the freshly spawned instance lose the race and quit immediately.
-      app.releaseSingleInstanceLock();
+      replacedByLayerShellHelper = spawnLayerShellHelper();
     }
-    if (!isLayerShellChildProcess || !spawnLayerShellHelper()) {
+    if (replacedByLayerShellHelper) {
+      // The helper's child is booting right now; holding the lock until exit would
+      // make it lose the race and quit immediately. Release only after the spawn
+      // succeeded: dropping it first would leave a window where an unrelated launch
+      // could take the lock while this restart can still fail back to relaunch().
+      app.releaseSingleInstanceLock();
+    } else {
+      // app.relaunch() spawns the successor only after this process exits, which is
+      // also what frees the lock — no explicit release needed, and holding it until
+      // then keeps the single-instance guarantee unbroken.
       app.relaunch();
     }
     app.exit(0);

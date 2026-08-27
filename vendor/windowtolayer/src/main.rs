@@ -84,12 +84,10 @@ impl Log for Logger {
 fn connect_to_unix_addr(
     upstream_fd: OwnedFd,
     addr: &net::SocketAddrUnix,
-) -> Result<OwnedFd, &'static str> {
-    let res = net::connect(&upstream_fd, addr);
-    if res.is_ok() {
-        Ok(upstream_fd)
-    } else {
-        Err("Failed to connect to WAYLAND_DISPLAY")
+) -> Result<OwnedFd, io::Errno> {
+    match net::connect(&upstream_fd, addr) {
+        Ok(()) => Ok(upstream_fd),
+        Err(e) => Err(e),
     }
 }
 
@@ -127,6 +125,7 @@ fn connect_to_upstream() -> Result<OwnedFd, &'static str> {
         if disp.as_encoded_bytes().starts_with(leading_slash) {
             let addr = net::SocketAddrUnix::new(disp.as_os_str()).unwrap();
             connect_to_unix_addr(upstream_fd, &addr)
+                .map_err(|_| "Failed to connect to WAYLAND_DISPLAY")
         } else if let Some(dir) = env_dir {
             let mut path = OsString::new();
             path.push(dir);
@@ -134,6 +133,7 @@ fn connect_to_upstream() -> Result<OwnedFd, &'static str> {
             path.push(disp);
             let addr = net::SocketAddrUnix::new(path.as_os_str()).unwrap();
             connect_to_unix_addr(upstream_fd, &addr)
+                .map_err(|_| "Failed to connect to WAYLAND_DISPLAY")
         } else {
             Err("XDG_RUNTIME_DIR was not in environment")
         }
@@ -157,11 +157,15 @@ fn set_cloexec(fd: &OwnedFd, cloexec: bool) -> bool {
 fn read_from_socket(socket: &OwnedFd, bufs: &mut ProxySide) -> Result<(), String> {
     // assume the socket starts _empty_, for now
     if bufs.nbytes_src == bufs.buf_src.len() {
-        panic!(
-            "no remaining space: {} used, {} total",
+        /* With buffers at least one maximum-size Wayland message (65535 bytes;
+         * the wire length field is 16 bits) large, a full source buffer means a
+         * malformed stream. Close this connection instead of panicking, which
+         * under panic=abort would take down every proxied connection at once. */
+        return Err(format!(
+            "no remaining space in receive buffer: {} used, {} total; closing connection",
             bufs.nbytes_src,
             bufs.buf_src.len()
-        );
+        ));
     }
 
     let mut iovs = [IoSliceMut::new(&mut bufs.buf_src[bufs.nbytes_src..])];
@@ -673,14 +677,19 @@ fn main() {
                 size = Some(if let Some(p) = parsed {
                     p
                 } else {
-                    command_line_error!("Argument {:?} for --size is not of the form WxH with positive integers", s);
+                    command_line_error!(
+                        "Argument {:?} for --size is not of the form WxH with positive integers",
+                        s
+                    );
                 });
             }
             Arg::Long("margin") => {
                 let s = get_option(&mut parser, "--margin");
                 let parsed = s.to_str().and_then(|txt| {
-                    let values: Vec<i32> =
-                        txt.split(',').map(|v| v.trim().parse::<i32>().ok()).collect::<Option<_>>()?;
+                    let values: Vec<i32> = txt
+                        .split(',')
+                        .map(|v| v.trim().parse::<i32>().ok())
+                        .collect::<Option<_>>()?;
                     match values[..] {
                         [m] => Some((m, m, m, m)),
                         [t, r, b, l] => Some((t, r, b, l)),
@@ -694,14 +703,13 @@ fn main() {
                 });
             }
             Arg::Long("listen-socket") => {
-                listen_socket =
-                    if let Ok(y) = get_option(&mut parser, "--listen-socket").into_string() {
-                        Some(y)
-                    } else {
-                        command_line_error!(
-                            "Argument for --listen-socket is not a valid UTF-8 string"
-                        );
-                    }
+                listen_socket = if let Ok(y) =
+                    get_option(&mut parser, "--listen-socket").into_string()
+                {
+                    Some(y)
+                } else {
+                    command_line_error!("Argument for --listen-socket is not a valid UTF-8 string");
+                }
             }
             Arg::Long(l) => {
                 command_line_error!("Invalid long argument --{}", l);
@@ -871,9 +879,17 @@ struct ProxyConfig {
 
 /* Forward messages in each direction over one client connection, until either side hangs up. */
 fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
+    /* One maximum-size Wayland message always fits: the wire length field is 16
+     * bits (65535 bytes), and libwayland >= 1.23 grows its buffers and really
+     * does emit messages larger than 4096 bytes. */
+    const PROXY_BUF_SIZE: usize = 65536;
+    let mut up_src = vec![0_u8; PROXY_BUF_SIZE];
+    let mut up_dst = vec![0_u8; PROXY_BUF_SIZE];
+    let mut down_src = vec![0_u8; PROXY_BUF_SIZE];
+    let mut down_dst = vec![0_u8; PROXY_BUF_SIZE];
     let mut bufs_upward = ProxySide {
-        buf_src: &mut [0_u8; 4096],
-        buf_dst: &mut [0_u8; 4096],
+        buf_src: &mut up_src[..],
+        buf_dst: &mut up_dst[..],
         fds_in: ArrayVec::new(),
         fds_out: ArrayVec::new(),
         early_fds_out: ArrayVec::new(),
@@ -881,8 +897,8 @@ fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
         nbytes_dst: 0,
     };
     let mut bufs_downward = ProxySide {
-        buf_src: &mut [0_u8; 4096],
-        buf_dst: &mut [0_u8; 4096],
+        buf_src: &mut down_src[..],
+        buf_dst: &mut down_dst[..],
         fds_in: ArrayVec::new(),
         fds_out: ArrayVec::new(),
         early_fds_out: ArrayVec::new(),
@@ -1022,7 +1038,7 @@ fn resolve_upstream_path() -> Result<OsString, &'static str> {
     Ok(path)
 }
 
-fn connect_to_upstream_path(path: &OsStr) -> Result<OwnedFd, &'static str> {
+fn connect_to_upstream_path(path: &OsStr) -> Result<OwnedFd, io::Errno> {
     let upstream_fd = net::socket_with(
         net::AddressFamily::UNIX,
         net::SocketType::STREAM,
@@ -1057,9 +1073,25 @@ fn remove_socket_if_ours(path: &std::path::Path, bound: Option<(u64, u64)>) {
  * wl_registry.global events until the sync callback fires. */
 fn check_upstream_layer_shell(upstream_path: &OsStr) -> Result<(), String> {
     use std::io::{ErrorKind, Read, Write};
-    let timeout = std::time::Duration::from_secs(5);
-    let mut stream = std::os::unix::net::UnixStream::connect(upstream_path)
-        .map_err(|e| format!("Cannot connect to Wayland display {:?}: {}", upstream_path, e))?;
+    /* 2s, not more: a supervising process typically gives the whole helper
+     * startup ~5s before declaring failure, and this preflight must leave that
+     * deadline margin for the bind and child spawn that follow, rather than
+     * having a slow-but-healthy compositor race the supervisor's timeout. */
+    let timeout = std::time::Duration::from_secs(2);
+    /* A blocking connect() can park indefinitely when a wedged compositor's
+     * accept backlog is full (read/write timeouts only apply afterwards); a
+     * nonblocking AF_UNIX connect either succeeds or fails immediately. */
+    let mut stream: std::os::unix::net::UnixStream = connect_to_upstream_path(upstream_path)
+        .map_err(|e| {
+            format!(
+                "Cannot connect to Wayland display {:?}: {:?}",
+                upstream_path, e
+            )
+        })?
+        .into();
+    stream
+        .set_nonblocking(false)
+        .map_err(|e| format!("Failed to configure preflight socket: {}", e))?;
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
 
@@ -1071,9 +1103,12 @@ fn check_upstream_layer_shell(upstream_path: &OsStr) -> Result<(), String> {
         req.extend_from_slice(&((12u32 << 16) | opcode).to_le_bytes());
         req.extend_from_slice(&new_id.to_le_bytes());
     }
-    stream
-        .write_all(&req)
-        .map_err(|e| format!("Failed to write to Wayland display {:?}: {}", upstream_path, e))?;
+    stream.write_all(&req).map_err(|e| {
+        format!(
+            "Failed to write to Wayland display {:?}: {}",
+            upstream_path, e
+        )
+    })?;
 
     let mut buf: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 4096];
@@ -1094,7 +1129,10 @@ fn check_upstream_layer_shell(upstream_path: &OsStr) -> Result<(), String> {
                  * includes the NUL terminator), version u32 */
                 if body.len() >= 8 {
                     let slen = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
-                    if slen > 0 && body.len() >= 8 + slen && &body[8..8 + slen - 1] == b"zwlr_layer_shell_v1" {
+                    if slen > 0
+                        && body.len() >= 8 + slen
+                        && &body[8..8 + slen - 1] == b"zwlr_layer_shell_v1"
+                    {
                         return Ok(());
                     }
                 }
@@ -1167,18 +1205,42 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
     };
     let mut listen_path = std::path::PathBuf::from(&runtime_dir);
     listen_path.push(sock_name);
+    /* Readiness marker: created only after the socket is bound AND the child was
+     * spawned, holding this helper's pid. A supervising process polls for it and
+     * verifies the pid, so neither a stale socket left by a crashed earlier run
+     * nor the bind-to-spawn window can be mistaken for readiness. */
+    let mut ready_os = listen_path.clone().into_os_string();
+    ready_os.push(".ready");
+    let ready_path = std::path::PathBuf::from(ready_os);
     /* Remove a stale socket from an earlier run (bind fails on an existing path),
-     * but refuse to displace a socket another live instance is accepting on. */
+     * but refuse to displace a socket another live instance is accepting on. Only
+     * "nobody is listening here" proves staleness: ECONNREFUSED for a dead socket
+     * file, ENOENT for a raced removal. EAGAIN in particular means a live listener
+     * whose accept backlog is momentarily full, and any other error leaves
+     * ownership unclear — refuse to displace in both cases. */
     if listen_path.exists() {
-        if connect_to_upstream_path(listen_path.as_os_str()).is_ok() {
-            eprintln!(
-                "Listening socket {:?} is already in use by another instance",
-                listen_path
-            );
-            std::process::exit(1);
+        match connect_to_upstream_path(listen_path.as_os_str()) {
+            Ok(_) => {
+                eprintln!(
+                    "Listening socket {:?} is already in use by another instance",
+                    listen_path
+                );
+                std::process::exit(1);
+            }
+            Err(io::Errno::CONNREFUSED) | Err(io::Errno::NOENT) => {
+                let _ = std::fs::remove_file(&listen_path);
+            }
+            Err(e) => {
+                eprintln!(
+                    "Cannot tell whether listening socket {:?} is stale (connect failed with {:?}); refusing to displace it",
+                    listen_path, e
+                );
+                std::process::exit(1);
+            }
         }
-        let _ = std::fs::remove_file(&listen_path);
     }
+    /* A stale marker from a crashed run must not linger next to the fresh socket. */
+    let _ = std::fs::remove_file(&ready_path);
 
     let listener = net::socket_with(
         net::AddressFamily::UNIX,
@@ -1210,7 +1272,13 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
     let mut cmd = Command::new(command[0]);
     cmd.args(&command[1..])
         .env("WAYLAND_DISPLAY", sock_name)
-        .env_remove("WAYLAND_SOCKET");
+        .env_remove("WAYLAND_SOCKET")
+        /* The helper's own stdout/stderr typically point at a supervisor's log
+         * file; a long-lived child inheriting them would grow that log without
+         * bound and keep the inode alive through any rotation. The child is an
+         * application with its own logging. */
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     let mut handle = match cmd.spawn() {
         Ok(h) => h,
         Err(e) => {
@@ -1224,6 +1292,11 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
             std::process::exit(1);
         }
     };
+    /* Bound, listening, and the child exists: signal readiness. If this write
+     * fails the supervisor times out and treats the helper as failed. */
+    if let Err(e) = std::fs::write(&ready_path, std::process::id().to_string()) {
+        eprintln!("Failed to write readiness marker {:?}: {}", ready_path, e);
+    }
 
     /* Poll with a timeout so the child's exit is noticed without a dedicated signal handler. */
     let timeout = rustix::event::Timespec {
@@ -1231,6 +1304,13 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
         tv_nsec: 250_000_000,
     };
     let active_connections = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    /* Keep the listener open and accepting until the child has exited AND every
+     * proxied connection has closed: the spawned command may have re-executed or
+     * forked (e.g. an AppImage runtime), and a surviving descendant may open new
+     * connections after the direct child exits, not just keep existing ones. A
+     * live connection implies a live client, so this cannot wait forever on
+     * well-behaved clients. */
+    let mut child_exited = false;
     loop {
         let mut pfds = [event::PollFd::new(&listener, event::PollFlags::IN)];
         let _ = event::poll(&mut pfds, Some(&timeout));
@@ -1260,20 +1340,19 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
                 }
             }
         }
-        match handle.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {}
-            Err(_) => break,
+        if !child_exited {
+            match handle.try_wait() {
+                Ok(Some(_)) => child_exited = true,
+                Ok(None) => {}
+                Err(_) => child_exited = true,
+            }
+        }
+        if child_exited && active_connections.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            break;
         }
     }
-    debug!("Program exited; removing listening socket");
+    debug!("Program exited and connections drained; removing listening socket");
     drop(listener);
     remove_socket_if_ours(&listen_path, bound_socket_id);
-    /* The spawned command may have re-executed or forked (e.g. an AppImage
-     * runtime); keep serving connections that are still open instead of
-     * cutting off surviving processes mid-session. A live connection implies
-     * a live client, so this cannot wait forever on well-behaved clients. */
-    while active_connections.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    let _ = std::fs::remove_file(&ready_path);
 }

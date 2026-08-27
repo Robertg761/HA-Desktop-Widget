@@ -12,6 +12,7 @@ const {
   buildLayerShellSpawnPlan,
   detectTilingLayerShellCompositor,
   isLayerShellChild,
+  isProcessAlive,
   layerShellSocketName,
   materializeLayerShellHelper,
   readInitialLayerShellWindowSize,
@@ -31,14 +32,65 @@ const hyprlandSessionEnv = {
 };
 
 describe('layer-shell compositor detection', () => {
+  const socketExists = { exists: () => true };
+
   test('recognizes tiling wlr-layer-shell compositors by their session sockets', () => {
-    expect(detectTilingLayerShellCompositor(hyprlandEnv)).toBe('hyprland');
-    expect(detectTilingLayerShellCompositor({ SWAYSOCK: '/run/user/1000/sway.sock' })).toBe('sway');
-    expect(detectTilingLayerShellCompositor({ NIRI_SOCKET: '/run/user/1000/niri.sock' })).toBe(
-      'niri'
-    );
+    expect(detectTilingLayerShellCompositor(hyprlandEnv, socketExists)).toBe('hyprland');
+    expect(
+      detectTilingLayerShellCompositor({ SWAYSOCK: '/run/user/1000/sway.sock' }, socketExists)
+    ).toBe('sway');
+    expect(
+      detectTilingLayerShellCompositor({ NIRI_SOCKET: '/run/user/1000/niri.sock' }, socketExists)
+    ).toBe('niri');
     expect(detectTilingLayerShellCompositor({ XDG_CURRENT_DESKTOP: 'river' })).toBe('river');
     expect(detectTilingLayerShellCompositor({ XDG_CURRENT_DESKTOP: 'Hyprland' })).toBe('hyprland');
+  });
+
+  test('probes both Hyprland socket locations (XDG_RUNTIME_DIR and legacy /tmp)', () => {
+    const probed = [];
+    detectTilingLayerShellCompositor(
+      { ...hyprlandEnv, XDG_RUNTIME_DIR: '/run/user/1000' },
+      {
+        exists: (candidate) => {
+          probed.push(candidate);
+          return false;
+        },
+      }
+    );
+    expect(probed).toEqual([
+      path.join('/run/user/1000', 'hypr', 'abc123', '.socket.sock'),
+      path.join('/tmp', 'hypr', 'abc123', '.socket.sock'),
+    ]);
+  });
+
+  test('distrusts instance variables leaked into a foreign session (no live socket)', () => {
+    // `systemctl --user import-environment` commonly carries HYPRLAND_INSTANCE_SIGNATURE
+    // or SWAYSOCK into later sessions on another compositor; without the socket the
+    // variable names, it proves nothing.
+    const noSocket = { exists: () => false };
+    expect(detectTilingLayerShellCompositor(hyprlandEnv, noSocket)).toBe(null);
+    expect(
+      detectTilingLayerShellCompositor({ SWAYSOCK: '/run/user/1000/sway.sock' }, noSocket)
+    ).toBe(null);
+    expect(
+      detectTilingLayerShellCompositor({ NIRI_SOCKET: '/run/user/1000/niri.sock' }, noSocket)
+    ).toBe(null);
+    // A real session whose variables leaked AND whose desktop is a tiling one is
+    // still caught by XDG_CURRENT_DESKTOP, which login sessions set afresh.
+    expect(
+      detectTilingLayerShellCompositor(
+        { ...hyprlandEnv, XDG_CURRENT_DESKTOP: 'Hyprland' },
+        noSocket
+      )
+    ).toBe('hyprland');
+    // A probe that throws counts as "no socket", not as a crash.
+    expect(
+      detectTilingLayerShellCompositor(hyprlandEnv, {
+        exists: () => {
+          throw new Error('EACCES');
+        },
+      })
+    ).toBe(null);
   });
 
   test('leaves stacking compositors on the existing window paths', () => {
@@ -55,6 +107,9 @@ describe('shouldRelaunchIntoLayerShell', () => {
     waylandSession: true,
     env: hyprlandSessionEnv,
     argv: ['electron', '.'],
+    // The detection's socket probe, satisfied: these tests exercise the policy
+    // around detection, not detection itself.
+    exists: () => true,
   };
 
   test('relaunches on a tiling Wayland compositor', () => {
@@ -80,6 +135,27 @@ describe('shouldRelaunchIntoLayerShell', () => {
     expect(shouldRelaunchIntoLayerShell({ ...base, argv: ['electron', '.', '--smoke-test'] })).toBe(
       false
     );
+  });
+
+  test('the isolated climate demo keeps its throwaway profile in this process', () => {
+    expect(
+      shouldRelaunchIntoLayerShell({ ...base, argv: ['electron', '.', '--demo-climate'] })
+    ).toBe(false);
+  });
+
+  test('reuses a caller-provided detection result instead of detecting again', () => {
+    let probes = 0;
+    const spyExists = () => {
+      probes += 1;
+      return true;
+    };
+    expect(
+      shouldRelaunchIntoLayerShell({ ...base, exists: spyExists, detectedCompositor: 'hyprland' })
+    ).toBe(true);
+    expect(
+      shouldRelaunchIntoLayerShell({ ...base, exists: spyExists, detectedCompositor: null })
+    ).toBe(false);
+    expect(probes).toBe(0);
   });
 
   test('refuses without a display to proxy or a runtime dir to bind in, even when forced', () => {
@@ -237,6 +313,10 @@ describe('materializeLayerShellHelper', () => {
         mkdirSync: (dir, opts) => calls.push(['mkdir', dir, opts]),
         chmodSync: (file, mode) => calls.push(['chmod', file, mode]),
         renameSync: (from, to) => calls.push(['rename', from, to]),
+        // No previously materialized copy, so the size-skip check falls through.
+        statSync: () => {
+          throw new Error('ENOENT');
+        },
         pid: 4242,
       },
     };
@@ -262,6 +342,43 @@ describe('materializeLayerShellHelper', () => {
       ['chmod', staging, 0o755],
       ['rename', staging, path.join('/data/helpers', 'windowtolayer')],
     ]);
+  });
+
+  test('skips the copy when an identical helper is already materialized', () => {
+    const { calls, deps } = fakeFs();
+    const target = path.join('/data/helpers', 'windowtolayer');
+    const result = materializeLayerShellHelper(
+      '/tmp/.mount_widgetXYZ/resources/helpers/windowtolayer',
+      {
+        env: appImageEnv,
+        targetDir: '/data/helpers',
+        ...deps,
+        // Same size as the source: the existing copy is reused. (mtime cannot be
+        // compared — copyFileSync stamps the copy time, not the source's.)
+        statSync: () => ({ size: 1234 }),
+      }
+    );
+    expect(result).toBe(target);
+    expect(calls).toEqual([['mkdir', '/data/helpers', { recursive: true }]]);
+  });
+
+  test('re-copies when the materialized helper differs in size', () => {
+    const { calls, deps } = fakeFs();
+    const sizes = new Map([
+      [path.join('/data/helpers', 'windowtolayer'), 1000],
+      ['/tmp/.mount_widgetXYZ/resources/helpers/windowtolayer', 2000],
+    ]);
+    const result = materializeLayerShellHelper(
+      '/tmp/.mount_widgetXYZ/resources/helpers/windowtolayer',
+      {
+        env: appImageEnv,
+        targetDir: '/data/helpers',
+        ...deps,
+        statSync: (file) => ({ size: sizes.get(file) }),
+      }
+    );
+    expect(result).toBe(path.join('/data/helpers', 'windowtolayer'));
+    expect(calls.map(([op]) => op)).toEqual(['mkdir', 'copy', 'chmod', 'rename']);
   });
 
   test('recognizes the mount through APPDIR even without the .mount_ marker', () => {
@@ -317,67 +434,99 @@ describe('materializeLayerShellHelper', () => {
   });
 });
 
-describe('waitForLayerShellHelperReady', () => {
-  const socketPath = '/run/user/1000/ha-widget-layer-shell-4242';
+describe('isProcessAlive', () => {
+  test('reads the process state from /proc, surviving parentheses in the name', () => {
+    // Field 3 (state) follows the comm field; comm may itself contain ')'.
+    const alive = isProcessAlive(100, {
+      readFileSync: (file) => {
+        expect(file).toBe('/proc/100/stat');
+        return '100 (wt (evil) name) S 1 100 100 0 -1';
+      },
+    });
+    expect(alive).toBe(true);
+  });
 
-  test('returns true once the helper has bound its socket', () => {
+  test('reports zombies, dead processes, and missing /proc entries as not alive', () => {
+    // While this thread blocks in Atomics.wait, libuv cannot reap the exited
+    // helper, so it stays a zombie — and kill(pid, 0) succeeds on zombies. The
+    // /proc state is the only truthful liveness signal here.
+    expect(isProcessAlive(100, { readFileSync: () => '100 (wt) Z 1 100' })).toBe(false);
+    expect(isProcessAlive(100, { readFileSync: () => '100 (wt) X 1 100' })).toBe(false);
+    expect(
+      isProcessAlive(100, {
+        readFileSync: () => {
+          throw new Error('ENOENT');
+        },
+      })
+    ).toBe(false);
+  });
+});
+
+describe('waitForLayerShellHelperReady', () => {
+  const readyPath = '/run/user/1000/ha-widget-layer-shell-4242.ready';
+
+  test('returns true once the helper writes a marker carrying its own pid', () => {
     let polls = 0;
-    const ready = waitForLayerShellHelperReady({ pid: 100 }, socketPath, {
+    const ready = waitForLayerShellHelperReady({ pid: 100 }, readyPath, {
       pollIntervalMs: 1,
-      exists: () => (polls += 1) >= 3,
-      signalProcess: () => {},
+      readFileSync: () => {
+        polls += 1;
+        if (polls < 3) throw new Error('ENOENT');
+        return '100\n';
+      },
+      isAlive: () => true,
       now: () => 0,
     });
     expect(ready).toBe(true);
     expect(polls).toBe(3);
   });
 
+  test('a stale marker from a previous instance does not count as ready', () => {
+    // App-pid reuse can leave a marker (and socket) of the same name from an
+    // older run; the content must match the helper we actually spawned.
+    let clock = 0;
+    expect(
+      waitForLayerShellHelperReady({ pid: 100 }, readyPath, {
+        timeoutMs: 100,
+        readFileSync: () => '99887',
+        isAlive: () => true,
+        now: () => (clock += 200),
+      })
+    ).toBe(false);
+  });
+
   test('returns false when the helper died or never spawned', () => {
     // spawn() failed asynchronously: no pid was ever assigned.
     expect(
-      waitForLayerShellHelperReady({ pid: undefined }, socketPath, {
-        exists: () => false,
+      waitForLayerShellHelperReady({ pid: undefined }, readyPath, {
         now: () => 0,
       })
     ).toBe(false);
-    // The helper exited (preflight refused, bad binary): signal 0 throws.
+    // The helper exited (preflight refused, bad binary) before writing the marker.
     expect(
-      waitForLayerShellHelperReady({ pid: 100 }, socketPath, {
-        exists: () => false,
-        signalProcess: () => {
-          throw new Error('ESRCH');
+      waitForLayerShellHelperReady({ pid: 100 }, readyPath, {
+        readFileSync: () => {
+          throw new Error('ENOENT');
         },
+        isAlive: () => false,
         now: () => 0,
       })
     ).toBe(false);
   });
 
-  test('returns false after the deadline and without a socket path', () => {
+  test('returns false after the deadline and without a ready path', () => {
     let clock = 0;
     expect(
-      waitForLayerShellHelperReady({ pid: 100 }, socketPath, {
+      waitForLayerShellHelperReady({ pid: 100 }, readyPath, {
         timeoutMs: 100,
-        exists: () => false,
-        signalProcess: () => {},
+        readFileSync: () => {
+          throw new Error('ENOENT');
+        },
+        isAlive: () => true,
         now: () => (clock += 200),
       })
     ).toBe(false);
     expect(waitForLayerShellHelperReady({ pid: 100 }, null, { now: () => 0 })).toBe(false);
-  });
-
-  test('keeps polling through transient stat failures', () => {
-    let polls = 0;
-    const ready = waitForLayerShellHelperReady({ pid: 100 }, socketPath, {
-      pollIntervalMs: 1,
-      exists: () => {
-        polls += 1;
-        if (polls === 1) throw new Error('EACCES');
-        return true;
-      },
-      signalProcess: () => {},
-      now: () => 0,
-    });
-    expect(ready).toBe(true);
   });
 });
 
@@ -415,14 +564,16 @@ describe('buildLayerShellSpawnPlan', () => {
     ]);
   });
 
-  test('reports where the helper will bind, for the readiness wait', () => {
+  test('reports the socket and the pid-stamped ready marker the spawner polls', () => {
     const plan = buildLayerShellSpawnPlan(basePlanInput);
     expect(plan.socketPath).toBe(path.join('/run/user/1000', layerShellSocketName(4242)));
+    expect(plan.readyPath).toBe(path.join('/run/user/1000', `${layerShellSocketName(4242)}.ready`));
     const noRuntimeDir = buildLayerShellSpawnPlan({
       ...basePlanInput,
       env: { WAYLAND_DISPLAY: 'wayland-1' },
     });
     expect(noRuntimeDir.socketPath).toBe(null);
+    expect(noRuntimeDir.readyPath).toBe(null);
   });
 
   test('marks the child and preserves the real compositor socket for restarts', () => {
@@ -471,20 +622,37 @@ describe('buildLayerShellSpawnPlan', () => {
     expect(plan.args).toContain('DP-1');
     expect(plan.args).toContain('background');
 
+    const invalid = [];
     const fallback = buildLayerShellSpawnPlan({
       ...basePlanInput,
       env: {
         WAYLAND_DISPLAY: 'wayland-1',
         [LAYER_SHELL_ANCHOR_ENV]: 'diagonal',
-        [LAYER_SHELL_MARGIN_ENV]: '-5',
+        [LAYER_SHELL_MARGIN_ENV]: 'abc',
         [LAYER_SHELL_LAYER_ENV]: 'overlay',
       },
+      onInvalidOverride: (name, raw, usedInstead) => invalid.push([name, raw, usedInstead]),
     });
     expect(fallback.args).toContain('bottom,right');
     expect(fallback.args).toContain('20');
     expect(fallback.args).toContain('bottom');
     expect(fallback.args).not.toContain('overlay');
     expect(fallback.args).not.toContain('--output-name');
+    // Each discarded override is reported, so the spawner can log it: a silently
+    // replaced override is indistinguishable from a broken one.
+    expect(invalid).toEqual([
+      [LAYER_SHELL_LAYER_ENV, 'overlay', 'bottom'],
+      [LAYER_SHELL_ANCHOR_ENV, 'diagonal', 'bottom,right'],
+      [LAYER_SHELL_MARGIN_ENV, 'abc', '20'],
+    ]);
+  });
+
+  test('accepts negative margins, which bleed past the anchored edge', () => {
+    const plan = buildLayerShellSpawnPlan({
+      ...basePlanInput,
+      env: { WAYLAND_DISPLAY: 'wayland-1', [LAYER_SHELL_MARGIN_ENV]: '-5,0,10,-20' },
+    });
+    expect(plan.args).toContain('-5,0,10,-20');
   });
 
   test('relaunches the AppImage itself, not the doomed FUSE-mounted binary', () => {
@@ -518,7 +686,7 @@ describe('buildLayerShellSpawnPlan', () => {
       ...basePlanInput,
       windowSize: { width: 8, height: 999999 },
     });
-    expect(plan.args).toContain('100x4096');
+    expect(plan.args).toContain('100x16384');
     const defaulted = buildLayerShellSpawnPlan({ ...basePlanInput, windowSize: undefined });
     expect(defaulted.args).toContain(`${DEFAULT_WINDOW_SIZE.width}x${DEFAULT_WINDOW_SIZE.height}`);
   });

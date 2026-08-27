@@ -49,21 +49,40 @@ unconditionally above tiled ones. See issue #79 and
    The proxy answers the upstream `xdg_wm_base.ping` itself; downstream pings
    keep being answered by the client as before.
 
-4. Robustness fixes to `--listen-socket` mode: startup refuses to displace a
-   socket another live instance is serving (it only replaces stale files),
-   socket cleanup verifies ownership by device/inode before unlinking, and
-   after the child exits the listener drains active proxy connections before
-   exiting instead of tearing them down mid-message (the AppImage runtime and
-   forked children may outlive the direct child briefly).
+4. Robustness fixes to `--listen-socket` mode: startup probes an existing
+   socket of the same name with a nonblocking connect and only replaces it
+   when the error proves staleness (`ECONNREFUSED`/`ENOENT`); a successful
+   connect, a full backlog (`EAGAIN`), or any other errno means a live or
+   indeterminate owner and the helper exits 1 rather than displace it. Socket
+   cleanup verifies ownership by device/inode before unlinking. After the
+   child exits the listener keeps accepting and serving new connections while
+   the active ones drain, then exits (the AppImage runtime and forked children
+   may outlive the direct child briefly and still open connections).
 
-5. Upstream preflight in `--listen-socket` mode: before binding the listening
-   socket or spawning the child, connect to the upstream display and scan the
-   registry (`wl_display.get_registry` + `sync`) for `zwlr_layer_shell_v1`,
-   exiting 1 with a clear stderr message when the display is unreachable,
-   stale, or the compositor cannot host layer surfaces. Startup errors exit 1
-   instead of returning success. This makes "the listening socket exists" a
-   reliable readiness signal and "the helper exited" a reliable failure signal
-   for a supervising process.
+5. Readiness and preflight in `--listen-socket` mode: before binding the
+   listening socket or spawning the child, connect to the upstream display
+   (nonblocking connect, 2 s total budget) and scan the registry
+   (`wl_display.get_registry` + `sync`) for `zwlr_layer_shell_v1`, exiting 1
+   with a clear stderr message when the display is unreachable, stale, or the
+   compositor cannot host layer surfaces. Startup errors exit 1 instead of
+   returning success. Once the socket is bound, listening, and the child is
+   spawned, the helper writes a ready marker at `<socket path>.ready`
+   containing its own pid (removed again on exit). A supervisor should treat
+   "marker exists and its content matches the helper pid it spawned" as
+   readiness — immune to stale sockets/markers from a previous run — and
+   "the helper exited" as the failure signal.
+
+6. Hardening against the `panic = "abort"` release profile and protocol edge
+   cases: proxy receive buffers are 64 KiB (a single Wayland message caps at
+   65535 bytes, so one message can never overflow them) and a full buffer
+   closes that connection with an error instead of panicking the whole
+   process; `xdg_surface.get_toplevel`/`get_popup` on a surface whose
+   `wl_surface` was already destroyed raise a protocol error instead of
+   panicking; the `wl_surface -> xdg_surface` map is populated on
+   `get_xdg_surface` so surface-destroy cleanup actually runs; the advertised
+   `xdg_wm_base` version is capped at the upstream global's version when
+   known; the child's stdout/stderr are redirected to /dev/null (the helper's
+   own diagnostics still go to its stderr, which the app logs to a file).
 
 These changes are intended to be submitted upstream. If upstream gains
 equivalent functionality, prefer depending on an upstream release and drop

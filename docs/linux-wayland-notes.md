@@ -164,8 +164,11 @@ layer — which Electron cannot create.
 
 So on these compositors the app does not run as an xdg-shell client at all. Before taking
 the single-instance lock, a launch that detects a tiling wlr-layer-shell compositor
-(`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, `NIRI_SOCKET`, or river in
-`XDG_CURRENT_DESKTOP`) spawns the bundled `windowtolayer` helper around a copy of itself
+(`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, or `NIRI_SOCKET` — each trusted only when
+the socket it names actually exists, since `systemctl --user import-environment`
+commonly leaks them into later sessions on other compositors — or any allowlisted
+compositor, including river, in `XDG_CURRENT_DESKTOP`) spawns the bundled
+`windowtolayer` helper around a copy of itself
 and exits (`src/layer-shell.cjs`; helper source in `vendor/windowtolayer`, a patched
 GPL-3.0 fork — see its PATCHES.md). The helper serves a private Wayland socket, relays
 every connection to the real compositor, and rewrites xdg-shell toplevels into
@@ -192,21 +195,25 @@ Operational notes:
   compositor the widget behaves like a normal window and should keep doing so.
 - Placement defaults to `bottom,right` with a 20px margin on the compositor-chosen
   output. Override with `HA_WIDGET_LAYER_SHELL_ANCHOR` (comma-joined edges),
-  `HA_WIDGET_LAYER_SHELL_MARGIN` (one value or `top,right,bottom,left`),
+  `HA_WIDGET_LAYER_SHELL_MARGIN` (one value or `top,right,bottom,left`; negative
+  values are allowed and bleed past the anchored edge),
   `HA_WIDGET_LAYER_SHELL_OUTPUT` (connector name, e.g. `DP-1`), and
-  `HA_WIDGET_LAYER_SHELL_LAYER` (`bottom` or `background`). The saved
-  `config.windowSize` seeds the surface size. `HA_WIDGET_WINDOWTOLAYER` points at an
-  alternative helper binary; without it the app uses the packaged
+  `HA_WIDGET_LAYER_SHELL_LAYER` (`bottom` or `background`). An invalid override is
+  logged and replaced with the default. In layer mode the widget's own saved screen
+  position is not applied — anchor plus margin decide where the surface sits. The
+  saved `config.windowSize` seeds the surface size. `HA_WIDGET_WINDOWTOLAYER` points
+  at an alternative helper binary; without it the app uses the packaged
   `resources/helpers/windowtolayer` or the in-repo cargo build.
 - An in-app restart cannot use `app.relaunch()`: the clone would inherit the child
   marker and a `WAYLAND_DISPLAY` naming the dying helper's socket. The restart path
   spawns a fresh helper instead, reconnected through the preserved upstream display.
   The helper socket name carries the spawning pid so a dev run beside the installed
   widget — or a restart racing the old helper's cleanup — cannot unlink the other's
-  socket, and the helper refuses to displace a socket another live instance is
-  serving. The releasing side also drops the single-instance lock before spawning
-  the fresh helper, so the replacement cannot lose the lock race against a not-yet-
-  exited predecessor.
+  socket, and the helper refuses to displace a socket unless a probe proves it
+  stale. The restarting side keeps the single-instance lock until the fresh helper
+  has spawned successfully and releases it only then, so the replacement cannot
+  lose the lock race against its not-yet-exited predecessor while a failed spawn
+  still falls back to `app.relaunch()` with the guarantee intact.
 - The child's inherited environment (child marker + `WAYLAND_DISPLAY` naming the
   helper's private socket) is restored to the parent's
   (`restoreLayerShellParentEnv`) as the first act of `app.whenReady()`: only the
@@ -222,14 +229,21 @@ Operational notes:
   helper binary itself is copied out of the mount into `<userData>/helpers` before
   spawning (`materializeLayerShellHelper`) for the same reason: a demand-paged ELF
   whose backing mount disappeared dies with SIGBUS on its next cold page fault.
+  The copy is skipped when the materialized helper already matches the bundled one
+  by size (mtime is meaningless there — `copyFileSync` stamps the copy time).
 - The handoff exits the parent only after the helper is demonstrably ready: the
   helper preflights the upstream display (connects and scans the registry for
-  `zwlr_layer_shell_v1`) before binding its socket and exits nonzero otherwise, and
-  the app synchronously waits (`waitForLayerShellHelperReady`) for the socket to
-  appear, watching the helper pid. A stale `WAYLAND_DISPLAY`, a compositor without
-  wlr-layer-shell, or a helper binary that cannot execute all degrade to the normal
-  floating window with a logged warning (`layer-shell-helper.log`, rotated at
-  ~1 MB) instead of a silent no-show.
+  `zwlr_layer_shell_v1`) before binding its socket and exits nonzero otherwise;
+  once bound, listening, and past spawning its child it writes a `<socket>.ready`
+  marker containing its own pid. The app synchronously waits
+  (`waitForLayerShellHelperReady`) for that marker to carry the pid of the helper
+  it actually spawned — a stale socket or marker from a previous run therefore
+  cannot fake readiness — and checks liveness via `/proc/<pid>/stat` rather than
+  `kill(pid, 0)`, because during the synchronous wait an exited helper is an
+  unreaped zombie and signal 0 still succeeds on zombies. A stale
+  `WAYLAND_DISPLAY`, a compositor without wlr-layer-shell, or a helper binary that
+  cannot execute all degrade to the normal floating window with a logged warning
+  (`layer-shell-helper.log`, rotated at ~1 MB) instead of a silent no-show.
 - Smoke tests (`--smoke-test`) never hand off: they must measure the process they
   launched, not a grandchild. Dev caveat: under `npm run dev`, the handoff makes the
   ELECTRON task exit immediately, which takes the renderer watcher down with it

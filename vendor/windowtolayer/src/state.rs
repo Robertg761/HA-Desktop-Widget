@@ -227,12 +227,23 @@ fn process_event_w2l(
                     check_space!((length, 0), (rev_length, 0), dst, reverse_dst);
 
                     let modname = map.add_translated(Some(name))?;
+                    /* Advertise at most the version the real compositor's
+                     * xdg_wm_base offers, when it is already known: popups are
+                     * forwarded to the real xdg_wm_base, so version-gated popup
+                     * requests must not be accepted beyond what upstream can
+                     * honor. (Registry order is arbitrary; if the upstream
+                     * xdg_wm_base global arrives after zwlr_layer_shell_v1 the
+                     * compiled version is used, as before.) */
+                    let advertised_version = match state.xdg_wm_base_global {
+                        Some((_, _, gversion)) => std::cmp::min(XDG_WM_BASE.version, gversion),
+                        None => XDG_WM_BASE.version,
+                    };
                     write_wl_registry_evt_global(
                         dst,
                         alt_id.unwrap(),
                         modname,
                         new_name,
-                        XDG_WM_BASE.version,
+                        advertised_version,
                     );
 
                     if state.dummy_seat {
@@ -935,6 +946,13 @@ fn process_request_w2l(
                 state
                     .xdg_to_wl_surface_map
                     .insert(new_xdg_surface_id, wl_surface_id);
+                /* Populate the reverse map too: wl_surface destruction uses it
+                 * to drop the forward mapping, so a later get_toplevel/get_popup
+                 * on the orphaned xdg_surface errors out cleanly instead of
+                 * looking up a destroyed wl_surface. */
+                state
+                    .wl_to_xdg_surface_map
+                    .insert(wl_surface_id, new_xdg_surface_id);
                 Ok(Done)
             }
             XdgWmBaseReqIDs::CreatePositioner => {
@@ -1110,7 +1128,16 @@ fn process_request_w2l(
                         "Unexpected xdg_surface: created without associated wl_surface".to_string(),
                     ));
                 };
-                let upstream_wl_surface_id = state.objs.down_to_up[wl_surface_id].alt.unwrap();
+                /* .get(), not indexing: a client violating the protocol by
+                 * destroying the wl_surface first must get an error, not a
+                 * (with panic=abort, process-wide) panic. */
+                let Some(wl_surface_obj) = state.objs.down_to_up.get(wl_surface_id) else {
+                    return Err(WaylandError::Other(
+                        "xdg_surface::get_toplevel: the associated wl_surface was destroyed"
+                            .to_string(),
+                    ));
+                };
+                let upstream_wl_surface_id = wl_surface_obj.alt.unwrap();
 
                 let layer_surface_id = get_new_upstream_client_id(&mut state.objs)?;
 
@@ -1134,7 +1161,12 @@ fn process_request_w2l(
                 write_zwlr_layer_surface_v1_req_set_anchor(dst, layer_surface_id, anchor);
                 if state.anchor.is_some() {
                     let (uwidth, uheight) = state.anchored_size;
-                    write_zwlr_layer_surface_v1_req_set_size(dst, layer_surface_id, uwidth, uheight);
+                    write_zwlr_layer_surface_v1_req_set_size(
+                        dst,
+                        layer_surface_id,
+                        uwidth,
+                        uheight,
+                    );
                     let (top, right, bottom, left) = state.margins;
                     write_zwlr_layer_surface_v1_req_set_margin(
                         dst,
@@ -1203,7 +1235,14 @@ fn process_request_w2l(
                         "Unexpected xdg_surface: created without associated wl_surface".to_string(),
                     ));
                 };
-                let up_wl_surface = state.objs.down_to_up[&wl_surface_id].alt.unwrap();
+                /* .get(), not indexing: see get_toplevel above. */
+                let Some(up_wl_surface_obj) = state.objs.down_to_up.get(&wl_surface_id) else {
+                    return Err(WaylandError::Other(
+                        "xdg_surface::get_popup: the associated wl_surface was destroyed"
+                            .to_string(),
+                    ));
+                };
+                let up_wl_surface = up_wl_surface_obj.alt.unwrap();
                 let Some(pos_obj) = state.objs.down_to_up.get(&positioner_id).copied() else {
                     return Err(WaylandError::Other(
                         "xdg_surface::get_popup has invalid positioner id".to_string(),
@@ -1224,8 +1263,15 @@ fn process_request_w2l(
                     state.surface_to_toplevel_map.get(&parent_id).copied()
                 {
                     /* Parent is backed by a layer surface; link after creation */
-                    layer_parent =
-                        Some(state.objs.down_to_up.get(&toplevel_id).unwrap().alt.unwrap());
+                    layer_parent = Some(
+                        state
+                            .objs
+                            .down_to_up
+                            .get(&toplevel_id)
+                            .unwrap()
+                            .alt
+                            .unwrap(),
+                    );
                     UpstreamID(0)
                 } else {
                     let Some(parent_obj) = state.objs.down_to_up.get(&parent_id).copied() else {

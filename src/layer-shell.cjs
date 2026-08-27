@@ -1,5 +1,11 @@
 const path = require('path');
-const { getExplicitOzonePlatform, isDisabledEnvFlag, isEnabledEnvFlag } = require('./platform.cjs');
+const {
+  getExplicitOzonePlatform,
+  getOzonePlatformArgvValue,
+  isDisabledEnvFlag,
+  isEnabledEnvFlag,
+} = require('./platform.cjs');
+const { CONFIG_FILE_NAME } = require('./config-write-guard.cjs');
 
 /**
  * Wayland layer-shell relaunch policy for tiling compositors (issue #79).
@@ -55,10 +61,34 @@ const VALID_LAYERS = new Set(['background', 'bottom']);
  * implement the protocol (KWin, and Mutter does not) stay on the XWayland/native paths:
  * there the widget behaves like a normal window and should keep doing so.
  */
-function detectTilingLayerShellCompositor(env = process.env) {
-  if (String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim()) return 'hyprland';
-  if (String(env?.SWAYSOCK || '').trim()) return 'sway';
-  if (String(env?.NIRI_SOCKET || '').trim()) return 'niri';
+function detectTilingLayerShellCompositor(env = process.env, { exists } = {}) {
+  const probe = (candidate) => {
+    try {
+      return (exists || require('fs').existsSync)(candidate);
+    } catch {
+      return false;
+    }
+  };
+  // The instance variables alone are not trusted: `systemctl --user
+  // import-environment` commonly leaks them into later sessions on other
+  // compositors, where they would cost a doomed helper spawn on every launch.
+  // Require the socket each variable names to actually exist. A real session
+  // whose socket moved is still caught by the XDG_CURRENT_DESKTOP fallback,
+  // which login sessions set afresh.
+  const runtimeDir = String(env?.XDG_RUNTIME_DIR || '').trim();
+  const hyprlandSignature = String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim();
+  if (hyprlandSignature) {
+    const socketCandidates = [path.join('/tmp', 'hypr', hyprlandSignature, '.socket.sock')];
+    if (runtimeDir) {
+      // Hyprland >= 0.40 puts its sockets under XDG_RUNTIME_DIR; before that, /tmp.
+      socketCandidates.unshift(path.join(runtimeDir, 'hypr', hyprlandSignature, '.socket.sock'));
+    }
+    if (socketCandidates.some(probe)) return 'hyprland';
+  }
+  const swaySocket = String(env?.SWAYSOCK || '').trim();
+  if (swaySocket && probe(swaySocket)) return 'sway';
+  const niriSocket = String(env?.NIRI_SOCKET || '').trim();
+  if (niriSocket && probe(niriSocket)) return 'niri';
   const desktop = String(env?.XDG_CURRENT_DESKTOP || '').toLowerCase();
   for (const name of ['hyprland', 'sway', 'niri', 'river']) {
     if (desktop.includes(name)) return name;
@@ -68,21 +98,6 @@ function detectTilingLayerShellCompositor(env = process.env) {
 
 function isLayerShellChild(env = process.env) {
   return isEnabledEnvFlag(env?.[LAYER_SHELL_CHILD_ENV]);
-}
-
-function getExplicitOzoneArgvPlatform(argv) {
-  const args = Array.isArray(argv) ? argv : [];
-  for (let index = args.length - 1; index >= 0; index -= 1) {
-    const argument = args[index];
-    if (typeof argument !== 'string') continue;
-    if (argument.startsWith('--ozone-platform=')) {
-      return argument.slice('--ozone-platform='.length).trim().toLowerCase();
-    }
-    if (argument === '--ozone-platform' && typeof args[index + 1] === 'string') {
-      return args[index + 1].trim().toLowerCase();
-    }
-  }
-  return '';
 }
 
 /**
@@ -96,10 +111,19 @@ function shouldRelaunchIntoLayerShell({
   env = process.env,
   argv = process.argv,
   waylandSession = false,
+  // When provided (a name or null), reuse the caller's detection result
+  // instead of detecting again; undefined means "detect here".
+  detectedCompositor = undefined,
+  exists = undefined,
 } = {}) {
   if (platform !== 'linux' || !waylandSession) return false;
   if (isLayerShellChild(env)) return false;
   if ((argv || []).includes('--smoke-test')) return false;
+  // The isolated climate demo creates its throwaway temp profile before this
+  // decision runs; a handoff would orphan that profile on every launch, and a
+  // demo has no reason to exercise the helper. The overlay variant shares the
+  // regular dev profile and is unaffected.
+  if ((argv || []).includes('--demo-climate')) return false;
   if (isDisabledEnvFlag(env?.[LAYER_SHELL_ENV_OVERRIDE])) return false;
   // The helper proxies the compositor's socket and binds its own next to it; without
   // a real display to reach or a runtime dir to bind in, the handoff can only fail.
@@ -110,7 +134,11 @@ function shouldRelaunchIntoLayerShell({
   // variable) cannot become a layer surface; respect it.
   if (getExplicitOzonePlatform(env, argv) === 'x11') return false;
   if (isEnabledEnvFlag(env?.[LAYER_SHELL_ENV_OVERRIDE])) return true;
-  return detectTilingLayerShellCompositor(env) !== null;
+  const compositor =
+    detectedCompositor !== undefined
+      ? detectedCompositor
+      : detectTilingLayerShellCompositor(env, { exists });
+  return compositor !== null;
 }
 
 /**
@@ -146,28 +174,46 @@ function resolveLayerShellHelperPath({
   return null;
 }
 
-function normalizeAnchor(value) {
-  const edges = String(value || '')
+// `onInvalid(raw, fallback)` is called when a SET value is discarded, so the
+// caller can log it — a silently replaced override is indistinguishable from a
+// broken one. An unset/empty value falls back without being reported.
+function normalizeAnchor(value, onInvalid) {
+  const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_ANCHOR;
+  const edges = raw
     .toLowerCase()
     .split(',')
     .map((edge) => edge.trim())
     .filter(Boolean);
-  if (!edges.length || !edges.every((edge) => VALID_ANCHOR_EDGES.has(edge))) return DEFAULT_ANCHOR;
+  if (!edges.length || !edges.every((edge) => VALID_ANCHOR_EDGES.has(edge))) {
+    onInvalid?.(raw, DEFAULT_ANCHOR);
+    return DEFAULT_ANCHOR;
+  }
   return [...new Set(edges)].join(',');
 }
 
-function normalizeMargin(value) {
+function normalizeMargin(value, onInvalid) {
   const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_MARGIN;
   const parts = raw.split(',').map((part) => part.trim());
+  // The helper parses each part as an i32: negative margins are legitimate
+  // (bleeding past an anchored edge), so only the shape is validated here.
   const isValid =
-    (parts.length === 1 || parts.length === 4) && parts.every((part) => /^\d{1,4}$/.test(part));
-  return isValid ? parts.join(',') : DEFAULT_MARGIN;
+    (parts.length === 1 || parts.length === 4) && parts.every((part) => /^-?\d{1,5}$/.test(part));
+  if (!isValid) {
+    onInvalid?.(raw, DEFAULT_MARGIN);
+    return DEFAULT_MARGIN;
+  }
+  return parts.join(',');
 }
 
 function normalizeWindowSize(windowSize) {
   const clamp = (value, fallback) => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-    return Math.min(4096, Math.max(100, Math.round(value)));
+    // Guards against corrupt saved values, not against a real compositor limit:
+    // layer-shell set_size is an unbounded u32. 16384 comfortably covers any
+    // real multi-monitor span (an 8K display is 7680 wide).
+    return Math.min(16384, Math.max(100, Math.round(value)));
   };
   return {
     width: clamp(windowSize?.width, DEFAULT_WINDOW_SIZE.width),
@@ -186,7 +232,7 @@ function readInitialLayerShellWindowSize(
   { readFileSync = require('fs').readFileSync } = {}
 ) {
   try {
-    const raw = readFileSync(path.join(userDataPath, 'config.json'), 'utf8');
+    const raw = readFileSync(path.join(userDataPath, CONFIG_FILE_NAME), 'utf8');
     return normalizeWindowSize(JSON.parse(raw)?.windowSize);
   } catch {
     return { ...DEFAULT_WINDOW_SIZE };
@@ -210,6 +256,7 @@ function materializeLayerShellHelper(
     mkdirSync = require('fs').mkdirSync,
     chmodSync = require('fs').chmodSync,
     renameSync = require('fs').renameSync,
+    statSync = require('fs').statSync,
     pid = process.pid,
     onError = null,
   } = {}
@@ -225,6 +272,14 @@ function materializeLayerShellHelper(
   try {
     mkdirSync(targetDir, { recursive: true });
     const target = path.join(targetDir, 'windowtolayer');
+    // Skip the copy when an identical helper is already materialized (same size —
+    // mtime is unusable because copyFileSync stamps the copy time, not the
+    // source's). Saves rewriting a multi-MB binary on every launch.
+    try {
+      if (statSync(target).size === statSync(helperPath).size) return target;
+    } catch {
+      /* missing or unreadable target: fall through to copying */
+    }
     // Stage under a temp name and rename over: overwriting a binary an earlier
     // instance is still executing fails with ETXTBSY, while rename is atomic.
     const staging = path.join(targetDir, `.windowtolayer.${pid}`);
@@ -239,43 +294,70 @@ function materializeLayerShellHelper(
 }
 
 /**
- * Block until the helper has bound its private socket, or report failure. spawn()
- * is asynchronous and the handoff exits this process in the same tick, so
- * readiness must be observed synchronously — hence Atomics.wait as the sleep. The
- * helper preflights the compositor connection (reachable, advertises
- * wlr-layer-shell) before binding and exits nonzero when it cannot serve, so
- * "helper died" is the definitive failure signal and lets the caller fall back to
- * running as a normal floating window instead of exec'ing into a broken session.
+ * Report whether `pid` is a live, running process. `process.kill(pid, 0)` is not
+ * enough here: while this thread blocks in Atomics.wait, libuv never runs, so an
+ * exited helper stays a zombie the whole time we poll — and signal 0 succeeds on
+ * zombies. Read the process state from /proc instead (Linux-only, which is all
+ * this module supports): 'Z' (zombie) and 'X' (dead) mean the helper is gone,
+ * as does a missing /proc entry.
+ */
+function isProcessAlive(pid, { readFileSync = require('fs').readFileSync } = {}) {
+  try {
+    const stat = String(readFileSync(`/proc/${pid}/stat`, 'utf8'));
+    // Field 3 (state) follows the comm field, which is in parentheses and may
+    // itself contain ')' — parse from the LAST ')' to stay correct for any name.
+    const state = stat
+      .slice(stat.lastIndexOf(')') + 1)
+      .trim()
+      .charAt(0);
+    return state !== 'Z' && state !== 'X';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Block until the helper reports readiness, or report failure. spawn() is
+ * asynchronous and the handoff exits this process in the same tick, so readiness
+ * must be observed synchronously — hence Atomics.wait as the sleep.
+ *
+ * Readiness is the marker file the helper writes next to its socket after it has
+ * bound, started listening, AND spawned its child — containing the helper's own
+ * pid. Watching the socket path alone has two failure modes this closes: a stale
+ * socket from a previous instance with the same app pid (pid reuse) would read as
+ * instantly ready, and "socket exists" says nothing about whether the helper got
+ * as far as accepting connections. The marker content must match the pid we
+ * actually spawned. The helper preflights the compositor connection before
+ * binding and exits nonzero when it cannot serve, so "helper died" is the
+ * definitive failure signal and lets the caller fall back to running as a normal
+ * floating window instead of exec'ing into a broken session.
  */
 function waitForLayerShellHelperReady(
   helper,
-  socketPath,
+  readyPath,
   {
     timeoutMs = 5000,
     pollIntervalMs = 50,
-    exists = require('fs').existsSync,
-    signalProcess = (pid) => process.kill(pid, 0),
+    readFileSync = require('fs').readFileSync,
+    isAlive = isProcessAlive,
     now = Date.now,
   } = {}
 ) {
-  if (!socketPath) return false;
+  if (!readyPath) return false;
   const deadline = now() + timeoutMs;
   const sleeper = new Int32Array(new SharedArrayBuffer(4));
   for (;;) {
-    try {
-      if (exists(socketPath)) return true;
-    } catch {
-      /* transient stat failure: keep polling */
-    }
-    // pid is undefined when spawn() already failed; a dead helper (preflight
-    // refused, missing interpreter, wrong architecture) makes signal 0 throw.
+    // pid is undefined when spawn() itself already failed.
     const pid = helper?.pid;
     if (!pid) return false;
     try {
-      signalProcess(pid);
+      if (String(readFileSync(readyPath, 'utf8')).trim() === String(pid)) return true;
     } catch {
-      return false;
+      /* marker not written yet: keep polling */
     }
+    // A dead helper (preflight refused, missing interpreter, wrong architecture)
+    // will never write the marker; stop waiting the moment it exits.
+    if (!isAlive(pid)) return false;
     if (now() >= deadline) return false;
     Atomics.wait(sleeper, 0, 0, pollIntervalMs);
   }
@@ -303,6 +385,9 @@ function restoreLayerShellParentEnv(env = process.env) {
  * app does. The child gets an explicit --ozone-platform=wayland because a layer
  * surface only exists on the native backend and the argument outranks every other
  * backend-selection rule, including the app's own XWayland forcing.
+ *
+ * `onInvalidOverride(envName, raw, fallback)` is reported once per placement
+ * override that was set but discarded, so the spawner can log it.
  */
 function buildLayerShellSpawnPlan({
   helperPath,
@@ -311,11 +396,15 @@ function buildLayerShellSpawnPlan({
   env = process.env,
   windowSize = DEFAULT_WINDOW_SIZE,
   pid = process.pid,
+  onInvalidOverride = null,
 } = {}) {
   const size = normalizeWindowSize(windowSize);
   const layerRaw = String(env?.[LAYER_SHELL_LAYER_ENV] || '')
     .trim()
     .toLowerCase();
+  if (layerRaw && !VALID_LAYERS.has(layerRaw)) {
+    onInvalidOverride?.(LAYER_SHELL_LAYER_ENV, layerRaw, DEFAULT_LAYER);
+  }
   const socketName = layerShellSocketName(pid);
   const runtimeDir = String(env?.XDG_RUNTIME_DIR || '').trim();
   const helperArgs = [
@@ -326,11 +415,15 @@ function buildLayerShellSpawnPlan({
     '--interactivity',
     'all',
     '--anchor',
-    normalizeAnchor(env?.[LAYER_SHELL_ANCHOR_ENV] || DEFAULT_ANCHOR),
+    normalizeAnchor(env?.[LAYER_SHELL_ANCHOR_ENV], (raw, fallback) =>
+      onInvalidOverride?.(LAYER_SHELL_ANCHOR_ENV, raw, fallback)
+    ),
     '--size',
     `${size.width}x${size.height}`,
     '--margin',
-    normalizeMargin(env?.[LAYER_SHELL_MARGIN_ENV] || DEFAULT_MARGIN),
+    normalizeMargin(env?.[LAYER_SHELL_MARGIN_ENV], (raw, fallback) =>
+      onInvalidOverride?.(LAYER_SHELL_MARGIN_ENV, raw, fallback)
+    ),
     '--namespace',
     'ha-widget',
   ];
@@ -338,7 +431,7 @@ function buildLayerShellSpawnPlan({
   if (outputName) helperArgs.push('--output-name', outputName);
 
   const childArgv = (argv || []).slice(1).filter((arg) => typeof arg === 'string');
-  if (!getExplicitOzoneArgvPlatform(childArgv)) {
+  if (!getOzonePlatformArgvValue(childArgv)) {
     childArgv.push('--ozone-platform=wayland');
   }
 
@@ -365,9 +458,12 @@ function buildLayerShellSpawnPlan({
     command: helperPath,
     args: [...helperArgs, childCommand, ...childArgv],
     env: spawnEnv,
-    // Where the helper will bind; the spawner polls this for readiness. Null only
-    // without XDG_RUNTIME_DIR, in which case the helper refuses to start anyway.
+    // Where the helper will bind. Null only without XDG_RUNTIME_DIR, in which
+    // case the helper refuses to start anyway.
     socketPath: runtimeDir ? path.join(runtimeDir, socketName) : null,
+    // The pid-stamped marker the helper writes once it is accepting connections;
+    // the spawner polls this (not the socket) for readiness.
+    readyPath: runtimeDir ? path.join(runtimeDir, `${socketName}.ready`) : null,
   };
 }
 
@@ -384,6 +480,7 @@ module.exports = {
   buildLayerShellSpawnPlan,
   detectTilingLayerShellCompositor,
   isLayerShellChild,
+  isProcessAlive,
   layerShellSocketName,
   materializeLayerShellHelper,
   readInitialLayerShellWindowSize,

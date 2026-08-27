@@ -81,6 +81,27 @@ function shouldForceX11OzonePlatform({
   return true;
 }
 
+/**
+ * Return the value of an explicit `--ozone-platform` argument in argv ('' when
+ * absent), deliberately ignoring `--ozone-platform-hint` and the hint env
+ * variable. Callers that want the full precedence order across all backend
+ * selection channels use getExplicitOzonePlatform instead.
+ */
+function getOzonePlatformArgvValue(argv) {
+  const args = Array.isArray(argv) ? argv : [];
+  for (let index = args.length - 1; index >= 0; index -= 1) {
+    const argument = args[index];
+    if (typeof argument !== 'string') continue;
+    if (argument.startsWith('--ozone-platform=')) {
+      return argument.slice('--ozone-platform='.length).trim().toLowerCase();
+    }
+    if (argument === '--ozone-platform' && typeof args[index + 1] === 'string') {
+      return args[index + 1].trim().toLowerCase();
+    }
+  }
+  return '';
+}
+
 function getExplicitOzonePlatform(env = process.env, argv = process.argv) {
   const args = Array.isArray(argv) ? argv : [];
   for (let index = args.length - 1; index >= 0; index -= 1) {
@@ -193,6 +214,7 @@ module.exports = {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getExplicitOzonePlatform,
+  getOzonePlatformArgvValue,
   getMainWindowVisualOptions,
   hasGlobalShortcutFallback,
   isDisabledEnvFlag,
