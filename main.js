@@ -706,6 +706,7 @@ const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   getMainWindow: () => mainWindow,
   log,
   presenter: popupWindowPresenter,
+  layerSurfaceMode: isLayerShellChildProcess,
 });
 const desktopPinWindows = new Map();
 const desktopPinContentMinBounds = new Map();

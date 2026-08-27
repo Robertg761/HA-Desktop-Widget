@@ -17,6 +17,11 @@ function createLinuxPopupHotkeyController(options = {}) {
     log = console,
     now = () => Date.now(),
     presenter = createPopupWindowPresenter({ getConfig, log }),
+    // On a wlr-layer-shell surface keyboard focus never reaches the window, so
+    // "popup is shown" must be read from the presenter's elevation state, and
+    // toggling off must lower the widget back to its layer instead of hiding
+    // it: the widget is desktop furniture there, not a tray popup.
+    layerSurfaceMode = false,
   } = options;
 
   if (!globalShortcut || typeof globalShortcut.register !== 'function') {
@@ -63,15 +68,18 @@ function createLinuxPopupHotkeyController(options = {}) {
         popupHotkeyLastShownTime !== null &&
         timestamp - popupHotkeyLastShownTime < POPUP_TOGGLE_DEBOUNCE_MS;
 
-      if (
-        popupConfig.popupHotkeyToggleMode &&
-        targetWindow.isVisible() &&
-        targetWindow.isFocused() &&
-        !recentlyShown
-      ) {
-        presenter.hidePopup(targetWindow);
+      const popupShown = layerSurfaceMode
+        ? presenter.isElevated()
+        : targetWindow.isVisible() && targetWindow.isFocused();
+      if (popupConfig.popupHotkeyToggleMode && popupShown && !recentlyShown) {
+        if (layerSurfaceMode) {
+          presenter.releaseElevation(targetWindow);
+          log.info?.('Linux popup hotkey toggle: window lowered back to its layer');
+        } else {
+          presenter.hidePopup(targetWindow);
+          log.info?.('Linux popup hotkey toggle: window hidden');
+        }
         popupHotkeyLastShownTime = null;
-        log.info?.('Linux popup hotkey toggle: window hidden');
         return;
       }
 

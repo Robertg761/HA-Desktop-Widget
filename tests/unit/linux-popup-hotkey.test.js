@@ -56,6 +56,10 @@ function createController(overrides = {}) {
     getMainWindow: () => targetWindow,
     log,
     now: () => timestamp,
+    ...(overrides.presenter ? { presenter: overrides.presenter } : {}),
+    ...(overrides.layerSurfaceMode !== undefined
+      ? { layerSurfaceMode: overrides.layerSurfaceMode }
+      : {}),
   });
 
   return {
@@ -231,6 +235,98 @@ describe('Linux popup hotkeys', () => {
     setTimestamp(1000 + POPUP_TOGGLE_DEBOUNCE_MS + 1);
     trigger();
     expect(targetWindow.hide).toHaveBeenCalledTimes(1);
+  });
+
+  function createPresenterMock(overrides = {}) {
+    return {
+      showAboveFullScreen: jest.fn(),
+      hidePopup: jest.fn(),
+      releaseElevation: jest.fn(),
+      handleWindowHidden: jest.fn(),
+      handleWindowBlur: jest.fn(),
+      cancelPendingRaises: jest.fn(),
+      isElevated: jest.fn(() => false),
+      ...overrides,
+    };
+  }
+
+  test('layer-surface toggle lowers an elevated widget instead of hiding it', () => {
+    let elevated = false;
+    const presenter = createPresenterMock({
+      showAboveFullScreen: jest.fn(() => {
+        elevated = true;
+      }),
+      releaseElevation: jest.fn(() => {
+        elevated = false;
+      }),
+      isElevated: jest.fn(() => elevated),
+    });
+    // A layer surface is always visible and never focused.
+    const targetWindow = createWindowMock({ isVisible: jest.fn(() => true) });
+    const { controller, globalShortcut, setTimestamp } = createController({
+      targetWindow,
+      config: { popupHotkeyToggleMode: true },
+      presenter,
+      layerSurfaceMode: true,
+    });
+
+    controller.register('Ctrl+Shift+Z');
+    const trigger = globalShortcut.callbacks.get('Ctrl+Shift+Z');
+    trigger();
+    expect(presenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
+
+    setTimestamp(1000 + POPUP_TOGGLE_DEBOUNCE_MS + 1);
+    trigger();
+    expect(presenter.releaseElevation).toHaveBeenCalledTimes(1);
+    expect(presenter.hidePopup).not.toHaveBeenCalled();
+    expect(targetWindow.hide).not.toHaveBeenCalled();
+
+    setTimestamp(1000 + 2 * (POPUP_TOGGLE_DEBOUNCE_MS + 1));
+    trigger();
+    expect(presenter.showAboveFullScreen).toHaveBeenCalledTimes(2);
+  });
+
+  test('layer-surface toggle debounce still applies to the lower branch', () => {
+    let elevated = false;
+    const presenter = createPresenterMock({
+      showAboveFullScreen: jest.fn(() => {
+        elevated = true;
+      }),
+      isElevated: jest.fn(() => elevated),
+    });
+    const { controller, globalShortcut } = createController({
+      targetWindow: createWindowMock({ isVisible: jest.fn(() => true) }),
+      config: { popupHotkeyToggleMode: true },
+      presenter,
+      layerSurfaceMode: true,
+    });
+
+    controller.register('Ctrl+Shift+Z');
+    const trigger = globalShortcut.callbacks.get('Ctrl+Shift+Z');
+    trigger();
+    // A key-repeat press right after the raise re-asserts it instead of
+    // bouncing the widget straight back down.
+    trigger();
+    expect(presenter.releaseElevation).not.toHaveBeenCalled();
+    expect(presenter.showAboveFullScreen).toHaveBeenCalledTimes(2);
+  });
+
+  test('elevation state does not leak into the default focus-based toggle', () => {
+    const presenter = createPresenterMock({ isElevated: jest.fn(() => true) });
+    const targetWindow = createWindowMock({ isVisible: jest.fn(() => true) });
+    const { controller, globalShortcut, setTimestamp } = createController({
+      targetWindow,
+      config: { popupHotkeyToggleMode: true },
+      presenter,
+    });
+
+    controller.register('Ctrl+Alt+H');
+    setTimestamp(1000 + POPUP_TOGGLE_DEBOUNCE_MS + 1);
+    globalShortcut.callbacks.get('Ctrl+Alt+H')();
+    // Not focused, so the default path shows again — elevated or not.
+    expect(presenter.hidePopup).not.toHaveBeenCalled();
+    expect(presenter.releaseElevation).not.toHaveBeenCalled();
+    expect(presenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
   });
 
   test('contains callback failures instead of throwing through Electron', () => {
