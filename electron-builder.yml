@@ -90,6 +90,14 @@ linux:
   icon: build/icon.png
   category: Utility
   maintainer: Robertg761
+  # Layer-shell helper for tiling Wayland compositors (issue #79). Built from
+  # vendor/windowtolayer (GPL-3.0-or-later, spawned as a separate process; the
+  # COPYING file ships next to the binary). `npm run dist:linux` builds it.
+  extraResources:
+    - from: vendor/windowtolayer/target/release/windowtolayer
+      to: helpers/windowtolayer
+    - from: vendor/windowtolayer/COPYING
+      to: helpers/windowtolayer-COPYING
   # Match Electron's runtime app id, the installed launcher, and the app's
   # existing XDG autostart file so desktop environments associate its windows.
   syncDesktopName: true

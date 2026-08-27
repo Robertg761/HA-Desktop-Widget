@@ -1,0 +1,28 @@
+[package]
+name = "windowtolayer-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.windowtolayer]
+path = ".."
+
+[[bin]]
+name = "fuzz_state"
+path = "fuzz_targets/state.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_reverse"
+path = "fuzz_targets/reverse.rs"
+test = false
+doc = false
+bench = false

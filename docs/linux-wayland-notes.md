@@ -149,3 +149,99 @@ XWayland is unavailable:
   itself, and the per-pin titles above are what let a KWin rule remember each pin's position.
 - Never call `minimize()` on the main window without a plan for bringing it back; the app
   cannot unminimize itself.
+
+## Tiling compositors (Hyprland, Sway, niri): the layer-shell mode
+
+Measured on Arch Linux, Hyprland 0.56.2, native Wayland backend (issue #79). Hyprland — like
+tiling compositors generally — draws every floating toplevel above every tiled window,
+unconditionally. A widget mapped as a floating toplevel therefore acts as a permanent
+overlay: a tiled window on the same workspace can never be raised above it, not by
+clicking, not by focusing, not by any raise the compositor offers, and independent of the
+`alwaysOnTop` setting. There is no client-side fix inside xdg-shell: `setAlwaysOnTop(false)`
+is advisory at best, and the protocol has no "lower this window" request at all. The only
+correct shape for a desktop widget there is a wlr-layer-shell surface on the `bottom`
+layer — which Electron cannot create.
+
+So on these compositors the app does not run as an xdg-shell client at all. Before taking
+the single-instance lock, a launch that detects a tiling wlr-layer-shell compositor
+(`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, `NIRI_SOCKET`, or river in
+`XDG_CURRENT_DESKTOP`) spawns the bundled `windowtolayer` helper around a copy of itself
+and exits (`src/layer-shell.cjs`; helper source in `vendor/windowtolayer`, a patched
+GPL-3.0 fork — see its PATCHES.md). The helper serves a private Wayland socket, relays
+every connection to the real compositor, and rewrites xdg-shell toplevels into
+wlr-layer-shell surfaces as they pass through. The relaunched app runs with an explicit
+`--ozone-platform=wayland` (a layer surface only exists on the native backend, so this
+outranks the XWayland forcing above) and gets a marker env var so it never hands off again.
+
+Verified on the machine above: `hyprctl layers` shows the widget on "Layer level 1
+(bottom)" with no toplevel client, tiled and floating windows render above it, it renders
+and updates live, and it sits anchored bottom-right of the focused output with a 20px
+margin. The surface tracks the window's real size because the helper translates
+`xdg_surface.set_window_geometry` into `zwlr_layer_surface_v1.set_size`. Keyboard
+interactivity is `on_demand`, so the widget only takes the keyboard when clicked.
+Popups still work: the helper forwards `xdg_positioner`/`xdg_popup` to the real
+compositor and links them to the layer surface with `zwlr_layer_surface_v1.get_popup`,
+so context menus, `<select>` dropdowns, and tooltips open normally instead of killing
+the Wayland connection.
+
+Operational notes:
+
+- `HA_WIDGET_LINUX_LAYER_SHELL=0` disables the mode (the widget becomes a floating
+  toplevel again); `=1` forces it on a compositor the allowlist misses. KWin also
+  implements wlr-layer-shell but is deliberately not auto-detected: on a stacking
+  compositor the widget behaves like a normal window and should keep doing so.
+- Placement defaults to `bottom,right` with a 20px margin on the compositor-chosen
+  output. Override with `HA_WIDGET_LAYER_SHELL_ANCHOR` (comma-joined edges),
+  `HA_WIDGET_LAYER_SHELL_MARGIN` (one value or `top,right,bottom,left`),
+  `HA_WIDGET_LAYER_SHELL_OUTPUT` (connector name, e.g. `DP-1`), and
+  `HA_WIDGET_LAYER_SHELL_LAYER` (`bottom` or `background`). The saved
+  `config.windowSize` seeds the surface size. `HA_WIDGET_WINDOWTOLAYER` points at an
+  alternative helper binary; without it the app uses the packaged
+  `resources/helpers/windowtolayer` or the in-repo cargo build.
+- An in-app restart cannot use `app.relaunch()`: the clone would inherit the child
+  marker and a `WAYLAND_DISPLAY` naming the dying helper's socket. The restart path
+  spawns a fresh helper instead, reconnected through the preserved upstream display.
+  The helper socket name carries the spawning pid so a dev run beside the installed
+  widget — or a restart racing the old helper's cleanup — cannot unlink the other's
+  socket, and the helper refuses to displace a socket another live instance is
+  serving. The releasing side also drops the single-instance lock before spawning
+  the fresh helper, so the replacement cannot lose the lock race against a not-yet-
+  exited predecessor.
+- The child's inherited environment (child marker + `WAYLAND_DISPLAY` naming the
+  helper's private socket) is restored to the parent's
+  (`restoreLayerShellParentEnv`) as the first act of `app.whenReady()`: only the
+  browser process holds the Wayland connection and it is established by then, while
+  any process spawned later — `app.relaunch()` after a GPU crash,
+  `autoUpdater.quitAndInstall()`, a terminal opened from the widget — must see the
+  real compositor socket, not one that dies with this process, and must redetect
+  the compositor instead of skipping the handoff.
+- From an AppImage, the helper relaunches `$APPIMAGE` rather than
+  `process.execPath`: the latter lives in the runtime's FUSE mount, which vanishes
+  when the handing-off process exits. The relaunched AppImage runtime stays alive
+  for the app's lifetime, so the helper's child-exit detection is unaffected. The
+  helper binary itself is copied out of the mount into `<userData>/helpers` before
+  spawning (`materializeLayerShellHelper`) for the same reason: a demand-paged ELF
+  whose backing mount disappeared dies with SIGBUS on its next cold page fault.
+- The handoff exits the parent only after the helper is demonstrably ready: the
+  helper preflights the upstream display (connects and scans the registry for
+  `zwlr_layer_shell_v1`) before binding its socket and exits nonzero otherwise, and
+  the app synchronously waits (`waitForLayerShellHelperReady`) for the socket to
+  appear, watching the helper pid. A stale `WAYLAND_DISPLAY`, a compositor without
+  wlr-layer-shell, or a helper binary that cannot execute all degrade to the normal
+  floating window with a logged warning (`layer-shell-helper.log`, rotated at
+  ~1 MB) instead of a silent no-show.
+- Smoke tests (`--smoke-test`) never hand off: they must measure the process they
+  launched, not a grandchild. Dev caveat: under `npm run dev`, the handoff makes the
+  ELECTRON task exit immediately, which takes the renderer watcher down with it
+  (`concurrently -k`); use `HA_WIDGET_LINUX_LAYER_SHELL=0 npm run dev` for watch-mode
+  work on a tiling compositor, or `npm run dev:once`.
+- Desktop pin windows pass through the same helper and become bottom-layer surfaces
+  with the same anchor, so they stack in the same corner as the widget instead of
+  taking their saved positions. Pins already cannot position themselves on native
+  Wayland (above); layer mode keeps them behind normal windows at least. Per-pin
+  placement in layer mode is an open follow-up.
+- If the helper binary is missing, the app logs a warning and continues as a normal
+  floating toplevel. For that degraded case (or an older release), a Hyprland rule can
+  at least park the widget in dead screen space:
+  `windowrule = move 100%-w-20 100%-h-20, class:^(com\.github\.robertg761\.hadesktopwidget)$`
+  (plus `float` and `noinitialfocus` rules with the same class match).

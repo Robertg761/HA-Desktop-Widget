@@ -1,0 +1,20 @@
+[package]
+name = "windowtolayer"
+version = "0.3.1"
+edition = "2021"
+rust-version = "1.80.0"
+
+[profile.release]
+lto = true
+opt-level = 's'
+panic = "abort"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
+[dependencies]
+arrayvec = "0.7.6"
+lexopt = "0.3.0"
+log = "0.4.22"
+rustix = { version = "1.0.8", features = ["event", "net"]}

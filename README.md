@@ -203,6 +203,10 @@ npm run dist:mac    # Build macOS distribution artifacts
 npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
 
+Building the Linux artifacts additionally requires a Rust toolchain (1.98 or newer, as
+pinned in `.mise.toml`) and `python3`: `npm run dist:linux` compiles the bundled
+`windowtolayer` layer-shell helper from `vendor/windowtolayer` before packaging.
+
 ### Climate UI Demo (Development Only)
 
 Run `npm run dev:climate-demo` to launch a simulated **Demo Air Conditioner** without a Home

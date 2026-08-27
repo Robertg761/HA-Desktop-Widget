@@ -133,6 +133,23 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
+      # The Linux package ships the windowtolayer layer-shell helper as an extra
+      # resource (electron-builder.yml), so it must exist before packaging. Pin the
+      # toolchain to the same version as .mise.toml so CI verifies what a release
+      # build will use instead of whatever the runner image preinstalls.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vendor/windowtolayer
+
+      - name: Build layer-shell helper
+        run: npm run build:windowtolayer
+
       - name: Package Linux app
         run: npx electron-builder --dir --linux --x64 --publish never
 

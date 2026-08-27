@@ -1,2 +1,4 @@
 # Standalone marketing site with its own formatting (also excluded from ESLint).
 website/
+# Vendored Rust helper (upstream project with its own formatting; also excluded from ESLint).
+vendor/

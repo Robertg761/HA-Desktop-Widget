@@ -24,10 +24,7 @@ function supportsAutoUpdater(platform = process.platform, env = process.env) {
 
 function shouldUseTransparentWindow(platform = process.platform, env = process.env) {
   if (platform !== 'linux') return true;
-  const override = String(env?.HA_WIDGET_LINUX_TRANSPARENT_WINDOW || '')
-    .trim()
-    .toLowerCase();
-  return override === '1' || override === 'true' || override === 'yes';
+  return isEnabledEnvFlag(env?.HA_WIDGET_LINUX_TRANSPARENT_WINDOW);
 }
 
 const NATIVE_WAYLAND_ENV_OVERRIDE = 'HA_WIDGET_LINUX_NATIVE_WAYLAND';
@@ -37,6 +34,13 @@ function isEnabledEnvFlag(value) {
     .trim()
     .toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function isDisabledEnvFlag(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  return normalized === '0' || normalized === 'false' || normalized === 'no';
 }
 
 /**
@@ -188,8 +192,11 @@ function getMainWindowVisualOptions({
 module.exports = {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
+  getExplicitOzonePlatform,
   getMainWindowVisualOptions,
   hasGlobalShortcutFallback,
+  isDisabledEnvFlag,
+  isEnabledEnvFlag,
   isLinuxAppImage,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,

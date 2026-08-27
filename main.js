@@ -26,6 +26,196 @@ const { pathToFileURL, fileURLToPath } = require('url');
 const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const pkg = require('./package.json');
+
+// ---------------------------------------------------------------------------
+// Early startup: profile selection and the layer-shell handoff. Everything in
+// this section runs before the heavyweight requires below on purpose — when the
+// handoff decides this process should be replaced by the windowtolayer helper,
+// the doomed parent should not pay for loading the whole application first.
+// Only the small modules this section needs are required here.
+// ---------------------------------------------------------------------------
+const { configureMainLogging } = require('./src/main-logging.cjs');
+const {
+  SMOKE_TEST_PROFILE_PREFIX,
+  removeSmokeTestProfile,
+} = require('./src/smoke-test-profile.cjs');
+const { cloneProductionProfile } = require('./src/dev-profile-clone.cjs');
+const {
+  DEFAULT_WINDOW_SIZE,
+  buildLayerShellSpawnPlan,
+  detectTilingLayerShellCompositor,
+  isLayerShellChild,
+  materializeLayerShellHelper,
+  readInitialLayerShellWindowSize,
+  resolveLayerShellHelperPath,
+  restoreLayerShellParentEnv,
+  shouldRelaunchIntoLayerShell,
+  waitForLayerShellHelperReady,
+} = require('./src/layer-shell.cjs');
+const {
+  PORTAL_SHORTCUTS_BACKEND,
+  createPortalGlobalShortcutsController,
+  isWaylandSession,
+} = require('./src/portal-global-shortcuts.cjs');
+
+configureMainLogging(log, { isPackaged: app.isPackaged });
+
+// Log the app starting up
+log.info('App starting...');
+
+const IS_DEV_MODE = process.argv.includes('--dev');
+const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
+const IS_CLIMATE_DEMO_MODE =
+  IS_DEV_MODE && !app.isPackaged && process.argv.includes('--demo-climate');
+const IS_CLIMATE_DEMO_OVERLAY_MODE =
+  IS_DEV_MODE &&
+  !app.isPackaged &&
+  !IS_CLIMATE_DEMO_MODE &&
+  process.argv.includes('--demo-climate-overlay');
+let smokeTestUserDataPath = '';
+let smokeTestTempRootPath = '';
+
+// The demo gets a fresh temporary Electron profile, so it cannot read or write
+// a user's Home Assistant token, favorites, pins, or other production settings.
+if (IS_CLIMATE_DEMO_MODE) {
+  const demoUserDataPath = fs.mkdtempSync(
+    path.join(app.getPath('temp'), 'ha-desktop-widget-climate-demo-')
+  );
+  app.setPath('userData', demoUserDataPath);
+  log.info(`Starting isolated development climate demo: ${demoUserDataPath}`);
+} else if (IS_SMOKE_TEST_MODE) {
+  smokeTestTempRootPath = app.getPath('temp');
+  smokeTestUserDataPath = fs.mkdtempSync(
+    path.join(smokeTestTempRootPath, SMOKE_TEST_PROFILE_PREFIX)
+  );
+  app.setPath('userData', smokeTestUserDataPath);
+  log.info(`Starting isolated packaged-runtime smoke test: ${smokeTestUserDataPath}`);
+} else if (IS_DEV_MODE && !app.isPackaged) {
+  // The single-instance lock lives in the profile, so a dev run sharing the installed
+  // widget's profile would just hand off to it and exit. A persistent sibling profile
+  // lets `npm run dev` start alongside the real widget. Refresh the clone on every
+  // launch so development sees the current dashboard, HA-owned profile assignment,
+  // desktop identity, and encrypted OAuth credential. Writes after startup remain in
+  // the sibling profile and cannot modify production settings.
+  const productionUserDataPath = app.getPath('userData');
+  const devUserDataPath = `${productionUserDataPath}-dev`;
+  const cloneResult = cloneProductionProfile({
+    productionUserDataPath,
+    developmentUserDataPath: devUserDataPath,
+    log,
+  });
+  app.setPath('userData', devUserDataPath);
+  log.info(
+    `Development run using isolated production clone: ${devUserDataPath} ` +
+      `(copied: ${cloneResult.copied.join(', ') || 'none'})`
+  );
+}
+
+// Set cache paths before app is ready to avoid access issues
+const userDataPath = app.getPath('userData');
+app.setPath('userData', userDataPath);
+app.setPath('sessionData', path.join(userDataPath, 'session'));
+
+// On a tiling Wayland compositor (Hyprland, Sway, niri) every floating toplevel renders
+// above every tiled window, so the widget acts as a permanent overlay no window can cover
+// (issue #79). Real desktop-widget stacking needs the window to be a wlr-layer-shell
+// surface on the bottom layer, which Electron cannot create; the bundled windowtolayer
+// helper (vendor/windowtolayer) does it by proxying the app's Wayland connections. The
+// helper must wrap the whole process, so this instance spawns it around a copy of itself
+// and exits. Must run after the user data path is settled (the saved window size seeds
+// the surface) and before the single-instance lock: a parent that took the lock first
+// would make its own child lose it and quit.
+const isLayerShellChildProcess = isLayerShellChild();
+function spawnLayerShellHelper() {
+  const resolvedHelperPath = resolveLayerShellHelperPath({
+    isPackaged: app.isPackaged,
+    appDir: __dirname,
+  });
+  if (!resolvedHelperPath) return false;
+  // Inside an AppImage the resolved helper lives in the runtime's FUSE mount, which
+  // dies with this process; the helper must run from a copy in the profile instead.
+  const helperPath = materializeLayerShellHelper(resolvedHelperPath, {
+    targetDir: path.join(userDataPath, 'helpers'),
+    onError: (error) =>
+      log.warn('Could not copy the layer-shell helper out of the AppImage:', error.message),
+  });
+  const plan = buildLayerShellSpawnPlan({
+    helperPath,
+    windowSize: readInitialLayerShellWindowSize(userDataPath),
+  });
+  // The helper's stderr is the only diagnostic when it cannot bind its socket or
+  // reach the compositor, so keep it out of the void. Rotate once past ~1MB so a
+  // failure that repeats on every start cannot grow the file without bound.
+  const helperLogPath = path.join(userDataPath, 'layer-shell-helper.log');
+  try {
+    if (fs.statSync(helperLogPath).size > 1024 * 1024) {
+      fs.renameSync(helperLogPath, `${helperLogPath}.old`);
+    }
+  } catch {
+    /* no log file yet, or rotation failed: append to whatever is there */
+  }
+  let helperStdio = 'ignore';
+  let helperLogFd = null;
+  try {
+    helperLogFd = fs.openSync(helperLogPath, 'a');
+    helperStdio = ['ignore', helperLogFd, helperLogFd];
+  } catch {
+    /* no log file, keep stdio ignored */
+  }
+  try {
+    const helper = require('child_process').spawn(plan.command, plan.args, {
+      env: plan.env,
+      detached: true,
+      stdio: helperStdio,
+    });
+    helper.on('error', (error) => {
+      log.warn('Layer-shell helper failed after spawn:', error.message);
+    });
+    // A successful handoff exits this process in the same tick as returning, so wait
+    // here — synchronously — until the helper has bound its private socket. The helper
+    // preflights the upstream display (reachable, advertises wlr-layer-shell) before
+    // binding and exits nonzero when it cannot serve, so a failure here means "keep
+    // running as a normal window", never "exit into nothing".
+    if (!waitForLayerShellHelperReady(helper, plan.socketPath)) {
+      log.warn(`Layer-shell helper did not become ready (see ${helperLogPath}); not handing off`);
+      try {
+        helper.kill();
+      } catch {
+        /* already dead */
+      }
+      return false;
+    }
+    helper.unref();
+    return true;
+  } catch (error) {
+    log.warn('Failed to launch the layer-shell helper:', error.message);
+    return false;
+  } finally {
+    if (helperLogFd !== null) {
+      try {
+        fs.closeSync(helperLogFd);
+      } catch {
+        /* already closed with the spawn */
+      }
+    }
+  }
+}
+if (shouldRelaunchIntoLayerShell({ waylandSession: isWaylandSession() })) {
+  const compositor = detectTilingLayerShellCompositor() || 'compositor forced by env override';
+  if (spawnLayerShellHelper()) {
+    log.info(
+      `Tiling Wayland compositor (${compositor}); relaunching as a bottom-layer surface through the windowtolayer helper`
+    );
+    // A hard exit, deliberately: nothing is initialized yet, and this process must be
+    // gone before the child reaches the single-instance lock below.
+    process.exit(0);
+  }
+  log.warn(
+    `Tiling Wayland compositor (${compositor}) but the windowtolayer helper is unavailable; continuing as a normal window, which will render above tiled windows`
+  );
+}
+// --------------------------- end early startup -----------------------------
+
 const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
@@ -78,7 +268,6 @@ const {
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
-const { configureMainLogging } = require('./src/main-logging.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
   createLinuxPopupHotkeyController,
@@ -109,22 +298,10 @@ const {
   createVersionedWriteAcknowledgements,
 } = require('./src/versioned-write-acknowledgements.cjs');
 const {
-  SMOKE_TEST_PROFILE_PREFIX,
-  removeSmokeTestProfile,
-} = require('./src/smoke-test-profile.cjs');
-const {
   HomeAssistantOAuthClient,
   normalizeHomeAssistantBaseUrl,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
-const { cloneProductionProfile } = require('./src/dev-profile-clone.cjs');
-const {
-  PORTAL_SHORTCUTS_BACKEND,
-  createPortalGlobalShortcutsController,
-  isWaylandSession,
-} = require('./src/portal-global-shortcuts.cjs');
-
-configureMainLogging(log, { isPackaged: app.isPackaged });
 
 let autoUpdaterInstance = null;
 
@@ -270,62 +447,6 @@ if (usesLinuxPopupHotkeyBackend) {
     );
   }
 }
-
-// Log the app starting up
-log.info('App starting...');
-
-const IS_DEV_MODE = process.argv.includes('--dev');
-const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
-const IS_CLIMATE_DEMO_MODE =
-  IS_DEV_MODE && !app.isPackaged && process.argv.includes('--demo-climate');
-const IS_CLIMATE_DEMO_OVERLAY_MODE =
-  IS_DEV_MODE &&
-  !app.isPackaged &&
-  !IS_CLIMATE_DEMO_MODE &&
-  process.argv.includes('--demo-climate-overlay');
-let smokeTestUserDataPath = '';
-let smokeTestTempRootPath = '';
-
-// The demo gets a fresh temporary Electron profile, so it cannot read or write
-// a user's Home Assistant token, favorites, pins, or other production settings.
-if (IS_CLIMATE_DEMO_MODE) {
-  const demoUserDataPath = fs.mkdtempSync(
-    path.join(app.getPath('temp'), 'ha-desktop-widget-climate-demo-')
-  );
-  app.setPath('userData', demoUserDataPath);
-  log.info(`Starting isolated development climate demo: ${demoUserDataPath}`);
-} else if (IS_SMOKE_TEST_MODE) {
-  smokeTestTempRootPath = app.getPath('temp');
-  smokeTestUserDataPath = fs.mkdtempSync(
-    path.join(smokeTestTempRootPath, SMOKE_TEST_PROFILE_PREFIX)
-  );
-  app.setPath('userData', smokeTestUserDataPath);
-  log.info(`Starting isolated packaged-runtime smoke test: ${smokeTestUserDataPath}`);
-} else if (IS_DEV_MODE && !app.isPackaged) {
-  // The single-instance lock lives in the profile, so a dev run sharing the installed
-  // widget's profile would just hand off to it and exit. A persistent sibling profile
-  // lets `npm run dev` start alongside the real widget. Refresh the clone on every
-  // launch so development sees the current dashboard, HA-owned profile assignment,
-  // desktop identity, and encrypted OAuth credential. Writes after startup remain in
-  // the sibling profile and cannot modify production settings.
-  const productionUserDataPath = app.getPath('userData');
-  const devUserDataPath = `${productionUserDataPath}-dev`;
-  const cloneResult = cloneProductionProfile({
-    productionUserDataPath,
-    developmentUserDataPath: devUserDataPath,
-    log,
-  });
-  app.setPath('userData', devUserDataPath);
-  log.info(
-    `Development run using isolated production clone: ${devUserDataPath} ` +
-      `(copied: ${cloneResult.copied.join(', ') || 'none'})`
-  );
-}
-
-// Set cache paths before app is ready to avoid access issues
-const userDataPath = app.getPath('userData');
-app.setPath('userData', userDataPath);
-app.setPath('sessionData', path.join(userDataPath, 'session'));
 
 // One widget per user data directory. Without this a second launch raised a second tray icon and
 // a second window writing the same config file, so the two instances fought over it and the loser's
@@ -1910,7 +2031,10 @@ function showMainWindowFromTray() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       // Restore the configured size before showing; a hide can leave a stale size behind.
-      mainWindow.setSize(config.windowSize?.width || 500, config.windowSize?.height || 600);
+      mainWindow.setSize(
+        config.windowSize?.width || DEFAULT_WINDOW_SIZE.width,
+        config.windowSize?.height || DEFAULT_WINDOW_SIZE.height
+      );
     } catch (error) {
       log.warn('Failed to restore window size before showing:', error.message);
     }
@@ -3407,7 +3531,7 @@ function loadConfig(options = {}) {
   // Default configuration
   const defaultConfig = {
     windowPosition: { x: 100, y: 100 },
-    windowSize: { width: 500, height: 600 },
+    windowSize: { ...DEFAULT_WINDOW_SIZE },
     alwaysOnTop: true,
     opacity: 0.95,
     frostedGlass: true,
@@ -7047,7 +7171,19 @@ ipcMain.handle('restart-app', async (event) => {
     await flushConfigForBoundedExit('restarting');
     shutDownRuntimeAfterConfigFlush();
     quitFinalized = true;
-    app.relaunch();
+    // Inside a layer-shell child, restart through a fresh helper so the new instance
+    // is a layer surface again (the parent environment was restored at whenReady, so
+    // the spawn plan reconnects to the real compositor). The old helper's socket must
+    // not outlive this process as the app's display, so hand off before exiting. If
+    // the helper cannot start, plain app.relaunch() redetects the compositor afresh.
+    if (isLayerShellChildProcess) {
+      // The relaunch replaces this instance; holding the lock until exit would make
+      // the freshly spawned instance lose the race and quit immediately.
+      app.releaseSingleInstanceLock();
+    }
+    if (!isLayerShellChildProcess || !spawnLayerShellHelper()) {
+      app.relaunch();
+    }
     app.exit(0);
     return { success: true };
   } catch (error) {
@@ -7123,6 +7259,9 @@ ipcMain.handle('quit-and-install', async (event) => {
     // electron-updater closes windows before Electron emits before-quit, so the
     // config and pending window bounds must already be durable at this point.
     quitFinalized = true;
+    // The updater relaunches the new build with this process's environment; the
+    // layer-shell child environment was already restored at whenReady, so the new
+    // build redetects the compositor and hands off afresh.
     autoUpdater.quitAndInstall();
     return { success: true };
   } catch (error) {
@@ -9035,6 +9174,16 @@ app
     // An instance that lost the single-instance lock is already on its way out. It must not load the
     // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
     if (!gotSingleInstanceLock) return;
+
+    // Inside a layer-shell child the inherited environment says "already handed off"
+    // and points WAYLAND_DISPLAY at the helper's private socket. Only this browser
+    // process holds the Wayland connection, and it is established by now — so restore
+    // the parent environment immediately, before anything else can spawn a child.
+    // Otherwise every mid-run child (crash-relaunch, opened terminal, updater) would
+    // inherit a display that dies with this process and a marker that skips the
+    // handoff.
+    if (isLayerShellChildProcess) restoreLayerShellParentEnv();
+
     startSmokeTestTimeout();
 
     installApplicationMenu(Menu);

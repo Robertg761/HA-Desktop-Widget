@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="wle_embedding_v1">
+  <copyright>
+    Copyright (c) 2023 Brian Tarricone (brian@tarricone.org)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+  </copyright>
+
+  <description summary="Wayland cross-process surface embedding">
+    This protocol provides a method for an embedded compositor to communicate
+    with an embedded application in order to coordinate application surfaces
+    that are to be embedded in the embedded compsitor's own application
+    surfaces.
+
+    Note that this protocol is not intended to be implemented by generic
+    "parent" compositors; it is intended as a semi-private protocol between
+    embedded compositors and their clients.
+  </description>
+
+  <interface name="wle_embedding_manager_v1" version="1">
+    <description summary="Embedding manager">
+      The embedding manager provides an interface for embedded clients to
+      request that particular surfaces be embedded in the embedded compositor,
+      rather than forwarded to the parent compositor.
+    </description>
+
+    <request name="create_embedded_surface">
+      <description summary="embed a surface">
+        Requests that the provided surface be embedded in the embedded
+        compositor's own surface.
+      </description>
+      <arg name="id" type="new_id" interface="wle_embedded_surface_v1"/>
+      <arg name="token" type="string">
+        <description summary="token identifying the compositor's target surface">
+          This token is a string that will need to be passed from the embedded
+          compositor to the client out of band. The embedded compositor will
+          use this to determine where in the embedded compositor's surface(s)
+          the new embedded window should reside.
+        </description>
+      </arg>
+      <arg name="surface" type="object" interface="wl_surface">
+        <description summary="the client application surface to embed">
+          Currently only surfaces with the xdg_toplevel role can be embedded,
+          but that requirement may be relaxed in a future version of this
+          specification (and thus, for now, this request will accept wl_surface
+          objects and not be constrained to xdg_toplevel objects).
+        </description>
+      </arg>
+    </request>
+
+    <enum name="wle_embedding_manager_error_v1">
+      <description summary="embedding manager errors">
+        Returned from the manager when an error occurs.
+      </description>
+      <entry name="already_created" value="0">
+        <description summary="already created">
+          Occurs when trying to create an embedded surface for a wl_surface that
+          already has an embedded surface.
+        </description>
+      </entry>
+      <entry name="invalid_surface" value="1">
+        <description summary="invalid surface">
+          The wl_surface passed does not have a supported role. (Currently,
+          only xdg_toplevel is supported.)
+        </description>
+      </entry>
+      <entry name="invalid_token" value="2">
+        <description summary="given token is invalid">
+          The token passed was either unknown to the compositor, or has already
+          been used with another embedded surface.
+        </description>
+      </entry>
+    </enum>
+  </interface>
+
+  <interface name="wle_embedded_surface_v1" version="1">
+    <description summary="An embedded surface">
+      This interface represents a surface that has been, or will be, embedded
+      into an embedded compositor's surface.
+
+      The requests and events on this interface are mostly about moving keyboard
+      focus around and between the embedded surface and its parent, and are
+      similar to how the XEMBED protocol works on X11. Note that there are a
+      few omissions, as other Wayland protocols already handle some details.
+      The parent compositor will use xdg_toplevel.configure to indicate
+      activation and deactivation of the window, and wl_keyboard.enter for a
+      general movement of focus to the embedded surface.
+    </description>
+
+    <request name="request_focus">
+      <description summary="move focus to surface">
+        Asks the embedded compositor to move focus to the embedded surface.
+        The compositor may or may not actually move focus.
+      </description>
+      <arg name="serial" type="uint">
+        <description summary="serial">
+          A serial that corresponds to some user interaction that could be a
+          cause for the focus change.
+        </description>
+      </arg>
+    </request>
+
+    <request name="focus_next">
+      <description summary="focus next widget after embedded surface">
+        Asks the compositor to focus the next surface/widget in the focus chain
+        after the embedded surface's content.
+
+        This could happen if the focus is in the "last" widget in the embedded
+        surface's focus chain, and the user presses &lt;TAB&gt; in order to move
+        to the next focusable element in the parent.
+      </description>
+      <arg name="serial" type="uint">
+        <description summary="serial">
+          A serial that corresponds to some user interaction that could be a
+          cause for the focus change.
+
+          This also acts as a method for the embedded compositor to detect
+          infinite loops when moving along the focus chain.
+        </description>
+      </arg>
+    </request>
+
+    <request name="focus_previous">
+      <description summary="focus previous widget before embedded surface">
+        Asks the compositor to focus the previous surface/widget in the focus
+        chain before the embedded surface's content.
+
+        This could happen if the focus is in the "first" widget in the embedded
+        surface's focus chain, and the user presses &lt;SHIFT&gt;-&lt;TAB&gt; in
+        order to move to the previous focusable element in the parent.
+      </description>
+      <arg name="serial" type="uint">
+        <description summary="serial">
+          A serial that corresponds to some user interaction that could be a
+          cause for the focus change.
+
+          This also acts as a method for the embedded compositor to detect
+          infinite loops when moving along the focus chain.
+        </description>
+      </arg>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the embedding relationship">
+        Asks the embedded compositor to stop embedding the surface. At this
+        point, the client should assume that the underlying wl_surface will no
+        longer be displayed at all, and should destroy it.
+      </description>
+    </request>
+
+    <event name="embedded">
+      <description summary="surface successfully embedded">
+        This event notifies the client application that the embedded compositor
+        has successfully embedded the client surface into one of its surfaces.
+      </description>
+    </event>
+
+    <event name="failed" type="destructor">
+      <description summary="surface failed to embed">
+        This event notifies the client application that the embedded compositor
+        failed to embed the surface.
+
+        After sending this event, the embedded compositor will destroy the
+        wle_embedded_surface_v1 object. At this point, the client should assume
+        that the underlying wl_surface will no longer be displayed at all, and
+        should destroy it.
+      </description>
+        <!-- <arg name="reason" type="uint" enum="wle_embedded_surface_failure_v1"/> -->
+    </event>
+
+    <event name="focus_first">
+      <description summary="focus first widget in embedded surface">
+        Instructs the embedded surface to focus the first widget in its focus chain.
+
+        This could happen if focus is in the parent surface in a widget "before"
+        the embedded surface, and the user presses &lt;TAB&gt; to move focus
+        into the first widget of the embedded surface.
+      </description>
+      <arg name="serial" type="uint">
+        <description summary="serial">
+          A serial that corresponds to some user interaction that could be a
+          cause for the focus change.
+
+          This also acts as a method for the embedded compositor to detect
+          infinite loops when moving along the focus chain.
+        </description>
+      </arg>
+    </event>
+
+    <event name="focus_last">
+      <description summary="focus last widget in embedded surface">
+        Instructs the embedded surface to focus the last widget in its focus chain.
+
+        This could happen if focus is in the parent surface in a widget "after"
+        the embedded surface, and the user presses &lt;SHIFT&gt;-&lt;TAB&gt; to
+        move focus back to the last widget of the embedded surface.
+      </description>
+      <arg name="serial" type="uint">
+        <description summary="serial">
+          A serial that corresponds to some user interaction that could be a
+          cause for the focus change.
+
+          This also acts as a method for the embedded compositor to detect
+          infinite loops when moving along the focus chain.
+        </description>
+      </arg>
+    </event>
+
+    <event name="removed" type="destructor">
+      <description summary="surface is no longer embedded">
+        This event notifies the client application that the embedded compositor
+        is no longer embedding the surface, possibly because the embedded
+        compositor is shutting down, or because the user has requested that the
+        particular UI element be closed.
+      </description>
+    </event>
+  </interface>
+</protocol>
