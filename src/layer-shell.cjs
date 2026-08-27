@@ -364,6 +364,56 @@ function waitForLayerShellHelperReady(
 }
 
 /**
+ * Path of the helper's control socket, derived from the child's environment.
+ * The helper binds it next to its Wayland socket (`<socket>.ctl`), and sets the
+ * child's WAYLAND_DISPLAY to that socket's name — so this must be read BEFORE
+ * restoreLayerShellParentEnv() rewrites WAYLAND_DISPLAY back to the compositor's.
+ */
+function getLayerShellControlSocketPath(env = process.env) {
+  if (!isLayerShellChild(env)) return null;
+  const display = String(env?.WAYLAND_DISPLAY || '').trim();
+  if (!display) return null;
+  if (path.isAbsolute(display)) return `${display}.ctl`;
+  const runtimeDir = String(env?.XDG_RUNTIME_DIR || '').trim();
+  if (!runtimeDir) return null;
+  return path.join(runtimeDir, `${display}.ctl`);
+}
+
+/**
+ * Client for the helper's control socket: the popup hotkey's raise lever when the
+ * widget is a layer surface. A bottom-layer surface ignores every window-level
+ * raise (setAlwaysOnTop, moveTop, compositor scripting), so the helper instead
+ * moves the surface itself to the overlay layer ("raise") and back ("restore").
+ * One short-lived connection per command, fire-and-forget: a helper that is gone
+ * must degrade the popup to a no-op, never break or block the show path.
+ */
+function createLayerShellRaiser({
+  controlSocketPath,
+  connect = require('net').createConnection,
+  log = console,
+} = {}) {
+  if (!controlSocketPath) return null;
+  const send = (command) => {
+    try {
+      const socket = connect({ path: controlSocketPath });
+      socket.on('error', (error) => {
+        log.debug?.(`Layer-shell ${command} failed:`, error?.message || error);
+      });
+      // A helper wedged after accept() would otherwise hold this socket open forever.
+      socket.setTimeout?.(1000, () => socket.destroy());
+      // end() buffers the data and the FIN until the connection completes.
+      socket.end(`${command}\n`);
+    } catch (error) {
+      log.debug?.(`Layer-shell ${command} failed:`, error?.message || error);
+    }
+  };
+  return {
+    raise: () => send('raise'),
+    restore: () => send('restore'),
+  };
+}
+
+/**
  * Undo the layer-shell child environment on `env` (in place) so a relaunch that
  * does NOT go back through the helper — autoUpdater.quitAndInstall() or
  * app.relaunch() — starts a fresh process that redetects the compositor and hands
@@ -478,7 +528,9 @@ module.exports = {
   LAYER_SHELL_OUTPUT_ENV,
   LAYER_SHELL_UPSTREAM_DISPLAY_ENV,
   buildLayerShellSpawnPlan,
+  createLayerShellRaiser,
   detectTilingLayerShellCompositor,
+  getLayerShellControlSocketPath,
   isLayerShellChild,
   isProcessAlive,
   layerShellSocketName,

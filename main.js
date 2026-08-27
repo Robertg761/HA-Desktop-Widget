@@ -43,7 +43,9 @@ const { cloneProductionProfile } = require('./src/dev-profile-clone.cjs');
 const {
   DEFAULT_WINDOW_SIZE,
   buildLayerShellSpawnPlan,
+  createLayerShellRaiser,
   detectTilingLayerShellCompositor,
+  getLayerShellControlSocketPath,
   isLayerShellChild,
   materializeLayerShellHelper,
   readInitialLayerShellWindowSize,
@@ -126,6 +128,9 @@ app.setPath('sessionData', path.join(userDataPath, 'session'));
 // the surface) and before the single-instance lock: a parent that took the lock first
 // would make its own child lose it and quit.
 const isLayerShellChildProcess = isLayerShellChild();
+// The helper's control socket path is derived from WAYLAND_DISPLAY, which
+// restoreLayerShellParentEnv() rewrites at whenReady — capture it now.
+const layerShellControlSocketPath = getLayerShellControlSocketPath();
 function spawnLayerShellHelper() {
   const resolvedHelperPath = resolveLayerShellHelperPath({
     isPackaged: app.isPackaged,
@@ -668,6 +673,13 @@ const registeredEntityHotkeyAccelerators = new Set();
 // remap would let the compositor re-place it. Harmless no-op on compositors without
 // the KWin scripting interface.
 const kwinWindowRaiser = usesCompositorOwnedPlacement ? createKWinWindowRaiser({ log }) : null;
+// As a layer-shell child the widget is a bottom-layer surface, which no window-level
+// raise can lift; the helper's control socket moves the surface itself to the overlay
+// layer and back. Only this path gets the layer raiser — every other platform and
+// compositor keeps its existing raise behavior untouched.
+const layerShellRaiser = isLayerShellChildProcess
+  ? createLayerShellRaiser({ controlSocketPath: layerShellControlSocketPath, log })
+  : null;
 // Owns the window level, full-screen visibility, and saved position for every path that
 // pops the widget up, so a hotkey press lands above full-screen video instead of behind it.
 const popupWindowPresenter = createPopupWindowPresenter({
@@ -679,9 +691,13 @@ const popupWindowPresenter = createPopupWindowPresenter({
   // holding Electron's screen-saver window level.
   shouldReleaseElevationOnBlur: () =>
     usesLinuxPopupHotkeyBackend || !!config?.popupHotkeyToggleMode,
-  requestCompositorRaise: kwinWindowRaiser
-    ? (targetWindow) => kwinWindowRaiser.raiseWindowByTitle(targetWindow.getTitle())
-    : null,
+  requestCompositorRaise: layerShellRaiser
+    ? () => layerShellRaiser.raise()
+    : kwinWindowRaiser
+      ? (targetWindow) => kwinWindowRaiser.raiseWindowByTitle(targetWindow.getTitle())
+      : null,
+  // The layer hop outlives the popup unless undone when the elevation ends.
+  requestCompositorRestore: layerShellRaiser ? () => layerShellRaiser.restore() : null,
   log,
 });
 const linuxPopupHotkeyController = createLinuxPopupHotkeyController({

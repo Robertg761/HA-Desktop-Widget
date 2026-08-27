@@ -249,6 +249,18 @@ Operational notes:
   ELECTRON task exit immediately, which takes the renderer watcher down with it
   (`concurrently -k`); use `HA_WIDGET_LINUX_LAYER_SHELL=0 npm run dev` for watch-mode
   work on a tiling compositor, or `npm run dev:once`.
+- The popup hotkey works in layer mode through the helper's control socket
+  (`<socket>.ctl`, see PATCHES.md item 7): a bottom-layer surface ignores every
+  window-level raise (`setAlwaysOnTop`, `moveTop`, KWin scripting), so the
+  presenter instead sends `raise` — the helper hops the layer surfaces to the
+  `overlay` layer via `zwlr_layer_surface_v1.set_layer` — and sends `restore`
+  when the elevation ends (hide, blur in toggle mode). Wired only when running
+  as a layer-shell child (`src/layer-shell.cjs` `createLayerShellRaiser`); all
+  other platforms keep the existing raise paths. Requires layer-shell protocol
+  version >= 2 (Hyprland advertises 5). Caveat: in unpackaged dev runs the
+  GlobalShortcuts portal rejects the registration ("An app id is required"), so
+  the hotkey itself only binds in packaged builds; the raise mechanism can be
+  exercised directly with `raise`/`restore` lines to the control socket.
 - Desktop pin windows pass through the same helper and become bottom-layer surfaces
   with the same anchor, so they stack in the same corner as the widget instead of
   taking their saved positions. Pins already cannot position themselves on native

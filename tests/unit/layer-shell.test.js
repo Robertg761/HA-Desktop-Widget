@@ -10,7 +10,9 @@ const {
   LAYER_SHELL_OUTPUT_ENV,
   LAYER_SHELL_UPSTREAM_DISPLAY_ENV,
   buildLayerShellSpawnPlan,
+  createLayerShellRaiser,
   detectTilingLayerShellCompositor,
+  getLayerShellControlSocketPath,
   isLayerShellChild,
   isProcessAlive,
   layerShellSocketName,
@@ -747,5 +749,101 @@ describe('restoreLayerShellParentEnv', () => {
     const env = { WAYLAND_DISPLAY: 'wayland-1', [LAYER_SHELL_CHILD_ENV]: '1' };
     restoreLayerShellParentEnv(env);
     expect(env).toEqual({ WAYLAND_DISPLAY: 'wayland-1' });
+  });
+});
+
+describe('getLayerShellControlSocketPath', () => {
+  const childEnv = {
+    [LAYER_SHELL_CHILD_ENV]: '1',
+    WAYLAND_DISPLAY: layerShellSocketName(4242),
+    XDG_RUNTIME_DIR: '/run/user/1000',
+  };
+
+  test('derives the .ctl path next to the helper socket WAYLAND_DISPLAY names', () => {
+    expect(getLayerShellControlSocketPath(childEnv)).toBe(
+      path.join('/run/user/1000', `${layerShellSocketName(4242)}.ctl`)
+    );
+  });
+
+  test('handles an absolute WAYLAND_DISPLAY without consulting XDG_RUNTIME_DIR', () => {
+    expect(
+      getLayerShellControlSocketPath({
+        [LAYER_SHELL_CHILD_ENV]: '1',
+        WAYLAND_DISPLAY: '/run/user/1000/custom-socket',
+      })
+    ).toBe('/run/user/1000/custom-socket.ctl');
+  });
+
+  test('returns null outside a layer-shell child or without the needed variables', () => {
+    expect(getLayerShellControlSocketPath({ ...childEnv, [LAYER_SHELL_CHILD_ENV]: '' })).toBeNull();
+    expect(getLayerShellControlSocketPath({ ...childEnv, WAYLAND_DISPLAY: ' ' })).toBeNull();
+    expect(getLayerShellControlSocketPath({ ...childEnv, XDG_RUNTIME_DIR: '' })).toBeNull();
+    expect(getLayerShellControlSocketPath({})).toBeNull();
+  });
+});
+
+describe('createLayerShellRaiser', () => {
+  function createConnectMock() {
+    const sockets = [];
+    const connect = jest.fn((options) => {
+      const socket = {
+        options,
+        end: jest.fn(),
+        on: jest.fn(),
+        setTimeout: jest.fn(),
+        destroy: jest.fn(),
+      };
+      sockets.push(socket);
+      return socket;
+    });
+    return { connect, sockets };
+  }
+
+  test('returns null without a control socket path so callers can skip wiring it', () => {
+    expect(createLayerShellRaiser({ controlSocketPath: null })).toBeNull();
+    expect(createLayerShellRaiser({})).toBeNull();
+  });
+
+  test('sends one line command per connection to the control socket', () => {
+    const { connect, sockets } = createConnectMock();
+    const raiser = createLayerShellRaiser({
+      controlSocketPath: '/run/user/1000/sock.ctl',
+      connect,
+      log: { debug: jest.fn() },
+    });
+
+    raiser.raise();
+    raiser.restore();
+
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(sockets[0].options).toEqual({ path: '/run/user/1000/sock.ctl' });
+    expect(sockets[0].end).toHaveBeenCalledWith('raise\n');
+    expect(sockets[1].end).toHaveBeenCalledWith('restore\n');
+  });
+
+  test('a dead helper degrades to a logged no-op instead of an exception', () => {
+    const log = { debug: jest.fn() };
+    const raiser = createLayerShellRaiser({
+      controlSocketPath: '/run/user/1000/sock.ctl',
+      connect: () => {
+        throw new Error('ECONNREFUSED');
+      },
+      log,
+    });
+    expect(() => raiser.raise()).not.toThrow();
+    expect(log.debug).toHaveBeenCalled();
+
+    // Async failure path: the error listener registered on the socket must
+    // swallow the error (an unhandled 'error' event would crash the process).
+    const { connect, sockets } = createConnectMock();
+    const asyncRaiser = createLayerShellRaiser({
+      controlSocketPath: '/run/user/1000/sock.ctl',
+      connect,
+      log,
+    });
+    asyncRaiser.restore();
+    const errorHandler = sockets[0].on.mock.calls.find(([event]) => event === 'error')?.[1];
+    expect(typeof errorHandler).toBe('function');
+    expect(() => errorHandler(new Error('EPIPE'))).not.toThrow();
   });
 });

@@ -797,6 +797,8 @@ fn main() {
         anchor,
         margins: margins.unwrap_or((0, 0, 0, 0)),
         size: size.unwrap_or((0, 0)),
+        /* Enabled by run_listen_mode once its control socket is bound. */
+        control_channel: false,
     };
 
     if let Some(sock_name) = listen_socket {
@@ -875,6 +877,26 @@ struct ProxyConfig {
     anchor: Option<u32>,
     margins: (i32, i32, i32, i32),
     size: (u32, u32),
+    /** True when a runtime layer-change control socket exists (`--listen-socket`
+     * mode); proxy threads then poll with a timeout and watch [LAYER_COMMAND]. */
+    control_channel: bool,
+}
+
+/** Runtime layer override, set by the control socket in `--listen-socket` mode
+ * and applied independently by every proxy thread: the upper 32 bits are a
+ * generation counter (0 = no command ever issued), the lower 32 bits the
+ * zwlr_layer_shell_v1 layer value to move the surfaces to. A single value so a
+ * command's generation and layer can never be observed torn. */
+static LAYER_COMMAND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn layer_from_u32(value: u32) -> Option<ZwlrLayerShellV1Layer> {
+    match value {
+        0 => Some(ZwlrLayerShellV1Layer::Background),
+        1 => Some(ZwlrLayerShellV1Layer::Bottom),
+        2 => Some(ZwlrLayerShellV1Layer::Top),
+        3 => Some(ZwlrLayerShellV1Layer::Overlay),
+        _ => None,
+    }
 }
 
 /* Forward messages in each direction over one client connection, until either side hangs up. */
@@ -926,7 +948,50 @@ fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
         )
     };
 
+    /* Last layer-change generation this connection applied. Starting at 0 makes
+     * a connection opened after a command adopt it too: its inject call finds no
+     * surfaces yet but records the layer for the ones about to be created. */
+    let mut seen_layer_generation: u32 = 0;
+
     loop {
+        if cfg.control_channel {
+            let command = LAYER_COMMAND.load(std::sync::atomic::Ordering::SeqCst);
+            let generation = (command >> 32) as u32;
+            if generation != seen_layer_generation {
+                if let Some(layer) = layer_from_u32(command as u32) {
+                    /* Inject at the upward queue's tail, which is always a
+                     * message boundary (translation writes whole messages). */
+                    let dst_space = bufs_upward.buf_dst.len();
+                    let mut dstq = OutputQueue {
+                        data: &mut bufs_upward.buf_dst[bufs_upward.nbytes_dst..],
+                        endpoint: dst_space,
+                        fds: &mut bufs_upward.fds_out,
+                    };
+                    let pre_len = dstq.data.len();
+                    match state.inject_set_layer(layer, &mut dstq) {
+                        Ok(done) => {
+                            bufs_upward.nbytes_dst += pre_len - dstq.data.len();
+                            if done {
+                                seen_layer_generation = generation;
+                            }
+                            /* Not done: the queue was too full; retried above
+                             * once some of it drains. */
+                        }
+                        Err(WaylandError::Parse) => {
+                            eprintln!("Failed to apply layer change");
+                            break;
+                        }
+                        Err(WaylandError::Other(x)) => {
+                            eprintln!("Failed to apply layer change: {}", x);
+                            break;
+                        }
+                    }
+                } else {
+                    seen_layer_generation = generation;
+                }
+            }
+        }
+
         let writing_up = bufs_upward.nbytes_dst > 0;
         assert!(bufs_upward.fds_out.is_empty() || writing_up);
         let writing_down = bufs_downward.nbytes_dst > 0;
@@ -949,7 +1014,21 @@ fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
                 },
             ),
         ];
-        match event::poll(&mut pfds, None) {
+        /* A layer command arrives via an atomic, not an fd, so a control-channel
+         * proxy must wake periodically to notice one; 50 ms keeps the raise
+         * latency imperceptible. Without a control channel, block as before. */
+        let poll_timeout = rustix::event::Timespec {
+            tv_sec: 0,
+            tv_nsec: 50_000_000,
+        };
+        match event::poll(
+            &mut pfds,
+            if cfg.control_channel {
+                Some(&poll_timeout)
+            } else {
+                None
+            },
+        ) {
             Ok(_) => {}
             Err(e) => {
                 eprintln!("Poll error {}", e);
@@ -1184,7 +1263,72 @@ fn check_upstream_layer_shell(upstream_path: &OsStr) -> Result<(), String> {
 
 /* Serve a listening socket in XDG_RUNTIME_DIR, translating each connection made through it
  * on its own thread, until the spawned command exits. */
-fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
+/* Accept one connection on the control socket and act on its command. Line
+ * protocol, one command per connection: "raise" moves every layer surface to
+ * the overlay layer (above fullscreen windows, matching the popup hotkey's
+ * screen-saver level semantics elsewhere), "restore" returns them to the
+ * configured layer. Best-effort by design: the popup path in the app must
+ * degrade to a no-op, never break the session. */
+fn handle_control_connection(ctl_listener: &OwnedFd, cfg: &ProxyConfig) {
+    let conn = match net::accept_with(ctl_listener, net::SocketFlags::NONBLOCK) {
+        Ok(c) => c,
+        Err(e) => {
+            debug!("accept() on control socket failed: {}", e);
+            return;
+        }
+    };
+    set_cloexec(&conn, true);
+    /* The client writes right after connect(), but the bytes may not have
+     * arrived by accept time; give them a moment without blocking forever on a
+     * client that connects and stalls. */
+    let timeout = rustix::event::Timespec {
+        tv_sec: 0,
+        tv_nsec: 500_000_000,
+    };
+    let mut pfds = [event::PollFd::new(&conn, event::PollFlags::IN)];
+    match event::poll(&mut pfds, Some(&timeout)) {
+        Ok(n) if n > 0 => {}
+        _ => {
+            debug!("No command arrived on control connection");
+            return;
+        }
+    }
+    let mut buf = [0u8; 64];
+    let nread = match io::read(&conn, &mut buf) {
+        Ok(n) => n,
+        Err(e) => {
+            debug!("Failed to read control command: {}", e);
+            return;
+        }
+    };
+    let command = buf[..nread].trim_ascii();
+    let layer = match command {
+        b"raise" => ZwlrLayerShellV1Layer::Overlay,
+        b"restore" => cfg.layer,
+        _ => {
+            eprintln!(
+                "Ignoring unknown control command: \"{}\"",
+                escape_non_ascii_printable(command)
+            );
+            return;
+        }
+    };
+    /* Only this (main) thread writes LAYER_COMMAND, so load+store cannot race. */
+    let generation =
+        ((LAYER_COMMAND.load(std::sync::atomic::Ordering::SeqCst) >> 32) as u32).wrapping_add(1);
+    LAYER_COMMAND.store(
+        ((generation as u64) << 32) | (layer as u64),
+        std::sync::atomic::Ordering::SeqCst,
+    );
+    debug!(
+        "Control command \"{}\": moving layer surfaces to layer {:?} (generation {})",
+        escape_non_ascii_printable(command),
+        layer as u32,
+        generation
+    );
+}
+
+fn run_listen_mode(sock_name: &str, command: &[&OsStr], mut cfg: ProxyConfig) {
     let upstream_path = match resolve_upstream_path() {
         Ok(p) => p,
         Err(e) => {
@@ -1263,6 +1407,40 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
      * bound by another process that (correctly or not) considered ours stale. */
     let bound_socket_id = socket_path_identity(&listen_path);
 
+    /* Control socket for runtime layer changes (see handle_control_connection),
+     * bound next to the Wayland socket so the child can derive its path from
+     * WAYLAND_DISPLAY. The main-socket probe above already established that
+     * nothing live owns this name, so a leftover .ctl of the same name is
+     * stale. Failure only disables runtime raising, never startup. */
+    let mut ctl_os = listen_path.clone().into_os_string();
+    ctl_os.push(".ctl");
+    let ctl_path = std::path::PathBuf::from(ctl_os);
+    let _ = std::fs::remove_file(&ctl_path);
+    let ctl_listener: Option<OwnedFd> = (|| {
+        let sock = net::socket_with(
+            net::AddressFamily::UNIX,
+            net::SocketType::STREAM,
+            net::SocketFlags::NONBLOCK,
+            None,
+        )
+        .ok()?;
+        set_cloexec(&sock, true);
+        let addr = net::SocketAddrUnix::new(ctl_path.as_os_str()).ok()?;
+        net::bind(&sock, &addr).ok()?;
+        net::listen(&sock, 4).ok()?;
+        Some(sock)
+    })();
+    if ctl_listener.is_none() {
+        eprintln!(
+            "Failed to bind control socket at {:?}; runtime layer changes disabled",
+            ctl_path
+        );
+    }
+    let bound_ctl_socket_id = ctl_listener
+        .as_ref()
+        .and_then(|_| socket_path_identity(&ctl_path));
+    cfg.control_channel = ctl_listener.is_some();
+
     debug!(
         "Listening on {:?}; spawning program {:?} with args: {:?}",
         listen_path,
@@ -1289,6 +1467,7 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
                 e
             );
             remove_socket_if_ours(&listen_path, bound_socket_id);
+            remove_socket_if_ours(&ctl_path, bound_ctl_socket_id);
             std::process::exit(1);
         }
     };
@@ -1312,8 +1491,17 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
      * well-behaved clients. */
     let mut child_exited = false;
     loop {
-        let mut pfds = [event::PollFd::new(&listener, event::PollFlags::IN)];
-        let _ = event::poll(&mut pfds, Some(&timeout));
+        let mut pfds: Vec<event::PollFd> = Vec::with_capacity(2);
+        pfds.push(event::PollFd::new(&listener, event::PollFlags::IN));
+        if let Some(ctl) = &ctl_listener {
+            pfds.push(event::PollFd::new(ctl, event::PollFlags::IN));
+        }
+        let _ = event::poll(&mut pfds[..], Some(&timeout));
+        if let Some(ctl) = &ctl_listener {
+            if pfds[1].revents().contains(event::PollFlags::IN) {
+                handle_control_connection(ctl, &cfg);
+            }
+        }
         if pfds[0].revents().contains(event::PollFlags::IN) {
             match net::accept_with(&listener, net::SocketFlags::NONBLOCK) {
                 Ok(downstream_fd) => {
@@ -1353,6 +1541,8 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], cfg: ProxyConfig) {
     }
     debug!("Program exited and connections drained; removing listening socket");
     drop(listener);
+    drop(ctl_listener);
     remove_socket_if_ours(&listen_path, bound_socket_id);
+    remove_socket_if_ours(&ctl_path, bound_ctl_socket_id);
     let _ = std::fs::remove_file(&ready_path);
 }

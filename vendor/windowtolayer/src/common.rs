@@ -69,6 +69,21 @@ pub trait MessageRewriter {
     ) -> Result<ProcResult, WaylandError>;
 
     fn log_message(&self, msg: &[u8], from_upstream: bool, processed: bool);
+
+    /** Move every live layer surface to `layer` at runtime and commit the
+     * change, for the raise/restore control channel in --listen-socket mode.
+     * `dst` must be the upstream-facing output queue, positioned at a message
+     * boundary. Returns Ok(false) when the queue lacks space for all of the
+     * messages right now (nothing is written; retry after it drains) and
+     * Ok(true) once the change is fully applied or there is nothing to apply.
+     * The default is for rewriters that manage no layer surfaces. */
+    fn inject_set_layer(
+        &mut self,
+        _layer: ZwlrLayerShellV1Layer,
+        _dst: &mut OutputQueue,
+    ) -> Result<bool, WaylandError> {
+        Ok(true)
+    }
 }
 
 pub struct ObjectTracker {

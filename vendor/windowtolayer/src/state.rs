@@ -5,7 +5,7 @@ use crate::common::*;
 use crate::wayland::*;
 use crate::wayland_util::*;
 use arrayvec::ArrayVec;
-use log::warn;
+use log::{debug, warn};
 use std::collections::BTreeMap;
 use std::os::fd::OwnedFd;
 
@@ -155,6 +155,71 @@ impl MessageRewriter for WindowToLayer<'_> {
     }
     fn log_message(&self, msg: &[u8], from_upstream: bool, processed: bool) {
         log_message(from_upstream, &self.objs, msg, processed);
+    }
+
+    /* Runtime raise/restore: move every mapped layer surface to `layer`.
+     * set_layer is double-buffered, so each one is followed by a commit on its
+     * wl_surface to make the move take effect without waiting for the client's
+     * next frame. */
+    fn inject_set_layer(
+        &mut self,
+        layer: ZwlrLayerShellV1Layer,
+        dst: &mut OutputQueue,
+    ) -> Result<bool, WaylandError> {
+        let Some(layer_shell_id) = self.zwlr_layer_shell_v1 else {
+            /* No layer shell bound yet means no layer surfaces either; recording
+             * the layer below still makes later surfaces start on it. */
+            self.layer = layer;
+            return Ok(true);
+        };
+        let bound_version = self
+            .objs
+            .up_to_down
+            .get(&layer_shell_id)
+            .map(|obj| obj.version)
+            .unwrap_or(1);
+        if bound_version < 2 {
+            debug!(
+                "zwlr_layer_shell_v1 was bound at version {} < 2, which lacks set_layer; \
+                 ignoring runtime layer change",
+                bound_version
+            );
+            return Ok(true);
+        }
+
+        /* Entries leave surface_to_toplevel_map when the toplevel or its
+         * xdg_surface is destroyed, so this only visits live layer surfaces. */
+        let mut targets: Vec<(UpstreamID, UpstreamID)> = Vec::new();
+        for (xdg_surface_id, toplevel_id) in self.surface_to_toplevel_map.iter() {
+            let Some(layer_surface_id) = self.objs.down_to_up.get(toplevel_id).and_then(|o| o.alt)
+            else {
+                continue;
+            };
+            let Some(wl_surface_id) = self.xdg_to_wl_surface_map.get(xdg_surface_id) else {
+                continue;
+            };
+            let Some(upstream_wl_surface_id) =
+                self.objs.down_to_up.get(wl_surface_id).and_then(|o| o.alt)
+            else {
+                continue;
+            };
+            targets.push((layer_surface_id, upstream_wl_surface_id));
+        }
+
+        let needed = targets.len()
+            * (length_zwlr_layer_surface_v1_req_set_layer() + length_wl_surface_req_commit());
+        if dst.data.len() < needed {
+            /* All-or-nothing: retried by the caller once the queue drains. */
+            return Ok(false);
+        }
+        for (layer_surface_id, upstream_wl_surface_id) in targets {
+            write_zwlr_layer_surface_v1_req_set_layer(dst, layer_surface_id, layer as u32);
+            write_wl_surface_req_commit(dst, upstream_wl_surface_id);
+        }
+        /* Surfaces created from now on join the commanded layer, so a raise
+         * covers them and the matching restore returns them as well. */
+        self.layer = layer;
+        Ok(true)
     }
 }
 

@@ -51,9 +51,14 @@ function createPopupWindowPresenter(options = {}) {
     shouldReleaseElevationOnBlur = () => false,
     // Native Wayland gives the client no raise or focus lever at all for a mapped
     // window. When set, this asks the compositor itself to activate the window (KWin
-    // scripting, see kwin-window-raise.cjs). Async and best-effort: a failure must
-    // never break the show path.
+    // scripting, see kwin-window-raise.cjs) or hop the layer surface to the overlay
+    // layer (layer-shell.cjs). Async and best-effort: a failure must never break the
+    // show path.
     requestCompositorRaise = null,
+    // Counterpart invoked when the temporary raise ends, for raises that changed
+    // compositor-side state that outlives the window's Electron level — a layer
+    // surface hopped to the overlay layer stays there until explicitly restored.
+    requestCompositorRestore = null,
     log = console,
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
@@ -101,6 +106,18 @@ function createPopupWindowPresenter(options = {}) {
       }
     } catch (error) {
       log.debug?.('Compositor raise failed:', error?.message || error);
+    }
+  }
+
+  function restoreViaCompositor() {
+    if (typeof requestCompositorRestore !== 'function') return;
+    try {
+      const result = requestCompositorRestore();
+      if (result && typeof result.catch === 'function') {
+        result.catch((error) => log.debug?.('Compositor restore failed:', error?.message || error));
+      }
+    } catch (error) {
+      log.debug?.('Compositor restore failed:', error?.message || error);
     }
   }
 
@@ -262,6 +279,11 @@ function createPopupWindowPresenter(options = {}) {
     elevated = false;
     stickyElevation = false;
     blurReleaseArmed = false;
+    // Compositor-side state must be undone even for a window that is already
+    // destroyed: the raise lives in the compositor, not in the window object.
+    if (wasElevated) {
+      restoreViaCompositor();
+    }
     if (!isUsableWindow(targetWindow)) return false;
     if (wasElevated) {
       setFullScreenVisibility(targetWindow, false);
@@ -274,9 +296,9 @@ function createPopupWindowPresenter(options = {}) {
   function hidePopup(targetWindow) {
     cancelPendingRaises();
     if (!isUsableWindow(targetWindow)) {
-      elevated = false;
-      stickyElevation = false;
-      blurReleaseArmed = false;
+      // releaseElevation handles the unusable window itself; going through it
+      // keeps the compositor-side restore from being skipped.
+      releaseElevation(targetWindow);
       return false;
     }
     // Release before hiding so a later show from the tray or menu does not inherit the

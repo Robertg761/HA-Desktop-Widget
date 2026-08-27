@@ -84,6 +84,19 @@ unconditionally above tiled ones. See issue #79 and
    known; the child's stdout/stderr are redirected to /dev/null (the helper's
    own diagnostics still go to its stderr, which the app logs to a file).
 
+7. Runtime raise/restore control channel in `--listen-socket` mode: a second
+   unix stream socket is bound at `<socket path>.ctl`. One line command per
+   connection: `raise` moves every live layer surface to the `overlay` layer,
+   `restore` returns them to the configured layer (both injected as
+   `zwlr_layer_surface_v1.set_layer` plus a `wl_surface.commit`, and only when
+   the compositor's layer shell was bound at version >= 2, where `set_layer`
+   exists). This gives the app's popup hotkey a working "bring to front" on a
+   bottom-layer surface, which no window-level raise can lift. Commands apply
+   to all connections (each proxy thread polls a shared generation-counted
+   atomic with a 50 ms poll timeout), the commanded layer also applies to
+   surfaces created afterwards, and a control-socket bind failure only
+   disables runtime raising, never startup.
+
 These changes are intended to be submitted upstream. If upstream gains
 equivalent functionality, prefer depending on an upstream release and drop
 this vendored copy.

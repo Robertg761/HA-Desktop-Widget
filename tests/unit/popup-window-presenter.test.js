@@ -53,6 +53,7 @@ function createPresenter(overrides = {}) {
     getWorkAreas: overrides.getWorkAreas || (() => [WORK_AREA]),
     shouldReleaseElevationOnBlur: overrides.shouldReleaseElevationOnBlur || (() => false),
     requestCompositorRaise: overrides.requestCompositorRaise || null,
+    requestCompositorRestore: overrides.requestCompositorRestore || null,
     log,
   });
   return { presenter, config, log };
@@ -109,6 +110,87 @@ describe('popup window presenter', () => {
     });
     expect(throwingPresenter.showAboveFullScreen(createWindowMock())).toBe(true);
     expect(throwing).toHaveBeenCalled();
+  });
+
+  describe('compositor restore', () => {
+    test('undoes the compositor raise when the popup hides', () => {
+      const targetWindow = createWindowMock();
+      const requestCompositorRestore = jest.fn();
+      const { presenter } = createPresenter({ requestCompositorRestore });
+
+      presenter.showAboveFullScreen(targetWindow);
+      expect(requestCompositorRestore).not.toHaveBeenCalled();
+
+      presenter.hidePopup(targetWindow);
+      expect(requestCompositorRestore).toHaveBeenCalledTimes(1);
+    });
+
+    test('undoes the compositor raise when the window hides through another path', () => {
+      const targetWindow = createWindowMock();
+      const requestCompositorRestore = jest.fn();
+      const { presenter } = createPresenter({ requestCompositorRestore });
+
+      presenter.showAboveFullScreen(targetWindow);
+      presenter.handleWindowHidden(targetWindow);
+      expect(requestCompositorRestore).toHaveBeenCalledTimes(1);
+    });
+
+    test('undoes the compositor raise after a one-off raise ends on its own', () => {
+      const targetWindow = createWindowMock();
+      const requestCompositorRestore = jest.fn();
+      const { presenter } = createPresenter({ requestCompositorRestore });
+
+      presenter.showAboveFullScreen(targetWindow, { keepElevated: false });
+      expect(requestCompositorRestore).not.toHaveBeenCalled();
+
+      jest.runOnlyPendingTimers();
+      expect(requestCompositorRestore).toHaveBeenCalledTimes(1);
+      expect(presenter.isElevated()).toBe(false);
+    });
+
+    test('does not restore when nothing was elevated', () => {
+      const targetWindow = createWindowMock();
+      const requestCompositorRestore = jest.fn();
+      const { presenter } = createPresenter({ requestCompositorRestore });
+
+      presenter.hidePopup(targetWindow);
+      presenter.handleWindowHidden(targetWindow);
+      expect(requestCompositorRestore).not.toHaveBeenCalled();
+    });
+
+    test('restores even when the window was destroyed while elevated', () => {
+      // The raise lives in the compositor (the layer surface was moved to the
+      // overlay layer), so it must be undone regardless of the window object.
+      const targetWindow = createWindowMock();
+      const requestCompositorRestore = jest.fn();
+      const { presenter } = createPresenter({ requestCompositorRestore });
+
+      presenter.showAboveFullScreen(targetWindow);
+      targetWindow.isDestroyed.mockReturnValue(true);
+
+      presenter.hidePopup(targetWindow);
+      expect(requestCompositorRestore).toHaveBeenCalledTimes(1);
+    });
+
+    test('a failing compositor restore never breaks the hide path', () => {
+      const targetWindow = createWindowMock();
+      const rejecting = jest.fn(() => Promise.reject(new Error('helper gone')));
+      const throwing = jest.fn(() => {
+        throw new Error('helper gone');
+      });
+
+      const { presenter } = createPresenter({ requestCompositorRestore: rejecting });
+      presenter.showAboveFullScreen(targetWindow);
+      expect(presenter.hidePopup(targetWindow)).toBe(true);
+
+      const otherWindow = createWindowMock();
+      const { presenter: throwingPresenter } = createPresenter({
+        requestCompositorRestore: throwing,
+      });
+      throwingPresenter.showAboveFullScreen(otherWindow);
+      expect(throwingPresenter.hidePopup(otherWindow)).toBe(true);
+      expect(throwing).toHaveBeenCalled();
+    });
   });
 
   test('holds the raise across the re-assert passes while the window stays visible', () => {
