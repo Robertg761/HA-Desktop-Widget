@@ -109,6 +109,53 @@ unconditionally above tiled ones. See issue #79 and
    these let the app offer a "move widget to monitor" menu: query names,
    save one, relaunch with `--output-name`.
 
+9. Client-initiated interactive move (dragging the widget), with optional
+   persistence via `--position-file <path>` (requires `--anchor`): layer
+   surfaces have no compositor-side interactive move, so a compositor drag
+   bind (e.g. Hyprland's Super+drag) passes through them, and upstream
+   silently drops `xdg_toplevel::move`. The proxy now performs the move
+   itself: it observes the real seat's `wl_pointer` enter/motion/button
+   events as they are forwarded, and `xdg_toplevel::move` (sent by
+   Chromium/Electron when a `-webkit-app-region: drag` region is dragged)
+   latches a drag when the pointer is over that toplevel's surface. During
+   the drag the proxy injects `zwlr_layer_surface_v1.set_margin` plus a
+   `wl_surface.commit` to follow the pointer (per anchored edge, only on
+   axes anchored to exactly one edge, clamped nonnegative so the surface
+   stays on the output). Several defenses make the resulting position exact
+   rather than merely approximate:
+   - The grab point is only seeded from pointer coordinates that lie inside
+     the surface; some input paths (virtual absolute-pointer devices on
+     Hyprland) emit positions computed against the wrong origin, which would
+     poison the grab.
+   - Motions are debounced by timestamp: a motion is held pending until one
+     with a later timestamp arrives (or the drag ends), so when a bogus
+     wrong-origin position is followed by the real one under the same
+     timestamp, last-one-wins keeps the real one.
+   - Margins are computed absolutely, not incrementally: each pending motion
+     records the margins the surface sat at when the position was measured
+     (its *base*), and the target is `base ∓ (local − grab)` per axis. A
+     `wl_display.sync` callback brackets each injected update; while it is
+     outstanding, new motions are tagged with the pre-inject margins and no
+     further update is injected. This makes stale measurements
+     non-compounding no matter how the compositor interleaves repositioning
+     with motion events.
+   - Motion-driven injects are rate-limited to one per 15 ms of event time.
+     Compositors that animate layer-surface geometry changes (Hyprland's
+     `layers` animation) otherwise glide the surface under the pointer
+     between measurements, forming a positive feedback loop that flings the
+     surface. (The app additionally disables that animation node via
+     `hyprctl` on Hyprland; the rate limit is defense-in-depth for
+     compositors where that fails.)
+   A button release (or an early leave) flushes the pending motion
+   unconditionally — its own base makes it correct even mid-sync — so the
+   final position is exact, then ends the drag and, when
+   `--position-file` is given, saves the margins there
+   (`top,right,bottom,left`, written via rename); the file is re-read when
+   each new connection starts, so all of the client's connections — and the
+   next run of the helper — map surfaces where the user left them. A drag is
+   dropped when its toplevel is destroyed, and a malformed or absent
+   position file falls back to `--margin`.
+
 These changes are intended to be submitted upstream. If upstream gains
 equivalent functionality, prefer depending on an upstream release and drop
 this vendored copy.

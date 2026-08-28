@@ -5,6 +5,7 @@ const {
   LAYER_SHELL_CHILD_ENV,
   LAYER_SHELL_ENV_OVERRIDE,
   LAYER_SHELL_HELPER_PATH_ENV,
+  LAYER_SHELL_KEEP_ANIMATIONS_ENV,
   LAYER_SHELL_LAYER_ENV,
   LAYER_SHELL_MARGIN_ENV,
   LAYER_SHELL_OUTPUT_ENV,
@@ -12,6 +13,7 @@ const {
   buildLayerShellSpawnPlan,
   createLayerShellRaiser,
   detectTilingLayerShellCompositor,
+  disableHyprlandLayerMoveAnimation,
   getLayerShellControlSocketPath,
   isLayerShellChild,
   isProcessAlive,
@@ -675,6 +677,33 @@ describe('buildLayerShellSpawnPlan', () => {
     expect(blank.args).not.toContain('--output-name');
   });
 
+  test('passes --position-file unless a placement env override is active', () => {
+    const plan = buildLayerShellSpawnPlan({
+      ...basePlanInput,
+      positionFilePath: '/home/u/.config/widget/layer-shell-position',
+    });
+    expect(plan.args[plan.args.indexOf('--position-file') + 1]).toBe(
+      '/home/u/.config/widget/layer-shell-position'
+    );
+
+    // An explicit margin override must win over a dragged position, and margins
+    // saved under a different anchor would put the widget in the wrong corner.
+    for (const override of [
+      { [LAYER_SHELL_MARGIN_ENV]: '10' },
+      { [LAYER_SHELL_ANCHOR_ENV]: 'top,left' },
+    ]) {
+      const overridden = buildLayerShellSpawnPlan({
+        ...basePlanInput,
+        positionFilePath: '/home/u/.config/widget/layer-shell-position',
+        env: { WAYLAND_DISPLAY: 'wayland-1', ...override },
+      });
+      expect(overridden.args).not.toContain('--position-file');
+    }
+
+    const blank = buildLayerShellSpawnPlan({ ...basePlanInput, positionFilePath: '   ' });
+    expect(blank.args).not.toContain('--position-file');
+  });
+
   test('relaunches the AppImage itself, not the doomed FUSE-mounted binary', () => {
     // Inside an AppImage, execPath lives in a /tmp/.mount_* FUSE mount that vanishes
     // when this process exits; the helper must launch the AppImage so the runtime
@@ -944,5 +973,51 @@ describe('createLayerShellRaiser', () => {
     const silent = raiser.listOutputs();
     handlerFor(1, 'close')();
     await expect(silent).resolves.toEqual([]);
+  });
+});
+
+describe('disableHyprlandLayerMoveAnimation', () => {
+  test('issues both hyprctl syntaxes on Hyprland (each parser rejects the other)', () => {
+    const execFile = jest.fn();
+    expect(disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile })).toBe(true);
+
+    expect(execFile).toHaveBeenCalledTimes(2);
+    const invocations = execFile.mock.calls.map(([cmd, args]) => [cmd, ...args]);
+    expect(invocations).toEqual([
+      ['hyprctl', 'keyword', 'animation', 'layers,0,1,default'],
+      ['hyprctl', 'eval', 'hl.animation({ leaf = "layers", enabled = false })'],
+    ]);
+    // Fire-and-forget: a rejecting parser only logs at debug level.
+    const log = { debug: jest.fn() };
+    disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile, log });
+    const callback = execFile.mock.calls[2][3];
+    expect(() => callback(new Error('exit 1'), '', "keyword can't work")).not.toThrow();
+    expect(log.debug).toHaveBeenCalled();
+  });
+
+  test('does nothing off Hyprland or when the opt-out env is set', () => {
+    const execFile = jest.fn();
+    expect(disableHyprlandLayerMoveAnimation({ env: {}, execFile })).toBe(false);
+    expect(
+      disableHyprlandLayerMoveAnimation({
+        env: { ...hyprlandEnv, [LAYER_SHELL_KEEP_ANIMATIONS_ENV]: '1' },
+        execFile,
+      })
+    ).toBe(false);
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  test('a throwing execFile never breaks startup', () => {
+    const log = { debug: jest.fn() };
+    expect(() =>
+      disableHyprlandLayerMoveAnimation({
+        env: hyprlandEnv,
+        execFile: () => {
+          throw new Error('ENOENT');
+        },
+        log,
+      })
+    ).not.toThrow();
+    expect(log.debug).toHaveBeenCalledTimes(2);
   });
 });

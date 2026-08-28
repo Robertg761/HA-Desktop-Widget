@@ -13,6 +13,24 @@ struct OutputInfo {
     name: Option<String>,
 }
 
+/** State of a pointer-driven interactive move of an anchored layer surface,
+ * latched by xdg_toplevel::move and ended on button release. Layer surfaces
+ * have no compositor-side interactive move, so the proxy performs the move
+ * itself by following the pointer with margin adjustments. */
+struct PointerDrag {
+    /** Upstream zwlr_layer_surface_v1 being moved */
+    layer_surface: UpstreamID,
+    /** Upstream wl_surface backing it; set_margin is double-buffered, so
+     * every margin change is followed by a commit on this surface */
+    wl_surface: UpstreamID,
+    /** Pointer position at grab time, in surface-local wl_fixed coordinates.
+     * Kept constant for the whole drag: once the surface has moved to put the
+     * grab point back under the pointer, the pointer's surface-local position
+     * returns to this value, so per-motion deltas never compound. */
+    grab_x: i32,
+    grab_y: i32,
+}
+
 /** Core protocol tracking state for `windowtolayer`, to convert xdg-shell clients to layer-shell.
  *
  * A downstream xdg_toplevel corresponds to an upstream zwlr_layer_surface_v1; the downstream
@@ -82,6 +100,43 @@ pub struct WindowToLayer<'a> {
      * Entries removed on xdg_surface or xdg_toplevel destruction. */
     anchored_sizes: BTreeMap<DownstreamID, (u32, u32)>,
 
+    /** Upstream wl_surface currently under the pointer, with the last known
+     * in-bounds surface-local position in wl_fixed coordinates; observed from
+     * the wl_pointer events of the real seat as they are forwarded. The
+     * position is None until an enter or motion reports coordinates inside
+     * the surface: some input paths (virtual absolute-pointer devices on
+     * Hyprland) emit positions computed against the wrong origin, and a grab
+     * point must never be seeded from one of those. */
+    pointer_focus: Option<(UpstreamID, Option<(i32, i32)>)>,
+    /** In-progress pointer move of a layer surface, if any */
+    drag: Option<PointerDrag>,
+    /** Latest drag motion not yet acted on, as (timestamp, x, y, base) with
+     * the position in surface-local wl_fixed coordinates and `base` the
+     * margins the surface sat at when the position was measured (see
+     * [compute_drag_margins]). A motion is held here until one with a later
+     * timestamp arrives (or the drag ends), so that when an input path emits
+     * a bogus position followed by the real one under the same timestamp,
+     * last-one-wins keeps the real one. */
+    drag_pending: Option<(u32, i32, i32, (i32, i32, i32, i32))>,
+    /** Callback of a sync sent after the latest dragged set_margin, together
+     * with the margins in effect before that set_margin. While the callback
+     * is outstanding, motion events were still measured against those old
+     * margins, so pendings recorded meanwhile carry them as their base; the
+     * callback's arrival proves the compositor repositioned the surface, and
+     * later motions measure against [WindowToLayer::margins] again. */
+    drag_margin_sync: Option<(UpstreamID, (i32, i32, i32, i32))>,
+    /** Event timestamp (ms) of the last margin update injected from a drag
+     * motion, spacing motion-driven injects at least
+     * [DRAG_INJECT_MIN_INTERVAL_MS] apart. On compositors that animate layer
+     * surface geometry changes, per-event injects measured mid-glide form a
+     * positive feedback loop that flings the surface; rate limiting keeps
+     * the loop stable. Release/leave flushes are exempt so the final
+     * position is always exact. */
+    drag_last_inject: Option<u32>,
+    /** If Some, the margins are saved here when a pointer move ends (the
+     * caller loads this file to seed [.margins] at startup). */
+    position_file: Option<&'a std::path::Path>,
+
     /** Registry, name, and version of the (filtered) upstream xdg_wm_base
      * global, kept so a real xdg_wm_base can be bound to create popups. */
     xdg_wm_base_global: Option<(UpstreamID, u32, u32)>,
@@ -105,6 +160,7 @@ impl<'a> WindowToLayer<'a> {
         anchor: Option<u32>,
         margins: (i32, i32, i32, i32),
         anchored_size: (u32, u32),
+        position_file: Option<&'a std::path::Path>,
     ) -> Self {
         WindowToLayer {
             objs: ObjectTracker::default(),
@@ -132,10 +188,145 @@ impl<'a> WindowToLayer<'a> {
             margins,
             anchored_size,
             anchored_sizes: BTreeMap::new(),
+            pointer_focus: None,
+            drag: None,
+            drag_pending: None,
+            drag_margin_sync: None,
+            drag_last_inject: None,
+            position_file,
             xdg_wm_base_global: None,
             upstream_xdg_wm_base: None,
         }
     }
+}
+
+/** Persist the current margins so the dragged position survives restarts. */
+fn save_margins_to_position_file(state: &WindowToLayer) {
+    let Some(path) = state.position_file else {
+        return;
+    };
+    let (t, r, b, l) = state.margins;
+    /* Write-then-rename so an interrupted write cannot leave a torn file; a
+     * malformed file is ignored at load time anyway. */
+    let tmp = path.with_extension("tmp");
+    let result = std::fs::write(&tmp, format!("{},{},{},{}\n", t, r, b, l))
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(e) = result {
+        warn!(
+            "Failed to save the layer surface position to {:?}: {}",
+            path, e
+        );
+    }
+}
+
+/** Minimum event-time spacing between margin updates injected from drag
+ * motions (see [WindowToLayer::drag_last_inject]). */
+const DRAG_INJECT_MIN_INTERVAL_MS: u32 = 15;
+
+/** End any in-progress pointer move, persisting the final position. */
+fn end_pointer_drag(state: &mut WindowToLayer) {
+    state.drag_pending = None;
+    state.drag_last_inject = None;
+    if state.drag.take().is_some() {
+        save_margins_to_position_file(state);
+    }
+}
+
+/** Whether a surface-local pointer position (wl_fixed) lies inside the given
+ * upstream layer surface, per its last known size. Positions outside the
+ * surface are protocol nonsense for an unattached pointer, and are how bogus
+ * wrong-origin events (see [WindowToLayer::pointer_focus]) are recognized. */
+fn pointer_pos_in_bounds(state: &WindowToLayer, surface: UpstreamID, x: i32, y: i32) -> bool {
+    let (w, h) = state
+        .objs
+        .up_to_down
+        .get(&surface)
+        .and_then(|o| o.alt)
+        .and_then(|ds| state.wl_to_xdg_surface_map.get(&ds))
+        .and_then(|xdg| state.anchored_sizes.get(xdg))
+        .copied()
+        .unwrap_or(state.anchored_size);
+    let (Some(wf), Some(hf)) = (
+        i32::try_from(w).ok().and_then(|v| v.checked_mul(256)),
+        i32::try_from(h).ok().and_then(|v| v.checked_mul(256)),
+    ) else {
+        return false;
+    };
+    x >= 0 && x <= wf && y >= 0 && y <= hf
+}
+
+/** Margin change that moves the dragged surface by the pointer's travel from
+ * the grab point, given a trusted surface-local pointer position (wl_fixed)
+ * and `base`, the margins the surface sat at when that position was measured.
+ * The target is absolute: base minus the pointer's offset from the grab
+ * point. Measured against the margins of its own moment, that offset is
+ * exactly the travel not yet applied, so stale positions never compound and
+ * the result is independent of any margin updates injected since. Pure;
+ * returns None when there is no drag, no anchor, or no net change. Margins
+ * move the surface only on axes anchored to exactly one edge, and are kept
+ * nonnegative so the surface cannot leave the output past its anchored
+ * edges. */
+fn compute_drag_margins(
+    state: &WindowToLayer,
+    x: i32,
+    y: i32,
+    base: (i32, i32, i32, i32),
+) -> Option<(UpstreamID, UpstreamID, (i32, i32, i32, i32))> {
+    let (drag, anchor) = (state.drag.as_ref()?, state.anchor?);
+    /* wl_fixed is signed 24.8 fixed point; converting the delta (not the
+     * endpoints) to pixels keeps subpixel motion accumulating against the
+     * fixed grab point. */
+    let dx = x.wrapping_sub(drag.grab_x) >> 8;
+    let dy = y.wrapping_sub(drag.grab_y) >> 8;
+    let anchored = |bit: ZwlrLayerSurfaceV1Anchor| anchor & (bit as u32) != 0;
+    let (mut t, mut r, mut b, mut l) = base;
+    if anchored(ZwlrLayerSurfaceV1Anchor::Left) != anchored(ZwlrLayerSurfaceV1Anchor::Right) {
+        if anchored(ZwlrLayerSurfaceV1Anchor::Left) {
+            l = l.saturating_add(dx).max(0);
+        } else {
+            r = r.saturating_sub(dx).max(0);
+        }
+    }
+    if anchored(ZwlrLayerSurfaceV1Anchor::Top) != anchored(ZwlrLayerSurfaceV1Anchor::Bottom) {
+        if anchored(ZwlrLayerSurfaceV1Anchor::Top) {
+            t = t.saturating_add(dy).max(0);
+        } else {
+            b = b.saturating_sub(dy).max(0);
+        }
+    }
+    if (t, r, b, l) != state.margins {
+        Some((drag.layer_surface, drag.wl_surface, (t, r, b, l)))
+    } else {
+        None
+    }
+}
+
+/** Space needed in the upstream queue for one injected margin update. */
+fn length_drag_margin_update() -> usize {
+    length_zwlr_layer_surface_v1_req_set_margin()
+        + length_wl_surface_req_commit()
+        + length_wl_display_req_sync()
+}
+
+/** Inject a set_margin plus commit for a dragged surface, followed by a sync
+ * whose callback re-opens margin updates (see [WindowToLayer::drag_margin_sync]).
+ * The caller must have reserved [length_drag_margin_update] bytes in
+ * `reverse_dst`. */
+fn write_drag_margin_update(
+    state: &mut WindowToLayer,
+    reverse_dst: &mut OutputQueue,
+    layer_surface: UpstreamID,
+    wl_surface: UpstreamID,
+    m: (i32, i32, i32, i32),
+) -> Result<(), WaylandError> {
+    let callback_id = get_new_upstream_client_id(&mut state.objs)?;
+    insert_object(&mut state.objs, Some((callback_id, &WL_CALLBACK, 1)), None)?;
+    write_zwlr_layer_surface_v1_req_set_margin(reverse_dst, layer_surface, m.0, m.1, m.2, m.3);
+    write_wl_surface_req_commit(reverse_dst, wl_surface);
+    write_wl_display_req_sync(reverse_dst, UpstreamID(1), callback_id);
+    state.drag_margin_sync = Some((callback_id, state.margins));
+    state.margins = m;
+    Ok(())
 }
 
 impl MessageRewriter for WindowToLayer<'_> {
@@ -663,6 +854,16 @@ fn process_event_w2l(
             write_ext_transient_seat_v1_evt_denied(dst, ext_seat_id);
             state.transient_seat_denial_callback_map.remove(&object_id);
             Ok(Done)
+        } else if state
+            .drag_margin_sync
+            .is_some_and(|(id, _)| id == object_id)
+        {
+            /* The compositor has applied the last dragged margin change;
+             * margin updates may resume (see the wl_pointer motion handling).
+             * The callback object itself is cleaned up by the compositor's
+             * wl_display::delete_id, like the other proxy-owned callbacks. */
+            state.drag_margin_sync = None;
+            Ok(Done)
         } else {
             check_space!((msg.len(), 0), (0, 0), dst, reverse_dst);
             create_objects(msg, version, meth, true, &mut state.objs)?;
@@ -707,6 +908,141 @@ fn process_event_w2l(
             }
         }
         write_wl_display_evt_delete_id(dst, alt_id.unwrap(), ds_id.0);
+        Ok(Done)
+    } else if intf.uid == WL_POINTER.uid {
+        /* Forwarded unchanged; observed to implement interactive moves of the
+         * layer surface (latched by xdg_toplevel::move, which see). */
+        let fd_count: usize = meth.fd_count.into();
+        match parse_wl_pointer_evt_ids(opcode) {
+            Some(WlPointerEvtIDs::Enter) => {
+                check_space!((msg.len(), fd_count), (0, 0), dst, reverse_dst);
+                let (_serial, surface, x, y) = parse_wl_pointer_evt_enter(msg)?;
+                let (x, y) = (x as i32, y as i32);
+                let pos = pointer_pos_in_bounds(state, surface, x, y).then_some((x, y));
+                state.pointer_focus = Some((surface, pos));
+            }
+            Some(WlPointerEvtIDs::Leave) => {
+                let _ = parse_wl_pointer_evt_leave(msg)?;
+                /* The implicit grab normally delays leave until the buttons
+                 * are released; treat an early leave as the end of the drag,
+                 * first flushing a pending motion so the final position is
+                 * applied before the margins are saved. */
+                let mut inject = None;
+                if let Some((_, px, py, pbase)) = state.drag_pending {
+                    inject = compute_drag_margins(state, px, py, pbase);
+                }
+                let inject_len = if inject.is_some() {
+                    length_drag_margin_update()
+                } else {
+                    0
+                };
+                check_space!((msg.len(), fd_count), (inject_len, 0), dst, reverse_dst);
+                if let Some((layer_surface, wl_surface, m)) = inject {
+                    write_drag_margin_update(state, reverse_dst, layer_surface, wl_surface, m)?;
+                }
+                state.pointer_focus = None;
+                end_pointer_drag(state);
+            }
+            Some(WlPointerEvtIDs::Motion) => {
+                let (time, raw_x, raw_y) = parse_wl_pointer_evt_motion(msg)?;
+                let (x, y) = (raw_x as i32, raw_y as i32);
+                /* Compute the margin update before reserving queue space, so
+                 * a NeedsSpace retry only repeats a pure computation.
+                 *
+                 * Two defenses keep the surface-local positions trustworthy:
+                 *
+                 * - Timestamp debounce: a motion is held pending and only
+                 *   acted on once one with a later timestamp arrives (or the
+                 *   drag ends). When an input path emits a bogus wrong-origin
+                 *   position followed by the real one under the same
+                 *   timestamp, last-one-wins keeps the real one.
+                 * - Base tagging: every pending records the margins the
+                 *   surface sat at when its position was measured — the
+                 *   pre-inject margins while a drag_margin_sync is
+                 *   outstanding, [WindowToLayer::margins] otherwise — so
+                 *   [compute_drag_margins] yields the correct absolute
+                 *   target no matter how many updates were injected between
+                 *   measurement and flush. While a sync is outstanding no
+                 *   new update is injected (its base would be ambiguous);
+                 *   pendings recorded meanwhile flush on the next motion
+                 *   after the callback, or at release/leave. */
+                let mut inject = None;
+                let mut new_pending = state.drag_pending;
+                if state.drag.is_some() {
+                    let base_now = match state.drag_margin_sync {
+                        Some((_, base)) => base,
+                        None => state.margins,
+                    };
+                    match new_pending {
+                        /* A same-timestamp successor was measured in the
+                         * same moment as its twin: keep the twin's base. */
+                        Some((pt, _, _, pbase)) if pt == time => {
+                            new_pending = Some((time, x, y, pbase))
+                        }
+                        Some((_, px, py, pbase))
+                            if state.drag_margin_sync.is_none()
+                                && state.drag_last_inject.is_none_or(|t| {
+                                    time.wrapping_sub(t) >= DRAG_INJECT_MIN_INTERVAL_MS
+                                }) =>
+                        {
+                            inject = compute_drag_margins(state, px, py, pbase);
+                            /* This motion predates the injection just
+                             * computed, so its base is the pre-inject
+                             * margins — which state.margins still holds. */
+                            new_pending = Some((time, x, y, state.margins));
+                        }
+                        _ => new_pending = Some((time, x, y, base_now)),
+                    }
+                }
+                let inject_len = if inject.is_some() {
+                    length_drag_margin_update()
+                } else {
+                    0
+                };
+                check_space!((msg.len(), fd_count), (inject_len, 0), dst, reverse_dst);
+                state.drag_pending = new_pending;
+                if let Some((layer_surface, wl_surface, m)) = inject {
+                    write_drag_margin_update(state, reverse_dst, layer_surface, wl_surface, m)?;
+                    state.drag_last_inject = Some(time);
+                }
+                if let Some((surface, _)) = state.pointer_focus {
+                    if pointer_pos_in_bounds(state, surface, x, y) {
+                        state.pointer_focus = Some((surface, Some((x, y))));
+                    }
+                }
+            }
+            Some(WlPointerEvtIDs::Button) => {
+                let (_serial, _time, _button, button_state) = parse_wl_pointer_evt_button(msg)?;
+                /* On release, flush a pending motion so the final position is
+                 * applied before the drag ends and the margins are saved.
+                 * The pending's own base makes this correct even while a
+                 * previous update's sync is still outstanding. */
+                let mut inject = None;
+                if button_state == 0 {
+                    if let Some((_, px, py, pbase)) = state.drag_pending {
+                        inject = compute_drag_margins(state, px, py, pbase);
+                    }
+                }
+                let inject_len = if inject.is_some() {
+                    length_drag_margin_update()
+                } else {
+                    0
+                };
+                check_space!((msg.len(), fd_count), (inject_len, 0), dst, reverse_dst);
+                if let Some((layer_surface, wl_surface, m)) = inject {
+                    write_drag_margin_update(state, reverse_dst, layer_surface, wl_surface, m)?;
+                }
+                if button_state == 0 {
+                    /* released */
+                    end_pointer_drag(state);
+                }
+            }
+            _ => {
+                check_space!((msg.len(), fd_count), (0, 0), dst, reverse_dst);
+            }
+        }
+        /* wl_pointer events create no objects and have no destructors */
+        write_translate(msg, meth, true, &state.objs, fds, dst)?;
         Ok(Done)
     } else {
         check_space!((msg.len(), meth.fd_count.into()), (0, 0), dst, reverse_dst);
@@ -1519,6 +1855,66 @@ fn process_request_w2l(
                     state.surface_to_toplevel_map.remove(&xdg_surface_id);
                     state.anchored_sizes.remove(&xdg_surface_id);
                 }
+                /* A drag must not outlive its layer surface: injecting
+                 * set_margin for a destroyed id would be a protocol error. */
+                if let Some(drag) = &state.drag {
+                    if drag.layer_surface == alt_id.unwrap() {
+                        state.drag = None;
+                        state.drag_pending = None;
+                    }
+                }
+                Ok(Done)
+            }
+            XdgToplevelReqIDs::Move => {
+                /* The client's interactive move (Chromium sends this when a
+                 * `-webkit-app-region: drag` region is dragged). There is no
+                 * layer-shell equivalent and the compositor cannot move a
+                 * layer surface interactively, so latch a drag here; the
+                 * wl_pointer event handling then follows the pointer by
+                 * adjusting the margins. */
+                let (_seat, _serial) = parse_xdg_toplevel_req_move(msg)?;
+                let Some(anchor) = state.anchor else {
+                    /* The surface fills the output; there is nothing to move */
+                    return Ok(Done);
+                };
+                /* An axis anchored to both edges (stretched) or neither
+                 * (centered) has no margin that positions it */
+                let anchored = |bit: ZwlrLayerSurfaceV1Anchor| anchor & (bit as u32) != 0;
+                let h_movable = anchored(ZwlrLayerSurfaceV1Anchor::Left)
+                    != anchored(ZwlrLayerSurfaceV1Anchor::Right);
+                let v_movable = anchored(ZwlrLayerSurfaceV1Anchor::Top)
+                    != anchored(ZwlrLayerSurfaceV1Anchor::Bottom);
+                if !h_movable && !v_movable {
+                    return Ok(Done);
+                }
+                /* The grab point is the pointer's last known in-bounds
+                 * position, which is only meaningful when the pointer is
+                 * actually over this toplevel's surface (not, say, a
+                 * popup's). */
+                let Some((focus_surface, Some((x, y)))) = state.pointer_focus else {
+                    return Ok(Done);
+                };
+                let Some(xdg_surface_id) = state.toplevel_to_surface_map.get(&object_id) else {
+                    return Ok(Done);
+                };
+                let Some(wl_surface_id) = state.xdg_to_wl_surface_map.get(xdg_surface_id) else {
+                    return Ok(Done);
+                };
+                let Some(upstream_wl_surface) =
+                    state.objs.down_to_up.get(wl_surface_id).and_then(|o| o.alt)
+                else {
+                    return Ok(Done);
+                };
+                if upstream_wl_surface != focus_surface {
+                    return Ok(Done);
+                }
+                state.drag = Some(PointerDrag {
+                    layer_surface: alt_id.unwrap(),
+                    wl_surface: upstream_wl_surface,
+                    grab_x: x,
+                    grab_y: y,
+                });
+                state.drag_last_inject = None;
                 Ok(Done)
             }
             _ => {

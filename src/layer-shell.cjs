@@ -38,6 +38,8 @@ const LAYER_SHELL_ANCHOR_ENV = 'HA_WIDGET_LAYER_SHELL_ANCHOR';
 const LAYER_SHELL_MARGIN_ENV = 'HA_WIDGET_LAYER_SHELL_MARGIN';
 const LAYER_SHELL_OUTPUT_ENV = 'HA_WIDGET_LAYER_SHELL_OUTPUT';
 const LAYER_SHELL_LAYER_ENV = 'HA_WIDGET_LAYER_SHELL_LAYER';
+// Opt-out for the Hyprland layer-move animation tweak (disableHyprlandLayerMoveAnimation).
+const LAYER_SHELL_KEEP_ANIMATIONS_ENV = 'HA_WIDGET_LAYER_SHELL_KEEP_LAYER_ANIMATIONS';
 
 // Name of the helper's private Wayland socket in XDG_RUNTIME_DIR. The pid suffix keeps
 // concurrent instances (a dev run beside the installed widget, or an in-app restart
@@ -474,6 +476,49 @@ function createLayerShellRaiser({
 }
 
 /**
+ * Disable Hyprland's layer-surface move animation: the `layers` animation node,
+ * whose `layersIn`/`layersOut` children (the open/close fades) are separately
+ * resolved and stay as configured. Dragging the widget works by committing new
+ * layer-shell margins for every pointer step, and the helper measures each step
+ * against where the surface actually is — when Hyprland glides the surface
+ * toward each committed position instead of applying it, the measurements lag
+ * the commits and the drag feedback loop overshoots, badly enough to throw the
+ * widget across the screen. No per-surface rule covers geometry (`layerrule
+ * no_anim` only affects open/close), so this is a global, best-effort tweak
+ * applied once per child start. Both hyprctl syntaxes are issued because the
+ * classic config parser and the Lua one each reject the other's command, and
+ * each ignores the other's failure. Fire-and-forget: a missing or failing
+ * hyprctl must never break startup — the drag just degrades on such setups.
+ */
+function disableHyprlandLayerMoveAnimation({
+  env = process.env,
+  execFile = require('child_process').execFile,
+  log = console,
+} = {}) {
+  if (!String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim()) return false;
+  if (isEnabledEnvFlag(env?.[LAYER_SHELL_KEEP_ANIMATIONS_ENV])) return false;
+  const attempts = [
+    ['keyword', 'animation', 'layers,0,1,default'],
+    ['eval', 'hl.animation({ leaf = "layers", enabled = false })'],
+  ];
+  for (const args of attempts) {
+    try {
+      execFile('hyprctl', args, { timeout: 3000 }, (error, stdout, stderr) => {
+        const output = `${stdout || ''}${stderr || ''}`.trim();
+        if (error || (output && output !== 'ok')) {
+          log.debug?.(
+            `hyprctl ${args[0]} layer-animation tweak: ${output || error?.message || error}`
+          );
+        }
+      });
+    } catch (error) {
+      log.debug?.('hyprctl layer-animation tweak failed:', error?.message || error);
+    }
+  }
+  return true;
+}
+
+/**
  * Undo the layer-shell child environment on `env` (in place) so a relaunch that
  * does NOT go back through the helper — autoUpdater.quitAndInstall() or
  * app.relaunch() — starts a fresh process that redetects the compositor and hands
@@ -508,6 +553,9 @@ function buildLayerShellSpawnPlan({
   // Saved monitor choice (wl_output name) from config; '' lets the compositor
   // decide. The env override below wins over it, keeping the debugging knob.
   outputName = '',
+  // Where the helper persists the margins when the widget is dragged; '' skips
+  // the flag (old helpers, or callers that do not want drag persistence).
+  positionFilePath = '',
   pid = process.pid,
   onInvalidOverride = null,
 } = {}) {
@@ -543,6 +591,16 @@ function buildLayerShellSpawnPlan({
   const chosenOutput =
     String(env?.[LAYER_SHELL_OUTPUT_ENV] || '').trim() || String(outputName || '').trim();
   if (chosenOutput) helperArgs.push('--output-name', chosenOutput);
+
+  // A dragged position overrides --margin inside the helper, so leave it out
+  // whenever a placement env override is active: an explicit margin must win,
+  // and margins saved under a different anchor would mean the wrong corner.
+  const placementOverridden = Boolean(
+    String(env?.[LAYER_SHELL_MARGIN_ENV] || '').trim() ||
+    String(env?.[LAYER_SHELL_ANCHOR_ENV] || '').trim()
+  );
+  const positionPath = String(positionFilePath || '').trim();
+  if (positionPath && !placementOverridden) helperArgs.push('--position-file', positionPath);
 
   const childArgv = (argv || []).slice(1).filter((arg) => typeof arg === 'string');
   if (!getOzonePlatformArgvValue(childArgv)) {
@@ -587,6 +645,7 @@ module.exports = {
   LAYER_SHELL_CHILD_ENV,
   LAYER_SHELL_ENV_OVERRIDE,
   LAYER_SHELL_HELPER_PATH_ENV,
+  LAYER_SHELL_KEEP_ANIMATIONS_ENV,
   LAYER_SHELL_LAYER_ENV,
   LAYER_SHELL_MARGIN_ENV,
   LAYER_SHELL_OUTPUT_ENV,
@@ -594,6 +653,7 @@ module.exports = {
   buildLayerShellSpawnPlan,
   createLayerShellRaiser,
   detectTilingLayerShellCompositor,
+  disableHyprlandLayerMoveAnimation,
   getLayerShellControlSocketPath,
   isLayerShellChild,
   isProcessAlive,

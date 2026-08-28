@@ -45,6 +45,7 @@ const {
   buildLayerShellSpawnPlan,
   createLayerShellRaiser,
   detectTilingLayerShellCompositor,
+  disableHyprlandLayerMoveAnimation,
   getLayerShellControlSocketPath,
   isLayerShellChild,
   materializeLayerShellHelper,
@@ -132,6 +133,9 @@ const isLayerShellChildProcess = isLayerShellChild();
 // The helper's control socket path is derived from WAYLAND_DISPLAY, which
 // restoreLayerShellParentEnv() rewrites at whenReady — capture it now.
 const layerShellControlSocketPath = getLayerShellControlSocketPath();
+// Where the helper saves the widget's margins when it is dragged; deleted by
+// the tray "Reset Position" to return to the configured default placement.
+const layerShellPositionFilePath = path.join(userDataPath, 'layer-shell-position');
 function spawnLayerShellHelper() {
   const resolvedHelperPath = resolveLayerShellHelperPath({
     isPackaged: app.isPackaged,
@@ -149,6 +153,7 @@ function spawnLayerShellHelper() {
     helperPath,
     windowSize: readInitialLayerShellWindowSize(userDataPath),
     outputName: readInitialLayerShellOutputName(userDataPath),
+    positionFilePath: layerShellPositionFilePath,
     onInvalidOverride: (name, raw, fallback) =>
       log.warn(`Ignoring invalid ${name}=${JSON.stringify(raw)}; using "${fallback}"`),
   });
@@ -682,6 +687,10 @@ const kwinWindowRaiser = usesCompositorOwnedPlacement ? createKWinWindowRaiser({
 const layerShellRaiser = isLayerShellChildProcess
   ? createLayerShellRaiser({ controlSocketPath: layerShellControlSocketPath, log })
   : null;
+// Hyprland animates layer-surface geometry changes, which turns the helper's
+// margin-based dragging into a feedback loop (the surface glides under the
+// pointer while it is measured). Best-effort, once per child start.
+if (isLayerShellChildProcess) disableHyprlandLayerMoveAnimation({ log });
 // Monitors the layer-shell helper reported, for the tray's "Move to Monitor"
 // submenu. A layer surface cannot be dragged between monitors (the compositor
 // owns its placement, so Super+drag falls through to the window behind it) —
@@ -5252,8 +5261,23 @@ function buildTrayContextMenu() {
     },
     {
       label: mainT('Reset Position'),
-      enabled: !usesCompositorOwnedPlacement,
+      // In layer-shell mode the position is the helper's saved margins (written
+      // when the widget is dragged); resetting means deleting that file and
+      // relaunching so the helper starts from the configured defaults.
+      enabled: !usesCompositorOwnedPlacement || isLayerShellChildProcess,
       click: () => {
+        if (isLayerShellChildProcess) {
+          try {
+            fs.rmSync(layerShellPositionFilePath, { force: true });
+          } catch (error) {
+            log.warn('Failed to remove the saved layer-shell position:', error.message);
+            return;
+          }
+          restartApplication().catch((error) => {
+            log.warn('Failed to restart after resetting the position:', error.message);
+          });
+          return;
+        }
         if (usesCompositorOwnedPlacement) return;
         void runSerializedConfigMutation(async () => {
           const previousPosition = config.windowPosition;

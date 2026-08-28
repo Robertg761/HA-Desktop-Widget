@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 use arrayvec::ArrayVec;
 use lexopt::{Arg, ValueExt};
-use log::{debug, Log, Record};
+use log::{debug, warn, Log, Record};
 use rustix::{event, io, net};
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as FmtWrite;
 use std::io::{IoSlice, IoSliceMut, Write as IoWrite};
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::{env, os::fd::RawFd};
@@ -459,6 +460,9 @@ Options:
   --size <WxH>              Initial surface size for --anchor; tracks the client's
                             window geometry afterwards.
   --margin <M | T,R,B,L>    Margins in pixels from the anchored edges [default: 0]
+  --position-file <path>    With --anchor: load the margins from <path> at startup when
+                            it exists, and save them there when the surface is moved by
+                            dragging (a client-initiated interactive move).
   --namespace <N>           The layer surface namespace value [default: ""]
   --output-name <name>      Choose the name of the output to use; by default the compositor decides.
 
@@ -536,6 +540,7 @@ fn main() {
     let mut anchor: Option<u32> = None;
     let mut margins: Option<(i32, i32, i32, i32)> = None;
     let mut size: Option<(u32, u32)> = None;
+    let mut position_file: Option<PathBuf> = None;
     let mut command: Vec<&OsStr> = Vec::new();
 
     /* Use lexopt here, instead of clap, to save ~200-400kB of disk space (which at 100MB/sec
@@ -702,6 +707,9 @@ fn main() {
                     command_line_error!("Argument {:?} for --margin is not one integer or four comma-separated integers (top,right,bottom,left)", s);
                 });
             }
+            Arg::Long("position-file") => {
+                position_file = Some(PathBuf::from(get_option(&mut parser, "--position-file")));
+            }
             Arg::Long("listen-socket") => {
                 listen_socket = if let Ok(y) =
                     get_option(&mut parser, "--listen-socket").into_string()
@@ -754,8 +762,8 @@ fn main() {
         if maximized {
             command_line_error!("--anchor is incompatible with --maximized");
         }
-    } else if margins.is_some() || size.is_some() {
-        command_line_error!("--margin and --size require --anchor");
+    } else if margins.is_some() || size.is_some() || position_file.is_some() {
+        command_line_error!("--margin, --size, and --position-file require --anchor");
     }
 
     if reverse {
@@ -797,6 +805,7 @@ fn main() {
         anchor,
         margins: margins.unwrap_or((0, 0, 0, 0)),
         size: size.unwrap_or((0, 0)),
+        position_file,
         /* Enabled by run_listen_mode once its control socket is bound. */
         control_channel: false,
     };
@@ -877,6 +886,9 @@ struct ProxyConfig {
     anchor: Option<u32>,
     margins: (i32, i32, i32, i32),
     size: (u32, u32),
+    /** If Some, [.margins] are overridden by this file's contents when it
+     * exists, and the file is rewritten when the user drags the surface. */
+    position_file: Option<PathBuf>,
     /** True when a runtime layer-change control socket exists (`--listen-socket`
      * mode); proxy threads then poll with a timeout and watch [LAYER_COMMAND]. */
     control_channel: bool,
@@ -897,6 +909,29 @@ fn layer_from_u32(value: u32) -> Option<ZwlrLayerShellV1Layer> {
         3 => Some(ZwlrLayerShellV1Layer::Overlay),
         _ => None,
     }
+}
+
+/** Parse a saved surface position: four comma-separated i32 margins
+ * (top,right,bottom,left), as written by the drag handling in state.rs. An
+ * absent file is normal (nothing saved yet); malformed content is ignored
+ * with a warning so a damaged file can never break startup. */
+fn load_position_file(path: &Path) -> Option<(i32, i32, i32, i32)> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return None;
+    };
+    let values: Option<Vec<i32>> = text
+        .trim()
+        .split(',')
+        .map(|v| v.trim().parse::<i32>().ok())
+        .collect();
+    let parsed = match values.as_deref() {
+        Some(&[t, r, b, l]) => Some((t, r, b, l)),
+        _ => None,
+    };
+    if parsed.is_none() {
+        warn!("Ignoring malformed position file {:?}", path);
+    }
+    parsed
 }
 
 /* Forward messages in each direction over one client connection, until either side hangs up. */
@@ -927,6 +962,18 @@ fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
         nbytes_src: 0,
         nbytes_dst: 0,
     };
+    /* Read the saved position on every connection, not once at startup: a
+     * drag on an earlier connection (or a previous GPU process) may have
+     * rewritten the file since, and each new connection should map its
+     * surfaces where the user last left them. */
+    let mut margins = cfg.margins;
+    if !cfg.reverse {
+        if let Some(path) = &cfg.position_file {
+            if let Some(loaded) = load_position_file(path) {
+                margins = loaded;
+            }
+        }
+    }
     let state: &mut dyn MessageRewriter = if cfg.reverse {
         &mut LayerToWindow::new(
             cfg.target_output.as_deref().unwrap_or("O-1"),
@@ -943,8 +990,9 @@ fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
             cfg.dummy_seat,
             cfg.namespace.as_str(),
             cfg.anchor,
-            cfg.margins,
+            margins,
             cfg.size,
+            cfg.position_file.as_deref(),
         )
     };
 

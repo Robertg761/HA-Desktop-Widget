@@ -261,9 +261,32 @@ Operational notes:
   GlobalShortcuts portal rejects the registration ("An app id is required"), so
   the hotkey itself only binds in packaged builds; the raise mechanism can be
   exercised directly with `raise`/`restore` lines to the control socket.
+- Dragging the widget works in layer mode, but it is the helper doing the
+  moving, not the compositor: a compositor drag bind (Hyprland's Super+drag)
+  only targets toplevels and passes straight through a layer surface to the
+  window behind it. Instead, dragging the widget's own drag regions
+  (`-webkit-app-region: drag`) makes Chromium send `xdg_toplevel.move`, which
+  the helper intercepts and implements by following the pointer with
+  `set_margin` updates (PATCHES.md item 9). The final position persists in
+  `<userData>/layer-shell-position` (passed as `--position-file`, skipped
+  while `HA_WIDGET_LAYER_SHELL_MARGIN`/`..._ANCHOR` override placement), and
+  the tray's "Reset Position" deletes that file and restarts, returning to
+  the default corner. Dragging cannot cross outputs — a layer surface is
+  bound to one `wl_output` — which is what the tray menu below is for.
+  On Hyprland the app also disables the `layers` geometry animation at child
+  startup (`disableHyprlandLayerMoveAnimation`, tried via both the classic
+  `hyprctl keyword animation layers,...` and the Lua-config
+  `hyprctl eval 'hl.animation({ leaf = "layers", ... })'` syntaxes): with the
+  animation on, the compositor glides the surface under the pointer between
+  the helper's measurements, which destabilizes the drag into a feedback
+  loop. Only the `layers` node is touched — open/close fades (`layersIn`/
+  `layersOut`) and all other animations stay. Set
+  `HA_WIDGET_LAYER_SHELL_KEEP_LAYER_ANIMATIONS=1` to keep the animation (the
+  helper's inject rate limit keeps dragging stable, just less precise). The
+  tweak is session-scoped and does not edit any config file, so it lasts
+  until the compositor reloads its config.
 - Moving the widget to another monitor happens through the tray menu, not by
-  dragging: the compositor owns a layer surface's placement, so a Super+drag
-  passes straight through to the window behind it. The tray's "Move to
+  dragging (a layer surface cannot leave its output). The tray's "Move to
   Monitor" submenu asks the helper for the session's monitors (`outputs`
   control command, PATCHES.md item 8), saves the chosen `wl_output` name as
   `config.layerShellOutputName` ('' = compositor decides, the default), and
