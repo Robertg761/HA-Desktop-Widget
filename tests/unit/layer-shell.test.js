@@ -282,7 +282,8 @@ describe('resolveLayerShellHelperPath', () => {
         isPackaged: true,
         resourcesPath: '/app/resources',
         appDir: '/app',
-        exists: (candidate) => candidate.startsWith('/app/resources'),
+        exists: (candidate) =>
+          candidate === path.join('/app/resources', 'helpers', 'windowtolayer'),
       })
     ).toBe(path.join('/app/resources', 'helpers', 'windowtolayer'));
     expect(
