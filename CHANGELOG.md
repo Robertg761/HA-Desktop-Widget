@@ -5,6 +5,37 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0-beta.1] - 2026-08-27
+
+This beta begins the 3.10.0 feature cycle with native desktop-widget behavior on tiling
+Wayland compositors.
+
+### Added
+
+- Added automatic `wlr-layer-shell` support for Hyprland, Sway, niri, river, and other supported
+  tiling compositors, allowing the widget to render below tiled windows on the desktop layer.
+- Added a bundled, patched `windowtolayer` helper and the Linux build/release plumbing required to
+  compile and package it with a pinned Rust toolchain.
+- Added temporary popup elevation to the compositor overlay layer, including matching restore and
+  toggle behavior for layer-shell surfaces.
+- Added a tray menu for moving the widget between monitors, with saved output selection and
+  graceful handling of disconnected monitors.
+- Added pixel-exact layer-shell dragging, persistent positions, reset-position support, and
+  Hyprland layer-animation handling.
+- Added a standalone project website with feature information, setup guidance, downloads, app
+  screenshots, and weather-effect previews.
+
+### Changed
+
+- Layer-shell startup now validates helper readiness, protects against stale sockets and process
+  races, preserves the single-instance lock during restarts, and records helper diagnostics.
+- Added environment overrides for layer-shell activation, anchor, margins, output, layer, helper
+  path, and drag animation behavior.
+- Reorganized development and documentation assets, including moving testing documentation under
+  `docs/` and the weather gallery under `development/`.
+- Improved release CI to cancel remaining jobs after failures and to build and verify the Linux
+  helper before packaging.
+
 ## [3.9.1] - 2026-08-14
 
 This stable release promotes the dashboard polish and light-state fixes validated in the 3.9.1
