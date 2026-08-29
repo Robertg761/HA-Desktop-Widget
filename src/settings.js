@@ -3202,10 +3202,10 @@ function getSelectedDonationAmount(modal) {
   }
   const selectedChip = modal.querySelector('.donate-amount-chip.selected');
   const chipAmount = Number(selectedChip?.dataset.amount);
-  return {
-    valid: true,
-    amount: Number.isFinite(chipAmount) && chipAmount >= 1 ? chipAmount : null,
-  };
+  if (Number.isFinite(chipAmount) && chipAmount >= 1) {
+    return { valid: true, amount: chipAmount };
+  }
+  return { valid: false, amount: null };
 }
 
 function buildDonationUrl(modal) {
