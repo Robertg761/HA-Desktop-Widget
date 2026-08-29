@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -234,6 +234,7 @@
     "Continue on GitHub Sponsors": "Continuar en GitHub Sponsors",
     "Thank you for your support!": "¡Gracias por tu apoyo!",
     "Could not open GitHub Sponsors. Please try again.": "No se pudo abrir GitHub Sponsors. Inténtalo de nuevo.",
+    "Please enter a whole dollar amount between $1 and $12,000.": "Introduce un importe en dólares enteros entre $1 y $12,000.",
     "Enter the current remote passphrase before disabling encrypted sync.": "Introduce la frase de contraseña remota actual antes de desactivar la sincronización cifrada.",
     "Diagnostics & Troubleshooting": "Diagnóstico y resolución de problemas",
     "Global Popup Trigger": "Atajo global de apertura",

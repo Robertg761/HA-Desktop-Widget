@@ -3191,13 +3191,21 @@ async function resolveProfileSyncFirstEnable(choice) {
 
 function getSelectedDonationAmount(modal) {
   const customInput = modal.querySelector('#donate-custom-amount');
-  const customAmount = Math.floor(Number(customInput?.value));
-  if (Number.isFinite(customAmount) && customAmount >= 1) {
-    return Math.min(customAmount, GITHUB_SPONSORS_MAX_AMOUNT);
+  if (customInput && (customInput.value !== '' || customInput.validity.badInput)) {
+    const amount = customInput.valueAsNumber;
+    const valid =
+      customInput.validity.valid &&
+      Number.isInteger(amount) &&
+      amount >= 1 &&
+      amount <= GITHUB_SPONSORS_MAX_AMOUNT;
+    return valid ? { valid: true, amount } : { valid: false, amount: null };
   }
   const selectedChip = modal.querySelector('.donate-amount-chip.selected');
   const chipAmount = Number(selectedChip?.dataset.amount);
-  return Number.isFinite(chipAmount) && chipAmount >= 1 ? chipAmount : null;
+  return {
+    valid: true,
+    amount: Number.isFinite(chipAmount) && chipAmount >= 1 ? chipAmount : null,
+  };
 }
 
 function buildDonationUrl(modal) {
@@ -3207,7 +3215,7 @@ function buildDonationUrl(modal) {
       : 'one-time';
   const url = new URL(GITHUB_SPONSORS_URL);
   url.searchParams.set('frequency', frequency);
-  const amount = getSelectedDonationAmount(modal);
+  const { amount } = getSelectedDonationAmount(modal);
   if (amount) url.searchParams.set('amount', String(amount));
   return url.toString();
 }
@@ -3226,15 +3234,21 @@ function bindSupportDevelopmentUi() {
 
   const customInput = modal.querySelector('#donate-custom-amount');
   const chips = [...modal.querySelectorAll('.donate-amount-chip')];
+  const setChipSelected = (chip, selected) => {
+    chip.classList.toggle('selected', selected);
+    chip.setAttribute('aria-pressed', String(selected));
+  };
   chips.forEach((chip) => {
     chip.onclick = () => {
-      chips.forEach((other) => other.classList.toggle('selected', other === chip));
+      chips.forEach((other) => setChipSelected(other, other === chip));
       if (customInput) customInput.value = '';
     };
   });
   if (customInput) {
     customInput.oninput = () => {
-      if (customInput.value) chips.forEach((chip) => chip.classList.remove('selected'));
+      if (customInput.value !== '' || customInput.validity.badInput) {
+        chips.forEach((chip) => setChipSelected(chip, false));
+      }
     };
   }
 
@@ -3252,6 +3266,12 @@ function bindSupportDevelopmentUi() {
   const continueBtn = modal.querySelector('#donate-continue-btn');
   if (continueBtn) {
     continueBtn.onclick = async () => {
+      if (!getSelectedDonationAmount(modal).valid) {
+        showToast(t('Please enter a whole dollar amount between $1 and $12,000.'), 'error', 3500);
+        customInput?.focus();
+        customInput?.select();
+        return;
+      }
       try {
         const result = await window.electronAPI.openExternal(buildDonationUrl(modal));
         if (result?.success === false) {

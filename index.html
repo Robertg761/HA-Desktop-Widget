@@ -1704,10 +1704,33 @@
           <div class="form-group">
             <label for="donate-custom-amount" data-i18n="Amount (USD)">Amount (USD)</label>
             <div class="donate-amount-grid">
-              <button type="button" class="donate-amount-chip" data-amount="3">$3</button>
-              <button type="button" class="donate-amount-chip selected" data-amount="5">$5</button>
-              <button type="button" class="donate-amount-chip" data-amount="10">$10</button>
-              <button type="button" class="donate-amount-chip" data-amount="25">$25</button>
+              <button type="button" class="donate-amount-chip" data-amount="3" aria-pressed="false">
+                $3
+              </button>
+              <button
+                type="button"
+                class="donate-amount-chip selected"
+                data-amount="5"
+                aria-pressed="true"
+              >
+                $5
+              </button>
+              <button
+                type="button"
+                class="donate-amount-chip"
+                data-amount="10"
+                aria-pressed="false"
+              >
+                $10
+              </button>
+              <button
+                type="button"
+                class="donate-amount-chip"
+                data-amount="25"
+                aria-pressed="false"
+              >
+                $25
+              </button>
             </div>
             <input
               type="number"

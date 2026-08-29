@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -234,6 +234,7 @@
     "Continue on GitHub Sponsors": "المتابعة على GitHub Sponsors",
     "Thank you for your support!": "شكرًا لدعمك!",
     "Could not open GitHub Sponsors. Please try again.": "تعذر فتح GitHub Sponsors. يرجى المحاولة مرة أخرى.",
+    "Please enter a whole dollar amount between $1 and $12,000.": "يرجى إدخال مبلغ صحيح بالدولار بين 1$ و12,000$.",
     "Enter the current remote passphrase before disabling encrypted sync.": "أدخل عبارة المرور البعيدة الحالية قبل تعطيل المزامنة المشفرة.",
     "Diagnostics & Troubleshooting": "التشخيص وحل المشكلات",
     "Global Popup Trigger": "اختصار الفتح العام",

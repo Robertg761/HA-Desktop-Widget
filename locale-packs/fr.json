@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -234,6 +234,7 @@
     "Continue on GitHub Sponsors": "Continuer sur GitHub Sponsors",
     "Thank you for your support!": "Merci pour votre soutien !",
     "Could not open GitHub Sponsors. Please try again.": "Impossible d'ouvrir GitHub Sponsors. Veuillez réessayer.",
+    "Please enter a whole dollar amount between $1 and $12,000.": "Veuillez saisir un montant en dollars entiers entre 1 $ et 12 000 $.",
     "Enter the current remote passphrase before disabling encrypted sync.": "Saisissez la phrase secrète distante actuelle avant de désactiver la synchronisation chiffrée.",
     "Diagnostics & Troubleshooting": "Diagnostics et dépannage",
     "Global Popup Trigger": "Raccourci global d'ouverture",

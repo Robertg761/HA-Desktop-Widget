@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -234,6 +234,7 @@
     "Continue on GitHub Sponsors": "GitHub Sponsors पर जारी रखें",
     "Thank you for your support!": "आपके समर्थन के लिए धन्यवाद!",
     "Could not open GitHub Sponsors. Please try again.": "GitHub Sponsors नहीं खुल सका। कृपया फिर से प्रयास करें।",
+    "Please enter a whole dollar amount between $1 and $12,000.": "कृपया $1 और $12,000 के बीच पूर्ण डॉलर राशि दर्ज करें।",
     "Enter the current remote passphrase before disabling encrypted sync.": "एन्क्रिप्टेड सिंक बंद करने से पहले मौजूदा रिमोट पासफ़्रेज़ दर्ज करें।",
     "Diagnostics & Troubleshooting": "डायग्नोस्टिक्स और समस्या निवारण",
     "Global Popup Trigger": "ग्लोबल पॉपअप शॉर्टकट",
