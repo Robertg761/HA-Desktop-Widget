@@ -293,6 +293,9 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 // Replace this with your hosted docs URL when your help site is live.
 const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in';
+const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
+// GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
+const GITHUB_SPONSORS_MAX_AMOUNT = 12000;
 const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
 const PROFILE_SYNC_SCOPE_SECTION_KEYS = [
   'quickAccessLayout',
@@ -3186,6 +3189,104 @@ async function resolveProfileSyncFirstEnable(choice) {
   }
 }
 
+function getSelectedDonationAmount(modal) {
+  const customInput = modal.querySelector('#donate-custom-amount');
+  if (customInput && (customInput.value !== '' || customInput.validity.badInput)) {
+    const amount = customInput.valueAsNumber;
+    const valid =
+      customInput.validity.valid &&
+      Number.isInteger(amount) &&
+      amount >= 1 &&
+      amount <= GITHUB_SPONSORS_MAX_AMOUNT;
+    return valid ? { valid: true, amount } : { valid: false, amount: null };
+  }
+  const selectedChip = modal.querySelector('.donate-amount-chip.selected');
+  const chipAmount = Number(selectedChip?.dataset.amount);
+  if (Number.isFinite(chipAmount) && chipAmount >= 1) {
+    return { valid: true, amount: chipAmount };
+  }
+  return { valid: false, amount: null };
+}
+
+function buildDonationUrl(modal) {
+  const frequency =
+    modal.querySelector('input[name="donate-frequency"]:checked')?.value === 'recurring'
+      ? 'recurring'
+      : 'one-time';
+  const url = new URL(`${GITHUB_SPONSORS_URL}/sponsorships`);
+  url.searchParams.set('frequency', frequency);
+  const { amount } = getSelectedDonationAmount(modal);
+  if (amount) url.searchParams.set('amount', String(amount));
+  return url.toString();
+}
+
+function bindSupportDevelopmentUi() {
+  const modal = document.getElementById('donate-modal');
+  const openBtn = document.getElementById('open-donate-modal-btn');
+  if (!modal || !openBtn) return;
+
+  const closeDonateModal = () => closeModal(modal, { releaseFocus: true });
+
+  openBtn.onclick = () => {
+    openModal(modal);
+    trapFocus(modal);
+  };
+
+  const customInput = modal.querySelector('#donate-custom-amount');
+  const chips = [...modal.querySelectorAll('.donate-amount-chip')];
+  const setChipSelected = (chip, selected) => {
+    chip.classList.toggle('selected', selected);
+    chip.setAttribute('aria-pressed', String(selected));
+  };
+  chips.forEach((chip) => {
+    chip.onclick = () => {
+      chips.forEach((other) => setChipSelected(other, other === chip));
+      if (customInput) customInput.value = '';
+    };
+  });
+  if (customInput) {
+    customInput.oninput = () => {
+      if (customInput.value !== '' || customInput.validity.badInput) {
+        chips.forEach((chip) => setChipSelected(chip, false));
+      }
+    };
+  }
+
+  const closeBtn = modal.querySelector('#close-donate-modal');
+  if (closeBtn) closeBtn.onclick = () => closeDonateModal();
+  const cancelBtn = modal.querySelector('#donate-cancel-btn');
+  if (cancelBtn) cancelBtn.onclick = () => closeDonateModal();
+  modal.onclick = (event) => {
+    if (event.target === modal) closeDonateModal();
+  };
+  modal.onkeydown = (event) => {
+    if (event.key === 'Escape') closeDonateModal();
+  };
+
+  const continueBtn = modal.querySelector('#donate-continue-btn');
+  if (continueBtn) {
+    continueBtn.onclick = async () => {
+      if (!getSelectedDonationAmount(modal).valid) {
+        showToast(t('Please enter a whole dollar amount between $1 and $12,000.'), 'error', 3500);
+        customInput?.focus();
+        customInput?.select();
+        return;
+      }
+      try {
+        const result = await window.electronAPI.openExternal(buildDonationUrl(modal));
+        if (result?.success === false) {
+          throw new Error(result.error || 'Failed to open GitHub Sponsors link');
+        }
+        await closeDonateModal();
+        showToast(t('Thank you for your support!'), 'success', 4000);
+      } catch (error) {
+        log.error('Failed to open GitHub Sponsors link:', error);
+        showToast(t('Could not open GitHub Sponsors. Please try again.'), 'error', 3500);
+      }
+    };
+  }
+}
+
 function bindProfileSyncSettingsUi() {
   const enabled = document.getElementById('profile-sync-enabled');
   if (enabled) {
@@ -3823,6 +3924,7 @@ async function openSettings(uiHooks) {
 
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
+    bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
 
     // Convert stored opacity (0.5-1.0) to slider scale (1-100)
