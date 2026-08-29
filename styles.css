@@ -12425,7 +12425,7 @@ label.disabled {
 /* Support / Donation Modal */
 .donate-modal-content {
   max-width: 420px;
-  min-width: 320px;
+  min-width: min(320px, 85vw);
 }
 
 .donate-modal-content .modal-footer {
