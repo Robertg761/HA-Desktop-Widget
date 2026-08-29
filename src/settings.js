@@ -3213,7 +3213,7 @@ function buildDonationUrl(modal) {
     modal.querySelector('input[name="donate-frequency"]:checked')?.value === 'recurring'
       ? 'recurring'
       : 'one-time';
-  const url = new URL(GITHUB_SPONSORS_URL);
+  const url = new URL(`${GITHUB_SPONSORS_URL}/sponsorships`);
   url.searchParams.set('frequency', frequency);
   const { amount } = getSelectedDonationAmount(modal);
   if (amount) url.searchParams.set('amount', String(amount));
