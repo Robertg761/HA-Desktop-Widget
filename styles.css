@@ -12424,8 +12424,20 @@ label.disabled {
 
 /* Support / Donation Modal */
 .donate-modal-content {
+  display: flex;
+  flex-direction: column;
   max-width: 420px;
   min-width: min(320px, 85vw);
+}
+
+.donate-modal-content .modal-header,
+.donate-modal-content .modal-footer {
+  flex-shrink: 0;
+}
+
+.donate-modal-content .modal-body {
+  min-height: 0;
+  max-height: none;
 }
 
 .donate-modal-content .modal-footer {
