@@ -375,6 +375,117 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockState.CONFIG.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
   });
 
+  it('keeps the pairing message and busy button when stepping back mid-authorization', async () => {
+    let releasePairing;
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              releasePairing = resolve;
+            })
+        );
+      },
+    });
+    await reachAuthorizationStep('http://ha.local:8123');
+    await clickButton('Connect');
+
+    // Authorization runs for minutes in the browser. Leaving the step used to wipe the only
+    // sign it was running, stranding a disabled button with nothing to explain it.
+    await clickButton('Back');
+
+    const status = document.querySelector('.first-run-status');
+    expect(status.textContent).toContain('Opening Home Assistant for authorization');
+    expect(status.dataset.status).toBe('pending');
+    const next = Array.from(document.querySelectorAll('button')).find(
+      (candidate) => candidate.textContent === 'Next'
+    );
+    expect(next.disabled).toBe(true);
+    expect(next.getAttribute('aria-busy')).toBe('true');
+
+    releasePairing?.({ success: true, config: oauthConfig() });
+    await flushAsync();
+  });
+
+  it('cancels the pairing when the user steps back out of authorization', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockImplementationOnce(() => new Promise(() => {}));
+      },
+    });
+    await reachAuthorizationStep('http://ha.local:8123');
+    await clickButton('Connect');
+
+    await clickButton('Back');
+
+    // Otherwise the loopback listener stays open and the next attempt is refused.
+    expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalled();
+  });
+
+  it('reports a cancelled pairing as cancelled rather than as a failure', async () => {
+    let rejectPairing;
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              rejectPairing = reject;
+            })
+        );
+      },
+    });
+    await reachAuthorizationStep('http://ha.local:8123');
+    await clickButton('Connect');
+
+    await clickButton('Back');
+    rejectPairing?.(new Error('Home Assistant authorization was cancelled'));
+    await flushAsync();
+
+    const status = document.querySelector('.first-run-status');
+    expect(status.dataset.status).not.toBe('error');
+    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+  });
+
+  it('recovers the Connect button when preparing the request throws', async () => {
+    // normalizeBaseUrl used to run outside the try, so a throw there skipped the finally and
+    // left the button disabled with the in-progress guard set -- every later click ignored
+    // until the app restarted. It only throws for this sentinel so rendering stays unaffected.
+    const actualConnection = jest.requireActual('../../src/connection.js');
+    let thrown = false;
+    jest.doMock('../../src/connection.js', () => ({
+      __esModule: true,
+      ...actualConnection,
+      normalizeBaseUrl: (value) => {
+        if (value === 'http://boom.local' && !thrown) {
+          thrown = true;
+          throw new Error('exploded before dispatch');
+        }
+        return actualConnection.normalizeBaseUrl(value);
+      },
+    }));
+
+    await loadRenderer();
+    await reachAuthorizationStep('http://boom.local');
+
+    await clickButton('Connect');
+
+    const connect = Array.from(document.querySelectorAll('button')).find(
+      (candidate) => candidate.textContent === 'Connect'
+    );
+    expect(connect.disabled).toBe(false);
+    expect(mockElectronAPI.startHomeAssistantOAuth).not.toHaveBeenCalled();
+
+    // And the guard no longer swallows the retry: clicking again reaches the main process.
+    mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+      success: true,
+      config: oauthConfig(),
+    });
+    await clickButton('Connect');
+    expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+
+    jest.dontMock('../../src/connection.js');
+  });
+
   it('shows one runtime-only recovery warning with the quarantined config path', async () => {
     await loadRenderer({
       config: {

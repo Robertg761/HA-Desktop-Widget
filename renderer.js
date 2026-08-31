@@ -573,10 +573,27 @@ function setFirstRunWizardVisible(visible) {
 
 function setWizardStatus(message = '', type = '') {
   if (!firstRunWizard?.status) return;
+  // Remembered so re-rendering a step can put it back. Authorization runs for minutes, and
+  // the message is the only sign it is running at all.
+  firstRunWizard.statusMessage = message;
+  firstRunWizard.statusType = type;
   // 'pending' here always means waiting on Home Assistant authorization in the
   // browser, so it carries the same sweep indicator the settings panel uses.
   setConnectionStatusBusy(firstRunWizard.status, type === 'pending');
   renderConnectionStatus(firstRunWizard.status, message, type);
+}
+
+// Authorization keeps running while the user steps around the wizard, so leaving it has to
+// stop it. Otherwise the loopback listener stays open and the next attempt is refused as one
+// already in progress.
+async function cancelFirstRunAuthorization() {
+  if (!firstRunWizard?.finishInProgress) return;
+  firstRunWizard.cancelRequested = true;
+  try {
+    await window.electronAPI?.cancelHomeAssistantOAuth?.();
+  } catch (error) {
+    log.warn('Failed to cancel Home Assistant authorization:', error);
+  }
 }
 
 function getWizardUrl() {
@@ -588,7 +605,13 @@ function renderWizardStep() {
   const stepIndex = firstRunWizard.step;
   const content = firstRunWizard.content;
   content.textContent = '';
-  setWizardStatus('', '');
+  // Changing step must not wipe a pairing that is still running: pressing Back mid-authorization
+  // used to clear the only explanation for the disabled button, leaving it looking broken.
+  if (firstRunWizard.finishInProgress) {
+    setWizardStatus(firstRunWizard.statusMessage, firstRunWizard.statusType);
+  } else {
+    setWizardStatus('', '');
+  }
 
   const stepLabel = createTextElement(
     'div',
@@ -662,6 +685,13 @@ function renderWizardStep() {
   }
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.textContent = stepIndex === 2 ? t('Connect') : t('Next');
+    // Derived from the pairing rather than left wherever the last run put it, so a step change
+    // can always recover the button instead of stranding it disabled.
+    firstRunWizard.nextButton.disabled = !!firstRunWizard.finishInProgress;
+    firstRunWizard.nextButton.setAttribute(
+      'aria-busy',
+      firstRunWizard.finishInProgress ? 'true' : 'false'
+    );
   }
 }
 
@@ -673,8 +703,11 @@ async function finishFirstRunWizard() {
     firstRunWizard.nextButton.setAttribute('aria-busy', 'true');
   }
 
-  const normalizedUrl = normalizeBaseUrl(getWizardUrl());
   try {
+    // Inside the try: a throw here used to skip the finally, stranding the button disabled and
+    // finishInProgress set, which the guard above then turned into a wizard that ignored every
+    // click until the app was restarted.
+    const normalizedUrl = normalizeBaseUrl(getWizardUrl());
     if (!normalizedUrl) {
       setWizardStatus(t('Enter a valid Home Assistant URL before connecting.'), 'error');
       return;
@@ -686,14 +719,21 @@ async function finishFirstRunWizard() {
     setFirstRunWizardVisible(false);
     startConfiguredRuntime();
   } catch (error) {
-    const detail = error?.message || t('Unknown error');
-    const message = t('Could not connect to Home Assistant. {{error}}', { error: detail });
-    log.error('Failed to finish first-run setup:', error);
-    setWizardStatus(message, 'error');
-    uiUtils.showToast(message, 'error', 6000);
+    // The user asked for this one by leaving the step, so reporting it back as a failure would
+    // be reporting their own action to them.
+    if (firstRunWizard?.cancelRequested) {
+      setWizardStatus('', '');
+    } else {
+      const detail = error?.message || t('Unknown error');
+      const message = t('Could not connect to Home Assistant. {{error}}', { error: detail });
+      log.error('Failed to finish first-run setup:', error);
+      setWizardStatus(message, 'error');
+      uiUtils.showToast(message, 'error', 6000);
+    }
   } finally {
     if (firstRunWizard) {
       firstRunWizard.finishInProgress = false;
+      firstRunWizard.cancelRequested = false;
       if (firstRunWizard.nextButton) {
         firstRunWizard.nextButton.disabled = false;
         firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
@@ -753,7 +793,8 @@ function ensureFirstRunWizard() {
     'btn btn-secondary',
     skipWizardToSettings
   );
-  const backButton = createActionButton(t('Back'), 'btn btn-secondary', () => {
+  const backButton = createActionButton(t('Back'), 'btn btn-secondary', async () => {
+    await cancelFirstRunAuthorization();
     firstRunWizard.step = Math.max(0, firstRunWizard.step - 1);
     renderWizardStep();
   });
@@ -786,6 +827,9 @@ function ensureFirstRunWizard() {
     step: 0,
     visible: false,
     finishInProgress: false,
+    cancelRequested: false,
+    statusMessage: '',
+    statusType: '',
     urlInput: null,
   };
   renderWizardStep();
