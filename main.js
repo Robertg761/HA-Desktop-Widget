@@ -274,6 +274,7 @@ const {
 const {
   getLinuxStartupExecutablePath,
   isLinuxLoginItemEnabled,
+  migrateLegacyLinuxAutostartEntry,
   setLinuxLoginItemSettings,
   syncLinuxAutostartExecutablePath,
 } = require('./src/linux-startup.cjs');
@@ -9367,12 +9368,30 @@ app
     // path for this run is known, so surviving an update costs the user nothing.
     if (process.platform === 'linux') {
       try {
-        const { repaired, autostartPath } = syncLinuxAutostartExecutablePath({
+        const linuxStartupOptions = {
           pkg,
           appName: app.getName(),
           executablePath: getLinuxStartupExecutablePath(app, process.env),
           env: process.env,
-        });
+        };
+
+        // The autostart file is named after the app id, which package.json has not always
+        // carried. An entry written before it was added sits under the older name where nothing
+        // can see it, so the setting reads as off, ticking the box adds a second entry, and the
+        // repair below never reaches it. Adopt it first, then repair whatever we now own.
+        const { adopted, removedDuplicate, legacyPath } =
+          migrateLegacyLinuxAutostartEntry(linuxStartupOptions);
+        if (adopted) {
+          log.info(
+            `Adopted the start-at-login entry left behind under an older file name (${legacyPath})`
+          );
+        } else if (removedDuplicate) {
+          log.info(
+            `Removed a duplicate start-at-login entry left behind under an older file name (${legacyPath})`
+          );
+        }
+
+        const { repaired, autostartPath } = syncLinuxAutostartExecutablePath(linuxStartupOptions);
         if (repaired) {
           log.info(
             `Start-at-login pointed at an executable that no longer exists (likely a previous update); repointed ${autostartPath} at this build`

@@ -3,11 +3,14 @@ const os = require('os');
 const path = require('path');
 const {
   buildLinuxAutostartDesktopEntry,
+  getLegacyLinuxAutostartFilePaths,
   getLinuxAutostartFilePath,
   getLinuxStartupDesktopFileName,
   getLinuxStartupExecutablePath,
+  isGeneratedLinuxAutostartEntry,
   isLinuxLoginItemEnabled,
   linuxAutostartEntryNeedsRepair,
+  migrateLegacyLinuxAutostartEntry,
   quoteDesktopExecArg,
   setLinuxLoginItemSettings,
   syncLinuxAutostartExecutablePath,
@@ -187,6 +190,126 @@ describe('Linux startup helpers', () => {
       expect(linuxAutostartEntryNeedsRepair(enabledOld, newPath)).toBe(true);
       expect(linuxAutostartEntryNeedsRepair(enabledOld, oldPath)).toBe(false);
       expect(linuxAutostartEntryNeedsRepair('', newPath)).toBe(false);
+    });
+  });
+
+  describe('adopting entries left under an older file name', () => {
+    // package.json did not always carry appId, so older builds named the file after the app.
+    // Those entries are invisible to the current name: unreadable, unrepairable, unremovable.
+    const pkg = { appId: 'com.github.robertg761.hadesktopwidget', name: 'home-assistant-widget' };
+    const appName = 'home-assistant-widget';
+    const deadPath = '/home/user/Apps/HA-Desktop-Widget-3.9.1-linux-x86_64.AppImage';
+    const livePath = '/home/user/Apps/HA-Desktop-Widget-3.10.0-linux-x86_64.AppImage';
+    const legacyName = 'home-assistant-widget.desktop';
+    const currentName = 'com.github.robertg761.hadesktopwidget.desktop';
+
+    const legacyEntry = (execPath, extra = '') =>
+      `[Desktop Entry]\nType=Application\nVersion=1.0\nName=${appName}\n` +
+      `Comment=Launch ${appName} at login\nExec="${execPath}"\nTerminal=false\n` +
+      `X-GNOME-Autostart-enabled=true\n${extra}`;
+
+    const writeLegacy = (dir, content) => {
+      fs.mkdirSync(path.join(dir, 'autostart'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'autostart', legacyName), content, 'utf8');
+    };
+
+    test('the current and legacy names really do differ', () => {
+      expect(getLinuxStartupDesktopFileName(pkg, appName)).toBe(currentName);
+      expect(getLegacyLinuxAutostartFilePaths(pkg, appName, { XDG_CONFIG_HOME: tmpDir })).toContain(
+        path.join(tmpDir, 'autostart', legacyName)
+      );
+    });
+
+    test('adopts a legacy entry and repoints it at the running executable', () => {
+      const env = { XDG_CONFIG_HOME: tmpDir };
+      writeLegacy(tmpDir, legacyEntry(deadPath));
+
+      const result = migrateLegacyLinuxAutostartEntry({
+        pkg,
+        appName,
+        executablePath: livePath,
+        env,
+      });
+
+      expect(result.adopted).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'autostart', legacyName))).toBe(false);
+      const adopted = fs.readFileSync(path.join(tmpDir, 'autostart', currentName), 'utf8');
+      expect(adopted).toContain(`Exec=${quoteDesktopExecArg(livePath)}`);
+      // And the setting now reads as on, which it did not before adoption.
+      expect(isLinuxLoginItemEnabled({ pkg, appName, executablePath: livePath, env })).toBe(true);
+    });
+
+    test('removes the leftover when both names exist, so login does not launch twice', () => {
+      const env = { XDG_CONFIG_HOME: tmpDir };
+      writeLegacy(tmpDir, legacyEntry(deadPath));
+      setLinuxLoginItemSettings(true, { pkg, appName, executablePath: livePath, env });
+
+      const result = migrateLegacyLinuxAutostartEntry({
+        pkg,
+        appName,
+        executablePath: livePath,
+        env,
+      });
+
+      expect(result.removedDuplicate).toBe(true);
+      expect(result.adopted).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'autostart', legacyName))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'autostart', currentName))).toBe(true);
+    });
+
+    test('leaves a legacy entry the user disabled exactly where it is', () => {
+      const env = { XDG_CONFIG_HOME: tmpDir };
+      const disabled = legacyEntry(deadPath).replace(
+        'X-GNOME-Autostart-enabled=true',
+        'X-GNOME-Autostart-enabled=false'
+      );
+      writeLegacy(tmpDir, disabled);
+
+      const result = migrateLegacyLinuxAutostartEntry({
+        pkg,
+        appName,
+        executablePath: livePath,
+        env,
+      });
+
+      expect(result.adopted).toBe(false);
+      expect(fs.readFileSync(path.join(tmpDir, 'autostart', legacyName), 'utf8')).toBe(disabled);
+      expect(fs.existsSync(path.join(tmpDir, 'autostart', currentName))).toBe(false);
+    });
+
+    // Someone else's file that happens to share the name must never be adopted or deleted.
+    test('never touches an entry this app did not write', () => {
+      const env = { XDG_CONFIG_HOME: tmpDir };
+      const foreign =
+        '[Desktop Entry]\nType=Application\nName=Something else\nExec="/usr/bin/true"\n';
+      writeLegacy(tmpDir, foreign);
+
+      const result = migrateLegacyLinuxAutostartEntry({
+        pkg,
+        appName,
+        executablePath: livePath,
+        env,
+      });
+
+      expect(result.adopted).toBe(false);
+      expect(result.removedDuplicate).toBe(false);
+      expect(fs.readFileSync(path.join(tmpDir, 'autostart', legacyName), 'utf8')).toBe(foreign);
+      expect(isGeneratedLinuxAutostartEntry(foreign)).toBe(false);
+      expect(isGeneratedLinuxAutostartEntry(legacyEntry(deadPath))).toBe(true);
+    });
+
+    test('does nothing when there is no legacy entry', () => {
+      const env = { XDG_CONFIG_HOME: tmpDir };
+      const result = migrateLegacyLinuxAutostartEntry({
+        pkg,
+        appName,
+        executablePath: livePath,
+        env,
+      });
+
+      expect(result.adopted).toBe(false);
+      expect(result.removedDuplicate).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'autostart', currentName))).toBe(false);
     });
   });
 

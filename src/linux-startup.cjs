@@ -152,6 +152,86 @@ function syncLinuxAutostartExecutablePath({
   return { repaired: true, autostartPath, reason: 'stale' };
 }
 
+// Only ever touch entries this app generated. A file someone hand-wrote, or that another tool
+// placed under the same name, is theirs -- adopting or deleting it would be overreach.
+function isGeneratedLinuxAutostartEntry(content) {
+  if (typeof content !== 'string' || !content.trim()) return false;
+  return /^Comment\s*=\s*Launch\s+\S.*\s+at login\s*$/im.test(content);
+}
+
+/**
+ * Autostart file names the app has used, other than the one it uses now.
+ *
+ * The name is derived from the app id, which package.json did not always carry. Builds from
+ * before it was added named the file after the app instead, so an entry written back then is
+ * invisible to the current name and cannot be read, repaired, or removed.
+ */
+function getLegacyLinuxAutostartFilePaths(pkg = {}, appName = '', env = process.env) {
+  const currentFileName = getLinuxStartupDesktopFileName(pkg, appName);
+  const legacyFileNames = new Set();
+  for (const candidate of [appName, pkg?.name]) {
+    if (!candidate) continue;
+    // An empty pkg forces the pre-app-id resolution: the name, not the app id.
+    const fileName = getLinuxStartupDesktopFileName({}, candidate);
+    if (fileName && fileName !== currentFileName) legacyFileNames.add(fileName);
+  }
+  return [...legacyFileNames].map((fileName) => path.join(getLinuxAutostartDir(env), fileName));
+}
+
+/**
+ * Fold an entry left behind under an older file name back under the current one.
+ *
+ * Adoption preserves the user's intent through the rename: they turned start-at-login on once and
+ * should not have to notice that the file backing it changed name. A legacy entry the user
+ * disabled stays disabled by being left exactly where it is, and one this app did not write is
+ * never touched at all.
+ */
+function migrateLegacyLinuxAutostartEntry({
+  pkg = {},
+  appName = '',
+  executablePath,
+  env = process.env,
+  fsModule = fs,
+} = {}) {
+  const autostartPath = getLinuxAutostartFilePath(pkg, appName, env);
+  const readEntry = (target) => {
+    try {
+      return fsModule.readFileSync(target, 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      return null;
+    }
+  };
+
+  const currentExists = readEntry(autostartPath) !== null;
+
+  for (const legacyPath of getLegacyLinuxAutostartFilePaths(pkg, appName, env)) {
+    const legacyContent = readEntry(legacyPath);
+    if (legacyContent === null) continue;
+    if (!isGeneratedLinuxAutostartEntry(legacyContent)) continue;
+    if (!linuxAutostartEntryEnabled(legacyContent)) continue;
+
+    // Both names present: the current one already carries the setting, so the leftover is a
+    // duplicate that would launch a second copy at login. The single-instance lock makes that
+    // survivable, not correct.
+    if (currentExists) {
+      fsModule.unlinkSync(legacyPath);
+      return { adopted: false, removedDuplicate: true, legacyPath, autostartPath };
+    }
+
+    fsModule.mkdirSync(getLinuxAutostartDir(env), { recursive: true });
+    fsModule.writeFileSync(
+      autostartPath,
+      buildLinuxAutostartDesktopEntry({ appName, executablePath }),
+      { encoding: 'utf8', mode: 0o644 }
+    );
+    fsModule.unlinkSync(legacyPath);
+    return { adopted: true, removedDuplicate: false, legacyPath, autostartPath };
+  }
+
+  return { adopted: false, removedDuplicate: false, autostartPath };
+}
+
 function setLinuxLoginItemSettings(
   openAtLogin,
   { pkg = {}, appName = '', executablePath, env = process.env, fsModule = fs } = {}
@@ -185,11 +265,14 @@ module.exports = {
   getLinuxAutostartDir,
   getLinuxAutostartFilePath,
   getLinuxStartupDesktopFileName,
+  getLegacyLinuxAutostartFilePaths,
   getLinuxStartupExecutablePath,
+  isGeneratedLinuxAutostartEntry,
   isLinuxLoginItemEnabled,
   linuxAutostartEntryEnabled,
   linuxAutostartEntryMatches,
   linuxAutostartEntryNeedsRepair,
+  migrateLegacyLinuxAutostartEntry,
   quoteDesktopExecArg,
   setLinuxLoginItemSettings,
   syncLinuxAutostartExecutablePath,
