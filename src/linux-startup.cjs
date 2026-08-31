@@ -67,16 +67,61 @@ function buildLinuxAutostartDesktopEntry({ appName, executablePath }) {
   ].join('\n');
 }
 
-function linuxAutostartEntryMatches(content, executablePath) {
+// The autostart file is named after the app id, so its mere presence is the user's answer: they
+// turned start-at-login on for this app. Which executable it happens to name is a separate
+// question, deliberately not asked here -- see linuxAutostartEntryNeedsRepair.
+function linuxAutostartEntryEnabled(content) {
   if (typeof content !== 'string' || !content.trim()) return false;
   if (/^Hidden\s*=\s*true\s*$/im.test(content)) return false;
   if (/^X-GNOME-Autostart-enabled\s*=\s*false\s*$/im.test(content)) return false;
+  return /^Exec\s*=/im.test(content);
+}
+
+function linuxAutostartEntryMatches(content, executablePath) {
+  if (!linuxAutostartEntryEnabled(content)) return false;
 
   const expectedExec = quoteDesktopExecArg(executablePath);
   return content.split(/\r?\n/).some((line) => line.trim() === `Exec=${expectedExec}`);
 }
 
+// An AppImage carries its version in its filename, so every update writes a new file and deletes
+// the old one. An autostart entry written before that update still names the deleted path, which
+// silently stops the widget from starting at login and -- because the recorded path no longer
+// matches -- also made the setting read back as off. Both are repaired by rewriting the entry.
+function linuxAutostartEntryNeedsRepair(content, executablePath) {
+  return (
+    linuxAutostartEntryEnabled(content) && !linuxAutostartEntryMatches(content, executablePath)
+  );
+}
+
 function isLinuxLoginItemEnabled({
+  pkg = {},
+  appName = '',
+  // Accepted for call-site symmetry with the setter; enablement deliberately does not depend on it.
+  executablePath, // eslint-disable-line no-unused-vars
+  env = process.env,
+  fsModule = fs,
+} = {}) {
+  const autostartPath = getLinuxAutostartFilePath(pkg, appName, env);
+  try {
+    const content = fsModule.readFileSync(autostartPath, 'utf8');
+    return linuxAutostartEntryEnabled(content);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+    return false;
+  }
+}
+
+/**
+ * Point an existing autostart entry back at the running executable.
+ *
+ * Only ever rewrites an entry the user already enabled: a missing file means start-at-login is
+ * off and must stay off, and an entry that already names this executable is left untouched so
+ * every launch does not rewrite the same bytes.
+ */
+function syncLinuxAutostartExecutablePath({
   pkg = {},
   appName = '',
   executablePath,
@@ -84,15 +129,27 @@ function isLinuxLoginItemEnabled({
   fsModule = fs,
 } = {}) {
   const autostartPath = getLinuxAutostartFilePath(pkg, appName, env);
+  let content;
   try {
-    const content = fsModule.readFileSync(autostartPath, 'utf8');
-    return linuxAutostartEntryMatches(content, executablePath);
+    content = fsModule.readFileSync(autostartPath, 'utf8');
   } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      throw error;
-    }
-    return false;
+    if (error?.code !== 'ENOENT') throw error;
+    return { repaired: false, autostartPath, reason: 'absent' };
   }
+
+  if (!linuxAutostartEntryEnabled(content)) {
+    return { repaired: false, autostartPath, reason: 'disabled' };
+  }
+  if (!linuxAutostartEntryNeedsRepair(content, executablePath)) {
+    return { repaired: false, autostartPath, reason: 'current' };
+  }
+
+  fsModule.writeFileSync(
+    autostartPath,
+    buildLinuxAutostartDesktopEntry({ appName, executablePath }),
+    { encoding: 'utf8', mode: 0o644 }
+  );
+  return { repaired: true, autostartPath, reason: 'stale' };
 }
 
 function setLinuxLoginItemSettings(
@@ -130,7 +187,10 @@ module.exports = {
   getLinuxStartupDesktopFileName,
   getLinuxStartupExecutablePath,
   isLinuxLoginItemEnabled,
+  linuxAutostartEntryEnabled,
   linuxAutostartEntryMatches,
+  linuxAutostartEntryNeedsRepair,
   quoteDesktopExecArg,
   setLinuxLoginItemSettings,
+  syncLinuxAutostartExecutablePath,
 };

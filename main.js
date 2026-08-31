@@ -275,6 +275,7 @@ const {
   getLinuxStartupExecutablePath,
   isLinuxLoginItemEnabled,
   setLinuxLoginItemSettings,
+  syncLinuxAutostartExecutablePath,
 } = require('./src/linux-startup.cjs');
 const {
   isAllowedHlsProxyPath,
@@ -9359,6 +9360,30 @@ app
     if (isLayerShellChildProcess) restoreLayerShellParentEnv();
 
     startSmokeTestTimeout();
+
+    // An AppImage update writes a new versioned filename and deletes the old one, which leaves any
+    // autostart entry written before the update pointing at a path that no longer exists. Nothing
+    // reported it: the widget just stopped appearing at login. Repair it here, once the executable
+    // path for this run is known, so surviving an update costs the user nothing.
+    if (process.platform === 'linux') {
+      try {
+        const { repaired, autostartPath } = syncLinuxAutostartExecutablePath({
+          pkg,
+          appName: app.getName(),
+          executablePath: getLinuxStartupExecutablePath(app, process.env),
+          env: process.env,
+        });
+        if (repaired) {
+          log.info(
+            `Start-at-login pointed at an executable that no longer exists (likely a previous update); repointed ${autostartPath} at this build`
+          );
+        }
+      } catch (error) {
+        // Start-at-login is a convenience; a read-only or unwritable autostart directory must
+        // never stop the widget from starting.
+        log.warn('Could not refresh the Linux autostart entry:', error?.message || error);
+      }
+    }
 
     installApplicationMenu(Menu);
     installSessionPermissionPolicy(session.defaultSession, {
