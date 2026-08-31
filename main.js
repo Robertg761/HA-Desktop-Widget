@@ -288,9 +288,11 @@ const {
   createHaProtocolHandler,
 } = require('./src/ha-protocol.cjs');
 const {
+  LINUX_PASSWORD_STORE_ENV_OVERRIDE,
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  resolveLinuxPasswordStoreBackend,
   shouldForceX11OzonePlatform,
   hasGlobalShortcutFallback,
   shouldUseCompositorOwnedPlacement,
@@ -445,6 +447,20 @@ function forwardRendererConsole(webContents, label = 'renderer') {
 const usesLinuxPopupHotkeyBackend = isLinuxPopupHotkeyPlatform(process.platform);
 if (usesLinuxPopupHotkeyBackend) {
   app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+}
+
+// Chromium only knows how to find the OS keyring on the desktops in its own table, and silently
+// falls back to a plaintext store on everything else — wlroots compositors, XFCE, bare window
+// managers. safeStorage then reports encryption as unavailable and the widget refuses to store
+// a Home Assistant refresh token at all, so signing in failed on machines whose keyring was
+// running the whole time. Must run before app.whenReady(): the backend is chosen on first use,
+// long before safeStorage can be asked what it picked.
+const linuxPasswordStoreBackend = resolveLinuxPasswordStoreBackend();
+if (linuxPasswordStoreBackend) {
+  app.commandLine.appendSwitch('password-store', linuxPasswordStoreBackend);
+  log.info(
+    `Desktop environment is not one Chromium maps to a keyring; selecting the "${linuxPasswordStoreBackend}" password store so credentials can be encrypted (set ${LINUX_PASSWORD_STORE_ENV_OVERRIDE} to override)`
+  );
 }
 
 // Used to tell a GPU process that never started from one that died later in the session.

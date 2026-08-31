@@ -43,6 +43,81 @@ function isDisabledEnvFlag(value) {
   return normalized === '0' || normalized === 'false' || normalized === 'no';
 }
 
+const LINUX_PASSWORD_STORE_ENV_OVERRIDE = 'HA_WIDGET_LINUX_PASSWORD_STORE';
+
+// Desktops Chromium's own table maps to a real OS keyring. Every one of these already ends up
+// on libsecret or KWallet without our help, and KDE in particular must keep KWallet, so the
+// backend choice on these stays Chromium's.
+const DESKTOPS_WITH_CHROMIUM_KEYRING = new Set([
+  'cinnamon',
+  'deepin',
+  'gnome',
+  'kde',
+  'pantheon',
+  'ukui',
+  'unity',
+  'x-cinnamon',
+]);
+
+function hasChromiumKeyringDesktop(env = process.env) {
+  // XDG_CURRENT_DESKTOP is a colon-separated list, and prefixed forms like "ubuntu:GNOME"
+  // are normal, so this matches on any one entry rather than the whole string.
+  const currentDesktops = String(env?.XDG_CURRENT_DESKTOP || '')
+    .toLowerCase()
+    .split(':');
+  if (currentDesktops.some((desktop) => DESKTOPS_WITH_CHROMIUM_KEYRING.has(desktop.trim()))) {
+    return true;
+  }
+  // Chromium falls back to DESKTOP_SESSION when XDG_CURRENT_DESKTOP says nothing useful, where
+  // the values are session names ("gnome-xorg", "plasmawayland", "ubuntu") rather than tokens.
+  const session = String(env?.DESKTOP_SESSION || '')
+    .trim()
+    .toLowerCase();
+  if (!session) return false;
+  return ['cinnamon', 'deepin', 'gnome', 'kde', 'pantheon', 'plasma', 'ubuntu', 'ukui'].some(
+    (prefix) => session.startsWith(prefix)
+  );
+}
+
+/**
+ * Decide which Chromium `--password-store` backend to name on Linux ('' to leave it to Chromium).
+ *
+ * Chromium picks the keyring backend from the desktop environment, and its table only covers the
+ * long-established desktops. On anything else -- wlroots compositors like Hyprland, Sway, river
+ * and niri, but also XFCE, LXQt and bare window managers -- it falls through to the plaintext
+ * `basic_text` backend, and safeStorage then reports encryption as unavailable. The widget
+ * refuses to write a refresh token under that backend, so OAuth pairing failed outright with
+ * "Secure credential storage is unavailable on this system" on machines whose Secret Service was
+ * running and reachable the whole time, and long-lived tokens were silently dropped from the
+ * saved config instead of being persisted.
+ *
+ * Naming the backend ourselves is the only way in: the switch has to be set before the app is
+ * ready, long before safeStorage can be asked what it chose. Measured on a machine with no
+ * reachable Secret Service, the libsecret backend fails to initialize and Chromium lands back on
+ * `basic_text` -- the same place that machine already was, so naming it costs nothing when it
+ * turns out there is no keyring to talk to.
+ *
+ * Set HA_WIDGET_LINUX_PASSWORD_STORE to another backend ('kwallet6', 'basic_text', ...) to name a
+ * different one, or to 0/false/no to leave the choice to Chromium. Passing --password-store
+ * yourself wins outright.
+ */
+function resolveLinuxPasswordStoreBackend({
+  platform = process.platform,
+  env = process.env,
+  argv = process.argv,
+} = {}) {
+  if (platform !== 'linux') return '';
+  // An explicit choice from the launcher or the user wins over ours.
+  const hasExplicitArg = (argv || []).some(
+    (arg) => typeof arg === 'string' && arg.startsWith('--password-store')
+  );
+  if (hasExplicitArg) return '';
+  const override = String(env?.[LINUX_PASSWORD_STORE_ENV_OVERRIDE] || '').trim();
+  if (override) return isDisabledEnvFlag(override) ? '' : override.toLowerCase();
+  if (hasChromiumKeyringDesktop(env)) return '';
+  return 'gnome-libsecret';
+}
+
 /**
  * Decide whether to run the widget through XWayland on a Wayland session.
  *
@@ -211,6 +286,7 @@ function getMainWindowVisualOptions({
 }
 
 module.exports = {
+  LINUX_PASSWORD_STORE_ENV_OVERRIDE,
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getExplicitOzonePlatform,
@@ -220,6 +296,7 @@ module.exports = {
   isDisabledEnvFlag,
   isEnabledEnvFlag,
   isLinuxAppImage,
+  resolveLinuxPasswordStoreBackend,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,
   shouldUsePortalGlobalShortcuts,

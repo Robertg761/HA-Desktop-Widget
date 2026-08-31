@@ -31,6 +31,23 @@ describe('main-process wiring safeguards', () => {
     expect(createWindow).toBeGreaterThan(installPolicy);
   });
 
+  it('names a keyring backend on desktops Chromium would leave on plaintext', () => {
+    // The switch is only read at startup, so it has to be appended before the app is ready --
+    // after that Chromium has already settled on its plaintext fallback and safeStorage reports
+    // encryption as unavailable, which blocks Home Assistant sign-in entirely.
+    expect(mainSource).toContain(
+      'const linuxPasswordStoreBackend = resolveLinuxPasswordStoreBackend();'
+    );
+    expect(mainSource).toContain(
+      "app.commandLine.appendSwitch('password-store', linuxPasswordStoreBackend)"
+    );
+    expect(mainSource).toContain('LINUX_PASSWORD_STORE_ENV_OVERRIDE');
+    const appendsSwitch = mainSource.indexOf("appendSwitch('password-store'");
+    const readyCall = mainSource.indexOf('app\n  .whenReady()');
+    expect(appendsSwitch).toBeGreaterThan(-1);
+    expect(appendsSwitch).toBeLessThan(readyCall);
+  });
+
   it('runs Wayland sessions through XWayland and keeps the recovery discoverable', () => {
     expect(mainSource).toContain('shouldForceX11OzonePlatform({');
     expect(mainSource).toContain('const waylandSession = isWaylandSession();');

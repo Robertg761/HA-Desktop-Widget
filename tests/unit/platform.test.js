@@ -4,6 +4,7 @@ const {
   getMainWindowVisualOptions,
   hasGlobalShortcutFallback,
   isLinuxAppImage,
+  resolveLinuxPasswordStoreBackend,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,
   shouldUsePortalGlobalShortcuts,
@@ -45,6 +46,124 @@ describe('platform helpers', () => {
     ).toBe(true);
     expect(shouldUseTransparentWindow('win32', {})).toBe(true);
     expect(shouldUseTransparentWindow('darwin', {})).toBe(true);
+  });
+
+  describe('resolveLinuxPasswordStoreBackend', () => {
+    // The bug this exists for: Chromium does not recognize wlroots compositors, falls back to
+    // its plaintext store, and safeStorage then reports encryption as unavailable — which the
+    // OAuth client turns into "Secure credential storage is unavailable on this system".
+    test('names libsecret on desktops Chromium does not map to a keyring', () => {
+      for (const desktop of ['Hyprland', 'sway', 'river', 'niri', 'XFCE', 'LXQt']) {
+        expect(
+          resolveLinuxPasswordStoreBackend({
+            platform: 'linux',
+            env: { XDG_CURRENT_DESKTOP: desktop },
+            argv: [],
+          })
+        ).toBe('gnome-libsecret');
+      }
+    });
+
+    test('names libsecret when the session advertises no desktop at all', () => {
+      expect(resolveLinuxPasswordStoreBackend({ platform: 'linux', env: {}, argv: [] })).toBe(
+        'gnome-libsecret'
+      );
+    });
+
+    // KDE must keep KWallet, and the GNOME family already reaches libsecret on its own, so
+    // touching the backend on either can only move where existing secrets live.
+    test('leaves the choice to Chromium on desktops it already handles', () => {
+      const recognized = [
+        'GNOME',
+        'ubuntu:GNOME',
+        'KDE',
+        'X-Cinnamon',
+        'Pantheon',
+        'Deepin',
+        'UKUI',
+        'Unity',
+      ];
+      for (const desktop of recognized) {
+        expect(
+          resolveLinuxPasswordStoreBackend({
+            platform: 'linux',
+            env: { XDG_CURRENT_DESKTOP: desktop },
+            argv: [],
+          })
+        ).toBe('');
+      }
+    });
+
+    test('falls back to DESKTOP_SESSION when XDG_CURRENT_DESKTOP is unset', () => {
+      expect(
+        resolveLinuxPasswordStoreBackend({
+          platform: 'linux',
+          env: { DESKTOP_SESSION: 'plasmawayland' },
+          argv: [],
+        })
+      ).toBe('');
+      expect(
+        resolveLinuxPasswordStoreBackend({
+          platform: 'linux',
+          env: { DESKTOP_SESSION: 'gnome-xorg' },
+          argv: [],
+        })
+      ).toBe('');
+      // The session name that started this: Omarchy's Hyprland session.
+      expect(
+        resolveLinuxPasswordStoreBackend({
+          platform: 'linux',
+          env: { DESKTOP_SESSION: 'omarchy' },
+          argv: [],
+        })
+      ).toBe('gnome-libsecret');
+    });
+
+    test('an explicit --password-store argument wins over ours', () => {
+      const env = { XDG_CURRENT_DESKTOP: 'Hyprland' };
+      expect(
+        resolveLinuxPasswordStoreBackend({
+          platform: 'linux',
+          env,
+          argv: ['--password-store=kwallet6'],
+        })
+      ).toBe('');
+      expect(
+        resolveLinuxPasswordStoreBackend({ platform: 'linux', env, argv: ['--password-store'] })
+      ).toBe('');
+    });
+
+    test('the env override can name another backend or hand the choice back', () => {
+      const base = { XDG_CURRENT_DESKTOP: 'Hyprland' };
+      expect(
+        resolveLinuxPasswordStoreBackend({
+          platform: 'linux',
+          env: { ...base, HA_WIDGET_LINUX_PASSWORD_STORE: 'kwallet6' },
+          argv: [],
+        })
+      ).toBe('kwallet6');
+      for (const disabled of ['0', 'false', 'no']) {
+        expect(
+          resolveLinuxPasswordStoreBackend({
+            platform: 'linux',
+            env: { ...base, HA_WIDGET_LINUX_PASSWORD_STORE: disabled },
+            argv: [],
+          })
+        ).toBe('');
+      }
+    });
+
+    test('never touches the backend off Linux', () => {
+      for (const platform of ['win32', 'darwin']) {
+        expect(
+          resolveLinuxPasswordStoreBackend({
+            platform,
+            env: { XDG_CURRENT_DESKTOP: 'Hyprland' },
+            argv: [],
+          })
+        ).toBe('');
+      }
+    });
   });
 
   test('runs Linux Wayland sessions through XWayland so the widget can place itself', () => {
