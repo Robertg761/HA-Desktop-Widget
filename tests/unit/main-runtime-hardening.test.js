@@ -5,6 +5,38 @@ const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'ut
 const stylesSource = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
 describe('main-process wiring safeguards', () => {
+  it.each([
+    ['installed Linux app', 'linux', true, false, false, true],
+    ['development app', 'linux', false, true, false, false],
+    ['unpackaged app', 'linux', false, false, false, false],
+    ['packaged smoke test', 'linux', true, false, true, false],
+    ['packaged development mode', 'linux', true, true, false, false],
+    ['Windows app', 'win32', true, false, false, false],
+  ])(
+    'limits autostart maintenance for %s',
+    (_label, platform, isPackaged, dev, smoke, expected) => {
+      const migrate = jest.fn(() => ({}));
+      const repair = jest.fn(() => ({}));
+      const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
+      const end = mainSource.indexOf('installApplicationMenu(Menu);', start);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      require('vm').runInNewContext(mainSource.slice(start, end), {
+        process: { platform, env: {} },
+        app: { isPackaged, getName: () => 'widget' },
+        IS_DEV_MODE: dev,
+        IS_SMOKE_TEST_MODE: smoke,
+        pkg: {},
+        getLinuxStartupExecutablePath: () => '/installed/widget',
+        migrateLegacyLinuxAutostartEntry: migrate,
+        syncLinuxAutostartExecutablePath: repair,
+        log: { info: jest.fn(), warn: jest.fn() },
+      });
+      expect(migrate).toHaveBeenCalledTimes(expected ? 1 : 0);
+      expect(repair).toHaveBeenCalledTimes(expected ? 1 : 0);
+    }
+  );
+
   it('denies renderer-created windows and routes http/https navigation externally', () => {
     expect(mainSource).toContain('function hardenRendererNavigation');
     expect(mainSource).toContain('setWindowOpenHandler');

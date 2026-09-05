@@ -16,6 +16,12 @@ import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
+import {
+  handleTrayEntityStateChange,
+  initTrayEntityIcons,
+  refreshTrayEntityIcons,
+  syncTrayEntityIconsWithConfig,
+} from './src/tray-entity-icons.js';
 import { DesktopCompanionClient } from './src/desktop-companion-client.js';
 import {
   buildConfigPatchFromApplyPayload,
@@ -45,6 +51,10 @@ const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
+// Only the main window renders tray entity icons; pin windows share this script but not the job.
+if (window.electronAPI && !IS_DESKTOP_PIN_MODE) {
+  initTrayEntityIcons({ electronAPI: window.electronAPI, platform: window.electronAPI.platform });
+}
 let desktopPinEditMode = false;
 let desktopPinBounds = null;
 let desktopPinHasSnapshot = false;
@@ -308,6 +318,7 @@ function refreshDesktopPinStatePublishing({ force = false, coalesce = true } = {
 
 function flushPendingStateChangedEntities() {
   pendingStateChangedFlushId = null;
+  const changedEntityIds = Array.from(pendingStateChangedEntities.keys());
   const changes = Array.from(pendingStateChangedEntities.values());
   pendingStateChangedEntities.clear();
   const hasDeletion = changes.some(({ entity }) => !entity);
@@ -335,6 +346,10 @@ function flushPendingStateChangedEntities() {
     }
     alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
+
+  if (!IS_DESKTOP_PIN_MODE) {
+    changedEntityIds.forEach((entityId) => handleTrayEntityStateChange(entityId));
+  }
 
   if (hasDeletion) {
     if (IS_SPECIAL_PIN_MODE) {
@@ -1488,6 +1503,7 @@ websocket.on('message', (msg) => {
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
+            if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
 
             const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
             if (reconciliation.changed) {
@@ -1690,6 +1706,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
       state.CONFIG?.homeAssistant?.token || ''
     }`;
     if (applyRendererConfig(nextConfig) === false) return;
+    if (!IS_DESKTOP_PIN_MODE) syncTrayEntityIconsWithConfig();
     const nextConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
       state.CONFIG?.homeAssistant?.token || ''
     }`;
@@ -1754,6 +1771,13 @@ window.electronAPI.onDesktopPinUpdate((payload) => {
 // have seen it.
 window.electronAPI.onDesktopPinSnapshotNeeded?.(() => {
   refreshDesktopPinStatePublishing({ force: true });
+});
+
+// Main creates a Tray per configured entity but cannot draw the value; it asks the renderer
+// for a full re-render whenever a new tray icon appears.
+window.electronAPI.onTrayEntitiesRefreshNeeded?.(() => {
+  if (IS_DESKTOP_PIN_MODE) return;
+  refreshTrayEntityIcons({ force: true });
 });
 
 /**

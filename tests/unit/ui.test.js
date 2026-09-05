@@ -13,6 +13,8 @@ const {
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
 global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
+const { getRendererHost, setRendererHost } = require('@hadw/renderer/host.js');
+const { createElectronHost } = require('@hadw/renderer/electron-host.js');
 
 // Setup mocks BEFORE loading modules
 const mockElectronAPI = createMockElectronAPI();
@@ -2506,6 +2508,139 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(sensorTile.dataset.valueSize).toBe('extra-large');
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
+    });
+
+    function seedOfficeTemperatureTile() {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.quickAccessTileOptions = {};
+      config.trayEntities = {};
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '29.2999988132053',
+          attributes: {
+            friendly_name: 'Office Temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+      return document.querySelector('.rename-modal');
+    }
+
+    it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
+      const modal = seedOfficeTemperatureTile();
+      const chartSelect = modal.querySelector('#tile-chart-type-select');
+      const rangeGroup = modal.querySelector('#tile-gauge-range-group');
+      expect(chartSelect.value).toBe('line');
+      expect(rangeGroup.hidden).toBe(true);
+
+      chartSelect.value = 'gauge';
+      chartSelect.dispatchEvent(new Event('change'));
+      expect(rangeGroup.hidden).toBe(false);
+      modal.querySelector('#tile-gauge-min-input').value = '10';
+      modal.querySelector('#tile-gauge-max-input').value = '40';
+      modal.querySelector('#save-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toEqual({
+        chartType: 'gauge',
+        gaugeMin: 10,
+        gaugeMax: 40,
+      });
+      expect(document.querySelector('.rename-modal')).toBeNull();
+
+      const sensorTile = document.querySelector(
+        '.control-item.sensor-numeric-entity[data-entity-id="sensor.office_temperature"]'
+      );
+      expect(sensorTile.dataset.chartType).toBe('gauge');
+      expect(sensorTile.querySelector('.control-sensor-sparkline')).toBeNull();
+      const gaugeSvg = sensorTile.querySelector('.control-sensor-gauge-svg');
+      expect(gaugeSvg).not.toBeNull();
+      expect(gaugeSvg.getAttribute('data-gauge-source')).toBe('custom');
+      expect(gaugeSvg.getAttribute('data-gauge-min')).toBe('10');
+      expect(gaugeSvg.getAttribute('data-gauge-max')).toBe('40');
+      const bounds = Array.from(gaugeSvg.querySelectorAll('.control-sensor-gauge-bound')).map(
+        (node) => node.textContent
+      );
+      expect(bounds).toEqual(['10', '40']);
+      expect(gaugeSvg.querySelector('.control-sensor-gauge-value')).not.toBeNull();
+    });
+
+    it('rejects a gauge range whose minimum is not below its maximum', async () => {
+      const modal = seedOfficeTemperatureTile();
+      const chartSelect = modal.querySelector('#tile-chart-type-select');
+      chartSelect.value = 'gauge';
+      chartSelect.dispatchEvent(new Event('change'));
+      modal.querySelector('#tile-gauge-min-input').value = '50';
+      modal.querySelector('#tile-gauge-max-input').value = '40';
+      modal.querySelector('#save-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(document.querySelector('.rename-modal')).not.toBeNull();
+      expect(state.CONFIG.quickAccessTileOptions).toEqual({});
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalledWith(
+        expect.objectContaining({ quickAccessTileOptions: expect.anything() })
+      );
+    });
+
+    it('drops the chart band entirely when the chart type is none', async () => {
+      const modal = seedOfficeTemperatureTile();
+      modal.querySelector('#tile-chart-type-select').value = 'none';
+      modal.querySelector('#save-rename-btn').click();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toEqual({
+        chartType: 'none',
+      });
+      const sensorTile = document.querySelector(
+        '.control-item.sensor-numeric-entity[data-entity-id="sensor.office_temperature"]'
+      );
+      expect(sensorTile.dataset.chartType).toBe('none');
+      expect(sensorTile.querySelector('.control-sensor-sparkline')).toBeNull();
+      expect(sensorTile.querySelector('.control-sensor-gauge')).toBeNull();
+    });
+
+    it('toggles tray membership from the settings modal when the host has a tray', async () => {
+      const previousHost = getRendererHost();
+      setRendererHost(createElectronHost(mockElectronAPI));
+      try {
+        const modal = seedOfficeTemperatureTile();
+        const trayCheckbox = modal.querySelector('#tile-tray-checkbox');
+        expect(trayCheckbox).not.toBeNull();
+        expect(trayCheckbox.checked).toBe(false);
+        expect(ui.isEntityInTray('sensor.office_temperature')).toBe(false);
+
+        trayCheckbox.checked = true;
+        modal.querySelector('#save-rename-btn').click();
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(state.CONFIG.trayEntities).toEqual({ 'sensor.office_temperature': {} });
+        expect(ui.isEntityInTray('sensor.office_temperature')).toBe(true);
+        expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            trayEntities: { 'sensor.office_temperature': {} },
+          })
+        );
+        expect(document.querySelector('.rename-modal')).toBeNull();
+      } finally {
+        setRendererHost(previousHost);
+      }
     });
 
     it('keeps tile settings and the editor intact when a narrow save is rejected', async () => {

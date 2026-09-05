@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -451,6 +451,21 @@
     "Settings were saved, but the sync passphrase could not be stored.": "La configuración se guardó, pero la contraseña de sincronización no se pudo almacenar.",
     "Failed to apply popup hotkey mode": "No se pudo aplicar el modo del atajo emergente",
     "Failed to apply popup hotkey behavior": "No se pudo aplicar el comportamiento del atajo emergente",
-    "Connecting to Home Assistant...": "Conectando con Home Assistant..."
+    "Connecting to Home Assistant...": "Conectando con Home Assistant...",
+    "Chart:": "Gráfico:",
+    "Line chart (Default)": "Gráfico de líneas (predeterminado)",
+    "Gauge": "Indicador",
+    "No chart": "Sin gráfico",
+    "Choose how this sensor tile visualizes its value.": "Elige cómo esta tarjeta de sensor visualiza su valor.",
+    "Gauge range:": "Rango del indicador:",
+    "Min": "Mín",
+    "Max": "Máx",
+    "Auto": "Auto",
+    "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.": "Deja un campo vacío para ajustar ese lado del indicador automáticamente según la unidad del sensor, sus atributos o el historial reciente.",
+    "Gauge minimum must be less than the maximum.": "El mínimo del indicador debe ser menor que el máximo.",
+    "Show in system tray": "Mostrar en la bandeja del sistema",
+    "Shows this entity’s current value as its own icon in the system tray.": "Muestra el valor actual de esta entidad como un icono propio en la bandeja del sistema.",
+    "Show in Tray": "Mostrar en la bandeja",
+    "Remove from Tray": "Quitar de la bandeja"
   }
 }

@@ -223,6 +223,22 @@ fn save_margins_to_position_file(state: &WindowToLayer) {
  * motions (see [WindowToLayer::drag_last_inject]). */
 const DRAG_INJECT_MIN_INTERVAL_MS: u32 = 15;
 
+/** Drag tracing to stderr, enabled by WINDOWTOLAYER_TRACE_DRAG (diagnostics only). */
+fn drag_trace_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("WINDOWTOLAYER_TRACE_DRAG").is_some())
+}
+macro_rules! dtrace {
+    ($($arg:tt)*) => {
+        if drag_trace_enabled() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+fn trace_pending(p: Option<(u32, i32, i32, (i32, i32, i32, i32))>) -> Option<(u32, i32, i32, (i32, i32, i32, i32))> {
+    p.map(|(t, x, y, b)| (t, x >> 8, y >> 8, b))
+}
+
 /** End any in-progress pointer move, persisting the final position. */
 fn end_pointer_drag(state: &mut WindowToLayer) {
     state.drag_pending = None;
@@ -862,6 +878,7 @@ fn process_event_w2l(
              * margin updates may resume (see the wl_pointer motion handling).
              * The callback object itself is cleaned up by the compositor's
              * wl_display::delete_id, like the other proxy-owned callbacks. */
+            dtrace!("[drag] sync done margins={:?} pending={:?}", state.margins, trace_pending(state.drag_pending));
             state.drag_margin_sync = None;
             Ok(Done)
         } else {
@@ -920,9 +937,11 @@ fn process_event_w2l(
                 let (x, y) = (x as i32, y as i32);
                 let pos = pointer_pos_in_bounds(state, surface, x, y).then_some((x, y));
                 state.pointer_focus = Some((surface, pos));
+                dtrace!("[drag] enter surface={:?} local=({},{}) in_bounds={}", surface, x >> 8, y >> 8, pos.is_some());
             }
             Some(WlPointerEvtIDs::Leave) => {
                 let _ = parse_wl_pointer_evt_leave(msg)?;
+                dtrace!("[drag] leave drag={} pending={:?}", state.drag.is_some(), trace_pending(state.drag_pending));
                 /* The implicit grab normally delays leave until the buttons
                  * are released; treat an early leave as the end of the drag,
                  * first flushing a pending motion so the final position is
@@ -1000,6 +1019,13 @@ fn process_event_w2l(
                     0
                 };
                 check_space!((msg.len(), fd_count), (inject_len, 0), dst, reverse_dst);
+                if state.drag.is_some() {
+                    dtrace!(
+                        "[drag] motion t={} local=({},{}) sync_out={} margins={:?} pending={:?} inject={:?}",
+                        time, x >> 8, y >> 8, state.drag_margin_sync.is_some(), state.margins,
+                        trace_pending(new_pending), inject.as_ref().map(|(_, _, m)| *m)
+                    );
+                }
                 state.drag_pending = new_pending;
                 if let Some((layer_surface, wl_surface, m)) = inject {
                     write_drag_margin_update(state, reverse_dst, layer_surface, wl_surface, m)?;
@@ -1013,6 +1039,7 @@ fn process_event_w2l(
             }
             Some(WlPointerEvtIDs::Button) => {
                 let (_serial, _time, _button, button_state) = parse_wl_pointer_evt_button(msg)?;
+                dtrace!("[drag] button t={} state={} drag={} pending={:?}", _time, button_state, state.drag.is_some(), trace_pending(state.drag_pending));
                 /* On release, flush a pending motion so the final position is
                  * applied before the drag ends and the margins are saved.
                  * The pending's own base makes this correct even while a
@@ -1892,6 +1919,7 @@ fn process_request_w2l(
                  * actually over this toplevel's surface (not, say, a
                  * popup's). */
                 let Some((focus_surface, Some((x, y)))) = state.pointer_focus else {
+                    dtrace!("[drag] move ignored: pointer focus {:?}", state.pointer_focus);
                     return Ok(Done);
                 };
                 let Some(xdg_surface_id) = state.toplevel_to_surface_map.get(&object_id) else {
@@ -1906,6 +1934,7 @@ fn process_request_w2l(
                     return Ok(Done);
                 };
                 if upstream_wl_surface != focus_surface {
+                    dtrace!("[drag] move ignored: toplevel surface {:?} != focus {:?}", upstream_wl_surface, focus_surface);
                     return Ok(Done);
                 }
                 state.drag = Some(PointerDrag {
@@ -1915,6 +1944,7 @@ fn process_request_w2l(
                     grab_y: y,
                 });
                 state.drag_last_inject = None;
+                dtrace!("[drag] move latched grab=({},{}) margins={:?}", x >> 8, y >> 8, state.margins);
                 Ok(Done)
             }
             _ => {

@@ -444,5 +444,20 @@
   "Settings were saved, but the sync passphrase could not be stored.": "Settings were saved, but the sync passphrase could not be stored.",
   "Failed to apply popup hotkey mode": "Failed to apply popup hotkey mode",
   "Failed to apply popup hotkey behavior": "Failed to apply popup hotkey behavior",
-  "Connecting to Home Assistant...": "Connecting to Home Assistant..."
+  "Connecting to Home Assistant...": "Connecting to Home Assistant...",
+  "Chart:": "Chart:",
+  "Line chart (Default)": "Line chart (Default)",
+  "Gauge": "Gauge",
+  "No chart": "No chart",
+  "Choose how this sensor tile visualizes its value.": "Choose how this sensor tile visualizes its value.",
+  "Gauge range:": "Gauge range:",
+  "Min": "Min",
+  "Max": "Max",
+  "Auto": "Auto",
+  "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.": "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.",
+  "Gauge minimum must be less than the maximum.": "Gauge minimum must be less than the maximum.",
+  "Show in system tray": "Show in system tray",
+  "Shows this entity’s current value as its own icon in the system tray.": "Shows this entity’s current value as its own icon in the system tray.",
+  "Show in Tray": "Show in Tray",
+  "Remove from Tray": "Remove from Tray"
 }

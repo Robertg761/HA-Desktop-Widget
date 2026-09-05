@@ -8,6 +8,16 @@ import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
+import {
+  SENSOR_TILE_CHART_OPTIONS,
+  buildGaugeArc,
+  clampGaugeFraction,
+  formatGaugeBoundLabel,
+  normalizeGaugeBound,
+  normalizeSensorTileChartType,
+  resolveGaugeRange,
+} from './sensor-gauge.js';
+import trayEntitySupport from './tray-entities.cjs';
 import desktopPinSupport from './desktop-pin-support.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
@@ -93,6 +103,9 @@ const SENSOR_HISTORY_REFRESH_THROTTLE_MS = 5 * 60 * 1000;
 const SENSOR_SPARKLINE_SVG_NS = 'http://www.w3.org/2000/svg';
 const SENSOR_TILE_SPARKLINE_WIDTH = 96;
 const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
+const SENSOR_TILE_GAUGE_WIDTH = 96;
+const SENSOR_TILE_GAUGE_HEIGHT = 32;
+const SENSOR_TILE_GAUGE_STROKE_WIDTH = 6;
 const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
 const SENSOR_DETAIL_SPARKLINE_HEIGHT = 120;
 const COMPARISON_GRAPH_WIDTH = 260;
@@ -1394,8 +1407,13 @@ function showRenameModal(entityId) {
       state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
     const hasValueSizeControl = isQuickAccessTileValueSizeApplicable(entity);
     const hasCameraPreviewControl = getEntityDomain(entity.entity_id) === 'camera';
+    const hasChartControl = isQuickAccessSensorChartApplicable(entity);
+    const hasTrayControl = !!getRendererHost().capabilities?.supportsTray;
     let currentValueSize = getQuickAccessTileValueSize(entityId);
     let currentCameraPreviewRefresh = getQuickAccessCameraPreviewRefresh(entityId);
+    let currentChartType = getQuickAccessTileChartType(entityId);
+    let currentGaugeRange = getQuickAccessTileGaugeRange(entityId);
+    let currentTrayEnabled = isEntityInTray(entityId);
     const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS.map(
       (option) => `
                 <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
@@ -1408,6 +1426,41 @@ function showRenameModal(entityId) {
               ${valueSizeOptionsMarkup}
             </select>
             <div class="form-help">${utils.escapeHtml(t('Adjusts the state or readout text size for this Quick Access tile.'))}</div>
+          </div>`
+      : '';
+    const chartOptionsMarkup = SENSOR_TILE_CHART_OPTIONS.map(
+      (option) => `
+                <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentChartType ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
+    ).join('');
+    const formatGaugeBoundInput = (value) =>
+      value === null ? '' : escapeHtmlAttribute(String(value));
+    const chartControlMarkup = hasChartControl
+      ? `
+          <div class="form-group">
+            <label for="tile-chart-type-select">${utils.escapeHtml(t('Chart:'))}</label>
+            <select id="tile-chart-type-select" class="form-control">
+              ${chartOptionsMarkup}
+            </select>
+            <div class="form-help">${utils.escapeHtml(t('Choose how this sensor tile visualizes its value.'))}</div>
+          </div>
+          <div class="form-group tile-gauge-range-setting" id="tile-gauge-range-group"${currentChartType === 'gauge' ? '' : ' hidden'}>
+            <label for="tile-gauge-min-input">${utils.escapeHtml(t('Gauge range:'))}</label>
+            <div class="tile-gauge-range-inputs">
+              <input type="number" step="any" id="tile-gauge-min-input" class="form-control" value="${formatGaugeBoundInput(currentGaugeRange.min)}" placeholder="${escapeHtmlAttribute(t('Auto'))}" aria-label="${escapeHtmlAttribute(t('Min'))}">
+              <span class="tile-gauge-range-separator" aria-hidden="true">–</span>
+              <input type="number" step="any" id="tile-gauge-max-input" class="form-control" value="${formatGaugeBoundInput(currentGaugeRange.max)}" placeholder="${escapeHtmlAttribute(t('Auto'))}" aria-label="${escapeHtmlAttribute(t('Max'))}">
+            </div>
+            <div class="form-help">${utils.escapeHtml(t('Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.'))}</div>
+          </div>`
+      : '';
+    const trayControlMarkup = hasTrayControl
+      ? `
+          <div class="form-group tile-tray-setting">
+            <label>
+              <input type="checkbox" id="tile-tray-checkbox"${currentTrayEnabled ? ' checked' : ''} />
+              <span>${utils.escapeHtml(t('Show in system tray'))}</span>
+            </label>
+            <div class="form-help">${utils.escapeHtml(t('Shows this entity’s current value as its own icon in the system tray.'))}</div>
           </div>`
       : '';
     const cameraPreviewOptionsMarkup = camera.CAMERA_PREVIEW_REFRESH_OPTIONS.map(
@@ -1439,7 +1492,9 @@ function showRenameModal(entityId) {
             <input type="text" id="rename-input" class="form-control" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
           </div>
           ${valueSizeControlMarkup}
+          ${chartControlMarkup}
           ${cameraPreviewControlMarkup}
+          ${trayControlMarkup}
         </div>
         <div class="modal-footer">
           <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
@@ -1454,12 +1509,32 @@ function showRenameModal(entityId) {
     const input = modal.querySelector('#rename-input');
     const valueSizeSelect = modal.querySelector('#tile-value-size-select');
     const cameraPreviewRefreshSelect = modal.querySelector('#camera-preview-refresh-select');
+    const chartTypeSelect = modal.querySelector('#tile-chart-type-select');
+    const gaugeRangeGroup = modal.querySelector('#tile-gauge-range-group');
+    const gaugeMinInput = modal.querySelector('#tile-gauge-min-input');
+    const gaugeMaxInput = modal.querySelector('#tile-gauge-max-input');
+    const trayCheckbox = modal.querySelector('#tile-tray-checkbox');
     const saveBtn = modal.querySelector('#save-rename-btn');
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
     const closeBtn = modal.querySelector('.close-btn');
 
     if (input) input.focus();
+
+    const syncGaugeRangeVisibility = () => {
+      if (!gaugeRangeGroup) return;
+      gaugeRangeGroup.hidden =
+        normalizeSensorTileChartType(chartTypeSelect?.value || 'line') !== 'gauge';
+    };
+    if (chartTypeSelect) {
+      chartTypeSelect.addEventListener('change', syncGaugeRangeVisibility);
+    }
+
+    const readGaugeRangeInputs = () => ({
+      min: normalizeGaugeBound(gaugeMinInput?.value ?? ''),
+      max: normalizeGaugeBound(gaugeMaxInput?.value ?? ''),
+    });
+    const gaugeRangesEqual = (a, b) => a.min === b.min && a.max === b.max;
 
     const refreshQuickAccessAfterTileSettingsChange = () => {
       renderActiveTab();
@@ -1483,6 +1558,10 @@ function showRenameModal(entityId) {
         input,
         valueSizeSelect,
         cameraPreviewRefreshSelect,
+        chartTypeSelect,
+        gaugeMinInput,
+        gaugeMaxInput,
+        trayCheckbox,
         saveBtn,
         resetBtn,
         cancelBtn,
@@ -1499,10 +1578,16 @@ function showRenameModal(entityId) {
         state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
       const authoritativeValueSize = getQuickAccessTileValueSize(entityId);
       const authoritativeCameraRefresh = getQuickAccessCameraPreviewRefresh(entityId);
+      const authoritativeChartType = getQuickAccessTileChartType(entityId);
+      const authoritativeGaugeRange = getQuickAccessTileGaugeRange(entityId);
+      const authoritativeTrayEnabled = isEntityInTray(entityId);
       const relevantConfigChanged =
         authoritativeName !== currentName ||
         authoritativeValueSize !== currentValueSize ||
-        authoritativeCameraRefresh !== currentCameraPreviewRefresh;
+        authoritativeCameraRefresh !== currentCameraPreviewRefresh ||
+        authoritativeChartType !== currentChartType ||
+        !gaugeRangesEqual(authoritativeGaugeRange, currentGaugeRange) ||
+        authoritativeTrayEnabled !== currentTrayEnabled;
 
       // Preserve the user's retryable form values for an ordinary save failure. If
       // main reports that this tile changed concurrently, show that authoritative
@@ -1513,9 +1598,23 @@ function showRenameModal(entityId) {
         if (cameraPreviewRefreshSelect) {
           cameraPreviewRefreshSelect.value = authoritativeCameraRefresh;
         }
+        if (chartTypeSelect) chartTypeSelect.value = authoritativeChartType;
+        if (gaugeMinInput) {
+          gaugeMinInput.value =
+            authoritativeGaugeRange.min === null ? '' : String(authoritativeGaugeRange.min);
+        }
+        if (gaugeMaxInput) {
+          gaugeMaxInput.value =
+            authoritativeGaugeRange.max === null ? '' : String(authoritativeGaugeRange.max);
+        }
+        if (trayCheckbox) trayCheckbox.checked = authoritativeTrayEnabled;
+        syncGaugeRangeVisibility();
         currentName = authoritativeName;
         currentValueSize = authoritativeValueSize;
         currentCameraPreviewRefresh = authoritativeCameraRefresh;
+        currentChartType = authoritativeChartType;
+        currentGaugeRange = authoritativeGaugeRange;
+        currentTrayEnabled = authoritativeTrayEnabled;
       }
     };
 
@@ -1552,6 +1651,37 @@ function showRenameModal(entityId) {
           changed = true;
         }
 
+        const nextChartType = hasChartControl
+          ? normalizeSensorTileChartType(chartTypeSelect?.value || 'line')
+          : currentChartType;
+        if (hasChartControl && nextChartType !== currentChartType) {
+          setQuickAccessTileChartType(entityId, nextChartType, nextConfig);
+          changed = true;
+        }
+
+        const nextGaugeRange = hasChartControl ? readGaugeRangeInputs() : currentGaugeRange;
+        if (
+          hasChartControl &&
+          nextGaugeRange.min !== null &&
+          nextGaugeRange.max !== null &&
+          nextGaugeRange.min >= nextGaugeRange.max
+        ) {
+          uiUtils.showToast(t('Gauge minimum must be less than the maximum.'), 'error', 3000);
+          return;
+        }
+        if (hasChartControl && !gaugeRangesEqual(nextGaugeRange, currentGaugeRange)) {
+          setQuickAccessTileGaugeRange(entityId, nextGaugeRange, nextConfig);
+          changed = true;
+        }
+
+        const nextTrayEnabled = hasTrayControl ? !!trayCheckbox?.checked : currentTrayEnabled;
+        let trayChanged = false;
+        if (hasTrayControl && nextTrayEnabled !== currentTrayEnabled) {
+          setTrayEntityEnabled(entityId, nextTrayEnabled, nextConfig);
+          trayChanged = true;
+          changed = true;
+        }
+
         if (!changed) {
           closeTileSettingsModal();
           return;
@@ -1562,6 +1692,7 @@ function showRenameModal(entityId) {
           await persistAuthoritativeConfig({
             customEntityNames: nextConfig.customEntityNames || {},
             quickAccessTileOptions: nextConfig.quickAccessTileOptions || {},
+            ...(trayChanged ? { trayEntities: nextConfig.trayEntities || {} } : {}),
           });
           refreshQuickAccessAfterTileSettingsChange();
           const toastMessage = renamed
@@ -1603,6 +1734,19 @@ function showRenameModal(entityId) {
           nextConfig.quickAccessTileOptions?.[entityId]?.cameraPreviewRefresh !== undefined;
         if (hadCameraPreviewOverride) {
           setQuickAccessCameraPreviewRefresh(entityId, 'off', nextConfig);
+          changed = true;
+        }
+
+        const tileOptionsForReset = nextConfig.quickAccessTileOptions?.[entityId];
+        if (tileOptionsForReset?.chartType !== undefined) {
+          setQuickAccessTileChartType(entityId, 'line', nextConfig);
+          changed = true;
+        }
+        if (
+          tileOptionsForReset?.gaugeMin !== undefined ||
+          tileOptionsForReset?.gaugeMax !== undefined
+        ) {
+          setQuickAccessTileGaugeRange(entityId, { min: null, max: null }, nextConfig);
           changed = true;
         }
 
@@ -2052,6 +2196,11 @@ function isQuickAccessTileValueSizeApplicable(entity) {
   return false;
 }
 
+function isQuickAccessSensorChartApplicable(entity) {
+  const displayEntity = getEntityForDisplay(entity) || entity;
+  return !!getQuickAccessSensorDisplayParts(displayEntity);
+}
+
 function isFiniteNumericSensorState(entity) {
   const raw = typeof entity?.state === 'string' ? entity.state.trim() : entity?.state;
   if (raw === '' || raw == null) return false;
@@ -2433,12 +2582,93 @@ function createSensorSparklineSvg(series, { width, height, className }) {
   return svg;
 }
 
-function renderSensorTileSparkline(tile, entityId, series) {
-  if (!tile || tile.dataset.entityId !== entityId) return;
+function createSensorGaugeSvg(entity, series, customRange) {
+  const range = resolveGaugeRange(entity, {
+    series,
+    min: customRange?.min ?? null,
+    max: customRange?.max ?? null,
+  });
+  const fraction = clampGaugeFraction(entity.state, range.min, range.max);
+  const arc = buildGaugeArc({
+    width: SENSOR_TILE_GAUGE_WIDTH,
+    height: SENSOR_TILE_GAUGE_HEIGHT,
+    fraction,
+    strokeWidth: SENSOR_TILE_GAUGE_STROKE_WIDTH,
+  });
+
+  const svg = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'svg');
+  svg.setAttribute('class', 'control-sensor-gauge-svg');
+  svg.setAttribute('viewBox', `0 0 ${SENSOR_TILE_GAUGE_WIDTH} ${SENSOR_TILE_GAUGE_HEIGHT}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMax meet');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('data-gauge-source', range.source);
+  svg.setAttribute('data-gauge-min', String(range.min));
+  svg.setAttribute('data-gauge-max', String(range.max));
+  svg.setAttribute('data-gauge-fraction', fraction.toFixed(3));
+
+  const track = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'path');
+  track.setAttribute('class', 'control-sensor-gauge-track');
+  track.setAttribute('d', arc.trackPath);
+  svg.appendChild(track);
+
+  if (arc.valuePath) {
+    const value = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'path');
+    value.setAttribute('class', 'control-sensor-gauge-value');
+    value.setAttribute('d', arc.valuePath);
+    svg.appendChild(value);
+  }
+
+  const marker = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'circle');
+  marker.setAttribute('class', 'control-sensor-gauge-marker');
+  marker.setAttribute('cx', String(arc.endX));
+  marker.setAttribute('cy', String(arc.endY));
+  marker.setAttribute('r', '3');
+  svg.appendChild(marker);
+
+  const minLabel = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'text');
+  minLabel.setAttribute('class', 'control-sensor-gauge-bound');
+  minLabel.setAttribute('x', String(arc.cx - arc.radius - 4));
+  minLabel.setAttribute('y', String(arc.cy + 3));
+  minLabel.setAttribute('text-anchor', 'end');
+  minLabel.textContent = formatGaugeBoundLabel(range.min);
+  svg.appendChild(minLabel);
+
+  const maxLabel = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'text');
+  maxLabel.setAttribute('class', 'control-sensor-gauge-bound');
+  maxLabel.setAttribute('x', String(arc.cx + arc.radius + 4));
+  maxLabel.setAttribute('y', String(arc.cy + 3));
+  maxLabel.setAttribute('text-anchor', 'start');
+  maxLabel.textContent = formatGaugeBoundLabel(range.max);
+  svg.appendChild(maxLabel);
+
+  return svg;
+}
+
+/**
+ * Render (or clear) the chart band of a numeric sensor tile according to its chart type.
+ * `series` may be empty: the gauge only needs the live value, the line chart then draws nothing.
+ */
+function renderSensorTileChart(tile, entity, series = []) {
+  const entityId = entity?.entity_id;
+  if (!tile || !entityId || tile.dataset.entityId !== entityId) return;
   const info = tile.querySelector('.control-info');
   if (!info) return;
 
+  const chartType = getQuickAccessTileChartType(entityId);
+  tile.dataset.chartType = chartType;
   info.querySelector('.control-sensor-sparkline')?.remove();
+  info.querySelector('.control-sensor-gauge')?.remove();
+  if (chartType === 'none') return;
+
+  if (chartType === 'gauge') {
+    const gauge = document.createElement('div');
+    gauge.className = 'control-sensor-gauge';
+    gauge.appendChild(createSensorGaugeSvg(entity, series, getQuickAccessTileGaugeRange(entityId)));
+    info.appendChild(gauge);
+    return;
+  }
+
   const svg = createSensorSparklineSvg(series, {
     width: SENSOR_TILE_SPARKLINE_WIDTH,
     height: SENSOR_TILE_SPARKLINE_HEIGHT,
@@ -2452,15 +2682,20 @@ function renderSensorTileSparkline(tile, entityId, series) {
   info.appendChild(sparkline);
 }
 
-function mountSensorTileSparkline(tile, entity) {
+function mountSensorTileChart(tile, entity) {
   if (!tile || !entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
+  const chartType = getQuickAccessTileChartType(entity.entity_id);
+  tile.dataset.chartType = chartType;
+  if (chartType === 'none') return;
+
   const entry = sensorHistoryCache.get(entity.entity_id);
-  if (entry?.series?.length) {
-    renderSensorTileSparkline(tile, entity.entity_id, entry.series);
+  if (entry?.series?.length || chartType === 'gauge') {
+    renderSensorTileChart(tile, entity, entry?.series || []);
   }
 
   fetchSensorHistory(entity.entity_id).then((series) => {
-    renderSensorTileSparkline(tile, entity.entity_id, series);
+    const latest = state.STATES?.[entity.entity_id] || entity;
+    renderSensorTileChart(tile, isFiniteNumericSensorState(latest) ? latest : entity, series);
   });
 }
 
@@ -3482,6 +3717,81 @@ function setQuickAccessCameraPreviewRefresh(entityId, refreshValue, targetConfig
     cameraPreviewRefresh: normalized,
   };
   return normalized;
+}
+
+function pruneQuickAccessTileOptionEntry(tileOptions, entityId) {
+  if (tileOptions[entityId] && Object.keys(tileOptions[entityId]).length === 0) {
+    delete tileOptions[entityId];
+  }
+}
+
+function getQuickAccessTileChartType(entityId) {
+  return normalizeSensorTileChartType(getQuickAccessTileOptions(entityId).chartType);
+}
+
+function getQuickAccessTileGaugeRange(entityId) {
+  const options = getQuickAccessTileOptions(entityId);
+  return {
+    min: normalizeGaugeBound(options.gaugeMin),
+    max: normalizeGaugeBound(options.gaugeMax),
+  };
+}
+
+function setQuickAccessTileChartType(entityId, chartType, targetConfig = state.CONFIG) {
+  const normalized = normalizeSensorTileChartType(chartType);
+  const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
+
+  if (normalized === 'line') {
+    if (tileOptions[entityId]) {
+      delete tileOptions[entityId].chartType;
+      pruneQuickAccessTileOptionEntry(tileOptions, entityId);
+    }
+    return normalized;
+  }
+
+  tileOptions[entityId] = {
+    ...(tileOptions[entityId] || {}),
+    chartType: normalized,
+  };
+  return normalized;
+}
+
+function setQuickAccessTileGaugeRange(
+  entityId,
+  { min = null, max = null } = {},
+  targetConfig = state.CONFIG
+) {
+  const normalizedMin = normalizeGaugeBound(min);
+  const normalizedMax = normalizeGaugeBound(max);
+  const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
+  const next = { ...(tileOptions[entityId] || {}) };
+
+  if (normalizedMin === null) delete next.gaugeMin;
+  else next.gaugeMin = normalizedMin;
+  if (normalizedMax === null) delete next.gaugeMax;
+  else next.gaugeMax = normalizedMax;
+
+  if (Object.keys(next).length) {
+    tileOptions[entityId] = next;
+  } else {
+    delete tileOptions[entityId];
+  }
+  return { min: normalizedMin, max: normalizedMax };
+}
+
+function isEntityInTray(entityId) {
+  return trayEntitySupport.isTrayEntity(state.CONFIG, entityId);
+}
+
+function setTrayEntityEnabled(entityId, enabled, targetConfig = state.CONFIG) {
+  const next = trayEntitySupport.normalizeTrayEntitiesConfig(targetConfig.trayEntities);
+  if (enabled) {
+    next[entityId] = next[entityId] || {};
+  } else {
+    delete next[entityId];
+  }
+  targetConfig.trayEntities = next;
+  return !!enabled;
 }
 
 function isEntityDesktopPinned(entityId) {
@@ -7701,7 +8011,7 @@ function createControlElement(entity, options = {}) {
       // Auto-fit removed - using CSS ellipsis and marquee instead
     }
     if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
-      mountSensorTileSparkline(div, entity);
+      mountSensorTileChart(div, entity);
     }
     if (hasCameraPreview) {
       camera.mountCameraPreview(div, entity.entity_id, cameraPreviewRefresh);
@@ -8035,12 +8345,12 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       if (unit) unit.textContent = sensorDisplay.unit;
       appendLiveSensorHistoryValue(displayEntity);
       const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
-      if (cachedHistory?.series?.length) {
-        renderSensorTileSparkline(div, displayEntity.entity_id, cachedHistory.series);
-      }
+      renderSensorTileChart(div, displayEntity, cachedHistory?.series || []);
     } else if (stateEl) {
       div.classList.remove('sensor-numeric-entity');
+      delete div.dataset.chartType;
       div.querySelector('.control-sensor-sparkline')?.remove();
+      div.querySelector('.control-sensor-gauge')?.remove();
       stateEl.textContent = utils.getEntityDisplayState(displayEntity);
     }
     return true;
@@ -11901,6 +12211,11 @@ function removeEscapeKeyListener() {
 export {
   renderActiveTab,
   updateEntityInUI,
+  getQuickAccessTileChartType,
+  getQuickAccessTileGaugeRange,
+  setQuickAccessTileChartType,
+  setQuickAccessTileGaugeRange,
+  isEntityInTray,
   updateWeatherFromHA,
   updateWeatherEffects,
   populateWeatherEntitiesList,

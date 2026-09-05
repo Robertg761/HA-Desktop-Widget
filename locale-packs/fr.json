@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -451,6 +451,21 @@
     "Settings were saved, but the sync passphrase could not be stored.": "Les paramètres ont été enregistrés, mais la phrase secrète de synchronisation n'a pas pu être stockée.",
     "Failed to apply popup hotkey mode": "Impossible d'appliquer le mode du raccourci de la fenêtre contextuelle",
     "Failed to apply popup hotkey behavior": "Impossible d'appliquer le comportement du raccourci de la fenêtre contextuelle",
-    "Connecting to Home Assistant...": "Connexion à Home Assistant..."
+    "Connecting to Home Assistant...": "Connexion à Home Assistant...",
+    "Chart:": "Graphique :",
+    "Line chart (Default)": "Courbe (par défaut)",
+    "Gauge": "Jauge",
+    "No chart": "Aucun graphique",
+    "Choose how this sensor tile visualizes its value.": "Choisissez comment cette vignette de capteur représente sa valeur.",
+    "Gauge range:": "Plage de la jauge :",
+    "Min": "Min",
+    "Max": "Max",
+    "Auto": "Auto",
+    "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.": "Laissez un champ vide pour dimensionner ce côté de la jauge automatiquement à partir de l’unité du capteur, de ses attributs ou de l’historique récent.",
+    "Gauge minimum must be less than the maximum.": "Le minimum de la jauge doit être inférieur au maximum.",
+    "Show in system tray": "Afficher dans la zone de notification",
+    "Shows this entity’s current value as its own icon in the system tray.": "Affiche la valeur actuelle de cette entité sous forme d’icône dédiée dans la zone de notification.",
+    "Show in Tray": "Afficher dans la zone de notification",
+    "Remove from Tray": "Retirer de la zone de notification"
   }
 }

@@ -22,6 +22,7 @@ function createElectronHost(electronAPI) {
       isElectron: true,
       isPreview: false,
       supportsPins: true,
+      supportsTray: true,
       supportsFrostedGlass: true,
       supportsDrag: true,
     }),

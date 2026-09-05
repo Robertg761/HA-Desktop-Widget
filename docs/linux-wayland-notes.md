@@ -273,18 +273,26 @@ Operational notes:
   the tray's "Reset Position" deletes that file and restarts, returning to
   the default corner. Dragging cannot cross outputs — a layer surface is
   bound to one `wl_output` — which is what the tray menu below is for.
-  On Hyprland the app also disables the `layers` geometry animation at child
-  startup (`disableHyprlandLayerMoveAnimation`, tried via both the classic
-  `hyprctl keyword animation layers,...` and the Lua-config
-  `hyprctl eval 'hl.animation({ leaf = "layers", ... })'` syntaxes): with the
+  On Hyprland the app also disables the animation nodes that move a layer
+  surface (`disableHyprlandLayerMoveAnimation`, tried via both the classic
+  `hyprctl keyword animation <node>,...` and the Lua-config
+  `hyprctl eval 'hl.animation({ leaf = "<node>", ... })'` syntaxes): with the
   animation on, the compositor glides the surface under the pointer between
   the helper's measurements, which destabilizes the drag into a feedback
-  loop. Only the `layers` node is touched — open/close fades (`layersIn`/
-  `layersOut`) and all other animations stay. Set
-  `HA_WIDGET_LAYER_SHELL_KEEP_LAYER_ANIMATIONS=1` to keep the animation (the
-  helper's inject rate limit keeps dragging stable, just less precise). The
-  tweak is session-scoped and does not edit any config file, so it lasts
-  until the compositor reloads its config.
+  loop that flings the widget across the screen. Hyprland resolves a mapped
+  layer surface's position animation through the `layersIn` node, so both
+  `layers` and `layersIn` are disabled — the parent alone is not enough on
+  distros like Omarchy that configure `layersIn` explicitly. `layersOut` and
+  the `fadeLayersIn`/`fadeLayersOut` alpha fades stay; the only visible side
+  effect is that other layer surfaces (panels, launchers) lose slide/popin
+  open animations for the session. Set
+  `HA_WIDGET_LAYER_SHELL_KEEP_LAYER_ANIMATIONS=1` to keep the animations (the
+  helper's inject rate limit dampens the loop, but the drag stays unusable
+  with a fast mouse). The tweak is session-scoped and does not edit any config
+  file; Hyprland re-applies its configured animations on every config reload,
+  so the app follows the compositor's event socket
+  (`watchHyprlandConfigReloads`) and repeats the tweak after each
+  `configreloaded` event.
 - Moving the widget to another monitor happens through the tray menu, not by
   dragging (a layer surface cannot leave its output). The tray's "Move to
   Monitor" submenu asks the helper for the session's monitors (`outputs`

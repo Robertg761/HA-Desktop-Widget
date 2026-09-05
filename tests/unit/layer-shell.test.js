@@ -25,6 +25,7 @@ const {
   restoreLayerShellParentEnv,
   shouldRelaunchIntoLayerShell,
   waitForLayerShellHelperReady,
+  watchHyprlandConfigReloads,
 } = require('../../src/layer-shell.cjs');
 
 const hyprlandEnv = { HYPRLAND_INSTANCE_SIGNATURE: 'abc123' };
@@ -102,7 +103,10 @@ describe('layer-shell compositor detection', () => {
     expect(detectTilingLayerShellCompositor({ XDG_CURRENT_DESKTOP: 'KDE' })).toBe(null);
     expect(detectTilingLayerShellCompositor({ XDG_CURRENT_DESKTOP: 'GNOME' })).toBe(null);
     expect(detectTilingLayerShellCompositor({})).toBe(null);
-    expect(detectTilingLayerShellCompositor(undefined)).toBe(null);
+    // An omitted environment intentionally reads this machine's actual session.
+    expect(detectTilingLayerShellCompositor(undefined)).toBe(
+      detectTilingLayerShellCompositor(process.env)
+    );
   });
 });
 
@@ -319,8 +323,7 @@ describe('materializeLayerShellHelper', () => {
         mkdirSync: (dir, opts) => calls.push(['mkdir', dir, opts]),
         chmodSync: (file, mode) => calls.push(['chmod', file, mode]),
         renameSync: (from, to) => calls.push(['rename', from, to]),
-        // No previously materialized copy, so the size-skip check falls through.
-        statSync: () => {
+        readFileSync: () => {
           throw new Error('ENOENT');
         },
         pid: 4242,
@@ -359,20 +362,18 @@ describe('materializeLayerShellHelper', () => {
         env: appImageEnv,
         targetDir: '/data/helpers',
         ...deps,
-        // Same size as the source: the existing copy is reused. (mtime cannot be
-        // compared — copyFileSync stamps the copy time, not the source's.)
-        statSync: () => ({ size: 1234 }),
+        readFileSync: () => Buffer.from('identical helper'),
       }
     );
     expect(result).toBe(target);
     expect(calls).toEqual([['mkdir', '/data/helpers', { recursive: true }]]);
   });
 
-  test('re-copies when the materialized helper differs in size', () => {
+  test('re-copies different helper contents even when their sizes match', () => {
     const { calls, deps } = fakeFs();
-    const sizes = new Map([
-      [path.join('/data/helpers', 'windowtolayer'), 1000],
-      ['/tmp/.mount_widgetXYZ/resources/helpers/windowtolayer', 2000],
+    const contents = new Map([
+      [path.join('/data/helpers', 'windowtolayer'), Buffer.from('old helper')],
+      ['/tmp/.mount_widgetXYZ/resources/helpers/windowtolayer', Buffer.from('new helper')],
     ]);
     const result = materializeLayerShellHelper(
       '/tmp/.mount_widgetXYZ/resources/helpers/windowtolayer',
@@ -380,7 +381,7 @@ describe('materializeLayerShellHelper', () => {
         env: appImageEnv,
         targetDir: '/data/helpers',
         ...deps,
-        statSync: (file) => ({ size: sizes.get(file) }),
+        readFileSync: (file) => contents.get(file),
       }
     );
     expect(result).toBe(path.join('/data/helpers', 'windowtolayer'));
@@ -978,20 +979,24 @@ describe('createLayerShellRaiser', () => {
 });
 
 describe('disableHyprlandLayerMoveAnimation', () => {
-  test('issues both hyprctl syntaxes on Hyprland (each parser rejects the other)', () => {
+  test('disables layers and layersIn via both hyprctl syntaxes (each parser rejects the other)', () => {
     const execFile = jest.fn();
     expect(disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile })).toBe(true);
 
-    expect(execFile).toHaveBeenCalledTimes(2);
+    // A mapped layer surface's position animates through `layersIn`, which distros like
+    // Omarchy configure explicitly, so disabling the parent `layers` node alone is not enough.
+    expect(execFile).toHaveBeenCalledTimes(4);
     const invocations = execFile.mock.calls.map(([cmd, args]) => [cmd, ...args]);
     expect(invocations).toEqual([
       ['hyprctl', 'keyword', 'animation', 'layers,0,1,default'],
       ['hyprctl', 'eval', 'hl.animation({ leaf = "layers", enabled = false })'],
+      ['hyprctl', 'keyword', 'animation', 'layersIn,0,1,default'],
+      ['hyprctl', 'eval', 'hl.animation({ leaf = "layersIn", enabled = false })'],
     ]);
     // Fire-and-forget: a rejecting parser only logs at debug level.
     const log = { debug: jest.fn() };
     disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile, log });
-    const callback = execFile.mock.calls[2][3];
+    const callback = execFile.mock.calls[4][3];
     expect(() => callback(new Error('exit 1'), '', "keyword can't work")).not.toThrow();
     expect(log.debug).toHaveBeenCalled();
   });
@@ -1019,6 +1024,134 @@ describe('disableHyprlandLayerMoveAnimation', () => {
         log,
       })
     ).not.toThrow();
-    expect(log.debug).toHaveBeenCalledTimes(2);
+    expect(log.debug).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('watchHyprlandConfigReloads', () => {
+  function createEventSocketMock() {
+    const sockets = [];
+    const connect = jest.fn((options) => {
+      const handlers = {};
+      const socket = {
+        options,
+        on: jest.fn((event, handler) => {
+          handlers[event] = handler;
+          return socket;
+        }),
+        destroy: jest.fn(),
+        emit: (event, ...args) => handlers[event]?.(...args),
+      };
+      sockets.push(socket);
+      return socket;
+    });
+    return { connect, sockets };
+  }
+
+  test('returns null outside a Hyprland session or without a handler', () => {
+    const { connect } = createEventSocketMock();
+    expect(watchHyprlandConfigReloads({ env: {}, connect, onReload: () => {} })).toBeNull();
+    expect(
+      watchHyprlandConfigReloads({ env: hyprlandSessionEnv, connect, onReload: null })
+    ).toBeNull();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  test('re-runs the handler for each configreloaded event, even when split across chunks', () => {
+    const { connect, sockets } = createEventSocketMock();
+    const onReload = jest.fn();
+    const watcher = watchHyprlandConfigReloads({
+      env: hyprlandSessionEnv,
+      connect,
+      onReload,
+      log: { debug: jest.fn() },
+    });
+
+    expect(watcher.socketPath).toBe('/run/user/1000/hypr/abc123/.socket2.sock');
+    expect(sockets[0].options).toEqual({ path: watcher.socketPath });
+
+    sockets[0].emit('data', Buffer.from('monitoradded>>DP-2\nconfigrelo'));
+    expect(onReload).not.toHaveBeenCalled();
+    sockets[0].emit('data', Buffer.from('aded>>\nworkspace>>3\n'));
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(onReload).toHaveBeenCalledWith('configreloaded');
+    sockets[0].emit('data', Buffer.from('configreloaded>>\n'));
+    expect(onReload).toHaveBeenCalledTimes(2);
+
+    watcher.stop();
+    expect(sockets[0].destroy).toHaveBeenCalled();
+  });
+
+  test('reconnects with backoff after the socket closes and stops cleanly', () => {
+    const { connect, sockets } = createEventSocketMock();
+    const timers = [];
+    const setTimer = jest.fn((fn, delay) => {
+      const handle = { fn, delay };
+      timers.push(handle);
+      return handle;
+    });
+    const clearTimer = jest.fn();
+    const watcher = watchHyprlandConfigReloads({
+      env: hyprlandSessionEnv,
+      connect,
+      onReload: jest.fn(),
+      log: { debug: jest.fn() },
+      reconnectDelayMs: 100,
+      maxReconnectDelayMs: 250,
+      setTimer,
+      clearTimer,
+    });
+
+    sockets[0].emit('error', new Error('ECONNREFUSED'));
+    sockets[0].emit('close');
+    expect(timers.map((t) => t.delay)).toEqual([100]);
+    timers[0].fn();
+    expect(connect).toHaveBeenCalledTimes(2);
+
+    // Never connected: the delay keeps doubling up to the cap.
+    sockets[1].emit('close');
+    timers[1].fn();
+    sockets[2].emit('close');
+    expect(timers.map((t) => t.delay)).toEqual([100, 200, 250]);
+
+    // A successful connection resets the backoff.
+    timers[2].fn();
+    sockets[3].emit('connect');
+    sockets[3].emit('close');
+    expect(timers[3].delay).toBe(100);
+
+    watcher.stop();
+    expect(clearTimer).toHaveBeenCalledWith(timers[3]);
+    timers[3].fn();
+    expect(connect).toHaveBeenCalledTimes(4);
+  });
+
+  test('a throwing connect or handler never escapes', () => {
+    const log = { debug: jest.fn() };
+    const setTimer = jest.fn(() => ({}));
+    expect(() =>
+      watchHyprlandConfigReloads({
+        env: hyprlandSessionEnv,
+        connect: () => {
+          throw new Error('ENOENT');
+        },
+        onReload: jest.fn(),
+        log,
+        setTimer,
+      })
+    ).not.toThrow();
+    expect(setTimer).toHaveBeenCalledTimes(1);
+
+    const { connect, sockets } = createEventSocketMock();
+    watchHyprlandConfigReloads({
+      env: hyprlandSessionEnv,
+      connect,
+      onReload: () => {
+        throw new Error('boom');
+      },
+      log,
+    });
+    expect(() => sockets[0].emit('data', Buffer.from('configreloaded>>\n'))).not.toThrow();
+    expect(log.debug).toHaveBeenCalled();
   });
 });

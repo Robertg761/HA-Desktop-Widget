@@ -13,6 +13,7 @@ const NULL_CAPABILITIES = Object.freeze({
   isElectron: false,
   isPreview: true,
   supportsPins: false,
+  supportsTray: false,
   supportsFrostedGlass: false,
   supportsDrag: false,
 });

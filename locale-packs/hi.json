@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -451,6 +451,21 @@
     "Settings were saved, but the sync passphrase could not be stored.": "सेटिंग्स सहेज ली गईं, लेकिन सिंक पासफ़्रेज़ संग्रहीत नहीं हो सका।",
     "Failed to apply popup hotkey mode": "पॉपअप हॉटकी मोड लागू नहीं हो सका",
     "Failed to apply popup hotkey behavior": "पॉपअप हॉटकी व्यवहार लागू नहीं हो सका",
-    "Connecting to Home Assistant...": "Home Assistant से कनेक्ट हो रहा है..."
+    "Connecting to Home Assistant...": "Home Assistant से कनेक्ट हो रहा है...",
+    "Chart:": "चार्ट:",
+    "Line chart (Default)": "लाइन चार्ट (डिफ़ॉल्ट)",
+    "Gauge": "गेज",
+    "No chart": "कोई चार्ट नहीं",
+    "Choose how this sensor tile visualizes its value.": "चुनें कि यह सेंसर टाइल अपना मान कैसे दिखाए।",
+    "Gauge range:": "गेज सीमा:",
+    "Min": "न्यूनतम",
+    "Max": "अधिकतम",
+    "Auto": "स्वचालित",
+    "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.": "उस तरफ की गेज सीमा सेंसर इकाई, विशेषताओं या हाल के इतिहास से स्वतः तय करने के लिए फ़ील्ड खाली छोड़ें।",
+    "Gauge minimum must be less than the maximum.": "गेज का न्यूनतम मान अधिकतम से कम होना चाहिए।",
+    "Show in system tray": "सिस्टम ट्रे में दिखाएं",
+    "Shows this entity’s current value as its own icon in the system tray.": "इस इकाई का वर्तमान मान सिस्टम ट्रे में उसके अपने आइकन के रूप में दिखाता है।",
+    "Show in Tray": "ट्रे में दिखाएं",
+    "Remove from Tray": "ट्रे से हटाएं"
   }
 }

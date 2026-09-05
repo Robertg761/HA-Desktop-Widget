@@ -9,6 +9,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
   quickAccessLayout: [
     'favoriteEntities',
     'desktopPins',
+    'trayEntities',
     'customEntityNames',
     'customEntityIcons',
     'tileSpans',

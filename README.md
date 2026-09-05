@@ -63,6 +63,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 
 - **Updates**: Automatic installation for Windows installer and Linux AppImage builds; portable, macOS, and Linux deb builds use a GitHub Releases download flow
 - **System Tray**: Minimize to tray with quick access menu
+- **Tray Entity Icons**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
 - **Start at Login**: Optional OS login startup control
 - **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
 - **Performance**: Optimized rendering and memory management
@@ -73,6 +74,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Alerts**: Desktop notifications for entity state changes
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
 - **Comparison Graphs**: Plot several entities on one 24-hour chart to compare them at a glance (e.g. every room temperature against the outside temperature)
+- **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
 - **Media Tile**: Choose a primary media player or hide the tile
 - **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
 
@@ -143,6 +145,8 @@ Assistant can flag out-of-date desktops.
 - **Camera Previews**: Edit a camera tile to choose an HLS live feed or a 30-second, 10-second, or 5-second snapshot cadence; previews pause while the app or tile is hidden, clicking expands the current feed without restarting it, and the expanded live view includes a Reconnect action for stale sessions
 - **Remove**: In reorganize mode, click the remove button to remove entities
 - **Pin to Desktop**: In reorganize mode or the tile context menu, pin supported Quick Access entities as standalone desktop tiles
+- **Show in Tray**: From the tile context menu or the pencil settings, put an entity's value in the system tray as its own icon (Windows and Linux draw a compact value icon; macOS shows the value as menu-bar text)
+- **Chart Type**: In a numeric sensor tile's pencil settings, pick a line chart, a gauge, or no chart. Gauge ranges come from the sensor's unit, `min`/`max` attributes, device class, or recent history, and can be overridden
 
 ### Comparison Graphs
 

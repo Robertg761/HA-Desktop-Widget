@@ -123,6 +123,7 @@ function replaceConfigEntityIdReferences(config, oldEntityId, newEntityId) {
 
   for (const key of [
     'desktopPins',
+    'trayEntities',
     'customEntityNames',
     'customEntityIcons',
     'tileSpans',

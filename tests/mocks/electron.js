@@ -30,6 +30,7 @@ let mockConfig = {
   popupHotkey: '',
   favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
   desktopPins: {},
+  trayEntities: {},
   customEntityNames: {},
   customEntityIcons: {},
   quickAccessTileOptions: {},
@@ -84,6 +85,7 @@ const eventListeners = {
   configPersistenceWarning: [],
   desktopPinUpdate: [],
   desktopPinSnapshotNeeded: [],
+  trayEntitiesRefreshNeeded: [],
   desktopPinActionRequested: [],
   entityTileHotkeyRequested: [],
   desktopCompanionStateChanged: [],
@@ -298,6 +300,7 @@ function createMockElectronAPI() {
       Promise.resolve({ success: true })
     ),
     showEntityTileMenu: jest.fn((_entityId) => Promise.resolve({ shown: true })),
+    updateTrayEntityIcon: jest.fn((_payload) => Promise.resolve({ success: true })),
     restartApp: jest.fn(() => Promise.resolve()),
     quitApp: jest.fn(() => Promise.resolve()),
 
@@ -433,6 +436,13 @@ function createMockElectronAPI() {
         if (index > -1) eventListeners.desktopPinSnapshotNeeded.splice(index, 1);
       };
     }),
+    onTrayEntitiesRefreshNeeded: jest.fn((callback) => {
+      eventListeners.trayEntitiesRefreshNeeded.push(callback);
+      return () => {
+        const index = eventListeners.trayEntitiesRefreshNeeded.indexOf(callback);
+        if (index > -1) eventListeners.trayEntitiesRefreshNeeded.splice(index, 1);
+      };
+    }),
     onDesktopPinActionRequested: jest.fn((callback) => {
       eventListeners.desktopPinActionRequested.push(callback);
       return () => {
@@ -498,6 +508,7 @@ function resetMockElectronAPI() {
     popupHotkey: '',
     favoriteEntities: ['light.living_room', 'switch.bedroom', 'sensor.temperature'],
     desktopPins: {},
+    trayEntities: {},
     customEntityNames: {},
     customEntityIcons: {},
     quickAccessTileOptions: {},

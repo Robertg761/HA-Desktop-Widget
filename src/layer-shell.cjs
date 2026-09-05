@@ -278,7 +278,7 @@ function materializeLayerShellHelper(
     mkdirSync = require('fs').mkdirSync,
     chmodSync = require('fs').chmodSync,
     renameSync = require('fs').renameSync,
-    statSync = require('fs').statSync,
+    readFileSync = require('fs').readFileSync,
     pid = process.pid,
     onError = null,
   } = {}
@@ -294,11 +294,9 @@ function materializeLayerShellHelper(
   try {
     mkdirSync(targetDir, { recursive: true });
     const target = path.join(targetDir, 'windowtolayer');
-    // Skip the copy when an identical helper is already materialized (same size —
-    // mtime is unusable because copyFileSync stamps the copy time, not the
-    // source's). Saves rewriting a multi-MB binary on every launch.
+    // Reuse only identical bytes. Different builds can have the same file size.
     try {
-      if (statSync(target).size === statSync(helperPath).size) return target;
+      if (readFileSync(target).equals(readFileSync(helperPath))) return target;
     } catch {
       /* missing or unreadable target: fall through to copying */
     }
@@ -476,20 +474,27 @@ function createLayerShellRaiser({
 }
 
 /**
- * Disable Hyprland's layer-surface move animation: the `layers` animation node,
- * whose `layersIn`/`layersOut` children (the open/close fades) are separately
- * resolved and stay as configured. Dragging the widget works by committing new
- * layer-shell margins for every pointer step, and the helper measures each step
- * against where the surface actually is — when Hyprland glides the surface
- * toward each committed position instead of applying it, the measurements lag
- * the commits and the drag feedback loop overshoots, badly enough to throw the
- * widget across the screen. No per-surface rule covers geometry (`layerrule
- * no_anim` only affects open/close), so this is a global, best-effort tweak
- * applied once per child start. Both hyprctl syntaxes are issued because the
- * classic config parser and the Lua one each reject the other's command, and
- * each ignores the other's failure. Fire-and-forget: a missing or failing
- * hyprctl must never break startup — the drag just degrades on such setups.
+ * Disable the Hyprland animation nodes that move a layer surface. Dragging the
+ * widget works by committing new layer-shell margins for every pointer step, and
+ * the helper measures each step against where the surface actually is — when
+ * Hyprland glides the surface toward each committed position instead of
+ * applying it, the measurements lag the commits and the drag feedback loop
+ * overshoots, badly enough to throw the widget across the screen. Hyprland
+ * resolves a mapped layer surface's position animation through the `layersIn`
+ * node (assigned at map time; `layers` only applies when `layersIn` is not set
+ * explicitly, which distros like Omarchy do), so both nodes are disabled.
+ * `layersOut` (the close animation) and the `fadeLayers*` alpha fades are left
+ * alone; only slide/popin open animations of other layer surfaces are lost
+ * session-wide. No per-surface rule covers geometry (`layerrule no_anim` only
+ * affects open/close), so this is a global, best-effort tweak applied once per
+ * child start and again after every config reload (watchHyprlandConfigReloads).
+ * Both hyprctl syntaxes are issued because the classic config parser and the
+ * Lua one each reject the other's command, and each ignores the other's
+ * failure. Fire-and-forget: a missing or failing hyprctl must never break
+ * startup — the drag just degrades on such setups.
  */
+const HYPRLAND_LAYER_MOVE_ANIMATION_NODES = Object.freeze(['layers', 'layersIn']);
+
 function disableHyprlandLayerMoveAnimation({
   env = process.env,
   execFile = require('child_process').execFile,
@@ -497,10 +502,10 @@ function disableHyprlandLayerMoveAnimation({
 } = {}) {
   if (!String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim()) return false;
   if (isEnabledEnvFlag(env?.[LAYER_SHELL_KEEP_ANIMATIONS_ENV])) return false;
-  const attempts = [
-    ['keyword', 'animation', 'layers,0,1,default'],
-    ['eval', 'hl.animation({ leaf = "layers", enabled = false })'],
-  ];
+  const attempts = HYPRLAND_LAYER_MOVE_ANIMATION_NODES.flatMap((node) => [
+    ['keyword', 'animation', `${node},0,1,default`],
+    ['eval', `hl.animation({ leaf = "${node}", enabled = false })`],
+  ]);
   for (const args of attempts) {
     try {
       execFile('hyprctl', args, { timeout: 3000 }, (error, stdout, stderr) => {
@@ -516,6 +521,98 @@ function disableHyprlandLayerMoveAnimation({
     }
   }
   return true;
+}
+
+/**
+ * Follow Hyprland's event socket and call `onReload` whenever the compositor
+ * reports `configreloaded`. Hyprland re-applies every configured animation node on
+ * a reload (any edit to hyprland.conf/.lua, nwg-displays rewriting monitors.lua,
+ * an Omarchy theme change), which silently undoes the runtime
+ * `disableHyprlandLayerMoveAnimation` tweak and brings back the drag feedback loop.
+ * Reconnects with backoff when the socket drops; every failure is a debug log.
+ * Returns `{ stop }`, or null when this is not a Hyprland session.
+ */
+function watchHyprlandConfigReloads({
+  env = process.env,
+  connect = require('net').createConnection,
+  log = console,
+  onReload,
+  reconnectDelayMs = 5000,
+  maxReconnectDelayMs = 60000,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+} = {}) {
+  const signature = String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim();
+  const runtimeDir = String(env?.XDG_RUNTIME_DIR || '').trim();
+  if (!signature || !runtimeDir || typeof onReload !== 'function') return null;
+  const socketPath = path.join(runtimeDir, 'hypr', signature, '.socket2.sock');
+
+  let stopped = false;
+  let socket = null;
+  let reconnectTimer = null;
+  let nextDelay = reconnectDelayMs;
+
+  const scheduleReconnect = () => {
+    if (stopped || reconnectTimer) return;
+    reconnectTimer = setTimer(() => {
+      reconnectTimer = null;
+      open();
+    }, nextDelay);
+    nextDelay = Math.min(nextDelay * 2, maxReconnectDelayMs);
+  };
+
+  const open = () => {
+    if (stopped) return;
+    let buffered = '';
+    try {
+      socket = connect({ path: socketPath });
+    } catch (error) {
+      log.debug?.('Hyprland event socket unavailable:', error?.message || error);
+      scheduleReconnect();
+      return;
+    }
+    socket.on('connect', () => {
+      nextDelay = reconnectDelayMs;
+    });
+    socket.on('data', (chunk) => {
+      buffered += chunk.toString('utf8');
+      const lines = buffered.split('\n');
+      buffered = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('configreloaded>>')) continue;
+        try {
+          onReload('configreloaded');
+        } catch (error) {
+          log.debug?.('Hyprland config-reload handler failed:', error?.message || error);
+        }
+      }
+    });
+    socket.on('error', (error) => {
+      log.debug?.('Hyprland event socket error:', error?.message || error);
+    });
+    socket.on('close', () => {
+      socket = null;
+      scheduleReconnect();
+    });
+  };
+
+  open();
+  return {
+    socketPath,
+    stop: () => {
+      stopped = true;
+      if (reconnectTimer) {
+        clearTimer(reconnectTimer);
+        reconnectTimer = null;
+      }
+      try {
+        socket?.destroy?.();
+      } catch {
+        /* already gone */
+      }
+      socket = null;
+    },
+  };
 }
 
 /**
@@ -665,4 +762,5 @@ module.exports = {
   restoreLayerShellParentEnv,
   shouldRelaunchIntoLayerShell,
   waitForLayerShellHelperReady,
+  watchHyprlandConfigReloads,
 };

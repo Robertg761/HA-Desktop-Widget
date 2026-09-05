@@ -134,6 +134,7 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('desktop-pin-action-response', requestId, response),
     showEntityTileMenu: (entityId, supportInfo = null) =>
       invoke('show-entity-tile-menu', entityId, supportInfo),
+    updateTrayEntityIcon: (payload) => invoke('update-tray-entity-icon', payload),
     chooseProfileSyncFolder: (provider) => invoke('choose-profile-sync-folder', provider),
     copyProfileSyncFile: (fromPath, toPath, overwrite = false) =>
       invoke('copy-profile-sync-file', fromPath, toPath, overwrite),
@@ -197,6 +198,7 @@ function createElectronApi(ipcRenderer, platform) {
     onConfigPersistenceWarning: (callback) => subscribe('config-persistence-warning', callback),
     onDesktopPinUpdate: (callback) => subscribe('desktop-pin-update', callback),
     onDesktopPinSnapshotNeeded: (callback) => subscribe('desktop-pin-snapshot-needed', callback),
+    onTrayEntitiesRefreshNeeded: (callback) => subscribe('tray-entities-refresh-needed', callback),
     onDesktopPinActionRequested: (callback) => subscribe('desktop-pin-action-requested', callback),
     onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),
     onDesktopCompanionStateChanged: (callback) =>

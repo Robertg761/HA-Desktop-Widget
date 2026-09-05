@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -451,6 +451,21 @@
     "Settings were saved, but the sync passphrase could not be stored.": "حُفظت الإعدادات، لكن تعذر تخزين عبارة مرور المزامنة.",
     "Failed to apply popup hotkey mode": "تعذر تطبيق وضع اختصار النافذة المنبثقة",
     "Failed to apply popup hotkey behavior": "تعذر تطبيق سلوك اختصار النافذة المنبثقة",
-    "Connecting to Home Assistant...": "جارٍ الاتصال بـ Home Assistant..."
+    "Connecting to Home Assistant...": "جارٍ الاتصال بـ Home Assistant...",
+    "Chart:": "الرسم البياني:",
+    "Line chart (Default)": "رسم خطي (افتراضي)",
+    "Gauge": "مقياس",
+    "No chart": "بدون رسم بياني",
+    "Choose how this sensor tile visualizes its value.": "اختر كيفية عرض قيمة بطاقة المستشعر هذه.",
+    "Gauge range:": "نطاق المقياس:",
+    "Min": "الأدنى",
+    "Max": "الأقصى",
+    "Auto": "تلقائي",
+    "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.": "اترك الحقل فارغًا لضبط هذا الجانب من المقياس تلقائيًا بناءً على وحدة المستشعر أو سماته أو السجل الأخير.",
+    "Gauge minimum must be less than the maximum.": "يجب أن يكون الحد الأدنى للمقياس أقل من الحد الأقصى.",
+    "Show in system tray": "إظهار في شريط النظام",
+    "Shows this entity’s current value as its own icon in the system tray.": "يعرض القيمة الحالية لهذا الكيان كأيقونة خاصة به في شريط النظام.",
+    "Show in Tray": "إظهار في شريط النظام",
+    "Remove from Tray": "إزالة من شريط النظام"
   }
 }

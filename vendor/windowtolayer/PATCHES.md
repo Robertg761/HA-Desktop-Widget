@@ -141,11 +141,19 @@ unconditionally above tiled ones. See issue #79 and
      with motion events.
    - Motion-driven injects are rate-limited to one per 15 ms of event time.
      Compositors that animate layer-surface geometry changes (Hyprland's
-     `layers` animation) otherwise glide the surface under the pointer
-     between measurements, forming a positive feedback loop that flings the
-     surface. (The app additionally disables that animation node via
-     `hyprctl` on Hyprland; the rate limit is defense-in-depth for
-     compositors where that fails.)
+     `layersIn` animation node, which a mapped layer surface's position
+     resolves through; `layers` is only its fallback) otherwise glide the
+     surface under the pointer between measurements, forming a positive
+     feedback loop that flings the surface. (The app additionally disables
+     those animation nodes via `hyprctl` on Hyprland; the rate limit is
+     defense-in-depth for compositors where that fails, and it only dampens
+     the loop — it cannot make an animating compositor track a fast mouse.)
+   - `WINDOWTOLAYER_TRACE_DRAG=1` in the helper's environment logs every
+     drag-related pointer event (enter/leave with in-bounds status, motion
+     with the surface-local coordinates, the margins it was measured
+     against and the injected update, button, latch, sync completion) to
+     stderr as `[drag] ...` lines. Off by default; the app's
+     `<userData>/layer-shell-helper.log` captures it when set.
    A button release (or an early leave) flushes the pending motion
    unconditionally — its own base makes it correct even mid-sync — so the
    final position is exact, then ends the drag and, when

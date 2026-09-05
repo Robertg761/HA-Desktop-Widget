@@ -5,6 +5,33 @@ All notable changes to HA Desktop Widget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [3.10.0-beta.8] - 2026-09-04
+
+### Added
+
+- Tray entity icons: any Quick Access entity can be shown in the system tray as its own icon
+  with its live value (battery percentage, temperature, ON/OFF, timer countdown, and more), via
+  the tile context menu or the tile settings dialog. Windows and Linux render a compact value
+  icon at every tray scale factor; macOS shows the value as menu-bar text. Requested in
+  discussion #17.
+- Per-tile chart type for numeric sensor tiles: keep the line chart, switch to a gauge, or hide
+  the chart. Gauge ranges are derived from the sensor's unit, `min`/`max` attributes, device
+  class, or recent history, and can be overridden with a custom minimum and maximum.
+
+### Fixed
+
+- Linux autostart repair now skips development, unpackaged, and smoke-test runs so they cannot
+  overwrite the installed app's start-at-login entry.
+- AppImage helper caching now compares file contents, ensuring an updated Wayland helper replaces
+  an older binary even when both files have the same size.
+- Timer tray icons now refresh promptly when a timer stops, pauses, or becomes unavailable,
+  without waiting for the next countdown refresh.
+- Layer-shell tests now respect the host's compositor environment, allowing the suite to run
+  from a Hyprland session.
+- Linux (Hyprland): the widget no longer flings around while being dragged. Hyprland animates a layer surface's position through the `layersIn` animation node, which distros like Omarchy configure explicitly, so disabling only the parent `layers` node left the animation on and turned every drag into a feedback loop. The app now disables `layersIn` as well and repeats the tweak after every Hyprland config reload (editing the config, nwg-displays rewriting `monitors.lua`, a theme change), which otherwise restored the animation.
+
 ## [3.10.0-beta.1] - 2026-08-27
 
 This beta begins the 3.10.0 feature cycle with native desktop-widget behavior on tiling

@@ -46,6 +46,7 @@ const {
   createLayerShellRaiser,
   detectTilingLayerShellCompositor,
   disableHyprlandLayerMoveAnimation,
+  watchHyprlandConfigReloads,
   getLayerShellControlSocketPath,
   isLayerShellChild,
   materializeLayerShellHelper,
@@ -261,6 +262,11 @@ const {
   resolveDesktopPinProfile,
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
+const {
+  normalizeEntityId: normalizeTrayEntityId,
+  normalizeTrayEntitiesConfig,
+  sanitizeTrayEntityIconPayload,
+} = require('./src/tray-entities.cjs');
 const {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
@@ -572,6 +578,7 @@ const hasLegacyGlobalShortcutFallback = hasGlobalShortcutFallback({
 
 let mainWindow;
 let tray;
+const trayEntityIcons = new Map();
 let config;
 let isQuitting = false;
 let autoUpdateDownloaded = false;
@@ -709,6 +716,17 @@ const layerShellRaiser = isLayerShellChildProcess
 // margin-based dragging into a feedback loop (the surface glides under the
 // pointer while it is measured). Best-effort, once per child start.
 if (isLayerShellChildProcess) disableHyprlandLayerMoveAnimation({ log });
+// ...and again after every Hyprland config reload, which re-applies the configured
+// animation nodes and would otherwise quietly bring the feedback loop back.
+const hyprlandConfigReloadWatcher = isLayerShellChildProcess
+  ? watchHyprlandConfigReloads({
+      log,
+      onReload: () => {
+        log.info('Hyprland reloaded its config; re-disabling the layer-move animation');
+        disableHyprlandLayerMoveAnimation({ log });
+      },
+    })
+  : null;
 // Monitors the layer-shell helper reported, for the tray's "Move to Monitor"
 // submenu. A layer surface cannot be dragged between monitors (the compositor
 // owns its placement, so Super+drag falls through to the window behind it) —
@@ -930,6 +948,7 @@ function finishSmokeTest(success, error = '') {
     if (tray && !tray.isDestroyed?.()) {
       tray.destroy();
     }
+    destroyTrayEntityIcons();
     try {
       await session.defaultSession.flushStorageData();
     } catch (storageError) {
@@ -1811,6 +1830,12 @@ function normalizeDesktopPinsConfig(targetConfig) {
   return targetConfig;
 }
 
+function normalizeTrayEntitiesConfigInPlace(targetConfig) {
+  if (!isPlainObject(targetConfig)) return targetConfig;
+  targetConfig.trayEntities = normalizeTrayEntitiesConfig(targetConfig.trayEntities);
+  return targetConfig;
+}
+
 function resolveDesktopPinSupportDecision(entityId, supportInfo = null) {
   const normalizedEntityId = normalizeEntityId(entityId);
   const fallbackProfile = resolveDesktopPinProfile(normalizedEntityId);
@@ -1860,6 +1885,7 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
     config.desktopPins[normalizedEntityId]
   );
   normalizeDesktopPinsConfig(config);
+  normalizeTrayEntitiesConfigInPlace(config);
   const persistence = await saveConfigDurably();
   if (!persistence.success) {
     if (existed) {
@@ -3335,6 +3361,7 @@ async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeVal
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
+  normalizeTrayEntitiesConfigInPlace(config);
 
   const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(
@@ -3362,6 +3389,9 @@ async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeVal
   );
   await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
     syncDesktopPinWindowsWithConfig()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'synced tray entity icons', () =>
+    syncTrayEntitiesWithConfig()
   );
   await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin config broadcast', () =>
     broadcastDesktopPinConfigUpdate()
@@ -3670,6 +3700,7 @@ function loadConfig(options = {}) {
     activeTabId: '',
     comparisonGraphs: [],
     desktopPins: {},
+    trayEntities: {},
     customEntityIcons: {},
     quickAccessTileOptions: {},
     updates: {
@@ -3717,6 +3748,7 @@ function loadConfig(options = {}) {
         ensureUpdateConfigDefaults(config);
         ensureHaProfileConfigDefaults(config);
         normalizeDesktopPinsConfig(config);
+        normalizeTrayEntitiesConfigInPlace(config);
 
         if (recovery.success) {
           const scheduled = saveConfig();
@@ -3760,6 +3792,7 @@ function loadConfig(options = {}) {
         updates: { ...defaultConfig.updates, ...(userConfig.updates || {}) },
       };
       normalizeDesktopPinsConfig(config);
+      normalizeTrayEntitiesConfigInPlace(config);
       pruneConfig(config);
       if (typeof config.ui?.language !== 'string' || !config.ui.language.trim()) {
         config.ui.language = 'auto';
@@ -3937,6 +3970,7 @@ function loadConfig(options = {}) {
           ensureProfileSyncConfigDefaults(config);
           ensureUpdateConfigDefaults(config);
           normalizeDesktopPinsConfig(config);
+          normalizeTrayEntitiesConfigInPlace(config);
           migrated = true;
         } catch (error) {
           log.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
@@ -3949,6 +3983,7 @@ function loadConfig(options = {}) {
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
       normalizeDesktopPinsConfig(config);
+      normalizeTrayEntitiesConfigInPlace(config);
       // Ensure directory exists and persist
       fs.mkdirSync(userDataDir, { recursive: true });
       saveConfig();
@@ -3973,6 +4008,7 @@ function loadConfig(options = {}) {
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
     normalizeDesktopPinsConfig(config);
+    normalizeTrayEntitiesConfigInPlace(config);
   }
 
   deferredProfileSyncPassphraseDecryptPending = !!(
@@ -4003,6 +4039,7 @@ function enableDevelopmentClimateDemo() {
     customTabs: [],
     activeTabId: '',
     desktopPins: {},
+    trayEntities: {},
     globalHotkeys: { enabled: false, hotkeys: {} },
     entityAlerts: { enabled: false, alerts: {} },
     profileSync: { ...getDefaultProfileSyncConfig(), enabled: false },
@@ -5243,6 +5280,156 @@ function applyLayerShellMonitorChoice(outputName) {
     });
 }
 
+function getTrayEntityDisplayName(entityId) {
+  const customName = config?.customEntityNames?.[entityId];
+  return typeof customName === 'string' && customName.trim() ? customName.trim() : entityId;
+}
+
+function toggleMainWindowFromTrayEntity() {
+  if (mainWindow?.isVisible()) {
+    hideMainWindowToTray();
+  } else {
+    showMainWindowFromTray();
+  }
+}
+
+function buildTrayEntityContextMenu(entityId) {
+  return Menu.buildFromTemplate([
+    { label: getTrayEntityDisplayName(entityId), enabled: false },
+    { type: 'separator' },
+    { label: mainT('Show/Hide'), click: () => toggleMainWindowFromTrayEntity() },
+    {
+      label: mainT('Remove from Tray'),
+      click: () => {
+        void runSerializedConfigMutation(() => setTrayEntityInternal(entityId, false))
+          .then((result) => {
+            if (result?.success === false) {
+              log.warn(`Tray entity removal failed: ${result.error}`);
+            }
+          })
+          .catch((error) => {
+            log.warn('Tray entity removal failed:', error.message);
+          });
+      },
+    },
+  ]);
+}
+
+// Each tray entity is its own Tray. The renderer draws the value label (it has the canvas and
+// the live state map) and main only swaps the image, so the icon starts as the app icon and
+// becomes a value once the renderer answers `tray-entities-refresh-needed`.
+function createTrayEntityIcon(entityId) {
+  const usesTitle = process.platform === 'darwin';
+  const trayIcon = new Tray(usesTitle ? nativeImage.createEmpty() : resolveTrayIcon());
+  trayIcon.setToolTip(getTrayEntityDisplayName(entityId));
+  if (usesTitle) trayIcon.setTitle('…');
+  trayIcon.on('click', () => toggleMainWindowFromTrayEntity());
+  trayIcon.setContextMenu(buildTrayEntityContextMenu(entityId));
+  return trayIcon;
+}
+
+function requestTrayEntityIconRefresh() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('tray-entities-refresh-needed');
+}
+
+function destroyTrayEntityIcon(trayIcon) {
+  try {
+    if (trayIcon && !trayIcon.isDestroyed?.()) trayIcon.destroy();
+  } catch (error) {
+    log.debug('Failed to destroy tray entity icon:', error.message);
+  }
+}
+
+function destroyTrayEntityIcons() {
+  trayEntityIcons.forEach((trayIcon) => destroyTrayEntityIcon(trayIcon));
+  trayEntityIcons.clear();
+}
+
+function syncTrayEntitiesWithConfig() {
+  if (isQuitting || !app.isReady()) return;
+  const desired = normalizeTrayEntitiesConfig(config?.trayEntities);
+  let created = false;
+
+  Array.from(trayEntityIcons.keys()).forEach((entityId) => {
+    if (desired[entityId]) return;
+    destroyTrayEntityIcon(trayEntityIcons.get(entityId));
+    trayEntityIcons.delete(entityId);
+  });
+
+  Object.keys(desired).forEach((entityId) => {
+    const existing = trayEntityIcons.get(entityId);
+    if (existing && !existing.isDestroyed?.()) {
+      // The context menu shows the display name, which may have been renamed.
+      existing.setContextMenu(buildTrayEntityContextMenu(entityId));
+      return;
+    }
+    try {
+      trayEntityIcons.set(entityId, createTrayEntityIcon(entityId));
+      created = true;
+    } catch (error) {
+      log.warn(`Failed to create tray icon for ${entityId}:`, error.message);
+    }
+  });
+
+  if (created) requestTrayEntityIconRefresh();
+}
+
+function applyTrayEntityIconPayload(trayIcon, payload) {
+  if (payload.tooltip) trayIcon.setToolTip(payload.tooltip);
+  if (process.platform === 'darwin') {
+    trayIcon.setTitle(payload.label || '');
+    return;
+  }
+  if (!payload.representations.length) return;
+  const image = nativeImage.createEmpty();
+  payload.representations.forEach(({ scaleFactor, dataURL }) => {
+    image.addRepresentation({ scaleFactor, dataURL });
+  });
+  if (image.isEmpty()) return;
+  trayIcon.setImage(image);
+}
+
+async function setTrayEntityInternal(entityId, enabled) {
+  const normalizedEntityId = normalizeTrayEntityId(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+
+  const previousTrayEntities = config.trayEntities;
+  const nextTrayEntities = normalizeTrayEntitiesConfig(previousTrayEntities);
+  const existed = !!nextTrayEntities[normalizedEntityId];
+  if (!!enabled === existed) {
+    return { success: true, shown: existed, changed: false };
+  }
+  if (enabled) {
+    nextTrayEntities[normalizedEntityId] = {};
+  } else {
+    delete nextTrayEntities[normalizedEntityId];
+  }
+  config.trayEntities = nextTrayEntities;
+
+  const persistence = await saveConfigDurably();
+  if (!persistence.success) {
+    config.trayEntities = previousTrayEntities;
+    return { success: false, error: `Failed to save tray entity: ${persistence.error}` };
+  }
+
+  const runtimeWarnings = [];
+  await runPostSaveSideEffect(runtimeWarnings, 'tray entity icons', () =>
+    syncTrayEntitiesWithConfig()
+  );
+  await runPostSaveSideEffect(runtimeWarnings, 'tray entity renderer broadcast', () =>
+    pushConfigToRenderer({ runtimeWarnings })
+  );
+  return {
+    success: true,
+    shown: !!enabled,
+    changed: true,
+    ...(runtimeWarnings.length ? { runtimeWarnings } : {}),
+  };
+}
+
 function buildTrayContextMenu() {
   return Menu.buildFromTemplate([
     {
@@ -5443,6 +5630,11 @@ function schedulePostWindowStartupTasks() {
     } catch (error) {
       log.warn('Desktop pin startup sync failed:', error.message);
     }
+    try {
+      syncTrayEntitiesWithConfig();
+    } catch (error) {
+      log.warn('Tray entity startup sync failed:', error.message);
+    }
 
     try {
       createTray();
@@ -5586,6 +5778,7 @@ ipcMain.handle(
       profileSync: { ...(replacement.config.profileSync || {}) },
     };
     normalizeDesktopPinsConfig(config);
+    normalizeTrayEntitiesConfigInPlace(config);
     pruneConfig(config);
     const persistence = await saveConfigDurably({ allowDebouncedPush: false });
     if (!persistence.success) {
@@ -5613,6 +5806,9 @@ ipcMain.handle(
     );
     await runPostSaveSideEffect(runtimeWarnings, 'entity replacement desktop pin windows', () =>
       syncDesktopPinWindowsWithConfig()
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement tray entity icons', () =>
+      syncTrayEntitiesWithConfig()
     );
 
     const rendererConfig = sanitizeConfigForRenderer(config);
@@ -5779,6 +5975,7 @@ ipcMain.handle(
     ensureUpdateConfigDefaults(config);
     ensureHaProfileConfigDefaults(config);
     normalizeDesktopPinsConfig(config);
+    normalizeTrayEntitiesConfigInPlace(config);
     pruneConfig(config);
     restoreProfileFromStalePullEcho(prevConfig);
     // The renderer's echo of profileSync may be stale; the content-change
@@ -5870,6 +6067,9 @@ ipcMain.handle(
     }
     await runPostSaveSideEffect(runtimeWarnings, 'desktop pin windows', () =>
       syncDesktopPinWindowsWithConfig()
+    );
+    await runPostSaveSideEffect(runtimeWarnings, 'tray entity icons', () =>
+      syncTrayEntitiesWithConfig()
     );
 
     const rendererConfig = sanitizeConfigForRenderer(config);
@@ -6406,6 +6606,26 @@ ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) 
   return { success: true };
 });
 
+ipcMain.handle('update-tray-entity-icon', (event, payload) => {
+  const sender = authorizeIpcSender(event, 'update-tray-entity-icon');
+  if (!sender) return rejectUnauthorizedIpc('update-tray-entity-icon');
+  const sanitized = sanitizeTrayEntityIconPayload(payload);
+  if (!sanitized) {
+    return { success: false, error: 'Invalid tray icon payload' };
+  }
+  const trayIcon = trayEntityIcons.get(sanitized.entityId);
+  if (!trayIcon || trayIcon.isDestroyed?.()) {
+    return { success: false, error: 'Entity is not shown in the tray' };
+  }
+  try {
+    applyTrayEntityIconPayload(trayIcon, sanitized);
+  } catch (error) {
+    log.warn(`Failed to apply tray icon for ${sanitized.entityId}:`, error.message);
+    return { success: false, error: error?.message || String(error) };
+  }
+  return { success: true };
+});
+
 ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
   const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
   if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
@@ -6420,6 +6640,7 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   }
 
   const isPinned = !!config?.desktopPins?.[normalizedEntityId];
+  const isInTray = !!config?.trayEntities?.[normalizedEntityId];
   const supportProfile = resolveDesktopPinSupportDecision(normalizedEntityId, supportInfo);
   const canPinToDesktop = supportProfile.supported;
   const existingHotkeyConfig = config?.globalHotkeys?.hotkeys?.[normalizedEntityId];
@@ -6459,6 +6680,21 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
           })
           .catch((error) => {
             log.warn('Desktop pin menu action failed:', error.message);
+          });
+      },
+    },
+    { type: 'separator' },
+    {
+      label: isInTray ? mainT('Remove from Tray') : mainT('Show in Tray'),
+      click: () => {
+        void runSerializedConfigMutation(() => setTrayEntityInternal(normalizedEntityId, !isInTray))
+          .then((result) => {
+            if (result?.success === false) {
+              log.warn(`Tray entity menu action failed: ${result.error}`);
+            }
+          })
+          .catch((error) => {
+            log.warn('Tray entity menu action failed:', error.message);
           });
       },
     },
@@ -9281,6 +9517,8 @@ async function flushConfigForBoundedExit(actionLabel) {
 
 function shutDownRuntimeAfterConfigFlush() {
   isQuitting = true;
+  destroyTrayEntityIcons();
+  hyprlandConfigReloadWatcher?.stop();
   closeDevReloadWatchers();
   clearProfileSyncTimers();
   clearHomeAssistantOAuthRefreshTimer();
@@ -9366,7 +9604,7 @@ app
     // autostart entry written before the update pointing at a path that no longer exists. Nothing
     // reported it: the widget just stopped appearing at login. Repair it here, once the executable
     // path for this run is known, so surviving an update costs the user nothing.
-    if (process.platform === 'linux') {
+    if (process.platform === 'linux' && app.isPackaged && !IS_DEV_MODE && !IS_SMOKE_TEST_MODE) {
       try {
         const linuxStartupOptions = {
           pkg,
@@ -9522,4 +9760,5 @@ app.on('activate', () => {
     createWindow();
   }
   syncDesktopPinWindowsWithConfig();
+  syncTrayEntitiesWithConfig();
 });
