@@ -1067,7 +1067,7 @@ describe('watchHyprlandConfigReloads', () => {
       log: { debug: jest.fn() },
     });
 
-    expect(watcher.socketPath).toBe('/run/user/1000/hypr/abc123/.socket2.sock');
+    expect(watcher.socketPath).toBe(path.join('/run/user/1000', 'hypr', 'abc123', '.socket2.sock'));
     expect(sockets[0].options).toEqual({ path: watcher.socketPath });
 
     sockets[0].emit('data', Buffer.from('monitoradded>>DP-2\nconfigrelo'));
