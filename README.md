@@ -9,7 +9,7 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 
-- [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-me-orange)](https://github.com/sponsors/robertg761)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Support_the_project-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/Robertg761)
 
 ![Main View](images/Main_View.png?v=20260601) ![Edit View](images/Edit_View.png?v=20260601) ![Light Adjust](images/Light_Adjust.png?v=20260601)
 
@@ -326,6 +326,14 @@ We welcome contributions! Here's how you can help:
 - **ESLint**: Follow the existing code style (run `npm run lint`)
 - **Comments**: Add comments for complex logic
 - **Testing**: Add tests for new features when possible
+
+## Sponsors
+
+HA Desktop Widget is independently developed and will remain free and open source. Sponsorship helps support ongoing development, maintenance, cross-platform testing, and other project expenses.
+
+Thank you to [DegenApeDev](https://github.com/DegenApeDev) for supporting this work.
+
+[Become a sponsor](https://github.com/sponsors/Robertg761) or see the [full sponsor list and recognition details](SPONSORS.md).
 
 ## License
 
