@@ -26,6 +26,8 @@ const { pathToFileURL, fileURLToPath } = require('url');
 const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const pkg = require('./package.json');
+const { supportsLiveTrayValues } = require('./packages/widget-renderer/src/release-features.cjs');
+const LIVE_TRAY_VALUES_ENABLED = supportsLiveTrayValues(pkg.version);
 
 // ---------------------------------------------------------------------------
 // Early startup: profile selection and the layer-shell handoff. Everything in
@@ -579,6 +581,14 @@ const hasLegacyGlobalShortcutFallback = hasGlobalShortcutFallback({
 let mainWindow;
 let tray;
 const trayEntityIcons = new Map();
+const { createTrayEntityTicker } = require('./src/tray-entity-ticker.cjs');
+const trayEntityTicker = createTrayEntityTicker((entityId) => {
+  if (!mainWindow || mainWindow.isDestroyed() || !trayEntityIcons.has(entityId)) {
+    trayEntityTicker.setActive(entityId, false);
+    return;
+  }
+  mainWindow.webContents.send('tray-entities-refresh-needed', { entityId });
+});
 let config;
 let isQuitting = false;
 let autoUpdateDownloaded = false;
@@ -4995,8 +5005,13 @@ function setupProfileSyncWakeTriggers() {
   try {
     // Suspend stops the interval timer from firing on time, so the profile is
     // usually stale by the time the machine comes back.
+    powerMonitor.on('suspend', invalidateTrayEntityIcons);
     powerMonitor.on('resume', () => {
       requestOpportunisticProfileSync('resume');
+      invalidateTrayEntityIcons();
+      if (trayEntityIcons.size && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
+      }
     });
   } catch (error) {
     log.warn('Could not subscribe to power resume events:', error?.message || error);
@@ -5147,6 +5162,11 @@ function createWindow() {
     event.preventDefault();
   });
 
+  // A reload or renderer failure must not leave old readings looking live.
+  mainWindow.webContents.on('did-start-loading', invalidateTrayEntityIcons);
+  mainWindow.webContents.on('render-process-gone', invalidateTrayEntityIcons);
+  mainWindow.on('unresponsive', invalidateTrayEntityIcons);
+  mainWindow.on('responsive', () => requestTrayEntityIconRefresh(true));
   // Load the index.html file
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', () => {
@@ -5281,7 +5301,8 @@ function applyLayerShellMonitorChoice(outputName) {
 }
 
 function getTrayEntityDisplayName(entityId) {
-  const customName = config?.customEntityNames?.[entityId];
+  const customName =
+    config?.trayEntities?.[entityId]?.label || config?.customEntityNames?.[entityId];
   return typeof customName === 'string' && customName.trim() ? customName.trim() : entityId;
 }
 
@@ -5323,14 +5344,32 @@ function createTrayEntityIcon(entityId) {
   const trayIcon = new Tray(usesTitle ? nativeImage.createEmpty() : resolveTrayIcon());
   trayIcon.setToolTip(getTrayEntityDisplayName(entityId));
   if (usesTitle) trayIcon.setTitle('…');
-  trayIcon.on('click', () => toggleMainWindowFromTrayEntity());
+  if (!usesTitle) trayIcon.on('click', () => toggleMainWindowFromTrayEntity());
   trayIcon.setContextMenu(buildTrayEntityContextMenu(entityId));
   return trayIcon;
 }
 
-function requestTrayEntityIconRefresh() {
+function invalidateTrayEntityIcons() {
+  trayEntityTicker.clear();
+  trayEntityIcons.forEach((trayIcon, entityId) => {
+    if (trayIcon.isDestroyed?.()) return;
+    try {
+      trayIcon.setToolTip(`${getTrayEntityDisplayName(entityId)}: ${mainT('Offline')}`);
+      if (process.platform === 'darwin') {
+        const label = config?.trayEntities?.[entityId]?.label;
+        trayIcon.setTitle(`${label ? `${label}: ` : ''}${mainT('Offline')}`);
+      } else {
+        trayIcon.setImage(resolveTrayIcon());
+      }
+    } catch (error) {
+      log.debug('Could not clear stale tray value:', error.message);
+    }
+  });
+}
+
+function requestTrayEntityIconRefresh(reconnect = false) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('tray-entities-refresh-needed');
+  mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect });
 }
 
 function destroyTrayEntityIcon(trayIcon) {
@@ -5342,13 +5381,15 @@ function destroyTrayEntityIcon(trayIcon) {
 }
 
 function destroyTrayEntityIcons() {
+  trayEntityTicker.clear();
   trayEntityIcons.forEach((trayIcon) => destroyTrayEntityIcon(trayIcon));
   trayEntityIcons.clear();
 }
 
 function syncTrayEntitiesWithConfig() {
   if (isQuitting || !app.isReady()) return;
-  const desired = normalizeTrayEntitiesConfig(config?.trayEntities);
+  const desired = LIVE_TRAY_VALUES_ENABLED ? normalizeTrayEntitiesConfig(config?.trayEntities) : {};
+  trayEntityTicker.reconcile(Object.keys(desired));
   let created = false;
 
   Array.from(trayEntityIcons.keys()).forEach((entityId) => {
@@ -5378,7 +5419,7 @@ function syncTrayEntitiesWithConfig() {
 function applyTrayEntityIconPayload(trayIcon, payload) {
   if (payload.tooltip) trayIcon.setToolTip(payload.tooltip);
   if (process.platform === 'darwin') {
-    trayIcon.setTitle(payload.label || '');
+    trayIcon.setTitle(payload.label || '', { fontType: 'monospacedDigit' });
     return;
   }
   if (!payload.representations.length) return;
@@ -5391,6 +5432,9 @@ function applyTrayEntityIconPayload(trayIcon, payload) {
 }
 
 async function setTrayEntityInternal(entityId, enabled) {
+  if (enabled && !LIVE_TRAY_VALUES_ENABLED) {
+    return { success: false, error: 'Live tray values are available only in beta builds.' };
+  }
   const normalizedEntityId = normalizeTrayEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
@@ -6609,6 +6653,9 @@ ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) 
 ipcMain.handle('update-tray-entity-icon', (event, payload) => {
   const sender = authorizeIpcSender(event, 'update-tray-entity-icon');
   if (!sender) return rejectUnauthorizedIpc('update-tray-entity-icon');
+  if (!LIVE_TRAY_VALUES_ENABLED) {
+    return { success: false, error: 'Live tray values are available only in beta builds.' };
+  }
   const sanitized = sanitizeTrayEntityIconPayload(payload);
   if (!sanitized) {
     return { success: false, error: 'Invalid tray icon payload' };
@@ -6619,6 +6666,7 @@ ipcMain.handle('update-tray-entity-icon', (event, payload) => {
   }
   try {
     applyTrayEntityIconPayload(trayIcon, sanitized);
+    trayEntityTicker.setActive(sanitized.entityId, sanitized.activeTimer);
   } catch (error) {
     log.warn(`Failed to apply tray icon for ${sanitized.entityId}:`, error.message);
     return { success: false, error: error?.message || String(error) };
@@ -6683,21 +6731,29 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
           });
       },
     },
-    { type: 'separator' },
-    {
-      label: isInTray ? mainT('Remove from Tray') : mainT('Show in Tray'),
-      click: () => {
-        void runSerializedConfigMutation(() => setTrayEntityInternal(normalizedEntityId, !isInTray))
-          .then((result) => {
-            if (result?.success === false) {
-              log.warn(`Tray entity menu action failed: ${result.error}`);
-            }
-          })
-          .catch((error) => {
-            log.warn('Tray entity menu action failed:', error.message);
-          });
-      },
-    },
+    ...(LIVE_TRAY_VALUES_ENABLED
+      ? [
+          { type: 'separator' },
+          {
+            label: isInTray
+              ? mainT('Remove from Tray')
+              : `${mainT('Show in Tray')} (${mainT('Beta')})`,
+            click: () => {
+              void runSerializedConfigMutation(() =>
+                setTrayEntityInternal(normalizedEntityId, !isInTray)
+              )
+                .then((result) => {
+                  if (result?.success === false) {
+                    log.warn(`Tray entity menu action failed: ${result.error}`);
+                  }
+                })
+                .catch((error) => {
+                  log.warn('Tray entity menu action failed:', error.message);
+                });
+            },
+          },
+        ]
+      : []),
   ]);
 
   menu.popup({ window: senderWindow });

@@ -1414,6 +1414,10 @@ function showRenameModal(entityId) {
     let currentChartType = getQuickAccessTileChartType(entityId);
     let currentGaugeRange = getQuickAccessTileGaugeRange(entityId);
     let currentTrayEnabled = isEntityInTray(entityId);
+    let currentTrayOptions = trayEntitySupport.normalizeTrayEntityOptions(
+      state.CONFIG.trayEntities?.[entityId]
+    );
+    const supportsTrayColor = window.electronAPI?.platform !== 'darwin';
     const valueSizeOptionsMarkup = QUICK_ACCESS_TILE_VALUE_SIZE_LABELS.map(
       (option) => `
                 <option value="${escapeHtmlAttribute(option.value)}"${option.value === currentValueSize ? ' selected' : ''}>${utils.escapeHtml(t(option.label))}</option>`
@@ -1458,9 +1462,39 @@ function showRenameModal(entityId) {
           <div class="form-group tile-tray-setting">
             <label>
               <input type="checkbox" id="tile-tray-checkbox"${currentTrayEnabled ? ' checked' : ''} />
-              <span>${utils.escapeHtml(t('Show in system tray'))}</span>
+              <span>${utils.escapeHtml(t('Show in system tray'))} (${utils.escapeHtml(t('Beta'))})</span>
             </label>
             <div class="form-help">${utils.escapeHtml(t('Shows this entity’s current value as its own icon in the system tray.'))}</div>
+          </div>
+          <div id="tile-tray-options"${currentTrayEnabled ? '' : ' hidden'}>
+            <div class="form-group">
+              <label for="tile-tray-label">${utils.escapeHtml(t('Tray short name'))}</label>
+              <input id="tile-tray-label" class="form-control" maxlength="12" value="${escapeHtmlAttribute(currentTrayOptions.label || '')}" placeholder="${escapeHtmlAttribute(t('Optional'))}">
+              <div class="form-help">${utils.escapeHtml(t('Prefixes menu-bar values on macOS; identifies icons in tooltips and menus on Windows and Linux.'))}</div>
+            </div>
+            ${
+              supportsTrayColor
+                ? `<div class="form-group">
+              <label for="tile-tray-color">${utils.escapeHtml(t('Tray icon color'))}</label>
+              <select id="tile-tray-color" class="form-control">
+                ${[
+                  ['auto', 'Automatic'],
+                  ['blue', 'Blue'],
+                  ['cyan', 'Cyan'],
+                  ['purple', 'Purple'],
+                  ['pink', 'Pink'],
+                  ['orange', 'Orange'],
+                ]
+                  .map(
+                    ([value, label]) =>
+                      `<option value="${value}"${value === (currentTrayOptions.color || 'auto') ? ' selected' : ''}>${utils.escapeHtml(t(label))}</option>`
+                  )
+                  .join('')}
+              </select>
+              <div class="form-help">${utils.escapeHtml(t('Choose a color to tell values apart. Offline and unavailable values always use the warning color.'))}</div>
+            </div>`
+                : ''
+            }
           </div>`
       : '';
     const cameraPreviewOptionsMarkup = camera.CAMERA_PREVIEW_REFRESH_OPTIONS.map(
@@ -1480,10 +1514,13 @@ function showRenameModal(entityId) {
 
     const modal = document.createElement('div');
     modal.className = 'modal rename-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'tile-settings-title');
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
-          <h2>${utils.escapeHtml(t('Tile Settings'))}</h2>
+          <h2 id="tile-settings-title">${utils.escapeHtml(t('Tile Settings'))}</h2>
           <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
@@ -1514,6 +1551,13 @@ function showRenameModal(entityId) {
     const gaugeMinInput = modal.querySelector('#tile-gauge-min-input');
     const gaugeMaxInput = modal.querySelector('#tile-gauge-max-input');
     const trayCheckbox = modal.querySelector('#tile-tray-checkbox');
+    const trayOptionsGroup = modal.querySelector('#tile-tray-options');
+    const trayLabelInput = modal.querySelector('#tile-tray-label');
+    const trayColorSelect = modal.querySelector('#tile-tray-color');
+    const syncTrayOptionsVisibility = () => {
+      if (trayOptionsGroup) trayOptionsGroup.hidden = !trayCheckbox?.checked;
+    };
+    trayCheckbox?.addEventListener('change', syncTrayOptionsVisibility);
     const saveBtn = modal.querySelector('#save-rename-btn');
     const resetBtn = modal.querySelector('#reset-rename-btn');
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
@@ -1562,6 +1606,8 @@ function showRenameModal(entityId) {
         gaugeMinInput,
         gaugeMaxInput,
         trayCheckbox,
+        trayLabelInput,
+        trayColorSelect,
         saveBtn,
         resetBtn,
         cancelBtn,
@@ -1581,13 +1627,17 @@ function showRenameModal(entityId) {
       const authoritativeChartType = getQuickAccessTileChartType(entityId);
       const authoritativeGaugeRange = getQuickAccessTileGaugeRange(entityId);
       const authoritativeTrayEnabled = isEntityInTray(entityId);
+      const authoritativeTrayOptions = trayEntitySupport.normalizeTrayEntityOptions(
+        state.CONFIG.trayEntities?.[entityId]
+      );
       const relevantConfigChanged =
         authoritativeName !== currentName ||
         authoritativeValueSize !== currentValueSize ||
         authoritativeCameraRefresh !== currentCameraPreviewRefresh ||
         authoritativeChartType !== currentChartType ||
         !gaugeRangesEqual(authoritativeGaugeRange, currentGaugeRange) ||
-        authoritativeTrayEnabled !== currentTrayEnabled;
+        authoritativeTrayEnabled !== currentTrayEnabled ||
+        JSON.stringify(authoritativeTrayOptions) !== JSON.stringify(currentTrayOptions);
 
       // Preserve the user's retryable form values for an ordinary save failure. If
       // main reports that this tile changed concurrently, show that authoritative
@@ -1608,6 +1658,9 @@ function showRenameModal(entityId) {
             authoritativeGaugeRange.max === null ? '' : String(authoritativeGaugeRange.max);
         }
         if (trayCheckbox) trayCheckbox.checked = authoritativeTrayEnabled;
+        if (trayLabelInput) trayLabelInput.value = authoritativeTrayOptions.label || '';
+        if (trayColorSelect) trayColorSelect.value = authoritativeTrayOptions.color || 'auto';
+        syncTrayOptionsVisibility();
         syncGaugeRangeVisibility();
         currentName = authoritativeName;
         currentValueSize = authoritativeValueSize;
@@ -1615,6 +1668,7 @@ function showRenameModal(entityId) {
         currentChartType = authoritativeChartType;
         currentGaugeRange = authoritativeGaugeRange;
         currentTrayEnabled = authoritativeTrayEnabled;
+        currentTrayOptions = authoritativeTrayOptions;
       }
     };
 
@@ -1675,10 +1729,18 @@ function showRenameModal(entityId) {
         }
 
         const nextTrayEnabled = hasTrayControl ? !!trayCheckbox?.checked : currentTrayEnabled;
-        let trayChanged = false;
-        if (hasTrayControl && nextTrayEnabled !== currentTrayEnabled) {
+        const nextTrayOptions = trayEntitySupport.normalizeTrayEntityOptions({
+          label: trayLabelInput?.value,
+          color: trayColorSelect?.value || currentTrayOptions.color,
+        });
+        const trayChanged =
+          hasTrayControl &&
+          (nextTrayEnabled !== currentTrayEnabled ||
+            (nextTrayEnabled &&
+              JSON.stringify(nextTrayOptions) !== JSON.stringify(currentTrayOptions)));
+        if (trayChanged) {
           setTrayEntityEnabled(entityId, nextTrayEnabled, nextConfig);
-          trayChanged = true;
+          if (nextTrayEnabled) nextConfig.trayEntities[entityId] = nextTrayOptions;
           changed = true;
         }
 
@@ -1750,6 +1812,13 @@ function showRenameModal(entityId) {
           changed = true;
         }
 
+        const resetTrayOptions =
+          hasTrayControl && currentTrayEnabled && Object.keys(currentTrayOptions).length > 0;
+        if (resetTrayOptions) {
+          nextConfig.trayEntities[entityId] = {};
+          changed = true;
+        }
+
         if (!changed) {
           closeTileSettingsModal();
           return;
@@ -1760,6 +1829,7 @@ function showRenameModal(entityId) {
           await persistAuthoritativeConfig({
             customEntityNames: nextConfig.customEntityNames || {},
             quickAccessTileOptions: nextConfig.quickAccessTileOptions || {},
+            ...(resetTrayOptions ? { trayEntities: nextConfig.trayEntities } : {}),
           });
           refreshQuickAccessAfterTileSettingsChange();
           uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);

@@ -17,9 +17,12 @@ function normalizeEntityId(value) {
 
 const TRAY_ENTITY_TOOLTIP_MAX_LENGTH = 127;
 const TRAY_ENTITY_LABEL_MAX_LENGTH = 12;
+const TRAY_ENTITY_TITLE_MAX_LENGTH = 64;
+const TRAY_ENTITY_SHORT_NAME_MAX_LENGTH = 12;
+const TRAY_ENTITY_COLORS = Object.freeze(['auto', 'blue', 'cyan', 'purple', 'pink', 'orange']);
 const TRAY_ICON_MAX_REPRESENTATIONS = 4;
 const TRAY_ICON_MAX_DATA_URL_LENGTH = 96 * 1024;
-const TRAY_ICON_SCALE_FACTORS = Object.freeze([1, 1.5, 2]);
+const TRAY_ICON_SCALE_FACTORS = Object.freeze([1, 1.5, 2, 3]);
 const TRAY_ICON_FONT_SIZES = Object.freeze([12, 11, 10, 9, 8, 7]);
 const TRAY_ICON_MIN_PREFERRED_FONT_SIZE = 9;
 const PNG_DATA_URL_PREFIX = 'data:image/png;base64,';
@@ -151,6 +154,117 @@ const BINARY_SENSOR_LABELS = Object.freeze({
   update: ['UPD', 'OK'],
 });
 
+const STATE_NAMES = Object.freeze({
+  on: 'On',
+  off: 'Off',
+  home: 'Home',
+  not_home: 'Away',
+  open: 'Open',
+  opening: 'Opening',
+  closed: 'Closed',
+  closing: 'Closing',
+  stopped: 'Stopped',
+  locked: 'Locked',
+  unlocked: 'Unlocked',
+  locking: 'Locking',
+  unlocking: 'Unlocking',
+  jammed: 'Jammed',
+  playing: 'Playing',
+  paused: 'Paused',
+  idle: 'Idle',
+  standby: 'Standby',
+  buffering: 'Buffering',
+  active: 'Active',
+  cleaning: 'Cleaning',
+  docked: 'Docked',
+  returning: 'Returning',
+  error: 'Error',
+  heat: 'Heating',
+  cool: 'Cooling',
+  heat_cool: 'Automatic',
+  auto: 'Automatic',
+  dry: 'Drying',
+  fan_only: 'Fan',
+  disarmed: 'Disarmed',
+  armed_home: 'Armed at home',
+  armed_away: 'Armed away',
+  armed_night: 'Armed at night',
+  armed_vacation: 'Armed on vacation',
+  armed_custom_bypass: 'Armed',
+  arming: 'Arming',
+  pending: 'Pending',
+  triggered: 'Alarm',
+  charging: 'Charging',
+  discharging: 'Discharging',
+  not_charging: 'Not charging',
+  full: 'Full',
+  running: 'Running',
+  unavailable: 'Unavailable',
+  unknown: 'Unknown',
+});
+const COMPACT_STATE_NAMES = new Set([
+  'On',
+  'Off',
+  'Open',
+  'Closed',
+  'Opening',
+  'Closing',
+  'Locked',
+  'Unlocked',
+  'Locking',
+  'Unlocking',
+  'Armed at home',
+  'Armed away',
+  'Armed at night',
+  'Armed on vacation',
+  'Arming',
+  'Disarmed',
+]);
+
+const BINARY_STATE_NAMES = Object.freeze({
+  door: ['Open', 'Closed'],
+  window: ['Open', 'Closed'],
+  garage_door: ['Open', 'Closed'],
+  opening: ['Open', 'Closed'],
+  lock: ['Unlocked', 'Locked'],
+  motion: ['Motion', 'Clear'],
+  moving: ['Moving', 'Still'],
+  occupancy: ['Occupied', 'Clear'],
+  presence: ['Home', 'Away'],
+  moisture: ['Wet', 'Dry'],
+  smoke: ['Smoke', 'Clear'],
+  gas: ['Gas', 'Clear'],
+  carbon_monoxide: ['Carbon monoxide', 'Clear'],
+  problem: ['Problem', 'OK'],
+  safety: ['Unsafe', 'Safe'],
+  battery: ['Low', 'OK'],
+  battery_charging: ['Charging', 'Idle'],
+  connectivity: ['Connected', 'Disconnected'],
+  plug: ['Plugged in', 'Unplugged'],
+  power: ['On', 'Off'],
+  running: ['Running', 'Idle'],
+  cold: ['Cold', 'OK'],
+  heat: ['Hot', 'OK'],
+  light: ['Light', 'Dark'],
+  sound: ['Sound', 'Clear'],
+  vibration: ['Vibration', 'Clear'],
+  tamper: ['Tampered', 'OK'],
+  update: ['Update', 'OK'],
+});
+
+function normalizeTrayEntityOptions(value) {
+  const source = isPlainObject(value) ? value : {};
+  const result = {};
+  const label = truncateText(
+    sanitizeTooltipText(source.label || ''),
+    TRAY_ENTITY_SHORT_NAME_MAX_LENGTH
+  );
+  if (label) result.label = label;
+  if (TRAY_ENTITY_COLORS.includes(source.color) && source.color !== 'auto')
+    result.color = source.color;
+  return result;
+}
+
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -161,7 +275,7 @@ function getTrayIconSizeForPlatform(platform) {
 
 /**
  * Normalize the persisted tray entity map. Unknown shapes collapse to `{}`; entity IDs are
- * normalized and per-entity values are kept as plain objects for forward-compatible options.
+ * normalized and per-entity options are limited to a short name and a supported color.
  */
 function normalizeTrayEntitiesConfig(value) {
   const source = isPlainObject(value) ? value : {};
@@ -169,7 +283,7 @@ function normalizeTrayEntitiesConfig(value) {
   Object.entries(source).forEach(([entityId, options]) => {
     const normalizedEntityId = normalizeEntityId(entityId);
     if (!normalizedEntityId) return;
-    next[normalizedEntityId] = isPlainObject(options) ? { ...options } : {};
+    next[normalizedEntityId] = normalizeTrayEntityOptions(options);
   });
   return next;
 }
@@ -244,6 +358,16 @@ function buildNumericLabelCandidates(value, unit = '') {
   return candidates;
 }
 
+function splitGraphemes(text) {
+  if (typeof Intl.Segmenter === 'function') {
+    return Array.from(
+      new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text),
+      (part) => part.segment
+    );
+  }
+  return Array.from(text);
+}
+
 function buildTextLabelCandidates(text) {
   const compact = String(text ?? '')
     .replace(/_/g, ' ')
@@ -252,8 +376,8 @@ function buildTextLabelCandidates(text) {
   if (!compact) return ['?'];
   const collapsed = compact.replace(/\s+/g, '');
   const candidates = [];
-  [6, 4, 3].forEach((length) => {
-    const candidate = Array.from(collapsed).slice(0, length).join('');
+  [12, 4, 3, 2].forEach((length) => {
+    const candidate = splitGraphemes(collapsed).slice(0, length).join('');
     if (candidate && !candidates.includes(candidate)) candidates.push(candidate);
   });
   return candidates;
@@ -297,7 +421,7 @@ function truncateText(text, maxLength) {
 
 function sanitizeTooltipText(text) {
   return String(text ?? '')
-    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\p{Cc}/gu, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -325,26 +449,56 @@ function buildTrayEntityPresentation(entity, options = {}) {
   const unit =
     typeof attributes.unit_of_measurement === 'string' ? attributes.unit_of_measurement : '';
 
+  const translate = typeof options.translate === 'function' ? options.translate : null;
+  let valueText = '';
+  const localizedCandidates = (key) => {
+    valueText = translate(key);
+    const compactKey = `Tray: ${key}`;
+    const compact = COMPACT_STATE_NAMES.has(key) ? translate(compactKey) : compactKey;
+    return compact !== compactKey ? [compact] : buildTextLabelCandidates(valueText);
+  };
+  const stateCandidates = (key) => {
+    if (!translate) return buildStateLabelCandidates(key);
+    return localizedCandidates(STATE_NAMES[key] || String(key || '?').replace(/_/g, ' '));
+  };
+  const numericCandidates = (value, numericUnit) => {
+    const labels = buildNumericLabelCandidates(value, numericUnit);
+    if (!translate) return labels;
+    const formatter = new Intl.NumberFormat(options.locale || 'en', { maximumFractionDigits: 1 });
+    valueText = `${formatter.format(value)}${numericUnit ? ` ${numericUnit}` : ''}`;
+    // Keep compact bitmaps ungrouped; use the locale's decimal separator.
+    const decimal =
+      formatter.formatToParts(1.1).find((part) => part.type === 'decimal')?.value || '.';
+    return labels.map((label) => label.replace('.', decimal));
+  };
   let candidates = null;
   let accent = resolveAccent(stateKey);
 
   if (!entity || stateKey === 'unavailable' || stateKey === 'unknown' || rawState == null) {
-    candidates = [stateKey === 'unknown' ? '?' : 'N/A'];
+    candidates = [stateKey === 'unknown' ? '?' : translate ? '!' : 'N/A'];
     accent = 'unavailable';
+    valueText = translate ? translate(stateKey === 'unknown' ? 'Unknown' : 'Unavailable') : '';
   } else if (domain === 'timer') {
     if (stateKey === 'active') {
       const remaining = toFiniteNumber(options.timerRemainingSeconds);
       candidates = remaining !== null ? buildTimerLabelCandidates(remaining) : ['ACTV'];
+      valueText =
+        remaining !== null
+          ? buildTimerLabelCandidates(remaining)[0]
+          : translate?.('Active') || 'ACTV';
       accent = 'on';
     } else {
-      candidates = buildStateLabelCandidates(stateKey);
+      candidates = stateCandidates(stateKey);
       accent = 'off';
     }
   } else if (domain === 'climate' || domain === 'water_heater') {
     const temperature =
       toFiniteNumber(attributes.current_temperature) ?? toFiniteNumber(attributes.temperature);
     if (temperature !== null) {
-      candidates = buildNumericLabelCandidates(temperature, '°');
+      candidates = numericCandidates(
+        temperature,
+        attributes.temperature_unit || options.temperatureUnit || '°'
+      );
       const action = typeof attributes.hvac_action === 'string' ? attributes.hvac_action : '';
       accent =
         action === 'heating' || action === 'cooling' || action === 'drying'
@@ -355,42 +509,51 @@ function buildTrayEntityPresentation(entity, options = {}) {
     }
   } else if (domain === 'weather') {
     const temperature = toFiniteNumber(attributes.temperature);
-    if (temperature !== null) candidates = buildNumericLabelCandidates(temperature, '°');
+    if (temperature !== null)
+      candidates = numericCandidates(
+        temperature,
+        attributes.temperature_unit || options.temperatureUnit || '°'
+      );
   } else if (domain === 'humidifier') {
     const humidity =
       toFiniteNumber(attributes.current_humidity) ?? toFiniteNumber(attributes.humidity);
     if (stateKey === 'on' && humidity !== null) {
-      candidates = buildNumericLabelCandidates(humidity, '%');
+      candidates = numericCandidates(humidity, '%');
       accent = 'on';
     }
   } else if (domain === 'light') {
     const brightness = toFiniteNumber(attributes.brightness);
     if (stateKey === 'on' && brightness !== null) {
-      candidates = buildNumericLabelCandidates(Math.round((brightness / 255) * 100), '%');
+      candidates = numericCandidates(Math.round((brightness / 255) * 100), '%');
       candidates.push('ON');
     }
   } else if (domain === 'fan') {
     const percentage = toFiniteNumber(attributes.percentage);
     if (stateKey === 'on' && percentage !== null) {
-      candidates = buildNumericLabelCandidates(percentage, '%');
+      candidates = numericCandidates(percentage, '%');
       candidates.push('ON');
     }
   } else if (domain === 'cover' || domain === 'valve') {
     const position = toFiniteNumber(attributes.current_position);
     if (position !== null && stateKey !== 'opening' && stateKey !== 'closing') {
-      candidates = buildNumericLabelCandidates(position, '%');
-      candidates.push(...buildStateLabelCandidates(stateKey));
+      candidates = numericCandidates(position, '%');
+      if (!translate) candidates.push(...stateCandidates(stateKey));
     }
   } else if (domain === 'binary_sensor') {
     const deviceClass =
       typeof attributes.device_class === 'string' ? attributes.device_class.toLowerCase() : '';
     const labels = BINARY_SENSOR_LABELS[deviceClass];
     if (labels && (stateKey === 'on' || stateKey === 'off')) {
-      candidates = [stateKey === 'on' ? labels[0] : labels[1]];
+      const names = BINARY_STATE_NAMES[deviceClass];
+      candidates =
+        translate && names
+          ? localizedCandidates(names[stateKey === 'on' ? 0 : 1])
+          : [stateKey === 'on' ? labels[0] : labels[1]];
     }
     accent = stateKey === 'on' ? 'on' : stateKey === 'off' ? 'off' : accent;
   } else if (domain === 'person' || domain === 'device_tracker') {
     if (stateKey !== 'home' && stateKey !== 'not_home') {
+      valueText = String(rawState);
       candidates = buildTextLabelCandidates(rawState);
       accent = 'neutral';
     }
@@ -399,10 +562,10 @@ function buildTrayEntityPresentation(entity, options = {}) {
   if (!candidates) {
     const numeric = toFiniteNumber(rawState);
     if (numeric !== null) {
-      candidates = buildNumericLabelCandidates(numeric, unit);
+      candidates = numericCandidates(numeric, unit);
       accent = 'neutral';
     } else {
-      candidates = buildStateLabelCandidates(stateKey);
+      candidates = stateCandidates(stateKey);
     }
   }
 
@@ -414,15 +577,14 @@ function buildTrayEntityPresentation(entity, options = {}) {
   const displayState =
     typeof options.displayState === 'string' && options.displayState.trim()
       ? options.displayState.trim()
-      : rawState == null
-        ? 'unavailable'
-        : `${rawState}${unit ? ` ${unit.trim()}` : ''}`;
+      : valueText ||
+        (rawState == null ? 'unavailable' : `${rawState}${unit ? ` ${unit.trim()}` : ''}`);
   const tooltip = truncateText(
     sanitizeTooltipText(`${displayName}: ${displayState}`),
     TRAY_ENTITY_TOOLTIP_MAX_LENGTH
   );
 
-  return { entityId, candidates, tooltip, accent };
+  return { entityId, candidates, tooltip, accent, valueText: valueText || displayState };
 }
 
 /**
@@ -476,6 +638,8 @@ function chooseTrayLabelLayout(candidates, measure, options = {}) {
       if (fits(text, fontSize)) return { text, fontSize };
     }
   }
+  // Unknown user states can still be long; render an ellipsis instead of clipped text.
+  if (fits('…', smallestFontSize)) return { text: '…', fontSize: smallestFontSize };
   const shortest = list.reduce((best, text) => (text.length < best.length ? text : best), list[0]);
   return { text: shortest, fontSize: smallestFontSize };
 }
@@ -503,7 +667,7 @@ function sanitizeTrayEntityIconPayload(payload) {
   if (!entityId) return null;
   const label =
     typeof payload.label === 'string'
-      ? truncateText(sanitizeTooltipText(payload.label), TRAY_ENTITY_LABEL_MAX_LENGTH)
+      ? truncateText(sanitizeTooltipText(payload.label), TRAY_ENTITY_TITLE_MAX_LENGTH)
       : '';
   const tooltip =
     typeof payload.tooltip === 'string'
@@ -513,11 +677,18 @@ function sanitizeTrayEntityIconPayload(payload) {
     .map(sanitizeRepresentation)
     .filter(Boolean)
     .slice(0, TRAY_ICON_MAX_REPRESENTATIONS);
-  return { entityId, label, tooltip, representations };
+  const activeTimer = entityId.startsWith('timer.') && payload.activeTimer === true;
+  return { entityId, label, tooltip, representations, activeTimer };
 }
 
 module.exports = {
   TRAY_ENTITY_LABEL_MAX_LENGTH,
+  TRAY_ENTITY_SHORT_NAME_MAX_LENGTH,
+  TRAY_ENTITY_COLORS,
+  STATE_NAMES,
+  COMPACT_STATE_NAMES,
+  BINARY_STATE_NAMES,
+  normalizeTrayEntityOptions,
   TRAY_ENTITY_TOOLTIP_MAX_LENGTH,
   TRAY_ICON_FONT_SIZES,
   TRAY_ICON_MAX_DATA_URL_LENGTH,

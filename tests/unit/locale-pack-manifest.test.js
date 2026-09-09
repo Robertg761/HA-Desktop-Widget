@@ -30,4 +30,36 @@ describe('downloadable locale-pack manifest', () => {
       expect(Object.keys(pack.messages).sort()).toEqual(englishKeys);
     }
   });
+
+  test('bundles a complete German catalog alongside English', () => {
+    const englishMessages = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../locales/en.json'), 'utf8')
+    );
+    const germanMessages = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../locales/de.json'), 'utf8')
+    );
+    const pack = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../locale-packs/de.json'), 'utf8')
+    );
+
+    expect(Object.keys(germanMessages).sort()).toEqual(Object.keys(englishMessages).sort());
+    expect(pack.locale).toBe('de');
+    expect(pack.displayName).toBe('Deutsch');
+    expect(pack.messages).toEqual(germanMessages);
+  });
+  test('includes every dynamically selected tray state message', () => {
+    const {
+      STATE_NAMES,
+      BINARY_STATE_NAMES,
+      COMPACT_STATE_NAMES,
+    } = require('../../src/tray-entities.cjs');
+    const englishMessages = require('../../locales/en.json');
+    for (const key of [
+      ...Object.values(STATE_NAMES),
+      ...Object.values(BINARY_STATE_NAMES).flat(),
+      ...[...COMPACT_STATE_NAMES].map((name) => `Tray: ${name}`),
+    ]) {
+      expect(englishMessages).toHaveProperty(key);
+    }
+  });
 });

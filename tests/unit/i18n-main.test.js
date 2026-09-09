@@ -32,6 +32,64 @@ describe('main localization service', () => {
     );
   });
 
+  it('activates bundled German for a German system locale', () => {
+    fs.writeFileSync(
+      path.join(bundledDir, 'de.json'),
+      JSON.stringify({
+        Hello: 'Hallo',
+        'Selected language: {{language}}': 'Gewählte Sprache: {{language}}',
+      })
+    );
+
+    const service = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      appVersion: '1.0.0',
+      getDetectedLocale: () => 'de-DE',
+      manifestUrl: 'https://example.test/manifest.json',
+    });
+
+    const bootstrap = service.getLocaleBootstrap('auto');
+
+    expect(bootstrap.requestedLocale).toBe('de-DE');
+    expect(bootstrap.activeLocale).toBe('de');
+    expect(bootstrap.usingEnglishFallback).toBe(false);
+    expect(bootstrap.messages.Hello).toBe('Hallo');
+  });
+
+  it('uses downloaded German updates and restores bundled German after removal', () => {
+    fs.writeFileSync(
+      path.join(bundledDir, 'de.json'),
+      JSON.stringify({ Hello: 'Hallo', 'Selected language: {{language}}': 'Sprache: {{language}}' })
+    );
+    const installedDir = path.join(userDataDir, 'locales');
+    fs.mkdirSync(installedDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(installedDir, 'de.json'),
+      JSON.stringify({ locale: 'de', version: '1.0.0', messages: { Hello: 'Guten Tag' } })
+    );
+    const service = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      getDetectedLocale: () => 'de-DE',
+    });
+
+    const updated = service.getLocaleBootstrap('auto');
+    expect(updated.localeSource).toBe('downloaded');
+    expect(updated.messages.Hello).toBe('Guten Tag');
+    expect(updated.messages['Selected language: {{language}}']).toBe('Sprache: {{language}}');
+
+    service.removeLocalePack('de');
+    const restored = service.getLocaleBootstrap('auto');
+    expect(restored.activeLocale).toBe('de');
+    expect(restored.localeSource).toBe('bundled');
+    expect(restored.messages.Hello).toBe('Hallo');
+
+    fs.writeFileSync(path.join(installedDir, 'de.json'), '{broken');
+    expect(service.getLocaleBootstrap('de').messages.Hello).toBe('Hallo');
+    expect(fs.existsSync(path.join(installedDir, 'de.json'))).toBe(false);
+  });
+
   it('falls back to bundled English when the detected locale pack is unavailable', () => {
     const service = createLocalizationService({
       bundledDir,

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Beta features
+
+- Live tray values remain available only in numbered beta builds. They include per-entity short
+  names and Windows/Linux icon colors, full macOS menu-bar values, localized state labels,
+  one-second timer countdowns while hidden, and stale-reading protection after disconnects,
+  sleep, and renderer failures. Stable builds preserve these preferences without showing the
+  feature. The next beta cycle targets 3.11.0.
+
+## [3.10.0] - 2026-09-09
+
+### Added
+
+- Native desktop-layer placement on supported tiling Wayland desktops, including Hyprland, Sway,
+  niri, and river. The widget can sit beneath tiled windows, move between monitors from the tray
+  menu, remember its position, and temporarily rise above windows through the popup hotkey.
+- Numeric sensor tiles can show a line chart, a gauge with automatic or custom limits, or no chart.
+- Bundled German translations and a downloadable German language pack, with automatic selection
+  on German systems and German date, time, and number formatting.
+- A GitHub Sponsors dialog in Settings for one-time or monthly support, with preset and custom
+  donation amounts.
+
+### Changed
+
+- Clearer update-check messages for connection failures, unavailable release information, and
+  corrupted downloads.
+- Tile Settings fits narrow windows and translated button labels without clipping, and exposes
+  its dialog name to assistive technology.
+- Updated downloadable language packs. Downloaded translations can override bundled translations,
+  with bundled fallback after removal or corruption.
+- Live entity values in the system tray are explicitly beta-only. The normal application tray
+  and its window controls remain available in stable builds.
+
+### Fixed
+
+- Hyprland dragging no longer jumps or accelerates because of layer animations, including after
+  theme or monitor configuration reloads.
+- AppImage updates keep start-at-login entries pointing to the current executable and adopt
+  entries left under an older filename. Development and test runs cannot overwrite installed
+  startup entries.
+- Linux desktops with a working Secret Service keyring can securely store Home Assistant
+  credentials even when Chromium does not recognize the desktop environment.
+- First-run authorization recovers after errors and cancels an in-progress connection when
+  navigating back, preventing disabled controls and stuck setup attempts.
+- Updated AppImages replace an older Wayland helper even when the replacement binary has the
+  same file size.
+
 ## [3.10.0-beta.8] - 2026-09-04
 
 ### Added

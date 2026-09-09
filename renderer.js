@@ -19,6 +19,8 @@ import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import {
   handleTrayEntityStateChange,
   initTrayEntityIcons,
+  setTrayEntityConnectionState,
+  tickTrayEntityIcon,
   refreshTrayEntityIcons,
   syncTrayEntityIconsWithConfig,
 } from './src/tray-entity-icons.js';
@@ -28,7 +30,7 @@ import {
   buildProfileDocumentFromConfig,
 } from './src/profile-schema.js';
 import { createElectronHost } from '@hadw/renderer/electron-host.js';
-import { setRendererHost } from '@hadw/renderer/host.js';
+import { setRendererHost, getRendererHost } from '@hadw/renderer/host.js';
 import {
   installClimateDemo,
   isClimateDemoConfig,
@@ -52,7 +54,7 @@ const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 // Only the main window renders tray entity icons; pin windows share this script but not the job.
-if (window.electronAPI && !IS_DESKTOP_PIN_MODE) {
+if (window.electronAPI && !IS_DESKTOP_PIN_MODE && getRendererHost().capabilities.supportsTray) {
   initTrayEntityIcons({ electronAPI: window.electronAPI, platform: window.electronAPI.platform });
 }
 let desktopPinEditMode = false;
@@ -191,6 +193,10 @@ let lastConnectionToast = { key: null, shownAt: 0 };
 let browserReportedOffline = false;
 let lastDisconnectReason = '';
 let mainConnectionState = 'idle';
+function updateMainConnectionState(nextState) {
+  mainConnectionState = nextState;
+  if (!IS_DESKTOP_PIN_MODE && nextState !== 'connected') setTrayEntityConnectionState(false);
+}
 let firstRunWizard = null;
 let firstRunSettingsObserver = null;
 let configuredRuntimeStarted = false;
@@ -213,7 +219,7 @@ function clearReconnectTimer() {
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
-  mainConnectionState = 'connecting';
+  updateMainConnectionState('connecting');
   renderMainWidgetState();
   websocket.connect();
 }
@@ -374,6 +380,8 @@ function scheduleStateChangedFlush() {
 function queueStateChangedEntity(entity) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
+  // Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
+  if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(entity.entity_id);
   pendingStateChangedEntities.set(entity.entity_id, {
     entity,
   });
@@ -384,6 +392,7 @@ function queueDeletedEntity(entityId) {
   const normalizedEntityId = typeof entityId === 'string' ? entityId.trim() : '';
   if (!normalizedEntityId) return;
   state.deleteEntityState(normalizedEntityId);
+  if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(normalizedEntityId);
   favoriteStalePreservation.delete(normalizedEntityId);
   pendingStateChangedEntities.set(normalizedEntityId, {
     entity: null,
@@ -959,7 +968,7 @@ function startClimateDemoRuntime({ overlay = false } = {}) {
 
   document.body.dataset.developmentDemo = 'climate';
   if (!overlay) {
-    mainConnectionState = 'demo';
+    updateMainConnectionState('demo');
     setConnectedStatus(t('Development climate demo — no Home Assistant connection'));
   }
   if (!climateDemoController) {
@@ -1087,6 +1096,7 @@ async function refreshLocaleBootstrap() {
   if (!window?.electronAPI?.getLocaleBootstrap) return null;
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
+  if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
   translateDocument(document);
   return bootstrap;
 }
@@ -1344,9 +1354,8 @@ window.addEventListener('online', () => {
   resetConnectionToastTracking();
   const shouldForceReconnect = browserReportedOffline;
   browserReportedOffline = false;
-  mainConnectionState = 'connecting';
-  setDisconnectedStatus(t('Network restored. Reconnecting to Home Assistant...'));
   if (shouldForceReconnect || !websocket.ws || websocket.ws.readyState !== WebSocket.OPEN) {
+    setDisconnectedStatus(t('Network restored. Reconnecting to Home Assistant...'));
     connectWebSocket();
   }
 });
@@ -1354,7 +1363,7 @@ window.addEventListener('online', () => {
 window.addEventListener('offline', () => {
   browserReportedOffline = true;
   clearReconnectTimer();
-  mainConnectionState = 'disconnected';
+  updateMainConnectionState('disconnected');
   const disconnectedMessage = t(
     'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
   );
@@ -1383,7 +1392,8 @@ websocket.on('message', (msg) => {
     if (msg.type === 'auth_ok') {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
-      mainConnectionState = 'connected';
+      if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
+      updateMainConnectionState('connected');
       browserReportedOffline = false;
       setDesktopPinConnectionIssue('');
       resetConnectionToastTracking();
@@ -1441,7 +1451,7 @@ websocket.on('message', (msg) => {
       }
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
-      mainConnectionState = 'auth-failed';
+      updateMainConnectionState('auth-failed');
       const authFailureMessage = t(
         'Authentication failed. Please check your Home Assistant token in Settings.'
       );
@@ -1503,7 +1513,10 @@ websocket.on('message', (msg) => {
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
-            if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
+            if (!IS_DESKTOP_PIN_MODE) {
+              setTrayEntityConnectionState(true, Object.keys(newStates));
+              refreshTrayEntityIcons({ force: true });
+            }
 
             const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
             if (reconciliation.changed) {
@@ -1591,12 +1604,13 @@ websocket.on('message', (msg) => {
 
 websocket.on('close', (closeInfo = {}) => {
   try {
+    if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
     if (closeInfo?.intentional) {
       log.debug('WebSocket closed intentionally; skipping reconnect schedule');
       return;
     }
 
-    mainConnectionState = 'disconnected';
+    updateMainConnectionState('disconnected');
     setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
     setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
     uiUtils.showLoading(false);
@@ -1615,7 +1629,7 @@ websocket.on('close', (closeInfo = {}) => {
 websocket.on('error', (error) => {
   try {
     log.error('WebSocket error:', error);
-    mainConnectionState = 'disconnected';
+    updateMainConnectionState('disconnected');
     const classifiedIssue = classifyConnectionError(error);
     let desktopPinIssueMessage = classifiedIssue.message;
     setDisconnectedStatus(classifiedIssue.message);
@@ -1664,7 +1678,7 @@ websocket.on('showLoading', (show) => {
 
 websocket.on('connect-attempt', () => {
   clearReconnectTimer();
-  mainConnectionState = 'connecting';
+  updateMainConnectionState('connecting');
   renderMainWidgetState();
 });
 
@@ -1775,8 +1789,18 @@ window.electronAPI.onDesktopPinSnapshotNeeded?.(() => {
 
 // Main creates a Tray per configured entity but cannot draw the value; it asks the renderer
 // for a full re-render whenever a new tray icon appears.
-window.electronAPI.onTrayEntitiesRefreshNeeded?.(() => {
+window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId = null } = {}) => {
   if (IS_DESKTOP_PIN_MODE) return;
+  if (reconnect) {
+    setTrayEntityConnectionState(false);
+    websocket.close();
+    connectWebSocket();
+    return;
+  }
+  if (entityId) {
+    void tickTrayEntityIcon(entityId);
+    return;
+  }
   refreshTrayEntityIcons({ force: true });
 });
 

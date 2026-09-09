@@ -63,7 +63,7 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 
 - **Updates**: Automatic installation for Windows installer and Linux AppImage builds; portable, macOS, and Linux deb builds use a GitHub Releases download flow
 - **System Tray**: Minimize to tray with quick access menu
-- **Tray Entity Icons**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
+- **Tray Entity Icons (Beta only)**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
 - **Start at Login**: Optional OS login startup control
 - **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
 - **Performance**: Optimized rendering and memory management
@@ -77,6 +77,28 @@ The Settings modal is organized into General, Personalization, Hotkeys, Alerts, 
 - **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
 - **Media Tile**: Choose a primary media player or hide the tile
 - **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
+
+## Live tray values (beta only)
+
+Live tray values are available only in beta builds. Stable builds retain saved tray preferences
+without showing the feature. Enable **Receive beta updates** in Settings to receive beta releases.
+
+Right-click a Quick Access tile and choose **Show in Tray**, or enable **Show in system tray**
+under **Edit Tile Settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
+Hover for its name and full value; use its menu to show the widget or remove the icon.
+
+Tile Settings also provides an optional short name. On macOS it appears before the value in the
+menu bar, with units and decimal precision retained. On Windows and Linux it appears in tooltips
+and menus; an optional icon color helps distinguish multiple readings at a glance.
+
+An offline connection displays `--` in bitmap trays or a translated **Offline** label on macOS.
+Values return after a fresh Home Assistant snapshot. An unavailable entity uses `!`, and an
+unknown state uses `?`, with the full explanation in the tooltip. Warning colors take precedence
+over custom icon colors. A renderer failure or reload clears the last value to a placeholder.
+
+Active timers refresh each second even when the widget is hidden. The dashboard retains its
+normal background behavior, including pausing hidden camera previews. On Windows and Linux,
+activating a tray value toggles the widget; on macOS, clicking opens its menu.
 
 ## Roadmap
 

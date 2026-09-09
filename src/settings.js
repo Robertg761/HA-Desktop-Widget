@@ -32,6 +32,8 @@ import {
   normalizeBaseUrl,
 } from './connection.js';
 
+const BUILTIN_LANGUAGE_OPTIONS = new Set(['auto', 'en', 'de']);
+
 let previewState = null;
 let previewRaf = null;
 let previewAccent = null;
@@ -3500,7 +3502,7 @@ function updateLanguageSummaryText() {
   }
   if (fallbackSummary) {
     const needsPack =
-      selectedLocale !== 'auto' && selectedLocale !== 'en' && localeState.activeLocale === 'en';
+      !BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en';
     fallbackSummary.classList.toggle('hidden', !needsPack);
     fallbackSummary.textContent = t('Using English until the selected language pack is installed.');
   }
@@ -3510,7 +3512,7 @@ function syncLanguageSelectOptions() {
   const languageSelect = document.getElementById('language-select');
   if (!languageSelect) return;
   const selectedValue = languageSelect.value || state.CONFIG?.ui?.language || 'auto';
-  const builtinValues = new Set(['auto', 'en']);
+  const builtinValues = BUILTIN_LANGUAGE_OPTIONS;
 
   Array.from(languageSelect.querySelectorAll('option'))
     .filter((option) => !builtinValues.has(option.value))
@@ -3534,7 +3536,7 @@ function syncLanguageSelectOptions() {
   ) {
     const fallbackOption = document.createElement('option');
     fallbackOption.value = selectedValue;
-    fallbackOption.disabled = selectedValue !== 'auto' && selectedValue !== 'en';
+    fallbackOption.disabled = !builtinValues.has(selectedValue);
     fallbackOption.textContent = `${getLanguageDisplayName(selectedValue, selectedValue)} (${fallbackOption.disabled ? t('Download first') : t('Available')})`;
     languageSelect.appendChild(fallbackOption);
   }

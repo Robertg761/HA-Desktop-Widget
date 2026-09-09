@@ -77,4 +77,33 @@ describe('renderer i18n helpers', () => {
     expect(document.documentElement.lang).toBe('ar');
     expect(document.documentElement.dir).toBe('rtl');
   });
+
+  it('formats dates and times with German regional conventions', () => {
+    i18n.setLocaleBootstrap({
+      activeLocale: 'de',
+      messages: {},
+    });
+
+    const date = new Date(2026, 8, 8, 14, 35, 0);
+    const numericDate = i18n.formatDate(date, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const longDate = i18n.formatDate(date, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const time = i18n
+      .formatTime(date, { hour: '2-digit', minute: '2-digit', hour12: false })
+      .replace(/\s/g, '');
+
+    expect(numericDate).toBe('08.09.2026');
+    expect(longDate.toLowerCase()).toContain('dienstag');
+    expect(longDate.toLowerCase()).toContain('september');
+    expect(longDate).toMatch(/8/);
+    expect(time).toMatch(/14:35/);
+  });
 });

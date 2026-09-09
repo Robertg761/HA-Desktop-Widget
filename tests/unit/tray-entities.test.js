@@ -137,6 +137,7 @@ describe('buildTrayEntityPresentation', () => {
       'SUNNY',
       'SUNN',
       'SUN',
+      'SU',
     ]);
   });
 
@@ -164,6 +165,7 @@ describe('buildTrayEntityPresentation', () => {
       'OFFICE',
       'OFFI',
       'OFF',
+      'OF',
     ]);
     expect(buildTrayEntityPresentation(entity('lock.front', 'locked'))).toMatchObject({
       candidates: ['LOCK'],
@@ -222,9 +224,9 @@ describe('chooseTrayLabelLayout', () => {
     });
   });
 
-  it('falls back to the shortest candidate at the smallest size', () => {
+  it('uses an ellipsis when labels cannot fit and survives unavailable text measurement', () => {
     expect(chooseTrayLabelLayout(['ABCDEFG', 'ABCDEF'], measure, { maxWidth: 10 })).toEqual({
-      text: 'ABCDEF',
+      text: '…',
       fontSize: 7,
     });
     expect(chooseTrayLabelLayout([], measure, { maxWidth: 10 })).toEqual({
@@ -253,7 +255,7 @@ describe('sanitizeTrayEntityIconPayload', () => {
   it('keeps only PNG data URLs with sane scale factors', () => {
     const sanitized = sanitizeTrayEntityIconPayload({
       entityId: ' sensor.cpu ',
-      label: 'x'.repeat(40),
+      label: 'x'.repeat(100),
       tooltip: `line1\nline2 ${'y'.repeat(200)}`,
       representations: [
         { scaleFactor: 1, dataURL: PNG },
@@ -270,7 +272,7 @@ describe('sanitizeTrayEntityIconPayload', () => {
       ],
     });
     expect(sanitized.entityId).toBe('sensor.cpu');
-    expect(sanitized.label.length).toBeLessThanOrEqual(12);
+    expect(sanitized.label.length).toBe(64);
     expect(sanitized.tooltip).not.toContain('\n');
     expect(Array.from(sanitized.tooltip).length).toBeLessThanOrEqual(127);
     expect(sanitized.representations).toEqual([
@@ -287,6 +289,7 @@ describe('sanitizeTrayEntityIconPayload', () => {
       label: '',
       tooltip: '',
       representations: [],
+      activeTimer: false,
     });
   });
 });

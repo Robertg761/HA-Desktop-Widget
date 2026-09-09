@@ -8,6 +8,7 @@
  */
 
 import { base64Encode } from './utils.js';
+import releaseFeatures from './release-features.cjs';
 
 function mediaQuery({ preview, cacheKey }) {
   const params = [];
@@ -16,13 +17,16 @@ function mediaQuery({ preview, cacheKey }) {
   return params.length ? `?${params.join('&')}` : '';
 }
 
-function createElectronHost(electronAPI) {
+function createElectronHost(
+  electronAPI,
+  appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
+) {
   return {
     capabilities: Object.freeze({
       isElectron: true,
       isPreview: false,
       supportsPins: true,
-      supportsTray: true,
+      supportsTray: releaseFeatures.supportsLiveTrayValues(appVersion),
       supportsFrostedGlass: true,
       supportsDrag: true,
     }),

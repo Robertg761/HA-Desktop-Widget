@@ -256,22 +256,24 @@ function createLocalizationService(options = {}) {
       }
 
       const bundledMessages = getBundledMessages(candidate);
-      if (bundledMessages) {
-        activeLocale = candidate;
-        activeMessages = { ...englishMessages, ...bundledMessages };
-        localeSource = 'bundled';
-        packInstalled = true;
-        break;
-      }
-
+      // Downloaded translations can update a bundled locale without an app release.
       const installedPack = readInstalledPack(candidate);
       if (installedPack) {
         activeLocale = normalizeLocaleCode(installedPack.locale) || candidate;
         activeMessages = {
           ...englishMessages,
+          ...bundledMessages,
           ...ensureObject(installedPack.messages),
         };
         localeSource = 'downloaded';
+        packInstalled = true;
+        break;
+      }
+
+      if (bundledMessages) {
+        activeLocale = candidate;
+        activeMessages = { ...englishMessages, ...bundledMessages };
+        localeSource = 'bundled';
         packInstalled = true;
         break;
       }

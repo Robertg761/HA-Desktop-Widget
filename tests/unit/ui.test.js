@@ -2616,7 +2616,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
     it('toggles tray membership from the settings modal when the host has a tray', async () => {
       const previousHost = getRendererHost();
-      setRendererHost(createElectronHost(mockElectronAPI));
+      setRendererHost(createElectronHost(mockElectronAPI, '3.11.0-beta.1'));
       try {
         const modal = seedOfficeTemperatureTile();
         const trayCheckbox = modal.querySelector('#tile-tray-checkbox');
@@ -2638,6 +2638,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           })
         );
         expect(document.querySelector('.rename-modal')).toBeNull();
+      } finally {
+        setRendererHost(previousHost);
+      }
+    });
+
+    it('saves tray identification options and resets them without removing the tray icon', async () => {
+      const previousHost = getRendererHost();
+      setRendererHost(createElectronHost(mockElectronAPI, '3.11.0-beta.1'));
+      try {
+        const modal = seedOfficeTemperatureTile();
+        const checkbox = modal.querySelector('#tile-tray-checkbox');
+        expect(modal.querySelector('#tile-tray-options').hidden).toBe(true);
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change'));
+        expect(modal.querySelector('#tile-tray-options').hidden).toBe(false);
+        modal.querySelector('#tile-tray-label').value = ' Office ';
+        modal.querySelector('#tile-tray-color').value = 'purple';
+        modal.querySelector('#save-rename-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({
+          label: 'Office',
+          color: 'purple',
+        });
+
+        document.querySelector('[data-entity-id="sensor.office_temperature"] .rename-btn').click();
+        const reopened = document.querySelector('.rename-modal');
+        expect(reopened.querySelector('#tile-tray-label').value).toBe('Office');
+        expect(reopened.querySelector('#tile-tray-color').value).toBe('purple');
+        reopened.querySelector('#reset-rename-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({});
       } finally {
         setRendererHost(previousHost);
       }

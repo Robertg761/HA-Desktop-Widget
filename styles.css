@@ -9969,11 +9969,43 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .rename-modal .modal-content {
   background: var(--bg-primary);
   border-radius: var(--radius-lg);
-  padding: 24px;
-  max-width: 85vw;
-  width: 85%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  padding: 0;
+  width: min(520px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
   border: 1px solid var(--border-color);
+}
+
+.rename-modal .modal-body {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.rename-modal .modal-header,
+.rename-modal .modal-footer {
+  flex-shrink: 0;
+}
+
+.rename-modal .modal-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rename-modal .modal-footer .btn {
+  min-width: 0;
+  padding: var(--space-2);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+.rename-modal .modal-footer .btn-primary {
+  grid-column: 1 / -1;
 }
 
 .rename-modal h3 {
@@ -10010,7 +10042,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-base);
 }
 
-.rename-modal input,
+.rename-modal input:not([type='checkbox']),
 .rename-modal select {
   width: 100%;
   padding: 12px;
