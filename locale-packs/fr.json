@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -562,6 +562,10 @@
     "Tray: Armed on vacation": "VA",
     "Tray: Arming": "A…",
     "Tray: Disarmed": "OFF",
-    "Beta": "Bêta"
+    "Beta": "Bêta",
+    "All day": "Toute la journée",
+    "Heating target": "Consigne de chauffage",
+    "Cooling target": "Consigne de refroidissement",
+    "Unable to load items": "Impossible de charger les éléments"
   }
 }

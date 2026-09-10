@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -562,6 +562,10 @@
     "Tray: Armed on vacation": "UR",
     "Tray: Arming": "S…",
     "Tray: Disarmed": "AUS",
-    "Beta": "Beta"
+    "Beta": "Beta",
+    "All day": "Ganztägig",
+    "Heating target": "Heizziel",
+    "Cooling target": "Kühlziel",
+    "Unable to load items": "Einträge konnten nicht geladen werden"
   }
 }

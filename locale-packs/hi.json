@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -562,6 +562,10 @@
     "Tray: Armed on vacation": "छुट्टी",
     "Tray: Arming": "सश…",
     "Tray: Disarmed": "बंद",
-    "Beta": "बीटा"
+    "Beta": "बीटा",
+    "All day": "पूरे दिन",
+    "Heating target": "हीटिंग का लक्ष्य",
+    "Cooling target": "कूलिंग का लक्ष्य",
+    "Unable to load items": "आइटम लोड नहीं हो सके"
   }
 }

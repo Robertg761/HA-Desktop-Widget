@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -562,6 +562,10 @@
     "Tray: Armed on vacation": "سفر",
     "Tray: Arming": "يسلح",
     "Tray: Disarmed": "معطل",
-    "Beta": "تجريبي"
+    "Beta": "تجريبي",
+    "All day": "طوال اليوم",
+    "Heating target": "درجة الحرارة المستهدفة للتدفئة",
+    "Cooling target": "درجة الحرارة المستهدفة للتبريد",
+    "Unable to load items": "تعذر تحميل العناصر"
   }
 }

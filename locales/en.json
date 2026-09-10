@@ -555,5 +555,9 @@
   "Tray: Armed on vacation": "AV",
   "Tray: Arming": "A…",
   "Tray: Disarmed": "OFF",
-  "Beta": "Beta"
+  "Beta": "Beta",
+  "All day": "All day",
+  "Heating target": "Heating target",
+  "Cooling target": "Cooling target",
+  "Unable to load items": "Unable to load items"
 }

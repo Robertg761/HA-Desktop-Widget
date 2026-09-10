@@ -555,5 +555,9 @@
   "Tray: Armed on vacation": "UR",
   "Tray: Arming": "S…",
   "Tray: Disarmed": "AUS",
-  "Beta": "Beta"
+  "Beta": "Beta",
+  "All day": "Ganztägig",
+  "Heating target": "Heizziel",
+  "Cooling target": "Kühlziel",
+  "Unable to load items": "Einträge konnten nicht geladen werden"
 }

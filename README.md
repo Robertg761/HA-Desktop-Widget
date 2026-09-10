@@ -191,6 +191,11 @@ Assistant can flag out-of-date desktops.
 - **Timers**: Show live countdown when active
 - **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
 
+Use Tab to focus a primary card or the Quick Access grid. Arrow keys move between Quick Access
+tiles; Enter or Space activates the focused device. Shift+Enter opens its available detail controls.
+Heat/cool thermostats provide separate heating and cooling targets, and on/off-only lights show
+power controls without a brightness slider.
+
 ### System Integration
 
 - **Minimize to Tray**: Click the minimize button to hide to system tray

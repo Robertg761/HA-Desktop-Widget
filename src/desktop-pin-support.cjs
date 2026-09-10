@@ -1,3 +1,5 @@
+const { getClimateControlCapabilities } = require('./climate-controls.cjs');
+
 const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
   'light',
   'climate',
@@ -91,15 +93,14 @@ function getDesktopPinCapabilities(entity = null) {
           hasFiniteAttribute(attributes, 'brightness') ||
           colorModes.some((mode) => mode && mode !== 'onoff' && mode !== 'unknown'),
       };
-    case 'climate':
+    case 'climate': {
+      const capabilities = getClimateControlCapabilities(entity);
       return {
-        canSetTemperature:
-          hasFiniteAttribute(attributes, 'temperature') &&
-          hasFiniteAttribute(attributes, 'min_temp') &&
-          hasFiniteAttribute(attributes, 'max_temp') &&
-          Number(attributes.min_temp) < Number(attributes.max_temp),
+        canSetTemperature: capabilities.canSetTemperature,
+        canSetRange: capabilities.canSetRange,
         hvacModes,
       };
+    }
     case 'fan':
       return {
         canToggle: true,

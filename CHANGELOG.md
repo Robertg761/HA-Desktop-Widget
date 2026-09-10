@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sleep, and renderer failures. Stable builds preserve these preferences without showing the
   feature. The next beta cycle targets 3.11.0.
 
+## [3.11.0-beta.1] - 2026-09-10
+
+### Fixed
+
+- Stop and power-off actions cancel queued cover and light slider commands, including desktop pins. Older failed requests no longer undo feedback for newer actions.
+- Quick Access displays every entity saved in a view instead of silently hiding tiles after the twelfth.
+- Climate dialogs and desktop pins support separate heating and cooling targets in heat/cool mode, with bounds validation and rollback when a command fails.
+- Climate temperature labels use Home Assistant's configured unit when the entity does not specify one.
+- All-day calendar events retain their calendar dates and display the exclusive end date correctly.
+- Failed to-do loads show an error and Retry button. Retrying a refresh does not repeat a successful add or completion.
+- Primary device cards support keyboard focus and Enter/Space activation. Shift+Enter opens device controls from primary cards and Quick Access.
+- On/off-only lights show power controls without unsupported brightness sliders or presets.
+- Updated bundled and downloadable language catalogs for the new controls and error messages.
+
+### Testing
+
+- Added regression coverage for rapid control actions, late failures, thermostat ranges, keyboard access, larger views, calendar dates, and to-do retries.
+
 ## [3.10.0] - 2026-09-09
 
 ### Added

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -562,6 +562,10 @@
     "Tray: Armed on vacation": "VA",
     "Tray: Arming": "A…",
     "Tray: Disarmed": "NO",
-    "Beta": "Beta"
+    "Beta": "Beta",
+    "All day": "Todo el día",
+    "Heating target": "Temperatura de calefacción",
+    "Cooling target": "Temperatura de refrigeración",
+    "Unable to load items": "No se pudieron cargar los elementos"
   }
 }
