@@ -46,13 +46,14 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
   };
   // A dropped socket must not forget cooldowns or already-notified conditions, or every
   // reconnect would repeat the alert. Only pending duration timers are cancelled; those records
-  // re-arm from the first reading after the connection returns.
+  // are re-evaluated from the state snapshot once the connection returns.
   const suspend = () => {
     records.forEach((record) => {
       if (!record.timer) return;
       clearTimeout(record.timer);
       record.timer = null;
       record.matched = false;
+      record.resume = true;
     });
   };
   const reconcile = (states = {}) => {
@@ -68,6 +69,13 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
         records.set(id, makeRecord(id, states[id]));
       }
     }
+    // The reconnect snapshot arrives without state_changed events, so a condition that is still
+    // true has to be re-armed here or its duration timer would never restart.
+    records.forEach((record, id) => {
+      if (!record.resume) return;
+      delete record.resume;
+      if (states[id]) check(id, states[id].state);
+    });
   };
   const check = (id, value) => {
     const config = getConfig();

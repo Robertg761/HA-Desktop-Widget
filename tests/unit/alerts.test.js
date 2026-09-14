@@ -168,12 +168,27 @@ describe('alerts module', () => {
       expect(showToast).toHaveBeenCalledTimes(2);
     });
 
-    it('re-arms a pending duration timer after a reconnect', () => {
+    it('re-arms an interrupted duration timer from the reconnect snapshot', () => {
       reading('26');
       jest.advanceTimersByTime(5000);
       alerts.suspendEntityAlerts();
+      jest.advanceTimersByTime(60000);
+      expect(showToast).not.toHaveBeenCalled();
+      // The snapshot still reads 26 and no state_changed event follows.
       alerts.initializeEntityAlerts();
-      jest.advanceTimersByTime(10000);
+      jest.advanceTimersByTime(9000);
+      expect(showToast).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not re-arm when the reconnect snapshot no longer matches', () => {
+      reading('26');
+      jest.advanceTimersByTime(5000);
+      alerts.suspendEntityAlerts();
+      mockState.STATES['sensor.temperature'].state = '24';
+      alerts.initializeEntityAlerts();
+      jest.advanceTimersByTime(20000);
       expect(showToast).not.toHaveBeenCalled();
       reading('26');
       jest.advanceTimersByTime(10000);
