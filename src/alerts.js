@@ -1,54 +1,50 @@
 import state from './state.js';
+import { createAlertEvaluator } from './alert-rules.js';
 import { showToast } from './ui-utils.js';
 import { getEntityDisplayName, getEntityIcon } from './utils.js';
 import { t } from './i18n.js';
 
-let entityAlerts = {};
-let alertStates = {};
+const evaluator = createAlertEvaluator({
+  getConfig: () => state.CONFIG?.entityAlerts,
+  notify: (entityId, previousState, newState, rule) => {
+    const name = getEntityDisplayName(state.STATES[entityId]);
+    const message = rule.onStateChange
+      ? t('{{name}} changed from {{previousState}} to {{newState}}', {
+          name,
+          previousState,
+          newState,
+        })
+      : t('{{name}} is now {{newState}}', { name, newState });
+    showEntityAlert(message, entityId);
+  },
+});
 
+let alertConnection = null;
 function initializeEntityAlerts() {
-  if (state.CONFIG && state.CONFIG.entityAlerts) {
-    entityAlerts = state.CONFIG.entityAlerts;
+  const connection = JSON.stringify([
+    state.CONFIG?.homeAssistant?.url,
+    state.CONFIG?.homeAssistant?.token,
+  ]);
+  if (connection !== alertConnection) {
+    evaluator.reset(state.STATES || {});
+    alertConnection = connection;
+  } else {
+    evaluator.reconcile(state.STATES || {});
   }
-  if (!entityAlerts.enabled) return;
+}
 
-  Object.keys(entityAlerts.alerts).forEach((entityId) => {
-    if (state.STATES[entityId]) {
-      alertStates[entityId] = state.STATES[entityId].state;
-    }
-  });
+function suspendEntityAlerts() {
+  evaluator.suspend();
+}
+
+function resetEntityAlerts() {
+  alertConnection = null;
+  evaluator.reset();
 }
 
 function checkEntityAlerts(entityId, newState) {
   try {
-    if (!entityAlerts.enabled || !entityAlerts.alerts[entityId]) return;
-
-    const alertConfig = entityAlerts.alerts[entityId];
-    const previousState = alertStates[entityId];
-
-    alertStates[entityId] = newState;
-
-    let shouldAlert = false;
-    let alertMessage = '';
-
-    if (alertConfig.onStateChange && previousState !== newState) {
-      shouldAlert = true;
-      alertMessage = t('{{name}} changed from {{previousState}} to {{newState}}', {
-        name: getEntityDisplayName(state.STATES[entityId]),
-        previousState,
-        newState,
-      });
-    } else if (alertConfig.onSpecificState && alertConfig.targetState === newState) {
-      shouldAlert = true;
-      alertMessage = t('{{name}} is now {{newState}}', {
-        name: getEntityDisplayName(state.STATES[entityId]),
-        newState,
-      });
-    }
-
-    if (shouldAlert) {
-      showEntityAlert(alertMessage, entityId);
-    }
+    evaluator.check(entityId, newState);
   } catch (error) {
     console.error('Error checking entity alerts:', error);
   }
@@ -77,7 +73,8 @@ async function toggleAlerts(enabled) {
   try {
     const result = await window.electronAPI.toggleAlerts(enabled);
     if (result.success) {
-      entityAlerts.enabled = enabled;
+      if (state.CONFIG?.entityAlerts) state.CONFIG.entityAlerts.enabled = enabled;
+      if (!enabled) suspendEntityAlerts();
       showToast(
         enabled ? t('Entity alerts enabled') : t('Entity alerts disabled'),
         'success',
@@ -109,4 +106,11 @@ function requestNotificationPermission() {
   }
 }
 
-export { initializeEntityAlerts, checkEntityAlerts, toggleAlerts, requestNotificationPermission };
+export {
+  suspendEntityAlerts,
+  resetEntityAlerts,
+  initializeEntityAlerts,
+  checkEntityAlerts,
+  toggleAlerts,
+  requestNotificationPermission,
+};

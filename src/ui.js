@@ -1,4 +1,7 @@
 import state from './state.js';
+import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
+import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
+import { entitiesForArea, loadRoomRegistry } from './room-dashboard.js';
 import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
@@ -418,7 +421,9 @@ async function persistAuthoritativeConfig(nextConfig) {
     throw new Error('Configuration updates are unavailable on this build.');
   }
   try {
+    const previousConfig = cloneConfigSnapshot(state.CONFIG);
     const authoritativeConfig = requireAuthoritativeConfig(await host.updateConfig(nextConfig));
+    rememberDashboard(previousConfig, authoritativeConfig);
     state.setConfig(authoritativeConfig);
     return state.CONFIG;
   } catch (error) {
@@ -456,9 +461,16 @@ function showConfigPersistenceError(error) {
   uiUtils.showToast(message, 'error', 4000);
 }
 
+function isQuickAccessManageModalOpen() {
+  const modal = document.getElementById('quick-controls-modal');
+  return !!modal && !modal.classList.contains('hidden') && modal.style.display !== 'none';
+}
+
 function renderQuickAccessConfigState() {
   renderQuickControls();
-  populateQuickControlsList();
+  // The manage list holds a row for every entity in the install, so rebuilding it on each page
+  // switch is the most expensive part of the render. It is rebuilt again when the dialog opens.
+  if (isQuickAccessManageModalOpen()) populateQuickControlsList();
 }
 
 function buildQuickAccessConfigPatch(config) {
@@ -491,14 +503,19 @@ async function persistQuickAccessConfigSnapshot(
     const authoritativeConfig = requireAuthoritativeConfig(
       await host.updateConfig(buildQuickAccessConfigPatch(nextConfig))
     );
+    rememberDashboard(previousConfig, authoritativeConfig);
     const isCurrent = revision === quickAccessPersistenceRevision;
     if (revision >= quickAccessAuthoritativeFallbackRevision) {
       quickAccessAuthoritativeFallback = cloneConfigSnapshot(authoritativeConfig);
       quickAccessAuthoritativeFallbackRevision = revision;
     }
     if (isCurrent) {
+      // The optimistic render already drew this layout; only redraw when the host changed it.
+      const rendered = JSON.stringify(buildQuickAccessConfigPatch(state.CONFIG));
       state.setConfig(authoritativeConfig);
-      renderQuickAccessConfigState();
+      if (JSON.stringify(buildQuickAccessConfigPatch(state.CONFIG)) !== rendered) {
+        renderQuickAccessConfigState();
+      }
     }
     return { success: true, config: authoritativeConfig, revision, isCurrent };
   } catch (error) {
@@ -750,10 +767,11 @@ async function deleteQuickAccessPage(tabId) {
   }
 }
 
-function createQuickAccessPage(name) {
+function createQuickAccessPage(name, entityIds = []) {
   const nextConfig = addQuickAccessView(state.CONFIG, name, {
     idFactory: generateQuickAccessViewId,
   });
+  nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
       uiUtils.showToast(t('Page added'), 'success', 1600);
@@ -766,7 +784,10 @@ function createQuickAccessPage(name) {
 // reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
   const modal = document.getElementById('add-page-modal');
-  if (modal) modal.remove();
+  if (modal) {
+    uiUtils.releaseFocusTrap(modal);
+    modal.remove();
+  }
 }
 
 function showAddPageModal() {
@@ -807,24 +828,106 @@ function showAddPageModal() {
   document.body.appendChild(modal);
   applyCloseButtonIcons(modal);
 
+  const roomGroup = document.createElement('div');
+  roomGroup.className = 'form-group room-dashboard';
+  const roomLabel = document.createElement('label');
+  roomLabel.htmlFor = 'add-page-room';
+  roomLabel.textContent = t('Start with a room');
+  const roomSelect = document.createElement('select');
+  roomSelect.id = 'add-page-room';
+  roomSelect.className = 'form-control';
+  roomSelect.add(new Option(t('Empty page'), ''));
+  const roomStatus = document.createElement('p');
+  roomStatus.setAttribute('role', 'status');
+  const roomEntities = document.createElement('div');
+  roomEntities.className = 'room-entity-list';
+  const loadRooms = document.createElement('button');
+  loadRooms.type = 'button';
+  loadRooms.className = 'btn btn-secondary';
+  loadRooms.textContent = t('Load rooms');
+  roomGroup.append(roomLabel, roomSelect, loadRooms, roomStatus, roomEntities);
+  modal.querySelector('.modal-body').appendChild(roomGroup);
+  let registry = null;
+  // Remember the name we filled in from a room so a name the user typed is never overwritten.
+  let autoFilledName = '';
+  loadRooms.onclick = async () => {
+    loadRooms.disabled = true;
+    roomStatus.textContent = t('Loading rooms…');
+    try {
+      registry = await loadRoomRegistry(websocket);
+      if (!modal.isConnected) return;
+      roomSelect.replaceChildren(new Option(t('Empty page'), ''));
+      roomEntities.replaceChildren();
+      registry.areas
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((area) => {
+          roomSelect.add(new Option(area.name, area.area_id));
+        });
+      roomStatus.textContent = registry.areas.length ? '' : t('No rooms found in Home Assistant.');
+      loadRooms.hidden = true;
+    } catch {
+      roomStatus.textContent = t(
+        'Could not load rooms. Check your connection and permissions, then retry.'
+      );
+      loadRooms.textContent = t('Retry');
+    } finally {
+      if (!submissionInFlight) loadRooms.disabled = false;
+    }
+  };
+  roomSelect.onchange = () => {
+    roomEntities.replaceChildren();
+    if (!roomSelect.value || !registry) {
+      roomStatus.textContent = '';
+      return;
+    }
+    const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
+    const nameInput = modal.querySelector('#add-page-name');
+    if (!nameInput.value.trim() || nameInput.value === autoFilledName) {
+      nameInput.value = area?.name || '';
+      autoFilledName = nameInput.value;
+    }
+    const ids = entitiesForArea(
+      roomSelect.value,
+      registry.entities,
+      registry.devices,
+      state.STATES
+    );
+    roomStatus.textContent = ids.length
+      ? t('Choose the entities to include.')
+      : t('No available entities in this room.');
+    ids.forEach((id) => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = id;
+      checkbox.checked = true;
+      label.append(checkbox, document.createTextNode(utils.getEntityDisplayName(state.STATES[id])));
+      roomEntities.appendChild(label);
+    });
+  };
   const input = modal.querySelector('#add-page-name');
   const saveBtn = modal.querySelector('#add-page-save-btn');
   const cancelBtn = modal.querySelector('#add-page-cancel-btn');
   const closeBtn = modal.querySelector('.close-btn');
 
-  if (input) input.focus();
-
   let submissionInFlight = false;
   const setSubmissionInFlight = (inFlight) => {
     submissionInFlight = inFlight;
-    [input, saveBtn, cancelBtn, closeBtn, ...modal.querySelectorAll('.qa-add-chip')].forEach(
-      (control) => {
-        if (control) control.disabled = inFlight;
-      }
-    );
+    [...modal.querySelectorAll('input, select, button')].forEach((control) => {
+      if (control) control.disabled = inFlight;
+    });
   };
+  // The tab bar can re-render while this dialog is open, detaching the launcher the focus trap
+  // remembered. Fall back to the current Add page control so keyboard focus is not dropped.
+  const restoreLauncherFocus = () => {
+    setTimeout(() => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      document.querySelector('.qa-tab-add')?.focus();
+    }, 0);
+  };
+  const closeOptions = { remove: true, releaseFocus: true, onClosed: restoreLauncherFocus };
   const close = () => {
-    if (!submissionInFlight) void uiUtils.closeModal(modal, { remove: true });
+    if (!submissionInFlight) void uiUtils.closeModal(modal, closeOptions);
   };
   const submit = async () => {
     if (submissionInFlight) return;
@@ -834,9 +937,13 @@ function showAddPageModal() {
       return;
     }
     setSubmissionInFlight(true);
-    const result = await createQuickAccessPage(name);
+    const selectedIds = Array.from(
+      roomEntities.querySelectorAll('input:checked'),
+      (checkbox) => checkbox.value
+    );
+    const result = await createQuickAccessPage(name, selectedIds);
     if (result.success) {
-      void uiUtils.closeModal(modal, { remove: true });
+      void uiUtils.closeModal(modal, closeOptions);
       return;
     }
     if (modal.isConnected) {
@@ -870,9 +977,31 @@ function showAddPageModal() {
     });
   }
 
+  modal.setAttribute('aria-label', t('Add Page'));
+  uiUtils.trapFocus(modal);
+  // The trap lands on the first control (the close button); the page name is where typing starts.
+  setTimeout(() => {
+    if (modal.isConnected && !submissionInFlight) input?.focus();
+  }, 0);
+  modal.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    }
+  });
   modal.onclick = (event) => {
     if (event.target === modal) close();
   };
+  if (websocket.isConnected?.()) void loadRooms.onclick();
+}
+
+async function restoreDashboard(layout) {
+  if (quickAccessPendingWriteCount)
+    throw new Error(t('Wait for the current dashboard save to finish.'));
+  const next = normalizeQuickAccessConfig({ ...state.CONFIG, ...dashboardSnapshot(layout) });
+  await persistAuthoritativeConfig(next);
+  renderQuickAccessConfigState();
 }
 
 function getQuickAccessTiles() {
@@ -2800,18 +2929,37 @@ function mountSensorTileChart(tile, entity) {
   });
 }
 
-function renderSensorDetailSparkline(container, series) {
-  if (!container) return;
-  container.textContent = '';
-  const svg = createSensorSparklineSvg(series, {
+function renderSensorDetailSparkline(container, series, timeDomain) {
+  container.replaceChildren();
+  const stats = summarizeHistory(series);
+  container.hidden = !stats;
+  if (!stats) return;
+  const padding = Math.max((stats.max - stats.min) * 0.05, Math.abs(stats.max) * 0.01, 0.01);
+  const points = buildTimeSeriesPoints(series, {
+    timeDomain,
+    valueDomain: { min: stats.min - padding, max: stats.max + padding },
     width: SENSOR_DETAIL_SPARKLINE_WIDTH,
     height: SENSOR_DETAIL_SPARKLINE_HEIGHT,
-    className: 'sensor-detail-sparkline-svg',
   });
-  container.hidden = !svg;
-  if (svg) {
-    container.appendChild(svg);
+  const svg = createSvgElement('svg', {
+    class: 'sensor-detail-sparkline-svg',
+    viewBox: `0 0 ${SENSOR_DETAIL_SPARKLINE_WIDTH} ${SENSOR_DETAIL_SPARKLINE_HEIGHT}`,
+    preserveAspectRatio: 'none',
+    'aria-hidden': 'true',
+  });
+  svg.append(
+    createSvgElement('polyline', {
+      points,
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2',
+    })
+  );
+  if (series.length === 1) {
+    const [cx, cy] = points.split(',');
+    svg.append(createSvgElement('circle', { cx, cy, r: '3', fill: 'currentColor' }));
   }
+  container.append(svg);
 }
 
 // ---------------------------------------------------------------------------
@@ -7327,6 +7475,23 @@ function renderCalendarTileStateMarkup(entity) {
 }
 
 // --- Quick Controls ---
+function prefetchQuickAccessSensorHistory(entityIds) {
+  const chartIds = entityIds.filter((entityId) => {
+    if (isComparisonGraphId(entityId)) return false;
+    const entity = state.STATES[utils.resolveEntityId(entityId, state.STATES) || entityId];
+    return (
+      !!entity &&
+      isFiniteNumericSensorState(entity) &&
+      getQuickAccessTileChartType(entity.entity_id) !== 'none'
+    );
+  });
+  if (chartIds.length) {
+    fetchSensorHistoryBatch(chartIds).catch(() => {
+      /* Each tile reports its own failure when it reads the cache. */
+    });
+  }
+}
+
 function renderQuickControls() {
   try {
     const container = document.getElementById('quick-controls');
@@ -7339,6 +7504,9 @@ function renderQuickControls() {
     renderQuickAccessTabs(config);
 
     const favorites = getActiveQuickAccessEntityIds();
+    // One recorder request for every chart on the page. The per-tile fetches issued while the
+    // tiles mount then join this in-flight request instead of each sending their own.
+    prefetchQuickAccessSensorHistory(favorites);
     const desiredNodes = [];
     const existingNodesById = new Map();
     container.querySelectorAll('.control-item[data-entity-id]').forEach((node) => {
@@ -8644,19 +8812,13 @@ function showSensorDetails(entity) {
       summary.appendChild(readout);
       body.appendChild(summary);
 
-      const sparklineFrame = document.createElement('div');
-      sparklineFrame.className = 'sensor-detail-sparkline';
-      sparklineFrame.hidden = true;
-      const cachedHistory = sensorHistoryCache.get(entity.entity_id);
-      if (cachedHistory?.series?.length) {
-        renderSensorDetailSparkline(sparklineFrame, cachedHistory.series);
-      }
-      body.appendChild(sparklineFrame);
-
-      fetchSensorHistory(entity.entity_id).then((series) => {
-        if (modal.isConnected) {
-          renderSensorDetailSparkline(sparklineFrame, series);
-        }
+      mountSensorHistoryDetail({
+        body,
+        modal,
+        entity,
+        websocket,
+        normalize: normalizeSensorHistoryResponse,
+        render: renderSensorDetailSparkline,
       });
       return;
     }
@@ -12470,6 +12632,7 @@ function removeEscapeKeyListener() {
 }
 
 export {
+  restoreDashboard,
   renderActiveTab,
   updateEntityInUI,
   getQuickAccessTileChartType,

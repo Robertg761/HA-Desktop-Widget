@@ -109,6 +109,7 @@ const mockHotkeys = {
 };
 
 const mockUI = {
+  restoreDashboard: jest.fn(),
   updateMediaTile: jest.fn(),
   renderPrimaryCards: jest.fn(),
   renderActiveTab: jest.fn(),
@@ -1707,6 +1708,27 @@ describe('Settings + Config Integration', () => {
       expect(preview.textContent).toBe('💡');
     });
 
+    test('saving Settings preserves icons restored from dashboard history', async () => {
+      const { rememberDashboard } = require('../../src/dashboard-history.js');
+      const { showDashboardHistory } = require('../../src/dashboard-tools.js');
+      localStorage.clear();
+      state.CONFIG.customEntityIcons = { 'light.living_room': '🔥' };
+      const restoredIcons = { 'light.living_room': '⭐' };
+      rememberDashboard({ ...state.CONFIG, customEntityIcons: restoredIcons }, state.CONFIG);
+      await openSettingsWithCustomIconsExpanded();
+      mockUI.restoreDashboard.mockImplementationOnce(async (layout) => {
+        state.setConfig({ ...state.CONFIG, ...layout });
+      });
+      showDashboardHistory();
+      await document.querySelector('.dashboard-restore-entry').onclick();
+      expect(document.querySelector('[data-custom-icon-input="light.living_room"]').value).toBe(
+        '⭐'
+      );
+      await settings.saveSettings();
+      expect(state.CONFIG.customEntityIcons).toEqual(restoredIcons);
+      localStorage.clear();
+    });
+
     test('should persist custom entity icons on main Save and re-render active tab', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded({
@@ -2760,6 +2782,81 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
       );
+    });
+  });
+
+  describe('Alert Config Dialog', () => {
+    beforeEach(() => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="alert-config-modal" class="modal hidden" style="display: none">
+          <div class="modal-content">
+            <div class="modal-header"><h2 id="alert-config-title">Configure Alert</h2></div>
+            <div class="modal-body">
+              <div class="form-group">
+                <div class="alert-type-options">
+                  <input type="radio" name="alert-type" value="state-change" checked />
+                  <input type="radio" name="alert-type" value="specific-state" />
+                </div>
+              </div>
+              <div class="form-group" id="specific-state-group" style="display: none">
+                <input type="text" id="target-state-input" />
+              </div>
+            </div>
+          </div>
+        </div>`
+      );
+      mockUiUtils.showToast.mockClear();
+      mockElectronAPI.updateConfig.mockClear();
+    });
+
+    test('renders the alert type label as text, never as markup', () => {
+      document.body.insertAdjacentHTML('beforeend', '<div id="inline-alerts-list"></div>');
+      state.CONFIG.entityAlerts = {
+        enabled: true,
+        alerts: {
+          'light.living_room': {
+            onSpecificState: true,
+            targetState: '<img src=x onerror="window.pwned = true">',
+          },
+        },
+      };
+      settings.renderAlertsListInline();
+      const label = document.querySelector('#inline-alerts-list .alert-type');
+      expect(label.textContent).toContain('<img src=x onerror="window.pwned = true">');
+      expect(document.querySelector('#inline-alerts-list img')).toBeNull();
+      document.getElementById('inline-alerts-list').remove();
+    });
+
+    test('quiet hour times follow the quiet hours toggle', () => {
+      settings.openAlertConfigModal('sensor.office_temperature');
+
+      const toggle = document.getElementById('alert-quiet-enabled');
+      const start = document.getElementById('alert-quiet-start');
+      const end = document.getElementById('alert-quiet-end');
+      expect(toggle.checked).toBe(false);
+      expect(start.disabled).toBe(true);
+      expect(end.disabled).toBe(true);
+
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      expect(start.disabled).toBe(false);
+      expect(end.disabled).toBe(false);
+    });
+
+    test('rejects out-of-range durations with a toast instead of a native bubble', async () => {
+      settings.openAlertConfigModal('sensor.office_temperature');
+      const duration = document.getElementById('alert-duration');
+      duration.value = '90000';
+
+      await settings.saveAlert();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Enter a whole number of seconds from 0 to 86400.',
+        'error'
+      );
+      expect(document.activeElement).toBe(duration);
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
     });
   });
 });

@@ -335,6 +335,34 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes Undo when a config broadcast switches Home Assistant servers', async () => {
+    localStorage.clear();
+    try {
+      await loadRenderer({
+        config: oauthConfig('http://server-a:8123'),
+        bodyHtml:
+          '<main class="widget-content"><button id="undo-dashboard-btn" disabled>Undo</button></main>',
+      });
+      const { rememberDashboard } = require('../../src/dashboard-history.js');
+      const nextConfig = oauthConfig('http://server-b:8123');
+      nextConfig.customTabs = [{ id: 'one', name: 'One', entityIds: [] }];
+      rememberDashboard(nextConfig, {
+        ...nextConfig,
+        customTabs: [{ id: 'two', name: 'Two', entityIds: [] }],
+      });
+      const undo = document.getElementById('undo-dashboard-btn');
+      expect(undo.disabled).toBe(true);
+      triggerMockEvent('configUpdated', nextConfig);
+      await flushAsync();
+      expect(undo.disabled).toBe(false);
+      triggerMockEvent('configUpdated', oauthConfig('http://server-a:8123'));
+      await flushAsync();
+      expect(undo.disabled).toBe(true);
+    } finally {
+      localStorage.clear();
+    }
+  });
+
   it('starts the runtime once when OAuth completion also broadcasts config-updated', async () => {
     await loadRenderer();
     mockElectronAPI.startHomeAssistantOAuth.mockImplementationOnce(async () => {

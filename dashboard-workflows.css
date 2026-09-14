@@ -1,0 +1,343 @@
+/* Shared spacing and controls for the dashboard workflows. */
+.dashboard-tools-modal .modal-content,
+.add-page-modal .modal-content {
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+}
+
+.dashboard-tools-modal .modal-body,
+.add-page-modal .modal-body {
+  min-height: 0;
+  padding: 20px;
+}
+
+.workflow-description {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+}
+
+.workflow-empty {
+  margin: 0;
+  padding: 28px 20px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  text-align: center;
+  background: var(--glass-surface);
+}
+
+.room-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 10px;
+  padding-block-start: 18px;
+  border-top: 1px solid var(--border-color);
+  margin-block: 18px 0;
+}
+
+.room-dashboard > label,
+.room-dashboard > p,
+.room-entity-list {
+  grid-column: 1 / -1;
+}
+
+.room-dashboard > label {
+  margin: 0;
+}
+
+.room-dashboard > p {
+  margin: 2px 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.room-dashboard > p:empty,
+.room-entity-list:empty {
+  display: none;
+}
+
+/* Rooms load automatically; the button only stays for retries. `.btn` sets its own display,
+   so the hidden attribute needs an explicit rule and the select takes the freed column. */
+.room-dashboard .btn[hidden] {
+  display: none;
+}
+
+.room-dashboard:has(.btn[hidden]) > select {
+  grid-column: 1 / -1;
+}
+
+.room-entity-list {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--glass-surface);
+}
+
+.room-entity-list label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin: 0;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.room-entity-list label + label {
+  border-top: 1px solid var(--border-color);
+}
+
+.room-entity-list label:hover,
+.room-entity-list label:has(input:checked) {
+  background: var(--accent-bg);
+}
+
+/* styles.css turns every checkbox inside a .form-group into a toggle switch. A pick list of
+   entities reads better as plain checkboxes, so these selectors outrank that rule. */
+.room-dashboard .room-entity-list label:has(input[type='checkbox']) {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-normal);
+}
+
+.room-dashboard .room-entity-list input[type='checkbox'] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  accent-color: var(--accent);
+}
+
+.room-dashboard .room-entity-list input[type='checkbox']::after {
+  content: none;
+}
+
+.dashboard-restore-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 16px;
+  width: 100%;
+  padding: 14px 16px;
+  margin: 0;
+  border-radius: var(--radius-md);
+  white-space: normal;
+  text-align: start;
+}
+
+.dashboard-restore-entry + .dashboard-restore-entry {
+  margin-top: 10px;
+}
+
+/* List rows should not lift like standalone buttons. */
+.dashboard-restore-entry:hover {
+  transform: none;
+}
+
+.dashboard-restore-date {
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.dashboard-restore-pages {
+  grid-column: 1;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-restore-arrow {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  display: flex;
+  color: var(--accent);
+}
+
+.diagnostics-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  background: var(--glass-surface);
+}
+
+.diagnostics-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.diagnostics-status[data-connected='true']::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-bg);
+}
+
+.diagnostics-report {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 14px;
+  margin: 0;
+  color: var(--text-secondary);
+  background: var(--glass-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.sensor-history-controls {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+  margin-block: 4px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--glass-surface);
+}
+
+.sensor-history-controls label {
+  flex: 1;
+  min-width: 0;
+}
+
+.sensor-history-summary {
+  color: var(--text-secondary);
+  margin-block: 12px;
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the previous chart in place while a new period loads so the dialog does not collapse
+   and re-centre on every request. */
+.sensor-detail-sparkline.is-loading {
+  opacity: 0.35;
+  transition: opacity var(--transition-base);
+}
+
+.alert-advanced-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.alert-advanced-options label,
+.sensor-history-controls label {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.alert-advanced-options label:has(#alert-condition),
+.alert-advanced-options label:has(#alert-threshold),
+.alert-advanced-options > .form-group,
+.alert-advanced-options .workflow-checkbox {
+  grid-column: 1 / -1;
+}
+
+.alert-advanced-options .workflow-checkbox {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+/* The toggle switch from styles.css carries a trailing margin meant for leading checkboxes. */
+.alert-advanced-options .workflow-checkbox input[type='checkbox'] {
+  margin: 0;
+}
+
+.alert-advanced-options label[hidden] {
+  display: none;
+}
+
+.alert-advanced-options label:has(input:disabled) {
+  opacity: 0.55;
+}
+
+body:not(.theme-light) .alert-advanced-options input[type='time'] {
+  color-scheme: dark;
+}
+
+.sensor-history-controls select,
+.alert-advanced-options .form-control {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 12px;
+  color: var(--text-primary);
+  background: var(--glass-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font: inherit;
+}
+
+.sensor-history-controls .btn {
+  min-height: 40px;
+}
+
+.dashboard-tools-modal :focus-visible,
+.room-dashboard :focus-visible,
+.sensor-history-controls :focus-visible,
+.alert-advanced-options :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 380px) {
+  .dashboard-tools-modal .modal-body,
+  .add-page-modal .modal-body {
+    padding: 16px;
+  }
+
+  .alert-advanced-options,
+  .room-dashboard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sensor-history-controls {
+    flex-wrap: wrap;
+  }
+}
+
+.add-page-modal .qa-add-chip {
+  min-height: 32px;
+}
+
+/* Primary action on the right, matching the other dialogs, without reordering the markup. */
+.add-page-modal .modal-footer {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}

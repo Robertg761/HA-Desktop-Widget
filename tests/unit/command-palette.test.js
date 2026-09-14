@@ -4,6 +4,7 @@ jest.mock('../../src/ui.js', () => ({
 }));
 
 const {
+  buildPaletteCommands,
   openCommandPalette,
   rankCommandPaletteEntities,
   scoreCommandPaletteMatch,
@@ -12,6 +13,36 @@ const state = require('../../src/state.js').default;
 const { openEntityDetailModal } = require('../../src/ui.js');
 
 describe('command palette fuzzy scoring', () => {
+  it('offers explicit supported actions and page commands, omitting unavailable devices', () => {
+    const commands = buildPaletteCommands(
+      [
+        { entity_id: 'light.office', state: 'on', attributes: { friendly_name: 'Office lights' } },
+        { entity_id: 'light.hall', state: 'off', attributes: { friendly_name: 'Hall lights' } },
+        { entity_id: 'fan.attic', state: 'auto', attributes: { friendly_name: 'Attic fan' } },
+        { entity_id: 'scene.bedtime', state: 'ready', attributes: { friendly_name: 'Bedtime' } },
+        { entity_id: 'light.offline', state: 'unavailable', attributes: {} },
+        { entity_id: 'switch.unsupported', state: 'off', attributes: {} },
+      ],
+      { customTabs: [{ id: 'office', name: 'Office' }] },
+      {
+        light: { turn_on: {}, turn_off: {} },
+        fan: { turn_on: {}, turn_off: {} },
+        scene: { turn_on: {} },
+      }
+    );
+    // Devices only get the action that changes their state; unknown states get both.
+    expect(commands.map((command) => command.key)).toEqual([
+      'light.office:turn_off',
+      'light.hall:turn_on',
+      'fan.attic:turn_on',
+      'fan.attic:turn_off',
+      'scene.bedtime:turn_on',
+      'page:office',
+    ]);
+    expect(commands[0].displayName).toBe('Turn off Office lights');
+    expect(commands[1].displayName).toBe('Turn on Hall lights');
+    expect(commands[4].displayName).toBe('Run Bedtime');
+  });
   it('scores exact, prefix, substring, and subsequence matches in descending tiers', () => {
     const exact = scoreCommandPaletteMatch('Kitchen Light', 'Kitchen Light');
     const prefix = scoreCommandPaletteMatch('Kitchen Light', 'Kitchen');

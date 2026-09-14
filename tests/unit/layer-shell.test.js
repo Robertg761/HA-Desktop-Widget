@@ -121,6 +121,14 @@ describe('shouldRelaunchIntoLayerShell', () => {
     exists: () => true,
   };
 
+  test('keeps development windows separate even when layer-shell is forced on', () => {
+    for (const env of [base.env, { ...base.env, HA_WIDGET_LAYER_SHELL: '1' }]) {
+      expect(shouldRelaunchIntoLayerShell({ ...base, env, argv: ['electron', '.', '--dev'] })).toBe(
+        false
+      );
+    }
+  });
+
   test('relaunches on a tiling Wayland compositor', () => {
     expect(shouldRelaunchIntoLayerShell(base)).toBe(true);
   });

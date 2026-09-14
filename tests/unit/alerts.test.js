@@ -85,6 +85,138 @@ describe('alerts module', () => {
   const alerts = require('../../src/alerts.js');
   const showToast = require('../../src/ui-utils.js').showToast;
 
+  beforeEach(() => alerts.resetEntityAlerts());
+
+  describe('configuration refresh during alerts', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockState.CONFIG = {
+        homeAssistant: { url: 'http://first-server', token: 'token' },
+        entityAlerts: {
+          enabled: true,
+          alerts: {
+            'sensor.temperature': {
+              onNumericThreshold: true,
+              threshold: 25,
+              durationSeconds: 10,
+              cooldownSeconds: 60,
+            },
+          },
+        },
+      };
+      mockState.STATES = { 'sensor.temperature': { entity_id: 'sensor.temperature', state: '24' } };
+      alerts.initializeEntityAlerts();
+    });
+    afterEach(() => {
+      alerts.resetEntityAlerts();
+      jest.useRealTimers();
+    });
+    const reading = (value) => {
+      mockState.STATES['sensor.temperature'].state = value;
+      alerts.checkEntityAlerts('sensor.temperature', value);
+    };
+
+    it('preserves a sustained alert across unrelated saves and changes to other rules', () => {
+      reading('26');
+      jest.advanceTimersByTime(9000);
+      mockState.CONFIG.activeTabId = 'another-page';
+      mockState.CONFIG.entityAlerts.alerts['light.other'] = { onStateChange: true };
+      alerts.initializeEntityAlerts();
+      jest.advanceTimersByTime(1000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves cooldown and duplicate suppression across config refreshes', () => {
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      alerts.initializeEntityAlerts();
+      reading('27');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+      reading('24');
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(60000);
+      reading('24');
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps cooldowns and notified conditions across reconnects to the same server', () => {
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        alerts.suspendEntityAlerts();
+        alerts.initializeEntityAlerts();
+        reading('27');
+        jest.advanceTimersByTime(10000);
+      }
+      expect(showToast).toHaveBeenCalledTimes(1);
+      alerts.suspendEntityAlerts();
+      alerts.initializeEntityAlerts();
+      reading('24');
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(60000);
+      reading('24');
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-arms an interrupted duration timer from the reconnect snapshot', () => {
+      reading('26');
+      jest.advanceTimersByTime(5000);
+      alerts.suspendEntityAlerts();
+      jest.advanceTimersByTime(60000);
+      expect(showToast).not.toHaveBeenCalled();
+      // The snapshot still reads 26 and no state_changed event follows.
+      alerts.initializeEntityAlerts();
+      jest.advanceTimersByTime(9000);
+      expect(showToast).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not re-arm when the reconnect snapshot no longer matches', () => {
+      reading('26');
+      jest.advanceTimersByTime(5000);
+      alerts.suspendEntityAlerts();
+      mockState.STATES['sensor.temperature'].state = '24';
+      alerts.initializeEntityAlerts();
+      jest.advanceTimersByTime(20000);
+      expect(showToast).not.toHaveBeenCalled();
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['rule', 'disabled', 'server', 'disconnect'])(
+      'cancels pending alerts on %s changes',
+      (change) => {
+        reading('26');
+        jest.advanceTimersByTime(9000);
+        if (change === 'rule')
+          mockState.CONFIG.entityAlerts.alerts['sensor.temperature'].threshold = 30;
+        if (change === 'disabled') mockState.CONFIG.entityAlerts.enabled = false;
+        if (change === 'server') mockState.CONFIG.homeAssistant.url = 'http://second-server';
+        if (change === 'disconnect') alerts.suspendEntityAlerts();
+        else alerts.initializeEntityAlerts();
+        jest.advanceTimersByTime(1000);
+        expect(showToast).not.toHaveBeenCalled();
+        if (change === 'rule') {
+          reading('31');
+          jest.advanceTimersByTime(10000);
+          expect(showToast).toHaveBeenCalledTimes(1);
+        }
+      }
+    );
+  });
+
   describe('initializeEntityAlerts', () => {
     it('should load alert configuration from state.CONFIG', () => {
       mockState.CONFIG = getMockConfig();
@@ -241,7 +373,7 @@ describe('alerts module', () => {
         expect(global.Notification.lastNotification).toBeNull();
       });
 
-      it('should trigger alert every time target state is reached', () => {
+      it('suppresses repeated matching updates and alerts when the target is reached again', () => {
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
           onSpecificState: true,
           targetState: 'on',
@@ -254,7 +386,10 @@ describe('alerts module', () => {
 
         jest.clearAllMocks();
 
-        // Second trigger (should still alert)
+        // Attribute-only updates must not repeat a notification.
+        alerts.checkEntityAlerts('light.living_room', 'on');
+        expect(showToast).not.toHaveBeenCalled();
+        alerts.checkEntityAlerts('light.living_room', 'off');
         alerts.checkEntityAlerts('light.living_room', 'on');
         expect(showToast).toHaveBeenCalledTimes(1);
       });
