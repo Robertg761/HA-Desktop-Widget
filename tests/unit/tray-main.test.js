@@ -20,12 +20,16 @@ function loadTrayRuntime(platform) {
       isVisible: () => true,
       webContents: { send: jest.fn(), setBackgroundThrottling: jest.fn() },
     },
+    windowAutoHide: {
+      consumeTrayDismissal: jest.fn(() => false),
+      suspend: jest.fn(() => jest.fn()),
+    },
     hideMainWindowToTray: jest.fn(),
     showMainWindowFromTray: jest.fn(),
     mainT: (key) => key,
     resolveTrayIcon: () => 'app-icon',
     nativeImage: { createEmpty: createImage },
-    Menu: { buildFromTemplate: (items) => items },
+    Menu: { buildFromTemplate: (items) => Object.assign(items, { on: jest.fn() }) },
     log: { debug: jest.fn(), warn: jest.fn() },
     Tray: function (image) {
       this.initialImage = image;
@@ -37,6 +41,9 @@ function loadTrayRuntime(platform) {
       this.destroy = jest.fn();
     },
   };
+  const menuStart = mainSource.indexOf('function protectAutoHideDuringMenu');
+  const menuEnd = mainSource.indexOf('function buildTrayContextMenu', menuStart);
+  vm.runInNewContext(mainSource.slice(menuStart, menuEnd), context);
   const start = mainSource.indexOf('function getTrayEntityDisplayName');
   const end = mainSource.indexOf('async function setTrayEntityInternal', start);
   vm.runInNewContext(mainSource.slice(start, end), context);
@@ -60,6 +67,26 @@ describe('native tray integration', () => {
       expect(runtime.trayEntityIcons.size).toBe(0);
     }
   );
+
+  it('honors an explicit Show/Hide menu action immediately after auto-hide', () => {
+    const runtime = loadTrayRuntime('linux');
+    runtime.mainWindow.isVisible = () => false;
+    runtime.windowAutoHide.consumeTrayDismissal.mockReturnValue(true);
+    const menu = runtime.buildTrayEntityContextMenu('sensor.office');
+    menu.find((item) => item.label === 'Show/Hide').click();
+    expect(runtime.showMainWindowFromTray).toHaveBeenCalledTimes(1);
+  });
+
+  it('still consumes the direct tray click that caused a recent auto-hide', () => {
+    const runtime = loadTrayRuntime('linux');
+    runtime.mainWindow.isVisible = () => false;
+    runtime.windowAutoHide.consumeTrayDismissal.mockReturnValue(true);
+    const icon = runtime.createTrayEntityIcon('sensor.office');
+    const bounds = { x: 0, y: 0, width: 24, height: 24 };
+    icon.on.mock.calls.find(([event]) => event === 'click')[1]({}, bounds);
+    expect(runtime.windowAutoHide.consumeTrayDismissal).toHaveBeenCalledWith(bounds);
+    expect(runtime.showMainWindowFromTray).not.toHaveBeenCalled();
+  });
 
   it('keeps saved beta preferences dormant in stable builds', () => {
     const runtime = loadTrayRuntime('linux');

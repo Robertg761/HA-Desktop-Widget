@@ -317,6 +317,7 @@ const {
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
+const { createWindowAutoHideController } = require('./src/window-auto-hide.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const {
@@ -762,9 +763,18 @@ function refreshLayerShellMonitors() {
       log.debug?.('Layer-shell monitor refresh failed:', error?.message || error);
     });
 }
+let appliedHideOnBlur = false;
+const windowAutoHide = createWindowAutoHideController({
+  getWindow: () => mainWindow,
+  isEnabled: () => appliedHideOnBlur && !isLayerShellChildProcess && !isQuitting,
+  isSuppressed: () => popupHotkeyPressed,
+  hideWindow: () => hideMainWindowToTray(),
+  getCursorPosition: () => electronScreen.getCursorScreenPoint(),
+});
 // Owns the window level, full-screen visibility, and saved position for every path that
 // pops the widget up, so a hotkey press lands above full-screen video instead of behind it.
 const popupWindowPresenter = createPopupWindowPresenter({
+  onWillShow: () => windowAutoHide.prepareToShow(),
   getConfig: () => config,
   getWorkAreas: () => electronScreen.getAllDisplays().map((display) => display.workArea),
   supportsWindowPositioning: !usesCompositorOwnedPlacement,
@@ -2511,6 +2521,9 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
 }
 
 function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
+  // Config mutations stage values before disk writes finish. Activate this
+  // preference only through the post-save path, including profile-sync pulls.
+  appliedHideOnBlur = nextConfig?.hideOnBlur === true;
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
@@ -3664,6 +3677,7 @@ function loadConfig(options = {}) {
     windowPosition: { x: 100, y: 100 },
     windowSize: { ...DEFAULT_WINDOW_SIZE },
     alwaysOnTop: true,
+    hideOnBlur: false,
     opacity: 0.95,
     frostedGlass: true,
     homeAssistant: {
@@ -5080,6 +5094,7 @@ function applyFrostedGlass(override) {
  */
 function createWindow() {
   log.info('Creating main window');
+  appliedHideOnBlur = config?.hideOnBlur === true;
   // Get the primary display's work area
   const primaryDisplay = electronScreen.getPrimaryDisplay();
   const { width: _width, height: _height } = primaryDisplay.workAreaSize;
@@ -5144,9 +5159,12 @@ function createWindow() {
   };
 
   mainWindow = new BrowserWindow(windowOptions);
+  windowAutoHide.watchDevTools();
   hardenRendererNavigation(mainWindow);
   forwardRendererConsole(mainWindow.webContents, 'renderer');
-  attachEditHandlers(mainWindow, Menu);
+  attachEditHandlers(mainWindow, Menu, process.platform, {
+    suspendAutoHide: () => windowAutoHide.suspend(),
+  });
 
   // Transparent windows use renderer CSS surface opacity; opaque fallback
   // windows use native BrowserWindow opacity so the desktop shows through.
@@ -5242,19 +5260,27 @@ function createWindow() {
   // Any hide (tray toggle, close to tray, minimize) ends a popup raise, so a later show
   // from the tray or menu does not inherit the above-full-screen z-order.
   mainWindow.on('hide', () => {
+    windowAutoHide.handleHidden();
     popupWindowPresenter.handleWindowHidden(mainWindow);
     notifyDesktopCompanionStateChanged();
   });
-  mainWindow.on('show', notifyDesktopCompanionStateChanged);
+  mainWindow.on('show', () => {
+    windowAutoHide.prepareToShow();
+    notifyDesktopCompanionStateChanged();
+  });
   mainWindow.on('blur', () => {
     popupWindowPresenter.handleWindowBlur(mainWindow);
+    windowAutoHide.handleBlur();
   });
 
   // Coming back to the widget is the moment a stale profile is most visible, and
   // the provider has usually finished replicating by then.
   mainWindow.on('focus', () => {
+    windowAutoHide.handleFocus();
     requestOpportunisticProfileSync('focus');
   });
+  // BrowserWindow may already be visible before these listeners are attached.
+  windowAutoHide.prepareToShow();
 
   // Open DevTools in development mode
   if (IS_DEV_MODE) {
@@ -5271,6 +5297,7 @@ function createWindow() {
 
   // Handle window closed (when quitting)
   mainWindow.on('closed', () => {
+    windowAutoHide.handleClosed();
     mainWindow = null;
   });
 }
@@ -5307,7 +5334,13 @@ function getTrayEntityDisplayName(entityId) {
   return typeof customName === 'string' && customName.trim() ? customName.trim() : entityId;
 }
 
-function toggleMainWindowFromTrayEntity() {
+function toggleMainWindowFromTrayEntity({ fromTrayClick = false, trayBounds } = {}) {
+  // A tray click may arrive after its focus transfer has already hidden us.
+  // Explicit menu commands always act on the current visibility.
+  const recentlyHidden = windowAutoHide.consumeTrayDismissal(
+    fromTrayClick ? trayBounds : undefined
+  );
+  if (fromTrayClick && recentlyHidden) return;
   if (mainWindow?.isVisible()) {
     hideMainWindowToTray();
   } else {
@@ -5316,7 +5349,7 @@ function toggleMainWindowFromTrayEntity() {
 }
 
 function buildTrayEntityContextMenu(entityId) {
-  return Menu.buildFromTemplate([
+  const menu = Menu.buildFromTemplate([
     { label: getTrayEntityDisplayName(entityId), enabled: false },
     { type: 'separator' },
     { label: mainT('Show/Hide'), click: () => toggleMainWindowFromTrayEntity() },
@@ -5335,6 +5368,7 @@ function buildTrayEntityContextMenu(entityId) {
       },
     },
   ]);
+  return protectAutoHideDuringMenu(menu);
 }
 
 // Each tray entity is its own Tray. The renderer draws the value label (it has the canvas and
@@ -5345,7 +5379,11 @@ function createTrayEntityIcon(entityId) {
   const trayIcon = new Tray(usesTitle ? nativeImage.createEmpty() : resolveTrayIcon());
   trayIcon.setToolTip(getTrayEntityDisplayName(entityId));
   if (usesTitle) trayIcon.setTitle('…');
-  if (!usesTitle) trayIcon.on('click', () => toggleMainWindowFromTrayEntity());
+  if (!usesTitle) {
+    trayIcon.on('click', (_event, trayBounds) =>
+      toggleMainWindowFromTrayEntity({ fromTrayClick: true, trayBounds })
+    );
+  }
   trayIcon.setContextMenu(buildTrayEntityContextMenu(entityId));
   return trayIcon;
 }
@@ -5475,17 +5513,26 @@ async function setTrayEntityInternal(entityId, enabled) {
   };
 }
 
+function protectAutoHideDuringMenu(menu) {
+  menu.items?.forEach((item) => {
+    if (item.submenu) protectAutoHideDuringMenu(item.submenu);
+  });
+  let resume = null;
+  menu.on('menu-will-show', () => {
+    if (!resume) resume = windowAutoHide.suspend();
+  });
+  menu.on('menu-will-close', () => {
+    resume?.();
+    resume = null;
+  });
+  return menu;
+}
+
 function buildTrayContextMenu() {
-  return Menu.buildFromTemplate([
+  const menu = Menu.buildFromTemplate([
     {
       label: mainT('Show/Hide'),
-      click: () => {
-        if (mainWindow?.isVisible()) {
-          hideMainWindowToTray();
-        } else {
-          showMainWindowFromTray();
-        }
-      },
+      click: () => toggleMainWindowFromTrayEntity(),
     },
     {
       label: mainT('Always on Top'),
@@ -5632,19 +5679,16 @@ function buildTrayContextMenu() {
       },
     },
   ]);
+  return protectAutoHideDuringMenu(menu);
 }
 
 function createTray() {
   log.info('Creating system tray icon');
   if (!tray || tray.isDestroyed?.()) {
     tray = new Tray(resolveTrayIcon());
-    tray.on('click', () => {
-      if (mainWindow?.isVisible()) {
-        hideMainWindowToTray();
-      } else {
-        showMainWindowFromTray();
-      }
-    });
+    tray.on('click', (_event, trayBounds) =>
+      toggleMainWindowFromTrayEntity({ fromTrayClick: true, trayBounds })
+    );
   }
 
   const contextMenu = buildTrayContextMenu();
@@ -6757,7 +6801,13 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
       : []),
   ]);
 
-  menu.popup({ window: senderWindow });
+  const resumeAutoHide = windowAutoHide.suspend();
+  try {
+    menu.popup({ window: senderWindow, callback: resumeAutoHide });
+  } catch (error) {
+    resumeAutoHide();
+    throw error;
+  }
   return { success: true, pinned: isPinned, supportProfile };
 });
 
@@ -6878,11 +6928,17 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider) => {
     providerToUse,
     profileSync.cloudFilePath
   );
-  const result = await dialog.showOpenDialog({
-    title: mainT('Choose Profile Sync Folder'),
-    defaultPath,
-    properties: ['openDirectory', 'createDirectory'],
-  });
+  const resumeAutoHide = windowAutoHide.suspend();
+  let result;
+  try {
+    result = await dialog.showOpenDialog({
+      title: mainT('Choose Profile Sync Folder'),
+      defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+  } finally {
+    resumeAutoHide();
+  }
 
   const folderPath = Array.isArray(result.filePaths) ? result.filePaths[0] : '';
   if (result.canceled || !folderPath) {
@@ -9181,6 +9237,7 @@ function registerPopupHotkey() {
             // always-on-top preference rather than a stale snapshot of it.
             popupWindowPresenter.releaseElevation(mainWindow);
             log.debug('Popup hotkey released - window state restored');
+            windowAutoHide.handleBlur();
           }
         }
       }
@@ -9700,6 +9757,7 @@ app
     }
 
     installApplicationMenu(Menu);
+    protectAutoHideDuringMenu(Menu.getApplicationMenu());
     installSessionPermissionPolicy(session.defaultSession, {
       rendererEntryPath: path.join(__dirname, 'index.html'),
       isTrustedWebContents: isTrustedAppWebContents,

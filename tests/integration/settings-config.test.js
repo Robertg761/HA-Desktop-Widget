@@ -224,6 +224,7 @@ function createSettingsModalDOM() {
 
       <label for="always-on-top">
         <input type="checkbox" id="always-on-top" />
+        <input type="checkbox" id="hide-on-blur" />
         Always on Top
       </label>
 
@@ -569,6 +570,23 @@ describe('Settings + Config Integration', () => {
 
       expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(modal);
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
+    });
+
+    test('hide on focus loss defaults off and persists both checkbox values', async () => {
+      await settings.openSettings();
+      const checkbox = document.getElementById('hide-on-blur');
+      expect(checkbox.checked).toBe(false);
+      checkbox.checked = true;
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ hideOnBlur: true })
+      );
+      expect(state.CONFIG.hideOnBlur).toBe(true);
+      await settings.openSettings();
+      expect(checkbox.checked).toBe(true);
+      checkbox.checked = false;
+      await settings.saveSettings();
+      expect(state.CONFIG.hideOnBlur).toBe(false);
     });
 
     test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {
@@ -1359,6 +1377,7 @@ describe('Settings + Config Integration', () => {
       const originalConfig = JSON.parse(JSON.stringify(state.CONFIG));
       document.getElementById('ha-url').value = 'https://new-ha.example.com';
       document.getElementById('always-on-top').checked = false;
+      document.getElementById('hide-on-blur').checked = true;
       document.getElementById('start-with-windows').checked = true;
       document.getElementById('profile-sync-enabled').checked = true;
       document.getElementById('profile-sync-folder-path').value = '';
@@ -1382,6 +1401,7 @@ describe('Settings + Config Integration', () => {
       const originalConfig = JSON.parse(JSON.stringify(state.CONFIG));
       document.getElementById('ha-url').value = 'https://new-ha.example.com';
       document.getElementById('always-on-top').checked = false;
+      document.getElementById('hide-on-blur').checked = true;
       document.getElementById('start-with-windows').checked = true;
       window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk unavailable'));
 

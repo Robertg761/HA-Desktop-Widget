@@ -86,4 +86,34 @@ describe('application edit menus', () => {
     expect(Menu.buildFromTemplate).toHaveBeenCalled();
     expect(popup).toHaveBeenCalledWith({ window: targetWindow });
   });
+  test.each([false, true])(
+    'resumes auto-hide after editable menu close or failure: %s',
+    (fails) => {
+      let handler;
+      const resume = jest.fn();
+      const suspendAutoHide = jest.fn(() => resume);
+      const popup = jest.fn(() => {
+        if (fails) throw new Error('menu failed');
+      });
+      const targetWindow = {
+        webContents: {
+          on: (event, callback) => {
+            if (event === 'context-menu') handler = callback;
+          },
+        },
+      };
+      attachEditHandlers(targetWindow, { buildFromTemplate: () => ({ popup }) }, 'linux', {
+        suspendAutoHide,
+      });
+      if (fails) {
+        expect(() => handler({}, { isEditable: true })).toThrow('menu failed');
+      } else {
+        handler({}, { isEditable: true });
+        expect(resume).not.toHaveBeenCalled();
+        popup.mock.calls[0][0].callback();
+      }
+      expect(suspendAutoHide).toHaveBeenCalledTimes(1);
+      expect(resume).toHaveBeenCalledTimes(1);
+    }
+  );
 });

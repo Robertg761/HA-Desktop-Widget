@@ -2,10 +2,12 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
+    "Hide to tray when focus is lost": "失去焦点时隐藏到系统托盘",
+    "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "点击其他窗口或切换应用时隐藏小组件。可通过系统托盘或弹出快捷键重新打开。桌面固定项目和 Linux 桌面图层模式保持可见。",
     "Settings": "设置",
     "General": "常规",
     "Personalization": "个性化",

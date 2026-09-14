@@ -3885,6 +3885,7 @@ async function openSettings(uiHooks) {
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
     const alwaysOnTop = document.getElementById('always-on-top');
+    const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
     const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
@@ -3914,6 +3915,7 @@ async function openSettings(uiHooks) {
     setSettingsConnectionTestBusy(false);
     populateWeatherEntitySelect();
     if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
+    if (hideOnBlur) hideOnBlur.checked = state.CONFIG.hideOnBlur === true;
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
@@ -4415,6 +4417,7 @@ async function saveSettings() {
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
     const alwaysOnTop = document.getElementById('always-on-top');
+    const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
@@ -4490,6 +4493,7 @@ async function saveSettings() {
       }
     }
     if (alwaysOnTop) nextConfig.alwaysOnTop = alwaysOnTop.checked;
+    if (hideOnBlur) nextConfig.hideOnBlur = hideOnBlur.checked;
     if (frostedGlass) nextConfig.frostedGlass = frostedGlass.checked;
     delete nextConfig.frostedGlassStrength;
     delete nextConfig.frostedGlassTint;

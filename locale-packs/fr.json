@@ -2,10 +2,12 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
+    "Hide to tray when focus is lost": "Masquer dans la zone de notification à la perte du focus",
+    "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "Cliquer sur une autre fenêtre ou changer d’application masque le widget. Rouvrez-le depuis la zone de notification ou avec son raccourci clavier. Les éléments épinglés au bureau et le mode de couche de bureau Linux restent visibles.",
     "Settings": "Paramètres",
     "General": "Général",
     "Personalization": "Personnalisation",

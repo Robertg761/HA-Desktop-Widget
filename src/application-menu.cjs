@@ -35,7 +35,7 @@ function installApplicationMenu(Menu, platform = runtimePlatform) {
   return menu;
 }
 
-function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform) {
+function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform, options = {}) {
   const webContents = targetWindow?.webContents;
   if (!webContents) return;
 
@@ -48,9 +48,17 @@ function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform) {
   webContents.on('context-menu', (event, params = {}) => {
     if (!params.isEditable) return;
     event?.preventDefault?.();
-    Menu.buildFromTemplate(createEditableContextMenuTemplate(params.editFlags)).popup({
-      window: targetWindow,
-    });
+    const menu = Menu.buildFromTemplate(createEditableContextMenuTemplate(params.editFlags));
+    const resumeAutoHide = options.suspendAutoHide?.();
+    try {
+      menu.popup({
+        window: targetWindow,
+        ...(resumeAutoHide ? { callback: resumeAutoHide } : {}),
+      });
+    } catch (error) {
+      resumeAutoHide?.();
+      throw error;
+    }
   });
 }
 

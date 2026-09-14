@@ -2,10 +2,12 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
+    "Hide to tray when focus is lost": "Ocultar en la bandeja al perder el foco",
+    "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "Al hacer clic en otra ventana o cambiar de aplicación, el widget se oculta. Puedes volver a abrirlo desde la bandeja o con el atajo del widget. Los elementos anclados al escritorio y el modo de capa de escritorio de Linux permanecen visibles.",
     "Settings": "Configuración",
     "General": "General",
     "Personalization": "Personalización",

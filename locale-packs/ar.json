@@ -2,10 +2,12 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
+    "Hide to tray when focus is lost": "إخفاء في علبة النظام عند فقدان التركيز",
+    "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "يُخفى عنصر الواجهة عند النقر على نافذة أخرى أو التبديل بين التطبيقات. أعد فتحه من علبة النظام أو باستخدام مفتاح اختصار النافذة المنبثقة. تظل العناصر المثبتة على سطح المكتب ووضع طبقة سطح المكتب في Linux ظاهرة.",
     "Settings": "الإعدادات",
     "General": "عام",
     "Personalization": "التخصيص",

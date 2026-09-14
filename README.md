@@ -217,6 +217,7 @@ power controls without a brightness slider.
 ### System Integration
 
 - **Minimize to Tray**: Click the minimize button to hide to system tray
+- **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” under General → Window & Behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
 - **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Settings**: Access via the Settings button or right-click the tray icon

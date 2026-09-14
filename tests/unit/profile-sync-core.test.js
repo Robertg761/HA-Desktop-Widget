@@ -54,6 +54,23 @@ describe('profile-sync-core', () => {
     expect(projected.primaryMediaPlayer).toBe('media_player.office');
   });
 
+  test('syncs hide-on-blur with window preferences and preserves it in older profiles', () => {
+    expect(projectSyncProfile({ hideOnBlur: true }).hideOnBlur).toBe(true);
+    expect(
+      projectSyncProfile(
+        { hideOnBlur: true },
+        {
+          preset: 'custom',
+          sections: { visualPersonalization: false },
+        }
+      ).hideOnBlur
+    ).toBeUndefined();
+    expect(mergeSyncedProfileIntoConfig({ hideOnBlur: true }, {}).hideOnBlur).toBe(true);
+    expect(
+      mergeSyncedProfileIntoConfig({ hideOnBlur: true }, { hideOnBlur: false }).hideOnBlur
+    ).toBe(false);
+  });
+
   test('should respect custom sync scope filtering', () => {
     const projected = projectSyncProfile(
       {

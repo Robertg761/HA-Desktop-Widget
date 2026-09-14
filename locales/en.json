@@ -1,4 +1,6 @@
 {
+  "Hide to tray when focus is lost": "Hide to tray when focus is lost",
+  "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.",
   "Settings": "Settings",
   "Settings sections": "Settings sections",
   "General": "General",

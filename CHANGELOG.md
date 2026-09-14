@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add an optional "Hide to tray when focus is lost" setting under General. It defaults off and preserves desktop pins, Linux desktop-layer visibility, and held popup hotkeys.
 - Create a Quick Access page from a Home Assistant room and select which entities to include.
 - Search explicit device actions, scenes, scripts, and page switches in the command palette, with recent successful commands shown first.
 - Configure numeric alert thresholds, sustained conditions, notification cooldowns, and local quiet hours. Repeated matching updates no longer generate duplicate alerts.

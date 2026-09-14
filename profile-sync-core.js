@@ -19,7 +19,7 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'activeTabId',
     'comparisonGraphs',
   ],
-  visualPersonalization: ['alwaysOnTop', 'opacity', 'frostedGlass', 'ui'],
+  visualPersonalization: ['alwaysOnTop', 'hideOnBlur', 'opacity', 'frostedGlass', 'ui'],
   automationAlerts: [
     'globalHotkeys',
     'entityAlerts',

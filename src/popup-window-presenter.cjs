@@ -43,6 +43,7 @@ function createPopupWindowPresenter(options = {}) {
   const {
     platform = process.platform,
     getConfig = () => ({}),
+    onWillShow = () => {},
     getWorkAreas = () => [],
     // Wayland gives clients no way to position their own toplevels: setBounds() updates
     // what getBounds() reports but never moves the window, so attempting a restore there
@@ -222,6 +223,7 @@ function createPopupWindowPresenter(options = {}) {
   function showAboveFullScreen(targetWindow, { keepElevated = true } = {}) {
     if (!isUsableWindow(targetWindow)) return false;
 
+    onWillShow(targetWindow);
     cancelPendingRaises();
     blurReleaseArmed = false;
     const intendedPosition = resolveIntendedPosition(targetWindow);

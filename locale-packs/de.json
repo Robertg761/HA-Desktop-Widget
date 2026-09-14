@@ -2,10 +2,12 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
+    "Hide to tray when focus is lost": "Bei Fokusverlust in den Infobereich ausblenden",
+    "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "Ein Klick auf ein anderes Fenster oder ein App-Wechsel blendet das Widget aus. Über den Infobereich oder den Popup-Hotkey lässt es sich wieder öffnen. Angeheftete Desktop-Kacheln und der Linux-Desktop-Layer-Modus bleiben sichtbar.",
     "Settings": "Einstellungen",
     "Settings sections": "Einstellungsbereiche",
     "General": "Allgemein",

@@ -2,10 +2,12 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
+    "Hide to tray when focus is lost": "फ़ोकस हटने पर सिस्टम ट्रे में छिपाएँ",
+    "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": "दूसरी विंडो पर क्लिक करने या ऐप बदलने पर विजेट छिप जाता है। इसे सिस्टम ट्रे या पॉपअप हॉटकी से फिर खोलें। डेस्कटॉप पर पिन किए गए आइटम और Linux डेस्कटॉप लेयर मोड दिखाई देते रहते हैं।",
     "Settings": "सेटिंग्स",
     "General": "सामान्य",
     "Personalization": "वैयक्तिकरण",
