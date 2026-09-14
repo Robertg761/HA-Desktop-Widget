@@ -165,12 +165,20 @@ test('an installed package supplies its desktop entry without user overrides', (
   const env = {
     APPIMAGE: path.join(root, 'app'),
     XDG_DATA_HOME: path.join(root, 'data'),
-    XDG_DATA_DIRS: path.join(root, 'system'),
+    // XDG lists use colons, so a Windows temporary drive path is not a valid fixture.
+    XDG_DATA_DIRS: '/system-one:/system-two',
   };
-  const entry = path.join(env.XDG_DATA_DIRS, 'applications', `${APP_ID}.desktop`);
-  fs.mkdirSync(path.dirname(entry), { recursive: true });
-  fs.writeFileSync(entry, 'package-owned');
-  expect(ensureAppImageDesktopEntry({ env })).toBe(false);
+  const entry = path.join('/system-two', 'applications', `${APP_ID}.desktop`);
+  const fsModule = {
+    existsSync: jest.fn((file) => file === entry),
+    mkdirSync: jest.fn(),
+    copyFileSync: jest.fn(),
+    writeFileSync: jest.fn(),
+  };
+  expect(ensureAppImageDesktopEntry({ env, fsModule })).toBe(false);
+  expect(fsModule.existsSync).toHaveBeenCalledWith(entry);
+  expect(fsModule.writeFileSync).not.toHaveBeenCalled();
+  expect(fsModule.copyFileSync).not.toHaveBeenCalled();
   expect(fs.existsSync(env.XDG_DATA_HOME)).toBe(false);
 });
 test('startup repair preserves a working installation and arguments on an obsolete one', () => {
@@ -187,7 +195,9 @@ test('startup repair preserves a working installation and arguments on an obsole
   expect(fs.readFileSync(file, 'utf8')).toBe(content);
   fs.unlinkSync(old);
   expect(syncLinuxAutostartExecutablePath(options).repaired).toBe(true);
-  expect(fs.readFileSync(file, 'utf8')).toBe(content.replace(old, options.executablePath));
+  expect(fs.readFileSync(file, 'utf8')).toBe(
+    content.replace(quoteDesktopExecArg(old), () => quoteDesktopExecArg(options.executablePath))
+  );
 });
 test('desktop Exec escapes field codes and rejects line injection', () => {
   expect(quoteDesktopExecArg('/tmp/100% app')).toBe('"/tmp/100%% app"');
