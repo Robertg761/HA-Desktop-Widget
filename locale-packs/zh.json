@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.17",
+  "version": "1.2.18",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -622,6 +622,17 @@
     "Wait for the current dashboard save to finish.": "Wait for the current dashboard save to finish.",
     "State Change": "State Change",
     "Specific State": "Specific State",
-    "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400."
+    "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400.",
+    "Hyprland shortcuts": "Hyprland 快捷键",
+    "Copy bindings": "复制快捷键配置",
+    "Refresh shortcut status": "刷新快捷键状态",
+    "Follow Omarchy theme": "跟随 Omarchy 主题",
+    "Hyprland bindings": "Hyprland 快捷键配置",
+    "Use the current Omarchy palette. Your custom colors are kept for when this is off.": "使用当前的 Omarchy 配色。关闭此选项后将恢复你的自定义颜色。",
+    "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.": "检查现有快捷键是否冲突后，将这些配置添加到 Hyprland 的 bindings.lua 文件中。保持小组件运行，然后按下快捷键进行测试。",
+    "Configuration format": "配置格式",
+    "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "选择你的 Hyprland 配置所用的格式，检查快捷键冲突后复制配置。",
+    "Lua (.lua)": "Lua (.lua)",
+    "Hyprlang (.conf)": "Hyprlang (.conf)"
   }
 }

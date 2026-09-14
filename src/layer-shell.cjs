@@ -469,68 +469,27 @@ function createLayerShellRaiser({
       }
     });
   return {
+    place: (title, position) => {
+      if (typeof title !== 'string' || /[\t\r\n]/.test(title) || title.length > 256) return;
+      if (![position?.x, position?.y].every((v) => Number.isInteger(v) && v >= 0 && v <= 32768))
+        return;
+      send(`place\t${title}\t${position.x}\t${position.y}`);
+    },
     raise: () => send('raise'),
     restore: () => send('restore'),
     listOutputs,
   };
 }
 
-/**
- * Disable the Hyprland animation nodes that move a layer surface. Dragging the
- * widget works by committing new layer-shell margins for every pointer step, and
- * the helper measures each step against where the surface actually is — when
- * Hyprland glides the surface toward each committed position instead of
- * applying it, the measurements lag the commits and the drag feedback loop
- * overshoots, badly enough to throw the widget across the screen. Hyprland
- * resolves a mapped layer surface's position animation through the `layersIn`
- * node (assigned at map time; `layers` only applies when `layersIn` is not set
- * explicitly, which distros like Omarchy do), so both nodes are disabled.
- * `layersOut` (the close animation) and the `fadeLayers*` alpha fades are left
- * alone; only slide/popin open animations of other layer surfaces are lost
- * session-wide. No per-surface rule covers geometry (`layerrule no_anim` only
- * affects open/close), so this is a global, best-effort tweak applied once per
- * child start and again after every config reload (watchHyprlandConfigReloads).
- * Both hyprctl syntaxes are issued because the classic config parser and the
- * Lua one each reject the other's command, and each ignores the other's
- * failure. Fire-and-forget: a missing or failing hyprctl must never break
- * startup — the drag just degrades on such setups.
- */
-const HYPRLAND_LAYER_MOVE_ANIMATION_NODES = Object.freeze(['layers', 'layersIn']);
-
-function disableHyprlandLayerMoveAnimation({
-  env = process.env,
-  execFile = require('child_process').execFile,
-  log = console,
-} = {}) {
-  if (!String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim()) return false;
-  if (isEnabledEnvFlag(env?.[LAYER_SHELL_KEEP_ANIMATIONS_ENV])) return false;
-  const attempts = HYPRLAND_LAYER_MOVE_ANIMATION_NODES.flatMap((node) => [
-    ['keyword', 'animation', `${node},0,1,default`],
-    ['eval', `hl.animation({ leaf = "${node}", enabled = false })`],
-  ]);
-  for (const args of attempts) {
-    try {
-      execFile('hyprctl', args, { timeout: 3000 }, (error, stdout, stderr) => {
-        const output = `${stdout || ''}${stderr || ''}`.trim();
-        if (error || (output && output !== 'ok')) {
-          log.debug?.(
-            `hyprctl ${args[0]} layer-animation tweak: ${output || error?.message || error}`
-          );
-        }
-      });
-    } catch (error) {
-      log.debug?.('hyprctl layer-animation tweak failed:', error?.message || error);
-    }
-  }
-  return true;
+// Kept as a no-op for callers of older builds. An application must never
+// change animation settings for other layer surfaces.
+function disableHyprlandLayerMoveAnimation() {
+  return false;
 }
 
 /**
- * Follow Hyprland's event socket and call `onReload` whenever the compositor
- * reports `configreloaded`. Hyprland re-applies every configured animation node on
- * a reload (any edit to hyprland.conf/.lua, nwg-displays rewriting monitors.lua,
- * an Omarchy theme change), which silently undoes the runtime
- * `disableHyprlandLayerMoveAnimation` tweak and brings back the drag feedback loop.
+ * Follow Hyprland's event socket and refresh placement after config reloads
+ * and monitor changes. Theme and monitor tools can both change usable geometry.
  * Reconnects with backoff when the socket drops; every failure is a debug log.
  * Returns `{ stop }`, or null when this is not a Hyprland session.
  */
@@ -581,9 +540,9 @@ function watchHyprlandConfigReloads({
       const lines = buffered.split('\n');
       buffered = lines.pop() || '';
       for (const line of lines) {
-        if (!line.startsWith('configreloaded>>')) continue;
+        if (!/^(configreloaded|monitoradded|monitoraddedv2|monitorremoved)>>/.test(line)) continue;
         try {
-          onReload('configreloaded');
+          onReload(line.split('>>')[0]);
         } catch (error) {
           log.debug?.('Hyprland config-reload handler failed:', error?.message || error);
         }
@@ -652,6 +611,8 @@ function buildLayerShellSpawnPlan({
   // Saved monitor choice (wl_output name) from config; '' lets the compositor
   // decide. The env override below wins over it, keeping the debugging knob.
   outputName = '',
+  // A caller that resolved hotplug fallback can pass the actual live output.
+  resolvedOutputName = '',
   // Where the helper persists the margins when the widget is dragged; '' skips
   // the flag (old helpers, or callers that do not want drag persistence).
   positionFilePath = '',
@@ -688,7 +649,9 @@ function buildLayerShellSpawnPlan({
     'ha-widget',
   ];
   const chosenOutput =
-    String(env?.[LAYER_SHELL_OUTPUT_ENV] || '').trim() || String(outputName || '').trim();
+    String(resolvedOutputName || '').trim() ||
+    String(env?.[LAYER_SHELL_OUTPUT_ENV] || '').trim() ||
+    String(outputName || '').trim();
   if (chosenOutput) helperArgs.push('--output-name', chosenOutput);
 
   // A dragged position overrides --margin inside the helper, so leave it out

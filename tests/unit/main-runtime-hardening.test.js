@@ -7,6 +7,7 @@ const stylesSource = fs.readFileSync(path.resolve(__dirname, '../../styles.css')
 describe('main-process wiring safeguards', () => {
   it.each([
     ['installed Linux app', 'linux', true, false, false, true],
+    ['isolated Linux profile', 'linux', true, false, false, false, true],
     ['development app', 'linux', false, true, false, false],
     ['unpackaged app', 'linux', false, false, false, false],
     ['packaged smoke test', 'linux', true, false, true, false],
@@ -14,7 +15,7 @@ describe('main-process wiring safeguards', () => {
     ['Windows app', 'win32', true, false, false, false],
   ])(
     'limits autostart maintenance for %s',
-    (_label, platform, isPackaged, dev, smoke, expected) => {
+    (_label, platform, isPackaged, dev, smoke, expected, isolated = false) => {
       const migrate = jest.fn(() => ({}));
       const repair = jest.fn(() => ({}));
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
@@ -25,6 +26,10 @@ describe('main-process wiring safeguards', () => {
         process: { platform, env: {} },
         app: { isPackaged, getName: () => 'widget' },
         IS_DEV_MODE: dev,
+        IS_ISOLATED_PROFILE: isolated,
+        ensureAppImageDesktopEntry: jest.fn(),
+        path,
+        __dirname,
         IS_SMOKE_TEST_MODE: smoke,
         pkg: {},
         getLinuxStartupExecutablePath: () => '/installed/widget',
@@ -269,7 +274,9 @@ describe('main-process wiring safeguards', () => {
     const handlerSource = mainSource.slice(handlerStart, handlerEnd);
 
     expect(handlerSource).toContain('await syncPortalShortcuts({ immediate: true })');
-    expect(handlerSource).toContain('registrationResult.success && !!portalBinding?.trigger');
+    expect(handlerSource).toContain(
+      'registrationResult.success && isPortalBindingRegistered(portalBinding)'
+    );
     expect(handlerSource).toContain(
       ': hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey)'
     );
@@ -735,7 +742,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain(
       "authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })"
     );
-    expect(mainSource).toContain('config: createDesktopPinRendererConfig(config)');
+    expect(mainSource).toContain('...createDesktopPinRendererConfig(config)');
     expect(mainSource).toContain('connection: createDesktopPinConnectionState(config');
     expect(mainSource).not.toContain(
       "authorizeIpcSender(event, 'get-config', { allowDesktopPin: true })"

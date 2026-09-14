@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.17",
+  "version": "1.2.18",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -622,6 +622,17 @@
     "Wait for the current dashboard save to finish.": "Wait for the current dashboard save to finish.",
     "State Change": "Zustandsänderung",
     "Specific State": "Bestimmter Zustand",
-    "Enter a whole number of seconds from 0 to 86400.": "Geben Sie eine ganze Sekundenzahl zwischen 0 und 86400 ein."
+    "Enter a whole number of seconds from 0 to 86400.": "Geben Sie eine ganze Sekundenzahl zwischen 0 und 86400 ein.",
+    "Hyprland shortcuts": "Hyprland-Tastenkürzel",
+    "Copy bindings": "Belegungen kopieren",
+    "Refresh shortcut status": "Status aktualisieren",
+    "Follow Omarchy theme": "Omarchy-Theme verwenden",
+    "Hyprland bindings": "Hyprland-Tastenbelegungen",
+    "Use the current Omarchy palette. Your custom colors are kept for when this is off.": "Die aktuelle Omarchy-Farbpalette verwenden. Eigene Farben bleiben für die Nutzung ohne diese Option erhalten.",
+    "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.": "Prüfe vorhandene Tastenbelegungen und füge diese Belegungen dann in deine Hyprland-Datei bindings.lua ein. Lass das Widget geöffnet und drücke das Tastenkürzel zum Testen.",
+    "Configuration format": "Konfigurationsformat",
+    "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "Wähle das Format deiner Hyprland-Konfiguration und kopiere die Belegungen, nachdem du mögliche Tastenkonflikte geprüft hast.",
+    "Lua (.lua)": "Lua (.lua)",
+    "Hyprlang (.conf)": "Hyprlang (.conf)"
   }
 }

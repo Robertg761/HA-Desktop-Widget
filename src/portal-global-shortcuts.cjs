@@ -26,7 +26,8 @@ const DBUS_INTERFACE = 'org.freedesktop.DBus';
 const PROPERTIES_INTERFACE = 'org.freedesktop.DBus.Properties';
 
 const PORTAL_SHORTCUTS_BACKEND = 'portal';
-const DEFAULT_PORTAL_APP_ID = 'ha_desktop_widget';
+const { APP_ID, isHyprland, hyprlandBinding } = require('./linux-desktop.cjs');
+const DEFAULT_PORTAL_APP_ID = APP_ID;
 const CREATE_SESSION_TIMEOUT_MS = 30000;
 // Binding may block on a compositor approval dialog the first time, so wait generously.
 const BIND_SHORTCUTS_TIMEOUT_MS = 300000;
@@ -301,7 +302,6 @@ function createPortalGlobalShortcutsController(options = {}) {
 
   async function ensureRegistryRegistration() {
     if (registryRegistered) return;
-    registryRegistered = true;
     try {
       await busCall({
         destination: PORTAL_BUS_NAME,
@@ -311,6 +311,7 @@ function createPortalGlobalShortcutsController(options = {}) {
         signature: 'sa{sv}',
         body: [appId, {}],
       });
+      registryRegistered = true;
       log.info?.(`Portal shortcuts: registered app id "${appId}" with host portal registry`);
     } catch (error) {
       // Non-fatal: the portal can still derive an app id from our systemd scope.
@@ -555,6 +556,16 @@ function createPortalGlobalShortcutsController(options = {}) {
       return {
         id: String(id),
         trigger: String(variantValue(properties?.trigger_description) || ''),
+        ...(isHyprland(env)
+          ? {
+              requiresCompositorBinding: true,
+              binding: hyprlandBinding(
+                shortcuts.find((shortcut) => shortcut.id === String(id))?.accelerator || '',
+                String(id),
+                appId
+              ),
+            }
+          : {}),
       };
     });
     sessionHandle = candidateSessionHandle;

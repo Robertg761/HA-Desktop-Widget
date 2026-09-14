@@ -1,3 +1,4 @@
+import { applyDesktopAppearance } from './desktop-appearance.js';
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -2922,6 +2923,9 @@ function setProfileSyncSettingsVisibility() {
 function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   if (!status || typeof status !== 'object') return;
   profileSyncStatusCache = status;
+  // Main can publish sync status while a reloaded renderer is still fetching config.
+  // Keep the status, but wait for configuration before rendering its controls.
+  if (!state.CONFIG) return;
 
   const statusEl = document.getElementById('profile-sync-status');
   const errorEl = document.getElementById('profile-sync-error');
@@ -3166,6 +3170,7 @@ async function runManualProfileSync(direction) {
       applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
       applyUiPreferences(state.CONFIG.ui || {});
       applyWindowEffects(state.CONFIG || {});
+      applyDesktopAppearance(state.CONFIG);
     }
 
     if (result?.status) {
@@ -3914,8 +3919,24 @@ async function openSettings(uiHooks) {
     setSettingsConnectionTestStatus('', '');
     setSettingsConnectionTestBusy(false);
     populateWeatherEntitySelect();
-    if (alwaysOnTop) alwaysOnTop.checked = state.CONFIG.alwaysOnTop !== false;
-    if (hideOnBlur) hideOnBlur.checked = state.CONFIG.hideOnBlur === true;
+    if (alwaysOnTop) {
+      alwaysOnTop.checked =
+        !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.alwaysOnTop !== false;
+      alwaysOnTop.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
+      alwaysOnTop.title = alwaysOnTop.disabled
+        ? 'Desktop layer mode keeps the widget behind normal windows.'
+        : '';
+    }
+    if (hideOnBlur) {
+      hideOnBlur.checked =
+        !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.hideOnBlur === true;
+      hideOnBlur.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
+    }
+    const followOmarchy = document.getElementById('follow-omarchy');
+    if (followOmarchy) {
+      followOmarchy.checked = !!state.CONFIG.ui?.followOmarchy;
+      followOmarchy.disabled = !state.CONFIG.desktopAppearance;
+    }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
@@ -3927,6 +3948,7 @@ async function openSettings(uiHooks) {
       try {
         const loginSettings = await window.electronAPI.getLoginItemSettings();
         startWithWindows.checked = loginSettings.openAtLogin || false;
+        startWithWindows.disabled = loginSettings.supported === false;
       } catch (error) {
         log.error('Failed to get login item settings:', error);
         startWithWindows.checked = false;
@@ -4492,8 +4514,8 @@ async function saveSettings() {
         nextConfig.selectedWeatherEntity = null;
       }
     }
-    if (alwaysOnTop) nextConfig.alwaysOnTop = alwaysOnTop.checked;
-    if (hideOnBlur) nextConfig.hideOnBlur = hideOnBlur.checked;
+    if (alwaysOnTop && !alwaysOnTop.disabled) nextConfig.alwaysOnTop = alwaysOnTop.checked;
+    if (hideOnBlur && !hideOnBlur.disabled) nextConfig.hideOnBlur = hideOnBlur.checked;
     if (frostedGlass) nextConfig.frostedGlass = frostedGlass.checked;
     delete nextConfig.frostedGlassStrength;
     delete nextConfig.frostedGlassTint;
@@ -4501,6 +4523,9 @@ async function saveSettings() {
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
     nextConfig.ui = nextConfig.ui || {};
+    const followOmarchy = document.getElementById('follow-omarchy');
+    if (followOmarchy && !followOmarchy.disabled)
+      nextConfig.ui.followOmarchy = followOmarchy.checked;
     const frostedGlassEnabled = !!nextConfig.frostedGlass;
     nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
       ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
@@ -4894,6 +4919,7 @@ async function saveSettings() {
     applyBackgroundTheme(state.CONFIG.ui?.background || getCurrentBackgroundTheme());
     applyUiPreferences(state.CONFIG.ui || {});
     applyWindowEffects(state.CONFIG || {});
+    applyDesktopAppearance(state.CONFIG);
 
     // Update UI to reflect the newly saved settings selection.
     if (settingsUiHooks?.renderActiveTab) {
@@ -5521,6 +5547,7 @@ async function initializePopupHotkey() {
     const modeLabel = document.getElementById('popup-hotkey-mode-label');
     const helpText = document.getElementById('popup-hotkey-help-text');
     const platformNotice = document.getElementById('popup-hotkey-platform-notice');
+    await refreshDesktopIntegration();
 
     if (!input || !setBtn || !clearBtn) return;
     const currentHotkey = state.CONFIG.popupHotkey || '';
@@ -5785,7 +5812,13 @@ async function initializePopupHotkey() {
             clearBtn.style.display = 'inline-block';
             state.CONFIG.popupHotkey = hotkey;
             // showToast already imported at top
-            showToast(`Popup hotkey set to ${hotkey}`, 'success');
+            await refreshDesktopIntegration();
+            showToast(
+              result.binding?.requiresCompositorBinding
+                ? 'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
+                : `Popup hotkey set to ${hotkey}`,
+              'success'
+            );
           } else {
             // showToast already imported at top
             showToast(result.error || 'Failed to set popup hotkey', 'error');
@@ -5862,7 +5895,13 @@ function startCapturingPopupHotkey() {
           if (clearBtn) clearBtn.style.display = 'inline-block';
           state.CONFIG.popupHotkey = hotkey;
           // showToast already imported at top
-          showToast(`Popup hotkey set to ${hotkey}`, 'success');
+          await refreshDesktopIntegration();
+          showToast(
+            result.binding?.requiresCompositorBinding
+              ? 'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
+              : `Popup hotkey set to ${hotkey}`,
+            'success'
+          );
         } else {
           // showToast already imported at top
           showToast(result.error || 'Failed to set popup hotkey', 'error');
@@ -5929,3 +5968,25 @@ export {
   handleProfileSyncStatusUpdate,
   waitForLanguagePackRefresh,
 };
+
+async function refreshDesktopIntegration() {
+  const panel = document.getElementById('desktop-integration');
+  if (!panel || !window.electronAPI.getDesktopIntegration) return;
+  const info = await window.electronAPI.getDesktopIntegration();
+  panel.hidden = !info?.hyprland;
+  if (!info?.hyprland) return;
+  const output = document.getElementById('desktop-bindings');
+  const format = document.getElementById('desktop-bindings-format');
+  const renderBindings = () => {
+    const field = format?.value === 'hyprlang' ? 'legacyBinding' : 'binding';
+    output.value = (info.shortcuts || []).map((shortcut) => shortcut[field] || '').join('\n');
+  };
+  renderBindings();
+  if (format) format.onchange = renderBindings;
+  document.getElementById('desktop-bindings-copy').onclick = () =>
+    navigator.clipboard.writeText(output.value);
+  document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
+  document.getElementById('desktop-integration-status').textContent = info.lastActivation
+    ? `Last shortcut received: ${info.lastActivation.id} at ${info.lastActivation.at}`
+    : 'No shortcut received yet. Press a configured shortcut, then refresh.';
+}

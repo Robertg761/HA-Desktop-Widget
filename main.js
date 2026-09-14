@@ -26,6 +26,25 @@ const { pathToFileURL, fileURLToPath } = require('url');
 const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const pkg = require('./package.json');
+const {
+  getLaunchAction,
+  hasIsolatedProfile,
+  isHyprland,
+  isPortalBindingRegistered,
+  hyprlandBinding,
+  APP_ID,
+} = require('./src/linux-desktop.cjs');
+const IS_ISOLATED_PROFILE = hasIsolatedProfile();
+let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
+const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
+const { ensureAppImageDesktopEntry } = require('./src/linux-desktop-entry.cjs');
+let omarchyThemeWatcher = null;
+const {
+  readHyprlandMonitors,
+  chooseLayerMonitor,
+  clampLayerPosition,
+  readHyprlandCursor,
+} = require('./src/layer-placement.cjs');
 const { supportsLiveTrayValues } = require('./packages/widget-renderer/src/release-features.cjs');
 const LIVE_TRAY_VALUES_ENABLED = supportsLiveTrayValues(pkg.version);
 
@@ -47,7 +66,6 @@ const {
   buildLayerShellSpawnPlan,
   createLayerShellRaiser,
   detectTilingLayerShellCompositor,
-  disableHyprlandLayerMoveAnimation,
   watchHyprlandConfigReloads,
   getLayerShellControlSocketPath,
   isLayerShellChild,
@@ -152,14 +170,23 @@ function spawnLayerShellHelper() {
     onError: (error) =>
       log.warn('Could not copy the layer-shell helper out of the AppImage:', error.message),
   });
+  const preferredOutput = readInitialLayerShellOutputName(userDataPath);
+  const startupMonitor = isHyprland()
+    ? chooseLayerMonitor(
+        readHyprlandMonitors(),
+        process.env.HA_WIDGET_LAYER_SHELL_OUTPUT || preferredOutput
+      )
+    : null;
   const plan = buildLayerShellSpawnPlan({
     helperPath,
     windowSize: readInitialLayerShellWindowSize(userDataPath),
-    outputName: readInitialLayerShellOutputName(userDataPath),
+    outputName: preferredOutput,
+    resolvedOutputName: startupMonitor?.name,
     positionFilePath: layerShellPositionFilePath,
     onInvalidOverride: (name, raw, fallback) =>
       log.warn(`Ignoring invalid ${name}=${JSON.stringify(raw)}; using "${fallback}"`),
   });
+  if (startupMonitor) plan.env.HA_WIDGET_LAYER_ACTUAL_OUTPUT = startupMonitor.name;
   // The helper's stderr is the only diagnostic when it cannot bind its socket or
   // reach the compositor, so keep it out of the void. Rotate once past ~1MB so a
   // failure that repeats on every start cannot grow the file without bound.
@@ -519,9 +546,17 @@ if (!gotSingleInstanceLock) {
   // Launching the widget again is the user asking to see it, the same thing the tray click and the
   // popup hotkey do. This is also the only way back for a window hidden to the tray on a desktop
   // whose tray is missing or broken.
-  app.on('second-instance', () => {
-    log.info('Second instance launched; showing the existing window');
-    showMainWindowFromTray();
+  app.on('second-instance', (_event, argv) => {
+    const action = getLaunchAction(argv);
+    if (!mainWindow) {
+      initialLaunchAction = action;
+      return;
+    }
+    if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
+      hideMainWindowToTray();
+    } else {
+      showMainWindowFromTray();
+    }
   });
 }
 
@@ -723,18 +758,91 @@ const kwinWindowRaiser = usesCompositorOwnedPlacement ? createKWinWindowRaiser({
 const layerShellRaiser = isLayerShellChildProcess
   ? createLayerShellRaiser({ controlSocketPath: layerShellControlSocketPath, log })
   : null;
-// Hyprland animates layer-surface geometry changes, which turns the helper's
-// margin-based dragging into a feedback loop (the surface glides under the
-// pointer while it is measured). Best-effort, once per child start.
-if (isLayerShellChildProcess) disableHyprlandLayerMoveAnimation({ log });
-// ...and again after every Hyprland config reload, which re-applies the configured
-// animation nodes and would otherwise quietly bring the feedback loop back.
+let layerMonitors = [];
+let layerActualMonitor = null;
+let layerRefreshTimer = null;
+let layerOutputWasRemoved = false;
+let layerRecoveryPending = false;
+const layerPositions = new Map();
+let layerDrag = null;
+function refreshLayerPlacement() {
+  if (!isLayerShellChildProcess || !isHyprland() || !mainWindow) return;
+  layerMonitors = readHyprlandMonitors();
+  const preferredOutput = process.env.HA_WIDGET_LAYER_SHELL_OUTPUT || config.layerShellOutputName;
+  const placementOutput = layerMonitors.some((monitor) => monitor.name === preferredOutput)
+    ? preferredOutput
+    : layerActualMonitor?.name || process.env.HA_WIDGET_LAYER_ACTUAL_OUTPUT;
+  const next = chooseLayerMonitor(layerMonitors, placementOutput);
+  if (!next) {
+    layerOutputWasRemoved = true;
+    return;
+  }
+  // An output change needs fresh layer roles. The helper resolves the original
+  // preferred output again, falling back if it is no longer available.
+  const changedOutput =
+    layerOutputWasRemoved || (layerActualMonitor && layerActualMonitor.name !== next.name);
+  layerOutputWasRemoved = false;
+  layerActualMonitor = next;
+  if (changedOutput && !isQuitting && !layerRecoveryPending) {
+    layerRecoveryPending = true;
+    void restartApplication().catch((error) => {
+      layerRecoveryPending = false;
+      log.warn('Monitor recovery failed:', error.message);
+    });
+    return;
+  }
+  placeLayerWindow(mainWindow);
+  desktopPinWindows.forEach(placeLayerWindow);
+}
+function placeLayerWindow(targetWindow) {
+  if (!layerShellRaiser || !isHyprland() || !targetWindow || targetWindow.isDestroyed()) return;
+  const id = targetWindow.__desktopPinEntityId || 'main';
+  const saved = config.layerPositions?.[id]?.[layerActualMonitor?.name];
+  const pin = config.desktopPins?.[id];
+  const initial =
+    saved ||
+    (pin
+      ? { x: pin.x - (layerActualMonitor?.x || 0), y: pin.y - (layerActualMonitor?.y || 0) }
+      : null);
+  let position = clampLayerPosition(initial, targetWindow.getBounds(), layerActualMonitor);
+  if (pin && !saved && layerActualMonitor) {
+    const size = targetWindow.getBounds();
+    const occupied = [...desktopPinWindows.entries()]
+      .filter(([entityId]) => entityId !== id)
+      .map(([entityId, win]) => ({ ...win.getBounds(), ...layerPositions.get(entityId) }));
+    const overlaps = (p) =>
+      occupied.some(
+        (other) =>
+          p.x < other.x + other.width + 8 &&
+          p.x + size.width + 8 > other.x &&
+          p.y < other.y + other.height + 8 &&
+          p.y + size.height + 8 > other.y
+      );
+    if (overlaps(position)) {
+      const area = layerActualMonitor.workArea;
+      search: for (
+        let y = area.y + 24;
+        y + size.height <= area.y + area.height;
+        y += size.height + 16
+      ) {
+        for (let x = area.x + 24; x + size.width <= area.x + area.width; x += size.width + 16) {
+          if (!overlaps({ x, y })) {
+            position = { x, y };
+            break search;
+          }
+        }
+      }
+    }
+  }
+  layerPositions.set(id, position);
+  layerShellRaiser.place(targetWindow.getTitle(), position);
+}
 const hyprlandConfigReloadWatcher = isLayerShellChildProcess
   ? watchHyprlandConfigReloads({
       log,
       onReload: () => {
-        log.info('Hyprland reloaded its config; re-disabling the layer-move animation');
-        disableHyprlandLayerMoveAnimation({ log });
+        clearTimeout(layerRefreshTimer);
+        layerRefreshTimer = setTimeout(refreshLayerPlacement, 300);
       },
     })
   : null;
@@ -1536,6 +1644,13 @@ function sanitizeConfigForRenderer(inputConfig) {
   } else if (IS_CLIMATE_DEMO_OVERLAY_MODE) {
     cloned.developmentDemo = { climate: true, mode: 'overlay' };
   }
+  cloned.desktopAppearance = omarchyThemeWatcher?.get() || null;
+  cloned.desktopCapabilities = {
+    layerMode: isLayerShellChildProcess,
+    canDrag: isLayerShellChildProcess && isHyprland(),
+    hyprland: isHyprland(),
+    isolatedProfile: IS_ISOLATED_PROFILE,
+  };
   cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
   if (configRecoveryNotice) {
@@ -1751,6 +1866,7 @@ function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
       targetWindow.setBounds(nextBounds);
     }
     applyDesktopPinWindowShape(targetWindow, nextBounds);
+    if (isLayerShellChildProcess) placeLayerWindow(targetWindow);
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
     targetWindow.__desktopPinApplyingBounds = false;
@@ -2130,7 +2246,14 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[entityId] || null,
     supportsWindowPositioning: !usesCompositorOwnedPlacement,
-    config: createDesktopPinRendererConfig(config),
+    config: {
+      ...createDesktopPinRendererConfig(config),
+      desktopAppearance: omarchyThemeWatcher?.get() || null,
+      desktopCapabilities: {
+        layerMode: isLayerShellChildProcess,
+        canDrag: isLayerShellChildProcess && isHyprland(),
+      },
+    },
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
     }),
@@ -2377,6 +2500,10 @@ function createDesktopPinWindow(entityId, options = {}) {
   pinWindow.setMenuBarVisibility(false);
   pinWindow.__desktopPinEntityId = normalizedEntityId;
   desktopPinWindows.set(normalizedEntityId, pinWindow);
+  if (isLayerShellChildProcess) {
+    placeLayerWindow(pinWindow);
+    pinWindow.webContents.on('did-finish-load', () => placeLayerWindow(pinWindow));
+  }
 
   // index.html would rename the window to its <title> as it loads, which would fold every
   // pin back into one name and leave window rules nothing per-pin to match.
@@ -3606,6 +3733,8 @@ function pruneConfig(target) {
     delete target.filters;
   }
   delete target.secureStoragePending;
+  delete target.desktopCapabilities;
+  delete target.desktopAppearance;
   delete target.configRevision;
   delete target.configRecovery;
   delete target.persistenceWarnings;
@@ -5190,7 +5319,10 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', () => {
     emitProfileSyncStatus();
+    refreshLayerPlacement();
     pushConfigToRenderer();
+    if (initialLaunchAction === 'hide') mainWindow.hide();
+    delete process.env.HA_WIDGET_LAUNCH_VISIBILITY;
     if (IS_SMOKE_TEST_MODE) {
       smokeTestRendererLoaded = true;
       maybeFinishSmokeTest();
@@ -5249,7 +5381,10 @@ function createWindow() {
   mainWindow.on('moved', changeWin);
 
   // Save size when window is resized
-  mainWindow.on('resized', changeWin);
+  mainWindow.on('resized', () => {
+    changeWin();
+    if (isLayerShellChildProcess) placeLayerWindow(mainWindow);
+  });
 
   // Hide to tray when minimizing
   mainWindow.on('minimize', (event) => {
@@ -5291,6 +5426,18 @@ function createWindow() {
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault();
+      if (
+        isLayerShellChildProcess &&
+        isHyprland() &&
+        layerActualMonitor &&
+        !readHyprlandMonitors().some((monitor) => monitor.name === layerActualMonitor.name)
+      ) {
+        // A removed output closes its layer role. Keep the user's visibility
+        // choice while the monitor recovery path replaces that role.
+        layerOutputWasRemoved = true;
+        refreshLayerPlacement();
+        return;
+      }
       mainWindow.hide();
     }
   });
@@ -5537,7 +5684,7 @@ function buildTrayContextMenu() {
     {
       label: mainT('Always on Top'),
       type: 'checkbox',
-      checked: config.alwaysOnTop,
+      checked: !isLayerShellChildProcess && config.alwaysOnTop,
       click: (menuItem) => {
         const requestedValue = !!menuItem.checked;
         void runSerializedConfigMutation(async () => {
@@ -5564,6 +5711,19 @@ function buildTrayContextMenu() {
       enabled: !usesCompositorOwnedPlacement || isLayerShellChildProcess,
       click: () => {
         if (isLayerShellChildProcess) {
+          if (isHyprland()) {
+            void runSerializedConfigMutation(async () => {
+              const previous = config.layerPositions;
+              config.layerPositions = { ...previous, main: {} };
+              const persistence = await saveConfigDurably();
+              if (!persistence.success) {
+                config.layerPositions = previous;
+                return;
+              }
+              placeLayerWindow(mainWindow);
+            }).catch((error) => log.warn('Failed to reset desktop position:', error.message));
+            return;
+          }
           try {
             fs.rmSync(layerShellPositionFilePath, { force: true });
           } catch (error) {
@@ -6571,7 +6731,14 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[normalizedEntityId] || null,
     supportsWindowPositioning: !usesCompositorOwnedPlacement,
-    config: createDesktopPinRendererConfig(config),
+    config: {
+      ...createDesktopPinRendererConfig(config),
+      desktopAppearance: omarchyThemeWatcher?.get() || null,
+      desktopCapabilities: {
+        layerMode: isLayerShellChildProcess,
+        canDrag: isLayerShellChildProcess && isHyprland(),
+      },
+    },
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
     }),
@@ -6872,6 +7039,7 @@ ipcMain.handle(
   serializeConfigMutationHandler(async (event, value) => {
     const sender = authorizeIpcSender(event, 'set-always-on-top');
     if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
+    if (isLayerShellChildProcess) return { success: true, applied: false, supported: false };
     const flag = !!value;
     const previousFlag = !!config.alwaysOnTop;
     config.alwaysOnTop = flag;
@@ -6908,9 +7076,100 @@ ipcMain.handle(
   })
 );
 
+async function updateLayerDrag(drag) {
+  const cursor = await readHyprlandCursor();
+  if (!cursor || layerDrag !== drag || drag.window.isDestroyed()) return;
+  const position = clampLayerPosition(
+    { x: drag.origin.x + cursor.x - drag.cursor.x, y: drag.origin.y + cursor.y - drag.cursor.y },
+    drag.window.getBounds(),
+    layerActualMonitor
+  );
+  layerPositions.set(drag.id, position);
+  layerShellRaiser.place(drag.window.getTitle(), position);
+}
+ipcMain.handle('begin-layer-drag', async (event) => {
+  const sender = authorizeIpcSender(event, 'begin-layer-drag', { allowDesktopPin: true });
+  if (
+    !sender ||
+    !isLayerShellChildProcess ||
+    !isHyprland() ||
+    (sender.type === 'desktop-pin' && !desktopPinEditMode)
+  )
+    return { success: false };
+  if (layerDrag) return { success: false };
+  const cursor = await readHyprlandCursor();
+  if (!cursor) return { success: false };
+  const target = sender.window;
+  const id = target.__desktopPinEntityId || 'main';
+  const drag = {
+    window: target,
+    id,
+    cursor,
+    origin: layerPositions.get(id) || { x: 20, y: 20 },
+    inFlight: null,
+  };
+  layerDrag = drag;
+  drag.timer = setInterval(() => {
+    if (drag.inFlight) return;
+    drag.inFlight = updateLayerDrag(drag).finally(() => {
+      drag.inFlight = null;
+    });
+  }, 32);
+  return { success: true };
+});
+ipcMain.handle(
+  'end-layer-drag',
+  serializeConfigMutationHandler(async (event) => {
+    const sender = authorizeIpcSender(event, 'end-layer-drag', { allowDesktopPin: true });
+    const drag = layerDrag;
+    if (!sender || !drag || drag.window !== sender.window) return { success: false };
+    clearInterval(drag.timer);
+    await drag.inFlight;
+    await updateLayerDrag(drag);
+    layerDrag = null;
+    const output = layerActualMonitor?.name;
+    if (output) {
+      config.layerPositions ||= {};
+      config.layerPositions[drag.id] ||= {};
+      config.layerPositions[drag.id][output] = layerPositions.get(drag.id);
+    }
+    return saveConfigDurably();
+  })
+);
+
+ipcMain.handle('get-desktop-integration', (event) => {
+  if (!authorizeIpcSender(event, 'get-desktop-integration'))
+    return rejectUnauthorizedIpc('get-desktop-integration');
+  return {
+    appId: APP_ID,
+    version: app.getVersion(),
+    platform: process.platform,
+    hyprland: isHyprland(),
+    layerMode: isLayerShellChildProcess,
+    helperPid: isLayerShellChildProcess ? process.ppid : null,
+    output: layerActualMonitor?.name || null,
+    preferredOutput: config.layerShellOutputName || null,
+    isolatedProfile: IS_ISOLATED_PROFILE,
+    shortcuts: isHyprland()
+      ? collectPortalShortcuts().map((shortcut) => ({
+          id: shortcut.id,
+          binding: hyprlandBinding(shortcut.accelerator, shortcut.id),
+          legacyBinding: hyprlandBinding(shortcut.accelerator, shortcut.id, APP_ID, 'hyprlang'),
+        }))
+      : [],
+    lastActivation: lastDesktopShortcutActivation,
+    themeAvailable: !!omarchyThemeWatcher?.get(),
+    secureStorageBackend:
+      process.platform === 'linux'
+        ? safeStorage.getSelectedStorageBackend?.() || 'unavailable'
+        : 'system',
+  };
+});
+
 ipcMain.handle('get-window-state', (event) => {
   const sender = authorizeIpcSender(event, 'get-window-state');
   if (!sender) return rejectUnauthorizedIpc('get-window-state');
+  if (isLayerShellChildProcess) return { alwaysOnTop: false, supported: false, layerMode: true };
   // The temporary popup raise is not the user's preference, so report the stored value
   // while it is in effect.
   if (popupWindowPresenter.isElevated()) {
@@ -7569,6 +7828,7 @@ ipcMain.handle(
 ipcMain.handle('get-login-item-settings', (event) => {
   const sender = authorizeIpcSender(event, 'get-login-item-settings');
   if (!sender) return rejectUnauthorizedIpc('get-login-item-settings');
+  if (IS_ISOLATED_PROFILE) return { openAtLogin: false, supported: false };
   try {
     if (process.platform === 'win32') {
       const startupTarget = getWindowsStartupRegistrationTarget();
@@ -7612,6 +7872,12 @@ ipcMain.handle('get-login-item-settings', (event) => {
 ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   const sender = authorizeIpcSender(event, 'set-login-item-settings');
   if (!sender) return rejectUnauthorizedIpc('set-login-item-settings');
+  if (IS_ISOLATED_PROFILE)
+    return {
+      success: false,
+      supported: false,
+      error: 'Startup is disabled for an isolated profile',
+    };
   try {
     const normalizedOpenAtLogin = !!openAtLogin;
     if (process.platform === 'linux') {
@@ -7678,6 +7944,7 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
 
 async function restartApplication() {
   log.info('Restarting application');
+  process.env.HA_WIDGET_LAUNCH_VISIBILITY = mainWindow?.isVisible() ? 'show' : 'hide';
   await flushConfigForBoundedExit('restarting');
   shutDownRuntimeAfterConfigFlush();
   quitFinalized = true;
@@ -7965,7 +8232,7 @@ ipcMain.handle(
         (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
       );
       let registered = portalShortcutsActive
-        ? registrationResult.success && !!portalBinding?.trigger
+        ? registrationResult.success && isPortalBindingRegistered(portalBinding)
         : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
 
       // A trigger-less portal bind at runtime (first hotkey ever, or a dismissed
@@ -8295,7 +8562,7 @@ ipcMain.handle(
         ? syncPortalShortcuts({ immediate: true }).then((result) => {
             if (!result.success) return result;
             const binding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
-            return binding?.trigger
+            return isPortalBindingRegistered(binding)
               ? { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding }
               : {
                   success: false,
@@ -8451,7 +8718,9 @@ let portalSyncTimer = null;
 let portalReconnectTimer = null;
 let portalSyncWaiters = [];
 
+let lastDesktopShortcutActivation = null;
 function handlePortalShortcutActivated(shortcutId) {
+  lastDesktopShortcutActivation = { id: shortcutId, at: new Date().toISOString() };
   log.info(`Portal shortcut activated: ${shortcutId}`);
   if (shortcutId === PORTAL_POPUP_SHORTCUT_ID) {
     // A stale portal session can emit briefly after an unregister/rebind
@@ -8513,7 +8782,7 @@ function reportPortalShortcutSyncResult(result, shortcuts) {
     // A bind the user once dismissed stays approved with no active trigger; the
     // desktop reuses that saved state on every rebind without showing its dialog
     // again, so the only fix is assigning keys in the system shortcut settings.
-    const unset = result.bound.filter((entry) => !entry.trigger);
+    const unset = result.bound.filter((entry) => !isPortalBindingRegistered(entry));
     if (unset.length) {
       log.warn(
         `Portal shortcuts have no active trigger: ${unset.map((entry) => entry.id).join(', ')}. ` +
@@ -8635,7 +8904,7 @@ let portalShortcutsFallbackLatched = false;
 // fallback, so there the portal always stays active for its recovery paths. Returns
 // whether the fallback was (already) engaged.
 function deactivatePortalShortcutsForLegacyFallback(reason) {
-  if (!hasLegacyGlobalShortcutFallback) return false;
+  if (!hasLegacyGlobalShortcutFallback || isHyprland()) return false;
   if (portalShortcutsFallbackLatched) return true;
   portalShortcutsFallbackLatched = true;
   portalShortcutsActive = false;
@@ -8698,7 +8967,7 @@ async function initPortalShortcutsBackend() {
     // in system settings, and the X grabs it would trade for are equally partial.
     const portalBoundNoTriggers =
       (syncResult.requested || 0) > 0 &&
-      (!syncResult.success || !(syncResult.bound || []).some((entry) => entry.trigger));
+      (!syncResult.success || !(syncResult.bound || []).some(isPortalBindingRegistered));
     if (portalBoundNoTriggers) {
       deactivatePortalShortcutsForLegacyFallback(
         'The GlobalShortcuts portal assigned no active triggers.'
@@ -9084,7 +9353,7 @@ function registerPopupHotkey() {
     return syncPortalShortcuts().then((result) => {
       if (!result.success) return result;
       const popupBinding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
-      if (!popupBinding?.trigger) {
+      if (!isPortalBindingRegistered(popupBinding)) {
         return {
           success: false,
           backend: PORTAL_SHORTCUTS_BACKEND,
@@ -9633,6 +9902,10 @@ function shutDownRuntimeAfterConfigFlush() {
   isQuitting = true;
   destroyTrayEntityIcons();
   hyprlandConfigReloadWatcher?.stop();
+  omarchyThemeWatcher?.stop();
+  clearTimeout(layerRefreshTimer);
+  if (layerDrag) clearInterval(layerDrag.timer);
+  layerDrag = null;
   closeDevReloadWatchers();
   clearProfileSyncTimers();
   clearHomeAssistantOAuthRefreshTimer();
@@ -9718,8 +9991,15 @@ app
     // autostart entry written before the update pointing at a path that no longer exists. Nothing
     // reported it: the widget just stopped appearing at login. Repair it here, once the executable
     // path for this run is known, so surviving an update costs the user nothing.
-    if (process.platform === 'linux' && app.isPackaged && !IS_DEV_MODE && !IS_SMOKE_TEST_MODE) {
+    if (
+      process.platform === 'linux' &&
+      app.isPackaged &&
+      !IS_DEV_MODE &&
+      !IS_SMOKE_TEST_MODE &&
+      !IS_ISOLATED_PROFILE
+    ) {
       try {
+        ensureAppImageDesktopEntry({ iconPath: path.join(__dirname, 'build/icon.png') });
         const linuxStartupOptions = {
           pkg,
           appName: app.getName(),
@@ -9777,6 +10057,14 @@ app
     }
 
     loadConfig({ deferSecureStorage: true });
+    if (process.platform === 'linux') {
+      omarchyThemeWatcher = createOmarchyThemeWatcher({
+        onChange: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) pushConfigToRenderer();
+          desktopPinWindows.forEach((_window, id) => sendDesktopPinUpdate(id));
+        },
+      });
+    }
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();
 

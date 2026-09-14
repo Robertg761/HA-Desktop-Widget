@@ -144,10 +144,10 @@ unconditionally above tiled ones. See issue #79 and
      `layersIn` animation node, which a mapped layer surface's position
      resolves through; `layers` is only its fallback) otherwise glide the
      surface under the pointer between measurements, forming a positive
-     feedback loop that flings the surface. (The app additionally disables
-     those animation nodes via `hyprctl` on Hyprland; the rate limit is
-     defense-in-depth for compositors where that fails, and it only dampens
-     the loop — it cannot make an animating compositor track a fast mouse.)
+     feedback loop that flings the surface. The app now uses absolute
+     compositor cursor coordinates and the placement command below on
+     Hyprland. It does not change global animation settings. This native
+     move path remains available on other compositors.
    - `WINDOWTOLAYER_TRACE_DRAG=1` in the helper's environment logs every
      drag-related pointer event (enter/leave with in-bounds status, motion
      with the surface-local coordinates, the margins it was measured
@@ -163,6 +163,20 @@ unconditionally above tiled ones. See issue #79 and
    next run of the helper — map surfaces where the user left them. A drag is
    dropped when its toplevel is destroyed, and a malformed or absent
    position file falls back to `--margin`.
+
+10. Per-title placement through the control socket, added September 14, 2026:
+    `place\t<title>\t<x>\t<y>` assigns top-left margins to a named toplevel.
+    Input sizes and coordinates are bounded. The app supplies stable titles
+    for the main widget and each desktop pin. In the `ha-widget` namespace,
+    new surfaces start on the bottom layer and popup elevation applies only
+    to the main widget. Placement updates reserve buffer space before writing
+    protocol messages, so backpressure cannot leave a partial update.
+
+11. Zero-sized anchored configure events retain the last valid size. At
+    startup, the Linux helper closes unrelated inherited descriptors before
+    creating its own runtime sockets. This prevents inherited Chromium
+    listeners from surviving application restarts. These changes were added
+    September 14, 2026, with protocol/control regression tests.
 
 These changes are intended to be submitted upstream. If upstream gains
 equivalent functionality, prefer depending on an upstream release and drop

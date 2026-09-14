@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.17",
+  "version": "1.2.18",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -622,6 +622,17 @@
     "Wait for the current dashboard save to finish.": "Wait for the current dashboard save to finish.",
     "State Change": "State Change",
     "Specific State": "Specific State",
-    "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400."
+    "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400.",
+    "Hyprland shortcuts": "Hyprland शॉर्टकट",
+    "Copy bindings": "की बाइंडिंग कॉपी करें",
+    "Refresh shortcut status": "शॉर्टकट स्थिति रीफ़्रेश करें",
+    "Follow Omarchy theme": "Omarchy थीम अपनाएँ",
+    "Hyprland bindings": "Hyprland की बाइंडिंग",
+    "Use the current Omarchy palette. Your custom colors are kept for when this is off.": "मौजूदा Omarchy रंग योजना का उपयोग करें। इसे बंद करने पर आपके कस्टम रंग फिर से लागू होंगे।",
+    "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.": "मौजूदा की बाइंडिंग की जाँच करने के बाद इन्हें अपनी Hyprland bindings.lua फ़ाइल में जोड़ें। विजेट चालू रखें और परीक्षण के लिए शॉर्टकट दबाएँ।",
+    "Configuration format": "कॉन्फ़िगरेशन प्रारूप",
+    "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "अपने Hyprland कॉन्फ़िगरेशन का प्रारूप चुनें, फिर की बाइंडिंग के टकराव जाँचकर बाइंडिंग कॉपी करें।",
+    "Lua (.lua)": "Lua (.lua)",
+    "Hyprlang (.conf)": "Hyprlang (.conf)"
   }
 }

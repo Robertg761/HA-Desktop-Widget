@@ -33,7 +33,8 @@
     "test:coverage": "jest --coverage",
     "build:preload": "vite build --config vite.preload.config.js",
     "prebuild:renderer": "npm run build:preload",
-    "prebuild:renderer:dev": "npm run build:preload"
+    "prebuild:renderer:dev": "npm run build:preload",
+    "dist:arch": "npm run build:renderer && npm run build:windowtolayer && electron-builder --linux dir && node scripts/build-arch-package.cjs"
   },
   "keywords": [
     "home-assistant",

@@ -24,10 +24,12 @@ class FakeBus extends EventEmitter {
     bindCodes = null,
     sessionHandles = null,
     bindConnectionError = null,
+    emptyTriggers = false,
   } = {}) {
     super();
     this.name = ':1.99';
     this.version = version;
+    this.emptyTriggers = emptyTriggers;
     this.bindCode = bindCode;
     this.bindCodes = Array.isArray(bindCodes) ? [...bindCodes] : null;
     this.sessionHandles = Array.isArray(sessionHandles) ? [...sessionHandles] : null;
@@ -99,7 +101,12 @@ class FakeBus extends EventEmitter {
         const path = this.requestPath(token);
         const shortcuts = message.body[1].map(([id, properties]) => [
           id,
-          { trigger_description: new Variant('s', properties.preferred_trigger?.value || '') },
+          {
+            trigger_description: new Variant(
+              's',
+              this.emptyTriggers ? '' : properties.preferred_trigger?.value || ''
+            ),
+          },
         ]);
         const bindCode = this.bindCodes?.length ? this.bindCodes.shift() : this.bindCode;
         if (this.bindConnectionError) {
@@ -399,4 +406,20 @@ describe('createPortalGlobalShortcutsController', () => {
       controller.syncShortcuts([{ id: 'a', description: 'A', accelerator: 'Alt+1' }])
     ).resolves.toMatchObject({ success: false });
   });
+});
+
+test('Hyprland registers canonical targets without inventing a portal trigger', async () => {
+  const { bus, controller } = createController({
+    busOptions: { emptyTriggers: true },
+    options: { env: { XDG_CURRENT_DESKTOP: 'Hyprland', XDG_SESSION_TYPE: 'wayland' } },
+  });
+  const result = await controller.syncShortcuts([
+    { id: 'popup-toggle', accelerator: 'Control+Alt+H' },
+  ]);
+  expect(result.success).toBe(true);
+  expect(result.bound[0]).toMatchObject({ trigger: '', requiresCompositorBinding: true });
+  expect(bus.calls.find((call) => call.member === 'Register').body[0]).toBe(
+    require('../../package.json').appId
+  );
+  await controller.close();
 });

@@ -76,7 +76,7 @@ Expected handling is best effort for a maintainer-run project:
 
 ### Home Assistant Integration
 
-- **Long-lived tokens**: A valid Home Assistant long-lived access token is required for normal operation.
+- **Authorization**: New setups use Home Assistant browser authorization. Long-lived access tokens remain available as an advanced compatibility option.
 - **Local machine trust**: Anyone with access to the user's OS account may be able to read local config, logs, or sync files depending on platform encryption support and file permissions.
 - **Network trust**: The app has the same network reachability to Home Assistant that the desktop user has.
 

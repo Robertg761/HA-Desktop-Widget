@@ -55,7 +55,7 @@ describe('Linux startup helpers', () => {
     expect(quoteDesktopExecArg('/opt/HA Desktop Widget/ha-widget')).toBe(
       '"/opt/HA Desktop Widget/ha-widget"'
     );
-    expect(quoteDesktopExecArg('/tmp/$APP`test`')).toBe('"/tmp/\\$APP\\`test\\`"');
+    expect(quoteDesktopExecArg('/tmp/$APP`test`')).toBe('"/tmp/\\\\$APP\\\\`test\\\\`"');
   });
 
   test('builds an XDG autostart desktop entry', () => {

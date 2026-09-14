@@ -683,6 +683,13 @@ describe('buildLayerShellSpawnPlan', () => {
     expect(overridden.args[overridden.args.indexOf('--output-name') + 1]).toBe('HDMI-A-1');
     expect(overridden.args).not.toContain('DP-2');
 
+    const resolved = buildLayerShellSpawnPlan({
+      ...basePlanInput,
+      env: { ...hyprlandEnv, [LAYER_SHELL_OUTPUT_ENV]: 'missing-output' },
+      resolvedOutputName: 'DP-1',
+    });
+    expect(resolved.args).toEqual(expect.arrayContaining(['--output-name', 'DP-1']));
+    expect(resolved.env[LAYER_SHELL_OUTPUT_ENV]).toBe('missing-output');
     const blank = buildLayerShellSpawnPlan({ ...basePlanInput, outputName: '   ' });
     expect(blank.args).not.toContain('--output-name');
   });
@@ -987,26 +994,10 @@ describe('createLayerShellRaiser', () => {
 });
 
 describe('disableHyprlandLayerMoveAnimation', () => {
-  test('disables layers and layersIn via both hyprctl syntaxes (each parser rejects the other)', () => {
+  test('never changes compositor animations, including on Omarchy', () => {
     const execFile = jest.fn();
-    expect(disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile })).toBe(true);
-
-    // A mapped layer surface's position animates through `layersIn`, which distros like
-    // Omarchy configure explicitly, so disabling the parent `layers` node alone is not enough.
-    expect(execFile).toHaveBeenCalledTimes(4);
-    const invocations = execFile.mock.calls.map(([cmd, args]) => [cmd, ...args]);
-    expect(invocations).toEqual([
-      ['hyprctl', 'keyword', 'animation', 'layers,0,1,default'],
-      ['hyprctl', 'eval', 'hl.animation({ leaf = "layers", enabled = false })'],
-      ['hyprctl', 'keyword', 'animation', 'layersIn,0,1,default'],
-      ['hyprctl', 'eval', 'hl.animation({ leaf = "layersIn", enabled = false })'],
-    ]);
-    // Fire-and-forget: a rejecting parser only logs at debug level.
-    const log = { debug: jest.fn() };
-    disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile, log });
-    const callback = execFile.mock.calls[4][3];
-    expect(() => callback(new Error('exit 1'), '', "keyword can't work")).not.toThrow();
-    expect(log.debug).toHaveBeenCalled();
+    expect(disableHyprlandLayerMoveAnimation({ env: hyprlandEnv, execFile })).toBe(false);
+    expect(execFile).not.toHaveBeenCalled();
   });
 
   test('does nothing off Hyprland or when the opt-out env is set', () => {
@@ -1032,7 +1023,7 @@ describe('disableHyprlandLayerMoveAnimation', () => {
         log,
       })
     ).not.toThrow();
-    expect(log.debug).toHaveBeenCalledTimes(4);
+    expect(log.debug).not.toHaveBeenCalled();
   });
 });
 
@@ -1079,12 +1070,12 @@ describe('watchHyprlandConfigReloads', () => {
     expect(sockets[0].options).toEqual({ path: watcher.socketPath });
 
     sockets[0].emit('data', Buffer.from('monitoradded>>DP-2\nconfigrelo'));
-    expect(onReload).not.toHaveBeenCalled();
+    expect(onReload).toHaveBeenCalledWith('monitoradded');
     sockets[0].emit('data', Buffer.from('aded>>\nworkspace>>3\n'));
-    expect(onReload).toHaveBeenCalledTimes(1);
-    expect(onReload).toHaveBeenCalledWith('configreloaded');
-    sockets[0].emit('data', Buffer.from('configreloaded>>\n'));
     expect(onReload).toHaveBeenCalledTimes(2);
+    expect(onReload).toHaveBeenCalledWith('configreloaded');
+    sockets[0].emit('data', Buffer.from('monitorremoved>>DP-2\nmonitoraddedv2>>1,DP-2,Test\n'));
+    expect(onReload).toHaveBeenCalledTimes(4);
 
     watcher.stop();
     expect(sockets[0].destroy).toHaveBeenCalled();

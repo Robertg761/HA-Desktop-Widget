@@ -361,6 +361,10 @@ jobs:
         run: |
           npm run dist:linux -- --publish never
 
+      - name: Build checksum-pinned Arch release bundle
+        if: needs.validate.outputs.release_prerelease != 'true'
+        run: node scripts/build-arch-package.cjs
+
       - name: Verify Linux update artifacts
         shell: bash
         run: |
@@ -393,6 +397,8 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+            dist/*-linux-x64.tar.gz
+            dist/PKGBUILD
             dist/*.blockmap
             dist/*.yml
             !dist/builder-debug.yml

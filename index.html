@@ -892,6 +892,19 @@
               </button>
               <div id="color-themes-body" class="section-body">
                 <div class="form-group">
+                  <label
+                    ><input id="follow-omarchy" type="checkbox" />
+                    <span data-i18n="Follow Omarchy theme">Follow Omarchy theme</span></label
+                  >
+                  <p
+                    class="form-help"
+                    data-i18n="Use the current Omarchy palette. Your custom colors are kept for when this is off."
+                  >
+                    Use the current Omarchy palette. Your custom colors are kept for when this is
+                    off.
+                  </p>
+                </div>
+                <div class="form-group">
                   <label id="color-target-label">Editing</label>
                   <select
                     id="color-target-select"
@@ -1474,6 +1487,51 @@
             </div>
           </div>
           <div id="hotkeys-tab" class="tab-content">
+            <div id="desktop-integration" class="settings-card" hidden>
+              <h3 class="settings-card-header" data-i18n="Hyprland shortcuts">
+                Hyprland shortcuts
+              </h3>
+              <p
+                class="form-help"
+                data-i18n="Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts."
+              >
+                Choose the format used by your Hyprland configuration, then copy the bindings after
+                checking for key conflicts.
+              </p>
+              <div class="form-group">
+                <label for="desktop-bindings-format" data-i18n="Configuration format"
+                  >Configuration format</label
+                >
+                <select id="desktop-bindings-format">
+                  <option value="lua" data-i18n="Lua (.lua)">Lua (.lua)</option>
+                  <option value="hyprlang" data-i18n="Hyprlang (.conf)">Hyprlang (.conf)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <textarea
+                  id="desktop-bindings"
+                  readonly
+                  rows="4"
+                  aria-label="Hyprland bindings"
+                  data-i18n-aria-label="Hyprland bindings"
+                ></textarea>
+              </div>
+              <button
+                id="desktop-bindings-copy"
+                class="btn btn-secondary"
+                data-i18n="Copy bindings"
+              >
+                Copy bindings
+              </button>
+              <button
+                id="desktop-integration-refresh"
+                class="btn btn-secondary"
+                data-i18n="Refresh shortcut status"
+              >
+                Refresh shortcut status
+              </button>
+              <p id="desktop-integration-status" class="form-help" role="status"></p>
+            </div>
             <!-- Global Popup Trigger Card -->
             <div class="settings-card">
               <div class="settings-card-header">

@@ -20,6 +20,9 @@ describe('preload Electron API', () => {
     const api = createElectronApi(ipcRenderer, 'test-platform');
     const objectArg = { value: true };
     const cases = [
+      ['beginLayerDrag', [], 'begin-layer-drag', []],
+      ['endLayerDrag', [], 'end-layer-drag', []],
+      ['getDesktopIntegration', [], 'get-desktop-integration', []],
       ['signalRendererReady', [], 'renderer-ready', []],
       ['getConfig', [], 'get-config', []],
       ['getLocaleBootstrap', [], 'get-locale-bootstrap', []],

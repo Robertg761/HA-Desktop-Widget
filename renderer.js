@@ -1,3 +1,5 @@
+import { applyDesktopAppearance } from './src/desktop-appearance.js';
+import { installLayerDrag } from './src/layer-drag.js';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
 import { initializeDashboardTools, refreshDashboardUndoState } from './src/dashboard-tools.js';
@@ -1088,12 +1090,17 @@ function applyRendererConfig(nextConfig) {
   // Re-applying window effects repaints the whole blurred window, so skip the appearance pass
   // when the echo only carries a Quick Access change the renderer already drew.
   if (change.other) {
+    document.body.classList.toggle(
+      'layer-drag-enabled',
+      state.CONFIG.desktopCapabilities?.canDrag === true
+    );
     uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
     uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
     uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
     uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
     uiUtils.applyWindowEffects(state.CONFIG || {});
+    applyDesktopAppearance(state.CONFIG);
 
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
@@ -2658,3 +2665,5 @@ window.addEventListener(
   },
   { once: true }
 );
+
+installLayerDrag();

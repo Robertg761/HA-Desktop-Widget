@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=HA Desktop Widget
+Comment=Home Assistant controls on your desktop
+Exec=ha-desktop-widget --show
+Icon=com.github.robertg761.hadesktopwidget
+Terminal=false
+Categories=Utility;
+Keywords=Home Assistant;Smart Home;Dashboard;
+StartupWMClass=com.github.robertg761.hadesktopwidget
+Actions=Toggle;Hide;
+
+[Desktop Action Toggle]
+Name=Toggle widget
+Exec=ha-desktop-widget --toggle
+
+[Desktop Action Hide]
+Name=Hide widget
+Exec=ha-desktop-widget --hide

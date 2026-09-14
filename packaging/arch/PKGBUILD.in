@@ -1,0 +1,28 @@
+# Maintainer: Robertg761
+# Generated with a checksum of the exact release bundle by build-arch-package.cjs.
+pkgname=ha-desktop-widget-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Home Assistant desktop widget with native Wayland desktop layers'
+arch=('x86_64')
+url='https://github.com/Robertg761/HA-Desktop-Widget'
+license=('MIT' 'GPL-3.0-or-later')
+depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'gcc-libs' 'glib2' 'glibc' 'gtk3' 'libcups' 'libdrm' 'libsecret' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'libxt' 'libxtst' 'mesa' 'nspr' 'nss' 'pango')
+optdepends=('gnome-keyring: secure Home Assistant credential storage' 'xdg-desktop-portal-hyprland: Hyprland global shortcuts')
+provides=('ha-desktop-widget')
+conflicts=('ha-desktop-widget')
+options=('!strip')
+source=("https://github.com/Robertg761/HA-Desktop-Widget/releases/download/v${pkgver}/ha-desktop-widget-${pkgver}-linux-x64.tar.gz")
+sha256sums=('@SHA256@')
+
+package() {
+  install -d "$pkgdir/opt/ha-desktop-widget" "$pkgdir/usr/bin"
+  cp -a "$srcdir/linux-unpacked/." "$pkgdir/opt/ha-desktop-widget/"
+  ln -s /opt/ha-desktop-widget/home-assistant-widget "$pkgdir/usr/bin/ha-desktop-widget"
+  install -Dm644 "$srcdir/com.github.robertg761.hadesktopwidget.desktop" "$pkgdir/usr/share/applications/com.github.robertg761.hadesktopwidget.desktop"
+  install -Dm644 "$srcdir/icon.png" "$pkgdir/usr/share/pixmaps/com.github.robertg761.hadesktopwidget.png"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$srcdir/linux-unpacked/resources/helpers/windowtolayer-COPYING" "$pkgdir/usr/share/licenses/$pkgname/windowtolayer-COPYING"
+  install -Dm644 "$srcdir/omarchy.md" "$pkgdir/usr/share/doc/$pkgname/omarchy.md"
+  chmod 4755 "$pkgdir/opt/ha-desktop-widget/chrome-sandbox"
+}

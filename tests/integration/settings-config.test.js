@@ -2215,6 +2215,53 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Profile Sync Settings', () => {
+    test('copies the selected Hyprland format and keeps it selected after refresh', async () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `
+        <div id="desktop-integration" hidden>
+          <select id="desktop-bindings-format"><option value="lua">Lua</option><option value="hyprlang">Hyprlang</option></select>
+          <textarea id="desktop-bindings"></textarea>
+          <button id="desktop-bindings-copy"></button>
+          <button id="desktop-integration-refresh"></button>
+          <p id="desktop-integration-status"></p>
+        </div>`
+      );
+      window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+        hyprland: true,
+        shortcuts: [{ binding: 'lua binding', legacyBinding: 'legacy binding' }],
+      });
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: jest.fn().mockResolvedValue(undefined) },
+      });
+      await settings.initializePopupHotkey();
+      const format = document.getElementById('desktop-bindings-format');
+      const output = document.getElementById('desktop-bindings');
+      expect(output.value).toBe('lua binding');
+      format.value = 'hyprlang';
+      format.dispatchEvent(new Event('change'));
+      expect(output.value).toBe('legacy binding');
+      document.getElementById('desktop-bindings-copy').click();
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('legacy binding');
+      await document.getElementById('desktop-integration-refresh').onclick();
+      expect(output.value).toBe('legacy binding');
+      delete window.electronAPI.getDesktopIntegration;
+    });
+
+    test('handles a sync status event before renderer configuration has loaded', () => {
+      const config = state.CONFIG;
+      const status = buildProfileSyncStatus({ enabled: true });
+      state.setConfig(null);
+
+      expect(() => settings.handleProfileSyncStatusUpdate(status)).not.toThrow();
+      expect(state.CONFIG).toBeNull();
+
+      state.setConfig(config);
+      settings.handleProfileSyncStatusUpdate(status);
+      expect(document.getElementById('profile-sync-status').textContent).toContain('Status:');
+    });
+
     test('should hydrate profile sync controls and status', async () => {
       const config = state.CONFIG;
       config.profileSync = buildProfileSync({

@@ -38,6 +38,8 @@ struct PointerDrag {
  */
 pub struct WindowToLayer<'a> {
     objs: ObjectTracker,
+    titles: BTreeMap<DownstreamID, String>,
+    placements: BTreeMap<String, (i32, i32)>,
 
     /** Map xdg_surface objects to the wl_surface they extend. Mappings removed
      * on xdg_surface or wl_surface destruction. */
@@ -164,6 +166,8 @@ impl<'a> WindowToLayer<'a> {
     ) -> Self {
         WindowToLayer {
             objs: ObjectTracker::default(),
+            titles: BTreeMap::new(),
+            placements: BTreeMap::new(),
             xdg_to_wl_surface_map: BTreeMap::new(),
             wl_to_xdg_surface_map: BTreeMap::new(),
             surface_to_toplevel_map: BTreeMap::new(),
@@ -235,7 +239,9 @@ macro_rules! dtrace {
         }
     };
 }
-fn trace_pending(p: Option<(u32, i32, i32, (i32, i32, i32, i32))>) -> Option<(u32, i32, i32, (i32, i32, i32, i32))> {
+fn trace_pending(
+    p: Option<(u32, i32, i32, (i32, i32, i32, i32))>,
+) -> Option<(u32, i32, i32, (i32, i32, i32, i32))> {
     p.map(|(t, x, y, b)| (t, x >> 8, y >> 8, b))
 }
 
@@ -364,6 +370,26 @@ impl MessageRewriter for WindowToLayer<'_> {
         log_message(from_upstream, &self.objs, msg, processed);
     }
 
+    fn inject_placements(
+        &mut self,
+        placements: &BTreeMap<String, (i32, i32)>,
+        dst: &mut OutputQueue,
+    ) -> Result<bool, WaylandError> {
+        let length = self.titles.len()
+            * (length_zwlr_layer_surface_v1_req_set_anchor()
+                + length_zwlr_layer_surface_v1_req_set_margin()
+                + length_wl_surface_req_commit());
+        if dst.data.len() < length {
+            return Ok(false);
+        }
+        self.placements = placements.clone();
+        let titles: Vec<_> = self.titles.keys().copied().collect();
+        for id in titles {
+            apply_named_placement(self, id, dst);
+        }
+        Ok(true)
+    }
+
     /* Runtime raise/restore: move every mapped layer surface to `layer`.
      * set_layer is double-buffered, so each one is followed by a commit on its
      * wl_surface to make the move take effect without waiting for the client's
@@ -398,6 +424,11 @@ impl MessageRewriter for WindowToLayer<'_> {
          * xdg_surface is destroyed, so this only visits live layer surfaces. */
         let mut targets: Vec<(UpstreamID, UpstreamID)> = Vec::new();
         for (xdg_surface_id, toplevel_id) in self.surface_to_toplevel_map.iter() {
+            if self.namespace == "ha-widget"
+                && self.titles.get(toplevel_id).map(String::as_str) != Some("HA Desktop Widget")
+            {
+                continue;
+            }
             let Some(layer_surface_id) = self.objs.down_to_up.get(toplevel_id).and_then(|o| o.alt)
             else {
                 continue;
@@ -428,6 +459,35 @@ impl MessageRewriter for WindowToLayer<'_> {
         self.layer = layer;
         Ok(true)
     }
+}
+
+fn apply_named_placement(state: &WindowToLayer, id: DownstreamID, dst: &mut OutputQueue) {
+    let Some((x, y)) = state
+        .titles
+        .get(&id)
+        .and_then(|title| state.placements.get(title))
+    else {
+        return;
+    };
+    let Some(layer) = state.objs.down_to_up.get(&id).and_then(|o| o.alt) else {
+        return;
+    };
+    let Some(wl) = state
+        .toplevel_to_surface_map
+        .get(&id)
+        .and_then(|xdg| state.xdg_to_wl_surface_map.get(xdg))
+        .and_then(|wl| state.objs.down_to_up.get(wl))
+        .and_then(|o| o.alt)
+    else {
+        return;
+    };
+    write_zwlr_layer_surface_v1_req_set_anchor(
+        dst,
+        layer,
+        ZwlrLayerSurfaceV1Anchor::Top as u32 | ZwlrLayerSurfaceV1Anchor::Left as u32,
+    );
+    write_zwlr_layer_surface_v1_req_set_margin(dst, layer, *y, 0, 0, *x);
+    write_wl_surface_req_commit(dst, wl);
 }
 
 fn process_event_w2l(
@@ -778,7 +838,7 @@ fn process_event_w2l(
                 check_space!((length, 0), (0, 0), dst, reverse_dst);
 
                 let (serial, uwidth, uheight) = parse_zwlr_layer_surface_v1_evt_configure(msg)?;
-                let Some((width, height)) = u32_to_i32_size(uwidth, uheight) else {
+                let Some((mut width, mut height)) = u32_to_i32_size(uwidth, uheight) else {
                     /* Alternatively, could saturate when converting; surfaces exceeding i32::MAX
                      * in any dimension are impractical anyway. */
                     return Err(WaylandError::Other(format!(
@@ -787,6 +847,26 @@ fn process_event_w2l(
                     )));
                 };
 
+                // A compositor can temporarily report zero dimensions while an
+                // output disappears. Keep anchored windows at their last valid
+                // size until the app reconnects them to an available output.
+                if state.anchor.is_some() && (width == 0 || height == 0) {
+                    let size = state
+                        .anchored_sizes
+                        .get(&surface_id)
+                        .copied()
+                        .unwrap_or((500, 600));
+                    width = if width == 0 {
+                        size.0.max(1).min(i32::MAX as u32) as i32
+                    } else {
+                        width
+                    };
+                    height = if height == 0 {
+                        size.1.max(1).min(i32::MAX as u32) as i32
+                    } else {
+                        height
+                    };
+                }
                 if toplevel_version >= 5 {
                     write_xdg_toplevel_evt_wm_capabilities(dst, toplevel_id, capabilities);
                 }
@@ -878,7 +958,11 @@ fn process_event_w2l(
              * margin updates may resume (see the wl_pointer motion handling).
              * The callback object itself is cleaned up by the compositor's
              * wl_display::delete_id, like the other proxy-owned callbacks. */
-            dtrace!("[drag] sync done margins={:?} pending={:?}", state.margins, trace_pending(state.drag_pending));
+            dtrace!(
+                "[drag] sync done margins={:?} pending={:?}",
+                state.margins,
+                trace_pending(state.drag_pending)
+            );
             state.drag_margin_sync = None;
             Ok(Done)
         } else {
@@ -937,11 +1021,21 @@ fn process_event_w2l(
                 let (x, y) = (x as i32, y as i32);
                 let pos = pointer_pos_in_bounds(state, surface, x, y).then_some((x, y));
                 state.pointer_focus = Some((surface, pos));
-                dtrace!("[drag] enter surface={:?} local=({},{}) in_bounds={}", surface, x >> 8, y >> 8, pos.is_some());
+                dtrace!(
+                    "[drag] enter surface={:?} local=({},{}) in_bounds={}",
+                    surface,
+                    x >> 8,
+                    y >> 8,
+                    pos.is_some()
+                );
             }
             Some(WlPointerEvtIDs::Leave) => {
                 let _ = parse_wl_pointer_evt_leave(msg)?;
-                dtrace!("[drag] leave drag={} pending={:?}", state.drag.is_some(), trace_pending(state.drag_pending));
+                dtrace!(
+                    "[drag] leave drag={} pending={:?}",
+                    state.drag.is_some(),
+                    trace_pending(state.drag_pending)
+                );
                 /* The implicit grab normally delays leave until the buttons
                  * are released; treat an early leave as the end of the drag,
                  * first flushing a pending motion so the final position is
@@ -1039,7 +1133,13 @@ fn process_event_w2l(
             }
             Some(WlPointerEvtIDs::Button) => {
                 let (_serial, _time, _button, button_state) = parse_wl_pointer_evt_button(msg)?;
-                dtrace!("[drag] button t={} state={} drag={} pending={:?}", _time, button_state, state.drag.is_some(), trace_pending(state.drag_pending));
+                dtrace!(
+                    "[drag] button t={} state={} drag={} pending={:?}",
+                    _time,
+                    button_state,
+                    state.drag.is_some(),
+                    trace_pending(state.drag_pending)
+                );
                 /* On release, flush a pending motion so the final position is
                  * applied before the drag ends and the margins are saved.
                  * The pending's own base makes this correct even while a
@@ -1582,7 +1682,11 @@ fn process_request_w2l(
                     layer_surface_id,
                     upstream_wl_surface_id,
                     target_output_id,
-                    state.layer as u32,
+                    if state.namespace == "ha-widget" {
+                        ZwlrLayerShellV1Layer::Bottom as u32
+                    } else {
+                        state.layer as u32
+                    },
                     state.namespace.as_bytes(),
                 );
                 let anchor = state.anchor.unwrap_or(
@@ -1878,6 +1982,7 @@ fn process_request_w2l(
                 check_space!((length, 0), (0, 0), dst, reverse_dst);
                 write_zwlr_layer_surface_v1_req_destroy(dst, alt_id.unwrap());
                 generic_destroy_object(&mut state.objs, alt_id.unwrap(), object_id)?;
+                state.titles.remove(&object_id);
                 if let Some(xdg_surface_id) = state.toplevel_to_surface_map.remove(&object_id) {
                     state.surface_to_toplevel_map.remove(&xdg_surface_id);
                     state.anchored_sizes.remove(&xdg_surface_id);
@@ -1888,6 +1993,35 @@ fn process_request_w2l(
                     if drag.layer_surface == alt_id.unwrap() {
                         state.drag = None;
                         state.drag_pending = None;
+                    }
+                }
+                Ok(Done)
+            }
+            XdgToplevelReqIDs::SetTitle => {
+                let title =
+                    String::from_utf8_lossy(parse_xdg_toplevel_req_set_title(msg)?).into_owned();
+                let length = length_zwlr_layer_surface_v1_req_set_anchor()
+                    + length_zwlr_layer_surface_v1_req_set_margin()
+                    + length_wl_surface_req_commit()
+                    + length_zwlr_layer_surface_v1_req_set_layer();
+                check_space!((length, 0), (0, 0), dst, reverse_dst);
+                state.titles.insert(object_id, title.clone());
+                apply_named_placement(state, object_id, dst);
+                if state.namespace == "ha-widget" && title == "HA Desktop Widget" {
+                    if let Some(layer_id) = alt_id {
+                        if state
+                            .objs
+                            .up_to_down
+                            .get(&layer_id)
+                            .map(|o| o.version >= 2)
+                            .unwrap_or(false)
+                        {
+                            write_zwlr_layer_surface_v1_req_set_layer(
+                                dst,
+                                layer_id,
+                                state.layer as u32,
+                            );
+                        }
                     }
                 }
                 Ok(Done)
@@ -1919,7 +2053,10 @@ fn process_request_w2l(
                  * actually over this toplevel's surface (not, say, a
                  * popup's). */
                 let Some((focus_surface, Some((x, y)))) = state.pointer_focus else {
-                    dtrace!("[drag] move ignored: pointer focus {:?}", state.pointer_focus);
+                    dtrace!(
+                        "[drag] move ignored: pointer focus {:?}",
+                        state.pointer_focus
+                    );
                     return Ok(Done);
                 };
                 let Some(xdg_surface_id) = state.toplevel_to_surface_map.get(&object_id) else {
@@ -1934,7 +2071,11 @@ fn process_request_w2l(
                     return Ok(Done);
                 };
                 if upstream_wl_surface != focus_surface {
-                    dtrace!("[drag] move ignored: toplevel surface {:?} != focus {:?}", upstream_wl_surface, focus_surface);
+                    dtrace!(
+                        "[drag] move ignored: toplevel surface {:?} != focus {:?}",
+                        upstream_wl_surface,
+                        focus_surface
+                    );
                     return Ok(Done);
                 }
                 state.drag = Some(PointerDrag {
@@ -1944,7 +2085,12 @@ fn process_request_w2l(
                     grab_y: y,
                 });
                 state.drag_last_inject = None;
-                dtrace!("[drag] move latched grab=({},{}) margins={:?}", x >> 8, y >> 8, state.margins);
+                dtrace!(
+                    "[drag] move latched grab=({},{}) margins={:?}",
+                    x >> 8,
+                    y >> 8,
+                    state.margins
+                );
                 Ok(Done)
             }
             _ => {
@@ -2191,5 +2337,179 @@ fn process_request_w2l(
             generic_destroy_object(&mut state.objs, alt_id.unwrap(), object_id)?;
         }
         Ok(Done)
+    }
+}
+
+#[cfg(test)]
+mod desktop_tests {
+    use super::*;
+
+    fn desktop() -> WindowToLayer<'static> {
+        let mut state = WindowToLayer::new(
+            ZwlrLayerShellV1Layer::Bottom,
+            -1,
+            true,
+            true,
+            false,
+            None,
+            false,
+            "ha-widget",
+            Some(9),
+            (20, 20, 20, 20),
+            (500, 600),
+            None,
+        );
+        assert!(insert_object(
+            &mut state.objs,
+            Some((UpstreamID(2), &ZWLR_LAYER_SHELL_V1, 4)),
+            None
+        )
+        .is_ok());
+        state.zwlr_layer_shell_v1 = Some(UpstreamID(2));
+        for (base, title) in [(10, "HA Desktop Widget"), (20, "HA Pin: sensor.one")] {
+            let wl = DownstreamID(base);
+            let xdg = DownstreamID(base + 1);
+            let top = DownstreamID(base + 2);
+            assert!(insert_object(
+                &mut state.objs,
+                Some((UpstreamID(base + 100), &WL_SURFACE, 6)),
+                Some((wl, &WL_SURFACE, 6))
+            )
+            .is_ok());
+            assert!(insert_object(
+                &mut state.objs,
+                Some((UpstreamID(base + 102), &ZWLR_LAYER_SURFACE_V1, 4)),
+                Some((top, &XDG_TOPLEVEL, 6))
+            )
+            .is_ok());
+            state.xdg_to_wl_surface_map.insert(xdg, wl);
+            state.surface_to_toplevel_map.insert(xdg, top);
+            state.toplevel_to_surface_map.insert(top, xdg);
+            state.titles.insert(top, title.into());
+        }
+        state
+    }
+    fn messages(data: &[u8]) -> Vec<&[u8]> {
+        let mut result = Vec::new();
+        let mut offset = 0;
+        while offset < data.len() {
+            let length = (u32::from_le_bytes(data[offset + 4..offset + 8].try_into().unwrap())
+                >> 16) as usize;
+            assert!(length >= 8);
+            result.push(&data[offset..offset + length]);
+            offset += length;
+        }
+        result
+    }
+    #[test]
+    fn popup_changes_only_the_main_layer_and_commits_it() {
+        let mut state = desktop();
+        let mut data = [0u8; 1024];
+        let mut fds = ArrayVec::new();
+        let mut q = OutputQueue {
+            data: &mut data,
+            endpoint: 1024,
+            fds: &mut fds,
+        };
+        assert!(matches!(
+            state.inject_set_layer(ZwlrLayerShellV1Layer::Overlay, &mut q),
+            Ok(true)
+        ));
+        let n = 1024 - q.data.len();
+        let msgs = messages(&data[..n]);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(u32::from_le_bytes(msgs[0][..4].try_into().unwrap()), 112);
+        assert_eq!(
+            parse_zwlr_layer_surface_v1_req_set_layer(msgs[0]).ok(),
+            Some(3)
+        );
+        assert_eq!(u32::from_le_bytes(msgs[1][..4].try_into().unwrap()), 110);
+    }
+    #[test]
+    fn independent_titles_get_independent_absolute_margins() {
+        let mut state = desktop();
+        let mut data = [0u8; 1024];
+        let mut fds = ArrayVec::new();
+        let placements = BTreeMap::from([
+            ("HA Desktop Widget".into(), (50, 70)),
+            ("HA Pin: sensor.one".into(), (100, 200)),
+        ]);
+        let mut q = OutputQueue {
+            data: &mut data,
+            endpoint: 1024,
+            fds: &mut fds,
+        };
+        assert!(matches!(
+            state.inject_placements(&placements, &mut q),
+            Ok(true)
+        ));
+        let n = 1024 - q.data.len();
+        let msgs = messages(&data[..n]);
+        assert_eq!(msgs.len(), 6);
+        assert_eq!(
+            parse_zwlr_layer_surface_v1_req_set_margin(msgs[1]).ok(),
+            Some((70, 0, 0, 50))
+        );
+        assert_eq!(
+            parse_zwlr_layer_surface_v1_req_set_margin(msgs[4]).ok(),
+            Some((200, 0, 0, 100))
+        );
+    }
+    #[test]
+    fn full_queue_defers_the_whole_placement_transaction() {
+        let mut state = desktop();
+        let mut data = [0u8; 8];
+        let mut fds = ArrayVec::new();
+        let mut q = OutputQueue {
+            data: &mut data,
+            endpoint: 8,
+            fds: &mut fds,
+        };
+        assert!(matches!(
+            state.inject_placements(
+                &BTreeMap::from([("HA Desktop Widget".into(), (5, 7))]),
+                &mut q
+            ),
+            Ok(false)
+        ));
+        assert!(state.placements.is_empty());
+        assert_eq!(q.data.len(), 8);
+    }
+    #[test]
+    fn zero_sized_output_configure_retains_last_valid_window_size() {
+        let mut state = desktop();
+        state.anchored_sizes.insert(DownstreamID(11), (420, 380));
+        let mut input = [0u8; 20];
+        let mut input_fds = ArrayVec::new();
+        let mut iq = OutputQueue {
+            data: &mut input,
+            endpoint: 20,
+            fds: &mut input_fds,
+        };
+        write_zwlr_layer_surface_v1_evt_configure(&mut iq, DownstreamID(112), 45, 0, 0);
+        let mut data = [0u8; 1024];
+        let mut fds = ArrayVec::new();
+        let mut reverse = [];
+        let mut rfds = ArrayVec::new();
+        let mut incoming = ArrayVec::new();
+        let mut q = OutputQueue {
+            data: &mut data,
+            endpoint: 1024,
+            fds: &mut fds,
+        };
+        let mut rq = OutputQueue {
+            data: &mut reverse,
+            endpoint: 0,
+            fds: &mut rfds,
+        };
+        assert!(state
+            .process_message(true, &input, &mut incoming, &mut q, &mut rq)
+            .is_ok());
+        let n = 1024 - q.data.len();
+        let msgs = messages(&data[..n]);
+        let (w, h, _) = parse_xdg_toplevel_evt_configure(msgs[msgs.len() - 2])
+            .ok()
+            .unwrap();
+        assert_eq!((w, h), (420, 380));
     }
 }

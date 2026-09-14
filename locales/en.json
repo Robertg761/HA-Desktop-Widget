@@ -615,5 +615,16 @@
   "Wait for the current dashboard save to finish.": "Wait for the current dashboard save to finish.",
   "State Change": "State Change",
   "Specific State": "Specific State",
-  "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400."
+  "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400.",
+  "Follow Omarchy theme": "Follow Omarchy theme",
+  "Use the current Omarchy palette. Your custom colors are kept for when this is off.": "Use the current Omarchy palette. Your custom colors are kept for when this is off.",
+  "Hyprland shortcuts": "Hyprland shortcuts",
+  "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.": "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.",
+  "Hyprland bindings": "Hyprland bindings",
+  "Copy bindings": "Copy bindings",
+  "Refresh shortcut status": "Refresh shortcut status",
+  "Configuration format": "Configuration format",
+  "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.",
+  "Lua (.lua)": "Lua (.lua)",
+  "Hyprlang (.conf)": "Hyprlang (.conf)"
 }

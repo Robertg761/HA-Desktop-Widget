@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.17",
+  "version": "1.2.18",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -622,6 +622,17 @@
     "Wait for the current dashboard save to finish.": "Wait for the current dashboard save to finish.",
     "State Change": "State Change",
     "Specific State": "Specific State",
-    "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400."
+    "Enter a whole number of seconds from 0 to 86400.": "Enter a whole number of seconds from 0 to 86400.",
+    "Hyprland shortcuts": "اختصارات Hyprland",
+    "Copy bindings": "نسخ الاختصارات",
+    "Refresh shortcut status": "تحديث حالة الاختصارات",
+    "Follow Omarchy theme": "اتباع سمة Omarchy",
+    "Hyprland bindings": "تعيينات مفاتيح Hyprland",
+    "Use the current Omarchy palette. Your custom colors are kept for when this is off.": "استخدام لوحة ألوان Omarchy الحالية. تُحفظ ألوانك المخصصة لاستخدامها عند تعطيل هذا الخيار.",
+    "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.": "أضف هذه التعيينات إلى ملف bindings.lua في Hyprland بعد التحقق من تعيينات المفاتيح الحالية. أبقِ الأداة قيد التشغيل، ثم اضغط اختصارك لاختباره.",
+    "Configuration format": "تنسيق الإعدادات",
+    "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "اختر التنسيق المستخدم في إعدادات Hyprland، ثم انسخ التعيينات بعد التحقق من تعارضات المفاتيح.",
+    "Lua (.lua)": "Lua (.lua)",
+    "Hyprlang (.conf)": "Hyprlang (.conf)"
   }
 }

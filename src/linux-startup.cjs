@@ -36,8 +36,46 @@ function escapeDesktopEntryText(value) {
 }
 
 function quoteDesktopExecArg(value) {
-  const text = String(value || '');
-  return `"${text.replace(/(["\\`$])/g, '\\$1')}"`;
+  const text = String(value || '').replace(/%/g, '%%');
+  if (/[\r\n\0]/.test(text)) throw new Error('Invalid startup executable path');
+  // Desktop string escapes are decoded before command-line quoting.
+  const quoted = text.replace(/(["\\`$])/g, '\\$1');
+  return `"${quoted.replace(/\\/g, '\\\\')}"`;
+}
+
+function buildDesktopExecPrefix(executable) {
+  // GLib validates the executable before expanding field codes. Keep a path
+  // containing a literal percent sign in an argument to a fixed executable.
+  return String(executable).includes('%')
+    ? `/usr/bin/env ${quoteDesktopExecArg(executable)}`
+    : quoteDesktopExecArg(executable);
+}
+
+function parseDesktopExecCommand(content) {
+  const line = content.match(/^Exec=(.*)$/m)?.[1];
+  const prefix = line?.startsWith('/usr/bin/env ') ? '/usr/bin/env ' : '';
+  const raw = line?.slice(prefix.length);
+  if (!raw) return null;
+  let decoded = '';
+  const ends = [];
+  const escapes = { '\\': '\\', s: ' ', t: '\t', n: '\n', r: '\r' };
+  for (let i = 0; i < raw.length; i += 1) {
+    if (raw[i] === '\\' && Object.hasOwn(escapes, raw[i + 1])) {
+      decoded += escapes[raw[++i]];
+    } else decoded += raw[i];
+    ends.push(i + 1);
+  }
+  const match = decoded.match(/^("(?:\\.|[^"\\])*")(?:\s|$)/);
+  if (!match) return null;
+  const length = ends[match[1].length - 1];
+  return {
+    executable: match[1]
+      .slice(1, -1)
+      .replace(/\\(["\\`$])/g, '$1')
+      .replace(/%%/g, '%'),
+    rawToken: prefix + raw.slice(0, length),
+    suffix: raw.slice(length),
+  };
 }
 
 function getLinuxStartupExecutablePath(app, env = process.env) {
@@ -52,7 +90,7 @@ function getLinuxStartupExecutablePath(app, env = process.env) {
 
 function buildLinuxAutostartDesktopEntry({ appName, executablePath }) {
   const name = escapeDesktopEntryText(appName || 'HA Desktop Widget');
-  const execPath = quoteDesktopExecArg(executablePath);
+  const execPath = buildDesktopExecPrefix(executablePath);
 
   return [
     '[Desktop Entry]',
@@ -63,6 +101,7 @@ function buildLinuxAutostartDesktopEntry({ appName, executablePath }) {
     `Exec=${execPath}`,
     'Terminal=false',
     'X-GNOME-Autostart-enabled=true',
+    'X-HA-Widget-Autostart=true',
     '',
   ].join('\n');
 }
@@ -80,7 +119,7 @@ function linuxAutostartEntryEnabled(content) {
 function linuxAutostartEntryMatches(content, executablePath) {
   if (!linuxAutostartEntryEnabled(content)) return false;
 
-  const expectedExec = quoteDesktopExecArg(executablePath);
+  const expectedExec = buildDesktopExecPrefix(executablePath);
   return content.split(/\r?\n/).some((line) => line.trim() === `Exec=${expectedExec}`);
 }
 
@@ -144,11 +183,23 @@ function syncLinuxAutostartExecutablePath({
     return { repaired: false, autostartPath, reason: 'current' };
   }
 
-  fsModule.writeFileSync(
-    autostartPath,
-    buildLinuxAutostartDesktopEntry({ appName, executablePath }),
-    { encoding: 'utf8', mode: 0o644 }
+  if (!isGeneratedLinuxAutostartEntry(content)) {
+    return { repaired: false, autostartPath, reason: 'not-owned' };
+  }
+  // Only repair an obsolete executable, never adopt a second working install.
+  // Restrict automatic repair to the quoted Exec form emitted by this app.
+  const command = parseDesktopExecCommand(content);
+  if (!command) return { repaired: false, autostartPath, reason: 'custom-command' };
+  const oldPath = command.executable;
+  if (!path.isAbsolute(oldPath) || fsModule.existsSync(oldPath)) {
+    return { repaired: false, autostartPath, reason: 'existing-installation' };
+  }
+  // Preserve arguments, desktop restrictions, and user-added fields byte for byte.
+  const updated = content.replace(
+    `Exec=${command.rawToken}`,
+    () => `Exec=${buildDesktopExecPrefix(executablePath)}`
   );
+  fsModule.writeFileSync(autostartPath, updated, { encoding: 'utf8', mode: 0o644 });
   return { repaired: true, autostartPath, reason: 'stale' };
 }
 
@@ -156,7 +207,10 @@ function syncLinuxAutostartExecutablePath({
 // placed under the same name, is theirs -- adopting or deleting it would be overreach.
 function isGeneratedLinuxAutostartEntry(content) {
   if (typeof content !== 'string' || !content.trim()) return false;
-  return /^Comment\s*=\s*Launch\s+\S.*\s+at login\s*$/im.test(content);
+  return (
+    /^X-HA-Widget-Autostart=true$/m.test(content) ||
+    /^Comment\s*=\s*Launch\s+\S.*\s+at login\s*$/im.test(content)
+  );
 }
 
 /**
@@ -220,11 +274,8 @@ function migrateLegacyLinuxAutostartEntry({
     }
 
     fsModule.mkdirSync(getLinuxAutostartDir(env), { recursive: true });
-    fsModule.writeFileSync(
-      autostartPath,
-      buildLinuxAutostartDesktopEntry({ appName, executablePath }),
-      { encoding: 'utf8', mode: 0o644 }
-    );
+    fsModule.writeFileSync(autostartPath, legacyContent, { encoding: 'utf8', mode: 0o644 });
+    syncLinuxAutostartExecutablePath({ pkg, appName, executablePath, env, fsModule });
     fsModule.unlinkSync(legacyPath);
     return { adopted: true, removedDuplicate: false, legacyPath, autostartPath };
   }
@@ -238,6 +289,14 @@ function setLinuxLoginItemSettings(
 ) {
   const autostartDir = getLinuxAutostartDir(env);
   const autostartPath = getLinuxAutostartFilePath(pkg, appName, env);
+
+  try {
+    const existing = fsModule.readFileSync(autostartPath, 'utf8');
+    if (!isGeneratedLinuxAutostartEntry(existing))
+      throw new Error('Startup entry is managed outside this app');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 
   if (openAtLogin) {
     fsModule.mkdirSync(autostartDir, { recursive: true });
@@ -274,6 +333,8 @@ module.exports = {
   linuxAutostartEntryNeedsRepair,
   migrateLegacyLinuxAutostartEntry,
   quoteDesktopExecArg,
+  buildDesktopExecPrefix,
+  parseDesktopExecCommand,
   setLinuxLoginItemSettings,
   syncLinuxAutostartExecutablePath,
 };

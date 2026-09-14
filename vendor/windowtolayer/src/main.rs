@@ -3,6 +3,7 @@ use arrayvec::ArrayVec;
 use lexopt::{Arg, ValueExt};
 use log::{debug, warn, Log, Record};
 use rustix::{event, io, net};
+use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as FmtWrite;
 use std::io::{IoSlice, IoSliceMut, Write as IoWrite};
@@ -11,6 +12,7 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
+static PLACEMENTS: Mutex<(u64, BTreeMap<String, (i32, i32)>)> = Mutex::new((0, BTreeMap::new()));
 use std::{env, os::fd::RawFd};
 use windowtolayer::common::{
     MessageRewriter, ProcResult, WaylandError, FD_IN_QUEUE_SIZE, MAX_EARLY_FDS,
@@ -525,6 +527,30 @@ fn get_option(parser: &mut lexopt::Parser, argument: &str) -> OsString {
 }
 
 fn main() {
+    // Chromium can leave descriptors without CLOEXEC (including DevTools' TCP
+    // listener). This helper accepts no inherited descriptors besides stdio.
+    // Close them before opening our own sockets so a restart cannot retain the
+    // old browser's ports or D-Bus connections in the helper and its child.
+    #[cfg(target_os = "linux")]
+    if let Ok(entries) = std::fs::read_dir("/proc/self/fd") {
+        let descriptor_directory = PathBuf::from(format!("/proc/{}/fd", std::process::id()));
+        let inherited: Vec<i32> = entries
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                std::fs::read_link(entry.path()).ok().as_ref() != Some(&descriptor_directory)
+            })
+            .filter_map(|entry| entry.file_name().to_str()?.parse::<i32>().ok())
+            .filter(|fd| *fd > 2)
+            .collect();
+        for fd in inherited {
+            // No OwnedFd exists for these inherited handles. The directory's
+            // own descriptor was excluded above and closed by ReadDir.
+            unsafe {
+                rustix::io::close(fd);
+            }
+        }
+    }
+
     let mut debug = false;
     let mut interactivity: Option<(bool, bool)> = None;
     let mut layer: Option<ZwlrLayerShellV1Layer> = None;
@@ -1000,9 +1026,34 @@ fn run_proxy(upstream_fd: OwnedFd, downstream_fd: OwnedFd, cfg: &ProxyConfig) {
      * a connection opened after a command adopt it too: its inject call finds no
      * surfaces yet but records the layer for the ones about to be created. */
     let mut seen_layer_generation: u32 = 0;
+    let mut seen_placement_generation: u64 = 0;
 
     loop {
         if cfg.control_channel {
+            {
+                let placements = PLACEMENTS.lock().unwrap();
+                if placements.0 != seen_placement_generation {
+                    let dst_space = bufs_upward.buf_dst.len();
+                    let mut dstq = OutputQueue {
+                        data: &mut bufs_upward.buf_dst[bufs_upward.nbytes_dst..],
+                        endpoint: dst_space,
+                        fds: &mut bufs_upward.fds_out,
+                    };
+                    let pre_len = dstq.data.len();
+                    match state.inject_placements(&placements.1, &mut dstq) {
+                        Ok(done) => {
+                            bufs_upward.nbytes_dst += pre_len - dstq.data.len();
+                            if done {
+                                seen_placement_generation = placements.0;
+                            }
+                        }
+                        Err(_) => {
+                            eprintln!("Failed to place surfaces");
+                            break;
+                        }
+                    }
+                }
+            }
             let command = LAYER_COMMAND.load(std::sync::atomic::Ordering::SeqCst);
             let generation = (command >> 32) as u32;
             if generation != seen_layer_generation {
@@ -1499,6 +1550,20 @@ fn scan_upstream_outputs(upstream_path: &OsStr) -> Result<Vec<(String, String)>,
  * monitor (from a fresh registry scan, so hotplug stays correct). Best-effort
  * by design: the popup path in the app must degrade to a no-op, never break
  * the session. */
+fn parse_placement(command: &[u8]) -> Option<(String, i32, i32)> {
+    let text = std::str::from_utf8(command).ok()?;
+    let parts: Vec<_> = text.trim_end_matches('\n').split('\t').collect();
+    if parts.len() != 4 || parts[0] != "place" || parts[1].is_empty() || parts[1].len() > 256 {
+        return None;
+    }
+    let x: i32 = parts[2].parse().ok()?;
+    let y: i32 = parts[3].parse().ok()?;
+    if !(0..=32768).contains(&x) || !(0..=32768).contains(&y) {
+        return None;
+    }
+    Some((parts[1].to_owned(), x, y))
+}
+
 fn handle_control_connection(ctl_listener: &OwnedFd, cfg: &ProxyConfig, upstream_path: &OsStr) {
     let conn = match net::accept_with(ctl_listener, net::SocketFlags::NONBLOCK) {
         Ok(c) => c,
@@ -1523,15 +1588,47 @@ fn handle_control_connection(ctl_listener: &OwnedFd, cfg: &ProxyConfig, upstream
             return;
         }
     }
-    let mut buf = [0u8; 64];
-    let nread = match io::read(&conn, &mut buf) {
-        Ok(n) => n,
-        Err(e) => {
-            debug!("Failed to read control command: {}", e);
+    let mut buf = [0u8; 4096];
+    let mut nread = 0;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    loop {
+        match io::read(&conn, &mut buf[nread..]) {
+            Ok(0) => break,
+            Ok(n) => {
+                nread += n;
+                if buf[..nread].contains(&b'\n') {
+                    break;
+                }
+                if nread == buf.len() {
+                    return;
+                }
+            }
+            Err(rustix::io::Errno::AGAIN) => {}
+            Err(_) => return,
+        }
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            return;
+        };
+        let timeout = rustix::event::Timespec {
+            tv_sec: 0,
+            tv_nsec: remaining.as_nanos() as i64,
+        };
+        if !matches!(event::poll(&mut pfds, Some(&timeout)), Ok(n) if n > 0) {
             return;
         }
-    };
+    }
     let command = buf[..nread].trim_ascii();
+    if command.starts_with(b"place\t") {
+        if let Some((title, x, y)) = parse_placement(command) {
+            let mut placements = PLACEMENTS.lock().unwrap();
+            // Bound memory even if a local client submits arbitrary titles.
+            if placements.1.len() < 256 || placements.1.contains_key(&title) {
+                placements.1.insert(title, (x, y));
+                placements.0 = placements.0.wrapping_add(1);
+            }
+        }
+        return;
+    }
     if command == b"outputs" {
         /* Reply with one "name\tdescription" line per monitor and close. The
          * scan blocks this thread for up to ~2s, which only delays other
@@ -1711,7 +1808,7 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], mut cfg: ProxyConfig) {
          * bound and keep the inode alive through any rotation. The child is an
          * application with its own logging. */
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::inherit());
     let mut handle = match cmd.spawn() {
         Ok(h) => h,
         Err(e) => {
@@ -1800,4 +1897,25 @@ fn run_listen_mode(sock_name: &str, command: &[&OsStr], mut cfg: ProxyConfig) {
     remove_socket_if_ours(&listen_path, bound_socket_id);
     remove_socket_if_ours(&ctl_path, bound_ctl_socket_id);
     let _ = std::fs::remove_file(&ready_path);
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+    #[test]
+    fn accepts_a_named_surface_and_rejects_invalid_commands() {
+        assert_eq!(
+            parse_placement(b"place\tHA Pin: sensor.one\t12\t34\n"),
+            Some(("HA Pin: sensor.one".into(), 12, 34))
+        );
+        for command in [
+            b"place\tmain\t-1\t4".as_slice(),
+            b"place\tmain\t9999999\t4",
+            b"place\tmain\t3\t4\textra",
+            b"place\t\t3\t4",
+            b"place\tmain\tx\t4",
+        ] {
+            assert!(parse_placement(command).is_none());
+        }
+    }
 }

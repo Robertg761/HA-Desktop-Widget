@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Follow the active Omarchy palette, including live theme changes.
+- Provide Hyprland shortcut bindings and an activation status panel.
+- Build an Arch Linux package from a checksum-pinned release bundle, with a stable launcher and `--show`, `--hide`, and `--toggle` commands.
+
 - Add an optional "Hide to tray when focus is lost" setting under General. It defaults off and preserves desktop pins, Linux desktop-layer visibility, and held popup hotkeys.
 - Create a Quick Access page from a Home Assistant room and select which entities to include.
 - Search explicit device actions, scenes, scripts, and page switches in the command palette, with recent successful commands shown first.
@@ -20,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Offer Lua and legacy Hyprlang shortcut bindings in Settings, and preserve inline text colors when Omarchy theme following is inactive.
+- Avoid a renderer startup error when profile-sync status arrives before configuration has loaded.
+- Keep Hyprland animation settings intact while dragging the widget. Store each desktop pin's position separately and raise only the main widget for popup shortcuts.
+- Use the installed desktop identity for portal shortcuts and accept Hyprland targets that require a compositor binding.
+- Preserve working and custom autostart entries when another installation or test profile is launched.
+- Report desktop-layer window capabilities accurately, recover placement after monitor changes, and clamp positions to the usable monitor area.
+- Stop the idle connection indicator animation after two cycles.
+
 - Align the panel preview's simulated config-save responses with Electron so successful dashboard edits are acknowledged correctly.
 - Switching Quick Access pages no longer rebuilds the entity picker while it is closed, re-applies the theme and window effects, or fetches chart history one tile at a time.
 
@@ -30,6 +42,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one-second timer countdowns while hidden, and stale-reading protection after disconnects,
   sleep, and renderer failures. Stable builds preserve these preferences without showing the
   feature. The next beta cycle targets 3.11.0.
+
+## [3.11.0-beta.3] - 2026-09-14
+
+### Added
+
+- Optional live Omarchy theme following, with custom colors preserved when disabled.
+- A Hyprland shortcuts panel with selectable Lua and legacy Hyprlang bindings, a Copy button, and activation status.
+- Optional Hide to tray when focus is lost. Desktop pins and Linux desktop-layer windows remain visible.
+- Arch packaging support for future stable releases, including a stable launcher command. This beta ships the existing AppImage and Debian packages on Linux.
+
+### Fixed
+
+- Preserve Hyprland's global animation settings. The widget now uses compositor cursor coordinates for dragging in native Hyprland layer mode.
+- Keep desktop pins at separate saved positions and raise only the main widget for popup shortcuts. Restore placement when moving between outputs and clamp it to the usable monitor area.
+- Accept Hyprland portal targets that require a compositor binding and use the canonical application ID. Existing bindings using `ha_desktop_widget:` must switch to `com.github.robertg761.hadesktopwidget:`.
+- Preserve working and custom Linux autostart entries when another installation or isolated test profile is launched.
+- Report unsupported desktop-layer controls accurately, stop continuous idle indicator animation, and prevent inherited helper sockets from interfering with application restarts.
+- Avoid an early profile-sync status error during renderer startup and preserve inline text colors when Omarchy theme following is inactive.
+
+### Verification and limits
+
+- Local verification passed 1,651 JavaScript tests and five Rust tests, packaged Hyprland checks, simulated connection recovery, and isolated encrypted credential persistence checks.
+- Physical monitor hotplug, fractional scaling, dragging with stock animations, suspend/resume, and sustained camera workloads still need hardware validation. Native Sway, niri, and older-Hyprland behavior remains unverified.
 
 ## [3.11.0-beta.1] - 2026-09-10
 

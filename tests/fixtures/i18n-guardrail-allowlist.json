@@ -63,8 +63,6 @@
   "src/settings.js|showToast|'Saved passphrase cleared.'",
   "src/settings.js|showToast|'This build cannot save a sync passphrase.'",
   "src/settings.js|showToast|`Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`",
-  "src/settings.js|showToast|`Popup hotkey set to ${hotkey}`",
-  "src/settings.js|showToast|`Popup hotkey set to ${hotkey}`",
   "src/settings.js|showToast|`Profile sync ${direction === 'push' ? 'upload' : 'download'} complete.`",
   "src/ui.js|showConfirm|'Remove from Quick Access'",
   "src/ui.js|showToast|'Entity removed from Quick Access'",

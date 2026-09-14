@@ -147,6 +147,9 @@ jobs:
         with:
           workspaces: vendor/windowtolayer
 
+      - name: Test layer-shell protocol translation
+        run: cargo test --manifest-path vendor/windowtolayer/Cargo.toml
+
       - name: Build layer-shell helper
         run: npm run build:windowtolayer
 

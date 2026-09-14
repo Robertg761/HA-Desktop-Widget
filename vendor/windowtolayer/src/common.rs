@@ -77,6 +77,14 @@ pub trait MessageRewriter {
      * messages right now (nothing is written; retry after it drains) and
      * Ok(true) once the change is fully applied or there is nothing to apply.
      * The default is for rewriters that manage no layer surfaces. */
+    fn inject_placements(
+        &mut self,
+        _placements: &BTreeMap<String, (i32, i32)>,
+        _dst: &mut OutputQueue,
+    ) -> Result<bool, WaylandError> {
+        Ok(true)
+    }
+
     fn inject_set_layer(
         &mut self,
         _layer: ZwlrLayerShellV1Layer,

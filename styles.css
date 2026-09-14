@@ -2681,7 +2681,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   box-shadow: 0 0 4px var(--danger);
   -webkit-app-region: no-drag;
   cursor: help;
-  animation: pulseDisconnected 2s ease-in-out infinite;
+  animation: pulseDisconnected 2s ease-in-out 2;
 }
 
 @keyframes pulseDisconnected {
@@ -2699,7 +2699,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .connection-indicator.connected {
   background: var(--success);
   box-shadow: 0 0 6px var(--success);
-  animation: pulseConnected 3s ease-in-out infinite;
+  animation: pulseConnected 3s ease-in-out 2;
 }
 
 @keyframes pulseConnected {
@@ -12655,4 +12655,32 @@ label.disabled {
 
 .donate-secure-note {
   margin-top: var(--space-3);
+}
+
+/* Dragging a Wayland layer uses compositor coordinates, never native xdg move. */
+body.layer-drag-enabled .header,
+body.layer-drag-enabled .drag-area,
+body.layer-drag-enabled .drag-region,
+body.layer-drag-enabled .desktop-pin-drag-region {
+  -webkit-app-region: no-drag;
+}
+
+body.layer-drag-enabled.desktop-pin-edit-mode .desktop-pin-shell,
+body.layer-drag-enabled.desktop-pin-edit-mode .desktop-pin-content,
+body.layer-drag-enabled.desktop-pin-edit-mode .desktop-pin-empty,
+body.layer-drag-enabled.desktop-pin-edit-mode .control-item {
+  -webkit-app-region: no-drag;
+}
+
+#desktop-bindings {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  font-family: monospace;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+#desktop-integration .btn {
+  margin-bottom: 8px;
 }
