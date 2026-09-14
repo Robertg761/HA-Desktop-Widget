@@ -14,6 +14,7 @@
 
 import '@mdi/font/css/materialdesignicons.min.css';
 import '../styles.css';
+import '../dashboard-workflows.css';
 import Sortable from 'sortablejs';
 import state from '@hadw/renderer/state.js';
 import { buildProfileDocumentFromConfig } from '@hadw/renderer/profile-schema.js';
@@ -109,7 +110,7 @@ async function virtualUpdateConfig(patch) {
     }
   }
   if (!suppressParentNotify) notifyParent();
-  return { success: true, config: authoritative };
+  return authoritative;
 }
 
 async function virtualReplaceConfigEntityId(oldEntityId, newEntityId) {
@@ -122,7 +123,7 @@ async function virtualReplaceConfigEntityId(oldEntityId, newEntityId) {
     };
   }
   const authoritative = await virtualUpdateConfig(replacement.config);
-  return { success: true, changed: true, config: authoritative.config };
+  return { success: true, changed: true, config: authoritative };
 }
 
 function installVirtualElectronApi() {
@@ -131,12 +132,12 @@ function installVirtualElectronApi() {
     getConfig: async () => ({ ...snapshotConfig(), configRevision }),
     updateConfig: virtualUpdateConfig,
     replaceConfigEntityId: virtualReplaceConfigEntityId,
-    saveConfig: virtualUpdateConfig,
+    saveConfig: async (patch) => ({ success: true, config: await virtualUpdateConfig(patch) }),
     onConfigUpdated: (callback) => {
       configListeners.add(callback);
       return () => configListeners.delete(callback);
     },
-    signalRendererReady: async () => {},
+    signalRendererReady: async () => ({ success: true }),
     clearTokenResetReason: async () => {},
     getAppVersion: async () =>
       `${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'} (preview)`,
@@ -145,7 +146,7 @@ function installVirtualElectronApi() {
     getWindowState: async () => ({ alwaysOnTop: false }),
     getProfileSyncStatus: async () => ({ enabled: false, provider: 'folder' }),
     getLocaleBootstrap: async () => null,
-    getLocalePacks: async () => ({ packs: [] }),
+    getLocalePacks: async () => [],
     isPopupHotkeyAvailable: async () => false,
     getPopupHotkey: async () => '',
     validateHotkey: async () => ({ valid: false, error: 'Hotkeys are desktop-only' }),

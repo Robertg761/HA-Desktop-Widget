@@ -1,5 +1,6 @@
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
+import { initializeDashboardTools, refreshDashboardUndoState } from './src/dashboard-tools.js';
 import state from './src/state.js';
 import websocket from './src/websocket.js';
 import * as hotkeys from './src/hotkeys.js';
@@ -1011,6 +1012,35 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
   );
 }
 
+// The keys the Quick Access persistence path writes. A config echo that differs from what the
+// renderer already holds only in these keys needs a tile render, not a theme or locale refresh.
+const QUICK_ACCESS_CONFIG_KEYS = [
+  'customTabs',
+  'activeTabId',
+  'favoriteEntities',
+  'comparisonGraphs',
+];
+// The config as of the previous applyRendererConfig call. Persistence paths in ui.js and
+// settings.js store their result in state before the echo arrives, so state alone cannot tell
+// whether the appearance pass has already run for it.
+let lastAppliedRendererConfig = null;
+
+function describeRendererConfigChange(renderedConfig, appliedConfig, nextConfig) {
+  const serialize = (config, quickAccess) =>
+    JSON.stringify(
+      Object.entries(config || {})
+        .filter(([key]) => QUICK_ACCESS_CONFIG_KEYS.includes(key) === quickAccess)
+        .sort(([a], [b]) => a.localeCompare(b))
+    );
+  const differs = (previousConfig, quickAccess) =>
+    !previousConfig?.homeAssistant ||
+    serialize(previousConfig, quickAccess) !== serialize(nextConfig, quickAccess);
+  return {
+    quickAccess: differs(renderedConfig, true) || differs(appliedConfig, true),
+    other: differs(appliedConfig, false),
+  };
+}
+
 function applyRendererConfig(nextConfig) {
   if (!nextConfig || !nextConfig.homeAssistant) return;
   const nextRevision = Number(nextConfig.configRevision);
@@ -1036,22 +1066,38 @@ function applyRendererConfig(nextConfig) {
   const normalizedGraphs = normalizeComparisonGraphsConfig(normalizedQuickAccess.config, {
     withChanged: true,
   });
+  const renderedConfig = state.CONFIG;
   state.setConfig(normalizedGraphs.config);
+  // Kept local: the migration write below can echo back synchronously and re-enter this function
+  // before the appearance pass runs, and that inner call must not decide the outer pass.
+  const change = describeRendererConfigChange(
+    renderedConfig,
+    lastAppliedRendererConfig,
+    state.CONFIG
+  );
+  // Snapshot rather than alias: alerts and hotkeys mutate state.CONFIG in place, and an
+  // aliased reference would hide those changes from the next comparison.
+  lastAppliedRendererConfig = JSON.parse(JSON.stringify(state.CONFIG));
+  refreshDashboardUndoState();
   refreshDesktopPinStatePublishing();
   if ((normalizedQuickAccess.changed || normalizedGraphs.changed) && !IS_DESKTOP_PIN_MODE) {
     window.electronAPI.updateConfig(normalizedGraphs.config).catch((error) => {
       log.error('Failed to persist Quick Access view migration:', error);
     });
   }
-  uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
-  uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
-  uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
-  uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
-  uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-  uiUtils.applyWindowEffects(state.CONFIG || {});
+  // Re-applying window effects repaints the whole blurred window, so skip the appearance pass
+  // when the echo only carries a Quick Access change the renderer already drew.
+  if (change.other) {
+    uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+    uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
+    uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+    uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
+    uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+    uiUtils.applyWindowEffects(state.CONFIG || {});
 
-  if (ui.updateWeatherEffects) {
-    ui.updateWeatherEffects();
+    if (ui.updateWeatherEffects) {
+      ui.updateWeatherEffects();
+    }
   }
 
   // Keep Home Assistant's stored layout snapshot current (deduplicated in the client).
@@ -1067,7 +1113,7 @@ function applyRendererConfig(nextConfig) {
       5000
     );
   });
-  return true;
+  return change;
 }
 
 function showConfigRecoveryNotice(recovery) {
@@ -1604,6 +1650,7 @@ websocket.on('message', (msg) => {
 
 websocket.on('close', (closeInfo = {}) => {
   try {
+    alerts.suspendEntityAlerts?.();
     if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
     if (closeInfo?.intentional) {
       log.debug('WebSocket closed intentionally; skipping reconnect schedule');
@@ -1719,19 +1766,24 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     const previousConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
       state.CONFIG?.homeAssistant?.token || ''
     }`;
-    if (applyRendererConfig(nextConfig) === false) return;
-    if (!IS_DESKTOP_PIN_MODE) syncTrayEntityIconsWithConfig();
+    const applied = applyRendererConfig(nextConfig);
+    if (applied === false) return;
+    // A page switch or tile edit echoes back a config the renderer already holds and drew.
+    // Only the parts that changed get refreshed, so those echoes cost nothing visible.
+    const change =
+      applied && typeof applied === 'object' ? applied : { quickAccess: true, other: true };
+    if (!IS_DESKTOP_PIN_MODE && change.other) syncTrayEntityIconsWithConfig();
     const nextConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
       state.CONFIG?.homeAssistant?.token || ''
     }`;
     // Apply the versioned config synchronously before yielding. The preload
     // buffers config echoes while writes are pending, and this avoids an older
     // event resuming after a newer optimistic mutation.
-    await refreshLocaleBootstrap();
-    if (!IS_SPECIAL_PIN_MODE && configuredRuntimeStarted) {
+    if (change.other) await refreshLocaleBootstrap();
+    if (!IS_SPECIAL_PIN_MODE && configuredRuntimeStarted && change.other) {
       alerts.initializeEntityAlerts();
     }
-    renderCurrentMode();
+    if (change.other || change.quickAccess) renderCurrentMode();
     const wizardShown = maybeShowFirstRunWizard();
     const nowConfigured = isConfigured(state.CONFIG);
     if (!wizardShown && nowConfigured) {
@@ -1829,6 +1881,9 @@ function replaceEmojiIcons() {
 
     const manageBtn = document.getElementById('manage-quick-controls-btn');
     if (manageBtn) setIconContent(manageBtn, 'add', { size: 18 });
+
+    const undoBtn = document.getElementById('undo-dashboard-btn');
+    if (undoBtn) setIconContent(undoBtn, 'undo', { size: 18 });
 
     // Media Player Controls
     const mediaPrevBtn = document.getElementById('media-tile-prev');
@@ -2056,6 +2111,7 @@ async function init() {
 function wireUI() {
   try {
     commandPalette.initializeCommandPalette();
+    initializeDashboardTools();
 
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Create a Quick Access page from a Home Assistant room and select which entities to include.
+- Search explicit device actions, scenes, scripts, and page switches in the command palette, with recent successful commands shown first.
+- Configure numeric alert thresholds, sustained conditions, notification cooldowns, and local quiet hours. Repeated matching updates no longer generate duplicate alerts.
+- Undo dashboard edits and restore one of the last 20 local layout snapshots from Advanced settings.
+- Inspect connection diagnostics and copy a report that excludes connection credentials and entity data.
+- Select a 1-hour, 6-hour, 24-hour, or 7-day sensor detail chart with minimum, maximum, sample average, and retry controls.
+- Add workflow message keys to bundled and downloadable catalogs, with English fallbacks for new labels.
+
+### Fixed
+
+- Align the panel preview's simulated config-save responses with Electron so successful dashboard edits are acknowledged correctly.
+- Switching Quick Access pages no longer rebuilds the entity picker while it is closed, re-applies the theme and window effects, or fetches chart history one tile at a time.
+
 ### Beta features
 
 - Live tray values remain available only in numbered beta builds. They include per-entity short

@@ -252,6 +252,48 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     }
   });
 
+  describe('dashboard recovery', () => {
+    it('keeps the current layout and restore points when persistence fails', async () => {
+      const { rememberDashboard, readDashboardHistory } = require('../../src/dashboard-history.js');
+      localStorage.clear();
+      const current = {
+        ...state.CONFIG,
+        customTabs: [{ id: 'current', name: 'Current', entityIds: [] }],
+      };
+      const previous = {
+        ...current,
+        customTabs: [{ id: 'previous', name: 'Previous', entityIds: [] }],
+      };
+      state.setConfig(current);
+      rememberDashboard(previous, current);
+      const entries = readDashboardHistory(current);
+      mockElectronAPI.updateConfig.mockResolvedValueOnce({ success: false, error: 'Disk full' });
+      await expect(ui.restoreDashboard(entries[0].layout)).rejects.toThrow('Disk full');
+      expect(state.CONFIG.customTabs).toEqual(current.customTabs);
+      expect(readDashboardHistory(current)).toEqual(entries);
+    });
+
+    it('restores dashboard fields while preserving local authorization and hotkeys', async () => {
+      const current = {
+        ...state.CONFIG,
+        customTabs: [{ id: 'current', name: 'Current', entityIds: [] }],
+      };
+      state.setConfig(current);
+      mockElectronAPI.updateConfig.mockImplementationOnce(async (patch) => ({
+        ...current,
+        ...patch,
+      }));
+      await ui.restoreDashboard({
+        customTabs: [{ id: 'previous', name: 'Previous', entityIds: ['light.office'] }],
+        homeAssistant: { token: 'injected' },
+        globalHotkeys: {},
+      });
+      expect(state.CONFIG.customTabs[0].id).toBe('previous');
+      expect(state.CONFIG.homeAssistant).toEqual(current.homeAssistant);
+      expect(state.CONFIG.globalHotkeys).toEqual(current.globalHotkeys);
+    });
+  });
+
   describe('executeHotkeyAction', () => {
     beforeEach(() => {
       jest.useFakeTimers();
@@ -5894,6 +5936,68 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(document.getElementById('quick-controls-target-hint').textContent).toContain('All');
       expect(document.querySelector('.quick-access-entity-view-select')).toBeNull();
+    });
+
+    it('leaves the manage list alone while its dialog is closed', async () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `
+        <div id="quick-controls-modal" class="modal hidden">
+          <input id="quick-controls-search" />
+          <div id="quick-controls-target-hint"></div>
+          <div id="quick-controls-list"></div>
+        </div>
+      `
+      );
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: ['light.bedroom'] },
+        ],
+        'default'
+      );
+      const list = document.getElementById('quick-controls-list');
+
+      await ui.switchQuickAccessPage('bedroom');
+      expect(list.children).toHaveLength(0);
+
+      const modal = document.getElementById('quick-controls-modal');
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      await ui.switchQuickAccessPage('default');
+      expect(list.children.length).toBeGreaterThan(0);
+    });
+
+    it('fetches history for every chart tile on a page in one request', async () => {
+      const makeSensor = (entityId, value) => ({
+        entity_id: entityId,
+        state: String(value),
+        attributes: {
+          friendly_name: entityId,
+          unit_of_measurement: '°C',
+          state_class: 'measurement',
+        },
+      });
+      state.setStates({
+        'sensor.page_a': makeSensor('sensor.page_a', 20),
+        'sensor.page_b': makeSensor('sensor.page_b', 21),
+      });
+      setPages(
+        [{ id: 'default', name: 'All', entityIds: ['sensor.page_a', 'sensor.page_b'] }],
+        'default'
+      );
+      mockRequest.mockResolvedValue({ result: {} });
+
+      ui.renderActiveTab();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const historyCalls = mockRequest.mock.calls
+        .map(([payload]) => payload)
+        .filter((payload) => payload?.type === 'history/history_during_period');
+      expect(historyCalls).toHaveLength(1);
+      expect(historyCalls[0].entity_ids).toEqual(['sensor.page_a', 'sensor.page_b']);
     });
   });
 

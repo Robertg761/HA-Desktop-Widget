@@ -23,6 +23,7 @@ files:
   - dist-preload/**/*
   - dist-renderer/**/*
   - styles.css
+  - dashboard-workflows.css
   - build/icon.ico
   - build/icon.png
   - package.json

@@ -1,11 +1,16 @@
 import state from './state.js';
 import * as utils from './utils.js';
-import { openEntityDetailModal, getEntityDomain } from './ui.js';
+import { openEntityDetailModal, getEntityDomain, switchQuickAccessPage } from './ui.js';
+import websocket from './websocket.js';
+import { showToast } from './ui-utils.js';
 import { t } from './i18n.js';
 
 const MAX_RESULTS = 20;
 
 let initialized = false;
+let recentCommands = [];
+let recentServer = null;
+let executing = false;
 let overlay = null;
 let input = null;
 let list = null;
@@ -13,6 +18,7 @@ let emptyState = null;
 let results = [];
 let highlightedIndex = -1;
 let previouslyFocusedElement = null;
+let paletteCommands = null;
 
 function normalizeSearchValue(value) {
   return String(value ?? '')
@@ -179,14 +185,76 @@ function updateHighlightedResult(nextIndex) {
   });
 }
 
-function executeHighlightedResult() {
+function buildPaletteCommands(entities, config = state.CONFIG, services = state.SERVICES) {
+  const commands = entities.flatMap((entity) => {
+    const domain = getEntityDomain(entity.entity_id);
+    const name = utils.getEntityDisplayName(entity);
+    if (['unavailable', 'unknown'].includes(entity.state)) return [];
+    // Only offer the action that changes something: a device that is on gets "Turn off".
+    const actions = ['light', 'switch', 'fan', 'input_boolean'].includes(domain)
+      ? [
+          entity.state !== 'on' && ['turn_on', t('Turn on {{name}}', { name })],
+          entity.state !== 'off' && ['turn_off', t('Turn off {{name}}', { name })],
+        ].filter(Boolean)
+      : ['scene', 'script'].includes(domain)
+        ? [['turn_on', t('Run {{name}}', { name })]]
+        : [];
+    return actions
+      .filter(([service]) => services?.[domain]?.[service])
+      .map(([service, displayName]) => ({
+        entity,
+        displayName,
+        domain,
+        service,
+        key: `${entity.entity_id}:${service}`,
+      }));
+  });
+  (config?.customTabs || []).forEach((tab) =>
+    commands.push({
+      tabId: tab.id,
+      displayName: t('Switch to {{name}}', { name: tab.name }),
+      key: `page:${tab.id}`,
+    })
+  );
+  return commands;
+}
+
+async function executeHighlightedResult() {
   const selected = results[highlightedIndex];
-  if (!selected?.entity) return;
-  // Restore the element that launched the palette before opening a detail
-  // dialog. The dialog's focus trap can then return to that real launcher
-  // instead of recording the now-hidden palette input as its prior focus.
+  if (!selected || executing) return;
   closeCommandPalette();
-  openEntityDetailModal(selected.entity, { source: 'command-palette' });
+  if (!selected.service && !selected.tabId) {
+    openEntityDetailModal(selected.entity, { source: 'command-palette' });
+    return;
+  }
+  executing = true;
+  try {
+    if (selected.tabId) {
+      const result = await switchQuickAccessPage(selected.tabId);
+      if (result?.success === false) return;
+    } else {
+      const current = state.STATES[selected.entity.entity_id];
+      if (
+        !websocket.isConnected() ||
+        !current ||
+        ['unknown', 'unavailable'].includes(current.state)
+      ) {
+        throw new Error(t('Entity is unavailable'));
+      }
+      await websocket.callService(selected.domain, selected.service, {
+        entity_id: current.entity_id,
+      });
+      showToast(t('Command sent'), 'success', 1600);
+    }
+    recentCommands = [selected.key, ...recentCommands.filter((key) => key !== selected.key)].slice(
+      0,
+      10
+    );
+  } catch {
+    showToast(t('Could not run command. Check your connection and retry.'), 'error');
+  } finally {
+    executing = false;
+  }
 }
 
 function createResultRow(item, index) {
@@ -197,7 +265,11 @@ function createResultRow(item, index) {
   row.setAttribute('role', 'option');
   row.setAttribute('aria-selected', 'false');
 
-  const icon = createElement('span', 'command-palette-result-icon', utils.getEntityIcon(entity));
+  const icon = createElement(
+    'span',
+    'command-palette-result-icon',
+    entity ? utils.getEntityIcon(entity) : '▦'
+  );
   icon.setAttribute('aria-hidden', 'true');
 
   const main = createElement('span', 'command-palette-result-main');
@@ -208,12 +280,12 @@ function createResultRow(item, index) {
   const domain = createElement(
     'span',
     'command-palette-result-domain',
-    getEntityDomain(entity.entity_id)
+    item.tabId ? t('Page') : getEntityDomain(entity.entity_id)
   );
   const value = createElement(
     'span',
     'command-palette-result-state',
-    utils.getEntityDisplayState(entity)
+    entity ? utils.getEntityDisplayState(entity) : ''
   );
   meta.append(domain, value);
 
@@ -228,10 +300,32 @@ function createResultRow(item, index) {
 
 function renderResults() {
   const query = input?.value || '';
-  results = rankCommandPaletteEntities(Object.values(state.STATES || {}), query).slice(
-    0,
-    MAX_RESULTS
-  );
+  const server = state.CONFIG?.homeAssistant?.url || '';
+  if (recentServer !== server) {
+    recentCommands = [];
+    recentServer = server;
+  }
+  const entities = Object.values(state.STATES || {});
+  // Building commands interpolates a label per entity action, so do it once per open rather than
+  // on every keystroke. Execution re-reads the live entity state before sending anything.
+  paletteCommands ??= buildPaletteCommands(entities);
+  const commands = paletteCommands
+    .map((item) => ({
+      ...item,
+      score: scoreCommandPaletteMatch(item.displayName, query),
+    }))
+    .filter((item) => item.score > 0);
+  results = [...rankCommandPaletteEntities(entities, query), ...commands]
+    .sort((a, b) => {
+      if (!query.trim()) {
+        const aRecent = recentCommands.indexOf(a.key);
+        const bRecent = recentCommands.indexOf(b.key);
+        if (aRecent !== bRecent)
+          return (aRecent < 0 ? Infinity : aRecent) - (bRecent < 0 ? Infinity : bRecent);
+      }
+      return b.score - a.score;
+    })
+    .slice(0, MAX_RESULTS);
   highlightedIndex = results.length ? 0 : -1;
   list.replaceChildren();
 
@@ -252,6 +346,7 @@ function openCommandPalette() {
   overlay.setAttribute('aria-hidden', 'false');
   input.setAttribute('aria-expanded', 'true');
   input.value = '';
+  paletteCommands = null;
   renderResults();
   requestAnimationFrame(() => {
     input.focus();
@@ -263,6 +358,7 @@ function closeCommandPalette({ restoreFocus = true } = {}) {
   if (!overlay) return;
   overlay.classList.add('hidden');
   overlay.setAttribute('aria-hidden', 'true');
+  paletteCommands = null;
   input?.setAttribute('aria-expanded', 'false');
   input?.removeAttribute('aria-activedescendant');
   if (restoreFocus && previouslyFocusedElement?.isConnected) {
@@ -347,6 +443,7 @@ function initializeCommandPalette() {
 }
 
 export {
+  buildPaletteCommands,
   initializeCommandPalette,
   openCommandPalette,
   closeCommandPalette,

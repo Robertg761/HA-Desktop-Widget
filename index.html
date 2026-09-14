@@ -10,6 +10,7 @@
     <title data-i18n="Home Assistant Widget">Home Assistant Widget</title>
     <link rel="stylesheet" href="node_modules/@mdi/font/css/materialdesignicons.min.css" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="./dashboard-workflows.css" />
   </head>
 
   <body>
@@ -277,6 +278,17 @@
             <!-- Dynamic Quick Access views will be added here -->
           </div>
           <div class="section-buttons">
+            <button
+              id="undo-dashboard-btn"
+              class="section-btn"
+              data-i18n-title="Undo dashboard edit"
+              data-i18n-aria-label="Undo dashboard edit"
+              title="Undo dashboard edit"
+              aria-label="Undo dashboard edit"
+              disabled
+            >
+              ↶
+            </button>
             <button
               id="reorganize-quick-controls-btn"
               class="section-btn"
@@ -1416,6 +1428,22 @@
                 <p class="help-text">
                   Writes detailed UI interaction debug events to logs. Keep off for normal use.
                 </p>
+              </div>
+              <div class="form-group">
+                <button
+                  id="connection-diagnostics-btn"
+                  class="btn btn-secondary"
+                  data-i18n="Connection diagnostics"
+                >
+                  Connection diagnostics
+                </button>
+                <button
+                  id="dashboard-history-btn"
+                  class="btn btn-secondary"
+                  data-i18n="Restore dashboard"
+                >
+                  Restore dashboard
+                </button>
               </div>
               <div class="form-group">
                 <button

@@ -72,6 +72,11 @@ describe('panel preview virtual desktop', () => {
     expect(document.getElementById('settings-modal')).toBeTruthy();
   });
 
+  test('preview readiness and locale stubs follow the desktop response contracts', async () => {
+    await expect(window.electronAPI.signalRendererReady()).resolves.toEqual({ success: true });
+    await expect(window.electronAPI.getLocalePacks()).resolves.toEqual([]);
+  });
+
   test('profile plus states render real tiles', async () => {
     api.setStates(STATES);
     await api.applyProfile(PROFILE_DOCUMENT);
@@ -93,7 +98,8 @@ describe('panel preview virtual desktop', () => {
     const changes = [];
     api.onDocumentChange = (doc) => changes.push(doc);
     const result = await window.electronAPI.updateConfig({ ui: { theme: 'light' } });
-    expect(result.success).toBe(true);
+    expect(result.homeAssistant).toBeDefined();
+    expect(result.ui.theme).toBe('light');
     await flush();
     expect(changes.at(-1).ui.theme).toBe('light');
     expect(api.getDocument().ui.theme).toBe('light');

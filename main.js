@@ -1102,6 +1102,7 @@ function startDevLiveReloadWatchers() {
 
   watchDevReloadTarget(path.join(__dirname, 'index.html'));
   watchDevReloadTarget(path.join(__dirname, 'styles.css'));
+  watchDevReloadTarget(path.join(__dirname, 'dashboard-workflows.css'));
   watchDevReloadTarget(path.join(__dirname, 'dist-renderer'), { recursive: true });
 
   log.info('Dev live reload watchers enabled');

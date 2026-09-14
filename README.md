@@ -161,6 +161,8 @@ Assistant can flag out-of-date desktops.
 
 ### Quick Access Management
 
+- **Build a page from a room**: Enter reorganize mode, choose **Add page**, then **Load rooms**. Select a Home Assistant area, choose its entities, and save. Entity area overrides take precedence over device areas; hidden and disabled registry entries are omitted. Registry access requires permission from Home Assistant.
+- **Undo and restore**: The undo arrow reverses the latest dashboard edit. **Settings > Advanced > Restore dashboard** lists up to 20 local restore points, retained across restarts and separated by Home Assistant server. Restoring a saved layout first backs up the current layout. These backups contain dashboard data, including names, icons, tile options, and comparison graphs, but exclude authorization, desktop pins, hotkeys, and connection settings. They depend on local browser storage being available.
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
 - **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
@@ -178,6 +180,22 @@ Assistant can flag out-of-date desktops.
 - **Units**: Entities sharing a unit share a scale. Adding a different unit (e.g. humidity next to temperature) warns and scales it separately
 - **Width**: Choose 2, 3 or 4 tiles wide in the graph's editor
 - **Edit / remove**: In reorganize mode, click the edit icon on the graph tile (or the remove button)
+
+### Command search
+
+Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit action to turn supported lights, switches, fans, or input booleans on or off, run a scene or script, or switch pages. Entity results still open their controls. Successful commands appear first when opening an empty search during the current session. Unavailable entities do not offer actions, and failed commands show an error.
+
+### Alert conditions
+
+In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
+
+### Sensor history
+
+Click a numeric sensor tile to open its larger chart. Select **1 hour**, **6 hours**, **24 hours**, or **7 days** and use **Refresh** to fetch new readings. Minimum, maximum, and sample average describe the recorded numeric values. The average is not time-weighted. History availability depends on Home Assistant's recorder and retention settings; an empty period and a failed request have separate messages.
+
+### Connection diagnostics
+
+Open **Settings > Advanced > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session. New workflow labels currently use English fallbacks in other language packs.
 
 ### Entity Interactions
 
@@ -223,7 +241,7 @@ power controls without a brightness slider.
 git clone https://github.com/Robertg761/HA-Desktop-Widget.git
 cd HA-Desktop-Widget
 npm install
-npm run dev   # Development mode (opens DevTools)
+npm run dev   # Development mode (separate app and DevTools windows)
 npm run dev:climate-demo # Isolated simulated Fahrenheit air-conditioner demo (no HA required)
 npm start     # Regular run (builds the renderer, then starts Electron)
 npm run lint  # Run ESLint

@@ -121,10 +121,12 @@ function shouldRelaunchIntoLayerShell({
   if (platform !== 'linux' || !waylandSession) return false;
   if (isLayerShellChild(env)) return false;
   if ((argv || []).includes('--smoke-test')) return false;
+  // DevTools is a second toplevel; the helper would stack it over the widget
+  // at the same layer-shell bounds. Keep development windows independent.
+  if ((argv || []).includes('--dev')) return false;
   // The isolated climate demo creates its throwaway temp profile before this
   // decision runs; a handoff would orphan that profile on every launch, and a
-  // demo has no reason to exercise the helper. The overlay variant shares the
-  // regular dev profile and is unaffected.
+  // demo has no reason to exercise the helper.
   if ((argv || []).includes('--demo-climate')) return false;
   if (isDisabledEnvFlag(env?.[LAYER_SHELL_ENV_OVERRIDE])) return false;
   // The helper proxies the compositor's socket and binds its own next to it; without

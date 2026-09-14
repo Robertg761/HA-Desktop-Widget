@@ -892,6 +892,20 @@ function setPendingCustomEntityIcons(customEntityIcons) {
   pendingCustomEntityIcons = normalizeCustomEntityIconMap(customEntityIcons);
 }
 
+function refreshRestoredDashboardSettings() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal || modal.classList.contains('hidden') || modal.style.display === 'none') return;
+  setPendingCustomEntityIcons(getSavedCustomEntityIcons());
+  activeCustomEntityIconPickerEntityId = null;
+  customEntityIconPickerQueryByEntityId = {};
+  lastCustomEntityIconAction = null;
+  if (hydratedPersonalizationSections.has('custom-entity-icons-section')) {
+    renderCustomEntityIconsList();
+  } else {
+    updateCustomEntityIconSummary();
+  }
+}
+
 function getPendingCustomEntityIconsForSave() {
   return { ...pendingCustomEntityIcons };
 }
@@ -4940,9 +4954,11 @@ function renderAlertsListInline() {
       alertItem.className = 'alert-item';
 
       const alertConfig = alerts[entityId];
-      let alertType = alertConfig.onStateChange ? 'State Change' : 'Specific State';
+      let alertType = alertConfig.onNumericThreshold
+        ? `${t(alertConfig.comparison === 'below' ? 'Below threshold' : 'Above threshold')} ${Number(alertConfig.threshold)}`
+        : t(alertConfig.onStateChange ? 'State Change' : 'Specific State');
       if (alertConfig.onSpecificState) {
-        alertType += ` (${utils.escapeHtml(alertConfig.targetState)})`;
+        alertType += ` (${alertConfig.targetState})`;
       }
 
       alertItem.innerHTML = `
@@ -4950,7 +4966,7 @@ function renderAlertsListInline() {
           <span class="alert-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
           <div class="alert-details">
             <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
-            <span class="alert-type">${alertType}</span>
+            <span class="alert-type">${utils.escapeHtml(alertType)}</span>
           </div>
         </div>
         <div class="alert-actions">
@@ -5128,42 +5144,85 @@ function openAlertConfigModal(entityId) {
     const title = document.getElementById('alert-config-title');
 
     const alertConfig = state.CONFIG.entityAlerts?.alerts[entityId];
+    if (!modal.querySelector('#alert-advanced-options')) {
+      const group = document.createElement('div');
+      group.id = 'alert-advanced-options';
+      group.className = 'alert-advanced-options form-group';
+      const addField = (id, labelText, type, options = []) => {
+        const label = document.createElement('label');
+        label.textContent = t(labelText);
+        if (type === 'checkbox') label.className = 'workflow-checkbox';
+        const input = document.createElement(type === 'select' ? 'select' : 'input');
+        input.id = id;
+        if (type !== 'checkbox') input.className = 'form-control';
+        if (type === 'select')
+          options.forEach(([value, text]) => input.add(new Option(t(text), value)));
+        else input.type = type;
+        if (type === 'number') {
+          input.min = '0';
+          input.max = '86400';
+          input.step = '1';
+        }
+        label.append(input);
+        group.append(label);
+        return input;
+      };
+      addField('alert-condition', 'Condition', 'select', [
+        ['state-change', 'State Change'],
+        ['specific-state', 'Specific State'],
+        ['above', 'Above threshold'],
+        ['below', 'Below threshold'],
+      ]);
+      const threshold = addField('alert-threshold', 'Threshold', 'number');
+      threshold.removeAttribute('min');
+      threshold.removeAttribute('max');
+      threshold.step = 'any';
+      group.insertBefore(specificStateGroup, threshold.parentElement);
+      addField('alert-duration', 'Condition duration in seconds', 'number');
+      addField('alert-cooldown', 'Notification cooldown in seconds', 'number');
+      addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
+      addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
+      addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
+      modal.querySelector('.modal-body').append(group);
+    }
+    modal.querySelector('.alert-type-options').parentElement.hidden = true;
+    const condition = modal.querySelector('#alert-condition');
+    condition.value = alertConfig?.onNumericThreshold
+      ? alertConfig.comparison || 'above'
+      : alertConfig?.onSpecificState
+        ? 'specific-state'
+        : 'state-change';
+    targetStateInput.value = alertConfig?.targetState || '';
+    modal.querySelector('#alert-threshold').value = alertConfig?.threshold ?? '';
+    modal.querySelector('#alert-duration').value = alertConfig?.durationSeconds || 0;
+    modal.querySelector('#alert-cooldown').value = alertConfig?.cooldownSeconds || 0;
+    modal.querySelector('#alert-quiet-enabled').checked = !!alertConfig?.quietHours?.enabled;
+    modal.querySelector('#alert-quiet-start').value = alertConfig?.quietHours?.start || '22:00';
+    modal.querySelector('#alert-quiet-end').value = alertConfig?.quietHours?.end || '07:00';
+    const syncCondition = () => {
+      stateChangeRadio.checked = condition.value === 'state-change';
+      specificStateRadio.checked = condition.value === 'specific-state';
+      specificStateGroup.style.display = specificStateRadio.checked ? 'block' : 'none';
+      modal.querySelector('#alert-threshold').parentElement.hidden = !['above', 'below'].includes(
+        condition.value
+      );
+    };
+    condition.onchange = syncCondition;
+    const quietEnabled = modal.querySelector('#alert-quiet-enabled');
+    const syncQuietHours = () => {
+      ['#alert-quiet-start', '#alert-quiet-end'].forEach((id) => {
+        modal.querySelector(id).disabled = !quietEnabled.checked;
+      });
+    };
+    quietEnabled.onchange = syncQuietHours;
     const entity = state.STATES[entityId];
-    // utils already imported at top
-
     if (title)
       title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
 
-    // Load existing alert config or set defaults
-    if (alertConfig) {
-      if (alertConfig.onStateChange) {
-        if (stateChangeRadio) stateChangeRadio.checked = true;
-        if (specificStateGroup) specificStateGroup.style.display = 'none';
-      } else if (alertConfig.onSpecificState) {
-        if (specificStateRadio) specificStateRadio.checked = true;
-        if (specificStateGroup) specificStateGroup.style.display = 'block';
-        if (targetStateInput) targetStateInput.value = alertConfig.targetState || '';
-      }
-    } else {
-      // New alert - set defaults
-      if (stateChangeRadio) stateChangeRadio.checked = true;
-      if (specificStateGroup) specificStateGroup.style.display = 'none';
-      if (targetStateInput) targetStateInput.value = '';
-    }
-
-    // Radio button handlers
-    if (stateChangeRadio) {
-      stateChangeRadio.onchange = () => {
-        if (specificStateGroup) specificStateGroup.style.display = 'none';
-      };
-    }
-
-    if (specificStateRadio) {
-      specificStateRadio.onchange = () => {
-        if (specificStateGroup) specificStateGroup.style.display = 'block';
-      };
-    }
-
+    // The hidden legacy radios are kept in sync by the condition select so the save path
+    // can keep reading them.
+    syncCondition();
+    syncQuietHours();
     openModal(modal);
     trapFocus(modal);
   } catch (error) {
@@ -5197,6 +5256,52 @@ async function saveAlert() {
       onSpecificState: specificStateRadio?.checked || false,
       targetState: targetStateInput?.value.trim() || '',
     };
+    const condition = modal.querySelector('#alert-condition')?.value;
+    alertConfig.onNumericThreshold = ['above', 'below'].includes(condition);
+    alertConfig.comparison = condition === 'below' ? 'below' : 'above';
+    const threshold = modal.querySelector('#alert-threshold');
+    if (
+      alertConfig.onNumericThreshold &&
+      (!threshold.value.trim() || !Number.isFinite(Number(threshold.value)))
+    ) {
+      showToast(t('Enter a valid numeric threshold.'), 'error');
+      threshold.focus();
+      return;
+    }
+    if (alertConfig.onSpecificState && !alertConfig.targetState) {
+      showToast(t('Enter a target state.'), 'error');
+      targetStateInput.focus();
+      return;
+    }
+    alertConfig.threshold = alertConfig.onNumericThreshold ? Number(threshold.value) : null;
+    for (const [field, id] of [
+      ['durationSeconds', 'alert-duration'],
+      ['cooldownSeconds', 'alert-cooldown'],
+    ]) {
+      const input = modal.querySelector(`#${id}`);
+      const seconds = input.value.trim() === '' ? 0 : Number(input.value);
+      // Same toast-and-focus feedback as the other fields instead of a native validation bubble.
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 86400) {
+        showToast(t('Enter a whole number of seconds from 0 to 86400.'), 'error');
+        input.focus();
+        return;
+      }
+      alertConfig[field] = seconds;
+    }
+    alertConfig.quietHours = {
+      enabled: modal.querySelector('#alert-quiet-enabled').checked,
+      start: modal.querySelector('#alert-quiet-start').value,
+      end: modal.querySelector('#alert-quiet-end').value,
+    };
+    if (
+      alertConfig.quietHours.enabled &&
+      (!alertConfig.quietHours.start ||
+        !alertConfig.quietHours.end ||
+        alertConfig.quietHours.start === alertConfig.quietHours.end)
+    ) {
+      showToast(t('Choose different start and end times for quiet hours.'), 'error');
+      return;
+    }
     const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
     nextConfig.entityAlerts = nextConfig.entityAlerts || { enabled: false, alerts: {} };
     nextConfig.entityAlerts.alerts[currentAlertEntity] = alertConfig;
@@ -5803,6 +5908,7 @@ function handleProfileSyncStatusUpdate(status) {
 }
 
 export {
+  refreshRestoredDashboardSettings,
   openSettings,
   closeSettings,
   saveSettings,
