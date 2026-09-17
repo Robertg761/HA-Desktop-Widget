@@ -8,6 +8,10 @@ Always on top and Hide on focus loss are unavailable in desktop layer mode. Use 
 
 ## Shortcuts
 
+First-run setup explains desktop-layer visibility and offers a popup shortcut check. Use Set up shortcuts to open the Hotkeys settings, configure a popup shortcut, and copy its binding into Hyprland. Return to setup, press the shortcut, then choose Check popup shortcut. Setup can also continue without a shortcut.
+
+The widget retries when the portal is late at login and recreates shortcuts after a portal restart or session closure. Transient failures use increasing retry delays capped at 30 seconds. Cancelling or timing out shortcut approval does not reopen the dialog automatically.
+
 Set a popup or entity shortcut in Settings, then open the Hyprland shortcuts panel. Choose the configuration format you use: Lua for `.lua` files or Hyprlang for `.conf` files. The Copy bindings button copies the selected format. Check for conflicts with your existing bindings before adding it to your configuration. On Omarchy 4 with Hyprland 0.56, add a Lua binding to `~/.config/hypr/bindings.lua`:
 
 ```lua
@@ -16,7 +20,7 @@ hl.bind("CTRL + ALT + H", hl.dsp.global("com.github.robertg761.hadesktopwidget:p
 
 Press the shortcut and use Refresh shortcut status to check whether the widget received it. The widget does not overwrite compositor bindings. For older Hyprland releases using hyprlang, select Hyprlang to copy the equivalent `bind = CTRL ALT, H, global, com.github.robertg761.hadesktopwidget:popup-toggle` syntax into your sourced `.conf` file. Newer installations that retain Hyprlang configuration can select it too.
 
-Existing configurations using `ha_desktop_widget:` must replace that prefix with `com.github.robertg761.hadesktopwidget:`. The latter now matches the launcher and portal identity.
+Existing configurations using `ha_desktop_widget:` keep working: the widget also registers that retired id with the portal while a launcher for it exists. Replace the prefix with `com.github.robertg761.hadesktopwidget:` when convenient. The first shortcut received through the old id writes the replacement bind to the log, and the shortcuts panel shows it after Refresh shortcut status.
 
 A launcher binding can also use `ha-desktop-widget --toggle`. `--show` and `--hide` are idempotent. Commands act on the existing instance rather than starting a duplicate.
 

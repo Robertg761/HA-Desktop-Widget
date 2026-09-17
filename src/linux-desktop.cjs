@@ -1,6 +1,12 @@
 /* global process */
 const { appId: APP_ID } = require('../package.json');
 
+// Portal app ids earlier releases registered. A Hyprland bind names the id
+// directly (`global, ha_desktop_widget:popup-toggle`), so renaming it orphaned
+// every existing bind without a word. The app keeps answering to these on
+// Hyprland and tells the user what to change; see legacyPortalBindingNotice.
+const LEGACY_PORTAL_APP_IDS = Object.freeze(['ha_desktop_widget']);
+
 function getLaunchAction(argv = process.argv) {
   return argv.includes('--hide') ? 'hide' : argv.includes('--toggle') ? 'toggle' : 'show';
 }
@@ -106,8 +112,20 @@ function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
   return `hl.bind(${JSON.stringify(keys.join(' + '))}, hl.dsp.global(${JSON.stringify(`${appId}:${id}`)}))`;
 }
 
+// One-line migration hint for a shortcut Hyprland delivered through a retired app id.
+function legacyPortalBindingNotice({ legacyAppId, id, accelerator = '' } = {}) {
+  const binding = accelerator ? hyprlandBinding(accelerator, id) : '';
+  return (
+    `Hyprland delivered "${id}" through the retired app id "${legacyAppId}". ` +
+    `That target still works for now; update the bind to "${APP_ID}:${id}"` +
+    (binding ? `, for example: ${binding}` : '.')
+  );
+}
+
 module.exports = {
   APP_ID,
+  LEGACY_PORTAL_APP_IDS,
+  legacyPortalBindingNotice,
   getLaunchAction,
   hasIsolatedProfile,
   isHyprland,

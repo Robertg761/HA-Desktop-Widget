@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Explain Hyprland desktop-layer visibility during first-run setup and provide a popup shortcut check.
+
 - Follow the active Omarchy palette, including live theme changes.
 - Provide Hyprland shortcut bindings and an activation status panel.
 - Build an Arch Linux package from a checksum-pinned release bundle, with a stable launcher and `--show`, `--hide`, and `--toggle` commands.
@@ -23,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add workflow message keys to bundled and downloadable catalogs, with English fallbacks for new labels.
 
 ### Fixed
+
+- Repair generated AppImage launchers using the current app id or unquoted executable paths. Continue other launcher and login-startup repairs if an individual operation fails.
+- Recover shortcuts automatically when the Wayland portal starts late, restarts, or closes a shortcut session. Retry transient failures with backoff without repeating cancelled shortcut approval.
+
+- Keep Hyprland binds written for the retired `ha_desktop_widget:` portal id working after the app id rename. The widget also answers to the old id, logs the replacement bind on first use, and shows it in the Hyprland shortcuts panel.
+- Repair a menu launcher an AppImage integration tool left pointing at a deleted AppImage, so the app menu entry keeps starting the widget after an in-app update.
 
 - Offer Lua and legacy Hyprlang shortcut bindings in Settings, and preserve inline text colors when Omarchy theme following is inactive.
 - Avoid a renderer startup error when profile-sync status arrives before configuration has loaded.

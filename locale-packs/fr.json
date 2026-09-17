@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.18",
+  "version": "1.2.19",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -633,6 +633,13 @@
     "Configuration format": "Format de configuration",
     "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "Choisissez le format de votre configuration Hyprland, puis copiez les raccourcis après avoir vérifié les conflits de touches.",
     "Lua (.lua)": "Lua (.lua)",
-    "Hyprlang (.conf)": "Hyprlang (.conf)"
+    "Hyprlang (.conf)": "Hyprlang (.conf)",
+    "On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.": "On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.",
+    "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.",
+    "Check popup shortcut": "Check popup shortcut",
+    "Popup shortcut received. You can use it to bring the widget forward.": "Popup shortcut received. You can use it to bring the widget forward.",
+    "No popup shortcut received yet. Press your configured shortcut, then check again.": "No popup shortcut received yet. Press your configured shortcut, then check again.",
+    "Could not check the shortcut. Try again.": "Could not check the shortcut. Try again.",
+    "Set up shortcuts": "Set up shortcuts"
   }
 }

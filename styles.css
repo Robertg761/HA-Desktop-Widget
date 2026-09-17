@@ -9072,6 +9072,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .first-run-panel {
+  max-height: 100%;
+  overflow-y: auto;
   width: min(100%, 460px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);

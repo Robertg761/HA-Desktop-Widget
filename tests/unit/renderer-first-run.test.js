@@ -664,4 +664,26 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockWebsocket.close).toHaveBeenCalledTimes(1);
     expect(rawSocketClose).not.toHaveBeenCalled();
   });
+  it('explains the desktop layer and verifies a new popup activation during setup', async () => {
+    const info = { hyprland: true, layerMode: true, lastActivation: null };
+    await loadRenderer({
+      configureApi(api) {
+        api.getDesktopIntegration = jest.fn(async () => info);
+      },
+    });
+    expect(document.getElementById('first-run-desktop-help').textContent).toContain(
+      'underneath normal windows'
+    );
+    await clickButton('Check popup shortcut');
+    expect(document.getElementById('first-run-desktop-help').textContent).toContain(
+      'No popup shortcut received yet'
+    );
+    info.lastActivation = { id: 'popup-toggle', at: '2026-09-16T12:00:00Z' };
+    await clickButton('Check popup shortcut');
+    expect(document.getElementById('first-run-desktop-help').textContent).toContain(
+      'Popup shortcut received.'
+    );
+    await clickButton('Next');
+    expect(document.getElementById('first-run-desktop-help')).toBeNull();
+  });
 });

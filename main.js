@@ -33,11 +33,16 @@ const {
   isPortalBindingRegistered,
   hyprlandBinding,
   APP_ID,
+  LEGACY_PORTAL_APP_IDS,
+  legacyPortalBindingNotice,
 } = require('./src/linux-desktop.cjs');
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
-const { ensureAppImageDesktopEntry } = require('./src/linux-desktop-entry.cjs');
+const {
+  ensureAppImageDesktopEntry,
+  repairStaleAppImageLaunchers,
+} = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
 const {
   readHyprlandMonitors,
@@ -7158,6 +7163,7 @@ ipcMain.handle('get-desktop-integration', (event) => {
         }))
       : [],
     lastActivation: lastDesktopShortcutActivation,
+    legacyActivation: lastLegacyDesktopShortcutActivation,
     themeAvailable: !!omarchyThemeWatcher?.get(),
     secureStorageBackend:
       process.platform === 'linux'
@@ -8716,6 +8722,7 @@ let portalShortcutsActive = false;
 let portalShortcutsInitPromise = null;
 let portalSyncTimer = null;
 let portalReconnectTimer = null;
+let portalReconnectAttempts = 0;
 let portalSyncWaiters = [];
 
 let lastDesktopShortcutActivation = null;
@@ -8741,6 +8748,86 @@ function handlePortalShortcutActivated(shortcutId) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
   }
+}
+
+// Hyprland binds name the portal app id verbatim, so the 3.11 rename would have
+// silently orphaned every bind written for the old id. Extra sessions under the
+// retired ids keep those binds working; the first activation through one logs
+// the exact replacement and the shortcuts panel repeats it.
+let legacyPortalShortcutsControllers = [];
+let lastLegacyDesktopShortcutActivation = null;
+const legacyPortalNoticesLogged = new Set();
+
+function handleLegacyPortalShortcutActivated(legacyAppId, shortcutId) {
+  const shortcut = collectPortalShortcuts().find((candidate) => candidate.id === shortcutId);
+  const notice = legacyPortalBindingNotice({
+    legacyAppId,
+    id: shortcutId,
+    accelerator: shortcut?.accelerator || '',
+  });
+  lastLegacyDesktopShortcutActivation = {
+    legacyAppId,
+    id: shortcutId,
+    at: new Date().toISOString(),
+    binding: shortcut ? hyprlandBinding(shortcut.accelerator, shortcutId) : '',
+    notice,
+  };
+  if (!legacyPortalNoticesLogged.has(shortcutId)) {
+    legacyPortalNoticesLogged.add(shortcutId);
+    log.warn(notice);
+  }
+  handlePortalShortcutActivated(shortcutId);
+}
+
+function closeLegacyPortalShortcutsControllers() {
+  legacyPortalShortcutsControllers.splice(0).forEach(({ controller }) => {
+    void controller.close();
+  });
+}
+
+function initLegacyPortalShortcutsControllers() {
+  closeLegacyPortalShortcutsControllers();
+  if (!isHyprland() || IS_ISOLATED_PROFILE || IS_SMOKE_TEST_MODE) return;
+  LEGACY_PORTAL_APP_IDS.forEach((legacyAppId) => {
+    // The primary controller already narrates availability and binding; a
+    // second copy of those lines would read as a second app.
+    const quietLog = {
+      info: (message) => log.debug(`[legacy ${legacyAppId}] ${message}`),
+      debug: (message) => log.debug(`[legacy ${legacyAppId}] ${message}`),
+      warn: (message) => log.debug(`[legacy ${legacyAppId}] ${message}`),
+      error: (...args) => log.warn(`[legacy ${legacyAppId}]`, ...args),
+    };
+    try {
+      const controller = createPortalGlobalShortcutsController({
+        log: quietLog,
+        appId: legacyAppId,
+        // Without a launcher for the retired id the registry rejects it; the
+        // session must then not be created at all, or the portal would derive
+        // the current id from our scope and Hyprland would fire twice.
+        requireRegistry: true,
+        onConnectionLost: schedulePortalConnectionRecovery,
+        onActivated: (shortcutId) => handleLegacyPortalShortcutActivated(legacyAppId, shortcutId),
+      });
+      legacyPortalShortcutsControllers.push({ appId: legacyAppId, controller });
+    } catch (error) {
+      log.debug(`Legacy portal app id ${legacyAppId} unavailable: ${error?.message || error}`);
+    }
+  });
+}
+
+function syncLegacyPortalShortcuts(shortcuts) {
+  legacyPortalShortcutsControllers.forEach(({ appId, controller }) => {
+    controller
+      .syncShortcuts(shortcuts)
+      .then((result) => {
+        if (!result.success) {
+          log.debug(`Legacy portal app id ${appId} not bound: ${result.error}`);
+        }
+      })
+      .catch((error) => {
+        log.debug(`Legacy portal app id ${appId} sync failed: ${error?.message || error}`);
+      });
+  });
 }
 
 function collectPortalShortcuts() {
@@ -8841,6 +8928,8 @@ async function flushPortalShortcutSync() {
   // How many shortcuts this flush actually submitted; consumers must not re-derive
   // it from config, which can change during the bind round trip.
   result.requested = shortcuts.length;
+  // Best effort and off the critical path: the primary result is what callers await.
+  syncLegacyPortalShortcuts(shortcuts);
 
   // Reporting must never leave the waiters unresolved: a throw here (e.g. a renderer
   // destroyed between the isDestroyed check and the send) would otherwise deadlock
@@ -8882,13 +8971,29 @@ function syncPortalShortcuts({ immediate = false } = {}) {
 }
 
 function schedulePortalConnectionRecovery() {
-  if (isQuitting || !portalShortcutsActive || portalReconnectTimer) return;
-  portalReconnectTimer = setTimeout(() => {
+  if (
+    isQuitting ||
+    !usesPortalGlobalShortcuts ||
+    portalShortcutsFallbackLatched ||
+    portalReconnectTimer
+  )
+    return;
+  const delay = Math.min(
+    PORTAL_RECONNECT_DELAY_MS * 2 ** Math.min(portalReconnectAttempts++, 5),
+    30000
+  );
+  portalReconnectTimer = setTimeout(async () => {
     portalReconnectTimer = null;
-    if (!isQuitting && portalShortcutsActive && portalShortcutsController) {
-      void syncPortalShortcuts({ immediate: true });
+    if (isQuitting || portalShortcutsFallbackLatched) return;
+    if (portalShortcutsActive && portalShortcutsController) {
+      const result = await syncPortalShortcuts({ immediate: true });
+      if (result.success) portalReconnectAttempts = 0;
+      else if (result.retryable !== false) schedulePortalConnectionRecovery();
+    } else {
+      await ensurePortalShortcutsBackendInitialized();
     }
-  }, PORTAL_RECONNECT_DELAY_MS);
+  }, delay);
+  portalReconnectTimer.unref?.();
 }
 
 // Once the portal has demonstrated it will not assign triggers, re-running init on a
@@ -8932,6 +9037,7 @@ function deactivatePortalShortcutsForLegacyFallback(reason) {
     void portalShortcutsController.close();
     portalShortcutsController = null;
   }
+  closeLegacyPortalShortcutsControllers();
   registerGlobalHotkeys();
   void registerPopupHotkey();
   return true;
@@ -8953,10 +9059,12 @@ async function initPortalShortcutsBackend() {
       );
       void portalShortcutsController.close();
       portalShortcutsController = null;
+      schedulePortalConnectionRecovery();
       return;
     }
     portalShortcutsActive = true;
     log.info('Using XDG GlobalShortcuts portal for global hotkeys (Wayland session)');
+    initLegacyPortalShortcutsControllers();
     // Drop the no-op globalShortcut registrations and rebind through the portal.
     unregisterGlobalHotkeys();
     linuxPopupHotkeyController.unregister();
@@ -8965,6 +9073,8 @@ async function initPortalShortcutsBackend() {
     // can change during the bind round trip). One assigned trigger keeps the portal:
     // it is demonstrably approved and usable, the remaining triggers stay assignable
     // in system settings, and the X grabs it would trade for are equally partial.
+    if (!syncResult.success && syncResult.retryable !== false) schedulePortalConnectionRecovery();
+    if (syncResult.success) portalReconnectAttempts = 0;
     const portalBoundNoTriggers =
       (syncResult.requested || 0) > 0 &&
       (!syncResult.success || !(syncResult.bound || []).some(isPortalBindingRegistered));
@@ -8975,6 +9085,8 @@ async function initPortalShortcutsBackend() {
     }
   } catch (error) {
     portalShortcutsActive = false;
+    schedulePortalConnectionRecovery();
+    closeLegacyPortalShortcutsControllers();
     if (portalShortcutsController) {
       try {
         void portalShortcutsController.close();
@@ -9018,23 +9130,19 @@ function ensurePortalShortcutsBackendInitialized() {
     return Promise.resolve(true);
   }
   if (!portalShortcutsInitPromise) {
-    portalShortcutsInitPromise = initPortalShortcutsBackend().then(
-      () => {
-        const active = portalShortcutsActive;
-        if (!active) {
-          // A portal or session bus can be late during desktop startup. Do not
-          // cache that transient false forever; the next explicit availability
-          // check gets one fresh attempt while this promise still coalesces callers.
-          portalShortcutsInitPromise = null;
+    portalShortcutsInitPromise = initPortalShortcutsBackend()
+      .then(
+        () => portalShortcutsActive,
+        (error) => {
+          log.warn('Portal shortcut startup initialization failed:', error?.message || error);
+          schedulePortalConnectionRecovery();
+          return false;
         }
-        return active;
-      },
-      (error) => {
+      )
+      .finally(() => {
+        // Coalesce concurrent initialization, but never cache a stale result.
         portalShortcutsInitPromise = null;
-        log.warn('Portal shortcut startup initialization failed:', error?.message || error);
-        return false;
-      }
-    );
+      });
   }
   return portalShortcutsInitPromise;
 }
@@ -9909,6 +10017,8 @@ function shutDownRuntimeAfterConfigFlush() {
   closeDevReloadWatchers();
   clearProfileSyncTimers();
   clearHomeAssistantOAuthRefreshTimer();
+  clearTimeout(portalReconnectTimer);
+  portalReconnectTimer = null;
   if (portalShortcutsController) {
     portalShortcutsActive = false;
     if (portalSyncTimer) {
@@ -9929,6 +10039,7 @@ function shutDownRuntimeAfterConfigFlush() {
     void portalShortcutsController.close();
     portalShortcutsController = null;
   }
+  closeLegacyPortalShortcutsControllers();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
   kwinWindowRaiser?.close();
@@ -10000,13 +10111,27 @@ app
     ) {
       try {
         ensureAppImageDesktopEntry({ iconPath: path.join(__dirname, 'build/icon.png') });
-        const linuxStartupOptions = {
-          pkg,
-          appName: app.getName(),
-          executablePath: getLinuxStartupExecutablePath(app, process.env),
-          env: process.env,
-        };
+      } catch (error) {
+        log.warn('Could not create the AppImage launcher:', error?.message || error);
+      }
+      try {
+        repairStaleAppImageLaunchers({
+          onError: (file, error) =>
+            log.warn(`Could not repair launcher ${file}:`, error?.message || error),
+        }).forEach((file) => {
+          log.info(`Repaired a menu launcher that named a deleted AppImage: ${file}`);
+        });
+      } catch (error) {
+        log.warn('Could not scan AppImage launchers:', error?.message || error);
+      }
+      const linuxStartupOptions = {
+        pkg,
+        appName: app.getName(),
+        executablePath: getLinuxStartupExecutablePath(app, process.env),
+        env: process.env,
+      };
 
+      try {
         // The autostart file is named after the app id, which package.json has not always
         // carried. An entry written before it was added sits under the older name where nothing
         // can see it, so the setting reads as off, ticking the box adds a second entry, and the
@@ -10022,7 +10147,10 @@ app
             `Removed a duplicate start-at-login entry left behind under an older file name (${legacyPath})`
           );
         }
-
+      } catch (error) {
+        log.warn('Could not migrate the Linux autostart entry:', error?.message || error);
+      }
+      try {
         const { repaired, autostartPath } = syncLinuxAutostartExecutablePath(linuxStartupOptions);
         if (repaired) {
           log.info(

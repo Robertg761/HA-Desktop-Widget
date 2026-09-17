@@ -18,6 +18,7 @@ describe('main-process wiring safeguards', () => {
     (_label, platform, isPackaged, dev, smoke, expected, isolated = false) => {
       const migrate = jest.fn(() => ({}));
       const repair = jest.fn(() => ({}));
+      const repairLaunchers = jest.fn(() => []);
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
       const end = mainSource.indexOf('installApplicationMenu(Menu);', start);
       expect(start).toBeGreaterThan(-1);
@@ -28,6 +29,7 @@ describe('main-process wiring safeguards', () => {
         IS_DEV_MODE: dev,
         IS_ISOLATED_PROFILE: isolated,
         ensureAppImageDesktopEntry: jest.fn(),
+        repairStaleAppImageLaunchers: repairLaunchers,
         path,
         __dirname,
         IS_SMOKE_TEST_MODE: smoke,
@@ -39,6 +41,7 @@ describe('main-process wiring safeguards', () => {
       });
       expect(migrate).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repair).toHaveBeenCalledTimes(expected ? 1 : 0);
+      expect(repairLaunchers).toHaveBeenCalledTimes(expected ? 1 : 0);
     }
   );
 

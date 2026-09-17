@@ -9,6 +9,8 @@ const {
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
+  LEGACY_PORTAL_APP_IDS,
+  legacyPortalBindingNotice,
 } = require('../../src/linux-desktop.cjs');
 const {
   readHyprlandMonitors,
@@ -17,7 +19,10 @@ const {
   readHyprlandCursor,
 } = require('../../src/layer-placement.cjs');
 const { parseOmarchyColors, createOmarchyThemeWatcher } = require('../../src/omarchy-theme.cjs');
-const { ensureAppImageDesktopEntry } = require('../../src/linux-desktop-entry.cjs');
+const {
+  ensureAppImageDesktopEntry,
+  repairStaleAppImageLaunchers,
+} = require('../../src/linux-desktop-entry.cjs');
 const {
   syncLinuxAutostartExecutablePath,
   quoteDesktopExecArg,
@@ -70,6 +75,77 @@ test.each(['Control+H\nbind = , X, exec, bad', 'Control+$key', 'Control+H#commen
 );
 test('refuses legacy target injection', () => {
   expect(hyprlandBinding('Control+H', 'popup\nexec = bad', APP_ID, 'hyprlang')).toBe('');
+});
+test('names the retired portal app id and spells out its replacement', () => {
+  expect(LEGACY_PORTAL_APP_IDS).toContain('ha_desktop_widget');
+  expect(LEGACY_PORTAL_APP_IDS).not.toContain(APP_ID);
+  const notice = legacyPortalBindingNotice({
+    legacyAppId: 'ha_desktop_widget',
+    id: 'popup-toggle',
+    accelerator: 'Control+Shift+Z',
+  });
+  expect(notice).toContain('"ha_desktop_widget"');
+  expect(notice).toContain(`"${APP_ID}:popup-toggle"`);
+  expect(notice).toContain(`hl.bind("CTRL + SHIFT + Z", hl.dsp.global("${APP_ID}:popup-toggle"))`);
+  expect(
+    legacyPortalBindingNotice({ legacyAppId: 'ha_desktop_widget', id: 'popup-toggle' })
+  ).not.toContain('hl.bind');
+});
+test('repairs a menu launcher an integration tool left pointing at a deleted AppImage', () => {
+  const current = path.join(root, 'HA-Desktop-Widget-3.11.0-linux-x86_64.AppImage');
+  fs.writeFileSync(current, 'app');
+  const gone = path.join(root, 'HA-Desktop-Widget-3.10.0-linux-x86_64.AppImage');
+  const env = { APPIMAGE: current, XDG_DATA_HOME: path.join(root, 'data') };
+  const dir = path.join(env.XDG_DATA_HOME, 'applications');
+  fs.mkdirSync(dir, { recursive: true });
+  const stale = path.join(dir, 'ha_desktop_widget.desktop');
+  fs.writeFileSync(
+    stale,
+    `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nTryExec=${gone}\nExec=env DESKTOPINTEGRATION=1 ${quoteDesktopExecArg(gone)} --no-sandbox %U\nX-AppImage-Version=3.9.0-beta.1\nX-AppImage-Name=HA Desktop Widget\n`
+  );
+  // Hand-written entries and other apps are left alone; generated canonical entries are repaired.
+  const custom = path.join(dir, 'ha-desktop-widget-custom.desktop');
+  const customContent = `[Desktop Entry]\nName=HA Desktop Widget\nExec="${gone}" --show\n`;
+  fs.writeFileSync(custom, customContent);
+  const other = path.join(dir, 'home-assistant-widget-fork.desktop');
+  const otherContent = `[Desktop Entry]\nName=Other Widget\nExec="${gone}"\nX-AppImage-Version=1.0\n`;
+  fs.writeFileSync(other, otherContent);
+  const own = path.join(dir, `${APP_ID}.desktop`);
+  const ownContent = `[Desktop Entry]\nName=HA Desktop Widget\nExec=${quoteDesktopExecArg(gone)} --show\nX-AppImage-Version=3.10.0\nX-HA-Widget-Launcher=true\n`;
+  fs.writeFileSync(own, ownContent);
+
+  expect(repairStaleAppImageLaunchers({ env })).toEqual([own, stale]);
+  const repaired = fs.readFileSync(stale, 'utf8');
+  expect(repaired).toContain(`\nTryExec=${current}\n`);
+  expect(parseDesktopExecCommand(repaired)).toMatchObject({
+    executable: current,
+    suffix: ' --no-sandbox %U',
+  });
+  expect(repaired).toContain('\nX-AppImage-Version=3.9.0-beta.1\n');
+  expect(fs.readFileSync(custom, 'utf8')).toBe(customContent);
+  expect(fs.readFileSync(other, 'utf8')).toBe(otherContent);
+  expect(fs.readFileSync(own, 'utf8')).toBe(
+    ownContent.replace(quoteDesktopExecArg(gone), () => buildDesktopExecPrefix(current))
+  );
+  // A launcher that names a working installation is not adopted.
+  expect(repairStaleAppImageLaunchers({ env })).toEqual([]);
+  expect(repairStaleAppImageLaunchers({ env: { XDG_DATA_HOME: path.join(root, 'nope') } })).toEqual(
+    []
+  );
+  expect(
+    repairStaleAppImageLaunchers({ env: { ...env, XDG_DATA_HOME: path.join(root, 'nope') } })
+  ).toEqual([]);
+});
+test('parses the env prefix AppImage integration tools write', () => {
+  expect(
+    parseDesktopExecCommand(
+      'Exec=env DESKTOPINTEGRATION=1 "/opt/HA Widget.AppImage" --no-sandbox %U'
+    )
+  ).toEqual({
+    executable: '/opt/HA Widget.AppImage',
+    rawToken: 'env DESKTOPINTEGRATION=1 "/opt/HA Widget.AppImage"',
+    suffix: ' --no-sandbox %U',
+  });
 });
 test('monitor geometry accounts for scaling, rotation, and panel reservations', () => {
   const monitors = readHyprlandMonitors(() =>
@@ -221,4 +297,64 @@ test('percent filenames use a fixed executable for desktop registry validation',
     rawToken: prefix,
     suffix: ' --hide',
   });
+});
+
+test.each(['ha_desktop_widget.desktop', `${APP_ID}.desktop`])(
+  'repairs generated unquoted launchers including the canonical id: %s',
+  (name) => {
+    const env = { APPIMAGE: path.join(root, 'current.AppImage'), XDG_DATA_HOME: root };
+    const dir = path.join(root, 'applications');
+    fs.mkdirSync(dir);
+    const file = path.join(dir, name);
+    fs.writeFileSync(
+      file,
+      `[Desktop Entry]\nName=HA Desktop Widget\nExec=/gone/widget.AppImage --show %U\nTryExec=/gone/widget.AppImage\nX-AppImage-Version=3.11\n`
+    );
+    expect(repairStaleAppImageLaunchers({ env })).toEqual([file]);
+    expect(parseDesktopExecCommand(fs.readFileSync(file, 'utf8'))).toMatchObject({
+      executable: env.APPIMAGE,
+      suffix: ' --show %U',
+    });
+    expect(fs.readFileSync(file, 'utf8')).toContain(`TryExec=${env.APPIMAGE}`);
+  }
+);
+
+test('an unwritable launcher does not prevent repairing the remaining launchers', () => {
+  const env = { APPIMAGE: '/current.AppImage', XDG_DATA_HOME: root };
+  const onError = jest.fn();
+  const fsModule = {
+    readdirSync: () => ['ha-desktop-widget-a.desktop', 'ha-desktop-widget-b.desktop'],
+    readFileSync: () =>
+      '[Desktop Entry]\nName=HA Desktop Widget\nExec=/gone.AppImage\nX-AppImage-Version=3.11\n',
+    existsSync: () => false,
+    writeFileSync: jest.fn().mockImplementationOnce(() => {
+      throw new Error('read-only');
+    }),
+  };
+  expect(repairStaleAppImageLaunchers({ env, fsModule, onError })).toEqual([
+    path.join(root, 'applications/ha-desktop-widget-b.desktop'),
+  ]);
+  expect(onError).toHaveBeenCalledTimes(1);
+});
+
+test('repairing an owned launcher updates TryExec along with Exec', () => {
+  const env = {
+    APPIMAGE: path.join(root, 'current.AppImage'),
+    XDG_DATA_HOME: root,
+    XDG_DATA_DIRS: path.join(root, 'system'),
+  };
+  const dir = path.join(root, 'applications');
+  fs.mkdirSync(dir);
+  const file = path.join(dir, `${APP_ID}.desktop`);
+  fs.writeFileSync(
+    file,
+    '[Desktop Entry]\nExec=/gone/widget.AppImage --show\nTryExec=/gone/widget.AppImage\nX-HA-Widget-Launcher=true\n'
+  );
+  expect(ensureAppImageDesktopEntry({ env })).toBe(true);
+  const content = fs.readFileSync(file, 'utf8');
+  expect(parseDesktopExecCommand(content)).toMatchObject({
+    executable: env.APPIMAGE,
+    suffix: ' --show',
+  });
+  expect(content).toContain(`TryExec=${env.APPIMAGE}`);
 });
