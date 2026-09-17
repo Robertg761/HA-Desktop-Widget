@@ -101,7 +101,7 @@ test('repairs a menu launcher an integration tool left pointing at a deleted App
   const stale = path.join(dir, 'ha_desktop_widget.desktop');
   fs.writeFileSync(
     stale,
-    `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nTryExec=${gone}\nExec=env DESKTOPINTEGRATION=1 "${gone}" --no-sandbox %U\nX-AppImage-Version=3.9.0-beta.1\nX-AppImage-Name=HA Desktop Widget\n`
+    `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nTryExec=${gone}\nExec=env DESKTOPINTEGRATION=1 ${quoteDesktopExecArg(gone)} --no-sandbox %U\nX-AppImage-Version=3.9.0-beta.1\nX-AppImage-Name=HA Desktop Widget\n`
   );
   // Hand-written entries and other apps are left alone; generated canonical entries are repaired.
   const custom = path.join(dir, 'ha-desktop-widget-custom.desktop');
@@ -111,17 +111,22 @@ test('repairs a menu launcher an integration tool left pointing at a deleted App
   const otherContent = `[Desktop Entry]\nName=Other Widget\nExec="${gone}"\nX-AppImage-Version=1.0\n`;
   fs.writeFileSync(other, otherContent);
   const own = path.join(dir, `${APP_ID}.desktop`);
-  const ownContent = `[Desktop Entry]\nName=HA Desktop Widget\nExec="${gone}" --show\nX-AppImage-Version=3.10.0\nX-HA-Widget-Launcher=true\n`;
+  const ownContent = `[Desktop Entry]\nName=HA Desktop Widget\nExec=${quoteDesktopExecArg(gone)} --show\nX-AppImage-Version=3.10.0\nX-HA-Widget-Launcher=true\n`;
   fs.writeFileSync(own, ownContent);
 
   expect(repairStaleAppImageLaunchers({ env })).toEqual([own, stale]);
   const repaired = fs.readFileSync(stale, 'utf8');
   expect(repaired).toContain(`\nTryExec=${current}\n`);
-  expect(repaired).toContain(`\nExec="${current}" --no-sandbox %U\n`);
+  expect(parseDesktopExecCommand(repaired)).toMatchObject({
+    executable: current,
+    suffix: ' --no-sandbox %U',
+  });
   expect(repaired).toContain('\nX-AppImage-Version=3.9.0-beta.1\n');
   expect(fs.readFileSync(custom, 'utf8')).toBe(customContent);
   expect(fs.readFileSync(other, 'utf8')).toBe(otherContent);
-  expect(fs.readFileSync(own, 'utf8')).toBe(ownContent.replace(gone, current));
+  expect(fs.readFileSync(own, 'utf8')).toBe(
+    ownContent.replace(quoteDesktopExecArg(gone), () => buildDesktopExecPrefix(current))
+  );
   // A launcher that names a working installation is not adopted.
   expect(repairStaleAppImageLaunchers({ env })).toEqual([]);
   expect(repairStaleAppImageLaunchers({ env: { XDG_DATA_HOME: path.join(root, 'nope') } })).toEqual(
@@ -306,7 +311,10 @@ test.each(['ha_desktop_widget.desktop', `${APP_ID}.desktop`])(
       `[Desktop Entry]\nName=HA Desktop Widget\nExec=/gone/widget.AppImage --show %U\nTryExec=/gone/widget.AppImage\nX-AppImage-Version=3.11\n`
     );
     expect(repairStaleAppImageLaunchers({ env })).toEqual([file]);
-    expect(fs.readFileSync(file, 'utf8')).toContain(`Exec="${env.APPIMAGE}" --show %U`);
+    expect(parseDesktopExecCommand(fs.readFileSync(file, 'utf8'))).toMatchObject({
+      executable: env.APPIMAGE,
+      suffix: ' --show %U',
+    });
     expect(fs.readFileSync(file, 'utf8')).toContain(`TryExec=${env.APPIMAGE}`);
   }
 );
@@ -344,6 +352,9 @@ test('repairing an owned launcher updates TryExec along with Exec', () => {
   );
   expect(ensureAppImageDesktopEntry({ env })).toBe(true);
   const content = fs.readFileSync(file, 'utf8');
-  expect(content).toContain(`Exec="${env.APPIMAGE}" --show`);
+  expect(parseDesktopExecCommand(content)).toMatchObject({
+    executable: env.APPIMAGE,
+    suffix: ' --show',
+  });
   expect(content).toContain(`TryExec=${env.APPIMAGE}`);
 });
