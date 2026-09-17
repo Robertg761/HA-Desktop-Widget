@@ -16,7 +16,7 @@ hl.bind("CTRL + ALT + H", hl.dsp.global("com.github.robertg761.hadesktopwidget:p
 
 Press the shortcut and use Refresh shortcut status to check whether the widget received it. The widget does not overwrite compositor bindings. For older Hyprland releases using hyprlang, select Hyprlang to copy the equivalent `bind = CTRL ALT, H, global, com.github.robertg761.hadesktopwidget:popup-toggle` syntax into your sourced `.conf` file. Newer installations that retain Hyprlang configuration can select it too.
 
-Existing configurations using `ha_desktop_widget:` must replace that prefix with `com.github.robertg761.hadesktopwidget:`. The latter now matches the launcher and portal identity.
+Existing configurations using `ha_desktop_widget:` keep working: the widget also registers that retired id with the portal while a launcher for it exists. Replace the prefix with `com.github.robertg761.hadesktopwidget:` when convenient. The first shortcut received through the old id writes the replacement bind to the log, and the shortcuts panel shows it after Refresh shortcut status.
 
 A launcher binding can also use `ha-desktop-widget --toggle`. `--show` and `--hide` are idempotent. Commands act on the existing instance rather than starting a duplicate.
 

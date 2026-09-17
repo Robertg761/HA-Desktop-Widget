@@ -173,6 +173,11 @@ function createPortalGlobalShortcutsController(options = {}) {
     log = console,
     env = process.env,
     appId = DEFAULT_PORTAL_APP_ID,
+    // When set, a host registry that rejects appId aborts the sync instead of
+    // letting the portal fall back to the id it derives from our systemd scope.
+    // A compatibility session for a retired id must never silently become a
+    // second session for the current one: Hyprland would then fire both.
+    requireRegistry = false,
     onActivated = () => {},
     // Injectable for tests; defaults to a real session bus connection.
     createBus = () => {
@@ -314,6 +319,11 @@ function createPortalGlobalShortcutsController(options = {}) {
       registryRegistered = true;
       log.info?.(`Portal shortcuts: registered app id "${appId}" with host portal registry`);
     } catch (error) {
+      if (requireRegistry) {
+        throw new Error(
+          `app id "${appId}" is not registered with the portal: ${error?.message || error}`
+        );
+      }
       // Non-fatal: the portal can still derive an app id from our systemd scope.
       log.debug?.(
         `Portal shortcuts: host registry registration failed (continuing): ${error?.message || error}`

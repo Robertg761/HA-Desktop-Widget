@@ -5989,4 +5989,11 @@ async function refreshDesktopIntegration() {
   document.getElementById('desktop-integration-status').textContent = info.lastActivation
     ? `Last shortcut received: ${info.lastActivation.id} at ${info.lastActivation.at}`
     : 'No shortcut received yet. Press a configured shortcut, then refresh.';
+  // A bind still written for a retired app id keeps working, but only the
+  // panel and the log say so; the replacement is the binding shown above.
+  const legacy = document.getElementById('desktop-integration-legacy');
+  if (legacy) {
+    legacy.hidden = !info.legacyActivation;
+    legacy.textContent = info.legacyActivation?.notice || '';
+  }
 }

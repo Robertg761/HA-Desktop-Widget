@@ -53,7 +53,11 @@ function buildDesktopExecPrefix(executable) {
 
 function parseDesktopExecCommand(content) {
   const line = content.match(/^Exec=(.*)$/m)?.[1];
-  const prefix = line?.startsWith('/usr/bin/env ') ? '/usr/bin/env ' : '';
+  // Our own entries prefix `/usr/bin/env` when the path holds a percent sign;
+  // AppImage integration tools write `env DESKTOPINTEGRATION=1`. Both are
+  // part of the replaceable token so a repair emits one clean prefix.
+  const prefix =
+    line?.match(/^(?:\/usr\/bin\/)?env(?:\s+[A-Za-z_][A-Za-z0-9_]*=[^\s"\\]*)*\s+/)?.[0] || '';
   const raw = line?.slice(prefix.length);
   if (!raw) return null;
   let decoded = '';

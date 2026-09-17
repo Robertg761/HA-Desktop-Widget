@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep Hyprland binds written for the retired `ha_desktop_widget:` portal id working after the app id rename. The widget also answers to the old id, logs the replacement bind on first use, and shows it in the Hyprland shortcuts panel.
+- Repair a menu launcher an AppImage integration tool left pointing at a deleted AppImage, so the app menu entry keeps starting the widget after an in-app update.
+
 - Offer Lua and legacy Hyprlang shortcut bindings in Settings, and preserve inline text colors when Omarchy theme following is inactive.
 - Avoid a renderer startup error when profile-sync status arrives before configuration has loaded.
 - Keep Hyprland animation settings intact while dragging the widget. Store each desktop pin's position separately and raise only the main widget for popup shortcuts.

@@ -33,11 +33,16 @@ const {
   isPortalBindingRegistered,
   hyprlandBinding,
   APP_ID,
+  LEGACY_PORTAL_APP_IDS,
+  legacyPortalBindingNotice,
 } = require('./src/linux-desktop.cjs');
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
-const { ensureAppImageDesktopEntry } = require('./src/linux-desktop-entry.cjs');
+const {
+  ensureAppImageDesktopEntry,
+  repairStaleAppImageLaunchers,
+} = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
 const {
   readHyprlandMonitors,
@@ -7158,6 +7163,7 @@ ipcMain.handle('get-desktop-integration', (event) => {
         }))
       : [],
     lastActivation: lastDesktopShortcutActivation,
+    legacyActivation: lastLegacyDesktopShortcutActivation,
     themeAvailable: !!omarchyThemeWatcher?.get(),
     secureStorageBackend:
       process.platform === 'linux'
@@ -8743,6 +8749,85 @@ function handlePortalShortcutActivated(shortcutId) {
   }
 }
 
+// Hyprland binds name the portal app id verbatim, so the 3.11 rename would have
+// silently orphaned every bind written for the old id. Extra sessions under the
+// retired ids keep those binds working; the first activation through one logs
+// the exact replacement and the shortcuts panel repeats it.
+let legacyPortalShortcutsControllers = [];
+let lastLegacyDesktopShortcutActivation = null;
+const legacyPortalNoticesLogged = new Set();
+
+function handleLegacyPortalShortcutActivated(legacyAppId, shortcutId) {
+  const shortcut = collectPortalShortcuts().find((candidate) => candidate.id === shortcutId);
+  const notice = legacyPortalBindingNotice({
+    legacyAppId,
+    id: shortcutId,
+    accelerator: shortcut?.accelerator || '',
+  });
+  lastLegacyDesktopShortcutActivation = {
+    legacyAppId,
+    id: shortcutId,
+    at: new Date().toISOString(),
+    binding: shortcut ? hyprlandBinding(shortcut.accelerator, shortcutId) : '',
+    notice,
+  };
+  if (!legacyPortalNoticesLogged.has(shortcutId)) {
+    legacyPortalNoticesLogged.add(shortcutId);
+    log.warn(notice);
+  }
+  handlePortalShortcutActivated(shortcutId);
+}
+
+function closeLegacyPortalShortcutsControllers() {
+  legacyPortalShortcutsControllers.splice(0).forEach(({ controller }) => {
+    void controller.close();
+  });
+}
+
+function initLegacyPortalShortcutsControllers() {
+  closeLegacyPortalShortcutsControllers();
+  if (!isHyprland() || IS_ISOLATED_PROFILE || IS_SMOKE_TEST_MODE) return;
+  LEGACY_PORTAL_APP_IDS.forEach((legacyAppId) => {
+    // The primary controller already narrates availability and binding; a
+    // second copy of those lines would read as a second app.
+    const quietLog = {
+      info: (message) => log.debug(`[legacy ${legacyAppId}] ${message}`),
+      debug: (message) => log.debug(`[legacy ${legacyAppId}] ${message}`),
+      warn: (message) => log.debug(`[legacy ${legacyAppId}] ${message}`),
+      error: (...args) => log.warn(`[legacy ${legacyAppId}]`, ...args),
+    };
+    try {
+      const controller = createPortalGlobalShortcutsController({
+        log: quietLog,
+        appId: legacyAppId,
+        // Without a launcher for the retired id the registry rejects it; the
+        // session must then not be created at all, or the portal would derive
+        // the current id from our scope and Hyprland would fire twice.
+        requireRegistry: true,
+        onActivated: (shortcutId) => handleLegacyPortalShortcutActivated(legacyAppId, shortcutId),
+      });
+      legacyPortalShortcutsControllers.push({ appId: legacyAppId, controller });
+    } catch (error) {
+      log.debug(`Legacy portal app id ${legacyAppId} unavailable: ${error?.message || error}`);
+    }
+  });
+}
+
+function syncLegacyPortalShortcuts(shortcuts) {
+  legacyPortalShortcutsControllers.forEach(({ appId, controller }) => {
+    controller
+      .syncShortcuts(shortcuts)
+      .then((result) => {
+        if (!result.success) {
+          log.debug(`Legacy portal app id ${appId} not bound: ${result.error}`);
+        }
+      })
+      .catch((error) => {
+        log.debug(`Legacy portal app id ${appId} sync failed: ${error?.message || error}`);
+      });
+  });
+}
+
 function collectPortalShortcuts() {
   const shortcuts = [];
   if (config?.globalHotkeys?.enabled) {
@@ -8841,6 +8926,8 @@ async function flushPortalShortcutSync() {
   // How many shortcuts this flush actually submitted; consumers must not re-derive
   // it from config, which can change during the bind round trip.
   result.requested = shortcuts.length;
+  // Best effort and off the critical path: the primary result is what callers await.
+  syncLegacyPortalShortcuts(shortcuts);
 
   // Reporting must never leave the waiters unresolved: a throw here (e.g. a renderer
   // destroyed between the isDestroyed check and the send) would otherwise deadlock
@@ -8932,6 +9019,7 @@ function deactivatePortalShortcutsForLegacyFallback(reason) {
     void portalShortcutsController.close();
     portalShortcutsController = null;
   }
+  closeLegacyPortalShortcutsControllers();
   registerGlobalHotkeys();
   void registerPopupHotkey();
   return true;
@@ -8957,6 +9045,7 @@ async function initPortalShortcutsBackend() {
     }
     portalShortcutsActive = true;
     log.info('Using XDG GlobalShortcuts portal for global hotkeys (Wayland session)');
+    initLegacyPortalShortcutsControllers();
     // Drop the no-op globalShortcut registrations and rebind through the portal.
     unregisterGlobalHotkeys();
     linuxPopupHotkeyController.unregister();
@@ -8975,6 +9064,7 @@ async function initPortalShortcutsBackend() {
     }
   } catch (error) {
     portalShortcutsActive = false;
+    closeLegacyPortalShortcutsControllers();
     if (portalShortcutsController) {
       try {
         void portalShortcutsController.close();
@@ -9929,6 +10019,7 @@ function shutDownRuntimeAfterConfigFlush() {
     void portalShortcutsController.close();
     portalShortcutsController = null;
   }
+  closeLegacyPortalShortcutsControllers();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
   kwinWindowRaiser?.close();
@@ -10000,6 +10091,9 @@ app
     ) {
       try {
         ensureAppImageDesktopEntry({ iconPath: path.join(__dirname, 'build/icon.png') });
+        repairStaleAppImageLaunchers().forEach((file) => {
+          log.info(`Repaired a menu launcher that named a deleted AppImage: ${file}`);
+        });
         const linuxStartupOptions = {
           pkg,
           appName: app.getName(),

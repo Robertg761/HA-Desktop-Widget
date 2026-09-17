@@ -25,8 +25,10 @@ class FakeBus extends EventEmitter {
     sessionHandles = null,
     bindConnectionError = null,
     emptyTriggers = false,
+    registerError = null,
   } = {}) {
     super();
+    this.registerError = registerError;
     this.name = ':1.99';
     this.version = version;
     this.emptyTriggers = emptyTriggers;
@@ -73,10 +75,12 @@ class FakeBus extends EventEmitter {
     });
 
     switch (message.member) {
+      case 'Register':
+        if (this.registerError) return Promise.reject(this.registerError);
+        return Promise.resolve({ body: [] });
       case 'GetId':
       case 'AddMatch':
       case 'RemoveMatch':
-      case 'Register':
       case 'Close':
         return Promise.resolve({ body: [] });
       case 'Get':
@@ -421,5 +425,53 @@ test('Hyprland registers canonical targets without inventing a portal trigger', 
   expect(bus.calls.find((call) => call.member === 'Register').body[0]).toBe(
     require('../../package.json').appId
   );
+  await controller.close();
+});
+
+test('a compatibility session for a retired app id registers that id', async () => {
+  const { bus, controller, activations } = createController({
+    busOptions: { emptyTriggers: true },
+    options: {
+      appId: 'ha_desktop_widget',
+      requireRegistry: true,
+      env: { XDG_CURRENT_DESKTOP: 'Hyprland', XDG_SESSION_TYPE: 'wayland' },
+    },
+  });
+  const result = await controller.syncShortcuts([
+    { id: 'popup-toggle', accelerator: 'Control+Alt+H' },
+  ]);
+  expect(result.success).toBe(true);
+  expect(bus.calls.find((call) => call.member === 'Register').body[0]).toBe('ha_desktop_widget');
+  expect(result.bound[0].binding).toBe(
+    'hl.bind("CTRL + ALT + H", hl.dsp.global("ha_desktop_widget:popup-toggle"))'
+  );
+  bus.emitActivated(SESSION_HANDLE, 'popup-toggle');
+  expect(activations).toEqual(['popup-toggle']);
+  await controller.close();
+});
+
+test('a required registry rejection never falls through to a scope-derived session', async () => {
+  const { bus, controller } = createController({
+    busOptions: { registerError: new Error('App info not found') },
+    options: { appId: 'ha_desktop_widget', requireRegistry: true },
+  });
+  const result = await controller.syncShortcuts([
+    { id: 'popup-toggle', accelerator: 'Control+Alt+H' },
+  ]);
+  expect(result.success).toBe(false);
+  expect(result.error).toContain('"ha_desktop_widget" is not registered');
+  expect(bus.calls.map((call) => call.member)).not.toContain('CreateSession');
+  await controller.close();
+});
+
+test('an optional registry rejection still lets the portal derive the app id', async () => {
+  const { bus, controller } = createController({
+    busOptions: { registerError: new Error('App info not found') },
+  });
+  const result = await controller.syncShortcuts([
+    { id: 'popup-toggle', accelerator: 'Control+Alt+H' },
+  ]);
+  expect(result.success).toBe(true);
+  expect(bus.calls.map((call) => call.member)).toContain('CreateSession');
   await controller.close();
 });

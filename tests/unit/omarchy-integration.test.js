@@ -9,6 +9,8 @@ const {
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
+  LEGACY_PORTAL_APP_IDS,
+  legacyPortalBindingNotice,
 } = require('../../src/linux-desktop.cjs');
 const {
   readHyprlandMonitors,
@@ -17,7 +19,10 @@ const {
   readHyprlandCursor,
 } = require('../../src/layer-placement.cjs');
 const { parseOmarchyColors, createOmarchyThemeWatcher } = require('../../src/omarchy-theme.cjs');
-const { ensureAppImageDesktopEntry } = require('../../src/linux-desktop-entry.cjs');
+const {
+  ensureAppImageDesktopEntry,
+  repairStaleAppImageLaunchers,
+} = require('../../src/linux-desktop-entry.cjs');
 const {
   syncLinuxAutostartExecutablePath,
   quoteDesktopExecArg,
@@ -70,6 +75,72 @@ test.each(['Control+H\nbind = , X, exec, bad', 'Control+$key', 'Control+H#commen
 );
 test('refuses legacy target injection', () => {
   expect(hyprlandBinding('Control+H', 'popup\nexec = bad', APP_ID, 'hyprlang')).toBe('');
+});
+test('names the retired portal app id and spells out its replacement', () => {
+  expect(LEGACY_PORTAL_APP_IDS).toContain('ha_desktop_widget');
+  expect(LEGACY_PORTAL_APP_IDS).not.toContain(APP_ID);
+  const notice = legacyPortalBindingNotice({
+    legacyAppId: 'ha_desktop_widget',
+    id: 'popup-toggle',
+    accelerator: 'Control+Shift+Z',
+  });
+  expect(notice).toContain('"ha_desktop_widget"');
+  expect(notice).toContain(`"${APP_ID}:popup-toggle"`);
+  expect(notice).toContain(`hl.bind("CTRL + SHIFT + Z", hl.dsp.global("${APP_ID}:popup-toggle"))`);
+  expect(
+    legacyPortalBindingNotice({ legacyAppId: 'ha_desktop_widget', id: 'popup-toggle' })
+  ).not.toContain('hl.bind');
+});
+test('repairs a menu launcher an integration tool left pointing at a deleted AppImage', () => {
+  const current = path.join(root, 'HA-Desktop-Widget-3.11.0-linux-x86_64.AppImage');
+  fs.writeFileSync(current, 'app');
+  const gone = path.join(root, 'HA-Desktop-Widget-3.10.0-linux-x86_64.AppImage');
+  const env = { APPIMAGE: current, XDG_DATA_HOME: path.join(root, 'data') };
+  const dir = path.join(env.XDG_DATA_HOME, 'applications');
+  fs.mkdirSync(dir, { recursive: true });
+  const stale = path.join(dir, 'ha_desktop_widget.desktop');
+  fs.writeFileSync(
+    stale,
+    `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nTryExec=${gone}\nExec=env DESKTOPINTEGRATION=1 "${gone}" --no-sandbox %U\nX-AppImage-Version=3.9.0-beta.1\nX-AppImage-Name=HA Desktop Widget\n`
+  );
+  // Hand-written, another app's, and the app's own entry are all left alone.
+  const custom = path.join(dir, 'ha-desktop-widget-custom.desktop');
+  const customContent = `[Desktop Entry]\nName=HA Desktop Widget\nExec="${gone}" --show\n`;
+  fs.writeFileSync(custom, customContent);
+  const other = path.join(dir, 'home-assistant-widget-fork.desktop');
+  const otherContent = `[Desktop Entry]\nName=Other Widget\nExec="${gone}"\nX-AppImage-Version=1.0\n`;
+  fs.writeFileSync(other, otherContent);
+  const own = path.join(dir, `${APP_ID}.desktop`);
+  const ownContent = `[Desktop Entry]\nName=HA Desktop Widget\nExec="${gone}" --show\nX-AppImage-Version=3.10.0\nX-HA-Widget-Launcher=true\n`;
+  fs.writeFileSync(own, ownContent);
+
+  expect(repairStaleAppImageLaunchers({ env })).toEqual([stale]);
+  const repaired = fs.readFileSync(stale, 'utf8');
+  expect(repaired).toContain(`\nTryExec=${current}\n`);
+  expect(repaired).toContain(`\nExec="${current}" --no-sandbox %U\n`);
+  expect(repaired).toContain('\nX-AppImage-Version=3.9.0-beta.1\n');
+  expect(fs.readFileSync(custom, 'utf8')).toBe(customContent);
+  expect(fs.readFileSync(other, 'utf8')).toBe(otherContent);
+  expect(fs.readFileSync(own, 'utf8')).toBe(ownContent);
+  // A launcher that names a working installation is not adopted.
+  expect(repairStaleAppImageLaunchers({ env })).toEqual([]);
+  expect(repairStaleAppImageLaunchers({ env: { XDG_DATA_HOME: path.join(root, 'nope') } })).toEqual(
+    []
+  );
+  expect(
+    repairStaleAppImageLaunchers({ env: { ...env, XDG_DATA_HOME: path.join(root, 'nope') } })
+  ).toEqual([]);
+});
+test('parses the env prefix AppImage integration tools write', () => {
+  expect(
+    parseDesktopExecCommand(
+      'Exec=env DESKTOPINTEGRATION=1 "/opt/HA Widget.AppImage" --no-sandbox %U'
+    )
+  ).toEqual({
+    executable: '/opt/HA Widget.AppImage',
+    rawToken: 'env DESKTOPINTEGRATION=1 "/opt/HA Widget.AppImage"',
+    suffix: ' --no-sandbox %U',
+  });
 });
 test('monitor geometry accounts for scaling, rotation, and panel reservations', () => {
   const monitors = readHyprlandMonitors(() =>
