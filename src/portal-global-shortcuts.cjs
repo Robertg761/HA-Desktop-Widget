@@ -196,6 +196,8 @@ function createPortalGlobalShortcutsController(options = {}) {
   let dbusModule = null;
   let registryRegistered = false;
   let sessionHandle = '';
+  let pendingSessionHandle = '';
+  const pendingRequests = new Set();
   let activatedListenerInstalled = false;
   let availabilityPromise = null;
   let tokenCounter = 0;
@@ -220,8 +222,10 @@ function createPortalGlobalShortcutsController(options = {}) {
   function resetBusConnection(failedBus, error = null) {
     if (!failedBus || bus !== failedBus) return;
     bus = null;
+    for (const reject of pendingRequests) reject(error || new Error('Portal session lost'));
     registryRegistered = false;
     sessionHandle = '';
+    pendingSessionHandle = '';
     activatedListenerInstalled = false;
     availabilityPromise = null;
     try {
@@ -230,7 +234,7 @@ function createPortalGlobalShortcutsController(options = {}) {
       // best effort cleanup
     }
     try {
-      onConnectionLost(error);
+      if (!closed) onConnectionLost(error);
     } catch (callbackError) {
       log.warn?.(
         `Portal shortcuts: connection-loss callback failed: ${callbackError?.message || callbackError}`
@@ -250,6 +254,22 @@ function createPortalGlobalShortcutsController(options = {}) {
       log.warn?.(`Portal shortcuts: D-Bus connection error: ${error?.message || error}`);
       resetBusConnection(nextBus, error);
     });
+    nextBus.on('message', (message) => {
+      if (closed || bus !== nextBus || message.type !== getDbus().MessageType.SIGNAL) return;
+      const ownerChanged =
+        message.interface === DBUS_INTERFACE &&
+        message.sender === DBUS_BUS_NAME &&
+        message.member === 'NameOwnerChanged' &&
+        message.body?.[0] === PORTAL_BUS_NAME &&
+        message.body?.[1];
+      const sessionClosed =
+        message.interface === SESSION_INTERFACE &&
+        message.member === 'Closed' &&
+        (message.path === sessionHandle || message.path === pendingSessionHandle);
+      if (ownerChanged || sessionClosed) {
+        resetBusConnection(nextBus, new Error('Portal service or shortcut session closed'));
+      }
+    });
     try {
       // Any successful call completes the Hello handshake and populates bus.name.
       await busCall({
@@ -258,6 +278,15 @@ function createPortalGlobalShortcutsController(options = {}) {
         interface: DBUS_INTERFACE,
         member: 'GetId',
       });
+      await addMatch(
+        `type='signal',sender='${DBUS_BUS_NAME}',interface='${DBUS_INTERFACE}',member='NameOwnerChanged',arg0='${PORTAL_BUS_NAME}'`,
+        nextBus
+      );
+      await addMatch(
+        `type='signal',sender='${PORTAL_BUS_NAME}',interface='${SESSION_INTERFACE}',member='Closed'`,
+        nextBus
+      );
+      if (bus !== nextBus) throw new Error('Portal connection changed during initialization');
       return nextBus;
     } catch (error) {
       resetBusConnection(nextBus, error);
@@ -349,6 +378,11 @@ function createPortalGlobalShortcutsController(options = {}) {
       rejectResponse = reject;
     });
 
+    // A service restart can happen before the method reply arrives. Handle that
+    // rejection immediately as well as when awaiting the response below.
+    responsePromise.catch(() => {});
+    pendingRequests.add(rejectResponse);
+    let timeoutTimer;
     const requestMatchRules = [];
     const addRequestMatch = async (rule) => {
       await addMatch(rule, requestBus);
@@ -395,7 +429,6 @@ function createPortalGlobalShortcutsController(options = {}) {
         );
       }
 
-      let timeoutTimer;
       const timeout = new Promise((resolve) => {
         timeoutTimer = setTimeout(
           () => resolve({ code: -1, results: {}, timedOut: true }),
@@ -407,6 +440,8 @@ function createPortalGlobalShortcutsController(options = {}) {
       clearTimeout(timeoutTimer);
       return response;
     } finally {
+      clearTimeout(timeoutTimer);
+      pendingRequests.delete(rejectResponse);
       requestBus.off('message', onMessage);
       requestBus.off('error', onConnectionError);
       await Promise.allSettled(requestMatchRules.map((rule) => removeMatch(rule, requestBus)));
@@ -419,7 +454,9 @@ function createPortalGlobalShortcutsController(options = {}) {
     await addMatch(
       `type='signal',interface='${GLOBAL_SHORTCUTS_INTERFACE}',member='Activated',path='${PORTAL_OBJECT_PATH}'`
     );
+    const listenerBus = bus;
     bus.on('message', (message) => {
+      if (closed || bus !== listenerBus) return;
       if (
         message.type !== dbus.MessageType.SIGNAL ||
         message.interface !== GLOBAL_SHORTCUTS_INTERFACE ||
@@ -525,6 +562,7 @@ function createPortalGlobalShortcutsController(options = {}) {
       };
     }
 
+    pendingSessionHandle = candidateSessionHandle;
     const shortcutTuples = shortcuts.map(({ id, description, accelerator }) => {
       const properties = { description: new dbus.Variant('s', description || id) };
       const trigger = acceleratorToPortalTrigger(accelerator);
@@ -546,6 +584,7 @@ function createPortalGlobalShortcutsController(options = {}) {
         body: (portalOptions) => [candidateSessionHandle, shortcutTuples, '', portalOptions],
       });
     } catch (error) {
+      pendingSessionHandle = '';
       await closeSession(candidateSessionHandle);
       throw error;
     }
@@ -556,8 +595,15 @@ function createPortalGlobalShortcutsController(options = {}) {
         : bindResponse.code === 1
           ? 'shortcut binding was cancelled'
           : `portal failed to bind shortcuts (code ${bindResponse.code})`;
+      pendingSessionHandle = '';
       await closeSession(candidateSessionHandle);
-      return { success: false, backend: PORTAL_SHORTCUTS_BACKEND, bound: [], error };
+      return {
+        success: false,
+        backend: PORTAL_SHORTCUTS_BACKEND,
+        bound: [],
+        error,
+        retryable: false,
+      };
     }
 
     const boundEntries = variantValue(bindResponse.results.shortcuts) || [];
@@ -578,6 +624,7 @@ function createPortalGlobalShortcutsController(options = {}) {
           : {}),
       };
     });
+    pendingSessionHandle = '';
     sessionHandle = candidateSessionHandle;
     if (previousSessionHandle && previousSessionHandle !== candidateSessionHandle) {
       await closeSession(previousSessionHandle);
@@ -628,6 +675,8 @@ function createPortalGlobalShortcutsController(options = {}) {
   async function close() {
     if (closed) return;
     closed = true;
+    for (const reject of pendingRequests)
+      reject(new Error('Portal shortcuts controller is closed'));
     try {
       if (bus) {
         await closeSession();

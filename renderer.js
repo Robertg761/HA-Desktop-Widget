@@ -627,6 +627,66 @@ function getWizardUrl() {
   return firstRunWizard?.urlInput?.value || state.CONFIG?.homeAssistant?.url || '';
 }
 
+async function renderFirstRunDesktopHelp(content) {
+  try {
+    const info = await window.electronAPI.getDesktopIntegration?.();
+    if (!info?.hyprland || !info.layerMode || firstRunWizard?.step !== 0 || !content.isConnected)
+      return;
+    const help = document.createElement('div');
+    help.id = 'first-run-desktop-help';
+    help.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t(
+          'On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.'
+        )
+      )
+    );
+    help.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t(
+          'Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.'
+        )
+      )
+    );
+    const status = createTextElement('p', 'first-run-copy', '');
+    status.setAttribute('role', 'status');
+    const baseline = info.lastActivation?.at;
+    help.appendChild(
+      createActionButton(t('Check popup shortcut'), 'btn btn-secondary', async () => {
+        try {
+          const current = await window.electronAPI.getDesktopIntegration();
+          const received =
+            current?.lastActivation?.id === 'popup-toggle' &&
+            current.lastActivation.at !== baseline;
+          status.textContent = received
+            ? t('Popup shortcut received. You can use it to bring the widget forward.')
+            : t(
+                'No popup shortcut received yet. Press your configured shortcut, then check again.'
+              );
+        } catch {
+          status.textContent = t('Could not check the shortcut. Try again.');
+        }
+      })
+    );
+    help.appendChild(
+      createActionButton(t('Set up shortcuts'), 'btn btn-secondary', async () => {
+        await skipWizardToSettings();
+        document.querySelector('[data-tab="hotkeys"]')?.click();
+      })
+    );
+    help.appendChild(status);
+    // A repeated render may finish its asynchronous lookup after a newer render.
+    content.querySelector('#first-run-desktop-help')?.remove();
+    content.appendChild(help);
+  } catch (error) {
+    log.warn('Could not load first-run desktop guidance:', error);
+  }
+}
+
 function renderWizardStep() {
   if (!firstRunWizard?.content) return;
   const stepIndex = firstRunWizard.step;
@@ -660,6 +720,7 @@ function renderWizardStep() {
         )
       )
     );
+    void renderFirstRunDesktopHelp(content);
   } else if (stepIndex === 1) {
     content.appendChild(
       createTextElement('h2', 'first-run-title', t('Enter your Home Assistant URL'))

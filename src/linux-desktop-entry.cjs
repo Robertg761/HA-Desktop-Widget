@@ -28,10 +28,9 @@ function ensureAppImageDesktopEntry({
     if (!/^X-HA-Widget-Launcher=true$/m.test(previous)) return false;
     const command = parseDesktopExecCommand(previous);
     if (!command || fsModule.existsSync(command.executable)) return false;
-    const updated = previous.replace(
-      `Exec=${command.rawToken}`,
-      () => `Exec=${buildDesktopExecPrefix(env.APPIMAGE)}`
-    );
+    const updated = previous
+      .replace(`Exec=${command.rawToken}`, () => `Exec=${buildDesktopExecPrefix(env.APPIMAGE)}`)
+      .replace(/^TryExec=.*$/m, () => `TryExec=${env.APPIMAGE}`);
     fsModule.writeFileSync(destination, updated, { mode: 0o644 });
     return true;
   }
@@ -62,6 +61,7 @@ function repairStaleAppImageLaunchers({
   env = process.env,
   home = os.homedir(),
   fsModule = fs,
+  onError = () => {},
 } = {}) {
   const executable = env.APPIMAGE;
   if (!executable || !path.isAbsolute(executable)) return [];
@@ -76,7 +76,7 @@ function repairStaleAppImageLaunchers({
   }
   const repaired = [];
   for (const name of names) {
-    if (!name.endsWith('.desktop') || name === `${APP_ID}.desktop`) continue;
+    if (!name.endsWith('.desktop')) continue;
     if (!LEGACY_LAUNCHER_NAME.test(name)) continue;
     const file = path.join(dir, name);
     let content;
@@ -95,8 +95,12 @@ function repairStaleAppImageLaunchers({
     const updated = content
       .replace(`Exec=${command.rawToken}`, () => `Exec=${buildDesktopExecPrefix(executable)}`)
       .replace(/^TryExec=.*$/m, () => `TryExec=${executable}`);
-    fsModule.writeFileSync(file, updated, { mode: 0o644 });
-    repaired.push(file);
+    try {
+      fsModule.writeFileSync(file, updated, { mode: 0o644 });
+      repaired.push(file);
+    } catch (error) {
+      onError(file, error);
+    }
   }
   return repaired;
 }

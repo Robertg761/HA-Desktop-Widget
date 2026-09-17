@@ -8,6 +8,10 @@ Always on top and Hide on focus loss are unavailable in desktop layer mode. Use 
 
 ## Shortcuts
 
+First-run setup explains desktop-layer visibility and offers a popup shortcut check. Use Set up shortcuts to open the Hotkeys settings, configure a popup shortcut, and copy its binding into Hyprland. Return to setup, press the shortcut, then choose Check popup shortcut. Setup can also continue without a shortcut.
+
+The widget retries when the portal is late at login and recreates shortcuts after a portal restart or session closure. Transient failures use increasing retry delays capped at 30 seconds. Cancelling or timing out shortcut approval does not reopen the dialog automatically.
+
 Set a popup or entity shortcut in Settings, then open the Hyprland shortcuts panel. Choose the configuration format you use: Lua for `.lua` files or Hyprlang for `.conf` files. The Copy bindings button copies the selected format. Check for conflicts with your existing bindings before adding it to your configuration. On Omarchy 4 with Hyprland 0.56, add a Lua binding to `~/.config/hypr/bindings.lua`:
 
 ```lua

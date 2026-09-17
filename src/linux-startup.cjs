@@ -69,12 +69,11 @@ function parseDesktopExecCommand(content) {
     } else decoded += raw[i];
     ends.push(i + 1);
   }
-  const match = decoded.match(/^("(?:\\.|[^"\\])*")(?:\s|$)/);
+  const match = decoded.match(/^("(?:\\.|[^"\\])*"|[^\s"'\\<>~|&;$*?#()`]+)(?:\s|$)/);
   if (!match) return null;
   const length = ends[match[1].length - 1];
   return {
-    executable: match[1]
-      .slice(1, -1)
+    executable: (match[1].startsWith('"') ? match[1].slice(1, -1) : match[1])
       .replace(/\\(["\\`$])/g, '$1')
       .replace(/%%/g, '%'),
     rawToken: prefix + raw.slice(0, length),
@@ -191,7 +190,7 @@ function syncLinuxAutostartExecutablePath({
     return { repaired: false, autostartPath, reason: 'not-owned' };
   }
   // Only repair an obsolete executable, never adopt a second working install.
-  // Restrict automatic repair to the quoted Exec form emitted by this app.
+  // Only repair simple executable commands that can be parsed safely.
   const command = parseDesktopExecCommand(content);
   if (!command) return { repaired: false, autostartPath, reason: 'custom-command' };
   const oldPath = command.executable;

@@ -8722,6 +8722,7 @@ let portalShortcutsActive = false;
 let portalShortcutsInitPromise = null;
 let portalSyncTimer = null;
 let portalReconnectTimer = null;
+let portalReconnectAttempts = 0;
 let portalSyncWaiters = [];
 
 let lastDesktopShortcutActivation = null;
@@ -8804,6 +8805,7 @@ function initLegacyPortalShortcutsControllers() {
         // session must then not be created at all, or the portal would derive
         // the current id from our scope and Hyprland would fire twice.
         requireRegistry: true,
+        onConnectionLost: schedulePortalConnectionRecovery,
         onActivated: (shortcutId) => handleLegacyPortalShortcutActivated(legacyAppId, shortcutId),
       });
       legacyPortalShortcutsControllers.push({ appId: legacyAppId, controller });
@@ -8969,13 +8971,29 @@ function syncPortalShortcuts({ immediate = false } = {}) {
 }
 
 function schedulePortalConnectionRecovery() {
-  if (isQuitting || !portalShortcutsActive || portalReconnectTimer) return;
-  portalReconnectTimer = setTimeout(() => {
+  if (
+    isQuitting ||
+    !usesPortalGlobalShortcuts ||
+    portalShortcutsFallbackLatched ||
+    portalReconnectTimer
+  )
+    return;
+  const delay = Math.min(
+    PORTAL_RECONNECT_DELAY_MS * 2 ** Math.min(portalReconnectAttempts++, 5),
+    30000
+  );
+  portalReconnectTimer = setTimeout(async () => {
     portalReconnectTimer = null;
-    if (!isQuitting && portalShortcutsActive && portalShortcutsController) {
-      void syncPortalShortcuts({ immediate: true });
+    if (isQuitting || portalShortcutsFallbackLatched) return;
+    if (portalShortcutsActive && portalShortcutsController) {
+      const result = await syncPortalShortcuts({ immediate: true });
+      if (result.success) portalReconnectAttempts = 0;
+      else if (result.retryable !== false) schedulePortalConnectionRecovery();
+    } else {
+      await ensurePortalShortcutsBackendInitialized();
     }
-  }, PORTAL_RECONNECT_DELAY_MS);
+  }, delay);
+  portalReconnectTimer.unref?.();
 }
 
 // Once the portal has demonstrated it will not assign triggers, re-running init on a
@@ -9041,6 +9059,7 @@ async function initPortalShortcutsBackend() {
       );
       void portalShortcutsController.close();
       portalShortcutsController = null;
+      schedulePortalConnectionRecovery();
       return;
     }
     portalShortcutsActive = true;
@@ -9054,6 +9073,8 @@ async function initPortalShortcutsBackend() {
     // can change during the bind round trip). One assigned trigger keeps the portal:
     // it is demonstrably approved and usable, the remaining triggers stay assignable
     // in system settings, and the X grabs it would trade for are equally partial.
+    if (!syncResult.success && syncResult.retryable !== false) schedulePortalConnectionRecovery();
+    if (syncResult.success) portalReconnectAttempts = 0;
     const portalBoundNoTriggers =
       (syncResult.requested || 0) > 0 &&
       (!syncResult.success || !(syncResult.bound || []).some(isPortalBindingRegistered));
@@ -9064,6 +9085,7 @@ async function initPortalShortcutsBackend() {
     }
   } catch (error) {
     portalShortcutsActive = false;
+    schedulePortalConnectionRecovery();
     closeLegacyPortalShortcutsControllers();
     if (portalShortcutsController) {
       try {
@@ -9108,23 +9130,19 @@ function ensurePortalShortcutsBackendInitialized() {
     return Promise.resolve(true);
   }
   if (!portalShortcutsInitPromise) {
-    portalShortcutsInitPromise = initPortalShortcutsBackend().then(
-      () => {
-        const active = portalShortcutsActive;
-        if (!active) {
-          // A portal or session bus can be late during desktop startup. Do not
-          // cache that transient false forever; the next explicit availability
-          // check gets one fresh attempt while this promise still coalesces callers.
-          portalShortcutsInitPromise = null;
+    portalShortcutsInitPromise = initPortalShortcutsBackend()
+      .then(
+        () => portalShortcutsActive,
+        (error) => {
+          log.warn('Portal shortcut startup initialization failed:', error?.message || error);
+          schedulePortalConnectionRecovery();
+          return false;
         }
-        return active;
-      },
-      (error) => {
+      )
+      .finally(() => {
+        // Coalesce concurrent initialization, but never cache a stale result.
         portalShortcutsInitPromise = null;
-        log.warn('Portal shortcut startup initialization failed:', error?.message || error);
-        return false;
-      }
-    );
+      });
   }
   return portalShortcutsInitPromise;
 }
@@ -9999,6 +10017,8 @@ function shutDownRuntimeAfterConfigFlush() {
   closeDevReloadWatchers();
   clearProfileSyncTimers();
   clearHomeAssistantOAuthRefreshTimer();
+  clearTimeout(portalReconnectTimer);
+  portalReconnectTimer = null;
   if (portalShortcutsController) {
     portalShortcutsActive = false;
     if (portalSyncTimer) {
@@ -10091,16 +10111,27 @@ app
     ) {
       try {
         ensureAppImageDesktopEntry({ iconPath: path.join(__dirname, 'build/icon.png') });
-        repairStaleAppImageLaunchers().forEach((file) => {
+      } catch (error) {
+        log.warn('Could not create the AppImage launcher:', error?.message || error);
+      }
+      try {
+        repairStaleAppImageLaunchers({
+          onError: (file, error) =>
+            log.warn(`Could not repair launcher ${file}:`, error?.message || error),
+        }).forEach((file) => {
           log.info(`Repaired a menu launcher that named a deleted AppImage: ${file}`);
         });
-        const linuxStartupOptions = {
-          pkg,
-          appName: app.getName(),
-          executablePath: getLinuxStartupExecutablePath(app, process.env),
-          env: process.env,
-        };
+      } catch (error) {
+        log.warn('Could not scan AppImage launchers:', error?.message || error);
+      }
+      const linuxStartupOptions = {
+        pkg,
+        appName: app.getName(),
+        executablePath: getLinuxStartupExecutablePath(app, process.env),
+        env: process.env,
+      };
 
+      try {
         // The autostart file is named after the app id, which package.json has not always
         // carried. An entry written before it was added sits under the older name where nothing
         // can see it, so the setting reads as off, ticking the box adds a second entry, and the
@@ -10116,7 +10147,10 @@ app
             `Removed a duplicate start-at-login entry left behind under an older file name (${legacyPath})`
           );
         }
-
+      } catch (error) {
+        log.warn('Could not migrate the Linux autostart entry:', error?.message || error);
+      }
+      try {
         const { repaired, autostartPath } = syncLinuxAutostartExecutablePath(linuxStartupOptions);
         if (repaired) {
           log.info(

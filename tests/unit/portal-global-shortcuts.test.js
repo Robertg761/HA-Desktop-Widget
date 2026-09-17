@@ -475,3 +475,94 @@ test('an optional registry rejection still lets the portal derive the app id', a
   expect(bus.calls.map((call) => call.member)).toContain('CreateSession');
   await controller.close();
 });
+
+describe('portal lifecycle recovery', () => {
+  const shortcuts = [{ id: 'popup-toggle', accelerator: 'Ctrl+Shift+Z' }];
+  test.each(['owner', 'session'])(
+    'recreates shortcuts after %s loss without a bus error',
+    async (kind) => {
+      const first = new FakeBus();
+      const second = new FakeBus();
+      const onConnectionLost = jest.fn();
+      const onActivated = jest.fn();
+      const controller = createPortalGlobalShortcutsController({
+        env: waylandEnv,
+        log: silentLog,
+        onConnectionLost,
+        onActivated,
+        createBus: jest.fn().mockReturnValueOnce(first).mockReturnValue(second),
+      });
+      await controller.syncShortcuts(shortcuts);
+      first.emit(
+        'message',
+        kind === 'owner'
+          ? {
+              type: MessageType.SIGNAL,
+              sender: 'org.freedesktop.DBus',
+              interface: 'org.freedesktop.DBus',
+              member: 'NameOwnerChanged',
+              body: ['org.freedesktop.portal.Desktop', ':1.10', ':1.11'],
+            }
+          : {
+              type: MessageType.SIGNAL,
+              interface: 'org.freedesktop.portal.Session',
+              member: 'Closed',
+              path: controller.getSessionHandle(),
+              body: [{}],
+            }
+      );
+      expect(onConnectionLost).toHaveBeenCalledTimes(1);
+      expect(controller.getSessionHandle()).toBe('');
+      expect((await controller.syncShortcuts(shortcuts)).success).toBe(true);
+      first.emitActivated(SESSION_HANDLE, 'popup-toggle');
+      expect(onActivated).not.toHaveBeenCalled();
+      second.emitActivated(controller.getSessionHandle(), 'popup-toggle');
+      expect(onActivated).toHaveBeenCalledWith('popup-toggle');
+      await controller.close();
+      expect(onConnectionLost).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test('cancelling approval suppresses automatic retries', async () => {
+    const controller = createPortalGlobalShortcutsController({
+      env: waylandEnv,
+      log: silentLog,
+      createBus: () => new FakeBus({ bindCode: 1 }),
+    });
+    expect(await controller.syncShortcuts(shortcuts)).toMatchObject({
+      success: false,
+      retryable: false,
+    });
+    await controller.close();
+  });
+});
+
+test('portal restart interrupts pending approval and allows a fresh bind', async () => {
+  const first = new FakeBus();
+  const second = new FakeBus();
+  const originalCall = first.call.bind(first);
+  first.call = (message) => {
+    if (message.member !== 'BindShortcuts') return originalCall(message);
+    setTimeout(
+      () =>
+        first.emit('message', {
+          type: MessageType.SIGNAL,
+          sender: 'org.freedesktop.DBus',
+          interface: 'org.freedesktop.DBus',
+          member: 'NameOwnerChanged',
+          body: ['org.freedesktop.portal.Desktop', ':1.10', ''],
+        }),
+      0
+    );
+    return Promise.resolve({ body: [first.requestPath(message.body[3].handle_token.value)] });
+  };
+  const controller = createPortalGlobalShortcutsController({
+    env: waylandEnv,
+    log: silentLog,
+    createBus: jest.fn().mockReturnValueOnce(first).mockReturnValue(second),
+  });
+  const shortcuts = [{ id: 'popup-toggle', accelerator: 'Ctrl+Shift+Z' }];
+  expect(await controller.syncShortcuts(shortcuts)).toMatchObject({ success: false });
+  expect((await controller.syncShortcuts(shortcuts)).success).toBe(true);
+  await controller.close();
+});
