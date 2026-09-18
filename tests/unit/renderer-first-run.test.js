@@ -175,6 +175,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       callMediaTileService: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
       switchQuickAccessPage: jest.fn(),
+      showAddPageModal: jest.fn(),
     }));
     jest.doMock('../../src/settings.js', () => ({
       __esModule: true,
@@ -243,10 +244,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
-  it('uses a three-step browser authorization flow without asking for a token', async () => {
+  it('uses a four-step browser authorization flow without asking for a token', async () => {
     await loadRenderer();
 
-    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 3');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 4');
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.getElementById('first-run-onboarding').textContent).not.toContain(
       'Long-Lived Access Token'
@@ -254,7 +255,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     await reachAuthorizationStep('http://ha-one.local:8123');
 
-    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 3');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.getElementById('first-run-onboarding').textContent).toContain(
       'Authorize in Home Assistant'
@@ -304,8 +305,35 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
     expect(mockElectronAPI.testHaConnection).not.toHaveBeenCalled();
     expect(mockState.CONFIG.homeAssistant.authMethod).toBe('oauth');
-    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+    expect(document.getElementById('first-run-onboarding').classList).not.toContain('hidden');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 4 of 4');
     expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    await clickButton('Skip for now');
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+  });
+
+  it('opens the shared starter builder after authorization', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockResolvedValueOnce({ config: oauthConfig() });
+      },
+    });
+    await reachAuthorizationStep('ha.local:8123');
+    await clickButton('Connect');
+    await clickButton('Choose rooms and devices');
+    expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+  });
+
+  it('offers the starter builder on a connected empty dashboard without onboarding existing users', async () => {
+    await loadRenderer({ config: oauthConfig() });
+    expect(document.getElementById('first-run-onboarding')).toBeNull();
+    mockWebsocket.request.mockImplementation(() => Object.assign(Promise.resolve({}), { id: 123 }));
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    mockWebsocket.emit('message', { type: 'result', id: 123, result: [] });
+    await flushAsync();
+    await clickButton('Choose rooms and devices');
+    expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
   });
 
   it('coalesces duplicate Connect clicks while browser authorization is pending', async () => {

@@ -180,6 +180,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     mockCallServiceWithResponse.mockResolvedValue({});
     mockRequest.mockClear();
     mockRequest.mockResolvedValue({});
+    require('../../src/websocket.js').isConnected.mockReturnValue(true);
 
     // Create comprehensive DOM structure
     document.body.innerHTML = `
@@ -250,6 +251,184 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     if (quickControls?.classList.contains('reorganize-mode')) {
       ui.toggleReorganizeMode();
     }
+  });
+
+  describe('starter dashboard builder', () => {
+    const flush = async () => {
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    };
+    const entities = [
+      { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk lamp' } },
+      {
+        entity_id: 'sensor.temperature',
+        state: '21',
+        attributes: { friendly_name: 'Temperature' },
+      },
+      { entity_id: 'switch.offline', state: 'unavailable', attributes: {} },
+    ];
+    it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'existing', name: 'Existing', entityIds: ['light.kept'] }],
+        activeTabId: 'existing',
+      });
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? { success: true, result: entities }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
+      expect(document.querySelectorAll('.room-entity-list input:checked')).toHaveLength(1);
+      expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
+        'Desk lamp — on'
+      );
+      const sensor = document.querySelector('input[value="sensor.temperature"]');
+      sensor.click();
+      expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
+        'Room Temp — 21'
+      );
+      const search = document.querySelector('.room-device-search');
+      search.value = 'desk';
+      search.dispatchEvent(new Event('input'));
+      expect(sensor.parentElement.hidden).toBe(true);
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      expect(state.CONFIG.customTabs.find((page) => page.id === 'existing').entityIds).toEqual([
+        'light.kept',
+      ]);
+      expect(state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds).toEqual([
+        'light.desk',
+        'sensor.temperature',
+      ]);
+    });
+    it('preselects a populated room and lets users cancel without saving', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            get_states: entities,
+            'config/area_registry/list': [{ area_id: 'office', name: 'Office' }],
+            'config/entity_registry/list': [{ entity_id: 'light.desk', area_id: 'office' }],
+            'config/device_registry/list': [],
+          }[type],
+        })
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('#add-page-room').value).toBe('office');
+      expect(document.querySelector('#add-page-name').value).toBe('Office');
+      document.querySelector('#add-page-cancel-btn').click();
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(document.querySelector('#add-page-modal')).toBeNull();
+    });
+    it('excludes hidden and disabled devices from All devices and its defaults', async () => {
+      const states = [
+        ...entities,
+        { entity_id: 'light.hidden', state: 'on', attributes: {} },
+        { entity_id: 'light.disabled', state: 'on', attributes: {} },
+      ];
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            get_states: states,
+            'config/area_registry/list': [],
+            'config/entity_registry/list': [
+              { entity_id: 'light.hidden', hidden_by: 'user' },
+              { entity_id: 'light.disabled', disabled_by: 'integration' },
+            ],
+            'config/device_registry/list': [],
+          }[type],
+        })
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
+      expect(document.querySelector('input[value="light.hidden"]')).toBeNull();
+      expect(document.querySelector('input[value="light.disabled"]')).toBeNull();
+      expect(document.querySelectorAll('.room-entity-list input:checked')).toHaveLength(1);
+    });
+    it('waits for authentication before requesting devices and stops waiting after cancel', async () => {
+      jest.useFakeTimers();
+      const connection = require('../../src/websocket.js').isConnected;
+      connection.mockReturnValue(false);
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states' ? { success: true, result: entities } : { success: false }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'Connecting to Home Assistant…'
+      );
+      expect(mockRequest).not.toHaveBeenCalled();
+      expect(document.querySelector('#add-page-save-btn').disabled).toBe(true);
+      connection.mockReturnValue(true);
+      await jest.advanceTimersByTimeAsync(100);
+      await flush();
+      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
+      expect(document.querySelector('#add-page-save-btn').disabled).toBe(false);
+      document.querySelector('#add-page-cancel-btn').click();
+      connection.mockReturnValue(false);
+      mockRequest.mockClear();
+      ui.showAddPageModal({ starter: true });
+      document.querySelector('#add-page-cancel-btn').click();
+      connection.mockReturnValue(true);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(mockRequest).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+    it('offers an enabled retry after a connection timeout', async () => {
+      jest.useFakeTimers();
+      require('../../src/websocket.js').isConnected.mockReturnValue(false);
+      ui.showAddPageModal({ starter: true });
+      await jest.advanceTimersByTimeAsync(15000);
+      expect(document.querySelector('.room-dashboard button').textContent).toBe('Retry');
+      expect(document.querySelector('.room-dashboard button').disabled).toBe(false);
+      expect(mockRequest).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+    it('caps the preview for large selections while preserving every selected device', async () => {
+      const many = Array.from({ length: 1000 }, (_, index) => ({
+        entity_id: `light.device_${index}`,
+        state: 'off',
+        attributes: {},
+      }));
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states' ? { success: true, result: many } : { success: false }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const checkboxes = [...document.querySelectorAll('.room-entity-list input')];
+      expect(checkboxes).toHaveLength(1000);
+      checkboxes.forEach((input) => {
+        input.checked = true;
+      });
+      checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
+      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
+      expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
+        'And 992 more devices'
+      );
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      expect(
+        state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds
+      ).toHaveLength(1000);
+    });
+    it('offers retry when device states are not ready', async () => {
+      mockRequest.mockRejectedValueOnce(new Error('not connected'));
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('.room-dashboard button').textContent).toBe('Retry');
+      expect(document.querySelector('.room-dashboard button').disabled).toBe(false);
+    });
   });
 
   describe('dashboard recovery', () => {

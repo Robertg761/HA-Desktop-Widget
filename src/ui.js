@@ -1,7 +1,12 @@
 import state from './state.js';
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
 import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
-import { entitiesForArea, loadRoomRegistry } from './room-dashboard.js';
+import {
+  entitiesForArea,
+  loadRoomRegistry,
+  selectableEntityIds,
+  waitForRoomConnection,
+} from './room-dashboard.js';
 import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
@@ -790,7 +795,7 @@ function closeAddPageModal() {
   }
 }
 
-function showAddPageModal() {
+function showAddPageModal({ starter = false } = {}) {
   closeAddPageModal();
 
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
@@ -846,17 +851,75 @@ function showAddPageModal() {
   loadRooms.className = 'btn btn-secondary';
   loadRooms.textContent = t('Load rooms');
   roomGroup.append(roomLabel, roomSelect, loadRooms, roomStatus, roomEntities);
+  const deviceSearch = document.createElement('input');
+  deviceSearch.type = 'search';
+  deviceSearch.className = 'form-control room-device-search';
+  deviceSearch.placeholder = t('Search devices');
+  deviceSearch.setAttribute('aria-label', t('Search devices'));
+  const filterDevices = () => {
+    const query = deviceSearch.value.trim().toLocaleLowerCase();
+    roomEntities.querySelectorAll('label').forEach((label) => {
+      label.hidden = !`${label.textContent} ${label.querySelector('input').value}`
+        .toLocaleLowerCase()
+        .includes(query);
+    });
+  };
+  deviceSearch.addEventListener('input', filterDevices);
+  if (starter) roomGroup.insertBefore(deviceSearch, roomEntities);
   modal.querySelector('.modal-body').appendChild(roomGroup);
   let registry = null;
+  let availableStates = state.STATES;
+  const preview = document.createElement('div');
+  preview.className = 'room-dashboard-preview';
+  preview.setAttribute('aria-live', 'polite');
+  roomGroup.appendChild(preview);
+  const updatePreview = () => {
+    const selected = [...roomEntities.querySelectorAll('input:checked')];
+    preview.replaceChildren();
+    const title = document.createElement('p');
+    title.textContent = t('Page preview: {{count}} devices', { count: selected.length });
+    preview.appendChild(title);
+    selected.slice(0, 8).forEach(({ value }) => {
+      const tile = document.createElement('div');
+      tile.className = 'room-preview-tile';
+      const entity = availableStates[value];
+      tile.textContent = `${utils.getEntityDisplayName(entity)} — ${entity.state}`;
+      preview.appendChild(tile);
+    });
+    if (selected.length > 8) {
+      const remaining = document.createElement('p');
+      remaining.textContent = t('And {{count}} more devices', { count: selected.length - 8 });
+      preview.appendChild(remaining);
+    }
+  };
+  roomEntities.addEventListener('change', updatePreview);
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
   let autoFilledName = '';
   loadRooms.onclick = async () => {
     loadRooms.disabled = true;
+    if (starter) saveBtn.disabled = true;
     roomStatus.textContent = t('Loading rooms…');
     try {
-      registry = await loadRoomRegistry(websocket);
+      if (starter) {
+        if (!websocket.isConnected()) roomStatus.textContent = t('Connecting to Home Assistant…');
+        if (!(await waitForRoomConnection(websocket, () => modal.isConnected))) return;
+        roomStatus.textContent = t('Loading rooms…');
+        const response = await websocket.request({ type: 'get_states' });
+        if (response?.success === false || !Array.isArray(response?.result))
+          throw new Error('states unavailable');
+        availableStates = Object.fromEntries(
+          response.result.map((entity) => [entity.entity_id, entity])
+        );
+      }
+      try {
+        registry = await loadRoomRegistry(websocket);
+      } catch (error) {
+        if (!starter) throw error;
+        // State access does not require administrator registry permissions.
+        registry = { areas: [], entities: [], devices: [] };
+      }
       if (!modal.isConnected) return;
-      roomSelect.replaceChildren(new Option(t('Empty page'), ''));
+      roomSelect.replaceChildren(new Option(starter ? t('All devices') : t('Empty page'), ''));
       roomEntities.replaceChildren();
       registry.areas
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -865,6 +928,18 @@ function showAddPageModal() {
         });
       roomStatus.textContent = registry.areas.length ? '' : t('No rooms found in Home Assistant.');
       loadRooms.hidden = true;
+      if (starter) {
+        roomSelect.value =
+          registry.areas.find(
+            (area) =>
+              entitiesForArea(area.area_id, registry.entities, registry.devices, availableStates)
+                .length
+          )?.area_id || '';
+        roomSelect.onchange();
+        if (!registry.areas.length)
+          roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
+        saveBtn.disabled = false;
+      }
     } catch {
       roomStatus.textContent = t(
         'Could not load rooms. Check your connection and permissions, then retry.'
@@ -876,34 +951,52 @@ function showAddPageModal() {
   };
   roomSelect.onchange = () => {
     roomEntities.replaceChildren();
-    if (!roomSelect.value || !registry) {
+    preview.replaceChildren();
+    if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       return;
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
     const nameInput = modal.querySelector('#add-page-name');
     if (!nameInput.value.trim() || nameInput.value === autoFilledName) {
-      nameInput.value = area?.name || '';
+      nameInput.value = area?.name || (starter ? t('My devices') : '');
       autoFilledName = nameInput.value;
     }
-    const ids = entitiesForArea(
-      roomSelect.value,
-      registry.entities,
-      registry.devices,
-      state.STATES
-    );
+    const ids =
+      !roomSelect.value && starter
+        ? selectableEntityIds(availableStates, registry.entities)
+        : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
     roomStatus.textContent = ids.length
       ? t('Choose the entities to include.')
       : t('No available entities in this room.');
+    ids.sort((a, b) =>
+      utils
+        .getEntityDisplayName(availableStates[a])
+        .localeCompare(utils.getEntityDisplayName(availableStates[b]))
+    );
+    const defaults = new Set(
+      ids
+        .filter(
+          (id) =>
+            /^(light|switch|climate|fan|cover|media_player)\./.test(id) &&
+            !['unknown', 'unavailable'].includes(availableStates[id].state)
+        )
+        .slice(0, 8)
+    );
     ids.forEach((id) => {
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.value = id;
-      checkbox.checked = true;
-      label.append(checkbox, document.createTextNode(utils.getEntityDisplayName(state.STATES[id])));
+      checkbox.checked = !starter || defaults.has(id);
+      label.append(
+        checkbox,
+        document.createTextNode(utils.getEntityDisplayName(availableStates[id]))
+      );
       roomEntities.appendChild(label);
     });
+    filterDevices();
+    updatePreview();
   };
   const input = modal.querySelector('#add-page-name');
   const saveBtn = modal.querySelector('#add-page-save-btn');
@@ -930,7 +1023,7 @@ function showAddPageModal() {
     if (!submissionInFlight) void uiUtils.closeModal(modal, closeOptions);
   };
   const submit = async () => {
-    if (submissionInFlight) return;
+    if (submissionInFlight || saveBtn.disabled) return;
     const name = (input?.value || '').trim();
     if (!name) {
       if (input) input.focus();
@@ -993,7 +1086,7 @@ function showAddPageModal() {
   modal.onclick = (event) => {
     if (event.target === modal) close();
   };
-  if (websocket.isConnected?.()) void loadRooms.onclick();
+  if (starter || websocket.isConnected?.()) void loadRooms.onclick();
 }
 
 async function restoreDashboard(layout) {
@@ -12632,6 +12725,7 @@ function removeEscapeKeyListener() {
 }
 
 export {
+  showAddPageModal,
   restoreDashboard,
   renderActiveTab,
   updateEntityInUI,

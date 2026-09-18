@@ -578,8 +578,13 @@ function renderMainWidgetState() {
       message: t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
-          label: t('Add entities'),
+          label: t('Choose rooms and devices'),
           className: 'btn btn-primary',
+          onClick: () => ui.showAddPageModal({ starter: true }),
+        },
+        {
+          label: t('Add entities'),
+          className: 'btn btn-secondary',
           onClick: openQuickAccessModal,
         },
       ],
@@ -703,7 +708,7 @@ function renderWizardStep() {
   const stepLabel = createTextElement(
     'div',
     'first-run-step-label',
-    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 3 })
+    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 4 })
   );
   content.appendChild(stepLabel);
 
@@ -746,6 +751,17 @@ function renderWizardStep() {
     firstRunWizard.urlInput = input;
     content.appendChild(label);
     content.appendChild(input);
+  } else if (stepIndex === 3) {
+    content.appendChild(createTextElement('h2', 'first-run-title', t('Choose rooms and devices')));
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t(
+          'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.'
+        )
+      )
+    );
   } else {
     content.appendChild(
       createTextElement('h2', 'first-run-title', t('Authorize in Home Assistant'))
@@ -769,10 +785,12 @@ function renderWizardStep() {
   }
 
   if (firstRunWizard.backButton) {
-    firstRunWizard.backButton.disabled = stepIndex === 0;
+    firstRunWizard.backButton.disabled = stepIndex === 0 || stepIndex === 3;
   }
+  firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
   if (firstRunWizard.nextButton) {
-    firstRunWizard.nextButton.textContent = stepIndex === 2 ? t('Connect') : t('Next');
+    firstRunWizard.nextButton.textContent =
+      stepIndex === 3 ? t('Choose rooms and devices') : stepIndex === 2 ? t('Connect') : t('Next');
     // Derived from the pairing rather than left wherever the last run put it, so a step change
     // can always recover the button instead of stranding it disabled.
     firstRunWizard.nextButton.disabled = !!firstRunWizard.finishInProgress;
@@ -804,7 +822,10 @@ async function finishFirstRunWizard() {
     const result = await window.electronAPI.startHomeAssistantOAuth(normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
-    setFirstRunWizardVisible(false);
+    firstRunWizard.step = 3;
+    setWizardStatus('', '');
+    renderWizardStep();
+    setFirstRunWizardVisible(true);
     startConfiguredRuntime();
   } catch (error) {
     // The user asked for this one by leaving the step, so reporting it back as a failure would
@@ -840,7 +861,9 @@ function maybeShowWizardAfterSettingsClose() {
 }
 
 function skipWizardToSettings() {
+  const finishedConnection = firstRunWizard?.step === 3;
   setFirstRunWizardVisible(false);
+  if (finishedConnection) return;
   openSettingsModal();
   const modal = document.getElementById('settings-modal');
   if (!modal || firstRunSettingsObserver) return;
@@ -887,6 +910,11 @@ function ensureFirstRunWizard() {
     renderWizardStep();
   });
   const nextButton = createActionButton(t('Next'), 'btn btn-primary', async () => {
+    if (firstRunWizard.step === 3) {
+      setFirstRunWizardVisible(false);
+      ui.showAddPageModal({ starter: true });
+      return;
+    }
     if (firstRunWizard.step === 2) {
       await finishFirstRunWizard();
       return;
@@ -925,6 +953,8 @@ function ensureFirstRunWizard() {
 }
 
 function maybeShowFirstRunWizard() {
+  if (firstRunWizard?.visible && firstRunWizard.step === 3 && isConfigured(state.CONFIG))
+    return true;
   const oauthStatus = state.CONFIG?.homeAssistant?.oauthStatus;
   const oauthRestorePending =
     state.CONFIG?.homeAssistant?.authMethod === 'oauth' &&
