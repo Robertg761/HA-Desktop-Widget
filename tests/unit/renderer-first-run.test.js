@@ -678,6 +678,56 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
   });
 
+  it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {
+    await loadRenderer({
+      config: { ...oauthConfig(), desktopPins: { 'light.office': {} } },
+      configureApi(api) {
+        api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
+      },
+    });
+    let requestId = 10;
+    mockWebsocket.request.mockImplementation(() => {
+      const request = new Promise(() => {});
+      request.id = requestId++;
+      return request;
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('connecting');
+    expect(document.getElementById('widget-state-panel').textContent).toContain('Waiting for live');
+    mockWebsocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('connected');
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalled();
+    expect(mockElectronAPI.publishHaSnapshot.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mockElectronAPI.publishHaConnectionState.mock.invocationCallOrder.at(-1)
+    );
+    mockWebsocket.emit('message', { type: 'auth_invalid' });
+    expect(mockWebsocket.close).toHaveBeenCalled();
+    mockWebsocket.emit('close', { intentional: false });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('auth-failed');
+    expect(document.getElementById('widget-state-panel').textContent).toContain(
+      'Authentication failed'
+    );
+    expect(document.getElementById('widget-state-panel').textContent).toContain('Open Settings');
+  });
+
+  it.each(['rejected', 'invalid'])('recovers when the initial snapshot is %s', async (failure) => {
+    await loadRenderer({ config: oauthConfig() });
+    const socket = {};
+    mockWebsocket.ws = socket;
+    mockWebsocket.failConnection = jest.fn();
+    let failSnapshot;
+    const snapshot = new Promise((resolve, reject) => {
+      failSnapshot = () =>
+        failure === 'rejected' ? reject(new Error('timeout')) : resolve({ success: false });
+    });
+    snapshot.id = 10;
+    mockWebsocket.request.mockReturnValueOnce(snapshot);
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    failSnapshot();
+    await flushAsync();
+    expect(mockWebsocket.failConnection).toHaveBeenCalledWith(socket);
+  });
+
   it('closes the WebSocket through its lifecycle manager when the browser goes offline', async () => {
     await loadRenderer();
     const rawSocketClose = jest.fn();

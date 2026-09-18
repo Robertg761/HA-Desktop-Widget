@@ -313,6 +313,39 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     );
   });
 
+  it('replaces cached controls when runtime connection health changes and restores them on recovery', async () => {
+    await loadRenderer({
+      bootstrapOverrides: {
+        hasSnapshot: true,
+        entity: { entity_id: 'light.bedroom', state: 'on', attributes: {} },
+      },
+    });
+    for (const runtimeState of ['disconnected', 'connecting', 'auth-failed']) {
+      triggerMockEvent('desktopPinUpdate', {
+        connection: { hasUrl: true, hasToken: true, runtimeState },
+      });
+      await flushAsync();
+      expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith(
+        expect.any(String),
+        expect.anything(),
+        expect.objectContaining({
+          connectionIssue: expect.stringMatching(
+            runtimeState === 'auth-failed' ? /Authentication failed/ : /Disconnected/
+          ),
+        })
+      );
+    }
+    triggerMockEvent('desktopPinUpdate', {
+      connection: { hasUrl: true, hasToken: true, runtimeState: 'connected' },
+    });
+    await flushAsync();
+    expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ connectionIssue: '' })
+    );
+  });
+
   it('uses connection flags instead of requiring a token in renderer config', async () => {
     await loadRenderer({
       bootstrapOverrides: {

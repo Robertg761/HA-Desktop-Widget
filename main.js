@@ -2242,6 +2242,8 @@ function applyDesktopPinWindowShape(targetWindow, bounds = null) {
   }
 }
 
+let latestHaConnectionState = 'connecting';
+
 function sendDesktopPinUpdate(entityId, extra = {}) {
   const window = desktopPinWindows.get(entityId);
   if (!window || window.isDestroyed()) return;
@@ -2261,6 +2263,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
     },
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
+      runtimeState: latestHaConnectionState,
     }),
     editMode: desktopPinEditMode,
     ...extra,
@@ -5154,11 +5157,11 @@ function setupProfileSyncWakeTriggers() {
   try {
     // Suspend stops the interval timer from firing on time, so the profile is
     // usually stale by the time the machine comes back.
-    powerMonitor.on('suspend', invalidateTrayEntityIcons);
+    powerMonitor.on('suspend', () => invalidateHaConnectionState('disconnected'));
     powerMonitor.on('resume', () => {
       requestOpportunisticProfileSync('resume');
-      invalidateTrayEntityIcons();
-      if (trayEntityIcons.size && mainWindow && !mainWindow.isDestroyed()) {
+      invalidateHaConnectionState('connecting');
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
       }
     });
@@ -5316,9 +5319,11 @@ function createWindow() {
   });
 
   // A reload or renderer failure must not leave old readings looking live.
-  mainWindow.webContents.on('did-start-loading', invalidateTrayEntityIcons);
-  mainWindow.webContents.on('render-process-gone', invalidateTrayEntityIcons);
-  mainWindow.on('unresponsive', invalidateTrayEntityIcons);
+  mainWindow.webContents.on('did-start-loading', () => invalidateHaConnectionState('connecting'));
+  mainWindow.webContents.on('render-process-gone', () =>
+    invalidateHaConnectionState('disconnected')
+  );
+  mainWindow.on('unresponsive', () => invalidateHaConnectionState('disconnected'));
   mainWindow.on('responsive', () => requestTrayEntityIconRefresh(true));
   // Load the index.html file
   mainWindow.loadFile('index.html');
@@ -5538,6 +5543,14 @@ function createTrayEntityIcon(entityId) {
   }
   trayIcon.setContextMenu(buildTrayEntityContextMenu(entityId));
   return trayIcon;
+}
+
+function invalidateHaConnectionState(status) {
+  latestHaConnectionState = status;
+  invalidateTrayEntityIcons();
+  Object.keys(config?.desktopPins || {}).forEach((entityId) => {
+    sendDesktopPinUpdate(entityId, { type: 'connection' });
+  });
 }
 
 function invalidateTrayEntityIcons() {
@@ -6746,10 +6759,24 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
     },
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
+      runtimeState: latestHaConnectionState,
     }),
     isPinned: !!config?.desktopPins?.[normalizedEntityId],
     editMode: desktopPinEditMode,
   };
+});
+
+ipcMain.handle('publish-ha-connection-state', (event, status) => {
+  const sender = authorizeIpcSender(event, 'publish-ha-connection-state');
+  if (!sender) return rejectUnauthorizedIpc('publish-ha-connection-state');
+  if (!['connecting', 'connected', 'disconnected', 'auth-failed'].includes(status)) {
+    return { success: false, error: 'Invalid connection state' };
+  }
+  latestHaConnectionState = status;
+  Object.keys(config?.desktopPins || {}).forEach((entityId) => {
+    sendDesktopPinUpdate(entityId, { type: 'connection' });
+  });
+  return { success: true };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
