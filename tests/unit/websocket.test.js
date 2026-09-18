@@ -113,6 +113,99 @@ describe('WebSocket Manager', () => {
     }
   });
 
+  describe('connection health', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      state.setConfig(sampleConfig);
+    });
+
+    afterEach(() => {
+      wsManager.close();
+      jest.useRealTimers();
+    });
+
+    function authenticate() {
+      wsManager.connect();
+      jest.advanceTimersByTime(10);
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      return wsManager.ws;
+    }
+
+    test('detaches a half-open socket and rejects commands even without a close event', async () => {
+      const socket = authenticate();
+      const closed = jest.fn();
+      wsManager.on('close', closed);
+      socket.close = jest.fn();
+      jest.advanceTimersByTime(30000);
+      const ping = JSON.parse(socket.sentMessages.at(-1));
+      expect(ping.type).toBe('ping');
+      const command = wsManager.callService('light', 'turn_on', { entity_id: 'light.test' });
+      const rejected = expect(command).rejects.toThrow();
+      jest.advanceTimersByTime(15000);
+      await rejected;
+      expect(wsManager.isConnected()).toBe(false);
+      expect(wsManager.ws).toBeNull();
+      expect(closed).toHaveBeenCalledTimes(1);
+      expect(closed).toHaveBeenCalledWith({ intentional: false });
+    });
+
+    test('requires a matching pong and starts the next heartbeat after acknowledgment', () => {
+      const socket = authenticate();
+      jest.advanceTimersByTime(30000);
+      const ping = JSON.parse(socket.sentMessages.at(-1));
+      socket.simulateMessage({ type: 'pong', id: ping.id });
+      jest.advanceTimersByTime(30000);
+      expect(wsManager.isConnected()).toBe(true);
+      const nextPing = JSON.parse(socket.sentMessages.at(-1));
+      expect(nextPing.id).not.toBe(ping.id);
+      socket.simulateMessage({ type: 'pong', id: ping.id });
+      jest.advanceTimersByTime(15000);
+      expect(wsManager.isConnected()).toBe(false);
+    });
+
+    test('times out a server that opens the socket but never authenticates', () => {
+      const closed = jest.fn();
+      wsManager.on('close', closed);
+      wsManager.connect();
+      jest.advanceTimersByTime(15000);
+      expect(wsManager.ws).toBeNull();
+      expect(closed).toHaveBeenCalledTimes(1);
+    });
+
+    test('authentication rejection cannot be overwritten by a close-time transport error', () => {
+      const socket = authenticate();
+      const errors = jest.fn();
+      wsManager.on('error', errors);
+      const messages = [];
+      wsManager.on('message', (message) => {
+        messages.push(message.type);
+        if (message.type === 'auth_invalid') wsManager.close();
+      });
+      socket.close = () => socket.simulateError(new Error('closing transport'));
+      socket.simulateMessage({ type: 'auth_invalid' });
+      expect(messages).toEqual(['auth_invalid']);
+      expect(errors).not.toHaveBeenCalled();
+      expect(wsManager.isConnected()).toBe(false);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    test('replacement and intentional close cancel old health checks', () => {
+      const oldSocket = authenticate();
+      jest.advanceTimersByTime(30000);
+      const oldPing = JSON.parse(oldSocket.sentMessages.at(-1));
+      const replacement = authenticate();
+      oldSocket.simulateMessage({ type: 'pong', id: oldPing.id });
+      jest.advanceTimersByTime(15000);
+      expect(wsManager.ws).toBe(replacement);
+      wsManager.close();
+      const closed = jest.fn();
+      wsManager.on('close', closed);
+      jest.advanceTimersByTime(60000);
+      expect(closed).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+  });
+
   describe('Connection', () => {
     test('should not connect with missing config', () => {
       state.setConfig(null);

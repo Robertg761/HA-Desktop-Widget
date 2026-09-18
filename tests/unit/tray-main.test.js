@@ -10,6 +10,8 @@ function loadTrayRuntime(platform) {
     process: { platform },
     config: { trayEntities: { 'sensor.office': { label: 'Office' } } },
     trayEntityIcons: new Map(),
+    latestHaConnectionState: 'connected',
+    sendDesktopPinUpdate: jest.fn(),
     trayEntityTicker: { clear: jest.fn(), reconcile: jest.fn() },
     normalizeTrayEntitiesConfig,
     isQuitting: false,
@@ -135,6 +137,70 @@ describe('native tray integration', () => {
       else expect(icon.setImage).toHaveBeenLastCalledWith('app-icon');
     }
   );
+});
+
+it('publishes demo readiness using the supported connection state without enabling live tray data', () => {
+  const rendererSource = fs.readFileSync(path.resolve(__dirname, '../../renderer.js'), 'utf8');
+  const start = rendererSource.indexOf('function updateMainConnectionState(');
+  const end = rendererSource.indexOf('let firstRunWizard', start);
+  const publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
+  const runtime = {
+    IS_DESKTOP_PIN_MODE: false,
+    window: { electronAPI: { publishHaConnectionState } },
+    setTrayEntityConnectionState: jest.fn(),
+    log: { warn: jest.fn() },
+  };
+  vm.runInNewContext(rendererSource.slice(start, end), runtime);
+  runtime.updateMainConnectionState('demo');
+  expect(publishHaConnectionState).toHaveBeenCalledWith('connected');
+  expect(runtime.mainConnectionState).toBe('demo');
+  expect(runtime.setTrayEntityConnectionState).toHaveBeenCalledWith(false);
+});
+
+describe('owner connection lifecycle', () => {
+  it.each([
+    ['did-start-loading', 'connecting'],
+    ['render-process-gone', 'disconnected'],
+    ['unresponsive', 'disconnected'],
+  ])('marks cached pins and tray stale on %s', (eventName, expectedState) => {
+    const runtime = loadTrayRuntime('linux');
+    runtime.config.desktopPins = { 'light.office': {} };
+    runtime.syncTrayEntitiesWithConfig();
+    const handlers = new Map();
+    runtime.mainWindow.webContents.on = (event, callback) => handlers.set(event, callback);
+    runtime.mainWindow.on = (event, callback) => handlers.set(event, callback);
+    const start = mainSource.indexOf("  mainWindow.webContents.on('did-start-loading'");
+    const end = mainSource.indexOf('  // Load the index.html file', start);
+    vm.runInNewContext(mainSource.slice(start, end), runtime);
+    handlers.get(eventName)();
+    expect(runtime.latestHaConnectionState).toBe(expectedState);
+    expect(runtime.sendDesktopPinUpdate).toHaveBeenCalledWith('light.office', {
+      type: 'connection',
+    });
+    expect(runtime.trayEntityIcons.get('sensor.office').setToolTip).toHaveBeenLastCalledWith(
+      'Office: Offline'
+    );
+  });
+
+  it('reconnects on wake even when no tray values are configured', () => {
+    const runtime = loadTrayRuntime('linux');
+    runtime.config.desktopPins = { 'light.office': {} };
+    const handlers = new Map();
+    runtime.powerMonitor = { on: (event, callback) => handlers.set(event, callback) };
+    runtime.requestOpportunisticProfileSync = jest.fn();
+    const start = mainSource.indexOf('function setupProfileSyncWakeTriggers()');
+    const end = mainSource.indexOf('async function initializeProfileSyncOnStartupInternal', start);
+    vm.runInNewContext(mainSource.slice(start, end), runtime);
+    runtime.setupProfileSyncWakeTriggers();
+    handlers.get('suspend')();
+    expect(runtime.latestHaConnectionState).toBe('disconnected');
+    handlers.get('resume')();
+    expect(runtime.latestHaConnectionState).toBe('connecting');
+    expect(runtime.mainWindow.webContents.send).toHaveBeenCalledWith(
+      'tray-entities-refresh-needed',
+      { reconnect: true }
+    );
+  });
 });
 
 describe('tray connection lifecycle wiring', () => {
