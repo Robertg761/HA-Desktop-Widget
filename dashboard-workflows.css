@@ -341,3 +341,48 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   flex-direction: row-reverse;
   justify-content: flex-start;
 }
+
+.room-dashboard-preview {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.room-dashboard-preview > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.room-preview-tile {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+  background: var(--glass-surface);
+}
+
+.room-device-search {
+  grid-column: 1 / -1;
+}
+
+.room-entity-list > label[hidden] {
+  display: none;
+}
+
+/* Keep actions reachable even in short windows with large device collections. */
+.add-page-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.add-page-modal .modal-body {
+  flex: 1 1 auto;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.add-page-modal .modal-header,
+.add-page-modal .modal-footer {
+  flex: 0 0 auto;
+}

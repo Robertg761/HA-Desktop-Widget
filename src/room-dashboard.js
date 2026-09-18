@@ -29,4 +29,25 @@ async function loadRoomRegistry(websocket) {
   };
 }
 
-export { entitiesForArea, loadRoomRegistry };
+// Registry entries can omit state-only entities. Exclude known hidden/disabled entries
+// without dropping those state-only entities or requiring administrator access.
+function selectableEntityIds(states, entities = []) {
+  const excluded = new Set(
+    entities
+      .filter((entity) => entity.hidden_by || entity.disabled_by)
+      .map((entity) => entity.entity_id)
+  );
+  return Object.keys(states).filter((id) => !excluded.has(id));
+}
+
+async function waitForRoomConnection(websocket, isActive, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (isActive()) {
+    if (websocket.isConnected()) return true;
+    if (Date.now() >= deadline) throw new Error('Connection is not ready');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+export { entitiesForArea, loadRoomRegistry, selectableEntityIds, waitForRoomConnection };
