@@ -824,6 +824,43 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.brightness-modal')).toBeTruthy();
     });
 
+    it('preserves Controls focus through live tile replacement and exposes sibling native actions', () => {
+      state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });
+      const original = getBedroomLightOnState();
+      state.setStates({ 'light.bedroom': original });
+      ui.renderActiveTab();
+      let tile = document.querySelector('#quick-controls [data-entity-id="light.bedroom"]');
+      const details = tile.querySelector('.tile-details-button');
+      expect(tile.getAttribute('role')).toBe('group');
+      expect(tile.querySelector('.tile-primary-button')).toBeTruthy();
+      expect(details.closest('[role="button"]')).toBeNull();
+      details.focus();
+      const updated = {
+        ...original,
+        state: 'off',
+        attributes: {
+          ...original.attributes,
+          supported_features: 999,
+          friendly_name: 'Renamed lamp',
+        },
+      };
+      state.setStates({ 'light.bedroom': updated });
+      ui.updateEntityInUI(updated);
+      tile = document.querySelector('#quick-controls [data-entity-id="light.bedroom"]');
+      expect(tile.querySelector('.tile-details-button')).not.toBe(details);
+      expect(document.activeElement).toBe(tile.querySelector('.tile-details-button'));
+      expect(document.activeElement.getAttribute('aria-label')).toContain('Renamed lamp');
+      mockCallService.mockClear();
+      for (const key of ['Enter', ' ']) {
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      }
+      expect(mockCallService).not.toHaveBeenCalled();
+      // jsdom does not synthesize native button clicks from key events.
+      document.activeElement.click();
+      expect(document.querySelector('.brightness-modal')).toBeTruthy();
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+
     it('should apply optimistic UI immediately and keep desired state during conflicting server updates', async () => {
       state.setConfig({
         ...sampleConfig,
@@ -1003,7 +1040,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
       expect(tiles).toHaveLength(2);
-      expect(tiles[0].getAttribute('tabindex')).toBe('0');
+      expect(tiles[0].querySelector('.tile-primary-button').getAttribute('tabindex')).toBe('0');
       expect(tiles[1].getAttribute('tabindex')).toBe('-1');
 
       tiles[0].dispatchEvent(
@@ -1014,7 +1051,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
 
       expect(document.activeElement).toBe(tiles[1]);
-      expect(tiles[0].getAttribute('tabindex')).toBe('-1');
+      expect(tiles[0].querySelector('.tile-primary-button').getAttribute('tabindex')).toBe('-1');
       expect(tiles[1].getAttribute('tabindex')).toBe('0');
 
       tiles[1].dispatchEvent(

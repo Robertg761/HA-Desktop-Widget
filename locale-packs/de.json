@@ -646,6 +646,6 @@
     "High contrast with opaque panels": "Hoher Kontrast mit undurchsichtigen Flächen",
     "Failed to save readability settings": "Lesbarkeitseinstellungen konnten nicht gespeichert werden",
     "Controls": "Steuerung",
-    "Controls for {name}": "Steuerung für {name}"
+    "Controls for {{name}}": "Steuerung für {{name}}"
   }
 }

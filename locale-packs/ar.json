@@ -646,6 +646,6 @@
     "High contrast with opaque panels": "High contrast with opaque panels",
     "Failed to save readability settings": "Failed to save readability settings",
     "Controls": "Controls",
-    "Controls for {name}": "Controls for {name}"
+    "Controls for {{name}}": "Controls for {{name}}"
   }
 }

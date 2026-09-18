@@ -1011,13 +1011,27 @@ function getWindowTransparencyOptions(currentConfig = config) {
 
 function shouldUseNativeWindowOpacity(currentConfig = config) {
   const transparencyOptions = getWindowTransparencyOptions(currentConfig);
-  return !transparencyOptions.transparent;
+  return !currentConfig?.ui?.opaquePanels && !transparencyOptions.transparent;
 }
 
 function applyWindowOpacity(targetWindow, opacity, currentConfig = config) {
   if (!targetWindow || targetWindow.isDestroyed()) return Math.max(0.5, Math.min(1, opacity || 1));
   const safeOpacity = Math.max(0.5, Math.min(1, opacity || 1));
   targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1);
+  return safeOpacity;
+}
+
+// Use the same effective opacity for the widget and pins, including slider previews.
+// The return value stays the user's preference so an opaque preset never overwrites it.
+function applyWindowOpacityToAll(opacity, currentConfig = config) {
+  const safeOpacity = Math.max(0.5, Math.min(1, opacity || 1));
+  for (const target of [mainWindow, ...desktopPinWindows.values()]) {
+    try {
+      applyWindowOpacity(target, safeOpacity, currentConfig);
+    } catch (error) {
+      log.warn('Failed to apply window opacity:', error.message);
+    }
+  }
   return safeOpacity;
 }
 
@@ -2520,8 +2534,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   });
 
   try {
-    const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
-    pinWindow.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
+    applyWindowOpacity(pinWindow, config.opacity, config);
   } catch (error) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
@@ -2643,9 +2656,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
     }
 
     try {
-      const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
-      const transparencyOptions = getWindowTransparencyOptions(config);
-      window.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
+      applyWindowOpacity(window, config.opacity, config);
     } catch (error) {
       log.warn('Failed to refresh desktop pin window state:', error.message);
     }
@@ -2674,9 +2685,9 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
 
     try {
       if (
-        typeof nextConfig?.opacity === 'number' &&
-        (previousConfig?.opacity !== nextConfig.opacity ||
-          previousConfig?.frostedGlass !== nextConfig?.frostedGlass)
+        previousConfig?.opacity !== nextConfig?.opacity ||
+        previousConfig?.frostedGlass !== nextConfig?.frostedGlass ||
+        !!previousConfig?.ui?.opaquePanels !== !!nextConfig?.ui?.opaquePanels
       ) {
         applyWindowOpacity(mainWindow, nextConfig.opacity, nextConfig);
       }
@@ -2688,9 +2699,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   desktopPinWindows.forEach((window) => {
     if (!window || window.isDestroyed()) return;
     try {
-      const safeOpacity = Math.max(0.5, Math.min(1, nextConfig?.opacity || 1));
-      const transparencyOptions = getWindowTransparencyOptions(nextConfig);
-      window.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
+      applyWindowOpacity(window, nextConfig?.opacity, nextConfig);
     } catch (error) {
       log.warn('Failed to update desktop pin opacity:', error.message);
     }
@@ -7022,7 +7031,7 @@ ipcMain.handle(
       ? Math.max(0.5, Math.min(1, requestedOpacity))
       : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
     try {
-      safeOpacity = applyWindowOpacity(mainWindow, safeOpacity, config);
+      safeOpacity = applyWindowOpacityToAll(safeOpacity, config);
     } catch (error) {
       log.warn('Failed to set main window opacity:', error.message);
     }
@@ -7031,7 +7040,7 @@ ipcMain.handle(
     if (!persistence.success) {
       config.opacity = previousOpacity;
       try {
-        applyWindowOpacity(mainWindow, previousOpacity, config);
+        applyWindowOpacityToAll(previousOpacity, config);
       } catch (error) {
         log.warn('Failed to restore main window opacity:', error.message);
       }
@@ -7053,13 +7062,13 @@ ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   }
   if (typeof effects.opacity === 'number') {
     try {
-      applyWindowOpacity(mainWindow, effects.opacity, config);
+      applyWindowOpacityToAll(effects.opacity, config);
     } catch (error) {
       log.warn('Failed to preview main window opacity:', error.message);
     }
   } else if (typeof effects.frostedGlass === 'boolean') {
     try {
-      applyWindowOpacity(mainWindow, config.opacity, config);
+      applyWindowOpacityToAll(config.opacity, config);
     } catch (error) {
       log.warn('Failed to preview main window opacity mode:', error.message);
     }

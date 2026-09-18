@@ -1125,7 +1125,9 @@ function syncQuickAccessRovingTabIndex(preferredTile = null) {
   }
 
   visibleTiles.forEach((tile, index) => {
-    tile.setAttribute('tabindex', index === quickAccessRovingIndex ? '0' : '-1');
+    const target = tile.querySelector('.tile-primary-button') || tile;
+    if (target !== tile) tile.removeAttribute('tabindex');
+    target.setAttribute('tabindex', index === quickAccessRovingIndex ? '0' : '-1');
   });
 }
 
@@ -1165,7 +1167,7 @@ function handleQuickAccessGridKeydown(event) {
   if (!nextTile) return;
 
   syncQuickAccessRovingTabIndex(nextTile);
-  nextTile.focus();
+  (nextTile.querySelector('.tile-primary-button') || nextTile).focus();
 }
 
 function setupQuickAccessGridKeyboardNavigation() {
@@ -2276,9 +2278,18 @@ function updateEntityInUI(entity, options = {}) {
       if (item.classList.contains('camera-preview-tile')) {
         camera.disposeCameraPreview(item);
       }
-      const restorePrimaryFocus = isPrimary && document.activeElement === item;
+      const focused = document.activeElement;
+      const focusedControl = item.contains(focused)
+        ? focused?.classList.contains('tile-details-button')
+          ? '.tile-details-button'
+          : '.tile-primary-button'
+        : null;
       item.replaceWith(newControl);
-      if (restorePrimaryFocus) newControl.focus();
+      if (focusedControl) {
+        const target = newControl.querySelector(focusedControl) || newControl;
+        target.tabIndex = 0;
+        target.focus();
+      }
 
       // If in reorganize mode, add buttons to the newly created element
       // Note: SortableJS automatically handles drag behavior for all children
@@ -8183,7 +8194,13 @@ function createControlElement(entity, options = {}) {
     if (!isQuickAccessContext) {
       div.tabIndex = 0;
       div.addEventListener('keydown', (event) => {
-        if (event.target !== div || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (
+          (event.target !== div && !event.target.classList.contains('tile-primary-button')) ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey
+        )
+          return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         if (shouldBlockInteraction(div)) return;
@@ -8417,13 +8434,19 @@ function createControlElement(entity, options = {}) {
     }
 
     if (['light', 'climate', 'fan', 'cover', 'media_player'].includes(domain)) {
+      // Sibling native buttons expose both actions without nesting a button inside role=button.
+      const primary = document.createElement('button');
+      primary.type = 'button';
+      primary.className = 'tile-primary-button';
+      primary.tabIndex = isQuickAccessContext ? -1 : 0;
+      div.appendChild(primary);
       const details = document.createElement('button');
       details.type = 'button';
       details.className = 'tile-details-button';
       details.textContent = t('Controls');
       details.setAttribute(
         'aria-label',
-        t('Controls for {name}', { name: utils.getEntityDisplayName(entity) })
+        t('Controls for {{name}}', { name: utils.getEntityDisplayName(entity) })
       );
       // A details click must never start the tile's hold timer or primary action.
       [
@@ -8443,6 +8466,7 @@ function createControlElement(entity, options = {}) {
         if (!shouldBlockInteraction(div)) openEntityDetailModal(entity);
       });
       div.appendChild(details);
+      applyQuickAccessTileAccessibility(div, entity);
     }
 
     // Setup special controls after HTML is set
@@ -8510,10 +8534,24 @@ function createUnavailableElement(entityId) {
 
 function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
-  div.setAttribute('role', 'button');
-  div.setAttribute('tabindex', '-1');
+  const primary = div.querySelector('.tile-primary-button');
+  div.setAttribute('role', primary ? 'group' : 'button');
   div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
-  div.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+  if (primary) {
+    div.removeAttribute('tabindex');
+    div.removeAttribute('aria-keyshortcuts');
+    primary.setAttribute('aria-label', utils.getEntityDisplayName(entity));
+    primary.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+    div
+      .querySelector('.tile-details-button')
+      ?.setAttribute(
+        'aria-label',
+        t('Controls for {{name}}', { name: utils.getEntityDisplayName(entity) })
+      );
+  } else {
+    div.setAttribute('tabindex', '-1');
+    div.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+  }
 }
 
 function updateExistingUnavailableControl(div, entityId) {

@@ -646,6 +646,6 @@
     "High contrast with opaque panels": "Alto contraste con paneles opacos",
     "Failed to save readability settings": "No se pudieron guardar los ajustes de legibilidad",
     "Controls": "Controles",
-    "Controls for {name}": "Controles de {name}"
+    "Controls for {{name}}": "Controles de {{name}}"
   }
 }
