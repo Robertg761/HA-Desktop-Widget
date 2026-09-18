@@ -328,9 +328,19 @@ describe('Renderer first-run Home Assistant authorization', () => {
   it('offers the starter builder on a connected empty dashboard without onboarding existing users', async () => {
     await loadRenderer({ config: oauthConfig() });
     expect(document.getElementById('first-run-onboarding')).toBeNull();
-    mockWebsocket.request.mockImplementation(() => Object.assign(Promise.resolve({}), { id: 123 }));
+    let nextRequestId = 123;
+    mockWebsocket.request.mockImplementation(({ type }) => {
+      const id = nextRequestId++;
+      const result =
+        type === 'get_states' || type === 'config/area_registry/list'
+          ? []
+          : type === 'get_services' || type === 'get_config'
+            ? {}
+            : null;
+      return Object.assign(Promise.resolve({ type: 'result', id, success: true, result }), { id });
+    });
     mockWebsocket.emit('message', { type: 'auth_ok' });
-    mockWebsocket.emit('message', { type: 'result', id: 123, result: [] });
+    mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
     await flushAsync();
     await clickButton('Choose rooms and devices');
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
