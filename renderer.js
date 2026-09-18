@@ -198,6 +198,13 @@ let lastDisconnectReason = '';
 let mainConnectionState = 'idle';
 function updateMainConnectionState(nextState) {
   mainConnectionState = nextState;
+  if (!IS_DESKTOP_PIN_MODE) {
+    window.electronAPI
+      .publishHaConnectionState?.(nextState === 'demo' ? 'connected' : nextState)
+      ?.catch((error) => {
+        log.warn('Failed to publish Home Assistant connection state:', error);
+      });
+  }
   if (!IS_DESKTOP_PIN_MODE && nextState !== 'connected') setTrayEntityConnectionState(false);
 }
 let firstRunWizard = null;
@@ -223,6 +230,7 @@ function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
   updateMainConnectionState('connecting');
+  setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
   renderMainWidgetState();
   websocket.connect();
 }
@@ -256,6 +264,12 @@ function applyDesktopPinConnectionState(connection = {}) {
     setDesktopPinConnectionIssue(
       t('Please configure your Home Assistant token in Settings (gear icon).')
     );
+  } else if (connection.runtimeState === 'auth-failed') {
+    setDesktopPinConnectionIssue(
+      t('Authentication failed. Please check your Home Assistant token in Settings.')
+    );
+  } else if (connection.runtimeState && connection.runtimeState !== 'connected') {
+    setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
   } else {
     setDesktopPinConnectionIssue('');
   }
@@ -546,13 +560,15 @@ function renderMainWidgetState() {
     return;
   }
 
-  if (mainConnectionState === 'auth-failed' || mainConnectionState === 'disconnected') {
+  if (['auth-failed', 'disconnected', 'connecting'].includes(mainConnectionState)) {
     renderWidgetStatePanel({
-      tone: 'error',
+      tone: mainConnectionState === 'connecting' ? '' : 'error',
       title:
-        mainConnectionState === 'auth-failed'
-          ? t('Authentication failed')
-          : t('Home Assistant is disconnected'),
+        mainConnectionState === 'connecting'
+          ? t('Waiting for live Home Assistant data...')
+          : mainConnectionState === 'auth-failed'
+            ? t('Authentication failed')
+            : t('Home Assistant is disconnected'),
       message:
         lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.'),
       actions: [
@@ -578,8 +594,13 @@ function renderMainWidgetState() {
       message: t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
-          label: t('Add entities'),
+          label: t('Choose rooms and devices'),
           className: 'btn btn-primary',
+          onClick: () => ui.showAddPageModal({ starter: true }),
+        },
+        {
+          label: t('Add entities'),
+          className: 'btn btn-secondary',
           onClick: openQuickAccessModal,
         },
       ],
@@ -703,7 +724,7 @@ function renderWizardStep() {
   const stepLabel = createTextElement(
     'div',
     'first-run-step-label',
-    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 3 })
+    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 4 })
   );
   content.appendChild(stepLabel);
 
@@ -746,6 +767,17 @@ function renderWizardStep() {
     firstRunWizard.urlInput = input;
     content.appendChild(label);
     content.appendChild(input);
+  } else if (stepIndex === 3) {
+    content.appendChild(createTextElement('h2', 'first-run-title', t('Choose rooms and devices')));
+    content.appendChild(
+      createTextElement(
+        'p',
+        'first-run-copy',
+        t(
+          'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.'
+        )
+      )
+    );
   } else {
     content.appendChild(
       createTextElement('h2', 'first-run-title', t('Authorize in Home Assistant'))
@@ -769,10 +801,12 @@ function renderWizardStep() {
   }
 
   if (firstRunWizard.backButton) {
-    firstRunWizard.backButton.disabled = stepIndex === 0;
+    firstRunWizard.backButton.disabled = stepIndex === 0 || stepIndex === 3;
   }
+  firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
   if (firstRunWizard.nextButton) {
-    firstRunWizard.nextButton.textContent = stepIndex === 2 ? t('Connect') : t('Next');
+    firstRunWizard.nextButton.textContent =
+      stepIndex === 3 ? t('Choose rooms and devices') : stepIndex === 2 ? t('Connect') : t('Next');
     // Derived from the pairing rather than left wherever the last run put it, so a step change
     // can always recover the button instead of stranding it disabled.
     firstRunWizard.nextButton.disabled = !!firstRunWizard.finishInProgress;
@@ -804,7 +838,10 @@ async function finishFirstRunWizard() {
     const result = await window.electronAPI.startHomeAssistantOAuth(normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
-    setFirstRunWizardVisible(false);
+    firstRunWizard.step = 3;
+    setWizardStatus('', '');
+    renderWizardStep();
+    setFirstRunWizardVisible(true);
     startConfiguredRuntime();
   } catch (error) {
     // The user asked for this one by leaving the step, so reporting it back as a failure would
@@ -840,7 +877,9 @@ function maybeShowWizardAfterSettingsClose() {
 }
 
 function skipWizardToSettings() {
+  const finishedConnection = firstRunWizard?.step === 3;
   setFirstRunWizardVisible(false);
+  if (finishedConnection) return;
   openSettingsModal();
   const modal = document.getElementById('settings-modal');
   if (!modal || firstRunSettingsObserver) return;
@@ -887,6 +926,11 @@ function ensureFirstRunWizard() {
     renderWizardStep();
   });
   const nextButton = createActionButton(t('Next'), 'btn btn-primary', async () => {
+    if (firstRunWizard.step === 3) {
+      setFirstRunWizardVisible(false);
+      ui.showAddPageModal({ starter: true });
+      return;
+    }
     if (firstRunWizard.step === 2) {
       await finishFirstRunWizard();
       return;
@@ -925,6 +969,8 @@ function ensureFirstRunWizard() {
 }
 
 function maybeShowFirstRunWizard() {
+  if (firstRunWizard?.visible && firstRunWizard.step === 3 && isConfigured(state.CONFIG))
+    return true;
   const oauthStatus = state.CONFIG?.homeAssistant?.oauthStatus;
   const oauthRestorePending =
     state.CONFIG?.homeAssistant?.authMethod === 'oauth' &&
@@ -1356,7 +1402,7 @@ function showClassifiedConnectionToast(error) {
 }
 
 function scheduleReconnect() {
-  if (reconnectTimerId) return;
+  if (reconnectTimerId || browserReportedOffline || mainConnectionState === 'auth-failed') return;
   const delay = Math.min(
     BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts),
     MAX_RECONNECT_DELAY_MS
@@ -1507,12 +1553,12 @@ websocket.on('message', (msg) => {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
       if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
-      updateMainConnectionState('connected');
+      updateMainConnectionState('connecting');
       browserReportedOffline = false;
       setDesktopPinConnectionIssue('');
       resetConnectionToastTracking();
       clearReconnectTimer();
-      setConnectedStatus();
+      setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
       const statesReq = websocket.request({ type: 'get_states' });
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
@@ -1533,7 +1579,14 @@ websocket.on('message', (msg) => {
       });
 
       // Prevent unhandled rejections from surfacing as global errors
-      statesReq.catch(() => {});
+      const snapshotSocket = websocket.ws;
+      statesReq
+        .then((response) => {
+          if (!response.success || !Array.isArray(response.result)) {
+            websocket.failConnection(snapshotSocket);
+          }
+        })
+        .catch(() => websocket.failConnection(snapshotSocket));
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
       configReq.catch((err) => {
@@ -1565,7 +1618,9 @@ websocket.on('message', (msg) => {
       }
     } else if (msg.type === 'auth_invalid') {
       log.error('[WS] Invalid authentication token');
+      clearReconnectTimer();
       updateMainConnectionState('auth-failed');
+      websocket.close();
       const authFailureMessage = t(
         'Authentication failed. Please check your Home Assistant token in Settings.'
       );
@@ -1627,6 +1682,8 @@ websocket.on('message', (msg) => {
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
+            updateMainConnectionState('connected');
+            setConnectedStatus();
             if (!IS_DESKTOP_PIN_MODE) {
               setTrayEntityConnectionState(true, Object.keys(newStates));
               refreshTrayEntityIcons({ force: true });
@@ -1720,7 +1777,7 @@ websocket.on('close', (closeInfo = {}) => {
   try {
     alerts.suspendEntityAlerts?.();
     if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
-    if (closeInfo?.intentional) {
+    if (closeInfo?.intentional || mainConnectionState === 'auth-failed') {
       log.debug('WebSocket closed intentionally; skipping reconnect schedule');
       return;
     }
@@ -1794,6 +1851,7 @@ websocket.on('showLoading', (show) => {
 websocket.on('connect-attempt', () => {
   clearReconnectTimer();
   updateMainConnectionState('connecting');
+  setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
   renderMainWidgetState();
 });
 

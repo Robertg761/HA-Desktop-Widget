@@ -19,6 +19,10 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 The Settings modal is organized into General, Personalization, Hotkeys, Alerts, and Advanced. Personalization covers color themes, window effects, weather animations, primary cards, custom entity icons, and media tile selection. General includes Home Assistant connection, window behavior, language packs, profile sync, and update checks.
 
+In **Personalization → Window Effects**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
+
+Light, climate, fan, cover, and media tiles include a visible **Controls** button to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
+
 ## Omarchy and Arch Linux
 
 See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
@@ -165,7 +169,8 @@ Assistant can flag out-of-date desktops.
 
 ### Quick Access Management
 
-- **Build a page from a room**: Enter reorganize mode, choose **Add page**, then **Load rooms**. Select a Home Assistant area, choose its entities, and save. Entity area overrides take precedence over device areas; hidden and disabled registry entries are omitted. Registry access requires permission from Home Assistant.
+- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and devices** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the devices, name the page, and choose **Add Page**. This adds a page without replacing existing pages. If room registry access is unavailable, choose directly from your device states. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
+- **Build a page from a room**: Enter reorganize mode and choose **Add page**. Rooms load automatically when connected; use **Load rooms** or **Retry** if needed. Select a Home Assistant area, choose its entities, review the preview, and save. Entity area overrides take precedence over device areas; hidden and disabled registry entries are omitted. Registry access requires permission from Home Assistant.
 - **Undo and restore**: The undo arrow reverses the latest dashboard edit. **Settings > Advanced > Restore dashboard** lists up to 20 local restore points, retained across restarts and separated by Home Assistant server. Restoring a saved layout first backs up the current layout. These backups contain dashboard data, including names, icons, tile options, and comparison graphs, but exclude authorization, desktop pins, hotkeys, and connection settings. They depend on local browser storage being available.
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
 - **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder

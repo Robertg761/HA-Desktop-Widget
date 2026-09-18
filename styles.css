@@ -12686,3 +12686,128 @@ body.layer-drag-enabled.desktop-pin-edit-mode .control-item {
 #desktop-integration .btn {
   margin-bottom: 8px;
 }
+
+/* Readability preferences deliberately override custom palettes and glass effects. */
+body.high-contrast {
+  --text-color: #fff !important;
+  --text-primary: #fff !important;
+  --text-secondary: #eee !important;
+  --text-tertiary: #ddd !important;
+  --muted-text: #ddd !important;
+  --bg-color: #141414 !important;
+  --bg-primary: #141414 !important;
+  --bg-secondary: #202020 !important;
+  --bg-tertiary: #282828 !important;
+  --bg-elevated: #202020 !important;
+  --card-bg: #202020 !important;
+  --surface-1: #141414 !important;
+  --surface-2: #202020 !important;
+  --surface-3: #282828 !important;
+  --surface-hover: #333 !important;
+  --border-color: #aaa !important;
+  --border-hover: #fff !important;
+  --accent: #8ed1ff !important;
+  --accent-rgb: 142, 209, 255 !important;
+  --window-bg-rgb: 20, 20, 20 !important;
+  color: #fff;
+  color-scheme: dark;
+}
+
+body.opaque-panels,
+body.opaque-panels
+  :is(
+    .widget-header,
+    .widget-content,
+    .modal-content,
+    .desktop-pin-shell,
+    .status-card,
+    .media-tile,
+    .control-item
+  ) {
+  background: var(--bg-primary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.high-contrast :is(button, input, select, textarea) {
+  color: #fff !important;
+  background: #202020 !important;
+  border-color: #aaa !important;
+}
+
+body.high-contrast :focus-visible {
+  outline: 3px solid #fff !important;
+  outline-offset: 2px;
+}
+
+.tile-details-button {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+body.large-interface .modal-content,
+body.large-interface #settings-modal .modal-content {
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  min-width: 0;
+  min-height: 0;
+}
+
+body.large-interface .modal-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+body.large-interface .modal-footer {
+  flex-wrap: wrap;
+}
+
+/* Small pinned windows retain access to every control at increased zoom. */
+body.large-interface.desktop-pin-mode .desktop-pin-shell {
+  overflow: auto;
+}
+
+body.large-interface.desktop-pin-mode .desktop-pin-content {
+  flex-shrink: 0;
+  min-width: 140px;
+  min-height: 122px;
+}
+
+/* Native primary and detail actions share a labelled tile group. */
+body.high-contrast .tile-primary-button,
+.tile-primary-button {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  border-radius: inherit;
+  background: transparent !important;
+  cursor: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.tile-primary-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Editing keeps the tile itself as the drag target and its editing actions on top. */
+.control-item.reorganize-mode .tile-primary-button,
+.control-item.reorganize-mode .tile-details-button {
+  pointer-events: none;
+}
+
+body.high-contrast .tile-primary-button:focus-visible {
+  outline-offset: -3px !important;
+}

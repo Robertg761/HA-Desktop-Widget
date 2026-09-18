@@ -345,6 +345,17 @@ describe('UI Utilities', () => {
   });
 
   describe('applyUiPreferences', () => {
+    it('scales the complete Electron interface and rejects invalid saved values', () => {
+      window.electronAPI.setUiScale = jest.fn();
+      uiUtils.applyUiPreferences({ scale: 1.5 });
+      expect(window.electronAPI.setUiScale).toHaveBeenLastCalledWith(1.5);
+      expect(document.body.classList.contains('large-interface')).toBe(true);
+      uiUtils.applyUiPreferences({ scale: -4 });
+      expect(window.electronAPI.setUiScale).toHaveBeenLastCalledWith(1);
+      expect(document.body.classList.contains('large-interface')).toBe(false);
+      delete window.electronAPI.setUiScale;
+    });
+
     it('should apply high contrast mode', () => {
       uiUtils.applyUiPreferences({ highContrast: true });
 

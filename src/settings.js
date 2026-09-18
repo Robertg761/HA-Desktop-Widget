@@ -3757,7 +3757,52 @@ async function persistActiveTileGlowSelection(enabled) {
   }
 }
 
+async function persistReadabilitySelection(patch) {
+  const previousUi = { ...(state.CONFIG.ui || {}) };
+  const nextUi = { ...previousUi, ...patch };
+  applyUiPreferences(nextUi);
+  try {
+    const updated = await window.electronAPI?.updateConfig?.({ ui: nextUi });
+    if (updated) applyPersistedConfigResponse(updated);
+    else state.CONFIG.ui = nextUi;
+  } catch (error) {
+    state.CONFIG.ui = previousUi;
+    applyUiPreferences(previousUi);
+    throw error;
+  }
+}
+
 function bindAppearanceSettingsUi() {
+  const scale = document.getElementById('ui-scale-select');
+  const preset = document.getElementById('readable-preset');
+  const refresh = () => {
+    if (scale) scale.value = String(state.CONFIG?.ui?.scale || 1);
+    if (preset)
+      preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
+  };
+  refresh();
+  for (const control of [scale, preset].filter(Boolean)) {
+    control.onchange = async () => {
+      // Serialize saves so a slow response cannot undo a newer appearance choice.
+      if (scale) scale.disabled = true;
+      if (preset) preset.disabled = true;
+      try {
+        await persistReadabilitySelection(
+          control === scale
+            ? { scale: Number(scale.value) }
+            : { highContrast: preset.checked, opaquePanels: preset.checked }
+        );
+      } catch (error) {
+        log.error('Failed to save readability settings:', error);
+        refresh();
+        showToast(t('Failed to save readability settings'), 'warning', 3000);
+      } finally {
+        if (scale) scale.disabled = false;
+        if (preset) preset.disabled = false;
+      }
+    };
+  }
+
   const activeTileGlow = document.getElementById('active-tile-glow');
   if (activeTileGlow) {
     activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;

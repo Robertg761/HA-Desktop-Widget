@@ -175,6 +175,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       callMediaTileService: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
       switchQuickAccessPage: jest.fn(),
+      showAddPageModal: jest.fn(),
     }));
     jest.doMock('../../src/settings.js', () => ({
       __esModule: true,
@@ -243,10 +244,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
-  it('uses a three-step browser authorization flow without asking for a token', async () => {
+  it('uses a four-step browser authorization flow without asking for a token', async () => {
     await loadRenderer();
 
-    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 3');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 4');
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.getElementById('first-run-onboarding').textContent).not.toContain(
       'Long-Lived Access Token'
@@ -254,7 +255,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     await reachAuthorizationStep('http://ha-one.local:8123');
 
-    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 3');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.getElementById('first-run-onboarding').textContent).toContain(
       'Authorize in Home Assistant'
@@ -304,8 +305,45 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
     expect(mockElectronAPI.testHaConnection).not.toHaveBeenCalled();
     expect(mockState.CONFIG.homeAssistant.authMethod).toBe('oauth');
-    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+    expect(document.getElementById('first-run-onboarding').classList).not.toContain('hidden');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 4 of 4');
     expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    await clickButton('Skip for now');
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+  });
+
+  it('opens the shared starter builder after authorization', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockResolvedValueOnce({ config: oauthConfig() });
+      },
+    });
+    await reachAuthorizationStep('ha.local:8123');
+    await clickButton('Connect');
+    await clickButton('Choose rooms and devices');
+    expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+  });
+
+  it('offers the starter builder on a connected empty dashboard without onboarding existing users', async () => {
+    await loadRenderer({ config: oauthConfig() });
+    expect(document.getElementById('first-run-onboarding')).toBeNull();
+    let nextRequestId = 123;
+    mockWebsocket.request.mockImplementation(({ type }) => {
+      const id = nextRequestId++;
+      const result =
+        type === 'get_states' || type === 'config/area_registry/list'
+          ? []
+          : type === 'get_services' || type === 'get_config'
+            ? {}
+            : null;
+      return Object.assign(Promise.resolve({ type: 'result', id, success: true, result }), { id });
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
+    await flushAsync();
+    await clickButton('Choose rooms and devices');
+    expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
   });
 
   it('coalesces duplicate Connect clicks while browser authorization is pending', async () => {
@@ -648,6 +686,56 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
     expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+  });
+
+  it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {
+    await loadRenderer({
+      config: { ...oauthConfig(), desktopPins: { 'light.office': {} } },
+      configureApi(api) {
+        api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
+      },
+    });
+    let requestId = 10;
+    mockWebsocket.request.mockImplementation(() => {
+      const request = new Promise(() => {});
+      request.id = requestId++;
+      return request;
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('connecting');
+    expect(document.getElementById('widget-state-panel').textContent).toContain('Waiting for live');
+    mockWebsocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('connected');
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalled();
+    expect(mockElectronAPI.publishHaSnapshot.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mockElectronAPI.publishHaConnectionState.mock.invocationCallOrder.at(-1)
+    );
+    mockWebsocket.emit('message', { type: 'auth_invalid' });
+    expect(mockWebsocket.close).toHaveBeenCalled();
+    mockWebsocket.emit('close', { intentional: false });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('auth-failed');
+    expect(document.getElementById('widget-state-panel').textContent).toContain(
+      'Authentication failed'
+    );
+    expect(document.getElementById('widget-state-panel').textContent).toContain('Open Settings');
+  });
+
+  it.each(['rejected', 'invalid'])('recovers when the initial snapshot is %s', async (failure) => {
+    await loadRenderer({ config: oauthConfig() });
+    const socket = {};
+    mockWebsocket.ws = socket;
+    mockWebsocket.failConnection = jest.fn();
+    let failSnapshot;
+    const snapshot = new Promise((resolve, reject) => {
+      failSnapshot = () =>
+        failure === 'rejected' ? reject(new Error('timeout')) : resolve({ success: false });
+    });
+    snapshot.id = 10;
+    mockWebsocket.request.mockReturnValueOnce(snapshot);
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    failSnapshot();
+    await flushAsync();
+    expect(mockWebsocket.failConnection).toHaveBeenCalledWith(socket);
   });
 
   it('closes the WebSocket through its lifecycle manager when the browser goes offline', async () => {

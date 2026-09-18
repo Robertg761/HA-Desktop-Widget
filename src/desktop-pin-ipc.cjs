@@ -30,7 +30,10 @@ function createDesktopPinRendererConfig(inputConfig) {
   };
 }
 
-function createDesktopPinConnectionState(inputConfig, { secureStoragePending = false } = {}) {
+function createDesktopPinConnectionState(
+  inputConfig,
+  { secureStoragePending = false, runtimeState } = {}
+) {
   const source = isPlainObject(inputConfig) ? inputConfig : {};
   const homeAssistant = isPlainObject(source.homeAssistant) ? source.homeAssistant : {};
   const url = typeof homeAssistant.url === 'string' ? homeAssistant.url.trim() : '';
@@ -40,6 +43,7 @@ function createDesktopPinConnectionState(inputConfig, { secureStoragePending = f
     hasUrl: !!url && !HOME_ASSISTANT_URL_PLACEHOLDERS.has(url),
     hasToken: !!token && token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER,
     secureStoragePending: secureStoragePending === true,
+    ...(runtimeState ? { runtimeState } : {}),
   };
 }
 
