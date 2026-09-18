@@ -646,6 +646,16 @@
     "High contrast with opaque panels": "Contraste élevé avec panneaux opaques",
     "Failed to save readability settings": "Impossible d’enregistrer les paramètres de lisibilité",
     "Controls": "Commandes",
-    "Controls for {{name}}": "Commandes de {{name}}"
+    "Controls for {{name}}": "Commandes de {{name}}",
+    "All devices": "All devices",
+    "And {{count}} more devices": "And {{count}} more devices",
+    "Choose rooms and devices": "Choose rooms and devices",
+    "Connecting to Home Assistant…": "Connecting to Home Assistant…",
+    "My devices": "My devices",
+    "Page preview: {{count}} devices": "Page preview: {{count}} devices",
+    "Rooms are unavailable. Choose from your devices instead.": "Rooms are unavailable. Choose from your devices instead.",
+    "Search devices": "Search devices",
+    "Skip for now": "Skip for now",
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard."
   }
 }
