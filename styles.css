@@ -12783,3 +12783,31 @@ body.large-interface.desktop-pin-mode .desktop-pin-content {
   min-width: 140px;
   min-height: 122px;
 }
+
+/* Native primary and detail actions share a labelled tile group. */
+body.high-contrast .tile-primary-button,
+.tile-primary-button {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  border-radius: inherit;
+  background: transparent !important;
+  cursor: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.tile-primary-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Editing keeps the tile itself as the drag target and its editing actions on top. */
+.control-item.reorganize-mode .tile-primary-button,
+.control-item.reorganize-mode .tile-details-button {
+  pointer-events: none;
+}
+
+body.high-contrast .tile-primary-button:focus-visible {
+  outline-offset: -3px !important;
+}
