@@ -19,6 +19,10 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 The Settings modal is organized into General, Personalization, Hotkeys, Alerts, and Advanced. Personalization covers color themes, window effects, weather animations, primary cards, custom entity icons, and media tile selection. General includes Home Assistant connection, window behavior, language packs, profile sync, and update checks.
 
+In **Personalization → Window Effects**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
+
+Light, climate, fan, cover, and media tiles include a visible **Controls** button to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
+
 ## Omarchy and Arch Linux
 
 See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.

@@ -254,6 +254,8 @@ function createSettingsModalDOM() {
       <input type="range" id="opacity-slider" min="1" max="100" />
       <span id="opacity-value">90</span>
 
+      <select id="ui-scale-select"><option value="1">100%</option><option value="1.5">150%</option></select>
+      <input type="checkbox" id="readable-preset" />
       <label for="density-select">Layout density</label>
       <select id="density-select">
         <option value="comfortable">Comfortable</option>
@@ -2153,6 +2155,43 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('dark');
       expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
         expect.objectContaining({ highContrast: true })
+      );
+    });
+
+    test('persists readability choices and restores them when settings reopen', async () => {
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      const preset = document.getElementById('readable-preset');
+      scale.value = '1.5';
+      await scale.onchange();
+      preset.checked = true;
+      await preset.onchange();
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({
+          scale: 1.5,
+          highContrast: true,
+          opaquePanels: true,
+        })
+      );
+      await settings.openSettings();
+      expect(scale.value).toBe('1.5');
+      expect(preset.checked).toBe(true);
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.scale).toBe(1.5);
+    });
+
+    test('rolls back failed readability saves and re-enables the controls', async () => {
+      state.CONFIG.ui.scale = 1;
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      scale.value = '1.5';
+      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
+      await scale.onchange();
+      expect(state.CONFIG.ui.scale).toBe(1);
+      expect(scale.value).toBe('1');
+      expect(scale.disabled).toBe(false);
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ scale: 1 })
       );
     });
 

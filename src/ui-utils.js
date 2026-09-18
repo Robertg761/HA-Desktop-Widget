@@ -769,6 +769,10 @@ function applyTheme(mode = 'auto') {
 function applyUiPreferences(ui = {}) {
   try {
     const body = document.body;
+    const scale = [1, 1.15, 1.3, 1.5].includes(Number(ui.scale)) ? Number(ui.scale) : 1;
+    if (window.electronAPI?.setUiScale) window.electronAPI.setUiScale(scale);
+    else document.documentElement.style.zoom = String(scale);
+    body.classList.toggle('large-interface', scale > 1);
     body.classList.toggle('high-contrast', !!ui.highContrast);
     body.classList.toggle('opaque-panels', !!ui.opaquePanels);
     body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
