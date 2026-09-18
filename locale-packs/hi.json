@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.19",
+  "version": "1.2.20",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -640,6 +640,12 @@
     "Popup shortcut received. You can use it to bring the widget forward.": "Popup shortcut received. You can use it to bring the widget forward.",
     "No popup shortcut received yet. Press your configured shortcut, then check again.": "No popup shortcut received yet. Press your configured shortcut, then check again.",
     "Could not check the shortcut. Try again.": "Could not check the shortcut. Try again.",
-    "Set up shortcuts": "Set up shortcuts"
+    "Set up shortcuts": "Set up shortcuts",
+    "Text and control size": "Text and control size",
+    "Enlarges the whole interface, including dialogs and desktop pins.": "Enlarges the whole interface, including dialogs and desktop pins.",
+    "High contrast with opaque panels": "High contrast with opaque panels",
+    "Failed to save readability settings": "Failed to save readability settings",
+    "Controls": "Controls",
+    "Controls for {name}": "Controls for {name}"
   }
 }

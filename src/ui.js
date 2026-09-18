@@ -5974,6 +5974,7 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
     theme: state.CONFIG?.ui?.theme || 'auto',
     accent: state.CONFIG?.ui?.accent || 'original',
     background: state.CONFIG?.ui?.background || 'original',
+    scale: state.CONFIG?.ui?.scale || 1,
   });
   const current = desktopPinSceneMinSyncState.get(entityId) || {};
   if (current.signature === nextSignature && current.pending) {
@@ -6013,7 +6014,14 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
     }
 
     try {
-      const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, minBounds);
+      // DOM measurements are CSS pixels; native window bounds are independent of page zoom.
+      const scale = [1, 1.15, 1.3, 1.5].includes(Number(state.CONFIG?.ui?.scale))
+        ? Number(state.CONFIG.ui.scale)
+        : 1;
+      const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, {
+        width: Math.ceil(minBounds.width * scale),
+        height: Math.ceil(minBounds.height * scale),
+      });
       desktopPinSceneMinSyncState.set(entityId, {
         ...latest,
         pending: false,
@@ -8406,6 +8414,35 @@ function createControlElement(entity, options = {}) {
           ${stateDisplay}
         </div>
       `;
+    }
+
+    if (['light', 'climate', 'fan', 'cover', 'media_player'].includes(domain)) {
+      const details = document.createElement('button');
+      details.type = 'button';
+      details.className = 'tile-details-button';
+      details.textContent = t('Controls');
+      details.setAttribute(
+        'aria-label',
+        t('Controls for {name}', { name: utils.getEntityDisplayName(entity) })
+      );
+      // A details click must never start the tile's hold timer or primary action.
+      [
+        'pointerdown',
+        'pointerup',
+        'mousedown',
+        'mouseup',
+        'touchstart',
+        'touchend',
+        'keydown',
+        'keyup',
+      ].forEach((type) => {
+        details.addEventListener(type, (event) => event.stopPropagation());
+      });
+      details.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (!shouldBlockInteraction(div)) openEntityDetailModal(entity);
+      });
+      div.appendChild(details);
     }
 
     // Setup special controls after HTML is set

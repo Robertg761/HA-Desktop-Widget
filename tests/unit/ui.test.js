@@ -808,6 +808,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledTimes(1);
     });
 
+    it('opens light controls from the visible button without toggling the light', () => {
+      state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });
+      state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+      ui.renderActiveTab();
+      const button = document.querySelector(
+        '[data-entity-id="light.bedroom"] .tile-details-button'
+      );
+      expect(button).toBeTruthy();
+      mockCallService.mockClear();
+      button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      button.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      button.click();
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(document.querySelector('.brightness-modal')).toBeTruthy();
+    });
+
     it('should apply optimistic UI immediately and keep desired state during conflicting server updates', async () => {
       state.setConfig({
         ...sampleConfig,
@@ -4881,6 +4897,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.domain).toBe('script');
       expect(control?.dataset.layout).toBe('micro');
       expect(mockElectronAPI.syncDesktopPinContentMinBounds).not.toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+
+    it('converts scene minimum sizes to native pixels at increased interface scale', async () => {
+      jest.useFakeTimers();
+      setDesktopPinViewport(97, 83);
+      state.CONFIG.ui = { ...state.CONFIG.ui, scale: 1.5 };
+      const scene = {
+        entity_id: 'scene.relax',
+        state: 'scening',
+        attributes: { friendly_name: 'Relax' },
+      };
+      state.setStates({ 'scene.relax': scene });
+      ui.renderDesktopPinnedTile('scene.relax', scene);
+      await flushDesktopPinSceneMinSync();
+      expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalledWith('scene.relax', {
+        width: 146,
+        height: 125,
+      });
       jest.useRealTimers();
     });
 
