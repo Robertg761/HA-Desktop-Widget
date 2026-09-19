@@ -266,6 +266,46 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       },
       { entity_id: 'switch.offline', state: 'unavailable', attributes: {} },
     ];
+    it('uses recovered states when retrying ordinary room loading and selecting rooms later', async () => {
+      const connection = require('../../src/websocket.js').isConnected;
+      connection.mockReturnValue(false);
+      ui.showAddPageModal();
+      mockRequest.mockRejectedValueOnce(new Error('Disconnected'));
+      const loadRooms = document.querySelector('.room-dashboard button');
+      await loadRooms.onclick();
+      expect(loadRooms.textContent).toBe('Retry');
+
+      connection.mockReturnValue(true);
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            'config/area_registry/list': [{ area_id: 'office', name: 'Office' }],
+            'config/entity_registry/list': [
+              { entity_id: 'light.desk', area_id: 'office' },
+              { entity_id: 'sensor.temperature', area_id: 'office' },
+            ],
+            'config/device_registry/list': [],
+          }[type],
+        })
+      );
+      const loading = loadRooms.onclick();
+      state.setStates({ 'light.desk': entities[0] });
+      await loading;
+      const room = document.querySelector('#add-page-room');
+      room.value = 'office';
+      room.onchange();
+      expect(document.querySelector('input[value="light.desk"]')).not.toBeNull();
+      expect(document.querySelector('.room-dashboard-preview').textContent).toContain('Desk lamp');
+
+      // Another snapshot replaces the map after registry loading has finished.
+      state.setStates({ 'sensor.temperature': entities[1] });
+      room.onchange();
+      expect(document.querySelector('input[value="light.desk"]')).toBeNull();
+      expect(document.querySelector('input[value="sensor.temperature"]')).not.toBeNull();
+      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(1);
+    });
+
     it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
       state.setConfig({
         ...state.CONFIG,
@@ -823,6 +863,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).not.toHaveBeenCalled();
       expect(document.querySelector('.brightness-modal')).toBeTruthy();
     });
+
+    it.each(['.rename-btn', '.remove-btn', '.desktop-pin-quick-toggle'])(
+      'preserves %s focus through live replacement in reorganize mode',
+      (selector) => {
+        state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });
+        const original = getBedroomLightOnState();
+        state.setStates({ 'light.bedroom': original });
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+        const button = document.querySelector(`#quick-controls ${selector}`);
+        expect(button).not.toBeNull();
+        button.focus();
+        mockCallService.mockClear();
+        const updated = { ...original, state: 'off' };
+        state.setStates({ 'light.bedroom': updated });
+        ui.updateEntityInUI(updated);
+        const replacement = document.querySelector(`#quick-controls ${selector}`);
+        expect(replacement).not.toBe(button);
+        expect(document.activeElement).toBe(replacement);
+        expect(mockCallService).not.toHaveBeenCalled();
+      }
+    );
 
     it('preserves Controls focus through live tile replacement and exposes sibling native actions', () => {
       state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });

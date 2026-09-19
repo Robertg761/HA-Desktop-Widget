@@ -919,6 +919,7 @@ function showAddPageModal({ starter = false } = {}) {
         registry = { areas: [], entities: [], devices: [] };
       }
       if (!modal.isConnected) return;
+      if (!starter) availableStates = state.STATES;
       roomSelect.replaceChildren(new Option(starter ? t('All devices') : t('Empty page'), ''));
       roomEntities.replaceChildren();
       registry.areas
@@ -950,6 +951,9 @@ function showAddPageModal({ starter = false } = {}) {
     }
   };
   roomSelect.onchange = () => {
+    // Reconnect replaces the state map while an existing dialog can stay open.
+    // Starter mode owns its explicit get_states snapshot instead.
+    if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
     preview.replaceChildren();
     if ((!roomSelect.value && !starter) || !registry) {
@@ -2279,22 +2283,29 @@ function updateEntityInUI(entity, options = {}) {
         camera.disposeCameraPreview(item);
       }
       const focused = document.activeElement;
-      const focusedControl = item.contains(focused)
-        ? focused?.classList.contains('tile-details-button')
-          ? '.tile-details-button'
-          : '.tile-primary-button'
+      const hadFocus = item.contains(focused);
+      const focusedControl = hadFocus
+        ? [
+            '.rename-btn',
+            '.remove-btn',
+            '.desktop-pin-quick-toggle',
+            '.tile-details-button',
+            '.tile-primary-button',
+          ].find((selector) => focused.matches(selector))
         : null;
       item.replaceWith(newControl);
-      if (focusedControl) {
-        const target = newControl.querySelector(focusedControl) || newControl;
-        target.tabIndex = 0;
-        target.focus();
-      }
 
       // If in reorganize mode, add buttons to the newly created element
       // Note: SortableJS automatically handles drag behavior for all children
       if (isReorganizeMode) {
         addButtonsToElement(newControl);
+      }
+      if (hadFocus) {
+        // Editing buttons must exist before restoring their focus. If an action
+        // disappeared, focus the tile rather than a different device action.
+        const target = (focusedControl && newControl.querySelector(focusedControl)) || newControl;
+        target.tabIndex = 0;
+        target.focus();
       }
     });
     syncQuickAccessRovingTabIndex(

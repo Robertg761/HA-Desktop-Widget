@@ -647,15 +647,15 @@
     "Failed to save readability settings": "No se pudieron guardar los ajustes de legibilidad",
     "Controls": "Controles",
     "Controls for {{name}}": "Controles de {{name}}",
-    "All devices": "All devices",
-    "And {{count}} more devices": "And {{count}} more devices",
-    "Choose rooms and devices": "Choose rooms and devices",
-    "Connecting to Home Assistant…": "Connecting to Home Assistant…",
-    "My devices": "My devices",
-    "Page preview: {{count}} devices": "Page preview: {{count}} devices",
-    "Rooms are unavailable. Choose from your devices instead.": "Rooms are unavailable. Choose from your devices instead.",
-    "Search devices": "Search devices",
-    "Skip for now": "Skip for now",
-    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard."
+    "All devices": "Todos los dispositivos",
+    "And {{count}} more devices": "Y {{count}} dispositivos más",
+    "Choose rooms and devices": "Elegir habitaciones y dispositivos",
+    "Connecting to Home Assistant…": "Conectando con Home Assistant…",
+    "My devices": "Mis dispositivos",
+    "Page preview: {{count}} devices": "Vista previa de la página: {{count}} dispositivos",
+    "Rooms are unavailable. Choose from your devices instead.": "Las habitaciones no están disponibles. Elige entre tus dispositivos.",
+    "Search devices": "Buscar dispositivos",
+    "Skip for now": "Omitir por ahora",
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Tu conexión está guardada. Consulta la vista previa de una habitación o elige dispositivos para crear tu primera página. También puedes hacerlo más tarde desde el panel vacío."
   }
 }

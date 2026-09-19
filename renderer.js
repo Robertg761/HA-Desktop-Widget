@@ -871,6 +871,8 @@ function maybeShowWizardAfterSettingsClose() {
   if (!firstRunSettingsObserver) return;
   const modal = document.getElementById('settings-modal');
   if (!modal || !modal.classList.contains('hidden')) return;
+  firstRunSettingsObserver.disconnect();
+  firstRunSettingsObserver = null;
   if (!isConfigured(state.CONFIG)) {
     setFirstRunWizardVisible(true);
   }
@@ -984,6 +986,9 @@ function maybeShowFirstRunWizard() {
     setFirstRunWizardVisible(false);
     return false;
   }
+  // Settings can persist preferences before the connection is configured. Keep that
+  // detour open and preserve the wizard draft until Settings actually closes.
+  if (firstRunSettingsObserver) return false;
   ensureFirstRunWizard();
   firstRunWizard.step = 0;
   renderWizardStep();

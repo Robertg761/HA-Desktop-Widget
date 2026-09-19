@@ -5978,7 +5978,17 @@ ipcMain.handle('get-locale-bootstrap', (event) => {
 ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
   const sender = authorizeIpcSender(event, 'get-locale-packs');
   if (!sender) return rejectUnauthorizedIpc('get-locale-packs');
-  return localizationService.listLocalePacks(!!forceRefresh);
+  try {
+    return await localizationService.listLocalePacks(!!forceRefresh);
+  } catch (error) {
+    log.warn('Failed to load locale pack manifest:', error);
+    // Electron does not preserve custom properties on thrown IPC errors.
+    // Return plain data so installed languages remain usable while offline.
+    return {
+      error: 'manifest_unavailable',
+      installedPacks: Array.isArray(error?.installedPacks) ? error.installedPacks : [],
+    };
+  }
 });
 
 ipcMain.handle('download-locale-pack', async (event, locale) => {
@@ -5993,9 +6003,8 @@ ipcMain.handle('download-locale-pack', async (event, locale) => {
     success: true,
     pack,
     localeBootstrap: localizationService.getLocaleBootstrap(config?.ui?.language || 'auto'),
-    // Keep the response strict for now: if the authoritative manifest refresh fails
-    // after mutation, the renderer reports failure. Decoupled success is deferred.
-    packs: await localizationService.listLocalePacks(true),
+    // The mutation is complete. Settings refreshes the remote catalog separately.
+    packs: localizationService.listInstalledLocalePacks(),
   };
 });
 
@@ -6011,9 +6020,8 @@ ipcMain.handle('remove-locale-pack', async (event, locale) => {
     success: true,
     ...result,
     localeBootstrap: localizationService.getLocaleBootstrap(config?.ui?.language || 'auto'),
-    // Keep the response strict for now: if the authoritative manifest refresh fails
-    // after mutation, the renderer reports failure. Decoupled success is deferred.
-    packs: await localizationService.listLocalePacks(true),
+    // The mutation is complete. Settings refreshes the remote catalog separately.
+    packs: localizationService.listInstalledLocalePacks(),
   };
 });
 

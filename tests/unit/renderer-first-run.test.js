@@ -3,6 +3,8 @@
  */
 
 const EventEmitter = require('events');
+const fs = require('fs');
+const path = require('path');
 const {
   createMockElectronAPI,
   resetMockElectronAPI,
@@ -16,6 +18,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   let mockUiUtils;
   let mockHotkeys;
   let mockAlerts;
+  let mockSettings;
 
   const unconfiguredConfig = () => ({
     homeAssistant: {
@@ -141,6 +144,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       assignHotkeyToEntity: jest.fn(),
       toggleHotkeys: jest.fn(),
       captureHotkey: jest.fn(),
+      cleanupHotkeyEventListeners: jest.fn(),
     };
     jest.doMock('../../src/hotkeys.js', () => mockHotkeys);
     mockAlerts = {
@@ -177,13 +181,16 @@ describe('Renderer first-run Home Assistant authorization', () => {
       switchQuickAccessPage: jest.fn(),
       showAddPageModal: jest.fn(),
     }));
-    jest.doMock('../../src/settings.js', () => ({
+    mockSettings = {
       __esModule: true,
-      openSettings: jest.fn(),
-      closeSettings: jest.fn(),
+      openSettings: jest.fn(() => {
+        document.getElementById('settings-modal')?.classList.remove('hidden');
+      }),
+      closeSettings: jest.fn(() => jest.requireActual('../../src/settings.js').closeSettings()),
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
-    }));
+    };
+    jest.doMock('../../src/settings.js', () => mockSettings);
     mockUiUtils = {
       __esModule: true,
       showLoading: jest.fn(),
@@ -196,6 +203,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyBackgroundTheme: jest.fn(),
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
+      closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -260,6 +268,138 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.getElementById('first-run-onboarding').textContent).toContain(
       'Authorize in Home Assistant'
     );
+  });
+
+  const settingsNavigationHtml = () => {
+    const page = new DOMParser().parseFromString(
+      fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
+      'text/html'
+    );
+    return `
+      <header>${page.getElementById('close-btn').outerHTML}</header>
+      <main class="widget-content"></main>
+      <div id="settings-modal" class="modal hidden">
+        ${page.getElementById('close-settings').outerHTML}
+        ${page.getElementById('cancel-settings').outerHTML}
+      </div>`;
+  };
+
+  it.each(['close-settings', 'cancel-settings'])(
+    'returns to the same onboarding step and URL through %s on repeated Settings visits',
+    async (closeId) => {
+      await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+      await clickButton('Next');
+      enterInput('#first-run-ha-url', 'http://draft.local:8123');
+      const stepLabel = document.querySelector('.first-run-step-label').textContent;
+      const wizard = document.getElementById('first-run-onboarding');
+      const modal = document.getElementById('settings-modal');
+
+      for (let visit = 0; visit < 2; visit += 1) {
+        await clickButton('Full Settings');
+        expect(wizard.classList.contains('hidden')).toBe(true);
+        expect(modal.classList.contains('hidden')).toBe(false);
+        document.getElementById(closeId).click();
+        await flushAsync();
+
+        expect(modal.classList.contains('hidden')).toBe(true);
+        expect(wizard.classList.contains('hidden')).toBe(false);
+        expect(document.querySelector('.first-run-step-label').textContent).toBe(stepLabel);
+        expect(document.getElementById('first-run-ha-url').value).toBe('http://draft.local:8123');
+        expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+      }
+      expect(mockSettings.closeSettings).toHaveBeenCalledTimes(2);
+
+      // Once Settings has closed, an explicit app quit still works.
+      document.getElementById('close-btn').click();
+      expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('does not quit on repeated close clicks during the Settings exit animation', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    await reachAuthorizationStep('http://draft.local:8123');
+    const stepLabel = document.querySelector('.first-run-step-label').textContent;
+    await clickButton('Full Settings');
+    const modal = document.getElementById('settings-modal');
+    mockSettings.closeSettings.mockImplementation(() => modal.classList.add('modal-closing'));
+
+    document.getElementById('close-settings').click();
+    await flushAsync();
+    document.getElementById('close-settings').click();
+    expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(true);
+
+    modal.classList.remove('modal-closing');
+    modal.classList.add('hidden');
+    await flushAsync();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
+      false
+    );
+    expect(document.querySelector('.first-run-step-label').textContent).toBe(stepLabel);
+  });
+
+  it('preserves the onboarding step and draft URL when settings changes echo back', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    await clickButton('Next');
+    enterInput('#first-run-ha-url', 'http://draft.local:8123');
+    const stepLabel = document.querySelector('.first-run-step-label').textContent;
+    await clickButton('Full Settings');
+
+    triggerMockEvent('configUpdated', {
+      ...unconfiguredConfig(),
+      ui: { ...unconfiguredConfig().ui, theme: 'dark' },
+    });
+    await flushAsync();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(true);
+    document.getElementById('close-settings').click();
+    await flushAsync();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
+      false
+    );
+    expect(document.querySelector('.first-run-step-label').textContent).toBe(stepLabel);
+    expect(document.getElementById('first-run-ha-url').value).toBe('http://draft.local:8123');
+    expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes Quit from the Settings Close action', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    expect(document.querySelector('button[aria-label="Close"]').id).toBe('close-settings');
+    expect(document.getElementById('close-btn').getAttribute('data-i18n-aria-label')).toBe('Quit');
+    expect(document.getElementById('close-btn').title).toBe('Quit');
+  });
+
+  it.each(['close-settings', 'cancel-settings'])(
+    'does not revive onboarding after a connection is saved and Settings closes through %s',
+    async (closeId) => {
+      await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+      await clickButton('Full Settings');
+      mockState.setConfig(oauthConfig());
+      document.getElementById(closeId).click();
+      await flushAsync();
+
+      expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
+        true
+      );
+      expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+      document.getElementById('close-btn').click();
+      expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('preserves the explicit Quit action even during a Settings detour', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    await clickButton('Full Settings');
+    document.getElementById('close-btn').click();
+    expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it('preserves the app quit action for configured users', async () => {
+    await loadRenderer({ config: oauthConfig(), bodyHtml: settingsNavigationHtml() });
+    mockSettings.openSettings();
+    document.getElementById('close-btn').click();
+    expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
   });
 
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {
