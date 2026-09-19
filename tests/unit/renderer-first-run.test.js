@@ -3,6 +3,8 @@
  */
 
 const EventEmitter = require('events');
+const fs = require('fs');
+const path = require('path');
 const {
   createMockElectronAPI,
   resetMockElectronAPI,
@@ -16,6 +18,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   let mockUiUtils;
   let mockHotkeys;
   let mockAlerts;
+  let mockSettings;
 
   const unconfiguredConfig = () => ({
     homeAssistant: {
@@ -141,6 +144,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       assignHotkeyToEntity: jest.fn(),
       toggleHotkeys: jest.fn(),
       captureHotkey: jest.fn(),
+      cleanupHotkeyEventListeners: jest.fn(),
     };
     jest.doMock('../../src/hotkeys.js', () => mockHotkeys);
     mockAlerts = {
@@ -175,14 +179,18 @@ describe('Renderer first-run Home Assistant authorization', () => {
       callMediaTileService: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
       switchQuickAccessPage: jest.fn(),
+      showAddPageModal: jest.fn(),
     }));
-    jest.doMock('../../src/settings.js', () => ({
+    mockSettings = {
       __esModule: true,
-      openSettings: jest.fn(),
-      closeSettings: jest.fn(),
+      openSettings: jest.fn(() => {
+        document.getElementById('settings-modal')?.classList.remove('hidden');
+      }),
+      closeSettings: jest.fn(() => jest.requireActual('../../src/settings.js').closeSettings()),
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
-    }));
+    };
+    jest.doMock('../../src/settings.js', () => mockSettings);
     mockUiUtils = {
       __esModule: true,
       showLoading: jest.fn(),
@@ -195,6 +203,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyBackgroundTheme: jest.fn(),
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
+      closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -243,10 +252,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
-  it('uses a three-step browser authorization flow without asking for a token', async () => {
+  it('uses a four-step browser authorization flow without asking for a token', async () => {
     await loadRenderer();
 
-    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 3');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 4');
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.getElementById('first-run-onboarding').textContent).not.toContain(
       'Long-Lived Access Token'
@@ -254,11 +263,143 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     await reachAuthorizationStep('http://ha-one.local:8123');
 
-    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 3');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.getElementById('first-run-onboarding').textContent).toContain(
       'Authorize in Home Assistant'
     );
+  });
+
+  const settingsNavigationHtml = () => {
+    const page = new DOMParser().parseFromString(
+      fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
+      'text/html'
+    );
+    return `
+      <header>${page.getElementById('close-btn').outerHTML}</header>
+      <main class="widget-content"></main>
+      <div id="settings-modal" class="modal hidden">
+        ${page.getElementById('close-settings').outerHTML}
+        ${page.getElementById('cancel-settings').outerHTML}
+      </div>`;
+  };
+
+  it.each(['close-settings', 'cancel-settings'])(
+    'returns to the same onboarding step and URL through %s on repeated Settings visits',
+    async (closeId) => {
+      await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+      await clickButton('Next');
+      enterInput('#first-run-ha-url', 'http://draft.local:8123');
+      const stepLabel = document.querySelector('.first-run-step-label').textContent;
+      const wizard = document.getElementById('first-run-onboarding');
+      const modal = document.getElementById('settings-modal');
+
+      for (let visit = 0; visit < 2; visit += 1) {
+        await clickButton('Full Settings');
+        expect(wizard.classList.contains('hidden')).toBe(true);
+        expect(modal.classList.contains('hidden')).toBe(false);
+        document.getElementById(closeId).click();
+        await flushAsync();
+
+        expect(modal.classList.contains('hidden')).toBe(true);
+        expect(wizard.classList.contains('hidden')).toBe(false);
+        expect(document.querySelector('.first-run-step-label').textContent).toBe(stepLabel);
+        expect(document.getElementById('first-run-ha-url').value).toBe('http://draft.local:8123');
+        expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+      }
+      expect(mockSettings.closeSettings).toHaveBeenCalledTimes(2);
+
+      // Once Settings has closed, an explicit app quit still works.
+      document.getElementById('close-btn').click();
+      expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('does not quit on repeated close clicks during the Settings exit animation', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    await reachAuthorizationStep('http://draft.local:8123');
+    const stepLabel = document.querySelector('.first-run-step-label').textContent;
+    await clickButton('Full Settings');
+    const modal = document.getElementById('settings-modal');
+    mockSettings.closeSettings.mockImplementation(() => modal.classList.add('modal-closing'));
+
+    document.getElementById('close-settings').click();
+    await flushAsync();
+    document.getElementById('close-settings').click();
+    expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(true);
+
+    modal.classList.remove('modal-closing');
+    modal.classList.add('hidden');
+    await flushAsync();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
+      false
+    );
+    expect(document.querySelector('.first-run-step-label').textContent).toBe(stepLabel);
+  });
+
+  it('preserves the onboarding step and draft URL when settings changes echo back', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    await clickButton('Next');
+    enterInput('#first-run-ha-url', 'http://draft.local:8123');
+    const stepLabel = document.querySelector('.first-run-step-label').textContent;
+    await clickButton('Full Settings');
+
+    triggerMockEvent('configUpdated', {
+      ...unconfiguredConfig(),
+      ui: { ...unconfiguredConfig().ui, theme: 'dark' },
+    });
+    await flushAsync();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(true);
+    document.getElementById('close-settings').click();
+    await flushAsync();
+    expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
+      false
+    );
+    expect(document.querySelector('.first-run-step-label').textContent).toBe(stepLabel);
+    expect(document.getElementById('first-run-ha-url').value).toBe('http://draft.local:8123');
+    expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes Quit from the Settings Close action', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    expect(document.querySelector('button[aria-label="Close"]').id).toBe('close-settings');
+    expect(document.getElementById('close-btn').getAttribute('data-i18n-aria-label')).toBe('Quit');
+    expect(document.getElementById('close-btn').title).toBe('Quit');
+  });
+
+  it.each(['close-settings', 'cancel-settings'])(
+    'does not revive onboarding after a connection is saved and Settings closes through %s',
+    async (closeId) => {
+      await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+      await clickButton('Full Settings');
+      mockState.setConfig(oauthConfig());
+      document.getElementById(closeId).click();
+      await flushAsync();
+
+      expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
+        true
+      );
+      expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+      document.getElementById('close-btn').click();
+      expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('preserves the explicit Quit action even during a Settings detour', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    await clickButton('Full Settings');
+    document.getElementById('close-btn').click();
+    expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it('preserves the app quit action for configured users', async () => {
+    await loadRenderer({ config: oauthConfig(), bodyHtml: settingsNavigationHtml() });
+    mockSettings.openSettings();
+    document.getElementById('close-btn').click();
+    expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
   });
 
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {
@@ -304,8 +445,45 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
     expect(mockElectronAPI.testHaConnection).not.toHaveBeenCalled();
     expect(mockState.CONFIG.homeAssistant.authMethod).toBe('oauth');
-    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+    expect(document.getElementById('first-run-onboarding').classList).not.toContain('hidden');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 4 of 4');
     expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    await clickButton('Skip for now');
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+  });
+
+  it('opens the shared starter builder after authorization', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockResolvedValueOnce({ config: oauthConfig() });
+      },
+    });
+    await reachAuthorizationStep('ha.local:8123');
+    await clickButton('Connect');
+    await clickButton('Choose rooms and devices');
+    expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
+    expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
+  });
+
+  it('offers the starter builder on a connected empty dashboard without onboarding existing users', async () => {
+    await loadRenderer({ config: oauthConfig() });
+    expect(document.getElementById('first-run-onboarding')).toBeNull();
+    let nextRequestId = 123;
+    mockWebsocket.request.mockImplementation(({ type }) => {
+      const id = nextRequestId++;
+      const result =
+        type === 'get_states' || type === 'config/area_registry/list'
+          ? []
+          : type === 'get_services' || type === 'get_config'
+            ? {}
+            : null;
+      return Object.assign(Promise.resolve({ type: 'result', id, success: true, result }), { id });
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
+    await flushAsync();
+    await clickButton('Choose rooms and devices');
+    expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
   });
 
   it('coalesces duplicate Connect clicks while browser authorization is pending', async () => {
@@ -648,6 +826,56 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
     expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+  });
+
+  it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {
+    await loadRenderer({
+      config: { ...oauthConfig(), desktopPins: { 'light.office': {} } },
+      configureApi(api) {
+        api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
+      },
+    });
+    let requestId = 10;
+    mockWebsocket.request.mockImplementation(() => {
+      const request = new Promise(() => {});
+      request.id = requestId++;
+      return request;
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('connecting');
+    expect(document.getElementById('widget-state-panel').textContent).toContain('Waiting for live');
+    mockWebsocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('connected');
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalled();
+    expect(mockElectronAPI.publishHaSnapshot.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mockElectronAPI.publishHaConnectionState.mock.invocationCallOrder.at(-1)
+    );
+    mockWebsocket.emit('message', { type: 'auth_invalid' });
+    expect(mockWebsocket.close).toHaveBeenCalled();
+    mockWebsocket.emit('close', { intentional: false });
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('auth-failed');
+    expect(document.getElementById('widget-state-panel').textContent).toContain(
+      'Authentication failed'
+    );
+    expect(document.getElementById('widget-state-panel').textContent).toContain('Open Settings');
+  });
+
+  it.each(['rejected', 'invalid'])('recovers when the initial snapshot is %s', async (failure) => {
+    await loadRenderer({ config: oauthConfig() });
+    const socket = {};
+    mockWebsocket.ws = socket;
+    mockWebsocket.failConnection = jest.fn();
+    let failSnapshot;
+    const snapshot = new Promise((resolve, reject) => {
+      failSnapshot = () =>
+        failure === 'rejected' ? reject(new Error('timeout')) : resolve({ success: false });
+    });
+    snapshot.id = 10;
+    mockWebsocket.request.mockReturnValueOnce(snapshot);
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    failSnapshot();
+    await flushAsync();
+    expect(mockWebsocket.failConnection).toHaveBeenCalledWith(socket);
   });
 
   it('closes the WebSocket through its lifecycle manager when the browser goes offline', async () => {

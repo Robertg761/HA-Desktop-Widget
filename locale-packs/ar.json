@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.19",
+  "version": "1.2.21",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -640,6 +640,22 @@
     "Popup shortcut received. You can use it to bring the widget forward.": "Popup shortcut received. You can use it to bring the widget forward.",
     "No popup shortcut received yet. Press your configured shortcut, then check again.": "No popup shortcut received yet. Press your configured shortcut, then check again.",
     "Could not check the shortcut. Try again.": "Could not check the shortcut. Try again.",
-    "Set up shortcuts": "Set up shortcuts"
+    "Set up shortcuts": "Set up shortcuts",
+    "Text and control size": "حجم النص وعناصر التحكم",
+    "Enlarges the whole interface, including dialogs and desktop pins.": "يكبّر الواجهة بأكملها، بما في ذلك مربعات الحوار والعناصر المثبتة على سطح المكتب.",
+    "High contrast with opaque panels": "تباين عالٍ مع لوحات معتمة",
+    "Failed to save readability settings": "تعذر حفظ إعدادات سهولة القراءة",
+    "Controls": "عناصر التحكم",
+    "Controls for {{name}}": "عناصر التحكم في {{name}}",
+    "All devices": "جميع الأجهزة",
+    "And {{count}} more devices": "و{{count}} من الأجهزة الأخرى",
+    "Choose rooms and devices": "اختيار الغرف والأجهزة",
+    "Connecting to Home Assistant…": "جارٍ الاتصال بـ Home Assistant…",
+    "My devices": "أجهزتي",
+    "Page preview: {{count}} devices": "معاينة الصفحة: {{count}} من الأجهزة",
+    "Rooms are unavailable. Choose from your devices instead.": "الغرف غير متاحة. اختر من أجهزتك بدلاً من ذلك.",
+    "Search devices": "البحث عن أجهزة",
+    "Skip for now": "التخطي الآن",
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "تم حفظ اتصالك. عاين غرفة أو اختر أجهزة لإنشاء صفحتك الأولى. يمكنك أيضاً القيام بذلك لاحقاً من لوحة التحكم الفارغة."
   }
 }

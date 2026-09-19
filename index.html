@@ -165,10 +165,10 @@
           id="close-btn"
           class="control-btn"
           type="button"
-          data-i18n-title="Close"
-          data-i18n-aria-label="Close"
-          title="Close"
-          aria-label="Close"
+          data-i18n-title="Quit"
+          data-i18n-aria-label="Quit"
+          title="Quit"
+          aria-label="Quit"
         >
           <svg
             class="icon"
@@ -1102,6 +1102,31 @@
                 ></span>
               </button>
               <div id="window-effects-body" class="section-body">
+                <div class="form-group">
+                  <label for="ui-scale-select" data-i18n="Text and control size"
+                    >Text and control size</label
+                  >
+                  <select id="ui-scale-select">
+                    <option value="1">100%</option>
+                    <option value="1.15">115%</option>
+                    <option value="1.3">130%</option>
+                    <option value="1.5">150%</option>
+                  </select>
+                  <div
+                    class="form-help"
+                    data-i18n="Enlarges the whole interface, including dialogs and desktop pins."
+                  >
+                    Enlarges the whole interface, including dialogs and desktop pins.
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label
+                    ><input type="checkbox" id="readable-preset" />
+                    <span data-i18n="High contrast with opaque panels"
+                      >High contrast with opaque panels</span
+                    >
+                  </label>
+                </div>
                 <div class="form-group">
                   <label for="density-select" data-i18n="Layout density">Layout density</label>
                   <select id="density-select">

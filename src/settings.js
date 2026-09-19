@@ -68,6 +68,7 @@ let profileSyncStatusCache = null;
 let localePackListCache = [];
 let localePackListError = '';
 let languagePackRefreshPromise = Promise.resolve();
+let languagePackRefreshGeneration = 0;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set([
@@ -3647,14 +3648,23 @@ function renderLanguagePackList() {
 }
 
 async function refreshLanguagePackList(forceRefresh = false) {
+  const generation = ++languagePackRefreshGeneration;
   try {
     localePackListError = '';
     if (!window?.electronAPI?.getLocalePacks) {
       localePackListCache = [];
     } else {
-      localePackListCache = await window.electronAPI.getLocalePacks(forceRefresh);
+      const result = await window.electronAPI.getLocalePacks(forceRefresh);
+      if (generation !== languagePackRefreshGeneration) return;
+      if (Array.isArray(result)) {
+        localePackListCache = result;
+      } else {
+        localePackListCache = Array.isArray(result?.installedPacks) ? result.installedPacks : [];
+        localePackListError = t('Unable to load language packs right now.');
+      }
     }
   } catch (error) {
+    if (generation !== languagePackRefreshGeneration) return;
     log.error('Failed to load locale packs:', error);
     localePackListCache = Array.isArray(error?.installedPacks) ? error.installedPacks : [];
     localePackListError = t('Unable to load language packs right now.');
@@ -3757,7 +3767,52 @@ async function persistActiveTileGlowSelection(enabled) {
   }
 }
 
+async function persistReadabilitySelection(patch) {
+  const previousUi = { ...(state.CONFIG.ui || {}) };
+  const nextUi = { ...previousUi, ...patch };
+  applyUiPreferences(nextUi);
+  try {
+    const updated = await window.electronAPI?.updateConfig?.({ ui: nextUi });
+    if (updated) applyPersistedConfigResponse(updated);
+    else state.CONFIG.ui = nextUi;
+  } catch (error) {
+    state.CONFIG.ui = previousUi;
+    applyUiPreferences(previousUi);
+    throw error;
+  }
+}
+
 function bindAppearanceSettingsUi() {
+  const scale = document.getElementById('ui-scale-select');
+  const preset = document.getElementById('readable-preset');
+  const refresh = () => {
+    if (scale) scale.value = String(state.CONFIG?.ui?.scale || 1);
+    if (preset)
+      preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
+  };
+  refresh();
+  for (const control of [scale, preset].filter(Boolean)) {
+    control.onchange = async () => {
+      // Serialize saves so a slow response cannot undo a newer appearance choice.
+      if (scale) scale.disabled = true;
+      if (preset) preset.disabled = true;
+      try {
+        await persistReadabilitySelection(
+          control === scale
+            ? { scale: Number(scale.value) }
+            : { highContrast: preset.checked, opaquePanels: preset.checked }
+        );
+      } catch (error) {
+        log.error('Failed to save readability settings:', error);
+        refresh();
+        showToast(t('Failed to save readability settings'), 'warning', 3000);
+      } finally {
+        if (scale) scale.disabled = false;
+        if (preset) preset.disabled = false;
+      }
+    };
+  }
+
   const activeTileGlow = document.getElementById('active-tile-glow');
   if (activeTileGlow) {
     activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
@@ -3842,7 +3897,6 @@ function bindLanguageSettingsUi() {
             'success',
             2200
           );
-          localePackListCache = await window.electronAPI.getLocalePacks(true);
         }
       } catch (error) {
         log.error(`Failed locale pack action: ${action}`, error);
@@ -5972,10 +6026,14 @@ export {
 async function refreshDesktopIntegration() {
   const panel = document.getElementById('desktop-integration');
   if (!panel || !window.electronAPI.getDesktopIntegration) return;
+  const output = document.getElementById('desktop-bindings');
+  // Keep the controls usable even before Hyprland detection succeeds.
+  document.getElementById('desktop-bindings-copy').onclick = () =>
+    navigator.clipboard.writeText(output.value);
+  document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
   const info = await window.electronAPI.getDesktopIntegration();
   panel.hidden = !info?.hyprland;
   if (!info?.hyprland) return;
-  const output = document.getElementById('desktop-bindings');
   const format = document.getElementById('desktop-bindings-format');
   const renderBindings = () => {
     const field = format?.value === 'hyprlang' ? 'legacyBinding' : 'binding';
@@ -5983,9 +6041,6 @@ async function refreshDesktopIntegration() {
   };
   renderBindings();
   if (format) format.onchange = renderBindings;
-  document.getElementById('desktop-bindings-copy').onclick = () =>
-    navigator.clipboard.writeText(output.value);
-  document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
   document.getElementById('desktop-integration-status').textContent = info.lastActivation
     ? `Last shortcut received: ${info.lastActivation.id} at ${info.lastActivation.at}`
     : 'No shortcut received yet. Press a configured shortcut, then refresh.';

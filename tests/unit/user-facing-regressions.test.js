@@ -505,16 +505,31 @@ describe('User-facing audit regressions', () => {
       ['light', 'turn_off', { entity_id: light.entity_id }],
     ]);
   });
-  it('retains primary-card keyboard focus when a light changes state', () => {
-    const light = entity('light.primary_focus', 'off', { brightness: 128 });
-    state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
-    state.setStates({ [light.entity_id]: light });
-    ui.renderPrimaryCards();
-    document.querySelector('[data-primary-card="true"]').focus();
-    const updated = { ...light, state: 'on' };
-    state.setEntityState(updated);
-    ui.updateEntityInUI(updated);
-    expect(document.activeElement.dataset.entityId).toBe(light.entity_id);
-    expect(document.activeElement.tabIndex).toBe(0);
-  });
+  it.each(['Enter', ' '])(
+    'retains primary-card focus and activates once with %s after a state change',
+    (key) => {
+      const light = entity('light.primary_focus', 'off', { brightness: 128 });
+      state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
+      state.setStates({ [light.entity_id]: light });
+      ui.renderPrimaryCards();
+      const primary = document.querySelector('[data-primary-card="true"] .tile-primary-button');
+      primary.focus();
+      expect(document.activeElement).toBe(primary);
+      const updated = { ...light, state: 'on' };
+      state.setEntityState(updated);
+      ui.updateEntityInUI(updated);
+      const focused = document.activeElement;
+      expect(focused.classList.contains('tile-primary-button')).toBe(true);
+      expect(focused.closest('[data-primary-card="true"]').dataset.entityId).toBe(light.entity_id);
+      expect(focused.tabIndex).toBe(0);
+      {
+        mockCallService.mockClear();
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        focused.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true); // Suppress the native click: exactly one activation.
+        expect(mockCallService).toHaveBeenCalledTimes(1);
+        expect(mockCallService.mock.calls[0][2].entity_id).toBe(light.entity_id);
+      }
+    }
+  );
 });

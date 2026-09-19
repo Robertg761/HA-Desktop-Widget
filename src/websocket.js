@@ -3,6 +3,9 @@ import log from './logger.js';
 import state from './state.js';
 import { WS_REQUEST_TIMEOUT_MS, WS_INITIAL_ID } from './constants.js';
 
+const HEARTBEAT_INTERVAL_MS = 30000;
+const CONNECTION_TIMEOUT_MS = 15000;
+
 function getWebSocketErrorMessage(event) {
   const explicitMessage =
     (typeof event?.message === 'string' && event.message.trim()) ||
@@ -58,6 +61,45 @@ class WebSocketManager extends EventEmitter {
     this.messageSubscriptionHandlers = new Map();
     this.nextMessageSubscriptionKey = 1;
     this.isAuthenticated = false;
+    this.healthTimer = null;
+    this.heartbeatId = null;
+  }
+
+  clearHealthCheck() {
+    clearTimeout(this.healthTimer);
+    this.healthTimer = null;
+    this.heartbeatId = null;
+  }
+
+  // A suspended machine or vanished network can leave readyState OPEN indefinitely.
+  // HA's application-level ping/pong checks the server, not merely the local socket.
+  scheduleHeartbeat(socket) {
+    this.clearHealthCheck();
+    this.healthTimer = setTimeout(() => {
+      if (this.ws !== socket || !this.isAuthenticated) return;
+      this.heartbeatId = this.wsId++;
+      this.healthTimer = setTimeout(() => this.failConnection(socket), CONNECTION_TIMEOUT_MS);
+      try {
+        socket.send(JSON.stringify({ id: this.heartbeatId, type: 'ping' }));
+      } catch {
+        this.failConnection(socket);
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  failConnection(socket) {
+    if (!socket || this.ws !== socket) return;
+    this.clearHealthCheck();
+    this.rejectPendingRequestsForSocket(socket, new Error('Home Assistant connection lost'));
+    this.ws = null;
+    this.isAuthenticated = false;
+    this.resetMessageSubscriptionState();
+    try {
+      socket.close();
+    } catch {
+      // The socket is already detached; recovery must not depend on a close event.
+    }
+    this.emit('close', { intentional: false });
   }
 
   clearPendingRequest(id) {
@@ -86,6 +128,7 @@ class WebSocketManager extends EventEmitter {
   }
 
   connect() {
+    this.clearHealthCheck();
     log.debug('Attempting to connect to Home Assistant WebSocket');
     this.emit('connect-attempt');
     if (
@@ -136,6 +179,7 @@ class WebSocketManager extends EventEmitter {
       ws.__intentionalClose = false;
       this.ws = ws;
       this.isAuthenticated = false;
+      this.healthTimer = setTimeout(() => this.failConnection(ws), CONNECTION_TIMEOUT_MS);
 
       ws.onopen = () => {
         if (this.ws !== ws) return;
@@ -149,7 +193,7 @@ class WebSocketManager extends EventEmitter {
       };
 
       ws.onerror = (event) => {
-        if (this.ws !== ws) return;
+        if (this.ws !== ws || ws.__intentionalClose) return;
         const message = getWebSocketErrorMessage(event);
         log.error('WebSocket error:', message);
         this.emit('error', new Error(message));
@@ -162,6 +206,7 @@ class WebSocketManager extends EventEmitter {
           log.debug('Ignoring close event from superseded WebSocket connection');
           return;
         }
+        this.clearHealthCheck();
         this.ws = null;
         this.isAuthenticated = false;
         this.resetMessageSubscriptionState();
@@ -178,6 +223,10 @@ class WebSocketManager extends EventEmitter {
     if (!sourceSocket || sourceSocket !== this.ws) return;
     try {
       const msg = JSON.parse(event.data);
+      if (msg.type === 'pong' && this.heartbeatId !== null && msg.id === this.heartbeatId) {
+        this.scheduleHeartbeat(sourceSocket);
+        return;
+      }
       // Respond to HA application-level heartbeat to keep the connection alive
       if (msg && msg.type === 'ping' && sourceSocket.readyState === WebSocket.OPEN) {
         try {
@@ -189,8 +238,10 @@ class WebSocketManager extends EventEmitter {
       }
       if (msg.type === 'auth_ok') {
         this.isAuthenticated = true;
+        this.scheduleHeartbeat(sourceSocket);
       } else if (msg.type === 'auth_invalid') {
         this.isAuthenticated = false;
+        this.clearHealthCheck();
       }
       this.emit('message', msg);
 
@@ -357,6 +408,7 @@ class WebSocketManager extends EventEmitter {
   }
 
   close() {
+    this.clearHealthCheck();
     const closingWs = this.ws;
     if (closingWs) {
       closingWs.__intentionalClose = true;

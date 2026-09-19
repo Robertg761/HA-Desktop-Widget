@@ -1,7 +1,12 @@
 import state from './state.js';
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
 import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
-import { entitiesForArea, loadRoomRegistry } from './room-dashboard.js';
+import {
+  entitiesForArea,
+  loadRoomRegistry,
+  selectableEntityIds,
+  waitForRoomConnection,
+} from './room-dashboard.js';
 import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
@@ -790,7 +795,7 @@ function closeAddPageModal() {
   }
 }
 
-function showAddPageModal() {
+function showAddPageModal({ starter = false } = {}) {
   closeAddPageModal();
 
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
@@ -846,17 +851,76 @@ function showAddPageModal() {
   loadRooms.className = 'btn btn-secondary';
   loadRooms.textContent = t('Load rooms');
   roomGroup.append(roomLabel, roomSelect, loadRooms, roomStatus, roomEntities);
+  const deviceSearch = document.createElement('input');
+  deviceSearch.type = 'search';
+  deviceSearch.className = 'form-control room-device-search';
+  deviceSearch.placeholder = t('Search devices');
+  deviceSearch.setAttribute('aria-label', t('Search devices'));
+  const filterDevices = () => {
+    const query = deviceSearch.value.trim().toLocaleLowerCase();
+    roomEntities.querySelectorAll('label').forEach((label) => {
+      label.hidden = !`${label.textContent} ${label.querySelector('input').value}`
+        .toLocaleLowerCase()
+        .includes(query);
+    });
+  };
+  deviceSearch.addEventListener('input', filterDevices);
+  if (starter) roomGroup.insertBefore(deviceSearch, roomEntities);
   modal.querySelector('.modal-body').appendChild(roomGroup);
   let registry = null;
+  let availableStates = state.STATES;
+  const preview = document.createElement('div');
+  preview.className = 'room-dashboard-preview';
+  preview.setAttribute('aria-live', 'polite');
+  roomGroup.appendChild(preview);
+  const updatePreview = () => {
+    const selected = [...roomEntities.querySelectorAll('input:checked')];
+    preview.replaceChildren();
+    const title = document.createElement('p');
+    title.textContent = t('Page preview: {{count}} devices', { count: selected.length });
+    preview.appendChild(title);
+    selected.slice(0, 8).forEach(({ value }) => {
+      const tile = document.createElement('div');
+      tile.className = 'room-preview-tile';
+      const entity = availableStates[value];
+      tile.textContent = `${utils.getEntityDisplayName(entity)} — ${entity.state}`;
+      preview.appendChild(tile);
+    });
+    if (selected.length > 8) {
+      const remaining = document.createElement('p');
+      remaining.textContent = t('And {{count}} more devices', { count: selected.length - 8 });
+      preview.appendChild(remaining);
+    }
+  };
+  roomEntities.addEventListener('change', updatePreview);
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
   let autoFilledName = '';
   loadRooms.onclick = async () => {
     loadRooms.disabled = true;
+    if (starter) saveBtn.disabled = true;
     roomStatus.textContent = t('Loading rooms…');
     try {
-      registry = await loadRoomRegistry(websocket);
+      if (starter) {
+        if (!websocket.isConnected()) roomStatus.textContent = t('Connecting to Home Assistant…');
+        if (!(await waitForRoomConnection(websocket, () => modal.isConnected))) return;
+        roomStatus.textContent = t('Loading rooms…');
+        const response = await websocket.request({ type: 'get_states' });
+        if (response?.success === false || !Array.isArray(response?.result))
+          throw new Error('states unavailable');
+        availableStates = Object.fromEntries(
+          response.result.map((entity) => [entity.entity_id, entity])
+        );
+      }
+      try {
+        registry = await loadRoomRegistry(websocket);
+      } catch (error) {
+        if (!starter) throw error;
+        // State access does not require administrator registry permissions.
+        registry = { areas: [], entities: [], devices: [] };
+      }
       if (!modal.isConnected) return;
-      roomSelect.replaceChildren(new Option(t('Empty page'), ''));
+      if (!starter) availableStates = state.STATES;
+      roomSelect.replaceChildren(new Option(starter ? t('All devices') : t('Empty page'), ''));
       roomEntities.replaceChildren();
       registry.areas
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -865,6 +929,18 @@ function showAddPageModal() {
         });
       roomStatus.textContent = registry.areas.length ? '' : t('No rooms found in Home Assistant.');
       loadRooms.hidden = true;
+      if (starter) {
+        roomSelect.value =
+          registry.areas.find(
+            (area) =>
+              entitiesForArea(area.area_id, registry.entities, registry.devices, availableStates)
+                .length
+          )?.area_id || '';
+        roomSelect.onchange();
+        if (!registry.areas.length)
+          roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
+        saveBtn.disabled = false;
+      }
     } catch {
       roomStatus.textContent = t(
         'Could not load rooms. Check your connection and permissions, then retry.'
@@ -875,35 +951,56 @@ function showAddPageModal() {
     }
   };
   roomSelect.onchange = () => {
+    // Reconnect replaces the state map while an existing dialog can stay open.
+    // Starter mode owns its explicit get_states snapshot instead.
+    if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
-    if (!roomSelect.value || !registry) {
+    preview.replaceChildren();
+    if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       return;
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
     const nameInput = modal.querySelector('#add-page-name');
     if (!nameInput.value.trim() || nameInput.value === autoFilledName) {
-      nameInput.value = area?.name || '';
+      nameInput.value = area?.name || (starter ? t('My devices') : '');
       autoFilledName = nameInput.value;
     }
-    const ids = entitiesForArea(
-      roomSelect.value,
-      registry.entities,
-      registry.devices,
-      state.STATES
-    );
+    const ids =
+      !roomSelect.value && starter
+        ? selectableEntityIds(availableStates, registry.entities)
+        : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
     roomStatus.textContent = ids.length
       ? t('Choose the entities to include.')
       : t('No available entities in this room.');
+    ids.sort((a, b) =>
+      utils
+        .getEntityDisplayName(availableStates[a])
+        .localeCompare(utils.getEntityDisplayName(availableStates[b]))
+    );
+    const defaults = new Set(
+      ids
+        .filter(
+          (id) =>
+            /^(light|switch|climate|fan|cover|media_player)\./.test(id) &&
+            !['unknown', 'unavailable'].includes(availableStates[id].state)
+        )
+        .slice(0, 8)
+    );
     ids.forEach((id) => {
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.value = id;
-      checkbox.checked = true;
-      label.append(checkbox, document.createTextNode(utils.getEntityDisplayName(state.STATES[id])));
+      checkbox.checked = !starter || defaults.has(id);
+      label.append(
+        checkbox,
+        document.createTextNode(utils.getEntityDisplayName(availableStates[id]))
+      );
       roomEntities.appendChild(label);
     });
+    filterDevices();
+    updatePreview();
   };
   const input = modal.querySelector('#add-page-name');
   const saveBtn = modal.querySelector('#add-page-save-btn');
@@ -930,7 +1027,7 @@ function showAddPageModal() {
     if (!submissionInFlight) void uiUtils.closeModal(modal, closeOptions);
   };
   const submit = async () => {
-    if (submissionInFlight) return;
+    if (submissionInFlight || saveBtn.disabled) return;
     const name = (input?.value || '').trim();
     if (!name) {
       if (input) input.focus();
@@ -993,7 +1090,7 @@ function showAddPageModal() {
   modal.onclick = (event) => {
     if (event.target === modal) close();
   };
-  if (websocket.isConnected?.()) void loadRooms.onclick();
+  if (starter || websocket.isConnected?.()) void loadRooms.onclick();
 }
 
 async function restoreDashboard(layout) {
@@ -1032,7 +1129,9 @@ function syncQuickAccessRovingTabIndex(preferredTile = null) {
   }
 
   visibleTiles.forEach((tile, index) => {
-    tile.setAttribute('tabindex', index === quickAccessRovingIndex ? '0' : '-1');
+    const target = tile.querySelector('.tile-primary-button') || tile;
+    if (target !== tile) tile.removeAttribute('tabindex');
+    target.setAttribute('tabindex', index === quickAccessRovingIndex ? '0' : '-1');
   });
 }
 
@@ -1072,7 +1171,7 @@ function handleQuickAccessGridKeydown(event) {
   if (!nextTile) return;
 
   syncQuickAccessRovingTabIndex(nextTile);
-  nextTile.focus();
+  (nextTile.querySelector('.tile-primary-button') || nextTile).focus();
 }
 
 function setupQuickAccessGridKeyboardNavigation() {
@@ -2183,14 +2282,30 @@ function updateEntityInUI(entity, options = {}) {
       if (item.classList.contains('camera-preview-tile')) {
         camera.disposeCameraPreview(item);
       }
-      const restorePrimaryFocus = isPrimary && document.activeElement === item;
+      const focused = document.activeElement;
+      const hadFocus = item.contains(focused);
+      const focusedControl = hadFocus
+        ? [
+            '.rename-btn',
+            '.remove-btn',
+            '.desktop-pin-quick-toggle',
+            '.tile-details-button',
+            '.tile-primary-button',
+          ].find((selector) => focused.matches(selector))
+        : null;
       item.replaceWith(newControl);
-      if (restorePrimaryFocus) newControl.focus();
 
       // If in reorganize mode, add buttons to the newly created element
       // Note: SortableJS automatically handles drag behavior for all children
       if (isReorganizeMode) {
         addButtonsToElement(newControl);
+      }
+      if (hadFocus) {
+        // Editing buttons must exist before restoring their focus. If an action
+        // disappeared, focus the tile rather than a different device action.
+        const target = (focusedControl && newControl.querySelector(focusedControl)) || newControl;
+        target.tabIndex = 0;
+        target.focus();
       }
     });
     syncQuickAccessRovingTabIndex(
@@ -5881,6 +5996,7 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
     theme: state.CONFIG?.ui?.theme || 'auto',
     accent: state.CONFIG?.ui?.accent || 'original',
     background: state.CONFIG?.ui?.background || 'original',
+    scale: state.CONFIG?.ui?.scale || 1,
   });
   const current = desktopPinSceneMinSyncState.get(entityId) || {};
   if (current.signature === nextSignature && current.pending) {
@@ -5920,7 +6036,14 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
     }
 
     try {
-      const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, minBounds);
+      // DOM measurements are CSS pixels; native window bounds are independent of page zoom.
+      const scale = [1, 1.15, 1.3, 1.5].includes(Number(state.CONFIG?.ui?.scale))
+        ? Number(state.CONFIG.ui.scale)
+        : 1;
+      const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, {
+        width: Math.ceil(minBounds.width * scale),
+        height: Math.ceil(minBounds.height * scale),
+      });
       desktopPinSceneMinSyncState.set(entityId, {
         ...latest,
         pending: false,
@@ -8082,7 +8205,13 @@ function createControlElement(entity, options = {}) {
     if (!isQuickAccessContext) {
       div.tabIndex = 0;
       div.addEventListener('keydown', (event) => {
-        if (event.target !== div || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (
+          (event.target !== div && !event.target.classList.contains('tile-primary-button')) ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey
+        )
+          return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         if (shouldBlockInteraction(div)) return;
@@ -8315,6 +8444,42 @@ function createControlElement(entity, options = {}) {
       `;
     }
 
+    if (['light', 'climate', 'fan', 'cover', 'media_player'].includes(domain)) {
+      // Sibling native buttons expose both actions without nesting a button inside role=button.
+      const primary = document.createElement('button');
+      primary.type = 'button';
+      primary.className = 'tile-primary-button';
+      primary.tabIndex = isQuickAccessContext ? -1 : 0;
+      div.appendChild(primary);
+      const details = document.createElement('button');
+      details.type = 'button';
+      details.className = 'tile-details-button';
+      details.textContent = t('Controls');
+      details.setAttribute(
+        'aria-label',
+        t('Controls for {{name}}', { name: utils.getEntityDisplayName(entity) })
+      );
+      // A details click must never start the tile's hold timer or primary action.
+      [
+        'pointerdown',
+        'pointerup',
+        'mousedown',
+        'mouseup',
+        'touchstart',
+        'touchend',
+        'keydown',
+        'keyup',
+      ].forEach((type) => {
+        details.addEventListener(type, (event) => event.stopPropagation());
+      });
+      details.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (!shouldBlockInteraction(div)) openEntityDetailModal(entity);
+      });
+      div.appendChild(details);
+      applyQuickAccessTileAccessibility(div, entity);
+    }
+
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
       setupMediaPlayerControls(div, entity);
@@ -8380,10 +8545,24 @@ function createUnavailableElement(entityId) {
 
 function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
-  div.setAttribute('role', 'button');
-  div.setAttribute('tabindex', '-1');
+  const primary = div.querySelector('.tile-primary-button');
+  div.setAttribute('role', primary ? 'group' : 'button');
   div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
-  div.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+  if (primary) {
+    div.removeAttribute('tabindex');
+    div.removeAttribute('aria-keyshortcuts');
+    primary.setAttribute('aria-label', utils.getEntityDisplayName(entity));
+    primary.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+    div
+      .querySelector('.tile-details-button')
+      ?.setAttribute(
+        'aria-label',
+        t('Controls for {{name}}', { name: utils.getEntityDisplayName(entity) })
+      );
+  } else {
+    div.setAttribute('tabindex', '-1');
+    div.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+  }
 }
 
 function updateExistingUnavailableControl(div, entityId) {
@@ -12632,6 +12811,7 @@ function removeEscapeKeyListener() {
 }
 
 export {
+  showAddPageModal,
   restoreDashboard,
   renderActiveTab,
   updateEntityInUI,

@@ -1011,13 +1011,27 @@ function getWindowTransparencyOptions(currentConfig = config) {
 
 function shouldUseNativeWindowOpacity(currentConfig = config) {
   const transparencyOptions = getWindowTransparencyOptions(currentConfig);
-  return !transparencyOptions.transparent;
+  return !currentConfig?.ui?.opaquePanels && !transparencyOptions.transparent;
 }
 
 function applyWindowOpacity(targetWindow, opacity, currentConfig = config) {
   if (!targetWindow || targetWindow.isDestroyed()) return Math.max(0.5, Math.min(1, opacity || 1));
   const safeOpacity = Math.max(0.5, Math.min(1, opacity || 1));
   targetWindow.setOpacity(shouldUseNativeWindowOpacity(currentConfig) ? safeOpacity : 1);
+  return safeOpacity;
+}
+
+// Use the same effective opacity for the widget and pins, including slider previews.
+// The return value stays the user's preference so an opaque preset never overwrites it.
+function applyWindowOpacityToAll(opacity, currentConfig = config) {
+  const safeOpacity = Math.max(0.5, Math.min(1, opacity || 1));
+  for (const target of [mainWindow, ...desktopPinWindows.values()]) {
+    try {
+      applyWindowOpacity(target, safeOpacity, currentConfig);
+    } catch (error) {
+      log.warn('Failed to apply window opacity:', error.message);
+    }
+  }
   return safeOpacity;
 }
 
@@ -2242,6 +2256,8 @@ function applyDesktopPinWindowShape(targetWindow, bounds = null) {
   }
 }
 
+let latestHaConnectionState = 'connecting';
+
 function sendDesktopPinUpdate(entityId, extra = {}) {
   const window = desktopPinWindows.get(entityId);
   if (!window || window.isDestroyed()) return;
@@ -2261,6 +2277,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
     },
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
+      runtimeState: latestHaConnectionState,
     }),
     editMode: desktopPinEditMode,
     ...extra,
@@ -2517,8 +2534,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   });
 
   try {
-    const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
-    pinWindow.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
+    applyWindowOpacity(pinWindow, config.opacity, config);
   } catch (error) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
@@ -2640,9 +2656,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
     }
 
     try {
-      const safeOpacity = Math.max(0.5, Math.min(1, config.opacity || 1));
-      const transparencyOptions = getWindowTransparencyOptions(config);
-      window.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
+      applyWindowOpacity(window, config.opacity, config);
     } catch (error) {
       log.warn('Failed to refresh desktop pin window state:', error.message);
     }
@@ -2671,9 +2685,9 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
 
     try {
       if (
-        typeof nextConfig?.opacity === 'number' &&
-        (previousConfig?.opacity !== nextConfig.opacity ||
-          previousConfig?.frostedGlass !== nextConfig?.frostedGlass)
+        previousConfig?.opacity !== nextConfig?.opacity ||
+        previousConfig?.frostedGlass !== nextConfig?.frostedGlass ||
+        !!previousConfig?.ui?.opaquePanels !== !!nextConfig?.ui?.opaquePanels
       ) {
         applyWindowOpacity(mainWindow, nextConfig.opacity, nextConfig);
       }
@@ -2685,9 +2699,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   desktopPinWindows.forEach((window) => {
     if (!window || window.isDestroyed()) return;
     try {
-      const safeOpacity = Math.max(0.5, Math.min(1, nextConfig?.opacity || 1));
-      const transparencyOptions = getWindowTransparencyOptions(nextConfig);
-      window.setOpacity(transparencyOptions.transparent ? 1 : safeOpacity);
+      applyWindowOpacity(window, nextConfig?.opacity, nextConfig);
     } catch (error) {
       log.warn('Failed to update desktop pin opacity:', error.message);
     }
@@ -5154,11 +5166,11 @@ function setupProfileSyncWakeTriggers() {
   try {
     // Suspend stops the interval timer from firing on time, so the profile is
     // usually stale by the time the machine comes back.
-    powerMonitor.on('suspend', invalidateTrayEntityIcons);
+    powerMonitor.on('suspend', () => invalidateHaConnectionState('disconnected'));
     powerMonitor.on('resume', () => {
       requestOpportunisticProfileSync('resume');
-      invalidateTrayEntityIcons();
-      if (trayEntityIcons.size && mainWindow && !mainWindow.isDestroyed()) {
+      invalidateHaConnectionState('connecting');
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
       }
     });
@@ -5316,9 +5328,11 @@ function createWindow() {
   });
 
   // A reload or renderer failure must not leave old readings looking live.
-  mainWindow.webContents.on('did-start-loading', invalidateTrayEntityIcons);
-  mainWindow.webContents.on('render-process-gone', invalidateTrayEntityIcons);
-  mainWindow.on('unresponsive', invalidateTrayEntityIcons);
+  mainWindow.webContents.on('did-start-loading', () => invalidateHaConnectionState('connecting'));
+  mainWindow.webContents.on('render-process-gone', () =>
+    invalidateHaConnectionState('disconnected')
+  );
+  mainWindow.on('unresponsive', () => invalidateHaConnectionState('disconnected'));
   mainWindow.on('responsive', () => requestTrayEntityIconRefresh(true));
   // Load the index.html file
   mainWindow.loadFile('index.html');
@@ -5538,6 +5552,14 @@ function createTrayEntityIcon(entityId) {
   }
   trayIcon.setContextMenu(buildTrayEntityContextMenu(entityId));
   return trayIcon;
+}
+
+function invalidateHaConnectionState(status) {
+  latestHaConnectionState = status;
+  invalidateTrayEntityIcons();
+  Object.keys(config?.desktopPins || {}).forEach((entityId) => {
+    sendDesktopPinUpdate(entityId, { type: 'connection' });
+  });
 }
 
 function invalidateTrayEntityIcons() {
@@ -5956,7 +5978,17 @@ ipcMain.handle('get-locale-bootstrap', (event) => {
 ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
   const sender = authorizeIpcSender(event, 'get-locale-packs');
   if (!sender) return rejectUnauthorizedIpc('get-locale-packs');
-  return localizationService.listLocalePacks(!!forceRefresh);
+  try {
+    return await localizationService.listLocalePacks(!!forceRefresh);
+  } catch (error) {
+    log.warn('Failed to load locale pack manifest:', error);
+    // Electron does not preserve custom properties on thrown IPC errors.
+    // Return plain data so installed languages remain usable while offline.
+    return {
+      error: 'manifest_unavailable',
+      installedPacks: Array.isArray(error?.installedPacks) ? error.installedPacks : [],
+    };
+  }
 });
 
 ipcMain.handle('download-locale-pack', async (event, locale) => {
@@ -5971,9 +6003,8 @@ ipcMain.handle('download-locale-pack', async (event, locale) => {
     success: true,
     pack,
     localeBootstrap: localizationService.getLocaleBootstrap(config?.ui?.language || 'auto'),
-    // Keep the response strict for now: if the authoritative manifest refresh fails
-    // after mutation, the renderer reports failure. Decoupled success is deferred.
-    packs: await localizationService.listLocalePacks(true),
+    // The mutation is complete. Settings refreshes the remote catalog separately.
+    packs: localizationService.listInstalledLocalePacks(),
   };
 });
 
@@ -5989,9 +6020,8 @@ ipcMain.handle('remove-locale-pack', async (event, locale) => {
     success: true,
     ...result,
     localeBootstrap: localizationService.getLocaleBootstrap(config?.ui?.language || 'auto'),
-    // Keep the response strict for now: if the authoritative manifest refresh fails
-    // after mutation, the renderer reports failure. Decoupled success is deferred.
-    packs: await localizationService.listLocalePacks(true),
+    // The mutation is complete. Settings refreshes the remote catalog separately.
+    packs: localizationService.listInstalledLocalePacks(),
   };
 });
 
@@ -6746,10 +6776,24 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
     },
     connection: createDesktopPinConnectionState(config, {
       secureStoragePending: hasDeferredSecureConfigWork(),
+      runtimeState: latestHaConnectionState,
     }),
     isPinned: !!config?.desktopPins?.[normalizedEntityId],
     editMode: desktopPinEditMode,
   };
+});
+
+ipcMain.handle('publish-ha-connection-state', (event, status) => {
+  const sender = authorizeIpcSender(event, 'publish-ha-connection-state');
+  if (!sender) return rejectUnauthorizedIpc('publish-ha-connection-state');
+  if (!['connecting', 'connected', 'disconnected', 'auth-failed'].includes(status)) {
+    return { success: false, error: 'Invalid connection state' };
+  }
+  latestHaConnectionState = status;
+  Object.keys(config?.desktopPins || {}).forEach((entityId) => {
+    sendDesktopPinUpdate(entityId, { type: 'connection' });
+  });
+  return { success: true };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
@@ -6995,7 +7039,7 @@ ipcMain.handle(
       ? Math.max(0.5, Math.min(1, requestedOpacity))
       : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
     try {
-      safeOpacity = applyWindowOpacity(mainWindow, safeOpacity, config);
+      safeOpacity = applyWindowOpacityToAll(safeOpacity, config);
     } catch (error) {
       log.warn('Failed to set main window opacity:', error.message);
     }
@@ -7004,7 +7048,7 @@ ipcMain.handle(
     if (!persistence.success) {
       config.opacity = previousOpacity;
       try {
-        applyWindowOpacity(mainWindow, previousOpacity, config);
+        applyWindowOpacityToAll(previousOpacity, config);
       } catch (error) {
         log.warn('Failed to restore main window opacity:', error.message);
       }
@@ -7026,13 +7070,13 @@ ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   }
   if (typeof effects.opacity === 'number') {
     try {
-      applyWindowOpacity(mainWindow, effects.opacity, config);
+      applyWindowOpacityToAll(effects.opacity, config);
     } catch (error) {
       log.warn('Failed to preview main window opacity:', error.message);
     }
   } else if (typeof effects.frostedGlass === 'boolean') {
     try {
-      applyWindowOpacity(mainWindow, config.opacity, config);
+      applyWindowOpacityToAll(config.opacity, config);
     } catch (error) {
       log.warn('Failed to preview main window opacity mode:', error.message);
     }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.19",
+  "version": "1.2.21",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -640,6 +640,22 @@
     "Popup shortcut received. You can use it to bring the widget forward.": "Popup shortcut received. You can use it to bring the widget forward.",
     "No popup shortcut received yet. Press your configured shortcut, then check again.": "No popup shortcut received yet. Press your configured shortcut, then check again.",
     "Could not check the shortcut. Try again.": "Could not check the shortcut. Try again.",
-    "Set up shortcuts": "Set up shortcuts"
+    "Set up shortcuts": "Set up shortcuts",
+    "Text and control size": "टेक्स्ट और नियंत्रणों का आकार",
+    "Enlarges the whole interface, including dialogs and desktop pins.": "डायलॉग और डेस्कटॉप पिन सहित पूरे इंटरफ़ेस को बड़ा करता है।",
+    "High contrast with opaque panels": "अपारदर्शी पैनलों के साथ उच्च कंट्रास्ट",
+    "Failed to save readability settings": "पठनीयता की सेटिंग सहेजी नहीं जा सकीं",
+    "Controls": "नियंत्रण",
+    "Controls for {{name}}": "{{name}} के नियंत्रण",
+    "All devices": "सभी डिवाइस",
+    "And {{count}} more devices": "और {{count}} डिवाइस",
+    "Choose rooms and devices": "कमरे और डिवाइस चुनें",
+    "Connecting to Home Assistant…": "Home Assistant से कनेक्ट हो रहा है…",
+    "My devices": "मेरे डिवाइस",
+    "Page preview: {{count}} devices": "पेज का पूर्वावलोकन: {{count}} डिवाइस",
+    "Rooms are unavailable. Choose from your devices instead.": "कमरे उपलब्ध नहीं हैं। इसके बजाय अपने डिवाइस में से चुनें।",
+    "Search devices": "डिवाइस खोजें",
+    "Skip for now": "अभी छोड़ें",
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "आपका कनेक्शन सहेज लिया गया है। अपना पहला पेज बनाने के लिए किसी कमरे का पूर्वावलोकन देखें या डिवाइस चुनें। आप यह बाद में खाली डैशबोर्ड से भी कर सकते हैं।"
   }
 }

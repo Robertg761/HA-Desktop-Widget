@@ -254,6 +254,8 @@ function createSettingsModalDOM() {
       <input type="range" id="opacity-slider" min="1" max="100" />
       <span id="opacity-value">90</span>
 
+      <select id="ui-scale-select"><option value="1">100%</option><option value="1.5">150%</option></select>
+      <input type="checkbox" id="readable-preset" />
       <label for="density-select">Layout density</label>
       <select id="density-select">
         <option value="comfortable">Comfortable</option>
@@ -1259,8 +1261,7 @@ describe('Settings + Config Integration', () => {
     });
 
     test('language pack load failures surface an error while still showing installed packs', async () => {
-      const error = new Error('manifest unavailable');
-      error.installedPacks = [
+      const installedPacks = [
         {
           locale: 'fr',
           displayName: 'Français',
@@ -1271,7 +1272,10 @@ describe('Settings + Config Integration', () => {
           updateAvailable: false,
         },
       ];
-      window.electronAPI.getLocalePacks.mockRejectedValueOnce(error);
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce({
+        error: 'manifest_unavailable',
+        installedPacks,
+      });
 
       await settings.openSettings();
       await waitForLanguagePackRefresh();
@@ -1284,6 +1288,111 @@ describe('Settings + Config Integration', () => {
       );
       expect(document.getElementById('language-packs-list').textContent).toContain('Français');
       expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
+      expect(document.querySelector('#language-select option[value="fr"]').disabled).toBe(false);
+      expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
+    });
+
+    test('a failed manifest fetch is distinct from an empty catalog and recovers on reopen', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce({
+        error: 'manifest_unavailable',
+        installedPacks: [],
+      });
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const list = document.getElementById('language-packs-list');
+      const status = document.getElementById('language-pack-status');
+      expect(list.textContent).toBe('Unable to load language packs right now.');
+      expect(status.classList.contains('hidden')).toBe(false);
+
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      expect(list.textContent).toBe('No downloadable language packs are currently available.');
+      expect(status.classList.contains('hidden')).toBe(true);
+      expect(window.electronAPI.getLocalePacks).toHaveBeenLastCalledWith(true);
+    });
+
+    test('removal refresh handles an offline catalog without retaining the removed pack', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        { locale: 'fr', displayName: 'Français', installed: true, version: '1.0.0' },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const list = document.getElementById('language-packs-list');
+      const button = list.querySelector('[data-locale-action="remove"]');
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce({
+        error: 'manifest_unavailable',
+        installedPacks: [],
+      });
+      window.electronAPI.getLocalePacks.mockClear();
+      await list.onclick({ target: button });
+      expect(window.electronAPI.removeLocalePack).toHaveBeenCalledWith('fr');
+      expect(window.electronAPI.getLocalePacks).toHaveBeenCalledTimes(1);
+      expect(list.textContent).toBe('Unable to load language packs right now.');
+      expect(list.querySelector('[data-locale-action="remove"]')).toBeNull();
+    });
+
+    test.each(['resolve', 'reject'])(
+      'ignores an older failed refresh after retry succeeds: %s',
+      async (outcome) => {
+        let resolveOld;
+        let rejectOld;
+        window.electronAPI.getLocalePacks.mockReturnValueOnce(
+          new Promise((resolve, reject) => {
+            resolveOld = resolve;
+            rejectOld = reject;
+          })
+        );
+        await settings.openSettings();
+        const oldRefresh = settings.waitForLanguagePackRefresh();
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+          { locale: 'fr', displayName: 'Français', installed: true, version: '1.0.0' },
+        ]);
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+        if (outcome === 'resolve') {
+          resolveOld({ error: 'manifest_unavailable', installedPacks: [] });
+        } else {
+          rejectOld(new Error('IPC timeout'));
+        }
+        await oldRefresh;
+        expect(document.getElementById('language-packs-list').textContent).toContain('Français');
+        expect(document.getElementById('language-pack-status').classList.contains('hidden')).toBe(
+          true
+        );
+      }
+    );
+
+    test('an older catalog cannot restore a removed language after a newer offline refresh', async () => {
+      let resolveOld;
+      window.electronAPI.getLocalePacks.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        })
+      );
+      await settings.openSettings();
+      const oldRefresh = settings.waitForLanguagePackRefresh();
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce({
+        error: 'manifest_unavailable',
+        installedPacks: [],
+      });
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      resolveOld([{ locale: 'fr', displayName: 'Français', installed: true, version: '1.0.0' }]);
+      await oldRefresh;
+      expect(document.getElementById('language-packs-list').textContent).toBe(
+        'Unable to load language packs right now.'
+      );
+      expect(document.querySelector('#language-select option[value="fr"]')).toBeNull();
+    });
+
+    test('an IPC rejection still displays a language pack error', async () => {
+      window.electronAPI.getLocalePacks.mockRejectedValueOnce(new Error('IPC failed'));
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      expect(document.getElementById('language-packs-list').textContent).toBe(
+        'Unable to load language packs right now.'
+      );
     });
 
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {
@@ -2156,6 +2265,43 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('persists readability choices and restores them when settings reopen', async () => {
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      const preset = document.getElementById('readable-preset');
+      scale.value = '1.5';
+      await scale.onchange();
+      preset.checked = true;
+      await preset.onchange();
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({
+          scale: 1.5,
+          highContrast: true,
+          opaquePanels: true,
+        })
+      );
+      await settings.openSettings();
+      expect(scale.value).toBe('1.5');
+      expect(preset.checked).toBe(true);
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.scale).toBe(1.5);
+    });
+
+    test('rolls back failed readability saves and re-enables the controls', async () => {
+      state.CONFIG.ui.scale = 1;
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      scale.value = '1.5';
+      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
+      await scale.onchange();
+      expect(state.CONFIG.ui.scale).toBe(1);
+      expect(scale.value).toBe('1');
+      expect(scale.disabled).toBe(false);
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ scale: 1 })
+      );
+    });
+
     test('loads, previews, and saves layout density from personalization settings', async () => {
       state.CONFIG.ui.density = 'compact';
       await settings.openSettings();
@@ -2211,6 +2357,98 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
       expect(state.CONFIG.ui.activeTileGlow).toBe(false);
+    });
+  });
+
+  describe('Desktop integration controls', () => {
+    beforeEach(() => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `
+        <div id="desktop-integration" hidden>
+          <select id="desktop-bindings-format"><option value="lua">Lua</option><option value="hyprlang">Hyprlang</option></select>
+          <textarea id="desktop-bindings"></textarea>
+          <button id="desktop-bindings-copy"></button>
+          <button id="desktop-integration-refresh"></button>
+          <p id="desktop-integration-status"></p>
+          <p id="desktop-integration-legacy" hidden></p>
+        </div>`
+      );
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: jest.fn().mockResolvedValue(undefined) },
+      });
+    });
+
+    afterEach(() => {
+      delete window.electronAPI.getDesktopIntegration;
+      delete navigator.clipboard;
+    });
+
+    test.each([{ hyprland: false }, null])(
+      'keeps refresh and copy working after detection returns %p',
+      async (initialInfo) => {
+        const info = {
+          hyprland: true,
+          shortcuts: [{ binding: 'lua binding', legacyBinding: 'legacy binding' }],
+          lastActivation: { id: 'popup', at: '12:00' },
+          legacyActivation: { notice: 'Replace the old binding' },
+        };
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValueOnce(initialInfo)
+          .mockResolvedValue(info);
+        await settings.initializePopupHotkey();
+        const panel = document.getElementById('desktop-integration');
+        const refresh = document.getElementById('desktop-integration-refresh');
+        const copy = document.getElementById('desktop-bindings-copy');
+        const output = document.getElementById('desktop-bindings');
+        expect(panel.hidden).toBe(true);
+        expect(typeof refresh.onclick).toBe('function');
+        output.value = 'displayed bindings';
+        copy.click();
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith('displayed bindings');
+
+        await refresh.onclick();
+        expect(panel.hidden).toBe(false);
+        expect(output.value).toBe('lua binding');
+        expect(document.getElementById('desktop-integration-status').textContent).toBe(
+          'Last shortcut received: popup at 12:00'
+        );
+        expect(document.getElementById('desktop-integration-legacy').hidden).toBe(false);
+        const format = document.getElementById('desktop-bindings-format');
+        format.value = 'hyprlang';
+        format.dispatchEvent(new Event('change'));
+        await refresh.onclick();
+        copy.click();
+        expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('legacy binding');
+        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2);
+        expect(window.electronAPI.getDesktopIntegration).toHaveBeenCalledTimes(3);
+
+        window.electronAPI.getDesktopIntegration.mockResolvedValueOnce({ hyprland: false });
+        await refresh.onclick();
+        expect(panel.hidden).toBe(true);
+        await refresh.onclick();
+        expect(panel.hidden).toBe(false);
+        expect(output.value).toBe('legacy binding');
+      }
+    );
+
+    test('binds controls while desktop detection is still pending', async () => {
+      let resolveInfo;
+      window.electronAPI.getDesktopIntegration = jest.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveInfo = resolve;
+        })
+      );
+      const initialization = settings.initializePopupHotkey();
+      await Promise.resolve();
+      const refreshHandler = document.getElementById('desktop-integration-refresh').onclick;
+      const copyHandler = document.getElementById('desktop-bindings-copy').onclick;
+      resolveInfo({ hyprland: false });
+      await initialization;
+      expect(typeof refreshHandler).toBe('function');
+      expect(typeof copyHandler).toBe('function');
     });
   });
 

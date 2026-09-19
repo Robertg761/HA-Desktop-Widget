@@ -47,6 +47,38 @@ describe('downloadable locale-pack manifest', () => {
     expect(pack.displayName).toBe('Deutsch');
     expect(pack.messages).toEqual(germanMessages);
   });
+  test('translates onboarding and readability messages without losing placeholders', () => {
+    const keys = [
+      'Text and control size',
+      'Enlarges the whole interface, including dialogs and desktop pins.',
+      'High contrast with opaque panels',
+      'Failed to save readability settings',
+      'Controls',
+      'Controls for {{name}}',
+      'All devices',
+      'And {{count}} more devices',
+      'Choose rooms and devices',
+      'Connecting to Home Assistant…',
+      'My devices',
+      'Page preview: {{count}} devices',
+      'Rooms are unavailable. Choose from your devices instead.',
+      'Search devices',
+      'Skip for now',
+      'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.',
+    ];
+    const packDir = path.resolve(__dirname, '../../locale-packs');
+    const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+    const placeholders = (text) => (text.match(/{{\w+}}/g) || []).sort();
+    for (const { locale } of manifest.packs) {
+      const pack = JSON.parse(fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8'));
+      for (const key of keys) {
+        expect(pack.messages[key]).toEqual(expect.any(String));
+        expect(pack.messages[key]).not.toBe(key);
+        expect(placeholders(pack.messages[key])).toEqual(placeholders(key));
+      }
+    }
+  });
+
   test('includes every dynamically selected tray state message', () => {
     const {
       STATE_NAMES,
