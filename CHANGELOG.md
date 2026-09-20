@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inspect connection diagnostics and copy a report that excludes connection credentials and entity data.
 - Select a 1-hour, 6-hour, 24-hour, or 7-day sensor detail chart with minimum, maximum, sample average, and retry controls.
 - Add workflow message keys to bundled and downloadable catalogs, with English fallbacks for new labels.
+- Translate the new alert, history, diagnostics, command palette, dashboard restore, and Hyprland setup labels in the German, Spanish, French, Hindi, Chinese, and Arabic language packs.
 
 ### Fixed
 
