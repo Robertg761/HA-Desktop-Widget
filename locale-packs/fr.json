@@ -635,7 +635,7 @@
     "Lua (.lua)": "Lua (.lua)",
     "Hyprlang (.conf)": "Hyprlang (.conf)",
     "On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.": "Sous Hyprland, le widget se place sous les fenêtres normales. Utilisez le raccourci clavier pour le ramener au premier plan, ou ouvrez-le depuis la zone de notification.",
-    "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Définissez un raccourci clavier dans les paramètres, puis copiez sa liaison dans votre configuration Hyprland. Appuyez dessus et vérifiez ici avant de terminer la configuration. Vous pouvez aussi le faire plus tard.",
+    "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Définissez un raccourci clavier dans les paramètres, puis copiez sa combinaison de touches dans votre configuration Hyprland. Appuyez dessus et vérifiez ici avant de terminer la configuration. Vous pouvez aussi le faire plus tard.",
     "Check popup shortcut": "Vérifier le raccourci clavier",
     "Popup shortcut received. You can use it to bring the widget forward.": "Raccourci clavier reçu. Vous pouvez l'utiliser pour ramener le widget au premier plan.",
     "No popup shortcut received yet. Press your configured shortcut, then check again.": "Aucun raccourci clavier reçu pour l'instant. Appuyez sur le raccourci configuré, puis vérifiez à nouveau.",
