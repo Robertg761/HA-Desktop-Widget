@@ -482,6 +482,51 @@ describe('tile and device dialog polish', () => {
     });
   });
 
+  describe('cover dialog', () => {
+    it('follows the position Home Assistant reports after Stop', async () => {
+      const cover = entity('cover.window', 'open', {
+        current_position: 50,
+        supported_features: 15,
+      });
+      state.setStates({ [cover.entity_id]: cover });
+      ui.openEntityDetailModal(cover);
+      document.querySelector('[data-action="close_cover"]').click();
+      await jest.advanceTimersByTimeAsync(0);
+      document.querySelector('[data-action="stop_cover"]').click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('#cover-position-value').textContent).toBe('0%');
+      state.setEntityState(
+        entity('cover.window', 'open', { current_position: 50, supported_features: 15 })
+      );
+      expect(document.querySelector('#cover-position-value').textContent).toBe('50%');
+      expect(document.querySelector('#cover-slider').value).toBe('50');
+    });
+
+    it('applies a state Home Assistant pushed while a command was in flight', async () => {
+      const call = pendingCall();
+      const garage = entity('cover.garage', 'closed', { supported_features: 3 });
+      state.setStates({ [garage.entity_id]: garage });
+      ui.openEntityDetailModal(garage);
+      document.querySelector('[data-action="open_cover"]').click();
+      state.setEntityState(entity('cover.garage', 'open', { supported_features: 3 }));
+      expect(document.querySelector('#cover-position-value').textContent).toBe('Closed');
+      call.resolve({ success: true });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('#cover-position-value').textContent).toBe('Open');
+    });
+
+    it('shows a capitalized, live state for a cover without position', async () => {
+      const garage = entity('cover.garage', 'closed', { supported_features: 3 });
+      state.setStates({ [garage.entity_id]: garage });
+      ui.openEntityDetailModal(garage);
+      expect(document.querySelector('#cover-position-value').textContent).toBe('Closed');
+      document.querySelector('[data-action="open_cover"]').click();
+      await jest.advanceTimersByTimeAsync(0);
+      state.setEntityState(entity('cover.garage', 'open', { supported_features: 3 }));
+      expect(document.querySelector('#cover-position-value').textContent).toBe('Open');
+    });
+  });
+
   it('applies a fan state Home Assistant pushed while a command was in flight', async () => {
     const call = pendingCall();
     const fan = entity('fan.ceiling', 'on', { percentage: 33, supported_features: 1 });

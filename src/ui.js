@@ -12459,7 +12459,7 @@ function showCoverControls(coverEntity) {
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
-            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : formatDesktopPinClimateModeLabel(coverEntity.state || 'unknown')}</div>
+            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : utils.escapeHtml(getLocalizedEntityStateLabel(coverEntity.state))}</div>
             <div class="cover-position-label">${capabilities.canSetPosition ? 'Position' : 'State'}</div>
 
             ${
@@ -12516,20 +12516,32 @@ function showCoverControls(coverEntity) {
     const cancelBtn = modal.querySelector('#cover-cancel');
     const actionButtons = modal.querySelectorAll('.cover-action-btn');
     let confirmedPosition = currentPosition;
-    let positionDebounceTimer;
+    let positionDebounceTimer = null;
     let coverCommandRevision = 0;
+    let coverCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const callCoverService = (service, data, rollback) => {
       const revision = ++coverCommandRevision;
+      coverCommandsInFlight += 1;
       return callServiceWithUiRollback(coverEntity, 'cover', service, data, () => {
         if (revision === coverCommandRevision) rollback?.();
-      }).then((result) => ({ ...result, ok: result.ok && revision === coverCommandRevision }));
+      }).then((result) => {
+        coverCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) {
+          setTimeout(() => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
+        }
+        return { ...result, ok: result.ok && revision === coverCommandRevision };
+      });
     };
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -12561,6 +12573,7 @@ function showCoverControls(coverEntity) {
 
         clearTimeout(positionDebounceTimer);
         positionDebounceTimer = setTimeout(() => {
+          positionDebounceTimer = null;
           callCoverService(
             'set_cover_position',
             {
@@ -12583,6 +12596,7 @@ function showCoverControls(coverEntity) {
     actionButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         clearTimeout(positionDebounceTimer);
+        positionDebounceTimer = null;
         const action = btn.getAttribute('data-action');
         const previousPosition = confirmedPosition;
 
@@ -12607,6 +12621,33 @@ function showCoverControls(coverEntity) {
         });
       });
     });
+
+    // Follow Home Assistant while open (e.g. where Stop left the cover), but never under a
+    // pending command or a focused slider.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      missedLiveUpdate = coverCommandsInFlight > 0;
+      if (missedLiveUpdate || positionDebounceTimer) return;
+      if (!slider) {
+        if (positionValue)
+          positionValue.textContent = getLocalizedEntityStateLabel(nextEntity.state);
+        return;
+      }
+      const position = Number(nextEntity.attributes?.current_position);
+      if (nextEntity.attributes?.current_position == null || !Number.isFinite(position)) return;
+      confirmedPosition = Math.max(0, Math.min(100, Math.round(position)));
+      if (document.activeElement === slider) return;
+      slider.value = String(confirmedPosition);
+      if (positionValue) positionValue.textContent = `${confirmedPosition}%`;
+      updateVisual(confirmedPosition);
+    };
+    unsubscribe = state.subscribeEntity(coverEntity.entity_id, syncFromEntity);
+    // A focused slider was skipped above; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
 
     // Close on backdrop click
     modal.onclick = (e) => {
