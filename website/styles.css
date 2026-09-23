@@ -350,11 +350,6 @@ h1 {
   transition: opacity 500ms ease;
 }
 .stage-hint.dim { opacity: 0; }
-.stage-caption {
-  margin: 18px 0 0;
-  font-size: 13.5px;
-  color: var(--faint);
-}
 
 /* ---------------- The widget ---------------- */
 
@@ -694,14 +689,6 @@ button.qa:active { transform: scale(0.96); }
   padding: 120px 24px 0;
 }
 .section-head { max-width: 640px; margin-bottom: 48px; }
-.kicker {
-  margin: 0 0 14px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  transition: color 300ms ease;
-}
 h2 {
   font-size: clamp(1.9rem, 3.8vw, 2.9rem);
   font-weight: 700;
