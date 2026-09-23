@@ -278,6 +278,25 @@
   margin: 0;
 }
 
+/* The target state field comes from the older alert markup; match the fields around it. */
+.alert-advanced-options > .form-group {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.alert-advanced-options > .form-group > label {
+  margin-bottom: 8px;
+  color: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+}
+
+.alert-advanced-options > .form-group > .form-help {
+  margin-top: 8px;
+}
+
 .alert-advanced-options label[hidden] {
   display: none;
 }
