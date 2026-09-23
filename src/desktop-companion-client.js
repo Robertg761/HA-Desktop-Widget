@@ -27,6 +27,11 @@ function normalizeState(value) {
   return state;
 }
 
+// Home Assistant answers commands from an integration that is not installed with unknown_command.
+function isUnknownCommand(error) {
+  return error?.code === 'unknown_command';
+}
+
 function assertSuccessfulResponse(response, fallbackMessage) {
   if (response?.success === false) {
     const error = new Error(response?.error?.message || fallbackMessage);
@@ -55,6 +60,10 @@ class DesktopCompanionClient {
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.log = logger;
     this.started = false;
+    // Set when Home Assistant does not know the companion commands; cleared on each new session so
+    // an integration installed or updated in the meantime is picked up after a reconnect.
+    this.integrationMissing = false;
+    this.snapshotUnsupported = false;
     this.generation = 0;
     this.unsubscribeCommands = null;
     this.heartbeatTimer = null;
@@ -94,9 +103,20 @@ class DesktopCompanionClient {
     }
   }
 
+  // Without the optional integration every report is refused. Say so once, then stop asking.
+  noteIntegrationMissing() {
+    if (this.integrationMissing) return;
+    this.integrationMissing = true;
+    this.log.info(
+      'HA Desktop Widget Companion integration is not installed in Home Assistant; companion updates are off for this connection.'
+    );
+  }
+
   async initializeSession() {
     if (!this.started || !this.websocket.isConnected?.()) return false;
     const generation = ++this.generation;
+    this.integrationMissing = false;
+    this.snapshotUnsupported = false;
     if (this.unsubscribeCommands) {
       this.unsubscribeCommands();
       this.unsubscribeCommands = null;
@@ -147,14 +167,15 @@ class DesktopCompanionClient {
       return true;
     } catch (error) {
       if (this.started && generation === this.generation) {
-        this.log.warn('HA Desktop Widget Companion session failed:', error?.message || error);
+        if (isUnknownCommand(error)) this.noteIntegrationMissing();
+        else this.log.warn('HA Desktop Widget Companion session failed:', error?.message || error);
       }
       return false;
     }
   }
 
   async reportState(desktopId = null, explicitState = null) {
-    if (!this.started || !this.websocket.isConnected?.()) return false;
+    if (!this.started || this.integrationMissing || !this.websocket.isConnected?.()) return false;
     const registration = desktopId ? null : await this.getRegistration();
     const resolvedDesktopId = boundedString(desktopId || registration?.desktop_id);
     if (!resolvedDesktopId) return false;
@@ -170,13 +191,15 @@ class DesktopCompanionClient {
       );
       return true;
     } catch (error) {
-      this.log.warn('Failed to report desktop companion state:', error?.message || error);
+      if (isUnknownCommand(error)) this.noteIntegrationMissing();
+      else this.log.warn('Failed to report desktop companion state:', error?.message || error);
       return false;
     }
   }
 
   async reportConfigSnapshot(desktopId = null) {
-    if (!this.started || !this.websocket.isConnected?.()) return false;
+    if (!this.started || this.integrationMissing || this.snapshotUnsupported) return false;
+    if (!this.websocket.isConnected?.()) return false;
     if (typeof this.getConfigDocument !== 'function') return false;
     const registration = desktopId ? null : await this.getRegistration();
     const resolvedDesktopId = boundedString(desktopId || registration?.desktop_id);
@@ -197,8 +220,13 @@ class DesktopCompanionClient {
       this.lastConfigSnapshot = serialized;
       return true;
     } catch (error) {
-      // Older Home Assistant integrations do not know this command; stay quiet
-      // after the first refusal instead of warning every heartbeat.
+      // Older companion integrations do not know this command; stay quiet after the first
+      // refusal instead of warning on every heartbeat and layout change.
+      if (isUnknownCommand(error)) {
+        this.snapshotUnsupported = true;
+        this.log.info('The HA Desktop Widget Companion integration does not store layouts.');
+        return false;
+      }
       this.lastConfigSnapshot = 'unsupported';
       this.log.warn('Desktop layout snapshot was not accepted:', error?.message || error);
       return false;
