@@ -556,6 +556,24 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
+  it('gives Settings a hook that reloads the interface language', async () => {
+    await loadRenderer({ config: oauthConfig() });
+    triggerMockEvent('openSettings');
+    const hooks = mockSettings.openSettings.mock.calls[0][0];
+    const { setLocaleBootstrap, translateDocument } = require('../../src/i18n.js');
+    const { renderActiveTab } = require('../../src/ui.js');
+    mockElectronAPI.getLocaleBootstrap.mockClear();
+    setLocaleBootstrap.mockClear();
+    renderActiveTab.mockClear();
+
+    await hooks.refreshLocale();
+
+    expect(mockElectronAPI.getLocaleBootstrap).toHaveBeenCalledTimes(1);
+    expect(setLocaleBootstrap).toHaveBeenCalledTimes(1);
+    expect(translateDocument).toHaveBeenCalledWith(document);
+    expect(renderActiveTab).toHaveBeenCalled();
+  });
+
   it('starts the runtime once when OAuth completion also broadcasts config-updated', async () => {
     await loadRenderer();
     mockElectronAPI.startHomeAssistantOAuth.mockImplementationOnce(async () => {

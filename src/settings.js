@@ -3690,11 +3690,13 @@ function bindLanguageSettingsUi() {
       const action = button.dataset.localeAction;
       if (!locale || !action) return;
 
+      const hadFocus = button === document.activeElement;
       button.disabled = true;
       try {
         if (action === 'download') {
           const result = await window.electronAPI.downloadLocalePack(locale);
           localePackListCache = Array.isArray(result?.packs) ? result.packs : localePackListCache;
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack downloaded: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -3704,6 +3706,7 @@ function bindLanguageSettingsUi() {
           );
         } else if (action === 'remove') {
           await window.electronAPI.removeLocalePack(locale);
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack removed: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -3723,9 +3726,41 @@ function bindLanguageSettingsUi() {
         );
       } finally {
         await refreshLanguagePackList(true);
+        if (hadFocus) focusLanguagePackRow(locale);
       }
     };
   }
+}
+
+/**
+ * Switch the interface language right away when a download or removal changes the pack in use,
+ * rather than on the next launch. A removed active language falls back to English with the
+ * same "Using English" notice as at startup; the selection stays for a later re-download.
+ */
+async function refreshLocaleIfAffected(locale) {
+  const baseLocale = (locale || '').split('-')[0].toLowerCase();
+  const { activeLocale, requestedLocale } = getLocaleState();
+  const inUse = [activeLocale, requestedLocale].some(
+    (value) => (value || '').split('-')[0].toLowerCase() === baseLocale
+  );
+  if (!inUse || !settingsUiHooks?.refreshLocale) return;
+  try {
+    await settingsUiHooks.refreshLocale();
+  } catch (error) {
+    log.error('Failed to refresh the interface language:', error);
+  }
+}
+
+// The pack list re-renders after every action; keep keyboard focus on the same language's row.
+function focusLanguagePackRow(locale) {
+  const buttons = Array.from(
+    document.querySelectorAll('#language-packs-list button[data-locale]:not(:disabled)')
+  );
+  // An offline catalog drops a removed pack's row; fall back to the language selector.
+  const target =
+    buttons.find((button) => button.dataset.locale === locale) ||
+    document.getElementById('language-select');
+  target?.focus({ preventScroll: true });
 }
 
 /**

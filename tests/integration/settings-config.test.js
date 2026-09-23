@@ -1352,6 +1352,94 @@ describe('Settings + Config Integration', () => {
       expect(document.querySelector('#language-select option[value="fr"]')).toBeNull();
     });
 
+    describe('language pack actions', () => {
+      const { setLocaleBootstrap } = require('../../src/i18n.js');
+      const frenchPack = (installed) => ({
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.0.0',
+        latestVersion: '1.0.0',
+        installed,
+        updateAvailable: false,
+      });
+      const spanishPack = { ...frenchPack(true), locale: 'es', displayName: 'Español' };
+      const openWithLocaleHooks = async () => {
+        const hooks = {
+          initUpdateUI: jest.fn(),
+          // Mirrors the renderer: reload the bootstrap, which falls back to English once the
+          // selected pack is gone.
+          refreshLocale: jest.fn(async () => {
+            setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'fr', messages: {} });
+          }),
+        };
+        await settings.openSettings(hooks);
+        await waitForLanguagePackRefresh();
+        return hooks;
+      };
+
+      afterEach(() => {
+        setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'en', messages: {} });
+      });
+
+      test('removing the language in use falls back to English immediately', async () => {
+        state.CONFIG.ui.language = 'fr';
+        setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true)]);
+        const hooks = await openWithLocaleHooks();
+
+        const list = document.getElementById('language-packs-list');
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(false)]);
+        await list.onclick({ target: list.querySelector('[data-locale-action="remove"]') });
+
+        expect(hooks.refreshLocale).toHaveBeenCalledTimes(1);
+        // Same state as a restart without the pack: English, the selection kept, and the notice.
+        expect(document.getElementById('language-select').value).toBe('fr');
+        expect(
+          document.getElementById('language-fallback-summary').classList.contains('hidden')
+        ).toBe(false);
+      });
+
+      test('removing a language that is not in use leaves the interface alone', async () => {
+        setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true), spanishPack]);
+        const hooks = await openWithLocaleHooks();
+
+        const list = document.getElementById('language-packs-list');
+        await list.onclick({ target: list.querySelector('[data-locale="es"]') });
+
+        expect(window.electronAPI.removeLocalePack).toHaveBeenCalledWith('es');
+        expect(hooks.refreshLocale).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ['download', false, 'remove'],
+        ['remove', true, 'download'],
+      ])(
+        'keeps keyboard focus on the row after %s',
+        async (action, installedBefore, nextAction) => {
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+            spanishPack,
+            frenchPack(installedBefore),
+          ]);
+          await openWithLocaleHooks();
+          const list = document.getElementById('language-packs-list');
+          const button = list.querySelector(`[data-locale="fr"][data-locale-action="${action}"]`);
+          button.focus();
+
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+            spanishPack,
+            frenchPack(!installedBefore),
+          ]);
+          await list.onclick({ target: button });
+
+          expect(button.isConnected).toBe(false);
+          expect(document.activeElement.dataset.locale).toBe('fr');
+          expect(document.activeElement.dataset.localeAction).toBe(nextAction);
+        }
+      );
+    });
+
     test('an IPC rejection still displays a language pack error', async () => {
       window.electronAPI.getLocalePacks.mockRejectedValueOnce(new Error('IPC failed'));
       await settings.openSettings();
