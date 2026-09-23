@@ -4358,6 +4358,38 @@ function formatDesktopPinClimateModeLabel(mode) {
   return DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode] || normalizedMode.replace(/_/g, ' ');
 }
 
+// Capitalized, translated device state ("open" -> "Open"), sharing the tray's state names.
+function getLocalizedEntityStateLabel(value) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!key) return t('Unknown');
+  const name = trayEntitySupport.STATE_NAMES[key];
+  if (name) return t(name);
+  const text = key.replace(/_/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function getDeviceTileStateText(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const attributes = entity?.attributes || {};
+  if (domain === 'light') {
+    const brightness = Number(attributes.brightness);
+    if (entity.state === 'on' && attributes.brightness != null && brightness >= 0) {
+      return `${Math.round((brightness / 255) * 100)}%`;
+    }
+    return getLocalizedEntityStateLabel(entity.state);
+  }
+  const label = getLocalizedEntityStateLabel(entity?.state);
+  const percent =
+    domain === 'cover' && entity.state !== 'closed'
+      ? attributes.current_position
+      : domain === 'fan' && entity.state === 'on'
+        ? attributes.percentage
+        : null;
+  return percent != null && Number.isFinite(Number(percent))
+    ? `${label} ${Math.round(Number(percent))}%`
+    : label;
+}
+
 function getDesktopPinClimateModesToShow(modes, activeMode, maxCount) {
   const availableModes = Array.isArray(modes) ? modes.filter(Boolean) : [];
   if (!availableModes.length) {
@@ -8368,18 +8400,8 @@ function createControlElement(entity, options = {}) {
         utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state
       );
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
-    } else if (
-      entity.entity_id.startsWith('light.') &&
-      entity.state === 'on' &&
-      entity.attributes.brightness
-    ) {
-      const brightnessValue = Number(entity.attributes.brightness);
-      if (!isNaN(brightnessValue) && brightnessValue >= 0) {
-        const brightness = Math.round((brightnessValue / 255) * 100);
-        stateDisplay = `<div class="control-state">${brightness}%</div>`;
-      }
-    } else if (entity.entity_id.startsWith('light.') && entity.state !== 'on') {
-      stateDisplay = `<div class="control-state">Off</div>`;
+    } else if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
+      stateDisplay = `<div class="control-state">${utils.escapeHtml(getDeviceTileStateText(entity))}</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
       if (temp)
@@ -8861,19 +8883,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     return true;
   }
 
+  if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
+    // A tile without a state line is redrawn with one.
+    if (!stateEl) return false;
+    stateEl.textContent = getDeviceTileStateText(displayEntity);
+  }
+
   if (displayEntity.entity_id.startsWith('light.')) {
     div.title = 'Click to toggle, hold for brightness control';
-    if (stateEl) {
-      if (displayEntity.state === 'on' && displayEntity.attributes?.brightness) {
-        const brightnessValue = Number(displayEntity.attributes.brightness);
-        stateEl.textContent =
-          !isNaN(brightnessValue) && brightnessValue >= 0
-            ? `${Math.round((brightnessValue / 255) * 100)}%`
-            : '';
-      } else {
-        stateEl.textContent = 'Off';
-      }
-    }
     return true;
   }
 

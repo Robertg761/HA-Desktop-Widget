@@ -252,4 +252,30 @@ describe('tile and device dialog polish', () => {
     ui.renderActiveTab();
     expect(labels()).toEqual(['Controls', 'Controls', 'Controls']);
   });
+
+  describe('device tile state line', () => {
+    it.each([
+      [
+        entity('cover.window', 'open', { current_position: 50, supported_features: 15 }),
+        'Open 50%',
+      ],
+      [entity('cover.garage', 'closed', { supported_features: 3 }), 'Closed'],
+      [entity('lock.front', 'locked'), 'Locked'],
+      [entity('fan.ceiling', 'on', { percentage: 67, supported_features: 1 }), 'On 67%'],
+      [entity('fan.basic', 'off', { supported_features: 0 }), 'Off'],
+      [entity('light.onoff', 'on', { supported_color_modes: ['onoff'] }), 'On'],
+    ])('shows the state of %o', (device, expected) => {
+      renderTiles([device]);
+      expect(tile(device.entity_id).querySelector('.control-state').textContent).toBe(expected);
+    });
+
+    it('follows live updates and translates the state', () => {
+      renderTiles([entity('lock.front', 'locked'), entity('cover.window', 'closed')]);
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { Unlocked: 'Entriegelt' } });
+      liveUpdate(entity('lock.front', 'unlocked'));
+      liveUpdate(entity('cover.window', 'opening', { current_position: 30 }));
+      expect(tile('lock.front').querySelector('.control-state').textContent).toBe('Entriegelt');
+      expect(tile('cover.window').querySelector('.control-state').textContent).toBe('Opening 30%');
+    });
+  });
 });
