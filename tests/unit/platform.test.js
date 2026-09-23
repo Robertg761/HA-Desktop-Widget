@@ -423,11 +423,11 @@ describe('platform helpers', () => {
       getMainWindowVisualOptions({
         platform: 'linux',
         frostedGlass: true,
-        transparencyOptions: { transparent: false, backgroundColor: '#28282d' },
+        transparencyOptions: { transparent: false, backgroundColor: '#12161e' },
       })
     ).toEqual({
       transparent: false,
-      backgroundColor: '#28282d',
+      backgroundColor: '#12161e',
       roundedCorners: false,
     });
   });

@@ -268,7 +268,7 @@ function getMainWindowVisualOptions({
     transparent: !!transparencyOptions.transparent,
     backgroundColor:
       transparencyOptions.backgroundColor ||
-      (transparencyOptions.transparent ? '#00000000' : '#28282d'),
+      (transparencyOptions.transparent ? '#00000000' : '#12161e'),
   };
 
   if (platform === 'win32') {

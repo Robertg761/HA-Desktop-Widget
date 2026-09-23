@@ -1653,8 +1653,8 @@ function renderColorThemeOptions() {
 
     if (isOriginalTheme && isBackgroundTarget) {
       const isLightTheme = document.body?.classList.contains('theme-light');
-      const swatchRgb = isLightTheme ? '250, 250, 250' : '40, 40, 45';
-      const swatchHex = isLightTheme ? '#fafafa' : '#28282d';
+      const swatchRgb = isLightTheme ? '250, 250, 250' : '18, 22, 30';
+      const swatchHex = isLightTheme ? '#fafafa' : '#12161e';
       option.style.setProperty('--swatch', swatchHex);
       option.style.setProperty('--swatch-rgb', swatchRgb);
     } else {

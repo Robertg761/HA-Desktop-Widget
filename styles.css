@@ -10,8 +10,8 @@
    with a Chrome UA (that is what returns woff2), then save each subset under
    fonts/ using the <family>-<subset>.woff2 naming below.
    No italic faces are shipped: 'Plus Jakarta Sans' is only ever bound to
-   --desktop-pin-display-font and nothing in that scope sets font-style: italic,
-   so the italic subsets were dead weight. The declared Inter range is the
+   --font-display and --desktop-pin-display-font, and nothing in those scopes
+   sets font-style: italic, so the italic subsets were dead weight. The declared Inter range is the
    variable font's real wght axis (100..900), not the 300..700 the css2 request
    asks for — narrowing it here would clamp the 750/800 weights this sheet uses.
    ============================================ */
@@ -158,21 +158,24 @@ html {
      COLOR SYSTEM
      ============================================ */
 
-  /* Base Colors */
-  --bg-color: rgba(40, 40, 45, 0.8);
-  --window-bg-rgb: 40, 40, 45;
+  /* Base Colors. A cool, deep slate rather than neutral grey: the glass reads as
+     tinted glass over the wallpaper instead of a flat grey panel. Mirrors
+     BACKGROUND_BASES.dark in src/ui-utils.js, which re-applies these at runtime. */
+  --bg-color: rgba(18, 22, 30, 0.8);
+  --window-bg-rgb: 18, 22, 30;
   --window-bg-alpha: 1;
-  --bg-elevated: rgba(30, 30, 35, 0.9);
-  --bg-primary: rgba(20, 20, 25, 0.95);
-  --bg-secondary: rgba(30, 30, 35, 0.9);
-  --bg-tertiary: rgba(40, 40, 45, 0.85);
+  --bg-elevated: rgba(24, 28, 37, 0.9);
+  --bg-primary: rgba(13, 16, 22, 0.95);
+  --bg-secondary: rgba(24, 28, 37, 0.9);
+  --bg-tertiary: rgba(30, 35, 45, 0.85);
 
   /* Text Colors */
   --text-color: #f0f0f0;
   --text-primary: #f5f5f5;
   --text-secondary: #b0b0b0;
-  /* 5.2:1 against the dark window background (#28282d). The previous #808080
-     sat at ~3.7:1, under the 4.5:1 WCAG AA floor for body text. */
+  /* 5.2:1 against the old, lighter dark window background (#28282d), and higher
+     against the current slate. The previous #808080 sat at ~3.7:1, under the
+     4.5:1 WCAG AA floor for body text. */
   --text-tertiary: #9a9aa3;
   --muted-text: #a0a0a0;
 
@@ -207,11 +210,19 @@ html {
   --error-hover: #e57373;
 
   /* Surfaces */
-  --surface-1: rgba(25, 25, 30, 0.8);
-  --surface-2: rgba(35, 35, 40, 0.85);
-  --surface-3: rgba(45, 45, 50, 0.9);
-  --surface-hover: rgba(50, 50, 55, 0.95);
-  --card-bg: rgba(30, 30, 35, 0.7);
+  --surface-1: rgba(20, 24, 32, 0.8);
+  --surface-2: rgba(28, 33, 42, 0.85);
+  --surface-3: rgba(36, 41, 51, 0.9);
+  --surface-hover: rgba(42, 47, 58, 0.95);
+  --card-bg: rgba(24, 28, 37, 0.7);
+
+  /* Tiles and cards on the main view: a faint wash over the window glass, so
+     they read as lifted panes of the same glass rather than separate slabs. */
+  --tile-bg: rgba(255, 255, 255, 0.045);
+  --tile-bg-hover: rgba(255, 255, 255, 0.075);
+  --tile-border: rgba(255, 255, 255, 0.06);
+  --tile-border-hover: rgba(255, 255, 255, 0.12);
+  --window-highlight: rgba(255, 255, 255, 0.1);
 
   /* Borders */
   --border-color: rgba(255, 255, 255, 0.1);
@@ -236,17 +247,17 @@ html {
   --glass-opacity-dark: 0.9;
 
   /* Glass Effects (backdrop-filter compatible) */
-  --glass-surface: rgba(30, 30, 35, 0.7);
-  --glass-elevated: rgba(40, 40, 45, 0.8);
-  --glass-overlay: rgba(20, 20, 25, 0.85);
+  --glass-surface: rgba(24, 28, 37, 0.7);
+  --glass-elevated: rgba(30, 35, 45, 0.8);
+  --glass-overlay: rgba(13, 16, 22, 0.85);
   /* Base color of the layer painted beneath modal glass tints (see
      .modal-content, where its alpha is computed) so dialog text stays
      readable even where backdrop-filter silently fails (e.g. transparent
      Electron windows on Linux/Windows). */
-  --modal-backstop-rgb: 26, 26, 31;
-  --settings-modal-bg-rgb: 24, 24, 29;
+  --modal-backstop-rgb: 20, 24, 32;
+  --settings-modal-bg-rgb: 17, 21, 28;
   --settings-modal-bg-alpha: 0.82;
-  --settings-modal-panel-rgb: 31, 31, 37;
+  --settings-modal-panel-rgb: 24, 28, 37;
   --settings-modal-panel-alpha: 0.88;
 
   /* ============================================
@@ -279,6 +290,8 @@ html {
      @font-face block at the top of this file); everything after them is the
      platform fallback used until the woff2 subsets have decoded. */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Display face for the big numbers: clock, temperature, sensor readouts. */
+  --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, 'Segoe UI', sans-serif;
   --font-mono:
     ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Consolas', 'Liberation Mono', Menlo, monospace;
 
@@ -288,11 +301,13 @@ html {
   --font-size-3xs: 0.4375rem; /* 7px  — desktop-pin micro captions/badges */
   --font-size-2xs: 0.5rem; /* 8px */
   --font-size-xs: 0.625rem; /* 10px */
+  --font-size-xs-plus: 0.6875rem; /* 11px — section labels, tile state lines */
   --font-size-sm: 0.75rem; /* 12px */
   --font-size-base: 0.875rem; /* 14px */
   --font-size-md: 1rem; /* 16px */
   --font-size-lg: 1.125rem; /* 18px */
   --font-size-xl: 1.25rem; /* 20px */
+  --font-size-icon: 1.375rem; /* 22px — Quick Access tile icons */
   --font-size-2xl: 1.5rem; /* 24px */
   --font-size-2xl-plus: 1.75rem; /* 28px — half step: the sensor tile's
      "Extra Large" value size needs a rung above 2xl that is not the 30px 3xl
@@ -338,6 +353,7 @@ html {
   --radius-sm: 0.25rem; /* 4px */
   --radius-md: 0.5rem; /* 8px */
   --radius-lg: 0.75rem; /* 12px */
+  --radius-tile: 0.875rem; /* 14px — main-view cards and tiles */
   --radius-xl: 1rem; /* 16px */
   --radius-2xl: 1.5rem; /* 24px */
   --radius-full: 9999px;
@@ -432,6 +448,13 @@ html {
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
+
+  /* Tiles: white panes on the pale glass, edged just enough to separate. */
+  --tile-bg: rgba(255, 255, 255, 0.5);
+  --tile-bg-hover: rgba(255, 255, 255, 0.72);
+  --tile-border: rgba(0, 0, 0, 0.07);
+  --tile-border-hover: rgba(0, 0, 0, 0.13);
+  --window-highlight: rgba(255, 255, 255, 0.55);
 
   /* Glass Effects */
   --glass-surface: rgba(255, 255, 255, 0.7);
@@ -554,26 +577,23 @@ body.native-glass.frosted-glass {
   --bg-blur: calc(var(--frosted-blur, 32px) * 0.5);
 }
 
+/* The window is one pane of glass: the body carries the tint, and the header and
+   content sit on it clear (see below) instead of stacking tints of their own. */
+body.native-glass.frosted-glass:not(.desktop-pin-mode) {
+  background: rgba(
+    var(--frosted-glass-elevated-rgb, 30, 35, 45),
+    var(--frosted-glass-elevated-alpha, 0.5)
+  ) !important;
+}
+
+/* Software acrylic: one soft sheen over the tint. The scanline texture it used to
+   carry read as a screen-door pattern rather than glass, so it is gone. */
 body.software-glass.frosted-glass {
   background:
     linear-gradient(
-      135deg,
+      160deg,
       rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
-      rgba(255, 255, 255, 0) 42%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 0,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 1px,
-      transparent 1px,
-      transparent 4px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(0, 0, 0, var(--software-acrylic-shadow-alpha, 0.08)) 0,
-      rgba(0, 0, 0, var(--software-acrylic-shadow-alpha, 0.08)) 1px,
-      transparent 1px,
-      transparent 5px
+      rgba(255, 255, 255, 0) 38%
     ),
     rgba(var(--window-bg-rgb), var(--software-acrylic-bg-alpha, 0.55)) !important;
   backdrop-filter: blur(var(--bg-blur)) saturate(170%) contrast(108%);
@@ -584,22 +604,13 @@ body.software-glass.frosted-glass {
  * Frosted Glass Header & Content
  * When frosted glass is enabled, these elements need proper glass styling
  */
-body.frosted-glass .widget-header {
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
+body.frosted-glass .widget-header,
 body.frosted-glass .widget-content {
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-body.software-glass.frosted-glass .widget-header,
-body.software-glass.frosted-glass .widget-content,
 body.software-glass.frosted-glass .modal-content {
   background:
     linear-gradient(
@@ -646,33 +657,9 @@ body.linux-performance-mode {
   --glass-blur-light: 0px;
 }
 
-/* Status cards in frosted glass mode */
-body.frosted-glass .status-card {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* Media tile in frosted glass mode */
-body.frosted-glass .media-tile {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-}
-
-/* Control items in frosted glass mode */
-body.frosted-glass .control-item {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-body.frosted-glass .control-item:hover {
-  background: var(--glass-elevated);
-  border-color: rgba(255, 255, 255, 0.12);
-}
+/* Cards and tiles are washes over the window's single pane of glass, frosted or
+   not (see .status-card and .control-item); a second backdrop blur per tile would
+   only cost frames. */
 
 /* Section headers in frosted glass mode */
 body.frosted-glass .section-title {
@@ -749,14 +736,13 @@ html.desktop-pin-mode body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 14px;
   background: var(--glass-elevated);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--tile-border);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  /* The glass's top edge catching the light. */
+  box-shadow: inset 0 1px 0 var(--window-highlight);
 }
 
 .desktop-pin-shell {
@@ -807,7 +793,9 @@ body.desktop-pin-mode .desktop-pin-shell {
   border-radius: var(--radius-2xl);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 var(--window-highlight),
+    inset 0 0 0 1px var(--tile-border);
   isolation: isolate;
   clip-path: inset(0 round 24px);
 }
@@ -815,16 +803,9 @@ body.desktop-pin-mode .desktop-pin-shell {
 body.desktop-pin-mode.software-glass .desktop-pin-shell {
   background:
     linear-gradient(
-      135deg,
+      160deg,
       rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
-      rgba(255, 255, 255, 0) 42%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 0,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 1px,
-      transparent 1px,
-      transparent 4px
+      rgba(255, 255, 255, 0) 38%
     ),
     rgba(var(--window-bg-rgb), var(--software-acrylic-bg-alpha, 0.55));
 }
@@ -1804,6 +1785,21 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   animation: desktop-pin-fan-spin 1.6s linear infinite;
 }
 
+/* Line icons on pinned tiles take the tile's own tint, like an active Quick Access icon. */
+.desktop-pin-light-glyph .entity-line-icon,
+.desktop-pin-panel-glyph .entity-line-icon,
+.desktop-pin-fan-glyph .entity-line-icon,
+.desktop-pin-scene-emoji .entity-line-icon {
+  color: rgb(var(--desktop-pin-tint-rgb, var(--accent-rgb)));
+  filter: drop-shadow(0 0 6px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
+}
+
+/* At hero size the stroke is scaled down so the icon stays a line drawing. */
+.desktop-pin-scene-emoji .entity-line-icon {
+  stroke-width: 1.25;
+  filter: drop-shadow(0 0 14px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
+}
+
 @keyframes desktop-pin-fan-spin {
   from {
     transform: rotate(0deg);
@@ -2662,56 +2658,46 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .widget-title {
   font-size: var(--font-size-base);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
+/* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
+  --indicator-color: var(--danger);
+  order: -1;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--danger);
+  background: var(--indicator-color);
   transition: background-color var(--transition-slow);
   flex-shrink: 0;
-  margin-left: 8px;
-  box-shadow: 0 0 4px var(--danger);
+  margin: 0 2px 0 1px;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--indicator-color) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--indicator-color) 50%, transparent);
   -webkit-app-region: no-drag;
   cursor: help;
-  animation: pulseDisconnected 2s ease-in-out 2;
+  animation: pulseIndicator 2s ease-in-out 2;
 }
 
-@keyframes pulseDisconnected {
+@keyframes pulseIndicator {
   0%,
   100% {
-    box-shadow: 0 0 2px var(--danger);
     opacity: 0.8;
   }
   50% {
-    box-shadow: 0 0 8px var(--danger);
     opacity: 1;
   }
 }
 
 .connection-indicator.connected {
-  background: var(--success);
-  box-shadow: 0 0 6px var(--success);
-  animation: pulseConnected 3s ease-in-out 2;
-}
-
-@keyframes pulseConnected {
-  0%,
-  100% {
-    box-shadow: 0 0 3px var(--success);
-    opacity: 0.85;
-  }
-  50% {
-    box-shadow: 0 0 10px var(--success);
-    opacity: 1;
-  }
+  --indicator-color: #4ade80;
+  animation: pulseIndicator 3s ease-in-out 2;
 }
 
 .connection-indicator:focus-visible {
@@ -2787,25 +2773,34 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .control-btn {
-  width: 24px;
+  width: 26px;
   height: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted-text);
-  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--font-size-sm);
-  opacity: 0.65;
-  transition: all var(--transition-base);
+  opacity: 0.8;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
 }
 
 .control-btn:hover {
   opacity: 1;
-  transform: scale(1.15);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  background: var(--tile-bg-hover);
+}
+
+.control-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  opacity: 1;
 }
 
 .notification-bell-btn {
@@ -2822,9 +2817,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .notification-bell-btn:hover {
   background: var(--accent-bg);
-  border-color: rgba(var(--accent-rgb), 0.45);
   color: var(--accent-hover);
-  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.35);
 }
 
 .notification-bell-icon {
@@ -2853,38 +2846,31 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 #settings-btn:hover {
-  background: var(--accent-bg);
-  border-color: rgba(var(--accent-rgb), 0.45);
   color: var(--accent);
-  transform: scale(1.15) rotate(90deg);
-  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.35);
 }
 
-#minimize-btn:hover {
-  background: rgba(255, 183, 77, 0.2);
-  border-color: rgba(255, 183, 77, 0.5);
-  color: var(--warning);
-  box-shadow: 0 0 10px rgba(255, 183, 77, 0.35);
+#settings-btn svg {
+  transition: transform var(--duration-slow) var(--ease-emphasized);
+}
+
+#settings-btn:hover svg {
+  transform: rotate(60deg);
 }
 
 #close-btn:hover {
-  background: rgba(239, 83, 80, 0.2);
-  border-color: rgba(239, 83, 80, 0.5);
+  background: rgba(239, 83, 80, 0.18);
   color: var(--error);
-  box-shadow: 0 0 10px rgba(239, 83, 80, 0.35);
 }
 
 /* Main content */
 .widget-content {
-  padding: 12px;
+  padding: 12px 14px 14px;
   height: calc(100vh - 40px);
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--glass-elevated);
-  border-top: 1px solid var(--border-color);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   position: relative;
 }
 
@@ -2940,57 +2926,35 @@ body.first-run-active .widget-content > * {
 /* Media Player Tile */
 .media-tile {
   grid-column: 1 / -1; /* Span full width */
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: var(--space-3);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  padding: 10px;
   display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: var(--space-3);
+  grid-template-columns: 52px 1fr;
+  gap: var(--space-4);
   align-items: center;
-  backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    border-color var(--transition-base);
   min-height: 64px;
   overflow: hidden;
   position: relative;
   margin-bottom: 8px;
 }
 
-.media-tile::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  opacity: 0.5;
-}
-
 .media-tile:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-3px) scale(1.01);
-  box-shadow:
-    var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    var(--glow-accent);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
 }
 
 .media-tile-artwork {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg);
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
-  border: 1px solid var(--border-color);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3010,8 +2974,10 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-artwork-placeholder {
-  font-size: var(--font-size-2xl);
-  opacity: 0.3;
+  display: flex;
+  font-size: var(--font-size-icon);
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 .media-tile-content {
@@ -3032,17 +2998,18 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-color);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .media-tile-artist {
-  font-size: var(--font-size-xs);
-  color: var(--muted-text);
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3069,7 +3036,7 @@ body.first-run-active .widget-content > * {
 .media-tile-seek-bar {
   flex: 1;
   height: 3px;
-  background: var(--surface-3);
+  background: var(--tile-border-hover);
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
@@ -3085,7 +3052,7 @@ body.first-run-active .widget-content > * {
   background: var(--accent);
   transition: width var(--duration-slower) linear;
   border-radius: var(--radius-full);
-  box-shadow: 0 0 6px var(--accent);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
   position: relative;
 }
 
@@ -3145,12 +3112,11 @@ body.first-run-active .widget-content > * {
 
 .media-tile-btn:hover {
   color: var(--accent-hover);
-  transform: scale(1.2);
-  filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.45));
 }
 
 .media-tile-btn:active {
-  transform: scale(1);
+  transform: scale(0.92);
 }
 
 .media-tile-btn-play {
@@ -3167,18 +3133,17 @@ body.first-run-active .widget-content > * {
 
 .media-tile-btn-play:hover {
   color: var(--accent-hover);
-  transform: scale(1.25);
-  filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.6));
 }
 
 .media-tile-btn-play:active {
-  transform: scale(1.1);
+  transform: scale(0.92);
 }
 
-/* Add subtle glow when playing */
+/* Playing: the same steady glow an active tile's icon gets. */
 .media-tile-btn-play.playing {
   color: var(--accent);
-  animation: iconGlow 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
 .media-tile-btn-play.playing svg {
@@ -3202,51 +3167,27 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card {
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: var(--space-4);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  padding: var(--space-5);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  gap: var(--space-4);
   transition:
-    transform var(--transition-slow),
-    border-color var(--transition-slow),
-    background-color var(--transition-slow),
-    box-shadow var(--transition-slow);
+    border-color var(--transition-base),
+    background-color var(--transition-base);
   position: relative;
   overflow: hidden;
-  will-change: transform, box-shadow;
 }
 
 .primary-card-hidden {
   display: none;
 }
 
-.status-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-  opacity: 0.7;
-}
-
 .status-card:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-3px) scale(1.015);
-  box-shadow:
-    var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    var(--glow-accent);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
 }
 
 .card-content {
@@ -3288,12 +3229,14 @@ body.first-run-active .widget-content > * {
 .section-btn {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
   cursor: pointer;
   padding: 4px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-base);
-  font-size: var(--font-size-sm);
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3306,8 +3249,31 @@ body.first-run-active .widget-content > * {
 }
 
 .section-btn:hover {
-  background: var(--surface-hover);
+  background: var(--tile-bg-hover);
   color: var(--text-primary);
+}
+
+.section-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+}
+
+/* Section labels: small, tracked capitals, well below the content in weight. */
+.section-label {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* With a single view there are no tabs to name the grid, so the label does. */
+.quick-access-tabs:not(.hidden) ~ .quick-access-label {
+  display: none;
 }
 
 /* Reorganize button active state */
@@ -3340,39 +3306,38 @@ body.first-run-active .widget-content > * {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Views read as section labels; the active one is lit and carries the accent. */
 .quick-access-tabs .tab-link {
   width: auto;
-  min-height: 30px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   text-align: center;
-  transition: var(--transition-base);
+  white-space: nowrap;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .quick-access-tabs .tab-link:hover {
-  border-color: var(--border-hover);
-  background: var(--glass-surface);
+  background: var(--tile-bg);
   color: var(--text-primary);
 }
 
 .quick-access-tabs .tab-link.active {
   color: var(--text-primary);
   border-color: transparent;
-  /* Subtle accent wash fading top-to-bottom (no hard fill, border, or underline). */
-  background: linear-gradient(
-    180deg,
-    rgba(var(--accent-rgb), 0.14) 0%,
-    rgba(var(--accent-rgb), 0.04) 55%,
-    transparent 100%
-  );
-  box-shadow: none;
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
 .quick-access-tabs .tab-link:focus-visible {
@@ -3420,14 +3385,10 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs.reorganize .quick-access-tab.active {
-  /* Same subtle accent wash as the normal-mode active tab. */
-  background: linear-gradient(
-    180deg,
-    rgba(var(--accent-rgb), 0.14) 0%,
-    rgba(var(--accent-rgb), 0.04) 55%,
-    transparent 100%
-  );
-  box-shadow: none;
+  /* Same accent wash as the normal-mode active tab. */
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
+  border-radius: var(--radius-md);
   padding-right: 2px;
 }
 
@@ -3546,21 +3507,22 @@ body.first-run-active .widget-content > * {
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 6px;
+  gap: 8px;
   align-items: stretch;
   grid-auto-flow: dense; /* tighter packing */
 }
 
 .control-item {
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
   padding: var(--space-3);
   text-align: center;
   cursor: pointer;
-  transition: var(--transition-base);
-  backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
+  transition:
+    background-color var(--transition-base),
+    border-color var(--transition-base),
+    transform var(--duration-fast) var(--ease-emphasized);
   min-height: 64px;
   display: flex;
   flex-direction: column;
@@ -3568,30 +3530,12 @@ body.first-run-active .widget-content > * {
   align-items: stretch;
   box-sizing: border-box;
   height: auto;
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
 }
 
 .control-item[data-desktop-pinned='true'] {
-  border-color: rgba(var(--accent-rgb), 0.36);
-  box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1px rgba(var(--accent-rgb), 0.12);
-}
-
-.control-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-  opacity: 0.7;
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 /* Ensure child content can actually use the full width */
@@ -3606,23 +3550,18 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-3px) scale(1.02);
-  box-shadow:
-    var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    var(--glow-accent);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
 }
 
 .control-item:active {
-  transform: translateY(-1px) scale(0.97);
+  transform: scale(0.96);
 }
 
 .control-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  box-shadow: var(--shadow-sm), var(--glow-focus);
+  box-shadow: var(--glow-focus);
 }
 
 .control-item.active {
@@ -3745,11 +3684,12 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Unavailable entity styling */
+/* Unavailable entity styling: the same pane, dashed and dimmed. */
 .control-item.unavailable-entity {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.08), rgba(97, 97, 97, 0.04));
-  border-color: rgba(158, 158, 158, 0.25);
-  opacity: 0.7;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--tile-border-hover);
+  opacity: 0.75;
   cursor: not-allowed;
 }
 
@@ -3760,9 +3700,8 @@ body.first-run-active .widget-content > * {
 
 .control-item.unavailable-entity:hover {
   transform: none;
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.12), rgba(97, 97, 97, 0.06));
-  border-color: rgba(158, 158, 158, 0.35);
-  box-shadow: var(--shadow-sm);
+  background: var(--tile-bg);
+  border-color: var(--tile-border-hover);
 }
 
 .desktop-pin-panel-control[data-state],
@@ -3772,8 +3711,8 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item.unavailable-entity .unavailable-icon {
-  opacity: 0.6;
-  filter: grayscale(0.3);
+  color: var(--warning);
+  opacity: 0.85;
 }
 
 .control-item.unavailable-entity .control-name {
@@ -3795,14 +3734,16 @@ body.first-run-active .widget-content > * {
   justify-content: center;
   min-height: 18px;
   line-height: 1;
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
   transition:
-    transform var(--duration-base) var(--ease-back),
     filter var(--transition-base),
     color var(--transition-base);
 }
 
-.control-item:hover .control-icon {
-  transform: scale(1.18);
+/* Line icons are drawn at 1em; block display drops the inline baseline gap. */
+.entity-line-icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 .control-item.active .control-icon,
@@ -3836,16 +3777,15 @@ body.first-run-active .widget-content > * {
 }
 
 .control-name {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.005em;
   width: 100%;
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
-  line-height: 1.3;
-  padding: 2px 0;
+  line-height: 1.25;
+  padding: 1px 0;
 }
 
 /* Entity Selector List */
@@ -4180,7 +4120,7 @@ body.first-run-active .widget-content > * {
 
 /* Enhanced Weather Card Styles */
 .weather-card {
-  min-height: 120px;
+  min-height: 104px;
 }
 
 .status-card.weather-card {
@@ -4543,15 +4483,18 @@ body.first-run-active .widget-content > * {
 }
 
 .weather-temp {
-  font-size: var(--font-size-2xl);
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: var(--font-size-2xl-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   line-height: 1;
 }
 
 .weather-condition {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
   text-transform: capitalize;
   line-height: 1.2;
   word-wrap: break-word;
@@ -4560,57 +4503,34 @@ body.first-run-active .widget-content > * {
 
 .weather-details {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 6px;
 }
 
+/* Humidity and wind as quiet inline readouts, not chips. */
 .weather-detail {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    var(--shadow-sm);
-  transition: all var(--transition-base);
-}
-
-.weather-detail:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-  border-color: rgba(var(--accent-rgb), 0.35);
-  color: var(--text-primary);
-  transform: translateY(-1px) scale(1.05);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.15),
-    0 0 10px rgba(var(--accent-rgb), 0.15);
-}
-
-.theme-light .weather-detail {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  font-size: var(--font-size-xs-plus);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-icon {
+  display: flex;
   font-size: var(--font-size-sm);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .detail-value {
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
 /* Enhanced Time Card Styles */
 .status-card.time-card {
-  min-height: 120px;
+  min-height: 104px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4619,7 +4539,7 @@ body.first-run-active .widget-content > * {
 .status-card.time-card .time-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   height: 100%;
   align-items: center;
   justify-content: center;
@@ -4635,13 +4555,13 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card.time-card .time-display {
-  font-size: var(--font-size-4xl);
-  font-weight: 800;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   line-height: 1;
-  font-family: var(--desktop-pin-display-font), sans-serif;
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.03em;
   text-align: center;
   width: 100%;
   word-wrap: break-word;
@@ -4655,16 +4575,18 @@ body.first-run-active .widget-content > * {
   padding: 0 4px;
 }
 
+body.theme-light .status-card.time-card .date-display {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
 .status-card.time-card .date-display {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs-plus);
   color: var(--accent);
   text-align: center;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 1px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(var(--accent-rgb), 0.2);
-  text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.25);
+  letter-spacing: 0.08em;
+  transition: color var(--transition-slow);
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
@@ -4709,8 +4631,10 @@ body.first-run-active .widget-content > * {
   );
 }
 
-.status-card.primary-entity-card::before {
-  display: block;
+/* A lit primary light card warms its icon to match the glow behind it. */
+.status-card.primary-entity-card.primary-light-card[data-state='on'] .control-icon {
+  color: #ffd08a;
+  filter: drop-shadow(0 0 10px rgba(255, 196, 110, 0.55));
 }
 
 .status-card.primary-entity-card .control-item {
@@ -4744,8 +4668,8 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card.primary-entity-card .control-name {
-  font-size: var(--font-size-sm);
-  letter-spacing: 0.4px;
+  font-size: var(--font-size-base);
+  letter-spacing: -0.01em;
 }
 
 .status-card.primary-entity-card .control-state {
@@ -6215,49 +6139,63 @@ body.first-run-active .widget-content > * {
 .control-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 6px;
+  padding: 12px 8px;
   position: relative;
   overflow: hidden;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-base);
   min-height: 60px;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
+/* Quick Access tiles share one height, so the grid reads as an even field of panes. */
+#quick-controls .control-item {
+  min-height: 96px;
+}
+
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
    marks a Quick Access tile whose entity is currently on (Personalization > Window
-   Effects). Read-only tiles never carry data-active, so they never glow. */
+   Effects): an accent-tinted pane, an accent icon with a soft halo, and a brighter
+   state line. Read-only tiles never carry data-active, so they never glow. */
 body.active-tile-glow #quick-controls .control-item[data-active='true'] {
-  border-color: rgba(var(--accent-rgb), 0.34);
-  background-image: radial-gradient(
-    circle at 50% 116%,
-    rgba(var(--accent-rgb), 0.24),
-    rgba(var(--accent-rgb), 0.07) 52%,
-    transparent 76%
-  );
-  box-shadow:
-    inset 0 0 0 1px rgba(var(--accent-rgb), 0.07),
-    0 4px 18px rgba(var(--accent-rgb), 0.14);
+  background-color: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.42);
 }
 
 body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
-  border-color: rgba(var(--accent-rgb), 0.46);
+  background-color: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
+}
+
+body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-state {
+  color: color-mix(in srgb, var(--text-primary) 82%, transparent);
+}
+
+/* Light theme: the accent is darkened for the icon so it holds contrast on pale glass. */
+body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
+}
+
+#quick-controls .control-item[data-unavailable='true'] {
+  background: transparent;
+  border-style: dashed;
+}
+
+#quick-controls .control-item[data-unavailable='true'] > :is(.control-icon, .control-info) {
+  opacity: 0.55;
 }
 
 body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
-  border-color: rgba(var(--accent-rgb), 0.7);
-  background-image: radial-gradient(
-    circle at 50% 116%,
-    rgba(var(--accent-rgb), 0.34),
-    rgba(var(--accent-rgb), 0.12) 52%,
-    transparent 76%
-  );
+  background-color: rgba(var(--accent-rgb), 0.26);
+  border-color: rgba(var(--accent-rgb), 0.8);
 }
 
 .control-icon {
@@ -6265,6 +6203,12 @@ body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='t
   width: 32px;
   text-align: center;
   flex-shrink: 0;
+}
+
+#quick-controls .control-icon {
+  font-size: var(--font-size-icon);
+  min-height: var(--font-size-icon);
+  margin-bottom: 2px;
 }
 
 .control-info {
@@ -6279,27 +6223,28 @@ body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='t
 
 body.density-compact .controls-grid {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 4px;
+  gap: 6px;
 }
 
 body.density-compact #quick-controls .control-item {
-  min-height: 52px;
-  padding: 8px;
-  gap: 8px;
+  min-height: 72px;
+  padding: 8px 6px;
+  gap: 4px;
 }
 
 body.density-compact #quick-controls .control-icon {
   width: 26px;
   font-size: var(--font-size-xl);
+  min-height: var(--font-size-xl);
 }
 
 body.density-compact #quick-controls .control-name {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   line-height: 1.15;
 }
 
 body.density-compact #quick-controls .control-state {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs-plus);
   line-height: 1.15;
 }
 
@@ -6835,8 +6780,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .control-name {
-  font-weight: 600;
-  color: var(--text-color);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
   margin-bottom: 2px;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -6846,15 +6791,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .control-state {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  font-weight: 500;
+  font-size: var(--font-size-xs-plus);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
   text-align: center;
   line-height: 1.2;
-  min-height: 14px;
+  min-height: 13px;
   word-wrap: break-word;
   overflow-wrap: break-word;
   width: 100%;
+  transition: color var(--transition-base);
 }
 
 #quick-controls .control-item.sensor-numeric-entity {
@@ -6873,11 +6820,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
-  font-size: var(--font-size-xs);
   line-height: 1.15;
   margin-bottom: 4px;
-  color: var(--text-secondary);
-  letter-spacing: 0.2px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-readout {
@@ -6897,17 +6841,19 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-display);
   font-size: var(--font-size-2xl);
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.03em;
   line-height: 1;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-unit {
   flex-shrink: 0;
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   line-height: 1;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
@@ -10372,10 +10318,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   }
 }
 
-/* Timer entity styles */
+/* Timer entity styles: the plain pane, with a green (running) or amber (paused)
+   tint and matching icon. */
 .timer-entity {
-  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(33, 150, 243, 0.05));
-  border: 1px solid rgba(33, 150, 243, 0.3);
+  --timer-rgb: 129, 199, 132;
 }
 
 .timer-entity .timer-layout {
@@ -10398,45 +10344,47 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .timer-entity .timer-countdown {
+  font-family: var(--font-display);
   font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
 
 /* Timer states */
-.timer-entity[data-state='active'] {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.08));
-  border-color: rgba(76, 175, 80, 0.4);
-  animation: timerPulse 2s ease-in-out infinite;
+.timer-entity[data-state='active'],
+.timer-entity[data-state='paused'] {
+  background-color: rgba(var(--timer-rgb), 0.12);
+  border-color: rgba(var(--timer-rgb), 0.38);
 }
 
 .timer-entity[data-state='paused'] {
-  background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.08));
-  border-color: rgba(255, 152, 0, 0.4);
+  --timer-rgb: 255, 183, 77;
 }
 
-.timer-entity[data-state='idle'] {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
-  border-color: rgba(158, 158, 158, 0.3);
+.timer-entity[data-state='active'] .control-icon,
+.timer-entity[data-state='paused'] .control-icon {
+  color: rgb(var(--timer-rgb));
+  filter: drop-shadow(0 0 8px rgba(var(--timer-rgb), 0.5));
+}
+
+.timer-entity[data-state='active'] .control-icon {
+  animation: timerPulse 2s ease-in-out infinite;
 }
 
 @keyframes timerPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+    opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
+    opacity: 0.6;
   }
 }
 
 /* Timer sensor specific states */
-.timer-entity[data-state='unknown'] {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
-  border-color: rgba(158, 158, 158, 0.3);
-}
-
 .timer-entity[data-state='unavailable'] {
-  background: linear-gradient(135deg, rgba(244, 67, 54, 0.1), rgba(244, 67, 54, 0.05));
-  border-color: rgba(244, 67, 54, 0.3);
+  border-style: dashed;
 }
 
 /* Enhanced timer countdown styling for sensors */
@@ -12722,6 +12670,10 @@ body.high-contrast {
   --surface-hover: #333 !important;
   --border-color: #aaa !important;
   --border-hover: #fff !important;
+  --tile-bg: #202020 !important;
+  --tile-bg-hover: #333 !important;
+  --tile-border: #aaa !important;
+  --tile-border-hover: #fff !important;
   --accent: #8ed1ff !important;
   --accent-rgb: 142, 209, 255 !important;
   --window-bg-rgb: 20, 20, 20 !important;
@@ -12756,20 +12708,46 @@ body.high-contrast :focus-visible {
   outline-offset: 2px;
 }
 
+/* The always-visible Controls action: a small sliders button tucked into the tile's
+   corner, so it stays discoverable without adding a row to every tile. */
 .tile-details-button {
-  position: relative;
+  position: absolute;
+  top: 5px;
+  right: 5px;
   z-index: 2;
-  flex-shrink: 0;
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--font-size-xs);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  font-size: var(--font-size-sm);
   cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
   -webkit-app-region: no-drag;
+}
+
+.tile-details-button:hover,
+.tile-details-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
+}
+
+.tile-details-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+body.large-interface .tile-details-button {
+  width: 28px;
+  height: 28px;
 }
 
 body.large-interface .modal-content,
@@ -12822,6 +12800,12 @@ body.high-contrast .tile-primary-button,
 .control-item.reorganize-mode .tile-primary-button,
 .control-item.reorganize-mode .tile-details-button {
   pointer-events: none;
+}
+
+/* The editing buttons take the corners the Controls button normally sits in. */
+.control-item.reorganize-mode .tile-details-button,
+.reorganize-mode .control-item .tile-details-button {
+  visibility: hidden;
 }
 
 body.high-contrast .tile-primary-button:focus-visible {
