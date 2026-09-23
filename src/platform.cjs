@@ -285,6 +285,24 @@ function getMainWindowVisualOptions({
   return options;
 }
 
+/**
+ * The nativeTheme.themeSource that matches the app's theme setting.
+ *
+ * Native surfaces the renderer cannot style follow nativeTheme: context menus on Windows and
+ * macOS, <select> popups and the vibrancy material on macOS. An explicit Dark or Light theme pins
+ * them to it; Auto stays on 'system', because 'dark'/'light' would also override the
+ * prefers-color-scheme the renderer reads to resolve Auto. Following an Omarchy palette uses the
+ * palette's own mode.
+ * @param {Object} [config] - App config.
+ * @param {Object|null} [desktopAppearance] - Current Omarchy palette, if any.
+ * @returns {'dark'|'light'|'system'}
+ */
+function resolveNativeThemeSource(config, desktopAppearance = null) {
+  const paletteMode = config?.ui?.followOmarchy ? desktopAppearance?.mode : null;
+  const mode = paletteMode || config?.ui?.theme;
+  return mode === 'dark' || mode === 'light' ? mode : 'system';
+}
+
 module.exports = {
   LINUX_PASSWORD_STORE_ENV_OVERRIDE,
   NATIVE_WAYLAND_ENV_OVERRIDE,
@@ -297,6 +315,7 @@ module.exports = {
   isEnabledEnvFlag,
   isLinuxAppImage,
   resolveLinuxPasswordStoreBackend,
+  resolveNativeThemeSource,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,
   shouldUsePortalGlobalShortcuts,

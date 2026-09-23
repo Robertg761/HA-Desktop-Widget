@@ -14,6 +14,7 @@ const {
   dialog,
   powerMonitor,
   session,
+  nativeTheme,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -335,6 +336,7 @@ const {
   getAppIconPath,
   getMainWindowVisualOptions,
   resolveLinuxPasswordStoreBackend,
+  resolveNativeThemeSource,
   shouldForceX11OzonePlatform,
   hasGlobalShortcutFallback,
   shouldUseCompositorOwnedPlacement,
@@ -2670,6 +2672,12 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   // Config mutations stage values before disk writes finish. Activate this
   // preference only through the post-save path, including profile-sync pulls.
   appliedHideOnBlur = nextConfig?.hideOnBlur === true;
+  if (
+    previousConfig?.ui?.theme !== nextConfig?.ui?.theme ||
+    !!previousConfig?.ui?.followOmarchy !== !!nextConfig?.ui?.followOmarchy
+  ) {
+    applyNativeThemeSource();
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
@@ -5224,6 +5232,19 @@ function initializeProfileSyncOnStartup() {
 function applyFrostedGlass(override) {
   if (!mainWindow) return;
   applyWindowEffectsToWindow(mainWindow, config, override);
+}
+
+/**
+ * Point nativeTheme at the app's theme so the surfaces the renderer cannot style (context menus,
+ * macOS select popups and vibrancy) match it. See resolveNativeThemeSource.
+ */
+function applyNativeThemeSource() {
+  const next = resolveNativeThemeSource(config, omarchyThemeWatcher?.get() || null);
+  try {
+    if (nativeTheme && nativeTheme.themeSource !== next) nativeTheme.themeSource = next;
+  } catch (error) {
+    log.warn('Failed to set native theme source:', error.message);
+  }
 }
 
 /**
@@ -10232,11 +10253,13 @@ app
     if (process.platform === 'linux') {
       omarchyThemeWatcher = createOmarchyThemeWatcher({
         onChange: () => {
+          applyNativeThemeSource();
           if (mainWindow && !mainWindow.isDestroyed()) pushConfigToRenderer();
           desktopPinWindows.forEach((_window, id) => sendDesktopPinUpdate(id));
         },
       });
     }
+    applyNativeThemeSource();
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();
 
