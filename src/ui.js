@@ -7426,12 +7426,25 @@ function syncQuickAccessControlButton(control, entityId) {
   button.textContent = isPinned ? 'Pinned' : supportProfile.supported ? 'Pin' : 'Unsupported';
 }
 
+function focusQuickAccessPinToggle(entityId) {
+  const button = Array.from(
+    document.querySelectorAll('#quick-controls .desktop-pin-quick-toggle')
+  ).find((candidate) => candidate.dataset.desktopPinQuickToggle === entityId);
+  const tile = button?.closest('.control-item');
+  if (tile) syncQuickAccessRovingTabIndex(tile);
+  (button && !button.disabled ? button : tile)?.focus();
+}
+
 async function toggleDesktopPinFromQuickAccess(entityId) {
   if (!entityId) return { success: false, error: 'Missing entity ID' };
 
   const isPinned = isEntityDesktopPinned(entityId);
   const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
   const supportInfo = getDesktopPinSupportInfo(state.STATES?.[resolvedEntityId] || entityId);
+  // Rebuilding the tiles detaches the focused Pin button; a keyboard user keeps their place.
+  const hadFocus =
+    document.activeElement?.dataset?.desktopPinQuickToggle === entityId &&
+    !!document.activeElement.closest('#quick-controls');
   if (!isPinned && !supportInfo.supported) {
     uiUtils.showToast(supportInfo.reason || 'Desktop pin not supported yet', 'error', 2600);
     return { success: false, error: supportInfo.reason || 'Desktop pin not supported yet' };
@@ -7455,6 +7468,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
         if (container) container.classList.add('reorganize-mode');
         addRemoveButtons();
       }
+      if (hadFocus) focusQuickAccessPinToggle(entityId);
       uiUtils.showToast('Removed desktop pin', 'info', 1800);
       return { success: true, pinned: false, result };
     }
@@ -7476,6 +7490,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
       if (container) container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    if (hadFocus) focusQuickAccessPinToggle(entityId);
 
     uiUtils.showToast('Pinned to desktop', 'success', 1800);
     return { success: true, pinned: true, result };

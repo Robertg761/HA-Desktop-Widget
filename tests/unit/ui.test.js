@@ -3769,6 +3769,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
     });
 
+    it.each([
+      [{}, 'Pinned'],
+      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'Pin'],
+    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, label) => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
+        desktopPins: pins,
+      });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'off',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      const pinButton = document.querySelector(
+        '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
+      );
+      pinButton.focus();
+      pinButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(pinButton.isConnected).toBe(false);
+      expect(document.activeElement.dataset.desktopPinQuickToggle).toBe('light.bedroom');
+      expect(document.activeElement.textContent).toBe(label);
+
+      ui.toggleReorganizeMode();
+    });
+
     it('disables the reorganize-mode pin button for unsupported domains', () => {
       state.setConfig({
         ...state.CONFIG,
