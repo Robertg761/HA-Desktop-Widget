@@ -1908,7 +1908,9 @@ describe('Settings + Config Integration', () => {
       );
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
-      expect(preview.textContent).toBe('💡');
+      // No custom icon was applied, so the preview shows the tile's default line icon.
+      expect(preview.textContent).toBe('');
+      expect(preview.querySelector('svg.entity-line-icon').dataset.icon).toBe('lightbulb');
     });
 
     test('saving Settings preserves icons restored from dashboard history', async () => {

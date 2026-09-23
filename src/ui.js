@@ -4005,7 +4005,7 @@ function showComparisonGraphModal(graphId) {
 
       const icon = document.createElement('span');
       icon.className = 'entity-icon';
-      icon.textContent = utils.getEntityIcon(entity);
+      renderEntityIcon(icon, entity);
 
       const info = document.createElement('div');
       info.className = 'entity-item-info';
@@ -9071,7 +9071,7 @@ function showSensorDetails(entity) {
 
       const icon = document.createElement('div');
       icon.className = 'sensor-detail-icon';
-      icon.textContent = utils.getEntityIcon(entity);
+      renderEntityIcon(icon, entity);
 
       const readout = document.createElement('div');
       readout.className = 'sensor-detail-readout';
@@ -10919,12 +10919,11 @@ function populateWeatherEntitiesList() {
       item.setAttribute('tabindex', '0');
       item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
 
-      const icon = utils.getEntityIcon(entity);
       const displayName = utils.getEntityDisplayName(entity);
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <span class="entity-icon">${entityIconMarkup(entity)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
@@ -11457,7 +11456,7 @@ function showBrightnessSlider(light) {
         <div class="modal-body">
           <div class="brightness-content">
             <div class="brightness-icon-wrapper">
-              <div class="brightness-icon" id="brightness-icon">💡</div>
+              <div class="brightness-icon" id="brightness-icon">${lineIconMarkup('lightbulb')}</div>
             </div>
             <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : t(light.state === 'on' ? 'On' : 'Off')}</div>
             <div class="brightness-label">${t(canSetBrightness ? 'Brightness' : 'State')}</div>
@@ -11565,24 +11564,17 @@ function showBrightnessSlider(light) {
     setTimeout(() => modal.classList.add('modal-open'), 10);
 
     // Update icon and accent based on brightness
+    // One bulb whose glow follows the level (see .brightness-icon in styles.css); off swaps in
+    // the struck-through bulb.
     const updateIconAndAccent = (value) => {
       if (!icon) return;
-      if (value === 0) {
-        icon.textContent = '💤';
-        icon.className = 'brightness-icon brightness-off';
-      } else if (value <= 25) {
-        icon.textContent = '🌑';
-        icon.className = 'brightness-icon brightness-low';
-      } else if (value <= 50) {
-        icon.textContent = '🌓';
-        icon.className = 'brightness-icon brightness-mid';
-      } else if (value <= 75) {
-        icon.textContent = '🌕';
-        icon.className = 'brightness-icon brightness-high';
-      } else {
-        icon.textContent = '☀️';
-        icon.className = 'brightness-icon brightness-max';
-      }
+      const iconName = value === 0 ? 'lightbulb-off' : 'lightbulb';
+      if (icon.firstElementChild?.dataset.icon !== iconName) setLineIconContent(icon, iconName);
+      if (value === 0) icon.className = 'brightness-icon brightness-off';
+      else if (value <= 25) icon.className = 'brightness-icon brightness-low';
+      else if (value <= 50) icon.className = 'brightness-icon brightness-mid';
+      else if (value <= 75) icon.className = 'brightness-icon brightness-high';
+      else icon.className = 'brightness-icon brightness-max';
     };
 
     // Slider behavior with debounce
@@ -12001,18 +11993,18 @@ function showClimateControls(climateEntity) {
     const fanButtonsContainer = modal.querySelector('#climate-fan-buttons');
     const presetButtonsContainer = modal.querySelector('#climate-preset-buttons');
 
-    // Helper function to get mode icons
+    // Line icon names for the HVAC modes.
     function getModeIcon(mode) {
       const icons = {
-        off: '⏻',
-        heat: '🔥',
-        cool: '❄️',
-        auto: '🔄',
-        heat_cool: '🔄',
-        fan_only: '💨',
-        dry: '💧',
+        off: 'power',
+        heat: 'flame',
+        cool: 'snowflake',
+        auto: 'refresh-cw',
+        heat_cool: 'refresh-cw',
+        fan_only: 'fan',
+        dry: 'droplet',
       };
-      return icons[mode] || '⚙️';
+      return icons[mode] || 'settings';
     }
 
     function formatModeLabel(mode) {
@@ -12034,7 +12026,7 @@ function showClimateControls(climateEntity) {
 
         const icon = document.createElement('span');
         icon.className = 'climate-mode-icon';
-        icon.textContent = getModeIcon(modeValue);
+        icon.appendChild(createLineIcon(getModeIcon(modeValue)));
         button.appendChild(icon);
 
         const label = document.createElement('span');
@@ -12263,7 +12255,7 @@ function showFanControls(fanEntity) {
         <div class="modal-body">
           <div class="fan-content">
             <div class="fan-icon-wrapper">
-              <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
+              <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
             <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : isOn ? 'On' : 'Off'}</div>
             <div class="fan-speed-label">${capabilities.canSetPercentage ? 'Fan Speed' : 'State'}</div>
@@ -12390,9 +12382,15 @@ function showCoverControls(coverEntity) {
   try {
     const capabilities = getDesktopPinCapabilities(coverEntity);
     const availableActions = [
-      capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: 'Close' } : null,
-      capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: 'Stop' } : null,
-      capabilities.canOpen ? { action: 'open_cover', icon: '⬆', label: 'Open' } : null,
+      capabilities.canClose
+        ? { action: 'close_cover', icon: lineIconMarkup('chevron-down'), label: 'Close' }
+        : null,
+      capabilities.canStop
+        ? { action: 'stop_cover', icon: lineIconMarkup('pause'), label: 'Stop' }
+        : null,
+      capabilities.canOpen
+        ? { action: 'open_cover', icon: lineIconMarkup('chevron-up'), label: 'Open' }
+        : null,
     ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPositionValue = Number(coverEntity.attributes.current_position);
@@ -12413,7 +12411,7 @@ function showCoverControls(coverEntity) {
           <div class="cover-content">
             <div class="cover-visual">
               <div class="cover-icon-container">
-                <div class="cover-icon" id="cover-icon">🪟</div>
+                <div class="cover-icon" id="cover-icon">${entityIconMarkup(coverEntity)}</div>
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
@@ -12628,7 +12626,7 @@ function populateQuickControlsList() {
 
         const icon = document.createElement('span');
         icon.className = 'entity-icon';
-        icon.textContent = utils.getEntityIcon(entity);
+        renderEntityIcon(icon, entity);
 
         const info = document.createElement('div');
         info.className = 'entity-item-info';

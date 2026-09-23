@@ -22,6 +22,12 @@ import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
 import * as utils from './utils.js';
 import {
+  entityIconMarkup,
+  lineIconMarkup,
+  renderEntityIcon,
+  setLineIconContent,
+} from './entity-icons.js';
+import {
   PRIMARY_CARD_DEFAULTS,
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
@@ -1995,7 +2001,7 @@ function renderPrimaryCardsEntityRows() {
       const item = document.createElement('div');
       item.className = 'entity-item';
 
-      const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+      const icon = entityIconMarkup(entity);
       const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
       const entityId = utils.escapeHtml(entity.entity_id);
       const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
@@ -2223,14 +2229,14 @@ function renderDesktopPinRows() {
   options.forEach(({ entityId, entity, displayName }) => {
     const isPinned = !!pendingDesktopPins[entityId];
     const isSavedPinned = !!state.CONFIG?.desktopPins?.[entityId];
-    const iconValue = entity ? utils.getEntityIcon(entity) : '•';
+    const iconMarkup = entity ? entityIconMarkup(entity) : lineIconMarkup('box');
     const currentEntityId = entity?.entity_id || entityId;
 
     const item = document.createElement('div');
     item.className = 'entity-item';
     item.innerHTML = `
       <div class="entity-item-main">
-        <span class="entity-icon">${utils.escapeHtml(iconValue)}</span>
+        <span class="entity-icon">${iconMarkup}</span>
         <div class="entity-item-info">
           <span class="entity-name">${utils.escapeHtml(displayName)}</span>
           <span class="entity-id" title="${utils.escapeHtmlAttribute(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
@@ -2407,8 +2413,6 @@ function renderCustomEntityIconsList() {
     const entityId = entity.entity_id;
     const pendingIcon = getPendingCustomIcon(entityId);
     const pickerQuery = getCustomEntityIconPickerQuery(entityId);
-    const fallbackIcon = utils.getEntityIcon(entity, { ignoreCustomIcon: true });
-    const previewIcon = pendingIcon || fallbackIcon;
     const hasCustomIcon = !!pendingIcon;
     const isPickerOpen = activeCustomEntityIconPickerEntityId === entityId;
     const showAppliedIndicator =
@@ -2422,7 +2426,9 @@ function renderCustomEntityIconsList() {
 
     const icon = document.createElement('span');
     icon.className = 'entity-icon custom-entity-icon-preview';
-    icon.textContent = previewIcon;
+    // Without a custom icon the preview shows what the tile draws: the default line icon.
+    if (pendingIcon) icon.textContent = pendingIcon;
+    else renderEntityIcon(icon, entity, { ignoreCustomIcon: true });
     itemMain.appendChild(icon);
 
     const info = document.createElement('div');
@@ -5118,7 +5124,7 @@ function renderAlertsListInline() {
 
       alertItem.innerHTML = `
         <div class="alert-item-info">
-          <span class="alert-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
+          <span class="alert-icon">${entityIconMarkup(entity)}</span>
           <div class="alert-details">
             <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
             <span class="alert-type">${utils.escapeHtml(alertType)}</span>
@@ -5204,12 +5210,11 @@ function populateAlertEntityPicker() {
       const item = document.createElement('div');
       item.className = 'entity-item';
 
-      const icon = utils.getEntityIcon(entity);
       const displayName = utils.getEntityDisplayName(entity);
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <span class="entity-icon">${entityIconMarkup(entity)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
@@ -5224,7 +5229,7 @@ function populateAlertEntityPicker() {
       if (hasAlert) {
         const badge = document.createElement('span');
         badge.className = 'alert-badge';
-        badge.textContent = '🔔';
+        setLineIconContent(badge, 'bell');
         badge.title = 'Alert configured';
         badge.style.marginLeft = '8px';
         badge.style.fontSize = '14px';

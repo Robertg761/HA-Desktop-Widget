@@ -4,6 +4,7 @@ import { openEntityDetailModal, getEntityDomain, switchQuickAccessPage } from '.
 import websocket from './websocket.js';
 import { showToast } from './ui-utils.js';
 import { t } from './i18n.js';
+import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
 
 const MAX_RESULTS = 20;
 
@@ -265,11 +266,9 @@ function createResultRow(item, index) {
   row.setAttribute('role', 'option');
   row.setAttribute('aria-selected', 'false');
 
-  const icon = createElement(
-    'span',
-    'command-palette-result-icon',
-    entity ? utils.getEntityIcon(entity) : '▦'
-  );
+  const icon = createElement('span', 'command-palette-result-icon');
+  if (entity) renderEntityIcon(icon, entity);
+  else setLineIconContent(icon, 'list');
   icon.setAttribute('aria-hidden', 'true');
 
   const main = createElement('span', 'command-palette-result-main');

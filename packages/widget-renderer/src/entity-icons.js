@@ -20,7 +20,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const LINE_ICON_STROKE_WIDTH = '1.75';
 
 /** Lucide element lists, keyed by icon name: [tagName, attributes]. The entity icons come first;
- * the last few (settings … check) draw the window and Quick Access chrome. */
+ * the rest (settings onward) draw window chrome, dialogs and controls. */
 const LINE_ICONS = {
   lightbulb: [
     [
@@ -437,6 +437,37 @@ const LINE_ICONS = {
     ['path', { d: 'M12 5v14' }],
   ],
   check: [['path', { d: 'M20 6 9 17l-5-5' }]],
+  'lightbulb-off': [
+    ['path', { d: 'M16.8 11.2c.8-.9 1.2-2 1.2-3.2a6 6 0 0 0-9.3-5' }],
+    ['path', { d: 'm2 2 20 20' }],
+    ['path', { d: 'M6.3 6.3a4.67 4.67 0 0 0 1.2 5.2c.7.7 1.3 1.5 1.5 2.5' }],
+    ['path', { d: 'M9 18h6' }],
+    ['path', { d: 'M10 22h4' }],
+  ],
+  'chevron-up': [['path', { d: 'm18 15-6-6-6 6' }]],
+  'chevron-down': [['path', { d: 'm6 9 6 6 6-6' }]],
+  pause: [
+    ['rect', { x: '14', y: '3', width: '5', height: '18', rx: '1' }],
+    ['rect', { x: '5', y: '3', width: '5', height: '18', rx: '1' }],
+  ],
+  'bell-off': [
+    ['path', { d: 'M10.268 21a2 2 0 0 0 3.464 0' }],
+    ['path', { d: 'M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742' }],
+    ['path', { d: 'm2 2 20 20' }],
+    ['path', { d: 'M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05' }],
+  ],
+  'message-square': [
+    [
+      'path',
+      {
+        d: 'M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z',
+      },
+    ],
+  ],
+  search: [
+    ['path', { d: 'm21 21-4.34-4.34' }],
+    ['circle', { cx: '11', cy: '11', r: '8' }],
+  ],
 };
 
 function getSensorLineIconName(entity) {
