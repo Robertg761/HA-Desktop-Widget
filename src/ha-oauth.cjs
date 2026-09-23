@@ -8,6 +8,7 @@ const OAUTH_CREDENTIALS_FILE = 'home-assistant-oauth.json';
 const OAUTH_CALLBACK_PATH = '/oauth/callback';
 const OAUTH_PAIRING_TIMEOUT_MS = 5 * 60 * 1000;
 const OAUTH_HTTP_TIMEOUT_MS = 15 * 1000;
+const OAUTH_PROBE_TIMEOUT_MS = 8 * 1000;
 const OAUTH_MAX_RESPONSE_BYTES = 64 * 1024;
 
 function createOAuthError(message, code, status = 0) {
@@ -312,6 +313,72 @@ function requestFormWithElectronNet(electronNet, url, fields, timeoutMs = OAUTH_
   });
 }
 
+// Reachability check made before a browser is opened. A URL that nothing answers on would
+// otherwise leave the user waiting out the whole pairing timeout for a page that never loads.
+// Any HTTP answer counts: only the transport failing means the address is wrong.
+function probeHomeAssistantWithElectronNet(
+  electronNet,
+  baseUrl,
+  { signal = null, timeoutMs = OAUTH_PROBE_TIMEOUT_MS } = {}
+) {
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    let request = null;
+    const unreachable = () =>
+      createOAuthError('Could not reach Home Assistant at that URL', 'OAUTH_SERVER_UNREACHABLE');
+    const abortRequest = () => {
+      try {
+        request?.abort();
+      } catch {
+        // The request may already have completed.
+      }
+    };
+    const finish = (error) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', onAbort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onAbort = () => {
+      abortRequest();
+      finish(
+        createOAuthError(
+          'Home Assistant authorization was canceled',
+          'OAUTH_AUTHORIZATION_CANCELED'
+        )
+      );
+    };
+    const timeoutId = setTimeout(() => {
+      abortRequest();
+      finish(unreachable());
+    }, timeoutMs);
+    timeoutId.unref?.();
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      request = electronNet.request({
+        method: 'GET',
+        url: `${baseUrl}/auth/providers`,
+        redirect: 'follow',
+      });
+      request.setHeader('Accept', 'application/json');
+      request.on('response', () => {
+        finish(null);
+        abortRequest();
+      });
+      request.on('error', () => finish(unreachable()));
+      request.end();
+    } catch {
+      finish(unreachable());
+    }
+  });
+}
+
 function parseTokenResponse(response, { requireRefreshToken = false } = {}) {
   let parsed;
   try {
@@ -357,6 +424,7 @@ class HomeAssistantOAuthClient {
     openExternal,
     postForm,
     isSecureStorageAvailable,
+    probeServer = null,
     now = Date.now,
     log = console,
   }) {
@@ -366,6 +434,7 @@ class HomeAssistantOAuthClient {
     this.openExternal = openExternal;
     this.postForm = postForm;
     this.isSecureStorageAvailable = isSecureStorageAvailable;
+    this.probeServer = probeServer;
     this.now = now;
     this.log = log;
     this.credentialsPath = path.join(userDataPath, OAUTH_CREDENTIALS_FILE);
@@ -373,6 +442,7 @@ class HomeAssistantOAuthClient {
     this.refreshPromise = null;
     this.pairingPromise = null;
     this.pairingController = null;
+    this.pairingBaseUrl = null;
   }
 
   assertSecureStorage() {
@@ -509,35 +579,52 @@ class HomeAssistantOAuthClient {
   }
 
   async pair(baseUrl) {
-    if (this.pairingPromise) return this.pairingPromise;
+    const normalizedBaseUrl = normalizeHomeAssistantBaseUrl(baseUrl);
+    if (this.pairingPromise) {
+      // A second request for the same server joins the pairing already waiting in the browser.
+      // One for another server must not: it would silently wait on the old server's approval.
+      if (this.pairingBaseUrl === normalizedBaseUrl) return this.pairingPromise;
+      this.cancelPairing();
+    }
     this.assertSecureStorage();
     const controller = new AbortController();
     this.pairingController = controller;
-    this.pairingPromise = authorizeWithLoopback({
-      baseUrl,
-      signal: controller.signal,
-      openExternal: this.openExternal,
-      exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
-        const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
-          grant_type: 'authorization_code',
-          code,
-          client_id: clientId,
-        });
-        const tokens = parseTokenResponse(response, { requireRefreshToken: true });
-        const credentials = {
-          baseUrl: resolvedBaseUrl,
-          clientId,
-          redirectUri,
-          refreshToken: tokens.refreshToken,
-        };
-        this.writeCredentials(credentials);
-        return this.createSession(credentials, tokens);
-      },
-    });
+    this.pairingBaseUrl = normalizedBaseUrl;
+    const pairing = (async () => {
+      if (normalizedBaseUrl && this.probeServer) {
+        await this.probeServer(normalizedBaseUrl, controller.signal);
+      }
+      return authorizeWithLoopback({
+        baseUrl,
+        signal: controller.signal,
+        openExternal: this.openExternal,
+        exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
+          const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
+            grant_type: 'authorization_code',
+            code,
+            client_id: clientId,
+          });
+          const tokens = parseTokenResponse(response, { requireRefreshToken: true });
+          const credentials = {
+            baseUrl: resolvedBaseUrl,
+            clientId,
+            redirectUri,
+            refreshToken: tokens.refreshToken,
+          };
+          this.writeCredentials(credentials);
+          return this.createSession(credentials, tokens);
+        },
+      });
+    })();
+    this.pairingPromise = pairing;
     try {
-      return await this.pairingPromise;
+      return await pairing;
     } finally {
-      this.pairingPromise = null;
+      // A superseded pairing settles after its replacement started; leave the new one alone.
+      if (this.pairingPromise === pairing) {
+        this.pairingPromise = null;
+        this.pairingBaseUrl = null;
+      }
       if (this.pairingController === controller) this.pairingController = null;
     }
   }
@@ -618,5 +705,6 @@ module.exports = {
   isLoopbackOAuthClient,
   normalizeHomeAssistantBaseUrl,
   parseTokenResponse,
+  probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 };

@@ -1070,8 +1070,7 @@ async function finishFirstRunWizard() {
     if (firstRunWizard?.cancelRequested) {
       setWizardStatus('', '');
     } else {
-      const detail = error?.message || t('Unknown error');
-      const message = t('Could not connect to Home Assistant. {{error}}', { error: detail });
+      const message = describeOAuthPairingError(error);
       log.error('Failed to finish first-run setup:', error);
       setWizardStatus(message, 'error');
       uiUtils.showToast(message, 'error', 6000);
@@ -1101,9 +1100,14 @@ function maybeShowWizardAfterSettingsClose() {
 
 function skipWizardToSettings() {
   const finishedConnection = firstRunWizard?.step === 3;
+  // A pairing left waiting in the browser would otherwise capture the next Connect in Settings.
+  void cancelFirstRunAuthorization();
+  const wizardUrl = normalizeBaseUrl(getWizardUrl());
   setFirstRunWizardVisible(false);
   if (finishedConnection) return;
   openSettingsModal();
+  const settingsUrl = document.getElementById('ha-url');
+  if (settingsUrl && !settingsUrl.value && wizardUrl) settingsUrl.value = wizardUrl;
   const modal = document.getElementById('settings-modal');
   if (!modal || firstRunSettingsObserver) return;
   firstRunSettingsObserver = new MutationObserver(maybeShowWizardAfterSettingsClose);

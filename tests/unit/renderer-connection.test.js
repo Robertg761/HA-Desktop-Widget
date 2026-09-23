@@ -73,7 +73,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     resetMockElectronAPI();
     document.body.innerHTML =
       '<main class="widget-content"><div id="quick-controls"></div></main>' +
-      '<div id="settings-modal" class="hidden"></div>';
+      '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>';
     document.body.className = '';
     window.history.replaceState({}, '', 'http://localhost/');
 
@@ -428,6 +428,47 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
       expect(findButton('Choose rooms and devices')).toBeUndefined();
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('leaving the wizard during authorization', () => {
+    it('cancels the waiting pairing and carries its URL into Settings', async () => {
+      await loadRenderer({
+        config: {
+          ...baseConfig(),
+          homeAssistant: { url: '', token: 'YOUR_LONG_LIVED_ACCESS_TOKEN' },
+        },
+      });
+      let rejectPairing;
+      mockElectronAPI.startHomeAssistantOAuth.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPairing = reject;
+          })
+      );
+      mockElectronAPI.cancelHomeAssistantOAuth.mockImplementation(async () => {
+        const error = new Error('Home Assistant authorization was canceled');
+        error.result = { success: false, code: 'OAUTH_AUTHORIZATION_CANCELED' };
+        rejectPairing(error);
+        return { success: true, canceled: true };
+      });
+      findButton('Next').click();
+      await flushAsync();
+      const input = document.getElementById('first-run-ha-url');
+      input.value = 'ha.local:8123';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      findButton('Next').click();
+      await flushAsync();
+      findButton('Connect').click();
+      await flushAsync();
+
+      findButton('Full Settings').click();
+      await flushAsync();
+
+      expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+      expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
+      expect(document.getElementById('ha-url').value).toBe('http://ha.local:8123');
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
     });
   });
 

@@ -376,6 +376,7 @@ const {
 const {
   HomeAssistantOAuthClient,
   normalizeHomeAssistantBaseUrl,
+  probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
 
@@ -6458,6 +6459,7 @@ function getHomeAssistantOAuthClient() {
       userDataPath: app.getPath('userData'),
       openExternal: (url) => shell.openExternal(url),
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
+      probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,
     });

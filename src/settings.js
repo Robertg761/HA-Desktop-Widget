@@ -4469,6 +4469,8 @@ async function startHomeAssistantOAuthFromSettings() {
       if (state.CONFIG?.homeAssistant?.oauthStatus !== 'connected') {
         setHomeAssistantOAuthStatus(t('Home Assistant authorization canceled'), 'pending');
       }
+    } else if (error?.result?.code === 'OAUTH_SERVER_UNREACHABLE') {
+      setHomeAssistantOAuthStatus(t('Could not reach Home Assistant at that URL.'), 'error');
     } else {
       setHomeAssistantOAuthStatus(
         error?.message || t('Home Assistant authorization failed'),
