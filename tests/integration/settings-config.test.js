@@ -1392,6 +1392,27 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test.each([
+      [null, true],
+      [{ accent: '#ff0000' }, false],
+    ])(
+      'Follow Omarchy theme is only offered where Omarchy is detected (%p)',
+      async (desktopAppearance, hidden) => {
+        document
+          .querySelector('#settings-modal .modal-content')
+          .insertAdjacentHTML(
+            'afterbegin',
+            '<div id="follow-omarchy-group"><input id="follow-omarchy" type="checkbox" /></div>'
+          );
+        state.CONFIG.desktopAppearance = desktopAppearance;
+        await settings.openSettings();
+        expect(document.getElementById('follow-omarchy-group').classList.contains('hidden')).toBe(
+          hidden
+        );
+        expect(document.getElementById('follow-omarchy').disabled).toBe(hidden);
+      }
+    );
+
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {
       state.CONFIG.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
       state.CONFIG.tokenResetReason = 'decryption_failed';

@@ -3804,6 +3804,10 @@ async function openSettings(uiHooks) {
     if (followOmarchy) {
       followOmarchy.checked = !!state.CONFIG.ui?.followOmarchy;
       followOmarchy.disabled = !state.CONFIG.desktopAppearance;
+      // Like the Hyprland panel, the option only appears where Omarchy is detected.
+      document
+        .getElementById('follow-omarchy-group')
+        ?.classList.toggle('hidden', followOmarchy.disabled);
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
