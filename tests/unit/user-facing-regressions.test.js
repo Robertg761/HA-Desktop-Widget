@@ -349,6 +349,25 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['lock.front_door', 'locked'],
+    ['alarm_control_panel.home', 'armed_away'],
+  ])('never toggles %s from a plain command palette result', async (entityId, entityState) => {
+    const target = entity(entityId, entityState);
+    state.setStates({ [entityId]: target });
+    ui.openEntityDetailModal(target, { source: 'command-palette' });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+
+  it('still runs the primary action for plain palette results without controls', async () => {
+    const outlet = entity('switch.outlet', 'off');
+    state.setStates({ [outlet.entity_id]: outlet });
+    ui.openEntityDetailModal(outlet, { source: 'command-palette' });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).toHaveBeenCalled();
+  });
+
   it('only advertises and runs Shift+Enter on Quick Access tiles with controls', async () => {
     const ids = ['lock.back_door', 'light.hall'];
     state.setConfig({

@@ -55,6 +55,21 @@ describe('command palette fuzzy scoring', () => {
     expect(commands[1].displayName).toBe('Turn on Hall lights');
     expect(commands[4].displayName).toBe('Run Bedtime');
   });
+  it('offers only the lock command that changes a lock, and nothing for jammed locks', () => {
+    const commands = buildPaletteCommands(
+      [
+        { entity_id: 'lock.front', state: 'locked', attributes: { friendly_name: 'Front door' } },
+        { entity_id: 'lock.back', state: 'unlocked', attributes: { friendly_name: 'Back door' } },
+        { entity_id: 'lock.shed', state: 'jammed', attributes: { friendly_name: 'Shed' } },
+      ],
+      { customTabs: [] },
+      { lock: { lock: {}, unlock: {} } }
+    );
+    expect(commands.map((command) => [command.key, command.service, command.displayName])).toEqual([
+      ['lock.front', 'unlock', 'Unlock Front door'],
+      ['lock.back', 'lock', 'Lock Back door'],
+    ]);
+  });
   it('scores exact, prefix, substring, and subsequence matches in descending tiers', () => {
     const exact = scoreCommandPaletteMatch('Kitchen Light', 'Kitchen Light');
     const prefix = scoreCommandPaletteMatch('Kitchen Light', 'Kitchen');

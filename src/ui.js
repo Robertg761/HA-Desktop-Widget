@@ -10631,11 +10631,14 @@ function openEntityControls(entity) {
 }
 
 // The command palette opens an entity's controls, or runs its primary action
-// when the domain has no controls modal.
+// when the domain has no controls modal. Locks and alarm panels are never
+// toggled from a plain search result: the palette offers explicit, named
+// commands for those instead.
 function openEntityDetailModal(entity, options = {}) {
   try {
     if (openEntityControls(entity)) return;
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (['lock', 'alarm_control_panel'].includes(getEntityDomain(liveEntity?.entity_id))) return;
     if (liveEntity?.entity_id) executeEntityPrimaryAction(liveEntity, options);
   } catch (error) {
     console.error('Error opening entity detail modal:', error);

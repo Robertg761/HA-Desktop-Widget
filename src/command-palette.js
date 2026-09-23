@@ -233,7 +233,12 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
         ].filter(Boolean)
       : ['scene', 'script'].includes(domain)
         ? [['turn_on', t('Run {{name}}', { name })]]
-        : [];
+        : domain === 'lock'
+          ? [
+              entity.state === 'unlocked' && ['lock', t('Lock {{name}}', { name })],
+              entity.state === 'locked' && ['unlock', t('Unlock {{name}}', { name })],
+            ].filter(Boolean)
+          : [];
     return actions
       .filter(([service]) => services?.[domain]?.[service])
       .map(([service, displayName]) => ({
