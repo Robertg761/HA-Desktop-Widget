@@ -1111,10 +1111,19 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
 }
 
+/* The pin is also a .control-item, whose centred column layout would shrink the shell to its
+   content and centre it; the pin fills its window edge to edge instead. */
+.control-item.desktop-pin-light-control {
+  align-items: stretch;
+  justify-content: stretch;
+  text-align: left;
+}
+
 .desktop-pin-light-shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 10px;
+  width: 100%;
   min-height: 100%;
   position: relative;
   z-index: 1;
@@ -1122,9 +1131,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   border-radius: inherit;
 }
 
+/* Icon, name and status, then the power pill on the right. */
 .desktop-pin-light-topline {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 0;
@@ -1136,7 +1146,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-name {
   font-family: var(--desktop-pin-ui-font);
-  font-size: clamp(10px, 1.9vw, 12px);
+  font-size: clamp(12px, 4.5vw, 14px);
   font-weight: 700;
   line-height: 1.1;
   color: rgba(255, 255, 255, 0.96);
@@ -1258,11 +1268,15 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-variant-numeric: tabular-nums;
 }
 
+/* The input is as tall as its thumb, centred on the thinner track, so the round thumb is not
+   clipped to the track's height. */
 .desktop-pin-light-slider {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: var(--desktop-pin-light-slider-thumb-size);
+  transform: translateY(-50%);
   margin: 0;
   background: transparent;
   appearance: none;
@@ -1337,9 +1351,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: scale(1.1);
 }
 
-.desktop-pin-light-brightness-track {
+/* Doubled class: .desktop-pin-panel-progress, declared later, clips its overflow, which would
+   cut the slider's round thumb down to the track's height. */
+.desktop-pin-light-brightness-track.desktop-pin-panel-progress {
   height: var(--desktop-pin-light-slider-track-size);
-  margin: 10px 10px;
+  margin: 8px 0;
   border-radius: var(--radius-full);
   overflow: visible;
   position: relative;
