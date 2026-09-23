@@ -248,6 +248,8 @@ html {
   --settings-modal-bg-alpha: 0.82;
   --settings-modal-panel-rgb: 31, 31, 37;
   --settings-modal-panel-alpha: 0.88;
+  /* Text and hairline fills of desktop pin controls, which draw straight on the window background. */
+  --desktop-pin-ink-rgb: 255, 255, 255;
 
   /* ============================================
      ELEVATION & SHADOWS
@@ -442,6 +444,7 @@ html {
   --settings-modal-bg-alpha: 0.84;
   --settings-modal-panel-rgb: 255, 255, 255;
   --settings-modal-panel-alpha: 0.9;
+  --desktop-pin-ink-rgb: 0, 0, 0;
 
   /* Shadows (lighter for light theme) */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -988,10 +991,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 0 10px;
   font-size: var(--font-size-sm);
   font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
   color: var(--text-primary);
   border-radius: var(--radius-full);
   box-shadow:
@@ -1024,9 +1031,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-action:hover {
   transform: translateY(-1px);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-    rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.15);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.12),
+      rgba(var(--desktop-pin-ink-rgb), 0.04)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.04);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.15);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 10px 20px rgba(0, 0, 0, 0.25);
@@ -1036,7 +1047,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-action[aria-disabled='true'] {
   opacity: 0.48;
   cursor: default;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.03);
   color: var(--text-secondary);
 }
 
@@ -1095,7 +1106,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
       transparent 70%
     ),
     linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-radius: var(--radius-xl);
   box-shadow: var(--desktop-pin-control-shadow);
   backdrop-filter: blur(24px) saturate(180%);
@@ -1124,7 +1135,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-control:hover {
   transform: none;
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.16);
   box-shadow:
     0 24px 44px rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
@@ -1158,7 +1169,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: clamp(10px, 1.9vw, 12px);
   font-weight: 700;
   line-height: 1.1;
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1172,16 +1183,16 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.56);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.56);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .desktop-pin-light-power {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.1);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.04);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
   border-radius: var(--radius-full);
   padding: 4px 10px;
   min-width: 44px;
@@ -1205,14 +1216,14 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-light-power[data-active='true'] {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.4);
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
 }
 
 .desktop-pin-light-power:hover,
 .desktop-pin-light-power:focus-visible {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.08);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.15);
   outline: none;
 }
 
@@ -1250,8 +1261,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   display: grid;
   place-items: center;
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--desktop-pin-ink-rgb), 0.12),
+    rgba(var(--desktop-pin-ink-rgb), 0.04)
+  );
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.06);
   font-size: var(--font-size-md);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -1264,7 +1279,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.46);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.46);
 }
 
 .desktop-pin-light-meter-value {
@@ -1273,7 +1288,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 800;
   line-height: 0.95;
   letter-spacing: -0.05em;
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1410,11 +1425,15 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-light-preset {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-  color: rgba(255, 255, 255, 0.86);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.06),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.86);
   border-radius: var(--radius-lg);
   min-height: 28px;
   font-family: var(--desktop-pin-display-font);
@@ -1614,7 +1633,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   background:
     radial-gradient(circle at top left, rgba(var(--desktop-pin-tint-rgb), 0.15), transparent 70%),
     linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-radius: var(--desktop-pin-panel-radius);
   box-shadow: var(--desktop-pin-control-shadow);
   backdrop-filter: blur(24px) saturate(180%);
@@ -1627,7 +1646,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-panel-control:hover {
   transform: none;
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.16);
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
@@ -1702,7 +1721,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: clamp(10px, 1.9vw, 12px);
   font-weight: 700;
   line-height: 1.1;
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   letter-spacing: 0.01em;
 }
 
@@ -1711,7 +1730,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-slider-label,
 .desktop-pin-panel-caption {
   font-family: var(--desktop-pin-display-font);
-  color: rgba(255, 255, 255, 0.58);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.58);
   font-size: var(--font-size-3xs);
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -1728,7 +1747,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-kpi,
 .desktop-pin-panel-value {
   font-family: var(--desktop-pin-display-font);
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-weight: 800;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
@@ -1758,13 +1777,17 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   padding: 8px 10px;
   border-radius: var(--desktop-pin-panel-meter-radius);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
     radial-gradient(
       circle at center,
       rgba(var(--desktop-pin-tint-rgb), calc(var(--desktop-pin-progress, 0) * 0.35)),
       transparent 70%
     );
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.06);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     inset 0 -12px 24px rgba(0, 0, 0, 0.15);
@@ -1792,8 +1815,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--desktop-pin-ink-rgb), 0.12),
+    rgba(var(--desktop-pin-ink-rgb), 0.04)
+  );
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.06);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 8px 16px rgba(0, 0, 0, 0.15);
@@ -1829,9 +1856,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   padding: 6px 8px;
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.06),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.05);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -1887,11 +1918,15 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-height: 28px;
   padding: 6px 8px;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-  color: rgba(255, 255, 255, 0.92);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
@@ -1930,9 +1965,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-button:focus-visible {
   transform: translateY(-1px);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-    rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.12),
+      rgba(var(--desktop-pin-ink-rgb), 0.04)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.04);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.12);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 10px 20px rgba(0, 0, 0, 0.2);
@@ -1947,14 +1986,14 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-media-title {
   font-family: var(--desktop-pin-ui-font);
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   font-size: clamp(11px, 2.3vw, 13px);
   font-weight: 700;
 }
 
 .desktop-pin-media-artist {
   font-family: var(--desktop-pin-ui-font);
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.62);
   font-size: var(--font-size-xs);
 }
 
@@ -1963,8 +2002,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   height: 6px;
   border-radius: var(--radius-full);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -2041,8 +2084,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
       rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.15),
       transparent 70%
     ),
-    linear-gradient(155deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+    linear-gradient(
+      155deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.05),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    );
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 12px 24px rgba(0, 0, 0, 0.2);
@@ -2077,7 +2124,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-scene-name {
   max-width: 100%;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--desktop-pin-scene-name-font-size, clamp(8px, min(5.2vmin, 14px), 24px));
   font-weight: 800;
@@ -2309,7 +2356,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.66);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.66);
 }
 
 .desktop-pin-timer-pulse {
@@ -2337,8 +2384,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.78);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.08);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.78);
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-2xs);
   font-weight: 800;
@@ -2363,7 +2410,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: calc(min(23vw, 30vh) * var(--desktop-pin-timer-readout-scale, 1));
   line-height: 1;
   letter-spacing: -0.045em;
-  color: rgba(255, 255, 255, 1);
+  color: rgba(var(--desktop-pin-ink-rgb), 1);
 }
 
 .desktop-pin-timer-endsat {
@@ -2374,7 +2421,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: none;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2386,7 +2433,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   z-index: 2;
   overflow: hidden;
   height: 4px;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.07);
 }
 
 .desktop-pin-timer-progress-fill {
@@ -2401,7 +2448,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-timer-control[data-state='paused'] .desktop-pin-timer-progress-fill {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.42));
+  background: linear-gradient(
+    90deg,
+    rgba(var(--desktop-pin-ink-rgb), 0.24),
+    rgba(var(--desktop-pin-ink-rgb), 0.42)
+  );
   box-shadow: none;
 }
 
@@ -2412,6 +2463,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-timer-control[data-urgent='true'] .desktop-pin-timer-readout {
   color: rgba(255, 214, 208, 1);
+}
+
+/* The pale red would vanish on the light theme's white window. */
+body.theme-light:not(.high-contrast)
+  .desktop-pin-timer-control[data-urgent='true']
+  .desktop-pin-timer-readout {
+  color: #c62828;
 }
 
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-actions {

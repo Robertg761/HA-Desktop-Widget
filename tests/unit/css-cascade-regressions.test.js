@@ -123,6 +123,53 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('desktop pin text', () => {
+    const TEXT_CLASSES = [
+      'desktop-pin-panel-name',
+      'desktop-pin-panel-status',
+      'desktop-pin-panel-caption',
+      'desktop-pin-panel-value',
+      'desktop-pin-panel-button',
+      'desktop-pin-light-name',
+      'desktop-pin-light-status',
+      'desktop-pin-light-power',
+      'desktop-pin-light-meter-value',
+      'desktop-pin-light-preset',
+      'desktop-pin-media-title',
+      'desktop-pin-media-artist',
+      'desktop-pin-scene-name',
+    ];
+    const TIMER_TEXT_CLASSES = [
+      'desktop-pin-timer-badge',
+      'desktop-pin-timer-endsat',
+      'desktop-pin-timer-readout',
+    ];
+
+    it.each(THEME_CASES)('stays readable on the pin window background (%s)', (_, theme) => {
+      render(
+        `desktop-pin-mode ${theme}`,
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control">
+            ${TEXT_CLASSES.map((name) => `<div class="${name}"></div>`).join('')}
+          </div>
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-timer-control"
+            data-layout="micro" data-urgent="true">
+            ${TIMER_TEXT_CLASSES.map((name) => `<div class="${name}"></div>`).join('')}
+          </div>
+        </div></div>`
+      );
+      const windowBackground = `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`;
+
+      for (const name of [...TEXT_CLASSES, ...TIMER_TEXT_CLASSES]) {
+        const color = resolvedValue(document.querySelector(`.${name}`), 'color');
+        expect({ name, contrast: contrastRatio(color, windowBackground) >= 4.5 }).toEqual({
+          name,
+          contrast: true,
+        });
+      }
+    });
+  });
+
   describe('readable preset', () => {
     const readableThemes = [THEMES['readable dark'], THEMES['readable light']];
 
