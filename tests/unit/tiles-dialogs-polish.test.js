@@ -319,4 +319,46 @@ describe('tile and device dialog polish', () => {
       expect(savedToasts()).toHaveLength(1);
     });
   });
+
+  describe('sensor history period failures', () => {
+    it('hides the previous chart and dates on failure and restores them on retry', async () => {
+      const modal = document.createElement('div');
+      document.body.append(modal);
+      const request = jest
+        .fn()
+        .mockResolvedValueOnce({ result: [{ value: 1, timestamp: Date.now() - 1000 }] })
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce({ result: [{ value: 2, timestamp: Date.now() - 1000 }] });
+      const render = jest.fn((frame) => {
+        frame.textContent = 'chart';
+      });
+      mountSensorHistoryDetail({
+        body: modal,
+        modal,
+        entity: { entity_id: 'sensor.test', attributes: {} },
+        websocket: { request },
+        normalize: (response) => response.result,
+        render,
+      });
+      await jest.advanceTimersByTimeAsync(0);
+      const frame = modal.querySelector('.sensor-detail-sparkline');
+      const dates = modal.querySelectorAll('.sensor-history-summary')[1];
+      expect(frame.hidden).toBe(false);
+      expect(dates.textContent).not.toBe('');
+
+      const period = modal.querySelector('select');
+      period.value = '1';
+      period.dispatchEvent(new Event('change'));
+      await jest.advanceTimersByTimeAsync(0);
+      expect(frame.hidden).toBe(true);
+      expect(dates.textContent).toBe('');
+
+      modal.querySelector('button').click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(frame.hidden).toBe(false);
+      expect(dates.textContent).not.toBe('');
+      expect(render).toHaveBeenCalledTimes(2);
+      modal.remove();
+    });
+  });
 });

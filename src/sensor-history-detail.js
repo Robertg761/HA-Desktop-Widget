@@ -97,6 +97,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
           max: format(stats.max),
           average: format(stats.average),
         }) + (unit ? ` ${unit}` : '');
+      frame.hidden = false;
       render(frame, data.series, { start: data.start, end: data.end });
       dates.textContent = `${formatDateTime(data.start)} – ${formatDateTime(data.end)}`;
       refresh.textContent = t('Refresh');
@@ -106,6 +107,9 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
       status.textContent = t(
         'Could not load history. Check your connection and recorder, then retry.'
       );
+      // The previous chart and dates belong to another period; don't show them under this one.
+      frame.hidden = true;
+      dates.textContent = '';
       refresh.textContent = t('Retry');
     } finally {
       if (revision === requestRevision) {
