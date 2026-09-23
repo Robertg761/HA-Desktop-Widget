@@ -3984,6 +3984,7 @@ function loadConfig(options = {}) {
         config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
         config.homeAssistant.tokenEncrypted = false;
         config.homeAssistant.oauthStatus = 'restoring';
+        delete config.homeAssistant.oauthAuthorizationId;
         delete config.tokenResetReason;
       } else if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
         if (deferSecureStorage) {
@@ -4426,6 +4427,7 @@ function buildConfigSnapshotForSave() {
     delete configToSave.homeAssistant.tokenEncrypted;
     delete configToSave.homeAssistant.oauthExpiresAt;
     delete configToSave.homeAssistant.oauthLastError;
+    delete configToSave.homeAssistant.oauthAuthorizationId;
     delete configToSave.tokenResetReason;
   }
 
@@ -6471,6 +6473,7 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
       authMethod: 'oauth',
       oauthStatus: 'connected',
       oauthExpiresAt: session.expiresAt,
+      oauthAuthorizationId: session.authorizationId,
     },
     desktopCompanion: { ...(config?.desktopCompanion || {}) },
   };
@@ -6507,6 +6510,7 @@ async function refreshHomeAssistantOAuthSession() {
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
     if (error?.code === 'OAUTH_INVALID_GRANT') {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+      delete config.homeAssistant.oauthAuthorizationId;
       clearHomeAssistantOAuthRefreshTimer();
     } else {
       scheduleHomeAssistantOAuthRefresh(null, HOME_ASSISTANT_OAUTH_RETRY_MS);

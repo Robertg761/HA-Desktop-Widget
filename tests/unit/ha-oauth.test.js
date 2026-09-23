@@ -252,16 +252,52 @@ describe('Home Assistant OAuth', () => {
       expect(fs.statSync(path.join(userDataPath, OAUTH_CREDENTIALS_FILE)).mode & 0o777).toBe(0o600);
     }
 
-    await expect(client.restore()).resolves.toEqual({
+    const restored = await client.restore();
+    expect(restored).toEqual({
       baseUrl: 'https://ha.example.test',
       accessToken: 'access-for-refresh-secret',
       expiresAt: 1801000,
+      authorizationId: expect.stringMatching(/^[0-9a-f]{16}$/),
     });
+    expect(restored.authorizationId).not.toContain('refresh-secret');
     expect(postForm).toHaveBeenCalledWith('https://ha.example.test/auth/token', {
       grant_type: 'refresh_token',
       refresh_token: 'refresh-secret',
       client_id: 'http://127.0.0.1:40123/',
     });
+  });
+
+  test('keeps one authorization id while the access token rotates', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    let issued = 0;
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: jest.fn(),
+      postForm: jest.fn(async () => ({
+        status: 200,
+        body: JSON.stringify({ access_token: `access-${(issued += 1)}`, expires_in: 1800 }),
+      })),
+      isSecureStorageAvailable: () => true,
+    });
+    const credentials = {
+      baseUrl: 'https://ha.example.test',
+      clientId: 'http://127.0.0.1:40123/',
+      redirectUri: 'http://127.0.0.1:40123/oauth/callback',
+      refreshToken: 'refresh-one',
+    };
+    client.writeCredentials(credentials);
+
+    const first = await client.restore();
+    const second = await client.refresh();
+    expect(second.accessToken).not.toBe(first.accessToken);
+    expect(second.authorizationId).toBe(first.authorizationId);
+
+    client.writeCredentials({ ...credentials, refreshToken: 'refresh-two' });
+    const reauthorized = await client.refresh();
+    expect(reauthorized.authorizationId).not.toBe(first.authorizationId);
   });
 
   test('refuses to read or write OAuth credentials without secure storage', () => {

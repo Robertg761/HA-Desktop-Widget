@@ -195,6 +195,53 @@ describe('alerts module', () => {
       expect(showToast).toHaveBeenCalledTimes(1);
     });
 
+    describe('with Home Assistant authorization', () => {
+      const useOAuth = (accessToken, authorizationId = 'authorization-1') => {
+        mockState.CONFIG.homeAssistant = {
+          url: 'http://first-server',
+          token: accessToken,
+          authMethod: 'oauth',
+          oauthStatus: 'connected',
+          oauthAuthorizationId: authorizationId,
+        };
+      };
+      beforeEach(() => {
+        useOAuth('access-token-1');
+        alerts.resetEntityAlerts();
+        alerts.initializeEntityAlerts();
+      });
+
+      it('keeps a pending sustained alert when the access token is refreshed', () => {
+        reading('26');
+        jest.advanceTimersByTime(9000);
+        useOAuth('access-token-2');
+        alerts.initializeEntityAlerts();
+        jest.advanceTimersByTime(1000);
+        expect(showToast).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps cooldowns across access token refreshes', () => {
+        reading('26');
+        jest.advanceTimersByTime(10000);
+        expect(showToast).toHaveBeenCalledTimes(1);
+        useOAuth('access-token-2');
+        alerts.initializeEntityAlerts();
+        reading('24');
+        reading('26');
+        jest.advanceTimersByTime(10000);
+        expect(showToast).toHaveBeenCalledTimes(1);
+      });
+
+      it('starts over for a new authorization', () => {
+        reading('26');
+        jest.advanceTimersByTime(9000);
+        useOAuth('access-token-2', 'authorization-2');
+        alerts.initializeEntityAlerts();
+        jest.advanceTimersByTime(1000);
+        expect(showToast).not.toHaveBeenCalled();
+      });
+    });
+
     it.each(['rule', 'disabled', 'server', 'disconnect'])(
       'cancels pending alerts on %s changes',
       (change) => {

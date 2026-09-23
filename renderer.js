@@ -39,7 +39,7 @@ import {
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
 } from '@dev-climate-demo';
-import { isConfigured, normalizeBaseUrl } from './src/connection.js';
+import { getConnectionIdentity, isConfigured, normalizeBaseUrl } from './src/connection.js';
 import { renderConnectionStatus, setConnectionStatusBusy } from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
@@ -1894,9 +1894,8 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     if (!nextConfig || !nextConfig.homeAssistant) return;
     const wasConfigured = isConfigured(state.CONFIG);
     const wasSecureStoragePending = isSecureStoragePending();
-    const previousConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
-      state.CONFIG?.homeAssistant?.token || ''
-    }`;
+    const previousConnection = getConnectionIdentity(state.CONFIG);
+    const previousToken = state.CONFIG?.homeAssistant?.token || '';
     const applied = applyRendererConfig(nextConfig);
     if (applied === false) return;
     // A page switch or tile edit echoes back a config the renderer already holds and drew.
@@ -1904,9 +1903,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     const change =
       applied && typeof applied === 'object' ? applied : { quickAccess: true, other: true };
     if (!IS_DESKTOP_PIN_MODE && change.other) syncTrayEntityIconsWithConfig();
-    const nextConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
-      state.CONFIG?.homeAssistant?.token || ''
-    }`;
+    const nextConnection = getConnectionIdentity(state.CONFIG);
     // Apply the versioned config synchronously before yielding. The preload
     // buffers config echoes while writes are pending, and this avoids an older
     // event resuming after a newer optimistic mutation.
@@ -1926,6 +1923,14 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         previousConnection !== nextConnection
       ) {
         websocket.close();
+        connectWebSocket();
+      } else if (
+        previousToken !== (state.CONFIG?.homeAssistant?.token || '') &&
+        !websocket.isConnected()
+      ) {
+        // A refreshed OAuth access token is only needed for the next handshake: an open socket
+        // stays authenticated, so it is left alone. A socket that is down retries with the new
+        // token now rather than after its backoff, or never after an auth failure.
         connectWebSocket();
       }
     } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {

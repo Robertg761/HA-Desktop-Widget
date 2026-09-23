@@ -487,6 +487,13 @@ class HomeAssistantOAuthClient {
       refreshToken: credentials.refreshToken,
       accessToken: tokens.accessToken,
       expiresAt: this.now() + tokens.expiresIn * 1000,
+      // Stable for the life of one authorization while the access token rotates, so the app
+      // can tell a routine token refresh from a new sign-in. One-way, so it reveals nothing.
+      authorizationId: nodeCrypto
+        .createHash('sha256')
+        .update(`${credentials.clientId}\u0000${credentials.refreshToken}`)
+        .digest('hex')
+        .slice(0, 16),
     };
     return this.publicSession();
   }
@@ -497,6 +504,7 @@ class HomeAssistantOAuthClient {
       baseUrl: this.session.baseUrl,
       accessToken: this.session.accessToken,
       expiresAt: this.session.expiresAt,
+      authorizationId: this.session.authorizationId,
     };
   }
 

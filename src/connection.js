@@ -41,6 +41,18 @@ function isConfigured(config) {
   return !!normalizeBaseUrl(homeAssistant.url) && !isPlaceholderOrEmptyToken(homeAssistant.token);
 }
 
+// Which server and which sign-in the widget talks to. An OAuth access token is replaced every
+// half hour under the same authorization, so it is not part of the identity; a legacy token is
+// the sign-in itself. Only an identity change means a different connection.
+function getConnectionIdentity(config) {
+  const homeAssistant = config?.homeAssistant || {};
+  const auth =
+    homeAssistant.authMethod === 'oauth'
+      ? ['oauth', homeAssistant.oauthAuthorizationId || '']
+      : ['token', homeAssistant.token || ''];
+  return JSON.stringify([homeAssistant.url || '', ...auth]);
+}
+
 function buildHomeAssistantPathUrl(baseUrl, path) {
   const normalizedBase = normalizeBaseUrl(baseUrl);
   if (!normalizedBase) return null;
@@ -74,6 +86,7 @@ export {
   normalizeBaseUrl,
   isConfigured,
   isPlaceholderOrEmptyToken,
+  getConnectionIdentity,
   buildHomeAssistantPathUrl,
   classifyConnectionError,
 };
