@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep entities from Home Assistant 2026.9 child devices in their room. A child device with no area of its own now uses its parent device's area.
 - Repair generated AppImage launchers using the current app id or unquoted executable paths. Continue other launcher and login-startup repairs if an individual operation fails.
 - Recover shortcuts automatically when the Wayland portal starts late, restarts, or closes a shortcut session. Retry transient failures with backoff without repeating cancelled shortcut approval.
 

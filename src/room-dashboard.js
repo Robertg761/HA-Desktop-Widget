@@ -1,5 +1,17 @@
+// HA 2026.9 returns child devices alongside regular ones. A child device with no area
+// of its own belongs to its parent's area, and children cannot nest, so one hop is enough.
+function effectiveDeviceAreas(devices) {
+  const ownAreas = new Map(devices.map((device) => [device.id, device.area_id]));
+  return new Map(
+    devices.map((device) => [
+      device.id,
+      device.area_id || (device.parent_device_id ? ownAreas.get(device.parent_device_id) : null),
+    ])
+  );
+}
+
 function entitiesForArea(areaId, entities, devices, states) {
-  const deviceAreas = new Map(devices.map((device) => [device.id, device.area_id]));
+  const deviceAreas = effectiveDeviceAreas(devices);
   return entities
     .filter(
       (entity) =>

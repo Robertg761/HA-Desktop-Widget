@@ -27,6 +27,32 @@ describe('room dashboards', () => {
       entitiesForArea('bedroom', entities, [{ id: 'device', area_id: 'office' }], states)
     ).toEqual(['light.override']);
   });
+  it('gives child devices their parent device area unless they carry one of their own', () => {
+    const entities = [
+      { entity_id: 'switch.outlet_one', device_id: 'outlet-one' },
+      { entity_id: 'switch.outlet_two', device_id: 'outlet-two' },
+      { entity_id: 'sensor.strip_power', device_id: 'power-strip' },
+    ];
+    const devices = [
+      { id: 'power-strip', area_id: 'garage', parent_device_id: null },
+      { id: 'outlet-one', area_id: null, parent_device_id: 'power-strip' },
+      { id: 'outlet-two', area_id: 'garden', parent_device_id: 'power-strip' },
+    ];
+    const states = Object.fromEntries(entities.map((entity) => [entity.entity_id, {}]));
+    expect(entitiesForArea('garage', entities, devices, states)).toEqual([
+      'switch.outlet_one',
+      'sensor.strip_power',
+    ]);
+    expect(entitiesForArea('garden', entities, devices, states)).toEqual(['switch.outlet_two']);
+  });
+  it('leaves child devices out of every room when the parent has no area either', () => {
+    const entities = [{ entity_id: 'switch.outlet_one', device_id: 'outlet-one' }];
+    const devices = [
+      { id: 'power-strip', area_id: null, parent_device_id: null },
+      { id: 'outlet-one', area_id: null, parent_device_id: 'power-strip' },
+    ];
+    expect(entitiesForArea('garage', entities, devices, { 'switch.outlet_one': {} })).toEqual([]);
+  });
   it('rejects permission errors instead of offering an incomplete room', async () => {
     const request = jest
       .fn()
