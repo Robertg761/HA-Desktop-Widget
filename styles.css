@@ -12799,3 +12799,622 @@ body.high-contrast .tile-primary-button,
 body.high-contrast .tile-primary-button:focus-visible {
   outline-offset: -3px !important;
 }
+
+/* ============================================
+   DIALOGS, POP-UPS AND TOASTS
+   One recipe for every dialog, control pop-up, list, toast and the command
+   palette, matching the main view: a solid-enough glass panel over a dimmed,
+   lightly blurred window, tile-style chips and rows, line icons, and big
+   numbers in the display face. It sits last so it wins over the older
+   per-dialog rules above without !important; the readability overrides
+   (high contrast, opaque panels) still win because they use !important.
+   The panel colour is mixed from the window base, so background themes,
+   the light theme and desktop palettes carry into dialogs.
+   ============================================ */
+
+body {
+  /* Chromium draws <select> popups, scrollbars and form controls on Windows
+     and Linux; color-scheme makes those follow the app theme. macOS draws
+     select popups natively, which follow nativeTheme (set in main.js). */
+  color-scheme: dark;
+  /* macOS renders light-on-dark text heavier with subpixel smoothing; the demo
+     and the app use grayscale antialiasing. No effect on Windows or Linux. */
+  -webkit-font-smoothing: antialiased;
+  /* 96% opaque: Linux performance mode strips backdrop blur from everything but
+     modals (toasts, the palette and tooltips included), so the panel itself has
+     to carry legibility there. Windows and macOS add blur on top. */
+  --dialog-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%) 96%,
+    transparent
+  );
+  --dialog-border: rgba(255, 255, 255, 0.1);
+  --dialog-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.25);
+  --dialog-scrim: rgba(8, 10, 14, 0.55);
+}
+
+body.theme-light {
+  color-scheme: light;
+  --dialog-border: rgba(0, 0, 0, 0.1);
+  --dialog-shadow: 0 24px 60px -16px rgba(20, 24, 40, 0.35), 0 2px 6px rgba(20, 24, 40, 0.12);
+  --dialog-scrim: rgba(240, 242, 246, 0.5);
+}
+
+/* --- Backdrop and panel --- */
+
+.modal,
+.rename-modal,
+.hotkey-capture-modal {
+  background: var(--dialog-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.modal-content,
+.brightness-modal-content,
+.climate-modal-content,
+.fan-modal-content,
+.cover-modal-content,
+.rename-modal .modal-content,
+body.frosted-glass .modal-content,
+body.software-glass.frosted-glass .modal-content {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    var(--dialog-shadow),
+    inset 0 1px 0 var(--window-highlight);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+
+.modal-content::before {
+  content: none;
+}
+
+.modal-header {
+  padding: 14px 16px;
+  background: transparent;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+.modal-header h2 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--tile-border);
+  background: transparent;
+}
+
+.close-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid transparent;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.close-btn:hover {
+  background: var(--tile-bg-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+  transform: none;
+  box-shadow: none;
+}
+
+.close-btn:active {
+  transform: scale(0.94);
+}
+
+/* --- Buttons --- */
+
+.btn,
+.rename-modal .btn-secondary,
+.confirm-modal-content .btn-secondary {
+  min-height: 34px;
+  border: 1px solid var(--tile-border-hover);
+  background: var(--tile-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--duration-fast) var(--ease-emphasized);
+}
+
+.btn:hover,
+.rename-modal .btn-secondary:hover,
+.confirm-modal-content .btn-secondary:hover {
+  background: var(--tile-bg-hover);
+  border-color: var(--border-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+.btn:active {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+
+.btn-primary,
+.rename-modal .btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #0a0c10;
+  font-weight: var(--font-weight-semibold);
+}
+
+.btn-primary:hover,
+.rename-modal .btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: transparent;
+}
+
+.btn-secondary {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+}
+
+.btn-secondary:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  color: var(--accent-hover);
+}
+
+.btn-secondary[id*='cancel'],
+.btn-secondary[id*='close'],
+.btn-secondary[id*='reset'] {
+  background: transparent;
+  border-color: var(--tile-border-hover);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.btn-secondary[id*='cancel']:hover,
+.btn-secondary[id*='close']:hover,
+.btn-secondary[id*='reset']:hover {
+  background: var(--tile-bg-hover);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
+/* --- Control pop-ups: brightness, climate, fan, cover, sensor --- */
+
+.brightness-icon-wrapper,
+.fan-icon-wrapper {
+  width: 60px;
+  height: 60px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.brightness-icon,
+.fan-icon {
+  display: flex;
+  font-size: var(--font-size-3xl);
+  line-height: 1;
+}
+
+.fan-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.55));
+}
+
+/* The bulb glows warmer and brighter as the level rises. */
+.brightness-icon {
+  color: #ffd08a;
+  animation: none;
+}
+
+.brightness-icon.brightness-off {
+  color: var(--text-tertiary);
+  opacity: 1;
+  filter: none;
+}
+
+.brightness-icon.brightness-low {
+  opacity: 0.7;
+  filter: drop-shadow(0 0 4px rgba(255, 196, 110, 0.35));
+}
+
+.brightness-icon.brightness-mid {
+  opacity: 0.85;
+  filter: drop-shadow(0 0 7px rgba(255, 196, 110, 0.45));
+}
+
+.brightness-icon.brightness-high {
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(255, 196, 110, 0.55));
+}
+
+.brightness-icon.brightness-max {
+  opacity: 1;
+  filter: drop-shadow(0 0 14px rgba(255, 196, 110, 0.7));
+  animation: none;
+}
+
+body.theme-light .brightness-icon:not(.brightness-off) {
+  color: #d98a1c;
+}
+
+.brightness-value-large,
+.fan-speed-value,
+.cover-position-value,
+.climate-temp-value-large,
+.sensor-detail-value {
+  font-family: var(--font-display);
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text-primary);
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.climate-temp-value {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+.brightness-label,
+.fan-speed-label,
+.cover-position-label,
+.climate-temp-label,
+.climate-modes-label {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+
+.brightness-content {
+  gap: var(--space-3);
+}
+
+.climate-temp-display,
+.climate-extra-stats,
+.cover-icon-container {
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+}
+
+.cover-icon {
+  display: flex;
+  font-size: var(--font-size-6xl);
+  color: color-mix(in srgb, var(--text-primary) 80%, transparent);
+}
+
+.sensor-detail-icon {
+  display: flex;
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.5));
+}
+
+/* Sliders: a slim rounded track and a white thumb, as on the pinned tiles. */
+.brightness-slider,
+.fan-slider,
+.cover-slider,
+.climate-slider {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--tile-border-hover), var(--accent));
+  box-shadow: none;
+}
+
+.brightness-slider {
+  background: linear-gradient(90deg, rgba(255, 208, 138, 0.18), #ffd08a);
+}
+
+.brightness-slider:hover,
+.brightness-slider:focus,
+.fan-slider:hover,
+.cover-slider:hover,
+.climate-slider:hover {
+  box-shadow: none;
+}
+
+.brightness-slider:focus-visible,
+.fan-slider:focus-visible,
+.cover-slider:focus-visible,
+.climate-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+}
+
+.brightness-slider::-webkit-slider-thumb,
+.fan-slider::-webkit-slider-thumb,
+.cover-slider::-webkit-slider-thumb,
+.climate-slider::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+  transition: transform var(--transition-fast);
+}
+
+.brightness-slider::-webkit-slider-thumb:hover,
+.fan-slider::-webkit-slider-thumb:hover,
+.cover-slider::-webkit-slider-thumb:hover,
+.climate-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 5px rgba(var(--accent-rgb), 0.18);
+}
+
+.brightness-slider::-webkit-slider-thumb:active,
+.fan-slider::-webkit-slider-thumb:active,
+.cover-slider::-webkit-slider-thumb:active,
+.climate-slider::-webkit-slider-thumb:active {
+  transform: scale(1.05);
+}
+
+/* Chips: presets, HVAC modes and cover actions share the tile recipe. */
+.brightness-preset-btn,
+.fan-preset-btn,
+.climate-mode-btn,
+.climate-fan-mode-btn,
+.climate-preset-mode-btn,
+.cover-action-btn {
+  border: 1px solid var(--tile-border);
+  background: var(--tile-bg);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  box-shadow: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--duration-fast) var(--ease-emphasized);
+}
+
+.brightness-preset-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.brightness-preset-btn::before {
+  content: none;
+}
+
+.brightness-preset-btn:hover,
+.fan-preset-btn:hover,
+.climate-mode-btn:hover,
+.climate-fan-mode-btn:hover,
+.climate-preset-mode-btn:hover,
+.cover-action-btn:hover {
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+.brightness-preset-btn:active,
+.fan-preset-btn:active,
+.climate-mode-btn:active,
+.climate-fan-mode-btn:active,
+.climate-preset-mode-btn:active,
+.cover-action-btn:active {
+  transform: scale(0.96);
+  box-shadow: none;
+}
+
+.climate-mode-btn.active,
+.climate-fan-mode-btn.active,
+.climate-preset-mode-btn.active,
+.fan-preset-btn.active {
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.42);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.climate-mode-btn.active:hover,
+.climate-fan-mode-btn.active:hover,
+.climate-preset-mode-btn.active:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+.climate-mode-icon,
+.cover-action-icon {
+  display: flex;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+.climate-mode-btn.active .climate-mode-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
+}
+
+.climate-mode-btn.active .climate-mode-label {
+  color: var(--text-primary);
+}
+
+/* --- Entity lists (Manage Quick Access, alerts, pickers) --- */
+
+.entity-selector-list {
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+}
+
+.entity-item {
+  border-bottom-color: var(--tile-border);
+  min-height: 52px;
+  padding: 10px 12px;
+}
+
+.entity-item:hover {
+  background: var(--tile-bg-hover);
+}
+
+.entity-icon,
+.alert-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  font-size: var(--font-size-lg);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+.entity-name {
+  font-weight: var(--font-weight-semibold);
+}
+
+.entity-selector-btn {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.entity-selector-btn.add,
+.entity-selector-btn.edit {
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+}
+
+.entity-selector-btn.add:hover,
+.entity-selector-btn.edit:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+}
+
+.entity-selector-btn.remove {
+  background: transparent;
+  border-color: rgba(239, 83, 80, 0.4);
+  color: #ff8a80;
+}
+
+.entity-selector-btn.remove:hover {
+  background: rgba(239, 83, 80, 0.14);
+}
+
+body.theme-light .entity-selector-btn.add,
+body.theme-light .entity-selector-btn.edit {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
+body.theme-light .entity-selector-btn.remove {
+  color: #c62828;
+}
+
+.alert-badge {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+/* --- Home Assistant notifications --- */
+
+.persistent-notification-item {
+  border-color: var(--tile-border);
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  box-shadow: none;
+}
+
+/* --- Toasts --- */
+
+.toast {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 var(--window-highlight);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  color: var(--text-primary);
+}
+
+/* --- Command palette --- */
+
+.command-palette-overlay {
+  background: var(--dialog-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.command-palette-panel {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  box-shadow:
+    var(--dialog-shadow),
+    inset 0 1px 0 var(--window-highlight);
+}
+
+.command-palette-search {
+  border-bottom-color: var(--tile-border);
+}
+
+.command-palette-result-icon {
+  background: var(--tile-bg);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+/* --- Menus and tooltips drawn by the app --- */
+
+.custom-dropdown-menu,
+.connection-status-tooltip {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 var(--window-highlight);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.connection-status-tooltip::after {
+  border-top-color: var(--dialog-border);
+}
+
+/* Windows and Linux draw <select> popups in-page; give options the dialog
+   colours instead of the OS default white. */
+select option {
+  background-color: rgb(var(--window-bg-rgb));
+  color: var(--text-primary);
+}
