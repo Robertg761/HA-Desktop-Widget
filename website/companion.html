@@ -50,15 +50,12 @@
   <main>
     <section class="page-hero">
       <h1>Your desktops, inside Home Assistant.</h1>
-      <p class="lede">
-        The companion integration turns every computer running the widget into a real Home Assistant
-        device. Automations can show it, hide it, switch its page, or give it a whole new look.
-      </p>
+      <p class="lede">An optional integration that lets your automations control the widget on every computer.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#install">Install the integration</a>
+        <a class="btn btn-primary" href="#install">Install</a>
         <a class="btn btn-quiet" href="https://github.com/Robertg761/HA-Desktop-Widget-Companion" target="_blank" rel="noopener">
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
-          View on GitHub
+          GitHub
         </a>
       </div>
 
@@ -67,67 +64,55 @@
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-monitor"/></svg></span>
           <div>
             <strong>Office desktop</strong>
-            <span>HA Desktop Widget · Linux</span>
+            <span>HA Desktop Widget</span>
           </div>
         </div>
         <ul class="ha-rows">
           <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>Connected<span class="v on">Connected</span></li>
           <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-eye"/></svg>Widget<span class="toggle" aria-label="On"></span></li>
-          <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-layers"/></svg>Current page<span class="v">living_room</span></li>
+          <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-layers"/></svg>Current page<span class="v">Home</span></li>
         </ul>
       </div>
     </section>
 
     <section class="section">
-      <header class="section-head reveal">
-        <h2>What it adds.</h2>
-      </header>
       <div class="bento">
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-monitor"/></svg></span>
-          <h3>Each desktop is a device</h3>
-          <p>A desktop registers itself the next time it connects. You get a Connected sensor, a Widget switch to show or hide it, and a Current page sensor, all usable in automations, scripts and dashboards.</p>
+          <h3>Every desktop is a device</h3>
+          <p>It shows up in Home Assistant on its own, with a switch to show or hide the widget.</p>
         </article>
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-zap"/></svg></span>
-          <h3>Five actions</h3>
-          <p>Target one desktop or several at once.</p>
-          <ul class="actions-list">
-            <li><code>show</code>Bring the widget up</li>
-            <li><code>hide</code>Put it away</li>
-            <li><code>toggle</code>Flip between the two</li>
-            <li><code>switch_page</code>Jump to a Quick Access page</li>
-            <li><code>apply_profile</code>Push a named profile</li>
-          </ul>
+          <h3>Automate it</h3>
+          <p>Show, hide or switch pages from any automation, on one desktop or all of them.</p>
         </article>
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-palette"/></svg></span>
           <h3>Profiles</h3>
-          <p>Write a named profile once and push it to any desktop: theme, accent, opacity, primary cards, Quick Access pages and tiles, graphs and custom icons. Profiles are revision-tracked, so Home Assistant can tell you which desktops are out of date.</p>
+          <p>Save a look and layout once, then push it to any desktop.</p>
         </article>
         <article class="tile t-half reveal">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-sidebar"/></svg></span>
-          <h3>A panel in the sidebar</h3>
-          <p>Admins get a Desktop Widget panel for writing profiles and applying them to registered desktops, with a marker on any desktop still running an older revision.</p>
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-shield"/></svg></span>
+          <h3>Safe by design</h3>
+          <p>Home Assistant can only send those few actions. Never commands, files or links.</p>
         </article>
       </div>
     </section>
 
     <section class="section">
       <header class="section-head reveal">
-        <h2>Automations it makes possible.</h2>
+        <h2>For example.</h2>
       </header>
-      <div class="examples">
-        <figure class="reveal" style="margin:0">
-          <div class="code">
-            <div class="code-head"><span>automations.yaml</span>
-              <button class="copy-btn" data-copy="ex1" aria-label="Copy">
-                <svg class="ico ico-copy" aria-hidden="true"><use href="/assets/icons.svg#i-copy"/></svg>
-                <svg class="ico ico-done" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>
-              </button>
-            </div>
-<pre id="ex1"><span class="k">alias:</span> <span class="s">Media page when the TV starts</span>
-<span class="k">triggers:</span>
+      <figure class="example reveal">
+        <div class="code">
+          <div class="code-head"><span>Show the media page when the TV starts</span>
+            <button class="copy-btn" data-copy="ex1" aria-label="Copy">
+              <svg class="ico ico-copy" aria-hidden="true"><use href="/assets/icons.svg#i-copy"/></svg>
+              <svg class="ico ico-done" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>
+            </button>
+          </div>
+<pre id="ex1"><span class="k">triggers:</span>
   - <span class="k">trigger:</span> state
     <span class="k">entity_id:</span> media_player.living_room_tv
     <span class="k">to:</span> <span class="s">playing</span>
@@ -136,86 +121,32 @@
     <span class="k">data:</span>
       <span class="k">device_id:</span> <span class="c">your_desktop</span>
       <span class="k">page_id:</span> <span class="s">media</span></pre>
-          </div>
-          <figcaption>Flip the widget to your media page whenever the TV starts playing.</figcaption>
-        </figure>
-        <figure class="reveal" style="margin:0">
-          <div class="code">
-            <div class="code-head"><span>automations.yaml</span>
-              <button class="copy-btn" data-copy="ex2" aria-label="Copy">
-                <svg class="ico ico-copy" aria-hidden="true"><use href="/assets/icons.svg#i-copy"/></svg>
-                <svg class="ico ico-done" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>
-              </button>
-            </div>
-<pre id="ex2"><span class="k">alias:</span> <span class="s">Evening look at sunset</span>
-<span class="k">triggers:</span>
-  - <span class="k">trigger:</span> sun
-    <span class="k">event:</span> sunset
-<span class="k">actions:</span>
-  - <span class="k">action:</span> ha_desktop_widget.apply_profile
-    <span class="k">data:</span>
-      <span class="k">device_id:</span> <span class="c">your_desktop</span>
-      <span class="k">profile_id:</span> <span class="s">evening</span></pre>
-          </div>
-          <figcaption>Swap every desktop to a dimmer theme and an evening page at sunset.</figcaption>
-        </figure>
-      </div>
-      <p class="dl-note reveal">In the automation editor you pick desktops from a list, so you never have to type a device ID. The Current page sensor shows each page’s ID.</p>
-    </section>
-
-    <section class="section">
-      <div class="tile reveal" style="grid-column:auto">
-        <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-shield"/></svg></span>
-        <h3>Deliberately narrow</h3>
-        <p>
-          The desktop talks to the integration over the same authenticated connection it already uses for your
-          entities, and it only accepts those five actions. Profiles never carry credentials, hotkeys, window
-          positions, desktop pins or sync settings. Those stay on each machine.
-        </p>
-        <ul class="never" aria-label="Things Home Assistant can never send">
-          <li>Shell commands</li>
-          <li>JavaScript</li>
-          <li>File access</li>
-          <li>URLs</li>
-          <li>Arbitrary IPC</li>
-        </ul>
-      </div>
+        </div>
+      </figure>
     </section>
 
     <section id="install" class="section">
       <header class="section-head reveal">
         <h2>Install it.</h2>
       </header>
-      <div class="install-grid">
-        <article class="tile reveal">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-package"/></svg></span>
-          <h3>With HACS</h3>
-          <ol>
-            <li>In HACS, open the menu and choose <strong>Custom repositories</strong>.</li>
-            <li>Add <code>github.com/Robertg761/HA-Desktop-Widget-Companion</code> as an <strong>Integration</strong>.</li>
-            <li>Install <strong>HA Desktop Widget</strong> and restart Home Assistant.</li>
-            <li>Go to <strong>Settings › Devices &amp; services › Add integration</strong> and pick HA Desktop Widget.</li>
-          </ol>
-        </article>
-        <article class="tile reveal">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-copy"/></svg></span>
-          <h3>Manually</h3>
-          <ol>
-            <li>Copy <code>custom_components/ha_desktop_widget</code> into your Home Assistant config folder.</li>
-            <li>Restart Home Assistant.</li>
-            <li>Go to <strong>Settings › Devices &amp; services › Add integration</strong> and pick HA Desktop Widget.</li>
-          </ol>
-        </article>
-      </div>
-      <ul class="requirements reveal">
-        <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>Home Assistant 2026.7 or newer</li>
-        <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>The latest HA Desktop Widget on each desktop</li>
-        <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>No YAML or tokens to configure</li>
-      </ul>
-      <p class="dl-note reveal">
-        The companion is in beta. It has been tested end to end on Linux; Windows and macOS have had less hands-on testing.
-        If a profile and folder-based profile sync manage the same settings, whichever writes last wins.
-      </p>
+      <ol class="steps">
+        <li class="reveal">
+          <span class="step-n">1</span>
+          <h3>Add it to HACS</h3>
+          <p>In HACS, open <strong>Custom repositories</strong> and add <code>Robertg761/HA-Desktop-Widget-Companion</code> as an Integration.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">2</span>
+          <h3>Install and restart</h3>
+          <p>Install <strong>HA Desktop Widget</strong>, then restart Home Assistant.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">3</span>
+          <h3>Turn it on</h3>
+          <p>In <strong>Settings › Devices &amp; services</strong>, add HA Desktop Widget. Your desktops appear next time they connect.</p>
+        </li>
+      </ol>
+      <p class="fine reveal">Needs Home Assistant 2026.7 or newer. Currently in beta. No HACS? <a href="https://github.com/Robertg761/HA-Desktop-Widget-Companion#manual-installation" target="_blank" rel="noopener">Install it manually.</a></p>
     </section>
 
     <section class="section closing reveal">

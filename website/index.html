@@ -57,9 +57,8 @@
     <section class="hero">
       <h1>Home Assistant,<br><span class="h1-soft">without the browser tab.</span></h1>
       <p class="lede">
-        A translucent panel that lives on your desktop, wired straight to your Home Assistant
-        server. Lights, cameras, climate, media and sensor graphs, one click away on
-        Windows, macOS and Linux.
+        Your lights, cameras and sensors in a translucent panel on your desktop.
+        For Windows, macOS and Linux.
       </p>
       <div class="cta-row">
         <a class="btn btn-primary" href="/download">
@@ -165,7 +164,7 @@
           <div class="tile-text">
             <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-chart"/></svg></span>
             <h3>Comparison graphs</h3>
-            <p>Up to seven sensors on one 24-hour chart with a shared time axis, so the curves actually line up. Hover anywhere for every value at that moment. Great for finding out which radiator is slacking.</p>
+            <p>Put up to seven sensors on one 24-hour chart and compare them at a glance.</p>
           </div>
           <div class="chart" aria-hidden="true">
             <svg viewBox="0 0 400 150" preserveAspectRatio="none">
@@ -196,46 +195,39 @@
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-command"/></svg></span>
           <h3>Global hotkeys</h3>
-          <p>Toggle an entity, run a script or fire an automation from any app. Another hotkey brings the widget forward, and Ctrl+K searches everything in HA.</p>
+          <p>Control devices from any app, or press Ctrl+K to search everything.</p>
           <div class="keys" aria-hidden="true"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd></div>
         </article>
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-grid"/></svg></span>
           <h3>Quick Access</h3>
-          <p>Drag the entities you actually use into a grid, across named pages. Click to toggle, hold for brightness, fan speed, covers or target temperature.</p>
+          <p>Your favorite devices in a grid. Click to toggle, hold for more.</p>
         </article>
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-pin"/></svg></span>
           <h3>Desktop pins</h3>
-          <p>Pull a tile out of the widget and drop it on the desktop as its own small window. Pinned lights get one-click brightness presets.</p>
+          <p>Drop any tile onto your desktop as its own little window.</p>
           <div class="presets" aria-hidden="true"><span>25%</span><span>50%</span><span class="on">75%</span><span>100%</span></div>
         </article>
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-video"/></svg></span>
           <h3>Live cameras</h3>
-          <p>Authenticated HLS streams, or a snapshot every 30, 10 or 5 seconds if you'd rather not stream all day. Previews pause whenever they're hidden.</p>
+          <p>Watch live feeds or refreshing snapshots right in the widget.</p>
         </article>
 
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-lock"/></svg></span>
           <h3>It never sees your password</h3>
-          <p>You sign in on Home Assistant's own login page in your real browser. The refresh token is stored with OS encryption, the access token stays in memory, and pairing fails closed if the keychain isn't available.</p>
-          <ol class="flow" aria-label="Sign-in flow">
-            <li>Your browser</li>
-            <li>HA login</li>
-            <li>Loopback</li>
-            <li>OS keychain</li>
-          </ol>
+          <p>You sign in on Home Assistant's own page, and your login is stored encrypted by your OS.</p>
         </article>
 
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-sync"/></svg></span>
           <h3>Profile sync, opt-in</h3>
-          <p>Layout, theme and tiles go into one JSON file in a folder you already sync: Drive, iCloud, Syncthing. Encrypt it with a passphrase if you like. Tokens, window positions and hotkeys never leave the machine.</p>
-          <div class="chips" aria-hidden="true"><span>AES-256-GCM</span><span>scrypt</span><span>5 local backups</span></div>
+          <p>Keep your layout and theme in sync across computers through a folder you already sync.</p>
         </article>
       </div>
     </section>
@@ -273,23 +265,15 @@
         <li class="reveal">
           <span class="step-n">2</span>
           <h3>Point it at Home Assistant</h3>
-          <p>Enter the URL you use in your browser, like <code>http://homeassistant.local</code>, click Connect and approve it on HA's login page.</p>
+          <p>Enter the address you use for Home Assistant and approve it in your browser.</p>
         </li>
         <li class="reveal">
           <span class="step-n">3</span>
           <h3>Add your entities</h3>
-          <p>Hit <strong>+</strong>, search for your lights, sensors and cameras, and drag them into whatever order makes sense.</p>
+          <p>Click <strong>+</strong> and pick the lights, sensors and cameras you want.</p>
         </li>
       </ol>
-      <aside class="callout reveal">
-        <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-drop"/></svg></span>
-        <p>
-          <strong>Want automations to drive it?</strong> The optional
-          <a href="/companion">companion integration</a>
-          registers each desktop as a Home Assistant device. Automations can show or hide the widget, switch its page,
-          or push a named profile to it. It only accepts those actions. No shell commands, no URLs, no arbitrary IPC.
-        </p>
-      </aside>
+      <p class="fine reveal">Want automations to control it? Try the <a href="/companion">companion integration</a>.</p>
     </section>
 
     <section class="section closing reveal">

@@ -48,80 +48,53 @@
   </header>
 
   <main>
-    <section class="page-hero">
+    <section class="page-hero dl-hero">
       <h1>Download HA Desktop Widget</h1>
-      <p class="lede">Free and open source for Windows, macOS and Linux.</p>
-      <p class="release-line"><span data-version>v3.10.0</span><span hidden> · released <span id="release-date"></span></span></p>
+      <p class="lede">Free for Windows, macOS and Linux.</p>
+
+      <div class="rec" id="recommend">
+        <a class="btn btn-primary btn-lg" id="rec-primary" href="#all">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
+          <span data-download-label>Choose your platform</span>
+        </a>
+        <p class="rec-sub">Version <span data-version>v3.10.0</span></p>
+        <p class="rec-arch" id="rec-arch" hidden></p>
+        <details class="install-help" id="install-help">
+          <summary id="install-summary">How to install</summary>
+          <p class="install-started" id="install-started" hidden>Your download has started.</p>
+          <ol class="install-steps" id="install-steps"></ol>
+          <p class="install-foot" id="install-foot" hidden>Didn’t start? <a id="install-retry" href="#">Try again</a>.</p>
+        </details>
+      </div>
+      <p class="no-detect" id="no-detect" hidden>HA Desktop Widget runs on computers. Open this page on yours to download it.</p>
     </section>
 
-    <section class="recommend" id="recommend" hidden>
-      <div class="rec-card">
-        <div>
-          <p class="rec-for"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>Recommended for your <span id="rec-device"></span></p>
-          <h2 id="rec-title"></h2>
-          <p class="rec-meta"><span id="rec-meta"></span><span id="rec-size"></span></p>
-          <p class="rec-note" id="rec-note"></p>
-          <p class="rec-arch" id="rec-arch"></p>
-        </div>
-        <div class="rec-actions">
-          <a class="btn btn-primary btn-lg" id="rec-primary" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">
-            <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
-            <span id="rec-primary-label">Download</span>
-          </a>
-          <a class="rec-alt" id="rec-alt" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"></a>
-        </div>
-      </div>
-    </section>
-    <p class="no-detect" id="no-detect" hidden>Looks like you’re on a phone or tablet. HA Desktop Widget runs on Windows, macOS and Linux, so grab it on your computer.</p>
-
-    <section class="section">
-      <header class="section-head">
-        <h2 id="others-title">All platforms</h2>
-      </header>
-      <div class="dl-grid">
-        <div class="os-card" data-os="windows">
-          <div class="os-head"><h3>Windows</h3></div>
-          <p class="os-arch">x64 · Windows 10 and 11</p>
-          <p>The installer updates itself in-app. The portable build checks for updates and links you to the download.</p>
-          <div class="dl-buttons">
-            <a class="btn btn-quiet" data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer<span class="ext">.exe</span></a>
-            <a class="btn btn-quiet" data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable<span class="ext">.exe</span></a>
-          </div>
-        </div>
-        <div class="os-card" data-os="mac">
-          <div class="os-head"><h3>macOS</h3></div>
-          <p class="os-arch">Universal · Intel and Apple Silicon</p>
-          <p>Not yet Developer ID signed. On first launch, Control-click the app and choose Open.</p>
-          <div class="dl-buttons">
-            <a class="btn btn-quiet" data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Disk image<span class="ext">.dmg</span></a>
-            <a class="btn btn-quiet" data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Archive<span class="ext">.zip</span></a>
-          </div>
-        </div>
-        <div class="os-card" data-os="linux">
-          <div class="os-head"><h3>Linux</h3></div>
-          <p class="os-arch">x64</p>
-          <p>The AppImage updates itself in-app. The .deb package updates through GitHub Releases.</p>
-          <div class="dl-buttons">
-            <a class="btn btn-quiet" data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage</a>
-            <a class="btn btn-quiet" data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Debian<span class="ext">.deb</span></a>
-          </div>
-        </div>
-      </div>
-
-      <div class="dl-more">
-        <aside class="callout">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-arrow"/></svg></span>
-          <p><strong>Installed it?</strong> Setup takes about two minutes. <a href="/#setup">Here’s how.</a></p>
-        </aside>
-        <aside class="callout">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-sync"/></svg></span>
-          <p><strong>Want nightly builds?</strong> Turn on Receive beta updates in Settings.</p>
-        </aside>
-        <aside class="callout">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-package"/></svg></span>
-          <p><strong>Older versions</strong> and every file are on the <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">releases page</a>.</p>
-        </aside>
-      </div>
+    <section class="section dl-all" id="all">
+      <h2>All downloads</h2>
+      <ul class="dl-list">
+        <li data-os="windows">
+          <span class="dl-os">Windows</span>
+          <span class="dl-links">
+            <a data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer</a>
+            <a data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable</a>
+          </span>
+        </li>
+        <li data-os="mac">
+          <span class="dl-os">macOS</span>
+          <span class="dl-links">
+            <a data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.dmg</a>
+            <a data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.zip</a>
+          </span>
+        </li>
+        <li data-os="linux">
+          <span class="dl-os">Linux</span>
+          <span class="dl-links">
+            <a data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage</a>
+            <a data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.deb</a>
+          </span>
+        </li>
+      </ul>
+      <p class="dl-foot">Older versions are on <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">GitHub</a>.</p>
     </section>
   </main>
 

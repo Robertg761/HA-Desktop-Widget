@@ -13,41 +13,32 @@ const ASSET_PATTERNS = {
   'linux-deb': /amd64\.deb$/,
 };
 
-/* What the download page recommends for each platform. */
+/* The one build the download page recommends for each platform. */
 const PLATFORMS = {
-  windows: {
-    label: 'Windows',
-    device: 'Windows PC',
-    title: 'Windows installer',
-    meta: 'x64 · updates itself',
-    primary: 'win-setup',
-    primaryLabel: 'Download installer',
-    alt: 'win-portable',
-    altLabel: 'Prefer no install? Get the portable .exe',
-    note: 'The app isn’t code-signed yet, so SmartScreen may warn on first launch. Choose More info, then Run anyway.',
-  },
-  mac: {
-    label: 'macOS',
-    device: 'Mac',
-    title: 'macOS disk image',
-    meta: 'Universal · Intel and Apple Silicon',
-    primary: 'mac-dmg',
-    primaryLabel: 'Download .dmg',
-    alt: 'mac-zip',
-    altLabel: 'Or get the .zip archive',
-    note: 'Not yet Developer ID signed. On first launch, Control-click the app and choose Open, or allow it under System Settings › Privacy & Security.',
-  },
-  linux: {
-    label: 'Linux',
-    device: 'Linux PC',
-    title: 'Linux AppImage',
-    meta: 'x64 · updates itself · runs on most distros',
-    primary: 'linux-appimage',
-    primaryLabel: 'Download AppImage',
-    alt: 'linux-deb',
-    altLabel: 'On Debian or Ubuntu? Get the .deb package',
-    note: 'Make it executable (chmod +x, or Properties › Allow executing) and run it.',
-  },
+  windows: { label: 'Windows', primary: 'win-setup' },
+  mac: { label: 'macOS', primary: 'mac-dmg' },
+  linux: { label: 'Linux', primary: 'linux-appimage' },
+};
+
+/* What to do after downloading each file. The last step is the same everywhere. */
+const CONNECT = 'Enter your Home Assistant address and approve it in your browser.';
+const SMARTSCREEN = 'If Windows shows a SmartScreen warning, click <b>More info</b>, then <b>Run anyway</b>. The app isn’t code-signed yet.';
+const GATEKEEPER = 'The first time, <b>Control-click</b> the app and choose <b>Open</b>. macOS asks because the app isn’t signed yet.';
+const INSTALL_STEPS = {
+  'win-setup': ['Run the installer from your Downloads folder.', SMARTSCREEN, CONNECT],
+  'win-portable': ['Put the .exe wherever you like and double-click it. Nothing gets installed.', SMARTSCREEN, CONNECT],
+  'mac-dmg': ['Open the .dmg and drag the app into <b>Applications</b>.', GATEKEEPER, CONNECT],
+  'mac-zip': ['Unzip it and move the app into <b>Applications</b>.', GATEKEEPER, CONNECT],
+  'linux-appimage': [
+    'Right-click the AppImage, open <b>Properties</b> and allow it to run as a program.',
+    'Double-click it to start. It keeps itself up to date.',
+    CONNECT,
+  ],
+  'linux-deb': [
+    'Open the .deb with your software installer, or run <code>sudo apt install ./</code> followed by the file name.',
+    'Launch HA Desktop Widget from your app menu.',
+    CONNECT,
+  ],
 };
 
 export function detectPlatform() {
@@ -93,16 +84,6 @@ release.then((rel) => {
     document.querySelectorAll(`[data-asset="${key}"]`).forEach((el) => {
       el.href = asset.browser_download_url;
     });
-    document.querySelectorAll(`[data-size="${key}"]`).forEach((el) => {
-      el.textContent = `${Math.round(asset.size / 1048576)} MB`;
-    });
-  }
-  const date = document.getElementById('release-date');
-  if (date && rel.published_at) {
-    date.textContent = new Date(rel.published_at).toLocaleDateString([], {
-      month: 'long', day: 'numeric', year: 'numeric',
-    });
-    date.parentElement.hidden = false;
   }
 });
 
@@ -141,47 +122,49 @@ document.querySelectorAll('[data-copy]').forEach((btn) => {
 /* ---------------- Download page ---------------- */
 
 const rec = document.getElementById('recommend');
-if (rec) {
-  if (info) {
-    const set = (id, text) => { document.getElementById(id).textContent = text; };
-    set('rec-device', info.device);
-    set('rec-title', info.title);
-    set('rec-meta', info.meta);
-    set('rec-note', info.note);
-    set('rec-primary-label', info.primaryLabel);
-    set('rec-alt', info.altLabel);
-    document.getElementById('rec-primary').dataset.asset = info.primary;
-    document.getElementById('rec-alt').dataset.asset = info.alt;
-    document.getElementById('rec-size').dataset.size = info.primary;
-    rec.hidden = false;
-    // The recommended platform already has its card up top.
-    document.querySelector(`.os-card[data-os="${platform.os}"]`)?.remove();
-    document.getElementById('others-title').textContent = 'Other platforms';
 
+function showSteps(assetKey) {
+  const steps = INSTALL_STEPS[assetKey];
+  if (steps) document.getElementById('install-steps').innerHTML = steps.map((t) => `<li>${t}</li>`).join('');
+}
+
+if (rec) {
+  const help = document.getElementById('install-help');
+  if (info) {
+    const button = document.getElementById('rec-primary');
+    button.dataset.asset = info.primary;
+    button.href = `https://github.com/${REPO}/releases/latest`;
+    showSteps(info.primary);
+    release.then((rel) => {
+      const asset = rel?.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
+      if (asset) button.href = asset.browser_download_url;
+    });
     detectArm().then((arm) => {
-      if (!arm) return;
-      const extra = {
-        windows: 'On Windows on Arm, the x64 build runs through Windows’ built-in emulation.',
-        linux: 'There’s no ARM build for Linux yet. The AppImage and .deb are x64 only.',
+      const text = arm && {
+        windows: 'Runs on Windows on Arm through emulation.',
+        linux: 'There’s no ARM build for Linux yet.',
       }[platform.os];
-      if (extra) document.getElementById('rec-arch').textContent = extra;
+      if (!text) return;
+      const el = document.getElementById('rec-arch');
+      el.textContent = text;
+      el.hidden = false;
     });
   } else {
-    document.getElementById('no-detect').hidden = false;
-    if (!platform.mobile) {
-      document.getElementById('no-detect').textContent =
-        'We couldn’t tell which computer you’re on. Pick your platform below.';
-    }
+    rec.hidden = true;
+    if (platform.mobile) document.getElementById('no-detect').hidden = false;
   }
-  // Re-run link upgrades now that the recommended buttons have asset keys.
-  release.then((rel) => {
-    if (!rel) return;
-    for (const el of rec.querySelectorAll('[data-asset]')) {
-      const asset = rel.assets?.find((a) => ASSET_PATTERNS[el.dataset.asset]?.test(a.name));
-      if (asset) el.href = asset.browser_download_url;
-    }
-    const size = document.getElementById('rec-size');
-    const sized = rel.assets?.find((a) => ASSET_PATTERNS[size.dataset.size]?.test(a.name));
-    if (sized) size.textContent = ` · ${Math.round(sized.size / 1048576)} MB`;
+
+  /* Any download on the page opens the matching next steps up top. */
+  document.querySelectorAll('main [data-asset]').forEach((link) => {
+    link.addEventListener('click', () => {
+      rec.hidden = false;
+      showSteps(link.dataset.asset);
+      document.getElementById('install-started').hidden = false;
+      document.getElementById('install-foot').hidden = false;
+      document.getElementById('install-retry').href = link.href;
+      document.getElementById('install-summary').textContent = 'Next steps';
+      help.open = true;
+      if (link.id !== 'rec-primary') help.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   });
 }
