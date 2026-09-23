@@ -237,4 +237,19 @@ describe('tile and device dialog polish', () => {
       expect(text).not.toMatch(/\d:\d{2}:\d{2}/);
     });
   });
+
+  it('relabels tile and primary card Controls buttons after a language change', () => {
+    const labels = () =>
+      [
+        ...document.querySelectorAll('#quick-controls .tile-details-button'),
+        document.querySelector('#weather-card .tile-details-button'),
+      ].map((button) => button?.textContent);
+    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { Controls: 'Steuerung' } });
+    state.setConfig({ ...state.CONFIG, primaryCards: ['light.desk', 'none'] });
+    renderTiles([entity('light.desk', 'off'), entity('media_player.den', 'off')]);
+    expect(labels()).toEqual(['Steuerung', 'Steuerung', 'Steuerung']);
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    ui.renderActiveTab();
+    expect(labels()).toEqual(['Controls', 'Controls', 'Controls']);
+  });
 });

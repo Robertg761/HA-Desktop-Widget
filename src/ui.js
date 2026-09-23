@@ -11,7 +11,7 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatTime, t } from './i18n.js';
+import { formatDate, formatTime, getLocaleState, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
@@ -2403,6 +2403,8 @@ function getControlRenderSignature(entity) {
     quickAccessValueSize: hasQuickAccessValueSize
       ? getQuickAccessTileValueSize(entity.entity_id)
       : null,
+    // Tiles are reused while this is unchanged; a language switch must redraw their labels.
+    locale: getLocaleState().activeLocale || '',
   });
 }
 
