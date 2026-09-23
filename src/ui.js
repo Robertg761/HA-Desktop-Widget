@@ -11,7 +11,7 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatTime, t } from './i18n.js';
+import { formatDate, formatTime, getLocaleState, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
@@ -71,6 +71,8 @@ const { getClimateControlCapabilities } = climateControls;
 
 const climateDialogRefreshers = new Map();
 let isReorganizeMode = false;
+// Set when a drag in the current reorganize session actually changed a page's order.
+let quickAccessOrderChanged = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
 const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
@@ -88,6 +90,7 @@ const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 const ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS = 8000;
+const MEDIA_PLAYER_SUPPORT_SEEK = 2;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
@@ -1449,6 +1452,7 @@ function toggleReorganizeMode() {
     const btn = document.getElementById('reorganize-quick-controls-btn');
 
     if (isReorganizeMode) {
+      quickAccessOrderChanged = false;
       container.classList.add('reorganize-mode');
       if (btn) {
         setIconContent(btn, 'check', { size: 18 });
@@ -1502,7 +1506,10 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(false).catch((error) => {
         console.error('Failed to disable desktop pin edit mode:', error);
       });
-      uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+      if (quickAccessOrderChanged) {
+        uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+      }
+      quickAccessOrderChanged = false;
     }
 
     // Refresh the tab bar so page-management affordances (or the plain tabs)
@@ -2168,6 +2175,9 @@ function saveQuickAccessOrder(movedItem = null) {
 
     const activeTab = getActiveQuickAccessTab(ensureQuickAccessConfig());
     const nextConfig = reorderQuickAccessView(state.CONFIG, activeTab?.id, newOrder);
+    const nextTab = getActiveQuickAccessTab(nextConfig);
+    if (JSON.stringify(nextTab?.entityIds) === JSON.stringify(activeTab?.entityIds)) return;
+    quickAccessOrderChanged = true;
 
     // Save to config
     setQuickAccessConfig(nextConfig, { render: false });
@@ -2403,6 +2413,8 @@ function getControlRenderSignature(entity) {
     quickAccessValueSize: hasQuickAccessValueSize
       ? getQuickAccessTileValueSize(entity.entity_id)
       : null,
+    // Tiles are reused while this is unchanged; a language switch must redraw their labels.
+    locale: getLocaleState().activeLocale || '',
   });
 }
 
@@ -2472,13 +2484,14 @@ function formatDateTimeValue(value) {
   return `${formatDate(date)} ${formatTime(date)}`;
 }
 
-function formatCalendarTileStart(startTime) {
+function formatCalendarTileStart(startTime, { allDay = false } = {}) {
   const dateValue = getEventDateValue(startTime);
   if (!dateValue) return '';
-  if (parseCalendarDate(dateValue)) return t('All day');
+  // Calendar entities report all-day events as a midnight start_time plus all_day: true.
+  if (allDay || parseCalendarDate(dateValue)) return t('All day');
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return formatTime(date);
+  return formatTime(date, { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatCalendarEventRange(event) {
@@ -4353,6 +4366,38 @@ function formatDesktopPinClimateModeLabel(mode) {
   const normalizedMode = typeof mode === 'string' ? mode.trim() : '';
   if (!normalizedMode) return 'Mode';
   return DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode] || normalizedMode.replace(/_/g, ' ');
+}
+
+// Capitalized, translated device state ("open" -> "Open"), sharing the tray's state names.
+function getLocalizedEntityStateLabel(value) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!key) return t('Unknown');
+  const name = trayEntitySupport.STATE_NAMES[key];
+  if (name) return t(name);
+  const text = key.replace(/_/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function getDeviceTileStateText(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const attributes = entity?.attributes || {};
+  if (domain === 'light') {
+    const brightness = Number(attributes.brightness);
+    if (entity.state === 'on' && attributes.brightness != null && brightness >= 0) {
+      return `${Math.round((brightness / 255) * 100)}%`;
+    }
+    return getLocalizedEntityStateLabel(entity.state);
+  }
+  const label = getLocalizedEntityStateLabel(entity?.state);
+  const percent =
+    domain === 'cover' && entity.state !== 'closed'
+      ? attributes.current_position
+      : domain === 'fan' && entity.state === 'on'
+        ? attributes.percentage
+        : null;
+  return percent != null && Number.isFinite(Number(percent))
+    ? `${label} ${Math.round(Number(percent))}%`
+    : label;
 }
 
 function getDesktopPinClimateModesToShow(modes, activeMode, maxCount) {
@@ -7603,7 +7648,8 @@ function renderTodoTileStateMarkup(entity) {
 function getCalendarNextEventSummary(entity) {
   const message = entity?.attributes?.message || 'No upcoming event';
   const start = formatCalendarTileStart(
-    entity?.attributes?.start_time || entity?.attributes?.start
+    entity?.attributes?.start_time || entity?.attributes?.start,
+    { allDay: entity?.attributes?.all_day === true }
   );
   return start ? `${message} · ${start}` : message;
 }
@@ -8379,18 +8425,8 @@ function createControlElement(entity, options = {}) {
         utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state
       );
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
-    } else if (
-      entity.entity_id.startsWith('light.') &&
-      entity.state === 'on' &&
-      entity.attributes.brightness
-    ) {
-      const brightnessValue = Number(entity.attributes.brightness);
-      if (!isNaN(brightnessValue) && brightnessValue >= 0) {
-        const brightness = Math.round((brightnessValue / 255) * 100);
-        stateDisplay = `<div class="control-state">${brightness}%</div>`;
-      }
-    } else if (entity.entity_id.startsWith('light.') && entity.state !== 'on') {
-      stateDisplay = `<div class="control-state">Off</div>`;
+    } else if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
+      stateDisplay = `<div class="control-state">${utils.escapeHtml(getDeviceTileStateText(entity))}</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
       if (temp)
@@ -8872,19 +8908,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     return true;
   }
 
+  if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
+    // A tile without a state line is redrawn with one.
+    if (!stateEl) return false;
+    stateEl.textContent = getDeviceTileStateText(displayEntity);
+  }
+
   if (displayEntity.entity_id.startsWith('light.')) {
     div.title = 'Click to toggle, hold for brightness control';
-    if (stateEl) {
-      if (displayEntity.state === 'on' && displayEntity.attributes?.brightness) {
-        const brightnessValue = Number(displayEntity.attributes.brightness);
-        stateEl.textContent =
-          !isNaN(brightnessValue) && brightnessValue >= 0
-            ? `${Math.round((brightnessValue / 255) * 100)}%`
-            : '';
-      } else {
-        stateEl.textContent = 'Off';
-      }
-    }
     return true;
   }
 
@@ -9697,6 +9728,8 @@ function hasMediaSeekData(entity) {
 function canSeekMedia(entity) {
   if (!entity?.entity_id?.startsWith('media_player.')) return false;
   if (!hasEntityService(entity, 'media_seek')) return false;
+  const features = entity.attributes?.supported_features;
+  if (!uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_SEEK)) return false;
   return hasMediaSeekData(entity);
 }
 
@@ -9932,9 +9965,14 @@ function showMediaDetail(entity) {
       const currentEntity = state.STATES[entity.entity_id] || entity;
       const attrs = currentEntity.attributes || {};
       if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
-        const volume = clampRange(Math.round(Number(attrs.volume_level ?? 0) * 100), 0, 100);
-        volumeSlider.value = String(volume);
-        volumeValue.textContent = `${volume}%`;
+        // An off player reports no volume; show that instead of a made-up 0%.
+        if (attrs.volume_level == null || !Number.isFinite(Number(attrs.volume_level))) {
+          volumeValue.textContent = '—';
+        } else {
+          const volume = clampRange(Math.round(Number(attrs.volume_level) * 100), 0, 100);
+          volumeSlider.value = String(volume);
+          volumeValue.textContent = `${volume}%`;
+        }
       }
       if (muteToggle) {
         const isMuted = attrs.is_volume_muted === true;
@@ -11429,22 +11467,36 @@ function showBrightnessSlider(light) {
     let confirmedBrightness = currentBrightness;
     let confirmedColorTemp = currentColorTemp;
     let confirmedColorHex = currentColorHex;
-    let brightnessDebounceTimer;
-    let colorTempDebounceTimer;
-    let colorDebounceTimer;
+    // Shown optimistically by Turn On, which lets the light restore its own last brightness.
+    let lastOnBrightness = currentBrightness;
+    let brightnessDebounceTimer = null;
+    let colorTempDebounceTimer = null;
+    let colorDebounceTimer = null;
     let lightCommandRevision = 0;
+    let lightCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const cancelPendingLightCommands = () => {
       clearTimeout(brightnessDebounceTimer);
       clearTimeout(colorTempDebounceTimer);
       clearTimeout(colorDebounceTimer);
+      brightnessDebounceTimer = colorTempDebounceTimer = colorDebounceTimer = null;
       lightCommandRevision += 1;
     };
     const callLightService = (service, data, rollback) => {
       const revision = ++lightCommandRevision;
+      lightCommandsInFlight += 1;
       return callServiceWithUiRollback(light, 'light', service, data, () => {
         if (revision === lightCommandRevision) rollback?.();
-      }).then((result) => ({ ...result, ok: result.ok && revision === lightCommandRevision }));
+      }).then((result) => {
+        lightCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) setTimeout(() => syncFromEntity(state.STATES?.[light.entity_id]));
+        return { ...result, ok: result.ok && revision === lightCommandRevision };
+      });
     };
+    const hasPendingLightCommand = () =>
+      !!(brightnessDebounceTimer || colorTempDebounceTimer || colorDebounceTimer) ||
+      lightCommandsInFlight > 0;
 
     // Update turn off/on button text
     const updateTurnButton = () => {
@@ -11457,9 +11509,11 @@ function showBrightnessSlider(light) {
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
@@ -11503,8 +11557,10 @@ function showBrightnessSlider(light) {
       const applyValue = (value) => {
         if (valueLarge) valueLarge.textContent = `${value}%`;
         updateIconAndAccent(value);
+        if (value > 0) lastOnBrightness = value;
         clearTimeout(brightnessDebounceTimer);
         brightnessDebounceTimer = setTimeout(() => {
+          brightnessDebounceTimer = null;
           const brightness = Math.round((value / 100) * 255);
           const nextIsOn = brightness > 0;
           const service = nextIsOn ? 'turn_on' : 'turn_off';
@@ -11556,6 +11612,7 @@ function showBrightnessSlider(light) {
         if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
         clearTimeout(colorTempDebounceTimer);
         colorTempDebounceTimer = setTimeout(() => {
+          colorTempDebounceTimer = null;
           lightIsOn = true;
           updateTurnButton();
           callLightService(
@@ -11585,6 +11642,7 @@ function showBrightnessSlider(light) {
       if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
       clearTimeout(colorDebounceTimer);
       colorDebounceTimer = setTimeout(() => {
+        colorDebounceTimer = null;
         lightIsOn = true;
         updateTurnButton();
         callLightService(
@@ -11641,25 +11699,20 @@ function showBrightnessSlider(light) {
             confirmedBrightness = 0;
           });
         } else {
-          // Turn on to last brightness or 100%
-          const brightness =
-            currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
+          // Like Home Assistant's own toggle, send no brightness so the light restores its
+          // last level; show the last level seen here until the live state confirms it.
           lightIsOn = true;
-          const targetValue = currentBrightness > 0 ? currentBrightness : 100;
+          const targetValue = lastOnBrightness > 0 ? lastOnBrightness : 100;
           if (slider) slider.value = String(targetValue);
           if (valueLarge) valueLarge.textContent = `${targetValue}%`;
           updateIconAndAccent(targetValue);
-          callLightService(
-            'turn_on',
-            { entity_id: light.entity_id, ...(canSetBrightness ? { brightness } : {}) },
-            () => {
-              lightIsOn = previousLightIsOn;
-              if (slider) slider.value = String(previousBrightness);
-              if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
-              updateIconAndAccent(previousBrightness);
-              updateTurnButton();
-            }
-          ).then(({ ok }) => {
+          callLightService('turn_on', { entity_id: light.entity_id }, () => {
+            lightIsOn = previousLightIsOn;
+            if (slider) slider.value = String(previousBrightness);
+            if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+            updateIconAndAccent(previousBrightness);
+            updateTurnButton();
+          }).then(({ ok }) => {
             if (!ok) return;
             confirmedLightIsOn = true;
             confirmedBrightness = targetValue;
@@ -11668,6 +11721,50 @@ function showBrightnessSlider(light) {
         updateTurnButton();
       };
     }
+
+    // Follow Home Assistant while open (e.g. an external turn-off), but never under a pending
+    // command or a focused control.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      // Only a state pushed while a command is in flight can reflect it; replay that one later.
+      missedLiveUpdate = lightCommandsInFlight > 0;
+      if (hasPendingLightCommand()) return;
+      const attributes = nextEntity.attributes || {};
+      const isOn = nextEntity.state === 'on';
+      const brightness =
+        isOn && attributes.brightness ? Math.round((attributes.brightness / 255) * 100) : 0;
+      lightIsOn = confirmedLightIsOn = isOn;
+      confirmedBrightness = brightness;
+      if (brightness > 0) lastOnBrightness = brightness;
+      if (slider && document.activeElement !== slider) {
+        slider.value = String(brightness);
+        if (valueLarge) valueLarge.textContent = `${brightness}%`;
+        updateIconAndAccent(brightness);
+      }
+      if (
+        colorTempSlider &&
+        document.activeElement !== colorTempSlider &&
+        (attributes.color_temp_kelvin != null || attributes.color_temp != null)
+      ) {
+        confirmedColorTemp = getInitialLightColorTempKelvin(attributes, colorTempRange);
+        colorTempSlider.value = String(confirmedColorTemp);
+        if (colorTempValue) colorTempValue.textContent = `${confirmedColorTemp}K`;
+      }
+      if (colorPicker && document.activeElement !== colorPicker && attributes.rgb_color) {
+        confirmedColorHex = rgbToHex(attributes.rgb_color);
+        colorPicker.value = confirmedColorHex;
+      }
+      updateTurnButton();
+    };
+    unsubscribe = state.subscribeEntity(light.entity_id, syncFromEntity);
+    // A focused control was skipped above; catch up once the user leaves it.
+    [slider, colorTempSlider, colorPicker].forEach((control) =>
+      control?.addEventListener('blur', () => syncFromEntity(state.STATES?.[light.entity_id]))
+    );
 
     // Close on backdrop click only when clicking the overlay
     modal.onclick = (e) => {
@@ -11680,8 +11777,15 @@ function showBrightnessSlider(light) {
 
 const climateRangeControllers = new WeakMap();
 
-function climateRangeMarkup(capabilities, { pin = false } = {}) {
+function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
   if (!capabilities.canSetRange) return '';
+  // Both bounds share the entity's full scale so their thumbs sit where the values are.
+  const scaleLabels = pin
+    ? ''
+    : `<span class="climate-slider-labels" aria-hidden="true">
+        <span>${capabilities.minTemp}${unit}</span>
+        <span>${capabilities.maxTemp}${unit}</span>
+      </span>`;
   return ['low', 'high']
     .map((bound) => {
       const low = bound === 'low';
@@ -11690,9 +11794,10 @@ function climateRangeMarkup(capabilities, { pin = false } = {}) {
       return `<label class="${pin ? 'desktop-pin-panel-slider-row' : 'climate-slider-wrapper'}">
       <span class="${pin ? 'desktop-pin-panel-slider-label' : 'climate-temp-label'}">${utils.escapeHtml(visibleLabel)}</span>
       <input type="range" class="${pin ? 'desktop-pin-panel-slider' : 'climate-slider'}" data-climate-range="${bound}"
-        min="${low ? capabilities.minTemp : capabilities.targetLow}" max="${low ? capabilities.targetHigh : capabilities.maxTemp}"
+        min="${capabilities.minTemp}" max="${capabilities.maxTemp}"
         step="${capabilities.temperatureStep}" value="${low ? capabilities.targetLow : capabilities.targetHigh}"
         aria-label="${utils.escapeHtml(label)}" />
+      ${scaleLabels}
     </label>`;
     })
     .join('');
@@ -11709,12 +11814,8 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   let displayedRange = confirmed;
   const apply = (range) => {
     displayedRange = range;
-    low.max = String(capabilities.maxTemp);
-    high.min = String(capabilities.minTemp);
     low.value = String(range.low);
     high.value = String(range.high);
-    low.max = String(range.high);
-    high.min = String(range.low);
     onChange(range);
   };
   const controller = {
@@ -11734,6 +11835,11 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   [low, high].forEach((input) => {
     input.addEventListener('input', (event) => {
       event.stopPropagation();
+      // The bounds cannot cross: the dragged thumb stops at the other one.
+      if (Number(low.value) > Number(high.value)) {
+        if (input === low) low.value = high.value;
+        else high.value = low.value;
+      }
       const range = { low: Number(low.value), high: Number(high.value) };
       if (!Number.isFinite(range.low) || !Number.isFinite(range.high) || range.low > range.high)
         return;
@@ -11853,7 +11959,7 @@ function showClimateControls(climateEntity) {
                 : ''
             }
 
-            ${climateRangeMarkup(capabilities)}
+            ${climateRangeMarkup(capabilities, { unit: tempUnit })}
             ${
               availableModes.length
                 ? `<div class="climate-modes">
@@ -11900,6 +12006,7 @@ function showClimateControls(climateEntity) {
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
+    const currentTempValue = modal.querySelector('.climate-current-temp .climate-temp-value');
     const rangeController = bindClimateRangeControls(
       modal,
       climateEntity,
@@ -11992,7 +12099,10 @@ function showClimateControls(climateEntity) {
     let confirmedMode = currentMode;
     let confirmedFanMode = currentFanMode;
     let confirmedPresetMode = currentPresetMode;
-    let temperatureDebounceTimer;
+    let temperatureDebounceTimer = null;
+    let temperatureCommandsInFlight = 0;
+    let optionCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const setActiveClimateOption = (buttons, value) => {
       buttons.forEach((button) => {
         button.classList.toggle('active', button.getAttribute('data-mode') === value);
@@ -12044,6 +12154,25 @@ function showClimateControls(climateEntity) {
       } else {
         rangeController?.sync({ low: next.targetLow, high: next.targetHigh });
         setActiveClimateOption(modeButtons, nextEntity.state);
+        if (optionCommandsInFlight === 0) {
+          setActiveClimateOption(fanModeButtons, String(nextEntity.attributes?.fan_mode || ''));
+          setActiveClimateOption(
+            presetModeButtons,
+            String(nextEntity.attributes?.preset_mode || '')
+          );
+        }
+        if (currentTempValue) {
+          currentTempValue.textContent =
+            next.currentTemp === null ? '—' : `${next.currentTemp}${tempUnit}`;
+        }
+        missedLiveUpdate = temperatureCommandsInFlight > 0;
+        if (slider && next.targetTemp !== null && !missedLiveUpdate && !temperatureDebounceTimer) {
+          confirmedTargetTemp = next.targetTemp;
+          if (document.activeElement !== slider) {
+            slider.value = String(next.targetTemp);
+            if (targetValue) targetValue.textContent = `${next.targetTemp}${tempUnit}`;
+          }
+        }
       }
     });
     if (closeBtn) closeBtn.onclick = closeModal;
@@ -12063,6 +12192,8 @@ function showClimateControls(climateEntity) {
 
         clearTimeout(temperatureDebounceTimer);
         temperatureDebounceTimer = setTimeout(() => {
+          temperatureDebounceTimer = null;
+          temperatureCommandsInFlight += 1;
           callServiceWithUiRollback(
             climateEntity,
             'climate',
@@ -12076,17 +12207,29 @@ function showClimateControls(climateEntity) {
               if (targetValue) targetValue.textContent = `${confirmedTargetTemp}${tempUnit}`;
             }
           ).then(({ ok }) => {
+            temperatureCommandsInFlight -= 1;
             if (ok) confirmedTargetTemp = value;
+            // Apply a state Home Assistant pushed while this change was pending.
+            const latest = state.STATES?.[climateEntity.entity_id];
+            if (missedLiveUpdate && latest)
+              climateDialogRefreshers.get(climateEntity.entity_id)?.(latest);
           });
         }, 300);
       });
     }
+
+    // A focused slider skips live updates; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => {
+      const latest = state.STATES?.[climateEntity.entity_id];
+      if (latest) climateDialogRefreshers.get(climateEntity.entity_id)?.(latest);
+    });
 
     // Mode button handlers
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         clearTimeout(temperatureDebounceTimer);
+        temperatureDebounceTimer = null;
         rangeController?.cancel();
 
         // Update UI immediately
@@ -12112,6 +12255,7 @@ function showClimateControls(climateEntity) {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         setActiveClimateOption(fanModeButtons, mode);
+        optionCommandsInFlight += 1;
         callServiceWithUiRollback(
           climateEntity,
           'climate',
@@ -12122,6 +12266,7 @@ function showClimateControls(climateEntity) {
           },
           () => setActiveClimateOption(fanModeButtons, confirmedFanMode)
         ).then(({ ok }) => {
+          optionCommandsInFlight -= 1;
           if (ok) confirmedFanMode = mode;
         });
       });
@@ -12131,6 +12276,7 @@ function showClimateControls(climateEntity) {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         setActiveClimateOption(presetModeButtons, mode);
+        optionCommandsInFlight += 1;
         callServiceWithUiRollback(
           climateEntity,
           'climate',
@@ -12141,6 +12287,7 @@ function showClimateControls(climateEntity) {
           },
           () => setActiveClimateOption(presetModeButtons, confirmedPresetMode)
         ).then(({ ok }) => {
+          optionCommandsInFlight -= 1;
           if (ok) confirmedPresetMode = mode;
         });
       });
@@ -12178,7 +12325,7 @@ function showFanControls(fanEntity) {
             <div class="fan-icon-wrapper">
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
             </div>
-            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : isOn ? 'On' : 'Off'}</div>
+            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
             <div class="fan-speed-label">${capabilities.canSetPercentage ? 'Fan Speed' : 'State'}</div>
 
             ${
@@ -12222,13 +12369,30 @@ function showFanControls(fanEntity) {
     const cancelBtn = modal.querySelector('#fan-cancel');
     const presetButtons = modal.querySelectorAll('.fan-preset-btn');
     let confirmedSpeed = currentSpeed;
-    let speedDebounceTimer;
+    let speedDebounceTimer = null;
+    let fanCommandRevision = 0;
+    let fanCommandsInFlight = 0;
+    let missedLiveUpdate = false;
+    const callFanService = (service, data, rollback) => {
+      const revision = ++fanCommandRevision;
+      fanCommandsInFlight += 1;
+      return callServiceWithUiRollback(fanEntity, 'fan', service, data, () => {
+        if (revision === fanCommandRevision) rollback?.();
+      }).then((result) => {
+        fanCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) setTimeout(() => syncFromEntity(state.STATES?.[fanEntity.entity_id]));
+        return { ...result, ok: result.ok && revision === fanCommandRevision };
+      });
+    };
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -12263,12 +12427,13 @@ function showFanControls(fanEntity) {
 
         clearTimeout(speedDebounceTimer);
         speedDebounceTimer = setTimeout(() => {
+          speedDebounceTimer = null;
           const service = speed > 0 ? 'set_percentage' : 'turn_off';
           const serviceData =
             speed > 0
               ? { entity_id: fanEntity.entity_id, percentage: speed }
               : { entity_id: fanEntity.entity_id };
-          callServiceWithUiRollback(fanEntity, 'fan', service, serviceData, () => {
+          callFanService(service, serviceData, () => {
             slider.value = String(confirmedSpeed);
             if (speedValue) speedValue.textContent = `${confirmedSpeed}%`;
             updateIcon(confirmedSpeed);
@@ -12278,6 +12443,35 @@ function showFanControls(fanEntity) {
         }, 200);
       });
     }
+
+    // Follow Home Assistant while open, but never under a pending command or a focused slider.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      missedLiveUpdate = fanCommandsInFlight > 0;
+      if (missedLiveUpdate || speedDebounceTimer) return;
+      const percentage = Number(nextEntity.attributes?.percentage);
+      const speed =
+        nextEntity.state === 'on' && Number.isFinite(percentage)
+          ? Math.max(0, Math.min(100, Math.round(percentage)))
+          : 0;
+      if (!slider) {
+        if (speedValue) speedValue.textContent = getLocalizedEntityStateLabel(nextEntity.state);
+        updateIcon(nextEntity.state === 'on' ? 1 : 0);
+        return;
+      }
+      confirmedSpeed = speed;
+      if (document.activeElement === slider) return;
+      slider.value = String(speed);
+      if (speedValue) speedValue.textContent = `${speed}%`;
+      updateIcon(speed);
+    };
+    unsubscribe = state.subscribeEntity(fanEntity.entity_id, syncFromEntity);
+    // A focused slider was skipped above; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[fanEntity.entity_id]));
 
     // Preset buttons
     presetButtons.forEach((btn) => {
@@ -12330,7 +12524,7 @@ function showCoverControls(coverEntity) {
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
-            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : formatDesktopPinClimateModeLabel(coverEntity.state || 'unknown')}</div>
+            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : utils.escapeHtml(getLocalizedEntityStateLabel(coverEntity.state))}</div>
             <div class="cover-position-label">${capabilities.canSetPosition ? 'Position' : 'State'}</div>
 
             ${
@@ -12387,20 +12581,32 @@ function showCoverControls(coverEntity) {
     const cancelBtn = modal.querySelector('#cover-cancel');
     const actionButtons = modal.querySelectorAll('.cover-action-btn');
     let confirmedPosition = currentPosition;
-    let positionDebounceTimer;
+    let positionDebounceTimer = null;
     let coverCommandRevision = 0;
+    let coverCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const callCoverService = (service, data, rollback) => {
       const revision = ++coverCommandRevision;
+      coverCommandsInFlight += 1;
       return callServiceWithUiRollback(coverEntity, 'cover', service, data, () => {
         if (revision === coverCommandRevision) rollback?.();
-      }).then((result) => ({ ...result, ok: result.ok && revision === coverCommandRevision }));
+      }).then((result) => {
+        coverCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) {
+          setTimeout(() => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
+        }
+        return { ...result, ok: result.ok && revision === coverCommandRevision };
+      });
     };
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -12432,6 +12638,7 @@ function showCoverControls(coverEntity) {
 
         clearTimeout(positionDebounceTimer);
         positionDebounceTimer = setTimeout(() => {
+          positionDebounceTimer = null;
           callCoverService(
             'set_cover_position',
             {
@@ -12454,6 +12661,7 @@ function showCoverControls(coverEntity) {
     actionButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         clearTimeout(positionDebounceTimer);
+        positionDebounceTimer = null;
         const action = btn.getAttribute('data-action');
         const previousPosition = confirmedPosition;
 
@@ -12478,6 +12686,33 @@ function showCoverControls(coverEntity) {
         });
       });
     });
+
+    // Follow Home Assistant while open (e.g. where Stop left the cover), but never under a
+    // pending command or a focused slider.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      missedLiveUpdate = coverCommandsInFlight > 0;
+      if (missedLiveUpdate || positionDebounceTimer) return;
+      if (!slider) {
+        if (positionValue)
+          positionValue.textContent = getLocalizedEntityStateLabel(nextEntity.state);
+        return;
+      }
+      const position = Number(nextEntity.attributes?.current_position);
+      if (nextEntity.attributes?.current_position == null || !Number.isFinite(position)) return;
+      confirmedPosition = Math.max(0, Math.min(100, Math.round(position)));
+      if (document.activeElement === slider) return;
+      slider.value = String(confirmedPosition);
+      if (positionValue) positionValue.textContent = `${confirmedPosition}%`;
+      updateVisual(confirmedPosition);
+    };
+    unsubscribe = state.subscribeEntity(coverEntity.entity_id, syncFromEntity);
+    // A focused slider was skipped above; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
 
     // Close on backdrop click
     modal.onclick = (e) => {
