@@ -79,7 +79,9 @@ function showDashboardHistory() {
     button.className = 'btn btn-secondary dashboard-restore-entry';
     const date = document.createElement('span');
     date.className = 'dashboard-restore-date';
-    date.textContent = formatDateTime(entry.at);
+    date.textContent = entry.undone
+      ? `${formatDateTime(entry.at)} · ${t('Before undo')}`
+      : formatDateTime(entry.at);
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
     pages.textContent = entry.layout.customTabs.map((tab) => tab.name).join(', ');
@@ -94,7 +96,7 @@ function showDashboardHistory() {
         control.disabled = true;
       });
       try {
-        await restoreDashboard(entry.layout);
+        await restoreDashboard(entry.layout, { activeTabId: entry.activeTabId });
         refreshRestoredDashboardSettings();
         void closeModal(modal, { remove: true, releaseFocus: true });
         showToast(t('Dashboard restored'), 'success');
@@ -168,10 +170,31 @@ function showConnectionDiagnostics() {
   trapFocus(modal);
 }
 
+const sameEntry = (a, b) => a.at === b.at && JSON.stringify(a.layout) === JSON.stringify(b.layout);
+
+// Restoring saved the layout Undo replaced as the newest entry. Keep it so an accidental Undo can
+// be reversed from Restore dashboard, but mark it so the next Undo steps further back instead of
+// bouncing between the two layouts. The restored entry is the current layout now, so it goes.
+function historyAfterUndo(before, after, restored) {
+  let removed = false;
+  return after
+    .filter((entry) => {
+      if (removed || !sameEntry(entry, restored)) return true;
+      removed = true;
+      return false;
+    })
+    .map((entry) =>
+      before.some((previous) => sameEntry(previous, entry)) ? entry : { ...entry, undone: true }
+    );
+}
+
 let undoInFlight = false;
 function refreshDashboardUndoState() {
   const undo = document.getElementById('undo-dashboard-btn');
-  if (undo) undo.disabled = undoInFlight || !readDashboardHistory(state.CONFIG).length;
+  if (undo) {
+    undo.disabled =
+      undoInFlight || !readDashboardHistory(state.CONFIG).some((entry) => !entry.undone);
+  }
 }
 
 let initialized = false;
@@ -210,13 +233,17 @@ function initializeDashboardTools() {
       if (undoInFlight) return;
       const config = state.CONFIG;
       const entries = readDashboardHistory(config);
-      if (!entries.length) return;
+      const target = entries.find((entry) => !entry.undone);
+      if (!target) return;
       undoInFlight = true;
       refreshDashboardUndoState();
       try {
-        await restoreDashboard(entries[0].layout);
+        await restoreDashboard(target.layout, { activeTabId: target.activeTabId });
         refreshRestoredDashboardSettings();
-        writeDashboardHistory(config, entries.slice(1));
+        writeDashboardHistory(
+          config,
+          historyAfterUndo(entries, readDashboardHistory(config), target)
+        );
         showToast(t('Dashboard edit undone'), 'success');
       } catch {
         showToast(t('Could not restore dashboard. Please retry.'), 'error');

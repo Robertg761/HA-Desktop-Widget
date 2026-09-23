@@ -66,6 +66,21 @@ describe('quick-access-tabs helpers', () => {
     expect(deleteLast.favoriteEntities).toEqual(['light.kitchen']);
   });
 
+  test('moves to a neighbouring page when the page on screen is deleted', () => {
+    const config = normalizeQuickAccessConfig({
+      activeTabId: 'kitchen',
+      customTabs: [
+        { id: 'default', name: 'All', entityIds: [] },
+        { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+        { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+      ],
+    });
+    expect(deleteQuickAccessView(config, 'kitchen').activeTabId).toBe('bedroom');
+    const onLast = { ...config, activeTabId: 'bedroom' };
+    expect(deleteQuickAccessView(onLast, 'bedroom').activeTabId).toBe('kitchen');
+    expect(deleteQuickAccessView(onLast, 'kitchen').activeTabId).toBe('bedroom');
+  });
+
   test('moves an entity between views and removes it from all views', () => {
     const config = normalizeQuickAccessConfig({
       activeTabId: 'all',

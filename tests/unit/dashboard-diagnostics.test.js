@@ -92,3 +92,73 @@ test('Undo follows server history and remains disabled while restoring', async (
   currentSocket.removeAllListeners();
   localStorage.clear();
 });
+
+test('Undo keeps the layout it replaced restorable and steps further back next time', async () => {
+  jest.resetModules();
+  const currentState = require('../../src/state.js').default;
+  const { rememberDashboard, readDashboardHistory } = require('../../src/dashboard-history.js');
+  const {
+    initializeDashboardTools: initialize,
+    showDashboardHistory,
+  } = require('../../src/dashboard-tools.js');
+  const { restoreDashboard } = require('../../src/ui.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  localStorage.clear();
+  const layout = (...names) => ({
+    homeAssistant: { url: 'http://server' },
+    customTabs: names.map((name) => ({ id: name, name, entityIds: [] })),
+  });
+  // Like the real restore, saving the restored layout remembers the one it replaces.
+  restoreDashboard.mockImplementation(async (restored, { activeTabId } = {}) => {
+    const next = { ...currentState.CONFIG, ...restored, activeTabId };
+    rememberDashboard(currentState.CONFIG, next);
+    currentState.setConfig(next);
+  });
+  const edit = (next) => {
+    rememberDashboard(currentState.CONFIG, next);
+    currentState.setConfig(next);
+  };
+  currentState.setConfig({ ...layout('All'), activeTabId: 'All' });
+  edit({ ...layout('All', 'Kitchen'), activeTabId: 'Kitchen' });
+  edit({ ...layout('All', 'Kitchen', 'Bedroom'), activeTabId: 'Bedroom' });
+  document.body.innerHTML = '<button id="undo-dashboard-btn">Undo</button>';
+  initialize();
+  const undo = document.getElementById('undo-dashboard-btn');
+
+  await undo.onclick();
+  expect(restoreDashboard).toHaveBeenLastCalledWith(expect.anything(), { activeTabId: 'Kitchen' });
+  expect(currentState.CONFIG.customTabs.map((tab) => tab.name)).toEqual(['All', 'Kitchen']);
+  let history = readDashboardHistory(currentState.CONFIG);
+  expect(history[0]).toMatchObject({ undone: true });
+  expect(history[0].layout.customTabs.map((tab) => tab.name)).toEqual([
+    'All',
+    'Kitchen',
+    'Bedroom',
+  ]);
+
+  // A second Undo goes back another step rather than redoing the first.
+  await undo.onclick();
+  expect(currentState.CONFIG.customTabs.map((tab) => tab.name)).toEqual(['All']);
+  history = readDashboardHistory(currentState.CONFIG);
+  expect(history.map((entry) => entry.layout.customTabs.length)).toEqual([2, 3]);
+  expect(history.every((entry) => entry.undone)).toBe(true);
+  expect(undo.disabled).toBe(true);
+
+  // Both undone layouts can still be brought back from Restore dashboard.
+  showDashboardHistory();
+  const rows = [...document.querySelectorAll('.dashboard-restore-entry')];
+  expect(rows).toHaveLength(2);
+  expect(rows[1].textContent).toContain('Before undo');
+  expect(rows[1].textContent).toContain('Bedroom');
+  rows[1].click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(currentState.CONFIG.customTabs.map((tab) => tab.name)).toEqual([
+    'All',
+    'Kitchen',
+    'Bedroom',
+  ]);
+  expect(currentState.CONFIG.activeTabId).toBe('Bedroom');
+  document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
+  currentSocket.removeAllListeners();
+  localStorage.clear();
+});

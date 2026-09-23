@@ -511,6 +511,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.homeAssistant).toEqual(current.homeAssistant);
       expect(state.CONFIG.globalHotkeys).toEqual(current.globalHotkeys);
     });
+
+    it('returns to the page the restored layout was saved on, else a neighbouring page', async () => {
+      const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
+      // Undoing "add Bedroom" goes back to Kitchen, where the user added it from.
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: tabs('default', 'kitchen', 'bedroom'),
+        activeTabId: 'bedroom',
+      });
+      await ui.restoreDashboard(
+        { customTabs: tabs('default', 'kitchen') },
+        { activeTabId: 'kitchen' }
+      );
+      expect(state.CONFIG.activeTabId).toBe('kitchen');
+
+      // Without a saved page, the page now in the removed page's position is shown, not "All".
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: tabs('default', 'kitchen', 'bedroom', 'office'),
+        activeTabId: 'bedroom',
+      });
+      await ui.restoreDashboard({ customTabs: tabs('default', 'kitchen', 'office') });
+      expect(state.CONFIG.activeTabId).toBe('office');
+    });
   });
 
   describe('executeHotkeyAction', () => {

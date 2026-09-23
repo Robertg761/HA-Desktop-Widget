@@ -1093,12 +1093,23 @@ function showAddPageModal({ starter = false } = {}) {
   if (starter || websocket.isConnected?.()) void loadRooms.onclick();
 }
 
-async function restoreDashboard(layout) {
+async function restoreDashboard(layout, { activeTabId } = {}) {
   if (quickAccessPendingWriteCount)
     throw new Error(t('Wait for the current dashboard save to finish.'));
+  const current = normalizeQuickAccessConfig(state.CONFIG);
   const next = normalizeQuickAccessConfig({ ...state.CONFIG, ...dashboardSnapshot(layout) });
+  // Return to the page the layout was saved on, else stay put, else land on the page now in the
+  // current page's position rather than jumping to the first one.
+  const tabIds = next.customTabs.map((tab) => tab.id);
+  const currentIndex = current.customTabs.findIndex((tab) => tab.id === current.activeTabId);
+  next.activeTabId =
+    [activeTabId, current.activeTabId].find((id) => tabIds.includes(id)) ??
+    tabIds[Math.min(Math.max(currentIndex, 0), tabIds.length - 1)];
   await persistAuthoritativeConfig(next);
   renderQuickAccessConfigState();
+  if (state.CONFIG?.activeTabId !== current.activeTabId) {
+    window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
+  }
 }
 
 function getQuickAccessTiles() {
