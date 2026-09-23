@@ -12813,7 +12813,9 @@ body.high-contrast .tile-primary-button,
   -webkit-app-region: no-drag;
 }
 
-.tile-primary-button:focus-visible {
+/* The tile clips anything outside it, so the ring sits inside the button. Scoped to the tile so it
+   outranks the global [tabindex]:not([tabindex='-1']):focus-visible rule, which pushes it outside. */
+.control-item .tile-primary-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -3px;
 }
