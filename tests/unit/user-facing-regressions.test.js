@@ -335,6 +335,54 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService).not.toHaveBeenCalled();
   });
 
+  it('never unlocks a primary lock card with Shift+Enter', async () => {
+    const lock = entity('lock.front_door', 'locked');
+    state.setConfig({ ...state.CONFIG, primaryCards: [lock.entity_id, 'none'] });
+    state.setStates({ [lock.entity_id]: lock });
+    ui.renderPrimaryCards();
+    const card = document.querySelector('[data-primary-card="true"]');
+    expect(card.getAttribute('aria-keyshortcuts')).toBe('Enter Space');
+    card.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true })
+    );
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+
+  it('only advertises and runs Shift+Enter on Quick Access tiles with controls', async () => {
+    const ids = ['lock.back_door', 'light.hall'];
+    state.setConfig({
+      ...state.CONFIG,
+      customTabs: [{ id: 'keys', name: 'Keys', entityIds: ids }],
+      activeTabId: 'keys',
+      favoriteEntities: ids,
+    });
+    state.setStates({
+      [ids[0]]: entity(ids[0], 'locked'),
+      [ids[1]]: entity(ids[1], 'on', { brightness: 128 }),
+    });
+    ui.renderActiveTab();
+    const lockTile = document.querySelector(`[data-entity-id="${ids[0]}"]`);
+    const lightTile = document.querySelector(`[data-entity-id="${ids[1]}"]`);
+    expect(lockTile.getAttribute('aria-keyshortcuts')).toBe('Enter Space');
+    expect(lockTile.querySelector('.tile-details-button')).toBeNull();
+    expect(lightTile.querySelector('.tile-primary-button').getAttribute('aria-keyshortcuts')).toBe(
+      'Enter Space Shift+Enter'
+    );
+
+    lockTile.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true })
+    );
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).not.toHaveBeenCalled();
+
+    lightTile
+      .querySelector('.tile-primary-button')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    expect(document.querySelector('#brightness-slider')).not.toBeNull();
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['°F', {}, '74°F'],
     ['°C', {}, '74°C'],
@@ -439,6 +487,74 @@ describe('User-facing audit regressions', () => {
     await jest.advanceTimersByTimeAsync(0);
     expect(list.textContent).toContain('Milk');
     expect(list.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('keeps focus in the to-do dialog after Retry and after ticking an item', async () => {
+    mockCallServiceWithResponse
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce({
+        'todo.focus': {
+          items: [
+            { uid: 'one', summary: 'Milk', status: 'needs_action' },
+            { uid: 'two', summary: 'Eggs', status: 'needs_action' },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        'todo.focus': {
+          items: [
+            { uid: 'one', summary: 'Milk', status: 'needs_action' },
+            { uid: 'two', summary: 'Eggs', status: 'completed' },
+          ],
+        },
+      });
+    ui.openEntityDetailModal(entity('todo.focus', '2'));
+    await jest.advanceTimersByTimeAsync(0);
+    const list = document.querySelector('.todo-detail-list-container');
+    const retry = list.querySelector('button');
+    retry.focus();
+    retry.click();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(document.activeElement).toBe(list.querySelector('input[data-uid="one"]'));
+
+    const eggs = list.querySelector('input[data-uid="two"]');
+    eggs.focus();
+    eggs.click();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).toHaveBeenCalledWith('todo', 'update_item', {
+      entity_id: 'todo.focus',
+      item: 'two',
+      status: 'completed',
+    });
+    const refreshed = list.querySelector('input[data-uid="two"]');
+    expect(refreshed).not.toBe(eggs);
+    expect(refreshed.checked).toBe(true);
+    expect(document.activeElement).toBe(refreshed);
+  });
+
+  it('keeps focus on the picked weather entity after the list is rebuilt', async () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="weather-entities-list"></div><span id="current-weather-name"></span>'
+    );
+    state.setStates({
+      'weather.home': entity('weather.home', 'sunny'),
+      'weather.work': entity('weather.work', 'rainy'),
+    });
+    ui.populateWeatherEntitiesList();
+    const list = document.getElementById('weather-entities-list');
+    const findWork = () =>
+      [...list.querySelectorAll('.entity-item')].find((item) =>
+        item.textContent.includes('weather.work')
+      );
+    const work = findWork();
+    work.focus();
+    work.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await jest.advanceTimersByTimeAsync(0);
+    const rebuilt = findWork();
+    expect(rebuilt).not.toBe(work);
+    expect(rebuilt.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(rebuilt);
   });
 
   it('does not repeat a successful add when only the subsequent refresh fails', async () => {

@@ -617,10 +617,31 @@ function renderMainWidgetState() {
 
 function setFirstRunWizardVisible(visible) {
   if (!firstRunWizard?.overlay) return;
+  const wasVisible = firstRunWizard.visible;
   firstRunWizard.visible = !!visible;
   firstRunWizard.overlay.classList.toggle('hidden', !visible);
   document.body.classList.toggle('first-run-active', !!visible);
+  // The wizard is modal: keep Tab inside it instead of on the header buttons behind it.
+  if (visible && !wasVisible) {
+    uiUtils.trapFocus(firstRunWizard.overlay, { initialFocus: false });
+  } else if (!visible && wasVisible) {
+    uiUtils.releaseFocusTrap(firstRunWizard.overlay);
+  }
+  if (visible) focusWizardStep();
   renderMainWidgetState();
+}
+
+// Each step starts with focus on its URL field or heading, so keyboard and screen reader users
+// land on the new content rather than on whichever button changed the step.
+function focusWizardStep() {
+  if (!firstRunWizard?.visible) return;
+  const target =
+    firstRunWizard.step === 1
+      ? firstRunWizard.urlInput
+      : firstRunWizard.content?.querySelector('.first-run-title');
+  if (!target?.isConnected) return;
+  if (target.tagName === 'H2') target.tabIndex = -1;
+  target.focus();
 }
 
 function setWizardStatus(message = '', type = '') {
@@ -768,6 +789,11 @@ function renderWizardStep() {
     input.addEventListener('input', () => {
       firstRunWizard.urlInput = input;
     });
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      firstRunWizard.nextButton?.click();
+    });
     firstRunWizard.urlInput = input;
     content.appendChild(label);
     content.appendChild(input);
@@ -819,6 +845,7 @@ function renderWizardStep() {
       firstRunWizard.finishInProgress ? 'true' : 'false'
     );
   }
+  focusWizardStep();
 }
 
 async function finishFirstRunWizard() {
@@ -866,6 +893,10 @@ async function finishFirstRunWizard() {
       if (firstRunWizard.nextButton) {
         firstRunWizard.nextButton.disabled = false;
         firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
+        // Disabling the button while connecting dropped focus to <body>; give it back.
+        if (firstRunWizard.visible && document.activeElement === document.body) {
+          firstRunWizard.nextButton.focus();
+        }
       }
     }
   }
@@ -939,6 +970,11 @@ function ensureFirstRunWizard() {
     }
     if (firstRunWizard.step === 2) {
       await finishFirstRunWizard();
+      return;
+    }
+    if (firstRunWizard.step === 1 && !normalizeBaseUrl(getWizardUrl())) {
+      setWizardStatus(t('Enter a valid Home Assistant URL before connecting.'), 'error');
+      firstRunWizard.urlInput?.focus();
       return;
     }
     firstRunWizard.step = Math.min(2, firstRunWizard.step + 1);
@@ -2261,6 +2297,24 @@ function wireUI() {
     const cancelSettingsBtn = document.getElementById('cancel-settings');
     if (cancelSettingsBtn) cancelSettingsBtn.onclick = settings.closeSettings;
 
+    // Escape works like Cancel, unless it is closing a dropdown open inside Settings. That is
+    // checked on the way down, because the dropdown closes itself before the event bubbles back.
+    const settingsModal = document.getElementById('settings-modal');
+    let settingsEscapeClosesDropdown = false;
+    settingsModal?.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape') return;
+        settingsEscapeClosesDropdown = !!event.target?.closest?.('.custom-dropdown.open');
+      },
+      true
+    );
+    settingsModal?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || settingsEscapeClosesDropdown) return;
+      event.preventDefault();
+      settings.closeSettings();
+    });
+
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
 
@@ -2374,6 +2428,12 @@ function wireUI() {
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
     }
+    document.getElementById('quick-controls-modal')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation(); // close the dialog without also exiting reorganize mode
+      void closeQuickControlsModal();
+    });
 
     const addComparisonGraphBtn = document.getElementById('add-comparison-graph-btn');
     if (addComparisonGraphBtn) {
@@ -2406,6 +2466,7 @@ function wireUI() {
           if (modal) {
             ui.populateWeatherEntitiesList();
             uiUtils.openModal(modal);
+            uiUtils.trapFocus(modal);
           }
         }, 500);
       };
@@ -2461,15 +2522,22 @@ function wireUI() {
       mediaTileNext.onclick = () => ui.callMediaTileService('next');
     }
 
+    const closeWeatherConfig = () => {
+      const modal = document.getElementById('weather-config-modal');
+      if (modal) {
+        void uiUtils.closeModal(modal, { releaseFocus: true });
+      }
+    };
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
     if (closeWeatherConfigBtn) {
-      closeWeatherConfigBtn.onclick = () => {
-        const modal = document.getElementById('weather-config-modal');
-        if (modal) {
-          void uiUtils.closeModal(modal);
-        }
-      };
+      closeWeatherConfigBtn.onclick = closeWeatherConfig;
     }
+    document.getElementById('weather-config-modal')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation(); // close the dialog without also exiting reorganize mode
+      closeWeatherConfig();
+    });
 
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {

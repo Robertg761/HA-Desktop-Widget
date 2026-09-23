@@ -205,6 +205,12 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
       closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
+      trapFocus: jest.fn((...args) =>
+        jest.requireActual('../../src/ui-utils.js').trapFocus(...args)
+      ),
+      releaseFocusTrap: jest.fn((...args) =>
+        jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
+      ),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -315,6 +321,111 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
     }
   );
+
+  it('closes Settings with Escape like Cancel, but lets an open dropdown take Escape first', async () => {
+    await loadRenderer({
+      bodyHtml: settingsNavigationHtml().replace(
+        '<div id="settings-modal" class="modal hidden">',
+        `<div id="settings-modal" class="modal hidden">
+          <div class="custom-dropdown open"><button class="custom-dropdown-trigger">Player</button></div>`
+      ),
+    });
+    await clickButton('Full Settings');
+    const modal = document.getElementById('settings-modal');
+    const trigger = modal.querySelector('.custom-dropdown-trigger');
+    trigger.addEventListener('keydown', () => trigger.parentElement.classList.remove('open'));
+    const escape = (target) =>
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+
+    escape(trigger);
+    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
+    escape(document.getElementById('cancel-settings'));
+    expect(mockSettings.closeSettings).toHaveBeenCalledTimes(1);
+    await flushAsync();
+    expect(modal.classList.contains('hidden')).toBe(true);
+  });
+
+  it.each(['quick-controls-modal', 'weather-config-modal'])(
+    'closes %s with Escape without also leaving reorganize mode',
+    async (id) => {
+      const page = new DOMParser().parseFromString(
+        fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
+        'text/html'
+      );
+      await loadRenderer({
+        bodyHtml: `<main class="widget-content"></main>${page.getElementById(id).outerHTML}`,
+      });
+      const modal = document.getElementById(id);
+      modal.classList.remove('hidden');
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+      modal
+        .querySelector('.close-btn')
+        .dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+        );
+      await flushAsync();
+      expect(modal.classList.contains('hidden')).toBe(true);
+      expect(pageEscape).not.toHaveBeenCalled();
+      document.removeEventListener('keydown', pageEscape);
+    }
+  );
+
+  it('moves focus into each wizard step and traps Tab inside the wizard', async () => {
+    await loadRenderer({ bodyHtml: settingsNavigationHtml() });
+    const wizard = document.getElementById('first-run-onboarding');
+    expect(document.activeElement).toBe(wizard.querySelector('.first-run-title'));
+    expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(wizard, { initialFocus: false });
+
+    await clickButton('Next');
+    expect(document.activeElement).toBe(document.getElementById('first-run-ha-url'));
+    enterInput('#first-run-ha-url', 'http://ha.local:8123');
+    await clickButton('Next');
+    expect(document.activeElement.textContent).toBe('Authorize in Home Assistant');
+
+    const buttons = Array.from(wizard.querySelectorAll('button:not(:disabled)'));
+    const last = buttons[buttons.length - 1];
+    last.focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    last.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(buttons[0]);
+
+    // Focus that fell to <body> goes back into the wizard, not to the header behind it.
+    document.activeElement.blur();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    document.getElementById('close-btn').focus();
+    await flushAsync();
+    expect(wizard.contains(document.activeElement)).toBe(true);
+  });
+
+  it.each(['', 'ftp://ha.local'])(
+    'keeps the URL step and explains the problem when Next gets %p',
+    async (url) => {
+      await loadRenderer();
+      await clickButton('Next');
+      enterInput('#first-run-ha-url', url);
+      await clickButton('Next');
+      expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 2 of 4');
+      expect(document.querySelector('.first-run-status').textContent).toContain(
+        'Enter a valid Home Assistant URL before connecting.'
+      );
+      expect(document.activeElement).toBe(document.getElementById('first-run-ha-url'));
+    }
+  );
+
+  it('treats Enter in the URL field as Next', async () => {
+    await loadRenderer();
+    await clickButton('Next');
+    enterInput('#first-run-ha-url', 'http://ha.local:8123');
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    document.getElementById('first-run-ha-url').dispatchEvent(enter);
+    await flushAsync();
+    expect(enter.defaultPrevented).toBe(true);
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
+  });
 
   it('does not quit on repeated close clicks during the Settings exit animation', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
@@ -688,15 +799,15 @@ describe('Renderer first-run Home Assistant authorization', () => {
   it('recovers the Connect button when preparing the request throws', async () => {
     // normalizeBaseUrl used to run outside the try, so a throw there skipped the finally and
     // left the button disabled with the in-progress guard set -- every later click ignored
-    // until the app restarted. It only throws for this sentinel so rendering stays unaffected.
+    // until the app restarted. It only throws for this sentinel so rendering stays unaffected,
+    // and only on its second check: the first is the URL step's own validation.
     const actualConnection = jest.requireActual('../../src/connection.js');
-    let thrown = false;
+    let sentinelChecks = 0;
     jest.doMock('../../src/connection.js', () => ({
       __esModule: true,
       ...actualConnection,
       normalizeBaseUrl: (value) => {
-        if (value === 'http://boom.local' && !thrown) {
-          thrown = true;
+        if (value === 'http://boom.local' && ++sentinelChecks === 2) {
           throw new Error('exploded before dispatch');
         }
         return actualConnection.normalizeBaseUrl(value);

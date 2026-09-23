@@ -102,6 +102,7 @@ const mockUiUtils = {
   }),
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(true),
+  copyTextToClipboard: jest.fn().mockResolvedValue(true),
 };
 
 const mockHotkeys = {
@@ -2501,15 +2502,11 @@ describe('Settings + Config Integration', () => {
           <p id="desktop-integration-legacy" hidden></p>
         </div>`
       );
-      Object.defineProperty(navigator, 'clipboard', {
-        configurable: true,
-        value: { writeText: jest.fn().mockResolvedValue(undefined) },
-      });
+      mockUiUtils.copyTextToClipboard.mockClear();
     });
 
     afterEach(() => {
       delete window.electronAPI.getDesktopIntegration;
-      delete navigator.clipboard;
     });
 
     test.each([{ hyprland: false }, null])(
@@ -2534,7 +2531,7 @@ describe('Settings + Config Integration', () => {
         expect(typeof refresh.onclick).toBe('function');
         output.value = 'displayed bindings';
         copy.click();
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith('displayed bindings');
+        expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('displayed bindings');
 
         await refresh.onclick();
         expect(panel.hidden).toBe(false);
@@ -2548,8 +2545,8 @@ describe('Settings + Config Integration', () => {
         format.dispatchEvent(new Event('change'));
         await refresh.onclick();
         copy.click();
-        expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('legacy binding');
-        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2);
+        expect(mockUiUtils.copyTextToClipboard).toHaveBeenLastCalledWith('legacy binding');
+        expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledTimes(2);
         expect(window.electronAPI.getDesktopIntegration).toHaveBeenCalledTimes(3);
 
         window.electronAPI.getDesktopIntegration.mockResolvedValueOnce({ hyprland: false });
@@ -2577,6 +2574,32 @@ describe('Settings + Config Integration', () => {
       expect(typeof refreshHandler).toBe('function');
       expect(typeof copyHandler).toBe('function');
     });
+
+    test('confirms a copy and falls back to manual selection when copying fails', async () => {
+      window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+        hyprland: true,
+        shortcuts: [{ binding: 'lua binding' }],
+      });
+      await settings.initializePopupHotkey();
+      const copy = document.getElementById('desktop-bindings-copy');
+      const output = document.getElementById('desktop-bindings');
+
+      mockUiUtils.showToast.mockClear();
+      await copy.onclick();
+      expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('lua binding');
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith('Bindings copied', 'success');
+      expect(document.activeElement).not.toBe(output);
+
+      mockUiUtils.copyTextToClipboard.mockResolvedValueOnce(false);
+      await copy.onclick();
+      expect(document.activeElement).toBe(output);
+      expect(output.selectionStart).toBe(0);
+      expect(output.selectionEnd).toBe('lua binding'.length);
+      expect(mockUiUtils.showToast).toHaveBeenLastCalledWith(
+        'Select and copy the bindings manually.',
+        'info'
+      );
+    });
   });
 
   describe('Profile Sync Settings', () => {
@@ -2596,10 +2619,7 @@ describe('Settings + Config Integration', () => {
         hyprland: true,
         shortcuts: [{ binding: 'lua binding', legacyBinding: 'legacy binding' }],
       });
-      Object.defineProperty(navigator, 'clipboard', {
-        configurable: true,
-        value: { writeText: jest.fn().mockResolvedValue(undefined) },
-      });
+      mockUiUtils.copyTextToClipboard.mockClear();
       await settings.initializePopupHotkey();
       const format = document.getElementById('desktop-bindings-format');
       const output = document.getElementById('desktop-bindings');
@@ -2608,7 +2628,7 @@ describe('Settings + Config Integration', () => {
       format.dispatchEvent(new Event('change'));
       expect(output.value).toBe('legacy binding');
       document.getElementById('desktop-bindings-copy').click();
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('legacy binding');
+      expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('legacy binding');
       await document.getElementById('desktop-integration-refresh').onclick();
       expect(output.value).toBe('legacy binding');
       delete window.electronAPI.getDesktopIntegration;

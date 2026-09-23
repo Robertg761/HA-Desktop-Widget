@@ -14,6 +14,7 @@ const {
   dialog,
   powerMonitor,
   session,
+  clipboard,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -8187,6 +8188,23 @@ ipcMain.handle('open-external', async (event, url) => {
       return { success: false, error: 'Only http/https URLs are allowed' };
     }
     await shell.openExternal(parsed.toString());
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// The renderer's own clipboard permission stays denied (see session-permissions.cjs); copy
+// buttons go through this narrow, main-window-only channel instead.
+const MAX_CLIPBOARD_TEXT_LENGTH = 256 * 1024;
+ipcMain.handle('write-clipboard-text', (event, text) => {
+  const sender = authorizeIpcSender(event, 'write-clipboard-text');
+  if (!sender) return rejectUnauthorizedIpc('write-clipboard-text');
+  if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
+    return { success: false, error: 'Invalid clipboard text' };
+  }
+  try {
+    clipboard.writeText(text);
     return { success: true };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };

@@ -223,6 +223,34 @@ describe('sensor history detail', () => {
     modal.remove();
     jest.useRealTimers();
   });
+  it('keeps focus on Refresh while it reloads and ignores presses until it finishes', async () => {
+    const modal = document.createElement('div');
+    document.body.append(modal);
+    const pending = [];
+    const request = jest.fn(() => new Promise((resolve) => pending.push(resolve)));
+    mountSensorHistoryDetail({
+      body: modal,
+      modal,
+      entity: { entity_id: 'sensor.test' },
+      websocket: { request },
+      normalize: (response) => response.result,
+      render: jest.fn(),
+    });
+    const refresh = modal.querySelector('button');
+    refresh.focus();
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(refresh);
+    refresh.click();
+    expect(request).toHaveBeenCalledTimes(1);
+    pending[0]({ result: [{ value: 1, timestamp: Date.now() - 1000 }] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refresh.hasAttribute('aria-disabled')).toBe(false);
+    refresh.click();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(refresh);
+    modal.remove();
+  });
   it('ignores an older response after the user selects another period', async () => {
     const modal = document.createElement('div');
     document.body.append(modal);
