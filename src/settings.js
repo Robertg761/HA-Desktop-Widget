@@ -4375,9 +4375,20 @@ function setHomeAssistantOAuthBusy(isBusy, { cancellable = false } = {}) {
   setConnectionStatusBusy(document.getElementById('ha-oauth-status'), isBusy);
 }
 
+let renderedHomeAssistantAuthState = '';
+
+function getHomeAssistantAuthState(homeAssistant) {
+  return JSON.stringify([
+    homeAssistant.authMethod || '',
+    homeAssistant.oauthStatus || '',
+    homeAssistant.oauthLastError || '',
+  ]);
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
+  renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
   const connectButton = document.getElementById('connect-ha-oauth-btn');
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
@@ -4405,7 +4416,12 @@ function updateHomeAssistantAuthUi() {
   } else if (homeAssistant.oauthStatus === 'restoring') {
     setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
   } else if (homeAssistant.oauthStatus === 'reauth_required') {
-    setHomeAssistantOAuthStatus(t('Authorization expired. Connect again to continue.'), 'error');
+    setHomeAssistantOAuthStatus(
+      t(
+        'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+      ),
+      'error'
+    );
   } else {
     setHomeAssistantOAuthStatus(
       homeAssistant.oauthLastError ||
@@ -4413,6 +4429,20 @@ function updateHomeAssistantAuthUi() {
       'error'
     );
   }
+}
+
+// Main can change the authorization state while Settings is open, for example when a refresh finds
+// the authorization revoked. Keep the status line truthful unless a pairing is showing progress.
+function refreshHomeAssistantAuthStatus() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (document.getElementById('connect-ha-oauth-btn')?.getAttribute('aria-busy') === 'true') return;
+  // Other config echoes (an autosaved toggle) must not reset the section the user is working in.
+  if (
+    getHomeAssistantAuthState(state.CONFIG?.homeAssistant || {}) === renderedHomeAssistantAuthState
+  )
+    return;
+  updateHomeAssistantAuthUi();
 }
 
 async function startHomeAssistantOAuthFromSettings() {
@@ -6092,6 +6122,7 @@ export {
   refreshPersonalizationSectionHeights,
   handleProfileSyncStatusUpdate,
   waitForLanguagePackRefresh,
+  refreshHomeAssistantAuthStatus,
 };
 
 async function refreshDesktopIntegration() {

@@ -622,6 +622,36 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('open Settings follows the authorization when Home Assistant revokes it', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+      await settings.openSettings();
+      const status = document.getElementById('ha-oauth-status');
+      expect(status.textContent).toBe('Connected with Home Assistant authorization.');
+      const legacySettings = document.getElementById('legacy-ha-token-settings');
+      legacySettings.open = true;
+      settings.refreshHomeAssistantAuthStatus();
+      expect(legacySettings.open).toBe(true);
+
+      state.CONFIG.homeAssistant = {
+        ...state.CONFIG.homeAssistant,
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        oauthStatus: 'reauth_required',
+      };
+      settings.refreshHomeAssistantAuthStatus();
+
+      expect(status.textContent).toBe(
+        'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+      );
+      expect(document.getElementById('connect-ha-oauth-btn').textContent).toBe(
+        'Reconnect with Home Assistant'
+      );
+    });
+
     test('connect button delegates OAuth pairing to the main process', async () => {
       await settings.openSettings();
       document.getElementById('ha-url').value = 'https://ha.example.test';

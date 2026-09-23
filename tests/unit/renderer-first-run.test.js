@@ -830,7 +830,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
   it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {
     await loadRenderer({
-      config: { ...oauthConfig(), desktopPins: { 'light.office': {} } },
+      config: {
+        ...oauthConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'legacy-token' },
+        desktopPins: { 'light.office': {} },
+      },
       configureApi(api) {
         api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
       },

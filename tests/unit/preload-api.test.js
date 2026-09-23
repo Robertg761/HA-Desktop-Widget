@@ -141,6 +141,7 @@ describe('preload Electron API', () => {
         ['https://ha.test'],
       ],
       ['cancelHomeAssistantOAuth', [], 'cancel-home-assistant-oauth', []],
+      ['refreshHomeAssistantOAuth', [], 'refresh-home-assistant-oauth', []],
       ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth', []],
       ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration', []],
       ['getDesktopCompanionState', [], 'get-desktop-companion-state', []],

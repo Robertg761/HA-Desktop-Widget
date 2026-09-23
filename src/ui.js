@@ -11085,10 +11085,13 @@ function showNoConnectionMessage() {
     const container = document.getElementById('quick-controls');
     if (container) {
       // Check if configuration needs setup
+      // An OAuth setup without a token is configured but waiting on its authorization; the
+      // main window's connection panel explains that, so it never gets setup instructions.
       if (
         !state.CONFIG ||
         !state.CONFIG.homeAssistant ||
-        state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN'
+        (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
+          state.CONFIG.homeAssistant.authMethod !== 'oauth')
       ) {
         container.innerHTML = `
           <div class="status-message">
