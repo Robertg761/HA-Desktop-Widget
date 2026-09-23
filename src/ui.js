@@ -2360,8 +2360,89 @@ function isQuickAccessTileActive(entity) {
   }
 }
 
+const QUICK_ACCESS_OPENING_DEVICE_CLASSES = new Set(['door', 'garage_door', 'opening', 'window']);
+
+/**
+ * The dim status line under a Quick Access tile's name, for the tiles whose layout does not
+ * already render one (sensors, timers, lights, climate, media, todo and calendar do). Action
+ * tiles (scenes, buttons, idle scripts) have no lasting state worth a line, so they get ''.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {string}
+ */
+function getQuickAccessTileStateText(entity) {
+  const entityState = typeof entity?.state === 'string' ? entity.state.toLowerCase() : '';
+  const domain = getEntityDomain(entity?.entity_id);
+  if (!domain) return '';
+  if (entityState === 'unavailable') return t('Unavailable');
+  if (entityState === 'unknown') return t('Unknown');
+
+  switch (domain) {
+    case 'scene':
+    case 'button':
+    case 'input_button':
+      return '';
+    case 'script':
+      return entityState === 'on' ? t('Active') : '';
+    case 'binary_sensor': {
+      const deviceClass = entity.attributes?.device_class;
+      if (QUICK_ACCESS_OPENING_DEVICE_CLASSES.has(deviceClass)) {
+        return entityState === 'on' ? t('Open') : t('Closed');
+      }
+      if (deviceClass === 'moisture') return entityState === 'on' ? t('Wet') : t('Dry');
+      if (deviceClass === 'lock') return entityState === 'on' ? t('Unlocked') : t('Locked');
+      return utils.getEntityDisplayState(entity);
+    }
+    case 'lock':
+      if (entityState === 'locked') return t('Locked');
+      if (entityState === 'unlocked') return t('Unlocked');
+      return utils.getEntityDisplayState(entity);
+    case 'cover':
+      if (entityState === 'open') return t('Open');
+      if (entityState === 'closed') return t('Closed');
+      if (entityState === 'opening') return t('Opening');
+      if (entityState === 'closing') return t('Closing');
+      return utils.getEntityDisplayState(entity);
+    case 'person':
+    case 'device_tracker':
+      if (entityState === 'home') return t('Home');
+      if (entityState === 'not_home') return t('Away');
+      return utils.getEntityDisplayState(entity);
+    case 'camera':
+      if (entityState === 'idle') return t('Idle');
+      return utils.getEntityDisplayState(entity);
+    default:
+      if (entityState === 'on') return t('On');
+      if (entityState === 'off') return t('Off');
+      return utils.getEntityDisplayState(entity);
+  }
+}
+
+/**
+ * Set, replace or drop a tile's plain status line in place.
+ * @param {HTMLElement} div - The tile.
+ * @param {string} text - Status text; '' removes the line.
+ */
+function setQuickAccessTileStateLine(div, text) {
+  const info = div?.querySelector(':scope > .control-info');
+  if (!info) return;
+  let stateEl = info.querySelector(':scope > .control-state');
+  if (!text) {
+    stateEl?.remove();
+    return;
+  }
+  if (!stateEl) {
+    stateEl = document.createElement('div');
+    stateEl.className = 'control-state';
+    info.appendChild(stateEl);
+  }
+  if (stateEl.textContent !== text) stateEl.textContent = text;
+}
+
 function applyQuickAccessTileActiveState(element, entity) {
   if (!element) return;
+  // An entity Home Assistant reports as unavailable keeps its tile, drawn dimmed.
+  if (entity?.state === 'unavailable') element.dataset.unavailable = 'true';
+  else delete element.dataset.unavailable;
   if (isQuickAccessTileActive(entity)) {
     element.dataset.active = 'true';
     return;
@@ -8395,6 +8476,11 @@ function createControlElement(entity, options = {}) {
     } else if (domain === 'calendar') {
       div.classList.add('calendar-entity');
       stateDisplay = renderCalendarTileStateMarkup(entity);
+    } else if (!hasCameraPreview) {
+      const stateText = getQuickAccessTileStateText(entity);
+      if (stateText) {
+        stateDisplay = `<div class="control-state">${utils.escapeHtml(stateText)}</div>`;
+      }
     }
 
     // Special layout for timer entities
@@ -8875,6 +8961,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
           !isNaN(brightnessValue) && brightnessValue >= 0
             ? `${Math.round((brightnessValue / 255) * 100)}%`
             : '';
+      } else if (displayEntity.state === 'on') {
+        stateEl.textContent = getQuickAccessTileStateText(displayEntity);
       } else {
         stateEl.textContent = 'Off';
       }
@@ -8894,11 +8982,13 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   if (displayEntity.entity_id.startsWith('fan.')) {
     div.title = 'Click to toggle, hold for speed control';
+    setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('cover.')) {
     div.title = 'Click to toggle, hold for position control';
+    setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
     return true;
   }
 
@@ -8918,6 +9008,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
     if (expectsPreview) {
       camera.mountCameraPreview(div, displayEntity.entity_id, cameraPreviewRefresh);
+    } else {
+      setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
     }
     return true;
   }
@@ -8949,6 +9041,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     return true;
   }
 
+  setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
   div.onclick = () => {
     if (!shouldBlockInteraction(div))

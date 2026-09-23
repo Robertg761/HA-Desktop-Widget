@@ -2333,6 +2333,105 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerIcon.textContent).toContain('🔥');
     });
 
+    it('draws default tile icons as line icons and keeps custom emoji', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.kettle', 'switch.fan_plug'];
+      config.customEntityIcons = { 'switch.fan_plug': '🌀' };
+      state.setConfig(config);
+      state.setStates({
+        'switch.kettle': {
+          entity_id: 'switch.kettle',
+          state: 'off',
+          attributes: { friendly_name: 'Kettle' },
+        },
+        'switch.fan_plug': {
+          entity_id: 'switch.fan_plug',
+          state: 'off',
+          attributes: { friendly_name: 'Fan plug' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const kettleIcon = document.querySelector(
+        '.control-item[data-entity-id="switch.kettle"] .control-icon'
+      );
+      expect(kettleIcon.querySelector('svg.entity-line-icon').dataset.icon).toBe('plug');
+      expect(kettleIcon.dataset.iconKind).toBe('line');
+      const fanIcon = document.querySelector(
+        '.control-item[data-entity-id="switch.fan_plug"] .control-icon'
+      );
+      expect(fanIcon.querySelector('svg')).toBeNull();
+      expect(fanIcon.textContent).toBe('🌀');
+    });
+
+    it('gives plain tiles a state line that follows live updates', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.kettle', 'binary_sensor.front_door', 'scene.movie'];
+      config.customEntityIcons = {};
+      state.setConfig(config);
+      const kettleOff = {
+        entity_id: 'switch.kettle',
+        state: 'off',
+        attributes: { friendly_name: 'Kettle' },
+      };
+      state.setStates({
+        'switch.kettle': kettleOff,
+        'binary_sensor.front_door': {
+          entity_id: 'binary_sensor.front_door',
+          state: 'on',
+          attributes: { friendly_name: 'Front door', device_class: 'door' },
+        },
+        'scene.movie': {
+          entity_id: 'scene.movie',
+          state: '2026-09-01T20:00:00+00:00',
+          attributes: { friendly_name: 'Movie' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const stateOf = (entityId) =>
+        document.querySelector(`.control-item[data-entity-id="${entityId}"] .control-state`);
+      expect(stateOf('switch.kettle').textContent).toBe('Off');
+      expect(stateOf('binary_sensor.front_door').textContent).toBe('Open');
+      expect(stateOf('scene.movie')).toBeNull();
+
+      const kettleOn = { ...kettleOff, state: 'on' };
+      state.setEntityState(kettleOn);
+      ui.updateEntityInUI(kettleOn);
+      expect(stateOf('switch.kettle').textContent).toBe('On');
+      expect(
+        document.querySelector('.control-item[data-entity-id="switch.kettle"]').dataset.active
+      ).toBe('true');
+
+      const kettleGone = { ...kettleOff, state: 'unavailable' };
+      state.setEntityState(kettleGone);
+      ui.updateEntityInUI(kettleGone);
+      const kettleTile = document.querySelector('.control-item[data-entity-id="switch.kettle"]');
+      expect(stateOf('switch.kettle').textContent).toBe('Unavailable');
+      expect(kettleTile.dataset.unavailable).toBe('true');
+      expect(kettleTile.dataset.active).toBeUndefined();
+    });
+
+    it('shows the Controls action as a labelled icon button', () => {
+      state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light', brightness: 128 },
+        },
+      });
+      ui.renderActiveTab();
+      const details = document.querySelector(
+        '[data-entity-id="light.bedroom"] .tile-details-button'
+      );
+      expect(details.title).toBe('Controls');
+      expect(details.getAttribute('aria-label')).toContain('Controls for');
+      expect(details.querySelector('svg.entity-line-icon').dataset.icon).toBe('sliders-horizontal');
+    });
+
     it('pauses an active timer and starts an idle timer on quick-access click', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['timer.kitchen'];
