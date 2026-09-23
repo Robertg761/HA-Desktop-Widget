@@ -383,23 +383,47 @@ class StageWeather extends WeatherEffectsManager {
 const fx = new StageWeather('weather-canvas');
 new ResizeObserver(() => fx.resizeCanvas()).observe(stage);
 const fxBar = document.querySelector('.dock .seg');
-function applyFx(effect) {
-  fx.setEffect(effect || null);
+const fxCanvas = document.getElementById('weather-canvas');
+let currentFx = '';
+function applyFx(effect, { fade = false } = {}) {
+  currentFx = effect || '';
+  const swap = () => {
+    fx.setEffect(currentFx || null);
+    fxCanvas.style.opacity = '1';
+  };
+  if (fade) {
+    fxCanvas.style.opacity = '0';
+    setTimeout(swap, 450);
+  } else {
+    swap();
+  }
   fxBar.querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.fx === (effect || '');
+    const on = b.dataset.fx === currentFx;
     b.classList.toggle('is-on', on);
     b.setAttribute('aria-pressed', String(on));
   });
 }
+
+/* The weather cycles on its own so visitors see every effect. Picking one by
+   hand holds it for 45 seconds before the cycle picks up again from there. */
+const FX_CYCLE = [...fxBar.querySelectorAll('button')].map((b) => b.dataset.fx);
+const FX_STEP_MS = 7000;
+const FX_HOLD_MS = 45000;
+let fxNextAt = Date.now() + 3500;
 fxBar.addEventListener('click', (ev) => {
   const b = ev.target.closest('button');
   if (!b) return;
   markInteracted();
   applyFx(b.dataset.fx);
-  store.set('fx', b.dataset.fx);
+  fxNextAt = Date.now() + FX_HOLD_MS;
 });
-const savedFx = store.get('fx', '');
-if (savedFx) applyFx(savedFx);
+setInterval(() => {
+  if (fx.prefersReducedMotion() || document.hidden || !stageVisible) return;
+  if (Date.now() < fxNextAt) return;
+  const next = FX_CYCLE[(FX_CYCLE.indexOf(currentFx) + 1) % FX_CYCLE.length];
+  applyFx(next, { fade: true });
+  fxNextAt = Date.now() + FX_STEP_MS;
+}, 500);
 
 let stageVisible = true;
 function syncFxLoop() {
