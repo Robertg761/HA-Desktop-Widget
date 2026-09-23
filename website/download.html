@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download HA Desktop Widget</title>
+  <meta name="description" content="Download HA Desktop Widget for Windows, macOS or Linux. Free, open source, and it recommends the right build for your computer.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0c10">
+  <link rel="canonical" href="https://ha-desktop-widget.vercel.app/download">
+  <link rel="icon" type="image/png" href="/assets/icon.png">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <meta property="og:title" content="Download HA Desktop Widget">
+  <meta property="og:description" content="Download HA Desktop Widget for Windows, macOS or Linux. Free, open source, and it recommends the right build for your computer.">
+  <meta property="og:image" content="https://ha-desktop-widget.vercel.app/assets/og.png">
+  <meta property="og:url" content="https://ha-desktop-widget.vercel.app/download">
+  <meta property="og:site_name" content="HA Desktop Widget">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://api.github.com" crossorigin>
+  <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+  <script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/" aria-label="HA Desktop Widget home">
+        <img src="/assets/icon.png" alt="" width="26" height="26">
+        <span>HA Desktop Widget</span>
+      </a>
+      <nav class="nav-links" aria-label="Site">
+        <a href="/#features">Features</a>
+        <a href="/#screenshots">Screenshots</a>
+        <a href="/companion">Companion</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
+        </a>
+        <a class="btn btn-primary btn-sm" href="/download" aria-current="page">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
+          Download
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <h1>Download HA Desktop Widget</h1>
+      <p class="lede">Free and open source for Windows, macOS and Linux.</p>
+      <p class="release-line"><span data-version>v3.10.0</span><span hidden> · released <span id="release-date"></span></span></p>
+    </section>
+
+    <section class="recommend" id="recommend" hidden>
+      <div class="rec-card">
+        <div>
+          <p class="rec-for"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>Recommended for your <span id="rec-device"></span></p>
+          <h2 id="rec-title"></h2>
+          <p class="rec-meta"><span id="rec-meta"></span><span id="rec-size"></span></p>
+          <p class="rec-note" id="rec-note"></p>
+          <p class="rec-arch" id="rec-arch"></p>
+        </div>
+        <div class="rec-actions">
+          <a class="btn btn-primary btn-lg" id="rec-primary" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">
+            <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
+            <span id="rec-primary-label">Download</span>
+          </a>
+          <a class="rec-alt" id="rec-alt" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest"></a>
+        </div>
+      </div>
+    </section>
+    <p class="no-detect" id="no-detect" hidden>Looks like you’re on a phone or tablet. HA Desktop Widget runs on Windows, macOS and Linux, so grab it on your computer.</p>
+
+    <section class="section">
+      <header class="section-head">
+        <h2 id="others-title">All platforms</h2>
+      </header>
+      <div class="dl-grid">
+        <div class="os-card" data-os="windows">
+          <div class="os-head"><h3>Windows</h3></div>
+          <p class="os-arch">x64 · Windows 10 and 11</p>
+          <p>The installer updates itself in-app. The portable build checks for updates and links you to the download.</p>
+          <div class="dl-buttons">
+            <a class="btn btn-quiet" data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer<span class="ext">.exe</span></a>
+            <a class="btn btn-quiet" data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable<span class="ext">.exe</span></a>
+          </div>
+        </div>
+        <div class="os-card" data-os="mac">
+          <div class="os-head"><h3>macOS</h3></div>
+          <p class="os-arch">Universal · Intel and Apple Silicon</p>
+          <p>Not yet Developer ID signed. On first launch, Control-click the app and choose Open.</p>
+          <div class="dl-buttons">
+            <a class="btn btn-quiet" data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Disk image<span class="ext">.dmg</span></a>
+            <a class="btn btn-quiet" data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Archive<span class="ext">.zip</span></a>
+          </div>
+        </div>
+        <div class="os-card" data-os="linux">
+          <div class="os-head"><h3>Linux</h3></div>
+          <p class="os-arch">x64</p>
+          <p>The AppImage updates itself in-app. The .deb package updates through GitHub Releases.</p>
+          <div class="dl-buttons">
+            <a class="btn btn-quiet" data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage</a>
+            <a class="btn btn-quiet" data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Debian<span class="ext">.deb</span></a>
+          </div>
+        </div>
+      </div>
+
+      <div class="dl-more">
+        <aside class="callout">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-arrow"/></svg></span>
+          <p><strong>Installed it?</strong> Setup takes about two minutes. <a href="/#setup">Here’s how.</a></p>
+        </aside>
+        <aside class="callout">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-sync"/></svg></span>
+          <p><strong>Want nightly builds?</strong> Turn on Receive beta updates in Settings.</p>
+        </aside>
+        <aside class="callout">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-package"/></svg></span>
+          <p><strong>Older versions</strong> and every file are on the <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">releases page</a>.</p>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="/assets/icon.png" alt="" width="20" height="20">
+        <span>HA Desktop Widget</span>
+        <span class="footer-version" data-version>v3.10.0</span>
+      </div>
+      <nav class="footer-links" aria-label="Project links">
+        <a href="/download">Download</a>
+        <a href="/companion">Companion</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
+      </nav>
+    </div>
+    <p class="fine-print">MIT licensed. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
+  </footer>
+
+  <script type="module" src="/site.js"></script>
+</body>
+</html>

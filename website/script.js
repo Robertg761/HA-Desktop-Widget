@@ -1,10 +1,10 @@
 // The hero widget is a working demo: shared entity state renders into the grid
 // and into any pinned copies, so a pinned lamp keeps toggling wherever you drop it.
 import { WeatherEffectsManager } from '/weather-effects.js';
+import { release } from '/site.js';
 
 const stage = document.getElementById('stage');
 
-const REPO = 'Robertg761/HA-Desktop-Widget';
 const store = {
   get(key, fallback) {
     try { return JSON.parse(localStorage.getItem('hdw-' + key)) ?? fallback; }
@@ -86,7 +86,7 @@ function renderTile(id, pinned = false) {
   }
   if (e.type === 'light') el.title = 'Click to toggle · hold or right-click for brightness';
   el.innerHTML = `
-    <span class="qa-icon" aria-hidden="true"><svg class="ico"><use href="#i-${e.icon}"/></svg></span>
+    <span class="qa-icon" aria-hidden="true"><svg class="ico"><use href="/assets/icons.svg#i-${e.icon}"/></svg></span>
     <span class="qa-name">${e.name}</span>
     <span class="qa-state"></span>`;
 
@@ -95,7 +95,7 @@ function renderTile(id, pinned = false) {
   pinBtn.className = 'pin-btn';
   pinBtn.setAttribute('aria-label', pinned ? 'Unpin tile' : 'Pin tile to the desktop');
   pinBtn.title = pinned ? 'Unpin' : 'Pin to desktop';
-  pinBtn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-${pinned ? 'x' : 'pin'}"/></svg>`;
+  pinBtn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-${pinned ? 'x' : 'pin'}"/></svg>`;
 
   slot.append(el, pinBtn);
   wireTile(slot, el, pinBtn, id, pinned);
@@ -412,70 +412,12 @@ new IntersectionObserver(([entry]) => {
   syncFxLoop();
 }).observe(stage);
 
-/* ---------------- OS detection + latest release ---------------- */
-
-const ASSET_PATTERNS = {
-  'win-setup': /win-x64-Setup\.exe$/,
-  'win-portable': /win-x64-Portable\.exe$/,
-  'mac-dmg': /universal\.dmg$/,
-  'mac-zip': /universal-mac\.zip$/,
-  'linux-appimage': /x86_64\.AppImage$/,
-  'linux-deb': /amd64\.deb$/,
-};
-
-function detectOS() {
-  const ua = navigator.userAgent;
-  // Android UAs contain "Linux" and desktop-mode iPads say "Macintosh": a phone
-  // gets no direct installer link, just the download section.
-  if (/Android|iPhone|iPad|iPod/i.test(ua)) return null;
-  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return null;
-  if (/Windows/i.test(ua)) return { os: 'windows', label: 'Windows', arch: 'x64' };
-  if (/Macintosh|Mac OS X/i.test(ua)) return { os: 'mac', label: 'macOS', arch: 'universal' };
-  if (/Linux|X11/i.test(ua)) return { os: 'linux', label: 'Linux', arch: 'x64' };
-  return null;
-}
-
-const detected = detectOS();
-if (detected) {
-  const card = document.querySelector(`.os-card[data-os="${detected.os}"]`);
-  if (card) {
-    card.classList.add('detected');
-    const primary = card.querySelector('.btn-primary');
-    const hero = document.getElementById('hero-download');
-    if (primary && hero) {
-      document.getElementById('hero-download-label').textContent = `Download for ${detected.label}`;
-      hero.dataset.follow = primary.dataset.asset;
-    }
-  }
-}
-
-// Fallback hrefs point at /releases/latest (never stale, never 404). The API
-// call upgrades them to direct asset links and fills in the version string.
-fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
-  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-  .then((release) => {
-    const tag = release.tag_name || '';
-    if (tag) {
-      document.getElementById('version-label').textContent = `Latest release ${tag}`;
-      document.getElementById('eyebrow-version').textContent = tag;
-      document.getElementById('footer-version').textContent = tag;
-      connDefault = tag;
-      if (!connMeta.textContent.includes('·')) connMeta.textContent = tag;
-    }
-    const assets = release.assets || [];
-    for (const [key, pattern] of Object.entries(ASSET_PATTERNS)) {
-      const asset = assets.find((a) => pattern.test(a.name));
-      if (!asset) continue;
-      document.querySelectorAll(`[data-asset="${key}"]`).forEach((el) => {
-        el.href = asset.browser_download_url;
-      });
-      const hero = document.getElementById('hero-download');
-      if (hero && hero.dataset.follow === key) hero.href = asset.browser_download_url;
-    }
-  })
-  .catch(() => {
-    document.getElementById('footer-version').textContent = 'v3.10.0';
-  });
+/* The connection readout shows the real latest version once GitHub answers. */
+release.then((rel) => {
+  if (!rel?.tag_name) return;
+  connDefault = rel.tag_name;
+  if (!connMeta.textContent.includes('·')) connMeta.textContent = connDefault;
+});
 
 /* ---------------- Ghost hand-off ---------------- */
 
@@ -550,23 +492,3 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   if (!interacted && hint) hint.textContent = 'Your turn. Hold a light to dim it, or pin one to the desktop.';
 })();
 
-/* ---------------- Page chrome ---------------- */
-
-const nav = document.querySelector('.nav');
-const onScroll = () => nav.classList.toggle('scrolled', scrollY > 8);
-addEventListener('scroll', onScroll, { passive: true });
-onScroll();
-
-/* Fade sections in as they arrive. Siblings in the same row stagger slightly. */
-const revealer = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    if (!entry.isIntersecting) continue;
-    entry.target.classList.add('in');
-    revealer.unobserve(entry.target);
-  }
-}, { rootMargin: '0px 0px -8% 0px' });
-document.querySelectorAll('.reveal').forEach((el) => {
-  const siblings = [...el.parentElement.children].filter((c) => c.classList.contains('reveal'));
-  el.style.setProperty('--d', `${Math.min(siblings.indexOf(el), 5) * 70}ms`);
-  revealer.observe(el);
-});
