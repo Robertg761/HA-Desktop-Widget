@@ -11452,22 +11452,36 @@ function showBrightnessSlider(light) {
     let confirmedBrightness = currentBrightness;
     let confirmedColorTemp = currentColorTemp;
     let confirmedColorHex = currentColorHex;
-    let brightnessDebounceTimer;
-    let colorTempDebounceTimer;
-    let colorDebounceTimer;
+    // Shown optimistically by Turn On, which lets the light restore its own last brightness.
+    let lastOnBrightness = currentBrightness;
+    let brightnessDebounceTimer = null;
+    let colorTempDebounceTimer = null;
+    let colorDebounceTimer = null;
     let lightCommandRevision = 0;
+    let lightCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const cancelPendingLightCommands = () => {
       clearTimeout(brightnessDebounceTimer);
       clearTimeout(colorTempDebounceTimer);
       clearTimeout(colorDebounceTimer);
+      brightnessDebounceTimer = colorTempDebounceTimer = colorDebounceTimer = null;
       lightCommandRevision += 1;
     };
     const callLightService = (service, data, rollback) => {
       const revision = ++lightCommandRevision;
+      lightCommandsInFlight += 1;
       return callServiceWithUiRollback(light, 'light', service, data, () => {
         if (revision === lightCommandRevision) rollback?.();
-      }).then((result) => ({ ...result, ok: result.ok && revision === lightCommandRevision }));
+      }).then((result) => {
+        lightCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) setTimeout(() => syncFromEntity(state.STATES?.[light.entity_id]));
+        return { ...result, ok: result.ok && revision === lightCommandRevision };
+      });
     };
+    const hasPendingLightCommand = () =>
+      !!(brightnessDebounceTimer || colorTempDebounceTimer || colorDebounceTimer) ||
+      lightCommandsInFlight > 0;
 
     // Update turn off/on button text
     const updateTurnButton = () => {
@@ -11480,9 +11494,11 @@ function showBrightnessSlider(light) {
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
@@ -11526,8 +11542,10 @@ function showBrightnessSlider(light) {
       const applyValue = (value) => {
         if (valueLarge) valueLarge.textContent = `${value}%`;
         updateIconAndAccent(value);
+        if (value > 0) lastOnBrightness = value;
         clearTimeout(brightnessDebounceTimer);
         brightnessDebounceTimer = setTimeout(() => {
+          brightnessDebounceTimer = null;
           const brightness = Math.round((value / 100) * 255);
           const nextIsOn = brightness > 0;
           const service = nextIsOn ? 'turn_on' : 'turn_off';
@@ -11579,6 +11597,7 @@ function showBrightnessSlider(light) {
         if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
         clearTimeout(colorTempDebounceTimer);
         colorTempDebounceTimer = setTimeout(() => {
+          colorTempDebounceTimer = null;
           lightIsOn = true;
           updateTurnButton();
           callLightService(
@@ -11608,6 +11627,7 @@ function showBrightnessSlider(light) {
       if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
       clearTimeout(colorDebounceTimer);
       colorDebounceTimer = setTimeout(() => {
+        colorDebounceTimer = null;
         lightIsOn = true;
         updateTurnButton();
         callLightService(
@@ -11664,25 +11684,20 @@ function showBrightnessSlider(light) {
             confirmedBrightness = 0;
           });
         } else {
-          // Turn on to last brightness or 100%
-          const brightness =
-            currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
+          // Like Home Assistant's own toggle, send no brightness so the light restores its
+          // last level; show the last level seen here until the live state confirms it.
           lightIsOn = true;
-          const targetValue = currentBrightness > 0 ? currentBrightness : 100;
+          const targetValue = lastOnBrightness > 0 ? lastOnBrightness : 100;
           if (slider) slider.value = String(targetValue);
           if (valueLarge) valueLarge.textContent = `${targetValue}%`;
           updateIconAndAccent(targetValue);
-          callLightService(
-            'turn_on',
-            { entity_id: light.entity_id, ...(canSetBrightness ? { brightness } : {}) },
-            () => {
-              lightIsOn = previousLightIsOn;
-              if (slider) slider.value = String(previousBrightness);
-              if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
-              updateIconAndAccent(previousBrightness);
-              updateTurnButton();
-            }
-          ).then(({ ok }) => {
+          callLightService('turn_on', { entity_id: light.entity_id }, () => {
+            lightIsOn = previousLightIsOn;
+            if (slider) slider.value = String(previousBrightness);
+            if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+            updateIconAndAccent(previousBrightness);
+            updateTurnButton();
+          }).then(({ ok }) => {
             if (!ok) return;
             confirmedLightIsOn = true;
             confirmedBrightness = targetValue;
@@ -11691,6 +11706,50 @@ function showBrightnessSlider(light) {
         updateTurnButton();
       };
     }
+
+    // Follow Home Assistant while open (e.g. an external turn-off), but never under a pending
+    // command or a focused control.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      // Only a state pushed while a command is in flight can reflect it; replay that one later.
+      missedLiveUpdate = lightCommandsInFlight > 0;
+      if (hasPendingLightCommand()) return;
+      const attributes = nextEntity.attributes || {};
+      const isOn = nextEntity.state === 'on';
+      const brightness =
+        isOn && attributes.brightness ? Math.round((attributes.brightness / 255) * 100) : 0;
+      lightIsOn = confirmedLightIsOn = isOn;
+      confirmedBrightness = brightness;
+      if (brightness > 0) lastOnBrightness = brightness;
+      if (slider && document.activeElement !== slider) {
+        slider.value = String(brightness);
+        if (valueLarge) valueLarge.textContent = `${brightness}%`;
+        updateIconAndAccent(brightness);
+      }
+      if (
+        colorTempSlider &&
+        document.activeElement !== colorTempSlider &&
+        (attributes.color_temp_kelvin != null || attributes.color_temp != null)
+      ) {
+        confirmedColorTemp = getInitialLightColorTempKelvin(attributes, colorTempRange);
+        colorTempSlider.value = String(confirmedColorTemp);
+        if (colorTempValue) colorTempValue.textContent = `${confirmedColorTemp}K`;
+      }
+      if (colorPicker && document.activeElement !== colorPicker && attributes.rgb_color) {
+        confirmedColorHex = rgbToHex(attributes.rgb_color);
+        colorPicker.value = confirmedColorHex;
+      }
+      updateTurnButton();
+    };
+    unsubscribe = state.subscribeEntity(light.entity_id, syncFromEntity);
+    // A focused control was skipped above; catch up once the user leaves it.
+    [slider, colorTempSlider, colorPicker].forEach((control) =>
+      control?.addEventListener('blur', () => syncFromEntity(state.STATES?.[light.entity_id]))
+    );
 
     // Close on backdrop click only when clicking the overlay
     modal.onclick = (e) => {

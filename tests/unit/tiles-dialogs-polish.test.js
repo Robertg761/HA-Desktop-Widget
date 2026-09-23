@@ -416,6 +416,72 @@ describe('tile and device dialog polish', () => {
     });
   });
 
+  describe('light dialog', () => {
+    const light = (value, attributes = {}) =>
+      entity('light.desk', value, { supported_color_modes: ['brightness'], ...attributes });
+
+    it('follows an external turn-off', () => {
+      state.setStates({ 'light.desk': light('on', { brightness: 255 }) });
+      ui.openEntityDetailModal(light('on', { brightness: 255 }));
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('100%');
+      state.setEntityState(light('off'));
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('0%');
+      expect(document.querySelector('#brightness-slider').value).toBe('0');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn On');
+      state.setEntityState(light('on', { brightness: 64 }));
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('25%');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
+    });
+
+    it('does not overwrite a focused slider or a pending brightness change', async () => {
+      state.setStates({ 'light.desk': light('on', { brightness: 255 }) });
+      ui.openEntityDetailModal(light('on', { brightness: 255 }));
+      const slider = inputValue('#brightness-slider', 80);
+      state.setEntityState(light('on', { brightness: 26 }));
+      expect(slider.value).toBe('80');
+      await jest.advanceTimersByTimeAsync(200);
+      slider.focus();
+      state.setEntityState(light('on', { brightness: 26 }));
+      expect(slider.value).toBe('80');
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('80%');
+      slider.blur();
+      expect(slider.value).toBe('10');
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('10%');
+    });
+
+    it('applies a light state Home Assistant pushed while a command was in flight', async () => {
+      const call = pendingCall();
+      state.setStates({ 'light.desk': light('off') });
+      ui.openEntityDetailModal(light('off'));
+      document.querySelector('#turn-off-btn').click();
+      state.setEntityState(light('on', { brightness: 128 }));
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('100%');
+      call.resolve({ success: true });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('50%');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
+    });
+
+    it('turns back on at the brightness last chosen in the dialog', async () => {
+      state.setStates({ 'light.desk': light('on', { brightness: 255 }) });
+      ui.openEntityDetailModal(light('on', { brightness: 255 }));
+      inputValue('#brightness-slider', 50);
+      await jest.advanceTimersByTimeAsync(200);
+      document.querySelector('#turn-off-btn').click();
+      await jest.advanceTimersByTimeAsync(0);
+      document.querySelector('#turn-off-btn').click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('50%');
+      expect(document.querySelector('#brightness-slider').value).toBe('50');
+      // Like Home Assistant's own toggle: the light restores its level itself.
+      expect(mockCallService.mock.calls.at(-1)).toEqual([
+        'light',
+        'turn_on',
+        { entity_id: 'light.desk' },
+      ]);
+    });
+  });
+
   it('applies a fan state Home Assistant pushed while a command was in flight', async () => {
     const call = pendingCall();
     const fan = entity('fan.ceiling', 'on', { percentage: 33, supported_features: 1 });
