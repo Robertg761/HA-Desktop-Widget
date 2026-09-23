@@ -4832,9 +4832,25 @@ body.first-run-active .widget-content > * {
   font-size: var(--font-size-sm);
 }
 
-.primary-cards-list-actions .btn[disabled] {
+.primary-cards-list-actions .btn[disabled],
+.primary-cards-list-actions .btn[aria-disabled='true'] {
   cursor: default;
   opacity: 0.7;
+}
+
+.primary-cards-pagination {
+  position: sticky;
+  bottom: 0;
+  justify-content: flex-end;
+  padding: var(--space-2) 12px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-sm);
+}
+
+.primary-cards-pagination [role='status'] {
+  margin-right: auto;
+  color: var(--muted-text);
 }
 
 /* Custom Entity Icons Settings */

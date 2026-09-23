@@ -1416,6 +1416,73 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }
     });
 
+    it('keeps media metadata live without polling unchanged controls and pauses hidden progress', () => {
+      jest.useFakeTimers();
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+      try {
+        const entity = { ...sampleStates['media_player.spotify'], state: 'playing' };
+        state.setStates({ [entity.entity_id]: entity });
+        ui.openEntityDetailModal(entity);
+        const modal = document.querySelector('.media-modal');
+        const icons = require('../../src/icons.js');
+        icons.setIconContent.mockClear();
+        jest.advanceTimersByTime(3000);
+        expect(icons.setIconContent).not.toHaveBeenCalled();
+        state.setEntityState({
+          ...entity,
+          attributes: {
+            ...entity.attributes,
+            media_title: 'Next song',
+            media_artist: 'New artist',
+          },
+        });
+        expect(modal.querySelector('.media-detail-title').textContent).toBe('Next song');
+        expect(modal.querySelector('.media-detail-artist').textContent).toBe('New artist');
+        expect(icons.setIconContent).not.toHaveBeenCalled();
+        Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        const timerCount = jest.getTimerCount();
+        expect(timerCount).toBe(0);
+        state.setEntityState({
+          ...entity,
+          attributes: { ...entity.attributes, media_title: 'Hidden change', media_artist: '' },
+        });
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(modal.querySelector('.media-detail-title').textContent).toBe('Hidden change');
+        expect(modal.querySelector('.media-detail-artist').hidden).toBe(true);
+        state.setEntityState({ ...entity, state: 'paused' });
+        expect(jest.getTimerCount()).toBe(0);
+        modal.querySelector('#media-close').click();
+        jest.advanceTimersByTime(300);
+        state.setEntityState({ ...entity, attributes: { media_title: 'After close' } });
+        expect(modal.querySelector('.media-detail-title').textContent).not.toBe('After close');
+      } finally {
+        delete document.hidden;
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+
+    it('stops media updates when the dialog is removed without being closed', () => {
+      jest.useFakeTimers();
+      try {
+        const entity = { ...sampleStates['media_player.spotify'], state: 'playing' };
+        state.setStates({ [entity.entity_id]: entity });
+        ui.openEntityDetailModal(entity);
+        const modal = document.querySelector('.media-modal');
+        expect(jest.getTimerCount()).toBeGreaterThan(0);
+        jest.runOnlyPendingTimers();
+        modal.remove();
+        state.setEntityState({ ...entity, attributes: { media_title: 'After removal' } });
+        expect(modal.querySelector('.media-detail-title').textContent).not.toBe('After removal');
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+
     it('does not render media transport actions that are not advertised', () => {
       jest.useFakeTimers();
       try {
