@@ -63,6 +63,8 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+// The Start at login state shown when Settings opened, so Save only writes a real change.
+let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
 let localePackListCache = [];
 let localePackListError = '';
@@ -3819,6 +3821,7 @@ async function openSettings(uiHooks) {
         log.error('Failed to get login item settings:', error);
         startWithWindows.checked = false;
       }
+      loadedStartAtLogin = startWithWindows.checked;
     }
 
     bindLanguageSettingsUi();
@@ -4662,7 +4665,12 @@ async function saveSettings() {
       }
     }
 
-    if (startWithWindows) {
+    // Only a changed, supported checkbox touches the OS; isolated profiles report it unsupported.
+    if (
+      startWithWindows &&
+      !startWithWindows.disabled &&
+      startWithWindows.checked !== loadedStartAtLogin
+    ) {
       try {
         const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
         if (!result.success) {

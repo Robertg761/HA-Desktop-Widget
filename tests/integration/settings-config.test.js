@@ -1362,6 +1362,36 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('language-packs-list').textContent).toBe('');
     });
 
+    test('Start at login is written only when a supported checkbox changed', async () => {
+      await settings.openSettings();
+      await settings.saveSettings();
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+
+      await settings.openSettings();
+      document.getElementById('start-with-windows').checked = true;
+      await settings.saveSettings();
+      expect(window.electronAPI.setLoginItemSettings).toHaveBeenCalledWith(true);
+    });
+
+    test('an isolated profile saves without touching or warning about Start at login', async () => {
+      // What main reports for --user-data-dir / --isolated-profile runs.
+      window.electronAPI.getLoginItemSettings.mockResolvedValueOnce({
+        openAtLogin: false,
+        supported: false,
+      });
+      await settings.openSettings();
+      expect(document.getElementById('start-with-windows').disabled).toBe(true);
+
+      await settings.saveSettings();
+
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        'Failed to update Start at login setting',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {
       state.CONFIG.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
       state.CONFIG.tokenResetReason = 'decryption_failed';
