@@ -1145,7 +1145,7 @@ function handleQuickAccessGridKeydown(event) {
     event.preventDefault();
     if (event.shiftKey) {
       const entity = state.STATES?.[tile.dataset.entityId];
-      if (entity && !shouldBlockInteraction(tile)) openEntityDetailModal(entity);
+      if (entity && !shouldBlockInteraction(tile)) openEntityControls(entity);
     } else {
       tile.click();
     }
@@ -8216,7 +8216,7 @@ function createControlElement(entity, options = {}) {
         event.preventDefault();
         if (shouldBlockInteraction(div)) return;
         const liveEntity = state.STATES?.[entity.entity_id] || entity;
-        if (event.shiftKey) openEntityDetailModal(liveEntity);
+        if (event.shiftKey) openEntityControls(liveEntity);
         else executeEntityPrimaryAction(liveEntity, { source: 'primary-card-keyboard' });
       });
     }
@@ -8474,7 +8474,7 @@ function createControlElement(entity, options = {}) {
       });
       details.addEventListener('click', (event) => {
         event.stopPropagation();
-        if (!shouldBlockInteraction(div)) openEntityDetailModal(entity);
+        if (!shouldBlockInteraction(div)) openEntityControls(entity);
       });
       div.appendChild(details);
       applyQuickAccessTileAccessibility(div, entity);
@@ -8561,7 +8561,8 @@ function applyQuickAccessTileAccessibility(div, entity) {
       );
   } else {
     div.setAttribute('tabindex', '-1');
-    div.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+    // Only tiles with a Controls button advertise Shift+Enter.
+    div.setAttribute('aria-keyshortcuts', 'Enter Space');
   }
 }
 
@@ -10457,12 +10458,13 @@ function executeEntityPrimaryAction(entity, options = {}) {
 }
 
 // Open the richest detail/control modal for an entity — the same modal a Quick
-// Access tile shows on long-press. Domains without a dedicated modal
-// (switches, scenes, scripts, etc.) fall back to the entity's primary action.
-function openEntityDetailModal(entity, options = {}) {
+// Access tile shows on long-press. Returns false for domains without one
+// (switches, locks, scenes, scripts, etc.) and never runs the primary action,
+// so Shift+Enter and the Controls button cannot unlock or toggle anything.
+function openEntityControls(entity) {
   try {
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
-    if (!liveEntity?.entity_id) return;
+    if (!liveEntity?.entity_id) return false;
 
     const domain = getEntityDomain(liveEntity.entity_id);
     const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
@@ -10470,40 +10472,48 @@ function openEntityDetailModal(entity, options = {}) {
     switch (domain) {
       case 'camera':
         camera.openCamera(liveEntity.entity_id);
-        return;
+        return true;
       case 'light':
         showBrightnessSlider(liveEntity);
-        return;
+        return true;
       case 'climate':
         showClimateControls(liveEntity);
-        return;
+        return true;
       case 'fan':
         showFanControls(liveEntity);
-        return;
+        return true;
       case 'cover':
         showCoverControls(liveEntity);
-        return;
+        return true;
       case 'media_player':
         showMediaDetail(liveEntity);
-        return;
+        return true;
       case 'todo':
         showTodoDetails(liveEntity);
-        return;
+        return true;
       case 'calendar':
         showCalendarDetails(liveEntity);
-        return;
+        return true;
       case 'sensor':
-        if (!isTimer) {
-          showSensorDetails(liveEntity);
-          return;
-        }
-        break;
+        if (isTimer) return false;
+        showSensorDetails(liveEntity);
+        return true;
       default:
-        break;
+        return false;
     }
+  } catch (error) {
+    console.error('Error opening entity controls:', error);
+    return false;
+  }
+}
 
-    // No dedicated detail modal for this domain — fall back to primary action.
-    executeEntityPrimaryAction(liveEntity, options);
+// The command palette opens an entity's controls, or runs its primary action
+// when the domain has no controls modal.
+function openEntityDetailModal(entity, options = {}) {
+  try {
+    if (openEntityControls(entity)) return;
+    const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (liveEntity?.entity_id) executeEntityPrimaryAction(liveEntity, options);
   } catch (error) {
     console.error('Error opening entity detail modal:', error);
   }

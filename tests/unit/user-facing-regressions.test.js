@@ -335,6 +335,54 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService).not.toHaveBeenCalled();
   });
 
+  it('never unlocks a primary lock card with Shift+Enter', async () => {
+    const lock = entity('lock.front_door', 'locked');
+    state.setConfig({ ...state.CONFIG, primaryCards: [lock.entity_id, 'none'] });
+    state.setStates({ [lock.entity_id]: lock });
+    ui.renderPrimaryCards();
+    const card = document.querySelector('[data-primary-card="true"]');
+    expect(card.getAttribute('aria-keyshortcuts')).toBe('Enter Space');
+    card.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true })
+    );
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+
+  it('only advertises and runs Shift+Enter on Quick Access tiles with controls', async () => {
+    const ids = ['lock.back_door', 'light.hall'];
+    state.setConfig({
+      ...state.CONFIG,
+      customTabs: [{ id: 'keys', name: 'Keys', entityIds: ids }],
+      activeTabId: 'keys',
+      favoriteEntities: ids,
+    });
+    state.setStates({
+      [ids[0]]: entity(ids[0], 'locked'),
+      [ids[1]]: entity(ids[1], 'on', { brightness: 128 }),
+    });
+    ui.renderActiveTab();
+    const lockTile = document.querySelector(`[data-entity-id="${ids[0]}"]`);
+    const lightTile = document.querySelector(`[data-entity-id="${ids[1]}"]`);
+    expect(lockTile.getAttribute('aria-keyshortcuts')).toBe('Enter Space');
+    expect(lockTile.querySelector('.tile-details-button')).toBeNull();
+    expect(lightTile.querySelector('.tile-primary-button').getAttribute('aria-keyshortcuts')).toBe(
+      'Enter Space Shift+Enter'
+    );
+
+    lockTile.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true })
+    );
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).not.toHaveBeenCalled();
+
+    lightTile
+      .querySelector('.tile-primary-button')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    expect(document.querySelector('#brightness-slider')).not.toBeNull();
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['°F', {}, '74°F'],
     ['°C', {}, '74°C'],
