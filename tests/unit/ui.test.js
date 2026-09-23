@@ -6484,6 +6484,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(list.children.length).toBeGreaterThan(0);
     });
 
+    it('draws a single history sample as a flat line on to now', async () => {
+      const sensor = {
+        entity_id: 'sensor.outside',
+        state: '15.6',
+        attributes: {
+          friendly_name: 'Outside',
+          unit_of_measurement: '°C',
+          state_class: 'measurement',
+        },
+      };
+      state.setStates({ 'sensor.outside': sensor });
+      const sampledAt = Date.now() - 3600000;
+      mockRequest.mockResolvedValue({
+        success: true,
+        result: { 'sensor.outside': [{ s: '15.6', lu: sampledAt / 1000 }] },
+      });
+      ui.openEntityDetailModal(sensor);
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      const line = document.querySelector('.sensor-detail-modal polyline');
+      const points = line
+        .getAttribute('points')
+        .split(' ')
+        .map((point) => point.split(',').map(Number));
+      expect(points).toHaveLength(2);
+      expect(points[0][1]).toBe(points[1][1]);
+      expect(points[1][0]).toBe(420);
+      expect(points[0][0]).toBeLessThan(420);
+      const dot = document.querySelector('.sensor-detail-modal circle');
+      expect(Number(dot.getAttribute('cx'))).toBe(points[0][0]);
+      expect(Number(dot.getAttribute('cy'))).toBe(points[0][1]);
+      document.querySelector('.sensor-detail-modal')?.remove();
+    });
+
     it('fetches history for every chart tile on a page in one request', async () => {
       const makeSensor = (entityId, value) => ({
         entity_id: entityId,

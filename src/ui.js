@@ -3098,7 +3098,14 @@ function renderSensorDetailSparkline(container, series, timeDomain) {
   container.hidden = !stats;
   if (!stats) return;
   const padding = Math.max((stats.max - stats.min) * 0.05, Math.abs(stats.max) * 0.01, 0.01);
-  const points = buildTimeSeriesPoints(series, {
+  // A reading holds until the next one, so carry the last value on to "now". A period with a
+  // single sample then draws a flat line instead of one dot at the far end.
+  const last = series.findLast((point) => Number.isFinite(point.value));
+  const drawn =
+    Number.isFinite(timeDomain?.end) && last.timestamp < timeDomain.end
+      ? [...series, { value: last.value, timestamp: timeDomain.end }]
+      : series;
+  const points = buildTimeSeriesPoints(drawn, {
     timeDomain,
     valueDomain: { min: stats.min - padding, max: stats.max + padding },
     width: SENSOR_DETAIL_SPARKLINE_WIDTH,
@@ -3119,7 +3126,7 @@ function renderSensorDetailSparkline(container, series, timeDomain) {
     })
   );
   if (series.length === 1) {
-    const [cx, cy] = points.split(',');
+    const [cx, cy] = points.split(' ')[0].split(',');
     svg.append(createSvgElement('circle', { cx, cy, r: '3', fill: 'currentColor' }));
   }
   container.append(svg);
