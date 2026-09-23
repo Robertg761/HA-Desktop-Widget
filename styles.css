@@ -3329,6 +3329,7 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs .tab-link:hover {
+  border-color: transparent;
   background: var(--tile-bg);
   color: var(--text-primary);
 }
@@ -7552,42 +7553,20 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 /* Settings Visual Cards Grouping */
+/* Settings cards are the same panes as the main view's tiles. */
 .settings-card {
-  background: rgba(var(--settings-modal-panel-rgb), 0.25);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
   padding: var(--space-5);
-  margin-bottom: var(--space-5);
-  transition:
-    border-color var(--transition-base),
-    box-shadow var(--transition-base),
-    transform var(--transition-base);
-  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-4);
+  transition: border-color var(--transition-base);
   position: relative;
   overflow: hidden;
 }
 
-.settings-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-  opacity: 0.7;
-}
-
-.theme-light .settings-card {
-  background: rgba(255, 255, 255, 0.45);
-}
-
 .settings-card:hover {
-  border-color: rgba(var(--accent-rgb), 0.35);
-  box-shadow:
-    var(--shadow-md),
-    0 4px 20px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px) scale(1.005);
+  border-color: var(--tile-border-hover);
 }
 
 .settings-card-header {
@@ -7595,12 +7574,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: var(--space-2);
-}
-
-.theme-light .settings-card-header {
-  border-bottom-color: rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--tile-border);
+  padding-bottom: var(--space-3);
 }
 
 .settings-card-header .settings-card-icon {
@@ -7640,7 +7615,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #settings-modal input[type='password']:hover,
 #settings-modal select:hover {
   border-color: var(--border-hover);
-  background-color: var(--surface-hover);
+  background-color: var(--tile-bg-hover);
 }
 
 #settings-modal input[type='text']:focus-visible,
@@ -8083,14 +8058,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
+  background: var(--tile-bg);
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
   transition: var(--transition-base);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .form-group input::placeholder,
@@ -8102,7 +8074,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group select:hover,
 .form-group textarea:hover {
   border-color: var(--border-hover);
-  background: var(--glass-elevated);
+  background: var(--tile-bg-hover);
 }
 
 .form-group input:focus,
@@ -8110,10 +8082,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group textarea:focus {
   outline: none;
   border-color: var(--accent);
-  background: var(--glass-elevated);
-  box-shadow:
-    var(--glow-focus),
-    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: var(--tile-bg-hover);
+  box-shadow: var(--glow-focus);
 }
 
 /* Premium Custom Toggle Switch Checkboxes */
@@ -11099,26 +11069,28 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   align-items: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   text-align: left;
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 #settings-modal .tab-link:hover {
-  border-color: var(--border-hover);
-  background: var(--glass-surface);
+  border-color: transparent;
+  background: var(--tile-bg-hover);
   color: var(--text-primary);
 }
 
+/* Same accent-tinted pane as an active Quick Access view. */
 #settings-modal .tab-link.active {
-  border-color: rgba(var(--accent-rgb), 0.36);
-  border-left-color: var(--accent);
-  background: var(--accent-bg);
+  border-color: transparent;
+  background: rgba(var(--accent-rgb), 0.14);
   color: var(--text-primary);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
 #settings-modal .tab-link:focus-visible {
@@ -11160,11 +11132,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     min-height: 28px;
     padding: var(--space-1) var(--space-3);
     justify-content: center;
-  }
-
-  #settings-modal .tab-link.active {
-    border-left-color: rgba(var(--accent-rgb), 0.36);
-    box-shadow: inset 0 -2px 0 var(--accent);
   }
 
   #settings-modal .modal-body {
