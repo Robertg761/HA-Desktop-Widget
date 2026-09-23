@@ -366,6 +366,10 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   grid-column: 1 / -1;
 }
 
+.room-device-search[hidden] {
+  display: none;
+}
+
 .room-entity-list > label[hidden] {
   display: none;
 }

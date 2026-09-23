@@ -772,10 +772,14 @@ async function deleteQuickAccessPage(tabId) {
   }
 }
 
-function createQuickAccessPage(name, entityIds = []) {
-  const nextConfig = addQuickAccessView(state.CONFIG, name, {
-    idFactory: generateQuickAccessViewId,
-  });
+function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } = {}) {
+  // First-run setup starts from the empty default page; fill that page rather than leaving it
+  // empty beside the new one, still inviting the user to set up a page.
+  const activePage = fillEmptyPage ? getActiveQuickAccessTab(state.CONFIG) : null;
+  const nextConfig =
+    activePage && !activePage.entityIds.length
+      ? renameQuickAccessView(state.CONFIG, activePage.id, name)
+      : addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
   nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
@@ -865,7 +869,8 @@ function showAddPageModal({ starter = false } = {}) {
     });
   };
   deviceSearch.addEventListener('input', filterDevices);
-  if (starter) roomGroup.insertBefore(deviceSearch, roomEntities);
+  deviceSearch.hidden = true;
+  roomGroup.insertBefore(deviceSearch, roomEntities);
   modal.querySelector('.modal-body').appendChild(roomGroup);
   let registry = null;
   let availableStates = state.STATES;
@@ -877,19 +882,26 @@ function showAddPageModal({ starter = false } = {}) {
     const selected = [...roomEntities.querySelectorAll('input:checked')];
     preview.replaceChildren();
     const title = document.createElement('p');
-    title.textContent = t('Page preview: {{count}} devices', { count: selected.length });
+    title.textContent =
+      selected.length === 1
+        ? t('Page preview: 1 entity')
+        : t('Page preview: {{count}} entities', { count: selected.length });
     preview.appendChild(title);
     selected.slice(0, 8).forEach(({ value }) => {
       const tile = document.createElement('div');
       tile.className = 'room-preview-tile';
       const entity = availableStates[value];
-      tile.textContent = `${utils.getEntityDisplayName(entity)} — ${entity.state}`;
+      tile.textContent = `${utils.getEntityDisplayName(entity)} — ${utils.getEntityDisplayState(entity)}`;
       preview.appendChild(tile);
     });
-    if (selected.length > 8) {
-      const remaining = document.createElement('p');
-      remaining.textContent = t('And {{count}} more devices', { count: selected.length - 8 });
-      preview.appendChild(remaining);
+    const remaining = selected.length - 8;
+    if (remaining > 0) {
+      const more = document.createElement('p');
+      more.textContent =
+        remaining === 1
+          ? t('And 1 more entity')
+          : t('And {{count}} more entities', { count: remaining });
+      preview.appendChild(more);
     }
   };
   roomEntities.addEventListener('change', updatePreview);
@@ -911,12 +923,14 @@ function showAddPageModal({ starter = false } = {}) {
           response.result.map((entity) => [entity.entity_id, entity])
         );
       }
+      let registryUnavailable = false;
       try {
         registry = await loadRoomRegistry(websocket);
       } catch (error) {
         if (!starter) throw error;
         // State access does not require administrator registry permissions.
         registry = { areas: [], entities: [], devices: [] };
+        registryUnavailable = true;
       }
       if (!modal.isConnected) return;
       if (!starter) availableStates = state.STATES;
@@ -937,11 +951,23 @@ function showAddPageModal({ starter = false } = {}) {
                 .length
           )?.area_id || '';
         roomSelect.onchange();
-        if (!registry.areas.length)
+        if (registryUnavailable) {
           roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
+        } else if (!registry.areas.length) {
+          roomStatus.textContent = t(
+            'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+          );
+        }
         saveBtn.disabled = false;
       }
-    } catch {
+    } catch (error) {
+      if (!modal.isConnected) return;
+      if (error?.code === 'registry_unavailable') {
+        // Home Assistant refused the request; retrying cannot succeed without new permissions.
+        roomStatus.textContent = error.message;
+        loadRooms.hidden = true;
+        return;
+      }
       roomStatus.textContent = t(
         'Could not load rooms. Check your connection and permissions, then retry.'
       );
@@ -958,6 +984,7 @@ function showAddPageModal({ starter = false } = {}) {
     preview.replaceChildren();
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
+      deviceSearch.hidden = true;
       return;
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
@@ -978,6 +1005,7 @@ function showAddPageModal({ starter = false } = {}) {
         .getEntityDisplayName(availableStates[a])
         .localeCompare(utils.getEntityDisplayName(availableStates[b]))
     );
+    // Suggest up to eight available devices you can control; sensors and buttons stay optional.
     const defaults = new Set(
       ids
         .filter(
@@ -987,12 +1015,13 @@ function showAddPageModal({ starter = false } = {}) {
         )
         .slice(0, 8)
     );
+    deviceSearch.hidden = !ids.length;
     ids.forEach((id) => {
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.value = id;
-      checkbox.checked = !starter || defaults.has(id);
+      checkbox.checked = defaults.has(id);
       label.append(
         checkbox,
         document.createTextNode(utils.getEntityDisplayName(availableStates[id]))
@@ -1038,7 +1067,7 @@ function showAddPageModal({ starter = false } = {}) {
       roomEntities.querySelectorAll('input:checked'),
       (checkbox) => checkbox.value
     );
-    const result = await createQuickAccessPage(name, selectedIds);
+    const result = await createQuickAccessPage(name, selectedIds, { fillEmptyPage: starter });
     if (result.success) {
       void uiUtils.closeModal(modal, closeOptions);
       return;
@@ -1053,6 +1082,14 @@ function showAddPageModal({ starter = false } = {}) {
     chip.addEventListener('click', () => {
       if (!input) return;
       input.value = chip.dataset.name || chip.textContent || '';
+      // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room.
+      const name = input.value.trim().toLocaleLowerCase();
+      const area = registry?.areas.find((entry) => entry.name.trim().toLocaleLowerCase() === name);
+      if (area && roomSelect.value !== area.area_id) {
+        autoFilledName = input.value;
+        roomSelect.value = area.area_id;
+        roomSelect.onchange();
+      }
       input.focus();
     });
   });

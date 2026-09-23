@@ -58,7 +58,11 @@ describe('room dashboards', () => {
       .fn()
       .mockResolvedValue({ success: false, error: { code: 'unauthorized' } });
     await expect(loadRoomRegistry({ request })).rejects.toThrow('permissions');
-    expect(request).toHaveBeenCalledTimes(3);
+    // Marked so the Add Page dialog does not offer a retry that cannot succeed.
+    await expect(loadRoomRegistry({ request })).rejects.toMatchObject({
+      code: 'registry_unavailable',
+    });
+    expect(request).toHaveBeenCalledTimes(6);
   });
 });
 
