@@ -1757,7 +1757,17 @@
               id="quick-controls-search"
               placeholder="Search entities..."
               class="form-control"
+              aria-describedby="command-palette-hint"
             />
+            <!-- The command palette has no button of its own; point out its shortcut where
+                 people already search for entities. -->
+            <div
+              id="command-palette-hint"
+              class="form-help"
+              data-i18n="Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages."
+            >
+              Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.
+            </div>
           </div>
           <div class="form-group">
             <label>Available Entities for Quick Access:</label>

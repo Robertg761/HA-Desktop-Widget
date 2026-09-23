@@ -474,29 +474,10 @@ function handlePaletteKeydown(event) {
   }
 }
 
-// The palette has no button of its own, so the shortcut is pointed out where people already go to
-// find an entity: under the search field of Manage Quick Access.
-function addShortcutHint() {
-  const search = document.getElementById('quick-controls-search');
-  if (!search || document.getElementById('command-palette-hint')) return;
-  const hint = createElement(
-    'div',
-    'form-help',
-    t('Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.')
-  );
-  hint.id = 'command-palette-hint';
-  // Lets translateDocument() update the hint when the language changes.
-  hint.dataset.i18n =
-    'Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.';
-  search.setAttribute('aria-describedby', hint.id);
-  search.after(hint);
-}
-
 function initializeCommandPalette() {
   if (initialized) return;
   initialized = true;
   document.addEventListener('keydown', handleGlobalKeydown);
-  addShortcutHint();
 }
 
 export {

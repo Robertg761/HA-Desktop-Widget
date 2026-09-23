@@ -233,14 +233,12 @@ describe('command palette recents', () => {
   });
 
   it('points out the shortcut under the Manage Quick Access search field', () => {
-    const { palette } = load();
-    document.body.innerHTML = '<input id="quick-controls-search" />';
-    palette.initializeCommandPalette();
-    const hint = document.getElementById('command-palette-hint');
+    const html = require('fs').readFileSync(require('path').join(__dirname, '../../index.html'));
+    document.documentElement.innerHTML = String(html);
+    const search = document.getElementById('quick-controls-search');
+    const hint = document.getElementById(search.getAttribute('aria-describedby'));
+    expect(search.nextElementSibling).toBe(hint);
+    expect(hint.textContent.trim()).toBe(hint.dataset.i18n);
     expect(hint.textContent).toContain('Ctrl+K');
-    expect(hint.dataset.i18n).toBe(hint.textContent);
-    expect(document.getElementById('quick-controls-search').getAttribute('aria-describedby')).toBe(
-      hint.id
-    );
   });
 });
