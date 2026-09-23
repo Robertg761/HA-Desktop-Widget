@@ -1,6 +1,11 @@
 jest.mock('../../src/ui.js', () => ({
   openEntityDetailModal: jest.fn(),
+  switchQuickAccessPage: jest.fn(async () => ({ success: true })),
   getEntityDomain: (entityId) => String(entityId || '').split('.')[0],
+}));
+jest.mock('../../src/websocket.js', () => ({
+  __esModule: true,
+  default: { isConnected: jest.fn(() => true), callService: jest.fn(async () => ({})) },
 }));
 
 const {
@@ -23,21 +28,28 @@ describe('command palette fuzzy scoring', () => {
         { entity_id: 'light.offline', state: 'unavailable', attributes: {} },
         { entity_id: 'switch.unsupported', state: 'off', attributes: {} },
       ],
-      { customTabs: [{ id: 'office', name: 'Office' }] },
+      {
+        customTabs: [
+          { id: 'default', name: 'All' },
+          { id: 'office', name: 'Office' },
+        ],
+        activeTabId: 'default',
+      },
       {
         light: { turn_on: {}, turn_off: {} },
         fan: { turn_on: {}, turn_off: {} },
         scene: { turn_on: {} },
       }
     );
-    // Devices only get the action that changes their state; unknown states get both.
-    expect(commands.map((command) => command.key)).toEqual([
-      'light.office:turn_off',
-      'light.hall:turn_on',
-      'fan.attic:turn_on',
-      'fan.attic:turn_off',
-      'scene.bedtime:turn_on',
-      'page:office',
+    // Devices only get the action that changes their state; unknown states get both. The page
+    // already on screen is not offered as a switch target.
+    expect(commands.map((command) => [command.key, command.service || null])).toEqual([
+      ['light.office', 'turn_off'],
+      ['light.hall', 'turn_on'],
+      ['fan.attic', 'turn_on'],
+      ['fan.attic', 'turn_off'],
+      ['scene.bedtime', 'turn_on'],
+      ['page:office', null],
     ]);
     expect(commands[0].displayName).toBe('Turn off Office lights');
     expect(commands[1].displayName).toBe('Turn on Hall lights');
@@ -133,5 +145,102 @@ describe('command palette fuzzy scoring', () => {
       global.requestAnimationFrame = originalRequestAnimationFrame;
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+});
+
+describe('command palette recents', () => {
+  const originalRequestAnimationFrame = global.requestAnimationFrame;
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+  const bedLight = (lightState) => ({
+    entity_id: 'light.bed_light',
+    state: lightState,
+    attributes: { friendly_name: 'Bed Light' },
+  });
+  const resultNames = () =>
+    [...document.querySelectorAll('.command-palette-result-name')].map((row) => row.textContent);
+  const run = async (name) => {
+    const row = [...document.querySelectorAll('.command-palette-result')].find(
+      (candidate) => candidate.querySelector('.command-palette-result-name').textContent === name
+    );
+    row.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  beforeEach(() => {
+    global.requestAnimationFrame = (callback) => callback();
+    HTMLElement.prototype.scrollIntoView = jest.fn();
+    localStorage.clear();
+    document.body.innerHTML = '';
+    jest.resetModules();
+  });
+  afterEach(() => {
+    global.requestAnimationFrame = originalRequestAnimationFrame;
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    document.body.innerHTML = '';
+  });
+
+  const load = () => {
+    const palette = require('../../src/command-palette.js');
+    const paletteState = require('../../src/state.js').default;
+    paletteState.setConfig({
+      homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' },
+      customTabs: [
+        { id: 'default', name: 'All', entityIds: [] },
+        { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+      ],
+      activeTabId: 'default',
+    });
+    paletteState.setServices({ light: { turn_on: {}, turn_off: {} } });
+    return { palette, paletteState };
+  };
+
+  it('ranks the device used last first, whichever action it now offers, and persists it', async () => {
+    let { palette, paletteState } = load();
+    paletteState.setStates({ 'light.bed_light': bedLight('off') });
+    palette.openCommandPalette();
+    expect(document.querySelector('.command-palette-input').placeholder).toBe(
+      'Search entities, commands, and pages'
+    );
+    await run('Switch to Kitchen');
+    palette.closeCommandPalette();
+
+    paletteState.setStates({ 'light.bed_light': bedLight('off') });
+    palette.openCommandPalette();
+    await run('Turn on Bed Light');
+
+    paletteState.setStates({ 'light.bed_light': bedLight('on') });
+    palette.openCommandPalette();
+    expect(resultNames()[0]).toBe('Turn off Bed Light');
+    expect(resultNames()[1]).toBe('Switch to Kitchen');
+
+    // Recents survive a restart without storing anything but ids.
+    document.body.innerHTML = '';
+    jest.resetModules();
+    ({ palette, paletteState } = load());
+    paletteState.setStates({ 'light.bed_light': bedLight('on') });
+    palette.openCommandPalette();
+    expect(resultNames().slice(0, 2)).toEqual(['Turn off Bed Light', 'Switch to Kitchen']);
+    const stored = Object.keys(localStorage).map((key) => localStorage.getItem(key));
+    expect(stored).toEqual([JSON.stringify(['light.bed_light', 'page:kitchen'])]);
+    expect(stored.join()).not.toContain('secret');
+  });
+
+  it('does not offer switching to the page already on screen', () => {
+    const { palette, paletteState } = load();
+    paletteState.setStates({});
+    palette.openCommandPalette();
+    expect(resultNames()).toEqual(['Switch to Kitchen']);
+  });
+
+  it('points out the shortcut under the Manage Quick Access search field', () => {
+    const { palette } = load();
+    document.body.innerHTML = '<input id="quick-controls-search" />';
+    palette.initializeCommandPalette();
+    const hint = document.getElementById('command-palette-hint');
+    expect(hint.textContent).toContain('Ctrl+K');
+    expect(hint.dataset.i18n).toBe(hint.textContent);
+    expect(document.getElementById('quick-controls-search').getAttribute('aria-describedby')).toBe(
+      hint.id
+    );
   });
 });
