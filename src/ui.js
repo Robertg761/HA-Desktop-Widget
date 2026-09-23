@@ -14,6 +14,13 @@ import * as uiUtils from './ui-utils.js';
 import { formatDate, formatTime, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
+import {
+  createLineIcon,
+  entityIconMarkup,
+  lineIconMarkup,
+  renderEntityIcon,
+  setLineIconContent,
+} from './entity-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import {
@@ -1451,7 +1458,7 @@ function toggleReorganizeMode() {
     if (isReorganizeMode) {
       container.classList.add('reorganize-mode');
       if (btn) {
-        setIconContent(btn, 'check', { size: 18 });
+        setLineIconContent(btn, 'check');
         btn.classList.add('reorganize-active');
         btn.title = 'Save & Exit Reorganize Mode (ESC)';
       }
@@ -1492,7 +1499,7 @@ function toggleReorganizeMode() {
       closeAddPageModal();
       container.classList.remove('reorganize-mode');
       if (btn) {
-        setIconContent(btn, 'dragHandle', { size: 18 });
+        setLineIconContent(btn, 'grip-vertical');
         btn.classList.remove('reorganize-active');
         btn.title = 'Reorganize Quick Access';
       }
@@ -4760,7 +4767,7 @@ function createDesktopPinLightControlElement(entity) {
   div.innerHTML = `
     <div class="desktop-pin-light-shell">
       <div class="desktop-pin-light-topline">
-        <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+        <div class="desktop-pin-light-glyph">${entityIconMarkup(entity)}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
           <div class="desktop-pin-light-status">${
@@ -5383,7 +5390,7 @@ function createDesktopPinFanControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : 'On') : 'Off'}</div>
         </div>
         ${
@@ -6121,7 +6128,7 @@ function createDesktopPinSceneControlElement(entity) {
     <div class="desktop-pin-scene-shell">
       <div class="desktop-pin-scene-body">
         <div class="desktop-pin-scene-hero">
-          <div class="desktop-pin-scene-emoji">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-scene-emoji">${entityIconMarkup(entity)}</div>
         </div>
         <div class="desktop-pin-scene-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
       </div>
@@ -6184,7 +6191,7 @@ function updateExistingDesktopPinSceneControl(root, entity) {
   applyDesktopPinSceneSizing(root, layoutProfile.width, layoutProfile.height, domain);
 
   const emoji = root.querySelector('.desktop-pin-scene-emoji');
-  if (emoji) emoji.textContent = utils.getEntityIcon(entity);
+  if (emoji) renderEntityIcon(emoji, entity);
 
   const name = root.querySelector('.desktop-pin-scene-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
@@ -6204,7 +6211,7 @@ function createDesktopPinToggleEntityControlElement(entity) {
     state: entity.state,
     title: isSceneLike ? 'Compact action tile' : `Compact ${domain.replace(/_/g, ' ')} controls`,
   });
-  const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+  const icon = entityIconMarkup(entity);
   const actionLabel = isSceneLike
     ? 'Run'
     : isLock
@@ -6277,7 +6284,7 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   if (kpis[1]) kpis[1].textContent = isSceneLike ? 'Run' : displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const action = root.querySelector('.desktop-pin-toggle-action');
   if (action) {
@@ -6304,7 +6311,7 @@ function createDesktopPinCameraControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter desktop-pin-camera-preview">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-caption">Open camera feed</div>
         </div>
         <div class="desktop-pin-panel-actions">
@@ -6338,7 +6345,7 @@ function updateExistingDesktopPinCameraControl(root, entity) {
   if (status) status.textContent = utils.getEntityDisplayState(entity);
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   return true;
 }
@@ -6360,7 +6367,7 @@ function createDesktopPinSensorControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(value)}</div>
         </div>
       </div>
@@ -6391,7 +6398,7 @@ function updateExistingDesktopPinSensorControl(root, entity) {
   if (kpi) kpi.textContent = isBinary ? entity.state : '';
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = utils.getEntityDisplayState(entity);
@@ -6588,7 +6595,7 @@ function createDesktopPinActionControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(ctaLabel)}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-action-actions">
@@ -6635,7 +6642,7 @@ function updateExistingDesktopPinActionControl(root, entity) {
   if (kpi) kpi.textContent = 'Ready';
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = ctaLabel;
@@ -6719,7 +6726,7 @@ function createDesktopPinNumericControlElement(entity) {
 
   const meterMarkup = `
     <div class="desktop-pin-panel-meter">
-      <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+      <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
       <div class="desktop-pin-panel-value">${utils.escapeHtml(formatDesktopPinNumericValue(spec.value, entity, { spec }))}</div>
     </div>
   `;
@@ -6822,7 +6829,7 @@ function updateExistingDesktopPinNumericControl(root, entity) {
   if (kpi) kpi.textContent = formattedValue;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = formattedValue;
@@ -6908,7 +6915,7 @@ function createDesktopPinEnumControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(enumState.currentOption || 'Unknown')}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-enum-actions">
@@ -6963,7 +6970,7 @@ function updateExistingDesktopPinEnumControl(root, entity) {
   if (kpi) kpi.textContent = enumState.currentOption || 'Unknown';
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = enumState.currentOption || 'Unknown';
@@ -6986,7 +6993,7 @@ function createDesktopPinPresenceControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-presence-actions">
@@ -7028,7 +7035,7 @@ function updateExistingDesktopPinPresenceControl(root, entity) {
   if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = displayState;
@@ -7072,7 +7079,7 @@ function createDesktopPinWeatherControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(temperatureValue)}</div>
         </div>
         <div class="desktop-pin-weather-stats">
@@ -7123,7 +7130,7 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   if (kpi) kpi.textContent = temperatureValue;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = temperatureValue;
@@ -7212,7 +7219,7 @@ function createDesktopPinVacuumControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-vacuum-actions">
@@ -7270,7 +7277,7 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
   if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = displayState;
@@ -7329,7 +7336,7 @@ function updateExistingDesktopPinFallbackControl(root, entity) {
   if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = displayState;
@@ -8337,7 +8344,6 @@ function createControlElement(entity, options = {}) {
       div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
     }
 
-    const icon = utils.escapeHtml(utils.getEntityIcon(entity));
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
 
@@ -8394,7 +8400,7 @@ function createControlElement(entity, options = {}) {
     // Special layout for timer entities
     if (isTimer) {
       div.innerHTML = `
-        <div class="control-icon timer-icon">${icon}</div>
+        <div class="control-icon timer-icon"></div>
         <div class="control-info timer-layout">
           <div class="control-name">${name}</div>
           ${stateDisplay}
@@ -8405,7 +8411,7 @@ function createControlElement(entity, options = {}) {
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player layout will be handled in setupMediaPlayerControls
       div.innerHTML = `
-        <div class="control-icon">${icon}</div>
+        <div class="control-icon"></div>
         <div class="control-info">
           <div class="control-name">${name}</div>
           ${stateDisplay}
@@ -8419,7 +8425,7 @@ function createControlElement(entity, options = {}) {
           <img class="camera-tile-preview-image" data-camera-buffer-active="true" data-camera-buffer-loaded="false" alt="" decoding="async">
           <img class="camera-tile-preview-image" data-camera-buffer-active="false" data-camera-buffer-loaded="false" alt="" decoding="async">
           <div class="camera-tile-fallback">
-            <div class="control-icon">${icon}</div>
+            <div class="control-icon"></div>
           </div>
           <div class="camera-tile-scrim"></div>
         </div>
@@ -8436,13 +8442,15 @@ function createControlElement(entity, options = {}) {
       div.dataset.cameraPreviewRefresh = cameraPreviewRefresh;
     } else {
       div.innerHTML = `
-        <div class="control-icon">${icon}</div>
+        <div class="control-icon"></div>
         <div class="control-info">
           <div class="control-name">${name}</div>
           ${stateDisplay}
         </div>
       `;
     }
+
+    div.querySelectorAll('.control-icon').forEach((iconEl) => renderEntityIcon(iconEl, entity));
 
     if (['light', 'climate', 'fan', 'cover', 'media_player'].includes(domain)) {
       // Sibling native buttons expose both actions without nesting a button inside role=button.
@@ -8454,7 +8462,8 @@ function createControlElement(entity, options = {}) {
       const details = document.createElement('button');
       details.type = 'button';
       details.className = 'tile-details-button';
-      details.textContent = t('Controls');
+      details.title = t('Controls');
+      details.appendChild(createLineIcon('sliders-horizontal'));
       details.setAttribute(
         'aria-label',
         t('Controls for {{name}}', { name: utils.getEntityDisplayName(entity) })
@@ -8522,7 +8531,7 @@ function createUnavailableElement(entityId) {
     });
 
     div.innerHTML = `
-      <div class="control-icon unavailable-icon">⚠️</div>
+      <div class="control-icon unavailable-icon" data-icon-kind="line">${lineIconMarkup('triangle-alert')}</div>
       <div class="control-info">
         <div class="control-name">${utils.escapeHtml(displayName)}</div>
         <div class="control-state unavailable-state"></div>
@@ -8808,7 +8817,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   const isTimer = displayEntity.entity_id.startsWith('timer.') || isTimerSensor;
   const domain = getEntityDomain(displayEntity.entity_id);
   const icon = div.querySelector('.control-icon');
-  if (icon) icon.textContent = utils.getEntityIcon(displayEntity);
+  if (icon) renderEntityIcon(icon, displayEntity);
 
   const name = div.querySelector('.control-name');
   if (name) name.textContent = utils.getEntityDisplayName(displayEntity);
@@ -10986,7 +10995,7 @@ function updateMediaTile() {
             img.src = proxyUrl;
             img.alt = 'Album art';
             img.onerror = function () {
-              this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+              this.parentElement.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
               lastMediaTileArtworkSrc = '';
             };
             artworkContainer.innerHTML = '';
@@ -10994,7 +11003,7 @@ function updateMediaTile() {
             lastMediaTileArtworkSrc = proxyUrl;
           }
         } else if (lastMediaTileArtworkSrc !== '') {
-          artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+          artworkContainer.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
           lastMediaTileArtworkSrc = '';
         }
       }
