@@ -279,6 +279,17 @@ describe('tile and device dialog polish', () => {
     });
   });
 
+  it('keeps compact media artwork square', () => {
+    const rule = styles.match(
+      /body\.density-compact #quick-controls \.media-player-entity \.control-icon\.has-artwork \{([^}]*)\}/
+    );
+    expect(rule).not.toBeNull();
+    const width = rule[1].match(/width:\s*([^;]+);/)?.[1];
+    const height = rule[1].match(/height:\s*([^;]+);/)?.[1];
+    expect(width).toBeTruthy();
+    expect(width).toBe(height);
+  });
+
   describe('reorganize mode', () => {
     beforeEach(() => {
       renderTiles([entity('switch.a', 'off'), entity('switch.b', 'off')]);
