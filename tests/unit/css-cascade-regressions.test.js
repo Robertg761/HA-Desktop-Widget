@@ -123,6 +123,64 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('desktop pin connection issue', () => {
+    const emptyMarkup = `
+      <div class="desktop-pin-shell">
+        <div id="desktop-pin-empty" class="desktop-pin-empty" data-state="disconnected">
+          <div class="desktop-pin-empty-kicker">Connection issue</div>
+          <div class="desktop-pin-empty-title">Home Assistant unavailable</div>
+          <div class="desktop-pin-empty-copy">Disconnected. Retrying automatically.</div>
+          <div class="desktop-pin-empty-actions">
+            <button class="control-btn desktop-pin-action desktop-pin-empty-action">Focus Main</button>
+          </div>
+        </div>
+      </div>`;
+    const part = (name) => document.querySelector(`.desktop-pin-empty-${name}`);
+
+    it('sizes the Focus Main button to its label instead of the 24px icon-button circle', () => {
+      render('desktop-pin-mode', emptyMarkup);
+      const button = part('action');
+
+      expect(resolvedValue(button, 'width')).toBe('auto');
+      expect(resolvedValue(button, 'height')).toBe('auto');
+      expect(resolvedValue(button, 'white-space')).toBe('nowrap');
+      // Anything that still overflows is cut at the bottom, never above the top edge.
+      expect(resolvedValue(document.getElementById('desktop-pin-empty'), 'justify-content')).toBe(
+        'safe center'
+      );
+    });
+
+    it.each([
+      [
+        { width: 168, height: 148 },
+        { kicker: true, copyLines: '3' },
+      ],
+      [
+        { width: 156, height: 122 },
+        { kicker: false, copyLines: '2' },
+      ],
+      [
+        { width: 140, height: 110 },
+        { kicker: false, copyLines: '1' },
+      ],
+      [
+        { width: 97, height: 83 },
+        { kicker: false, copyLines: null },
+      ],
+    ])('drops lower-priority lines to fit a %o pin', (viewport, expected) => {
+      render('desktop-pin-mode', emptyMarkup);
+      const options = { viewport };
+
+      expect(resolvedValue(part('kicker'), 'display', options) !== 'none').toBe(expected.kicker);
+      if (expected.copyLines) {
+        expect(resolvedValue(part('copy'), '-webkit-line-clamp', options)).toBe(expected.copyLines);
+      } else {
+        expect(resolvedValue(part('copy'), 'display', options)).toBe('none');
+      }
+      expect(resolvedValue(part('actions'), 'display', options)).toBe('flex');
+    });
+  });
+
   describe('desktop pin text', () => {
     const TEXT_CLASSES = [
       'desktop-pin-panel-name',

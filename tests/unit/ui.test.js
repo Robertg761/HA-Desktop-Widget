@@ -3950,6 +3950,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe(
         'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
       );
+      // Small pins clamp the copy, so the full text stays available on hover.
+      expect(document.getElementById('desktop-pin-empty-copy')?.title).toBe(
+        'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+      );
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');

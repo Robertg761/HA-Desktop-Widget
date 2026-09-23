@@ -2530,25 +2530,27 @@ body.theme-light:not(.high-contrast)
 
 .desktop-pin-empty {
   flex: 1;
-  margin: 8px;
+  margin: 6px;
   --desktop-pin-empty-accent-rgb: var(--accent-rgb);
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-radius: var(--radius-xl);
-  padding: 14px 12px;
+  padding: 8px 10px;
   color: var(--text-secondary);
+  /* Tinted over the window background like the pin controls, so theme text stays readable. */
   background:
     radial-gradient(
       circle at top left,
       rgba(var(--desktop-pin-empty-accent-rgb), 0.12),
       transparent 70%
     ),
-    linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
+    rgba(var(--desktop-pin-ink-rgb), 0.04);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 6px;
+  /* Overflow runs off the bottom, never above the top edge. */
+  justify-content: safe center;
+  gap: 4px;
   text-align: center;
   min-height: 0;
   -webkit-app-region: no-drag;
@@ -2621,21 +2623,87 @@ body.theme-light:not(.high-contrast)
 }
 
 .desktop-pin-empty-copy {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-sm);
-  line-height: 1.45;
+  line-height: 1.35;
   color: var(--text-secondary);
 }
 
 .desktop-pin-empty-actions {
   display: flex;
+  flex-shrink: 0;
   justify-content: center;
-  margin-top: 4px;
+  margin-top: 2px;
   -webkit-app-region: no-drag;
 }
 
-.desktop-pin-empty-action {
-  min-width: 86px;
+/* Outranks .control-btn, whose 24px circle would squash the label. */
+.desktop-pin-empty .desktop-pin-empty-action {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 24px;
+  padding: 3px 12px;
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  opacity: 1;
+}
+
+/* The default pin (168x148) and the smaller minimum sizes keep the whole message and the
+   Focus Main button inside the tile by tightening type and dropping the least important lines. */
+@media (max-height: 170px) {
+  .desktop-pin-empty-title {
+    font-size: var(--font-size-sm);
+    line-height: 1.15;
+  }
+
+  .desktop-pin-empty-copy {
+    -webkit-line-clamp: 3;
+    font-size: var(--font-size-xs);
+    line-height: 1.3;
+  }
+}
+
+@media (max-height: 130px) {
+  .desktop-pin-empty-kicker {
+    display: none;
+  }
+
+  .desktop-pin-empty-copy {
+    -webkit-line-clamp: 2;
+  }
+}
+
+@media (max-height: 115px) {
+  .desktop-pin-empty-copy {
+    -webkit-line-clamp: 1;
+  }
+}
+
+@media (max-height: 100px) {
+  .desktop-pin-empty {
+    margin: 4px;
+    padding: 6px;
+  }
+
+  .desktop-pin-empty-title {
+    font-size: var(--font-size-xs);
+  }
+
+  .desktop-pin-empty-copy {
+    display: none;
+  }
+
+  .desktop-pin-empty .desktop-pin-empty-action {
+    min-height: 22px;
+    padding: 2px 8px;
+  }
 }
 
 .desktop-pin-resize-handle {

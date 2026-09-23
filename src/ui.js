@@ -7920,7 +7920,11 @@ function renderDesktopPinFallbackSurface(emptyState, fallback) {
 
   if (kicker) kicker.textContent = fallback.kicker;
   if (title) title.textContent = fallback.title;
-  if (copy) copy.textContent = fallback.detail;
+  if (copy) {
+    copy.textContent = fallback.detail;
+    // Small pins clamp the detail to a few lines; hovering still shows all of it.
+    copy.title = fallback.detail;
+  }
 
   emptyState.classList.remove('hidden');
 }
