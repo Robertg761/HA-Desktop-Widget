@@ -328,6 +328,7 @@ function createMockElectronAPI() {
     getAppVersion: jest.fn(() => Promise.resolve('1.0.0-test')),
     openLogs: jest.fn(() => Promise.resolve()),
     openExternal: jest.fn(() => Promise.resolve({ success: true })),
+    writeClipboardText: jest.fn(() => Promise.resolve({ success: true })),
     testHaConnection: jest.fn(() => Promise.resolve({ success: true, code: 'ok' })),
     startHomeAssistantOAuth: jest.fn((url) => {
       mockConfig = {

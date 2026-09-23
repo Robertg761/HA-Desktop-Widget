@@ -128,6 +128,7 @@ describe('preload Electron API', () => {
       ['getAppVersion', [], 'get-app-version', []],
       ['openLogs', [], 'open-logs', []],
       ['openExternal', ['https://example.test'], 'open-external', ['https://example.test']],
+      ['writeClipboardText', ['report'], 'write-clipboard-text', ['report']],
       [
         'testHaConnection',
         ['https://ha.test', 'token'],
@@ -341,6 +342,7 @@ describe('preload Electron API', () => {
     ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration'],
     ['applyDesktopCompanionCommand', ['show'], 'apply-desktop-companion-command'],
     ['restartApp', [], 'restart-app'],
+    ['writeClipboardText', ['report'], 'write-clipboard-text'],
   ])(
     'rejects %s when the main-process persistence contract reports failure',
     async (method, args, channel) => {

@@ -182,6 +182,7 @@ function createElectronApi(ipcRenderer, platform) {
     getAppVersion: () => invoke('get-app-version'),
     openLogs: () => invoke('open-logs'),
     openExternal: (url) => invoke('open-external', url),
+    writeClipboardText: (text) => invokeChecked('write-clipboard-text', text),
     testHaConnection: (url, token) => invoke('test-ha-connection', url, token),
     startHomeAssistantOAuth: (url) => invokeChecked('start-home-assistant-oauth', url),
     cancelHomeAssistantOAuth: () => invokeChecked('cancel-home-assistant-oauth'),

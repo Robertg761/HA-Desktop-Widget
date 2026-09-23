@@ -92,3 +92,33 @@ test('Undo follows server history and remains disabled while restoring', async (
   currentSocket.removeAllListeners();
   localStorage.clear();
 });
+
+test('Copy report copies through the main process and falls back to manual selection', async () => {
+  jest.resetModules();
+  const { initializeDashboardTools: initialize } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  const writeClipboardText = jest.fn().mockResolvedValue({ success: true });
+  window.electronAPI = { writeClipboardText };
+  document.body.innerHTML =
+    '<button id="connection-diagnostics-btn">Diagnostics</button><div id="toast-container"></div>';
+  initialize();
+  document.getElementById('connection-diagnostics-btn').click();
+  const modal = document.querySelector('.dashboard-tools-modal');
+  const report = modal.querySelector('.diagnostics-report');
+  const copy = [...modal.querySelectorAll('button')].find((b) => b.textContent === 'Copy report');
+
+  await copy.onclick();
+  expect(writeClipboardText).toHaveBeenCalledWith(report.value);
+  expect(document.getElementById('toast-container').textContent).toContain('Report copied');
+  expect(document.activeElement).not.toBe(report);
+
+  writeClipboardText.mockRejectedValueOnce(new Error('Invalid clipboard text'));
+  await copy.onclick();
+  expect(document.activeElement).toBe(report);
+  expect(document.getElementById('toast-container').textContent).toContain(
+    'Select and copy the report manually.'
+  );
+  modal.remove();
+  delete window.electronAPI;
+  currentSocket.removeAllListeners();
+});

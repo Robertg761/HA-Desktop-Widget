@@ -3,7 +3,7 @@ import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
 import { readDashboardHistory, writeDashboardHistory } from './dashboard-history.js';
-import { closeModal, trapFocus, showToast } from './ui-utils.js';
+import { closeModal, copyTextToClipboard, trapFocus, showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 
@@ -149,14 +149,13 @@ function showConnectionDiagnostics() {
   copy.className = 'btn btn-primary';
   copy.textContent = t('Copy report');
   copy.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(report.value);
+    if (await copyTextToClipboard(report.value)) {
       showToast(t('Report copied'), 'success');
-    } catch {
-      report.focus();
-      report.select();
-      showToast(t('Select and copy the report manually.'), 'info');
+      return;
     }
+    report.focus();
+    report.select();
+    showToast(t('Select and copy the report manually.'), 'info');
   };
   const footer = document.createElement('div');
   footer.className = 'modal-footer';

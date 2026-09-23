@@ -1319,8 +1319,23 @@ function showConfirm(title, message, options = {}) {
   });
 }
 
+/**
+ * Copy text through the main process, since the renderer's own clipboard permission is denied.
+ * @param {string} text - Text to place on the system clipboard.
+ * @returns {Promise<boolean>} True once the text is on the clipboard; false when copying failed.
+ */
+async function copyTextToClipboard(text) {
+  try {
+    await window.electronAPI.writeClipboardText(String(text ?? ''));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export {
   showToast,
+  copyTextToClipboard,
   dismissToast,
   closeModal,
   openModal,

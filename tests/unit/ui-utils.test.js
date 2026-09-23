@@ -1457,6 +1457,25 @@ describe('UI Utilities', () => {
     });
   });
 
+  describe('copyTextToClipboard', () => {
+    it('copies through the main-process bridge', async () => {
+      await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(true);
+      expect(window.electronAPI.writeClipboardText).toHaveBeenCalledWith('report');
+    });
+
+    it('reports failure instead of rejecting', async () => {
+      window.electronAPI.writeClipboardText.mockRejectedValueOnce(new Error('denied'));
+      await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(false);
+      const { writeClipboardText } = window.electronAPI;
+      delete window.electronAPI.writeClipboardText;
+      try {
+        await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(false);
+      } finally {
+        window.electronAPI.writeClipboardText = writeClipboardText;
+      }
+    });
+  });
+
   describe('Module exports', () => {
     it('should export all required functions', () => {
       expect(typeof uiUtils.showToast).toBe('function');

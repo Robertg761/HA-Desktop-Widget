@@ -17,6 +17,7 @@ import {
   openModal,
   showToast,
   showConfirm,
+  copyTextToClipboard,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
@@ -6099,8 +6100,15 @@ async function refreshDesktopIntegration() {
   if (!panel || !window.electronAPI.getDesktopIntegration) return;
   const output = document.getElementById('desktop-bindings');
   // Keep the controls usable even before Hyprland detection succeeds.
-  document.getElementById('desktop-bindings-copy').onclick = () =>
-    navigator.clipboard.writeText(output.value);
+  document.getElementById('desktop-bindings-copy').onclick = async () => {
+    if (await copyTextToClipboard(output.value)) {
+      showToast(t('Bindings copied'), 'success');
+      return;
+    }
+    output.focus();
+    output.select();
+    showToast(t('Select and copy the bindings manually.'), 'info');
+  };
   document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
   const info = await window.electronAPI.getDesktopIntegration();
   panel.hidden = !info?.hyprland;
