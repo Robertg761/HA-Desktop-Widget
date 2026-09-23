@@ -10942,11 +10942,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   background: var(--accent-bg);
 }
 
+/* Gaps and buttons shrink before the row overflows a narrow dialog (e.g. at 150% interface
+   scale); at normal sizes they keep their full width. */
 .media-detail-controls {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: min(12px, 3vw);
   margin-top: 16px;
 }
 
@@ -10954,9 +10956,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   appearance: none;
   background: transparent !important;
   border: none !important;
+  flex: 0 1 auto;
   width: 48px;
   height: 48px;
-  min-width: 48px;
+  min-width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11018,7 +11021,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .media-detail-controls .play-pause-btn {
   width: 56px;
   height: 56px;
-  min-width: 56px;
+  min-width: 44px;
   color: var(--accent);
   background: transparent !important;
   box-shadow: none !important;
@@ -12735,6 +12738,17 @@ body.high-contrast {
   --accent: #8ed1ff !important;
   --accent-rgb: 142, 209, 255 !important;
   --window-bg-rgb: 20, 20, 20 !important;
+  /* The light theme's glass and settings panel colours are near-white, so the dark preset
+     replaces them too (white text would otherwise sit on them). */
+  --glass-surface: #202020 !important;
+  --glass-elevated: #202020 !important;
+  --glass-overlay: #141414 !important;
+  --modal-backstop-rgb: 20, 20, 20 !important;
+  --settings-modal-bg-rgb: 20, 20, 20 !important;
+  --settings-modal-bg-alpha: 1 !important;
+  --settings-modal-panel-rgb: 32, 32, 32 !important;
+  --settings-modal-panel-alpha: 1 !important;
+  --desktop-pin-ink-rgb: 255, 255, 255 !important;
   color: #fff;
   color-scheme: dark;
 }
@@ -12755,10 +12769,18 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
-body.high-contrast :is(button, input, select, textarea) {
+/* Ranges are handled below; :where keeps this rule's specificity unchanged. */
+body.high-contrast :is(button, input, select, textarea):not(:where([type='range'])) {
   color: #fff !important;
   background: #202020 !important;
   border-color: #aaa !important;
+}
+
+/* A range input's background is its track: give it one that stands out from the #141414 panels.
+   The colour temperature gradient already does, and the pin light slider is a transparent
+   overlay above its own track. */
+body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
+  background: #8a8a8a !important;
 }
 
 body.high-contrast :focus-visible {

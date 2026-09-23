@@ -1,4 +1,5 @@
 const {
+  contrastRatio,
   loadAppStylesheets,
   parseColor,
   resolvedValue,
@@ -119,6 +120,86 @@ describe('stylesheet cascade regressions', () => {
 
       // The bar is about 38px tall (28px buttons, padding and border) plus a focus ring.
       expect(parseFloat(resolvedValue(list, 'scroll-padding-bottom'))).toBeGreaterThanOrEqual(44);
+    });
+  });
+
+  describe('readable preset', () => {
+    const readableThemes = [THEMES['readable dark'], THEMES['readable light']];
+
+    it.each(readableThemes)('keeps the settings title readable (%s)', (theme) => {
+      render(
+        theme,
+        `<div id="settings-modal" class="modal"><div class="modal-content">
+          <div class="modal-header"><h2>Settings</h2></div>
+        </div></div>`
+      );
+      const header = document.querySelector('.modal-header');
+      const background = resolvedValue(header, 'background');
+
+      expect(isOpaque(background)).toBe(true);
+      expect(
+        contrastRatio(resolvedValue(header.querySelector('h2'), 'color'), background)
+      ).toBeGreaterThanOrEqual(7);
+    });
+
+    it.each(readableThemes)('draws slider tracks that stand out from the panels (%s)', (theme) => {
+      render(
+        theme,
+        `<input type="range" class="brightness-slider">
+        <input type="range" class="media-volume-slider">
+        <input type="range" class="climate-slider">
+        <input type="range" class="light-color-temp-slider">`
+      );
+      const panel = resolvedValue(document.body, '--bg-primary');
+
+      for (const slider of document.querySelectorAll('input:not(.light-color-temp-slider)')) {
+        expect(contrastRatio(resolvedValue(slider, 'background'), panel)).toBeGreaterThanOrEqual(3);
+      }
+      // The colour temperature scale keeps its warm-to-cool gradient.
+      expect(
+        resolvedValue(document.querySelector('.light-color-temp-slider'), 'background')
+      ).toMatch(/^linear-gradient\(to right, #ffb45f/);
+    });
+
+    it('leaves transparent tile and transport buttons alone', () => {
+      render(
+        THEMES['readable light'],
+        `<div class="control-item"><button class="tile-primary-button"></button></div>
+        <div class="media-detail-controls"><button class="btn"></button></div>`
+      );
+
+      for (const button of document.querySelectorAll('button')) {
+        expect(resolvedValue(button, 'background')).toBe('transparent');
+      }
+    });
+  });
+
+  describe('media dialog transport row', () => {
+    it('shrinks to fit the dialog at 150% interface scale', () => {
+      render(
+        'large-interface',
+        `<div class="media-detail-controls">
+          <button class="btn media-detail-prev-btn"></button>
+          <button class="btn media-detail-seek-btn"></button>
+          <button class="btn play-pause-btn media-detail-play-btn"></button>
+          <button class="btn media-detail-seek-btn"></button>
+          <button class="btn media-detail-next-btn"></button>
+        </div>`
+      );
+      const row = document.querySelector('.media-detail-controls');
+      const buttons = [...row.children];
+      // A 500px window at 150% is 333 CSS px wide; its media dialog row measures 262px.
+      const viewportWidth = 333;
+      const rowWidth = 262;
+      const gap = resolvedValue(row, 'gap').match(/^min\((\d+)px, (\d+)vw\)$/);
+      const minimumGap = Math.min(Number(gap[1]), (Number(gap[2]) / 100) * viewportWidth);
+      const minimumButtons = buttons.reduce(
+        (total, button) => total + parseFloat(resolvedValue(button, 'min-width')),
+        0
+      );
+
+      for (const button of buttons) expect(resolvedValue(button, 'flex')).toBe('0 1 auto');
+      expect(minimumButtons + minimumGap * (buttons.length - 1)).toBeLessThanOrEqual(rowWidth);
     });
   });
 });
