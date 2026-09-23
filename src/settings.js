@@ -2049,6 +2049,8 @@ function renderPrimaryCardsEntityRows() {
         if (unavailable) return;
         primaryCardPage += delta;
         renderPrimaryCardsEntityList();
+        // A new page starts at its first row; focus stays on this pager button.
+        list.scrollTop = 0;
       });
       navigation.appendChild(button);
     }

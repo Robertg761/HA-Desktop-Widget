@@ -1,4 +1,9 @@
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const {
+  loadAppStylesheets,
+  parseColor,
+  resolvedValue,
+  splitTopLevel,
+} = require('../helpers/css-cascade.js');
 
 // Each case is a body class list; the readable preset forces its dark palette in either theme.
 const THEMES = {
@@ -14,6 +19,10 @@ const THEME_CASES = Object.entries(THEMES);
 function render(bodyClass, html) {
   document.body.className = bodyClass;
   document.body.innerHTML = html;
+}
+
+function isOpaque(color) {
+  return parseColor(color)?.[3] === 1;
 }
 
 describe('stylesheet cascade regressions', () => {
@@ -79,6 +88,37 @@ describe('stylesheet cascade regressions', () => {
       );
 
       expect(resolvedValue(document.querySelector('label'), 'display')).toBe('none');
+    });
+  });
+
+  describe('primary cards pager', () => {
+    const pagerMarkup = `
+      <div id="settings-modal">
+        <div id="primary-cards-list" class="entity-selector-list">
+          <div class="entity-item"></div>
+          <div class="primary-cards-list-actions primary-cards-pagination"></div>
+        </div>
+      </div>`;
+
+    it.each(THEME_CASES)('paints the sticky bar opaque in the list colour (%s)', (_, theme) => {
+      render(theme, pagerMarkup);
+      const list = document.getElementById('primary-cards-list');
+      const background = resolvedValue(
+        list.querySelector('.primary-cards-pagination'),
+        'background'
+      );
+      const layers = splitTopLevel(background);
+
+      expect(isOpaque(layers.at(-1))).toBe(true);
+      expect(background).toContain(resolvedValue(list, 'background'));
+    });
+
+    it('keeps keyboard-focused rows clear of the sticky bar', () => {
+      render('', pagerMarkup);
+      const list = document.getElementById('primary-cards-list');
+
+      // The bar is about 38px tall (28px buttons, padding and border) plus a focus ring.
+      expect(parseFloat(resolvedValue(list, 'scroll-padding-bottom'))).toBeGreaterThanOrEqual(44);
     });
   });
 });

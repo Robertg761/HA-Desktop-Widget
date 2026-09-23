@@ -4838,14 +4838,24 @@ body.first-run-active .widget-content > * {
   opacity: 0.7;
 }
 
+/* Rows scroll under the sticky pager, so it is painted opaque: the list tint layered over the
+   solid settings panel colour, which matches the list look in every theme (--surface-2 alone is
+   translucent in frosted glass). */
 .primary-cards-pagination {
   position: sticky;
   bottom: 0;
   justify-content: flex-end;
   padding: var(--space-2) 12px;
-  background: var(--surface-2);
+  background:
+    linear-gradient(var(--surface-2), var(--surface-2)), rgb(var(--settings-modal-panel-rgb));
   border-top: 1px solid var(--border-color);
   font-size: var(--font-size-sm);
+}
+
+/* Keyboard focus scrolls rows clear of the sticky pager (about 38px tall) and its focus ring,
+   instead of just to the list edge. */
+#primary-cards-list:has(> .primary-cards-pagination) {
+  scroll-padding-bottom: 48px;
 }
 
 .primary-cards-pagination [role='status'] {
