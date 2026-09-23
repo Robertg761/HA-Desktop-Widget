@@ -1301,8 +1301,10 @@ describe('Settings + Config Integration', () => {
       await waitForLanguagePackRefresh();
       const list = document.getElementById('language-packs-list');
       const status = document.getElementById('language-pack-status');
-      expect(list.textContent).toBe('Unable to load language packs right now.');
+      expect(status.textContent).toBe('Unable to load language packs right now.');
       expect(status.classList.contains('hidden')).toBe(false);
+      // The error is shown once, in the status line, not repeated in the list (#94).
+      expect(list.textContent).toBe('');
 
       window.electronAPI.getLocalePacks.mockResolvedValueOnce([]);
       await settings.openSettings();
@@ -1328,7 +1330,10 @@ describe('Settings + Config Integration', () => {
       await list.onclick({ target: button });
       expect(window.electronAPI.removeLocalePack).toHaveBeenCalledWith('fr');
       expect(window.electronAPI.getLocalePacks).toHaveBeenCalledTimes(1);
-      expect(list.textContent).toBe('Unable to load language packs right now.');
+      expect(document.getElementById('language-pack-status').textContent).toBe(
+        'Unable to load language packs right now.'
+      );
+      expect(list.textContent).toBe('');
       expect(list.querySelector('[data-locale-action="remove"]')).toBeNull();
     });
 
@@ -1380,9 +1385,10 @@ describe('Settings + Config Integration', () => {
       await waitForLanguagePackRefresh();
       resolveOld([{ locale: 'fr', displayName: 'Français', installed: true, version: '1.0.0' }]);
       await oldRefresh;
-      expect(document.getElementById('language-packs-list').textContent).toBe(
+      expect(document.getElementById('language-pack-status').textContent).toBe(
         'Unable to load language packs right now.'
       );
+      expect(document.getElementById('language-packs-list').textContent).toBe('');
       expect(document.querySelector('#language-select option[value="fr"]')).toBeNull();
     });
 
@@ -1390,9 +1396,10 @@ describe('Settings + Config Integration', () => {
       window.electronAPI.getLocalePacks.mockRejectedValueOnce(new Error('IPC failed'));
       await settings.openSettings();
       await waitForLanguagePackRefresh();
-      expect(document.getElementById('language-packs-list').textContent).toBe(
+      expect(document.getElementById('language-pack-status').textContent).toBe(
         'Unable to load language packs right now.'
       );
+      expect(document.getElementById('language-packs-list').textContent).toBe('');
     });
 
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {

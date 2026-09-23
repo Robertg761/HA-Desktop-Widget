@@ -3578,6 +3578,8 @@ function renderLanguagePackList() {
   }
 
   if (!localePackListCache.length) {
+    // The status line already shows the load error; don't repeat it in the list.
+    if (localePackListError && statusEl) return;
     const empty = document.createElement('div');
     empty.className = 'help-text';
     empty.textContent =
