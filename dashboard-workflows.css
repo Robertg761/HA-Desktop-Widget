@@ -278,7 +278,7 @@
   margin: 0;
 }
 
-.alert-advanced-options label[hidden] {
+.form-group.alert-advanced-options label[hidden] {
   display: none;
 }
 
@@ -366,7 +366,9 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   grid-column: 1 / -1;
 }
 
-.room-entity-list > label[hidden] {
+/* Search hides rows with the hidden attribute. `.form-group label:has(input[type='checkbox'])` in
+   styles.css sets display: flex at higher specificity, so this rule has to outrank it. */
+.room-dashboard .room-entity-list > label[hidden] {
   display: none;
 }
 

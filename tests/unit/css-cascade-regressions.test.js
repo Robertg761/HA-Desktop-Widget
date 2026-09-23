@@ -52,4 +52,33 @@ describe('stylesheet cascade regressions', () => {
       }
     );
   });
+
+  describe('hidden rows in workflow pick lists', () => {
+    it('hides device rows filtered out by the starter search', () => {
+      render(
+        '',
+        `<div class="form-group room-dashboard">
+          <div class="room-entity-list">
+            <label hidden><input type="checkbox" value="light.desk">Desk</label>
+            <label><input type="checkbox" value="sensor.temp">Temperature</label>
+          </div>
+        </div>`
+      );
+
+      const [hidden, shown] = document.querySelectorAll('.room-entity-list > label');
+      expect(resolvedValue(hidden, 'display')).toBe('none');
+      expect(resolvedValue(shown, 'display')).toBe('flex');
+    });
+
+    it('hides checkbox rows in the advanced alert options', () => {
+      render(
+        '',
+        `<div class="alert-advanced-options form-group">
+          <label class="workflow-checkbox" hidden>Quiet hours<input type="checkbox"></label>
+        </div>`
+      );
+
+      expect(resolvedValue(document.querySelector('label'), 'display')).toBe('none');
+    });
+  });
 });
