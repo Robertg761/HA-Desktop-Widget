@@ -2472,13 +2472,14 @@ function formatDateTimeValue(value) {
   return `${formatDate(date)} ${formatTime(date)}`;
 }
 
-function formatCalendarTileStart(startTime) {
+function formatCalendarTileStart(startTime, { allDay = false } = {}) {
   const dateValue = getEventDateValue(startTime);
   if (!dateValue) return '';
-  if (parseCalendarDate(dateValue)) return t('All day');
+  // Calendar entities report all-day events as a midnight start_time plus all_day: true.
+  if (allDay || parseCalendarDate(dateValue)) return t('All day');
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return formatTime(date);
+  return formatTime(date, { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatCalendarEventRange(event) {
@@ -7588,7 +7589,8 @@ function renderTodoTileStateMarkup(entity) {
 function getCalendarNextEventSummary(entity) {
   const message = entity?.attributes?.message || 'No upcoming event';
   const start = formatCalendarTileStart(
-    entity?.attributes?.start_time || entity?.attributes?.start
+    entity?.attributes?.start_time || entity?.attributes?.start,
+    { allDay: entity?.attributes?.all_day === true }
   );
   return start ? `${message} · ${start}` : message;
 }
