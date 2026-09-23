@@ -71,6 +71,8 @@ const { getClimateControlCapabilities } = climateControls;
 
 const climateDialogRefreshers = new Map();
 let isReorganizeMode = false;
+// Set when a drag in the current reorganize session actually changed a page's order.
+let quickAccessOrderChanged = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
 const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
@@ -1449,6 +1451,7 @@ function toggleReorganizeMode() {
     const btn = document.getElementById('reorganize-quick-controls-btn');
 
     if (isReorganizeMode) {
+      quickAccessOrderChanged = false;
       container.classList.add('reorganize-mode');
       if (btn) {
         setIconContent(btn, 'check', { size: 18 });
@@ -1502,7 +1505,10 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(false).catch((error) => {
         console.error('Failed to disable desktop pin edit mode:', error);
       });
-      uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+      if (quickAccessOrderChanged) {
+        uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+      }
+      quickAccessOrderChanged = false;
     }
 
     // Refresh the tab bar so page-management affordances (or the plain tabs)
@@ -2168,6 +2174,9 @@ function saveQuickAccessOrder(movedItem = null) {
 
     const activeTab = getActiveQuickAccessTab(ensureQuickAccessConfig());
     const nextConfig = reorderQuickAccessView(state.CONFIG, activeTab?.id, newOrder);
+    const nextTab = getActiveQuickAccessTab(nextConfig);
+    if (JSON.stringify(nextTab?.entityIds) === JSON.stringify(activeTab?.entityIds)) return;
+    quickAccessOrderChanged = true;
 
     // Save to config
     setQuickAccessConfig(nextConfig, { render: false });

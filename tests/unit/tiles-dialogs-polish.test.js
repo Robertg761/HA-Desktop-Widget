@@ -278,4 +278,34 @@ describe('tile and device dialog polish', () => {
       expect(tile('cover.window').querySelector('.control-state').textContent).toBe('Opening 30%');
     });
   });
+
+  describe('reorganize mode', () => {
+    beforeEach(() => {
+      renderTiles([entity('switch.a', 'off'), entity('switch.b', 'off')]);
+    });
+    afterEach(() => {
+      if (document.querySelector('#quick-controls.reorganize-mode')) ui.toggleReorganizeMode();
+    });
+    const savedToasts = () =>
+      uiUtils.showToast.mock.calls.filter(([message]) => message === 'Quick Access order saved');
+
+    it('does not save or announce an unchanged order', () => {
+      ui.toggleReorganizeMode();
+      const setConfig = jest.spyOn(state, 'setConfig');
+      ui.toggleReorganizeMode();
+      expect(savedToasts()).toHaveLength(0);
+      expect(setConfig).not.toHaveBeenCalled();
+    });
+
+    it('announces an order that was changed by dragging', () => {
+      ui.toggleReorganizeMode();
+      const container = document.getElementById('quick-controls');
+      const moved = tile('switch.b');
+      container.prepend(moved);
+      Sortable.create.mock.calls.at(-1)[1].onEnd({ item: moved });
+      ui.toggleReorganizeMode();
+      expect(state.CONFIG.customTabs[0].entityIds).toEqual(['switch.b', 'switch.a']);
+      expect(savedToasts()).toHaveLength(1);
+    });
+  });
 });
