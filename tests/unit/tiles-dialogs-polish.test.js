@@ -550,4 +550,76 @@ describe('tile and device dialog polish', () => {
     state.setEntityState(entity('fan.ceiling', 'off', { percentage: 0, supported_features: 1 }));
     expect(document.querySelector('#fan-slider').value).toBe('0');
   });
+
+  describe('climate dialog', () => {
+    const climate = (attributes = {}, value = 'heat') =>
+      entity('climate.hvac', value, {
+        current_temperature: 22,
+        temperature: 21.5,
+        min_temp: 7,
+        max_temp: 35,
+        target_temp_step: 0.5,
+        supported_features: 1,
+        hvac_modes: ['heat', 'off'],
+        ...attributes,
+      });
+
+    it('moves the single target slider when Home Assistant changes it', () => {
+      state.setStates({ 'climate.hvac': climate() });
+      ui.openEntityDetailModal(climate());
+      liveUpdate(climate({ temperature: 24, current_temperature: 23 }));
+      expect(document.querySelector('#climate-slider').value).toBe('24');
+      expect(document.querySelector('#climate-target-value').textContent).toBe('24°C');
+      expect(document.querySelector('.climate-current-temp .climate-temp-value').textContent).toBe(
+        '23°C'
+      );
+    });
+
+    it('applies a target Home Assistant pushed while the change was in flight', async () => {
+      const call = pendingCall();
+      state.setStates({ 'climate.hvac': climate() });
+      ui.openEntityDetailModal(climate());
+      inputValue('#climate-slider', 25);
+      await jest.advanceTimersByTimeAsync(300);
+      liveUpdate(climate({ temperature: 24 }));
+      expect(document.querySelector('#climate-slider').value).toBe('25');
+      call.resolve({ success: true });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('#climate-slider').value).toBe('24');
+    });
+
+    it('keeps a pending target while Home Assistant reports the old one', () => {
+      state.setStates({ 'climate.hvac': climate() });
+      ui.openEntityDetailModal(climate());
+      inputValue('#climate-slider', 25);
+      liveUpdate(climate({ temperature: 21.5 }));
+      expect(document.querySelector('#climate-slider').value).toBe('25');
+    });
+
+    it('gives both heat/cool sliders the full entity scale with labels', () => {
+      const range = climate(
+        {
+          temperature: null,
+          target_temp_low: 21,
+          target_temp_high: 24,
+          supported_features: 2,
+          hvac_modes: ['heat_cool', 'off'],
+        },
+        'heat_cool'
+      );
+      state.setStates({ [range.entity_id]: range });
+      ui.openEntityDetailModal(range);
+      const low = document.querySelector('[data-climate-range="low"]');
+      const high = document.querySelector('[data-climate-range="high"]');
+      [low, high].forEach((input) => {
+        expect([input.min, input.max]).toEqual(['7', '35']);
+        expect(input.closest('label').querySelector('.climate-slider-labels').textContent).toMatch(
+          /7°C\s+35°C/
+        );
+      });
+      inputValue('[data-climate-range="low"]', 30);
+      expect(low.value).toBe('24');
+      expect(high.value).toBe('24');
+    });
+  });
 });

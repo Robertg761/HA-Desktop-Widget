@@ -11762,8 +11762,15 @@ function showBrightnessSlider(light) {
 
 const climateRangeControllers = new WeakMap();
 
-function climateRangeMarkup(capabilities, { pin = false } = {}) {
+function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
   if (!capabilities.canSetRange) return '';
+  // Both bounds share the entity's full scale so their thumbs sit where the values are.
+  const scaleLabels = pin
+    ? ''
+    : `<span class="climate-slider-labels" aria-hidden="true">
+        <span>${capabilities.minTemp}${unit}</span>
+        <span>${capabilities.maxTemp}${unit}</span>
+      </span>`;
   return ['low', 'high']
     .map((bound) => {
       const low = bound === 'low';
@@ -11772,9 +11779,10 @@ function climateRangeMarkup(capabilities, { pin = false } = {}) {
       return `<label class="${pin ? 'desktop-pin-panel-slider-row' : 'climate-slider-wrapper'}">
       <span class="${pin ? 'desktop-pin-panel-slider-label' : 'climate-temp-label'}">${utils.escapeHtml(visibleLabel)}</span>
       <input type="range" class="${pin ? 'desktop-pin-panel-slider' : 'climate-slider'}" data-climate-range="${bound}"
-        min="${low ? capabilities.minTemp : capabilities.targetLow}" max="${low ? capabilities.targetHigh : capabilities.maxTemp}"
+        min="${capabilities.minTemp}" max="${capabilities.maxTemp}"
         step="${capabilities.temperatureStep}" value="${low ? capabilities.targetLow : capabilities.targetHigh}"
         aria-label="${utils.escapeHtml(label)}" />
+      ${scaleLabels}
     </label>`;
     })
     .join('');
@@ -11791,12 +11799,8 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   let displayedRange = confirmed;
   const apply = (range) => {
     displayedRange = range;
-    low.max = String(capabilities.maxTemp);
-    high.min = String(capabilities.minTemp);
     low.value = String(range.low);
     high.value = String(range.high);
-    low.max = String(range.high);
-    high.min = String(range.low);
     onChange(range);
   };
   const controller = {
@@ -11816,6 +11820,11 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   [low, high].forEach((input) => {
     input.addEventListener('input', (event) => {
       event.stopPropagation();
+      // The bounds cannot cross: the dragged thumb stops at the other one.
+      if (Number(low.value) > Number(high.value)) {
+        if (input === low) low.value = high.value;
+        else high.value = low.value;
+      }
       const range = { low: Number(low.value), high: Number(high.value) };
       if (!Number.isFinite(range.low) || !Number.isFinite(range.high) || range.low > range.high)
         return;
@@ -11935,7 +11944,7 @@ function showClimateControls(climateEntity) {
                 : ''
             }
 
-            ${climateRangeMarkup(capabilities)}
+            ${climateRangeMarkup(capabilities, { unit: tempUnit })}
             ${
               availableModes.length
                 ? `<div class="climate-modes">
@@ -11982,6 +11991,7 @@ function showClimateControls(climateEntity) {
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
+    const currentTempValue = modal.querySelector('.climate-current-temp .climate-temp-value');
     const rangeController = bindClimateRangeControls(
       modal,
       climateEntity,
@@ -12074,7 +12084,10 @@ function showClimateControls(climateEntity) {
     let confirmedMode = currentMode;
     let confirmedFanMode = currentFanMode;
     let confirmedPresetMode = currentPresetMode;
-    let temperatureDebounceTimer;
+    let temperatureDebounceTimer = null;
+    let temperatureCommandsInFlight = 0;
+    let optionCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const setActiveClimateOption = (buttons, value) => {
       buttons.forEach((button) => {
         button.classList.toggle('active', button.getAttribute('data-mode') === value);
@@ -12126,6 +12139,25 @@ function showClimateControls(climateEntity) {
       } else {
         rangeController?.sync({ low: next.targetLow, high: next.targetHigh });
         setActiveClimateOption(modeButtons, nextEntity.state);
+        if (optionCommandsInFlight === 0) {
+          setActiveClimateOption(fanModeButtons, String(nextEntity.attributes?.fan_mode || ''));
+          setActiveClimateOption(
+            presetModeButtons,
+            String(nextEntity.attributes?.preset_mode || '')
+          );
+        }
+        if (currentTempValue) {
+          currentTempValue.textContent =
+            next.currentTemp === null ? '—' : `${next.currentTemp}${tempUnit}`;
+        }
+        missedLiveUpdate = temperatureCommandsInFlight > 0;
+        if (slider && next.targetTemp !== null && !missedLiveUpdate && !temperatureDebounceTimer) {
+          confirmedTargetTemp = next.targetTemp;
+          if (document.activeElement !== slider) {
+            slider.value = String(next.targetTemp);
+            if (targetValue) targetValue.textContent = `${next.targetTemp}${tempUnit}`;
+          }
+        }
       }
     });
     if (closeBtn) closeBtn.onclick = closeModal;
@@ -12145,6 +12177,8 @@ function showClimateControls(climateEntity) {
 
         clearTimeout(temperatureDebounceTimer);
         temperatureDebounceTimer = setTimeout(() => {
+          temperatureDebounceTimer = null;
+          temperatureCommandsInFlight += 1;
           callServiceWithUiRollback(
             climateEntity,
             'climate',
@@ -12158,17 +12192,29 @@ function showClimateControls(climateEntity) {
               if (targetValue) targetValue.textContent = `${confirmedTargetTemp}${tempUnit}`;
             }
           ).then(({ ok }) => {
+            temperatureCommandsInFlight -= 1;
             if (ok) confirmedTargetTemp = value;
+            // Apply a state Home Assistant pushed while this change was pending.
+            const latest = state.STATES?.[climateEntity.entity_id];
+            if (missedLiveUpdate && latest)
+              climateDialogRefreshers.get(climateEntity.entity_id)?.(latest);
           });
         }, 300);
       });
     }
+
+    // A focused slider skips live updates; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => {
+      const latest = state.STATES?.[climateEntity.entity_id];
+      if (latest) climateDialogRefreshers.get(climateEntity.entity_id)?.(latest);
+    });
 
     // Mode button handlers
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         clearTimeout(temperatureDebounceTimer);
+        temperatureDebounceTimer = null;
         rangeController?.cancel();
 
         // Update UI immediately
@@ -12194,6 +12240,7 @@ function showClimateControls(climateEntity) {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         setActiveClimateOption(fanModeButtons, mode);
+        optionCommandsInFlight += 1;
         callServiceWithUiRollback(
           climateEntity,
           'climate',
@@ -12204,6 +12251,7 @@ function showClimateControls(climateEntity) {
           },
           () => setActiveClimateOption(fanModeButtons, confirmedFanMode)
         ).then(({ ok }) => {
+          optionCommandsInFlight -= 1;
           if (ok) confirmedFanMode = mode;
         });
       });
@@ -12213,6 +12261,7 @@ function showClimateControls(climateEntity) {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         setActiveClimateOption(presetModeButtons, mode);
+        optionCommandsInFlight += 1;
         callServiceWithUiRollback(
           climateEntity,
           'climate',
@@ -12223,6 +12272,7 @@ function showClimateControls(climateEntity) {
           },
           () => setActiveClimateOption(presetModeButtons, confirmedPresetMode)
         ).then(({ ok }) => {
+          optionCommandsInFlight -= 1;
           if (ok) confirmedPresetMode = mode;
         });
       });
