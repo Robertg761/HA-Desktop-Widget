@@ -189,6 +189,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       closeSettings: jest.fn(() => jest.requireActual('../../src/settings.js').closeSettings()),
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
+      reapplySettingsPreviews: jest.fn(),
     };
     jest.doMock('../../src/settings.js', () => mockSettings);
     mockUiUtils = {
@@ -539,6 +540,20 @@ describe('Renderer first-run Home Assistant authorization', () => {
     } finally {
       localStorage.clear();
     }
+  });
+
+  it('restores unsaved Settings previews after a config echo re-applies the saved appearance', async () => {
+    await loadRenderer({ config: oauthConfig() });
+    mockUiUtils.applyUiPreferences.mockClear();
+    mockSettings.reapplySettingsPreviews.mockClear();
+
+    triggerMockEvent('configUpdated', { ...oauthConfig(), ui: { density: 'compact' } });
+    await flushAsync();
+
+    expect(mockSettings.reapplySettingsPreviews).toHaveBeenCalledTimes(1);
+    expect(mockUiUtils.applyUiPreferences.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSettings.reapplySettingsPreviews.mock.invocationCallOrder[0]
+    );
   });
 
   it('starts the runtime once when OAuth completion also broadcasts config-updated', async () => {

@@ -2232,98 +2232,119 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('persists readability choices and restores them when settings reopen', async () => {
+    test('previews appearance choices live and persists them only on Save', async () => {
       await settings.openSettings();
       const scale = document.getElementById('ui-scale-select');
       const preset = document.getElementById('readable-preset');
-      scale.value = '1.5';
-      await scale.onchange();
-      preset.checked = true;
-      await preset.onchange();
-      expect(state.CONFIG.ui).toEqual(
-        expect.objectContaining({
-          scale: 1.5,
-          highContrast: true,
-          opaquePanels: true,
-        })
-      );
-      await settings.openSettings();
-      expect(scale.value).toBe('1.5');
-      expect(preset.checked).toBe(true);
-      await settings.saveSettings();
-      expect(state.CONFIG.ui.scale).toBe(1.5);
-    });
-
-    test('rolls back failed readability saves and re-enables the controls', async () => {
-      state.CONFIG.ui.scale = 1;
-      await settings.openSettings();
-      const scale = document.getElementById('ui-scale-select');
-      scale.value = '1.5';
-      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
-      await scale.onchange();
-      expect(state.CONFIG.ui.scale).toBe(1);
-      expect(scale.value).toBe('1');
-      expect(scale.disabled).toBe(false);
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
-        expect.objectContaining({ scale: 1 })
-      );
-    });
-
-    test('loads, previews, and saves layout density from personalization settings', async () => {
-      state.CONFIG.ui.density = 'compact';
-      await settings.openSettings();
-
       const densitySelect = document.getElementById('density-select');
-      expect(densitySelect.value).toBe('compact');
-
-      densitySelect.value = 'comfortable';
-      densitySelect.dispatchEvent(new Event('change'));
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(state.CONFIG.ui.density).toBe('comfortable');
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ density: 'comfortable' })
-      );
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ui: expect.objectContaining({ density: 'comfortable' }),
-        })
-      );
-
-      densitySelect.value = 'compact';
-      await settings.saveSettings();
-
-      expect(state.CONFIG.ui.density).toBe('compact');
-    });
-
-    test('loads, previews, and saves the active tile glow toggle', async () => {
-      await settings.openSettings();
-
       const activeTileGlow = document.getElementById('active-tile-glow');
       // Defaults on: a config that predates the setting still gets the glow.
       expect(activeTileGlow.checked).toBe(true);
 
+      scale.value = '1.5';
+      scale.dispatchEvent(new Event('change'));
+      preset.checked = true;
+      preset.dispatchEvent(new Event('change'));
+      densitySelect.value = 'compact';
+      densitySelect.dispatchEvent(new Event('change'));
       activeTileGlow.checked = false;
       activeTileGlow.dispatchEvent(new Event('change'));
       await Promise.resolve();
-      await Promise.resolve();
 
-      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ activeTileGlow: false })
-      );
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          ui: expect.objectContaining({ activeTileGlow: false }),
+          scale: 1.5,
+          highContrast: true,
+          opaquePanels: true,
+          density: 'compact',
+          activeTileGlow: false,
+        })
+      );
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({
+          highContrast: false,
+          opaquePanels: false,
+          density: 'comfortable',
         })
       );
 
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            scale: 1.5,
+            highContrast: true,
+            opaquePanels: true,
+            density: 'compact',
+            activeTileGlow: false,
+          }),
+        })
+      );
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({ scale: 1.5, density: 'compact', activeTileGlow: false })
+      );
+
       await settings.openSettings();
-      expect(document.getElementById('active-tile-glow').checked).toBe(false);
+      expect(scale.value).toBe('1.5');
+      expect(preset.checked).toBe(true);
+      expect(densitySelect.value).toBe('compact');
+      expect(activeTileGlow.checked).toBe(false);
+    });
+
+    test('cancel reverts previewed appearance choices without saving them', async () => {
+      state.CONFIG.ui.density = 'compact';
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      const densitySelect = document.getElementById('density-select');
+      scale.value = '1.3';
+      scale.dispatchEvent(new Event('change'));
+      densitySelect.value = 'comfortable';
+      densitySelect.dispatchEvent(new Event('change'));
+
+      settings.closeSettings();
+
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.ui.density).toBe('compact');
+      expect(state.CONFIG.ui.scale).toBeUndefined();
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ density: 'compact' })
+      );
+      expect(mockUiUtils.applyUiPreferences.mock.lastCall[0].scale).toBeUndefined();
+    });
+
+    test('saving unrelated settings keeps split contrast flags the preset does not represent', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = false;
+      await settings.openSettings();
+      expect(document.getElementById('readable-preset').checked).toBe(false);
 
       await settings.saveSettings();
-      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
+
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({ highContrast: true, opaquePanels: false })
+      );
+    });
+
+    test('a config echo keeps unsaved previews on screen while settings is open', async () => {
+      await settings.openSettings();
+      const densitySelect = document.getElementById('density-select');
+      densitySelect.value = 'compact';
+      densitySelect.dispatchEvent(new Event('change'));
+      mockUiUtils.applyUiPreferences.mockClear();
+
+      // The renderer re-applies the saved appearance for every config echo, then asks Settings
+      // to restore its previews.
+      settings.reapplySettingsPreviews();
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ density: 'compact' })
+      );
+
+      settings.closeSettings();
+      mockUiUtils.applyUiPreferences.mockClear();
+      settings.reapplySettingsPreviews();
+      expect(mockUiUtils.applyUiPreferences).not.toHaveBeenCalled();
     });
   });
 

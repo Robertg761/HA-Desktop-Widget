@@ -2633,6 +2633,20 @@ function restorePreviewWindowEffects() {
 }
 
 /**
+ * Re-apply the unsaved Settings previews after a config echo reset the window to the saved
+ * appearance (for example when a collapsed section is remembered). No-op while Settings is closed.
+ */
+function reapplySettingsPreviews() {
+  if (!previewState) return;
+  setCustomThemes(pendingCustomColors);
+  applyUiPreferences(getAppearanceFromInputs());
+  applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+  // Also re-applies the pending background.
+  previewWindowEffectsNow();
+  if (hasDraftColorPreview) applyCustomColorPreview(getCustomColorHexFromEditor());
+}
+
+/**
  * Validate Home Assistant URL format
  * @param {string} url - The URL to validate
  * @returns {object} - { valid: boolean, error: string|null, url: string }
@@ -3599,136 +3613,45 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
-async function persistDensitySelection(nextDensity) {
-  const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    density: normalizedDensity,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
+/**
+ * Read the text size, contrast, density and tile glow controls on top of `ui`.
+ *
+ * These preview live like the window effects and persist only on Save. The readable preset
+ * stands for both contrast flags, so they are left alone unless the preset was toggled.
+ */
+function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
+  const scale = document.getElementById('ui-scale-select');
+  const preset = document.getElementById('readable-preset');
+  const density = document.getElementById('density-select');
+  const activeTileGlow = document.getElementById('active-tile-glow');
+  const next = { ...ui };
+  if (scale) next.scale = Number(scale.value) || 1;
+  if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
+    next.highContrast = preset.checked;
+    next.opaquePanels = preset.checked;
   }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({
-      ui: nextUiConfig,
-    });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
+  if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
+  if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
+  return next;
 }
 
-async function persistActiveTileGlowSelection(enabled) {
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    activeTileGlow: !!enabled,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
-  }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({ ui: nextUiConfig });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
-}
-
-async function persistReadabilitySelection(patch) {
-  const previousUi = { ...(state.CONFIG.ui || {}) };
-  const nextUi = { ...previousUi, ...patch };
-  applyUiPreferences(nextUi);
-  try {
-    const updated = await window.electronAPI?.updateConfig?.({ ui: nextUi });
-    if (updated) applyPersistedConfigResponse(updated);
-    else state.CONFIG.ui = nextUi;
-  } catch (error) {
-    state.CONFIG.ui = previousUi;
-    applyUiPreferences(previousUi);
-    throw error;
-  }
+function previewAppearance() {
+  applyUiPreferences(getAppearanceFromInputs());
 }
 
 function bindAppearanceSettingsUi() {
+  const ui = state.CONFIG?.ui || {};
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const refresh = () => {
-    if (scale) scale.value = String(state.CONFIG?.ui?.scale || 1);
-    if (preset)
-      preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
-  };
-  refresh();
-  for (const control of [scale, preset].filter(Boolean)) {
-    control.onchange = async () => {
-      // Serialize saves so a slow response cannot undo a newer appearance choice.
-      if (scale) scale.disabled = true;
-      if (preset) preset.disabled = true;
-      try {
-        await persistReadabilitySelection(
-          control === scale
-            ? { scale: Number(scale.value) }
-            : { highContrast: preset.checked, opaquePanels: preset.checked }
-        );
-      } catch (error) {
-        log.error('Failed to save readability settings:', error);
-        refresh();
-        showToast(t('Failed to save readability settings'), 'warning', 3000);
-      } finally {
-        if (scale) scale.disabled = false;
-        if (preset) preset.disabled = false;
-      }
-    };
-  }
-
   const activeTileGlow = document.getElementById('active-tile-glow');
-  if (activeTileGlow) {
-    activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-    activeTileGlow.onchange = async () => {
-      try {
-        await persistActiveTileGlowSelection(activeTileGlow.checked);
-      } catch (error) {
-        log.error('Failed to save tile glow setting:', error);
-        activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-        showToast(t('Failed to save tile glow setting'), 'warning', 3000);
-      }
-    };
-  }
-
   const densitySelect = document.getElementById('density-select');
-  if (!densitySelect) return;
-
-  densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-  densitySelect.onchange = async () => {
-    try {
-      await persistDensitySelection(densitySelect.value);
-    } catch (error) {
-      log.error('Failed to save layout density:', error);
-      densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-      showToast(t('Failed to save layout density'), 'warning', 3000);
-    }
-  };
+  if (scale) scale.value = String(ui.scale || 1);
+  if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
+  if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
+  if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
+  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+    control.onchange = previewAppearance;
+  }
 }
 
 function bindLanguageSettingsUi() {
@@ -4077,6 +4000,7 @@ function closeSettings() {
     cancelPreviewWindowEffects();
     if (previewState) {
       restorePreviewWindowEffects();
+      applyUiPreferences(state.CONFIG?.ui || {});
       previewState = null;
     }
     if (hasDraftColorPreview) {
@@ -4375,7 +4299,6 @@ async function saveSettings() {
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
     const weatherEntitySelect = document.getElementById('weather-entity-select');
-    const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -4461,11 +4384,7 @@ async function saveSettings() {
       : false;
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
-    nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
-    const activeTileGlow = document.getElementById('active-tile-glow');
-    nextConfig.ui.activeTileGlow = activeTileGlow
-      ? !!activeTileGlow.checked
-      : nextConfig.ui.activeTileGlow !== false;
+    nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
     if (enableInteractionDebugLogs) {
       nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
@@ -5884,6 +5803,7 @@ export {
   closeSettings,
   saveSettings,
   previewWindowEffects,
+  reapplySettingsPreviews,
   syncWeatherEffectsAvailability,
   renderAlertsListInline,
   openAlertEntityPicker,

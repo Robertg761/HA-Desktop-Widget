@@ -1217,6 +1217,8 @@ function applyRendererConfig(nextConfig) {
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
     }
+    // Keep unsaved Settings previews on screen; the echo carries the saved appearance.
+    settings.reapplySettingsPreviews?.();
   }
 
   // Keep Home Assistant's stored layout snapshot current (deduplicated in the client).
