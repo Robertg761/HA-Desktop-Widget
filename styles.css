@@ -10342,6 +10342,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   animation: timerPulse 2s ease-in-out infinite;
 }
 
+body.theme-light .timer-entity[data-state='active'] .control-icon,
+body.theme-light .timer-entity[data-state='paused'] .control-icon {
+  color: color-mix(in srgb, rgb(var(--timer-rgb)) 62%, #000);
+}
+
 @keyframes timerPulse {
   0%,
   100% {
