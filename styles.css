@@ -13418,3 +13418,297 @@ select option {
   background-color: rgb(var(--window-bg-rgb));
   color: var(--text-primary);
 }
+
+/* ============================================
+   EXPERIMENT: LAYOUT REDESIGN
+   Exploratory layout pass (branch experiment/layout-redesign):
+   - Settings get an icon rail on the left at every width instead of a row of
+     text tabs that overflows in the default 500px window.
+   - Settings read as grouped lists: each switch is a row with its label on the
+     left and the switch on the right, help text tucked under the label.
+   - Card titles become quiet captions; the card is the group.
+   - The two primary cards merge into one "hero" pane split by a hairline.
+   - Quick Access views become a segmented control.
+   Markup and ids are unchanged apart from the rail's icons, so behaviour and
+   tests are unaffected.
+   ============================================ */
+
+/* --- Settings shell: header / rail + body / footer --- */
+
+#settings-modal .modal-content {
+  grid-template:
+    'header header' auto
+    'nav body' minmax(0, 1fr)
+    'footer footer' auto
+    / 92px minmax(0, 1fr);
+}
+
+#settings-modal .modal-header {
+  padding: 12px 14px 12px 18px;
+  background: transparent;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .modal-header h2 {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+#settings-modal .modal-tabs {
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 10px 4px;
+  border-right: 1px solid var(--tile-border);
+  border-bottom: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#settings-modal .tab-link {
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  white-space: normal;
+  overflow: visible;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 2px;
+  border-radius: var(--radius-lg);
+  text-align: center;
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .tab-link-icon {
+  display: block;
+  font-size: var(--font-size-xl);
+  flex-shrink: 0;
+  transition:
+    color var(--transition-fast),
+    filter var(--transition-fast);
+}
+
+#settings-modal .tab-link-label {
+  max-width: 100%;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#settings-modal .tab-link.active {
+  color: var(--text-primary);
+}
+
+#settings-modal .tab-link.active .tab-link-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
+}
+
+#settings-modal .modal-body {
+  padding: 14px 16px 20px;
+}
+
+#settings-modal .modal-footer {
+  padding: 10px 14px;
+  background: transparent;
+  border-top: 1px solid var(--tile-border);
+}
+
+/* Narrow windows keep the rail but drop its labels. */
+@media (width <= 400px) {
+  #settings-modal .modal-content {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  #settings-modal .tab-link {
+    min-height: 44px;
+  }
+
+  #settings-modal .tab-link-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* --- Grouped lists --- */
+
+#settings-modal .settings-card,
+#settings-modal .personalization-section {
+  padding: 4px 14px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  box-shadow: none;
+}
+
+/* The card title steps outside the pane as a caption, like a grouped list. */
+#settings-modal .settings-card-header {
+  margin: 10px 0 2px;
+  padding: 0 0 8px;
+  gap: 8px;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .settings-card-title {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .settings-card-header .settings-card-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+
+#settings-modal .settings-card > .form-group,
+#settings-modal .personalization-section .form-group {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .settings-card > .form-group:last-child,
+#settings-modal .personalization-section .form-group:last-child {
+  border-bottom: none;
+}
+
+#settings-modal .form-group > label:not(:has(input[type='checkbox'])) {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+/* Switch rows: label left, switch right. */
+#settings-modal .form-group label:has(input[type='checkbox']) {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+#settings-modal .form-group input[type='checkbox'] {
+  margin-right: 0;
+  width: 36px;
+  height: 22px;
+  border-color: transparent;
+  background: var(--tile-border-hover);
+  box-shadow: none;
+}
+
+#settings-modal .form-group input[type='checkbox']::after {
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+#settings-modal .form-group input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+#settings-modal .form-group input[type='checkbox']:checked::after {
+  transform: translateX(14px);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+#settings-modal .form-help,
+#settings-modal .help-text {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+}
+
+/* The switch sits on the label's first line, so the help text runs under the
+   label rather than under the switch. */
+#settings-modal .form-group:has(label > input[type='checkbox']) > .form-help,
+#settings-modal .form-group:has(label > input[type='checkbox']) > .help-text {
+  padding-right: 52px;
+}
+
+#settings-modal hr {
+  border: none;
+  border-top: 1px solid var(--tile-border);
+  margin: 4px 0;
+}
+
+/* Personalization's collapsible sections read as disclosure rows. */
+#settings-modal .section-toggle {
+  min-height: 44px;
+  font-size: var(--font-size-base);
+}
+
+/* --- Main view: one hero pane for the primary cards --- */
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) {
+  gap: 0;
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  overflow: hidden;
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+  box-shadow: inset 1px 0 0 var(--tile-border);
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card:hover {
+  background: var(--tile-bg);
+}
+
+/* Stacked in narrow windows, the hairline moves to the top edge. */
+@media (max-width: 420px) {
+  .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+    box-shadow: inset 0 1px 0 var(--tile-border);
+  }
+}
+
+/* --- Quick Access views as a segmented control --- */
+
+.quick-access-tabs:not(.hidden):not(.reorganize) {
+  flex: 0 1 auto;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.quick-access-tabs:not(.reorganize) .tab-link {
+  min-height: 24px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+}
+
+.quick-access-tabs:not(.reorganize) .tab-link.active {
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: none;
+}
