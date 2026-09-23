@@ -3861,25 +3861,31 @@ function bindAppearanceSettingsUi() {
       preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
   };
   refresh();
+  // Serialize saves so a slow response cannot undo a newer appearance choice. The controls stay
+  // enabled meanwhile: disabling the focused one drops keyboard focus to <body>, so pressing
+  // ArrowDown twice would only apply the first step.
+  let readabilitySaves = Promise.resolve();
+  let pendingReadabilitySaves = 0;
   for (const control of [scale, preset].filter(Boolean)) {
-    control.onchange = async () => {
-      // Serialize saves so a slow response cannot undo a newer appearance choice.
-      if (scale) scale.disabled = true;
-      if (preset) preset.disabled = true;
-      try {
-        await persistReadabilitySelection(
-          control === scale
-            ? { scale: Number(scale.value) }
-            : { highContrast: preset.checked, opaquePanels: preset.checked }
-        );
-      } catch (error) {
-        log.error('Failed to save readability settings:', error);
-        refresh();
-        showToast(t('Failed to save readability settings'), 'warning', 3000);
-      } finally {
-        if (scale) scale.disabled = false;
-        if (preset) preset.disabled = false;
-      }
+    control.onchange = () => {
+      const patch =
+        control === scale
+          ? { scale: Number(scale.value) }
+          : { highContrast: preset.checked, opaquePanels: preset.checked };
+      pendingReadabilitySaves += 1;
+      readabilitySaves = readabilitySaves.then(async () => {
+        try {
+          await persistReadabilitySelection(patch);
+        } catch (error) {
+          log.error('Failed to save readability settings:', error);
+          // A newer choice is still queued; resetting the controls now would hide it.
+          if (pendingReadabilitySaves === 1) refresh();
+          showToast(t('Failed to save readability settings'), 'warning', 3000);
+        } finally {
+          pendingReadabilitySaves -= 1;
+        }
+      });
+      return readabilitySaves;
     };
   }
 

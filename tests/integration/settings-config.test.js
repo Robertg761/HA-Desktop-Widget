@@ -2377,6 +2377,34 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('keeps readability controls usable and applies rapid choices in order', async () => {
+      state.CONFIG.ui.scale = 1;
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      scale.insertAdjacentHTML('beforeend', '<option value="1.3">130%</option>');
+      let finishFirstSave;
+      const persist = window.electronAPI.updateConfig.getMockImplementation();
+      window.electronAPI.updateConfig.mockImplementationOnce(
+        (patch) => new Promise((resolve) => (finishFirstSave = () => resolve(persist(patch))))
+      );
+      scale.focus();
+      scale.value = '1.3';
+      const first = scale.onchange();
+      expect(scale.disabled).toBe(false);
+      expect(document.activeElement).toBe(scale);
+      scale.value = '1.5';
+      const second = scale.onchange();
+      await Promise.resolve();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      finishFirstSave();
+      await Promise.all([first, second]);
+      expect(window.electronAPI.updateConfig.mock.calls.map(([patch]) => patch.ui.scale)).toEqual([
+        1.3, 1.5,
+      ]);
+      expect(state.CONFIG.ui.scale).toBe(1.5);
+      expect(scale.value).toBe('1.5');
+    });
+
     test('loads, previews, and saves layout density from personalization settings', async () => {
       state.CONFIG.ui.density = 'compact';
       await settings.openSettings();

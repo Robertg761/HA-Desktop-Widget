@@ -489,6 +489,74 @@ describe('User-facing audit regressions', () => {
     expect(list.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it('keeps focus in the to-do dialog after Retry and after ticking an item', async () => {
+    mockCallServiceWithResponse
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce({
+        'todo.focus': {
+          items: [
+            { uid: 'one', summary: 'Milk', status: 'needs_action' },
+            { uid: 'two', summary: 'Eggs', status: 'needs_action' },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        'todo.focus': {
+          items: [
+            { uid: 'one', summary: 'Milk', status: 'needs_action' },
+            { uid: 'two', summary: 'Eggs', status: 'completed' },
+          ],
+        },
+      });
+    ui.openEntityDetailModal(entity('todo.focus', '2'));
+    await jest.advanceTimersByTimeAsync(0);
+    const list = document.querySelector('.todo-detail-list-container');
+    const retry = list.querySelector('button');
+    retry.focus();
+    retry.click();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(document.activeElement).toBe(list.querySelector('input[data-uid="one"]'));
+
+    const eggs = list.querySelector('input[data-uid="two"]');
+    eggs.focus();
+    eggs.click();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockCallService).toHaveBeenCalledWith('todo', 'update_item', {
+      entity_id: 'todo.focus',
+      item: 'two',
+      status: 'completed',
+    });
+    const refreshed = list.querySelector('input[data-uid="two"]');
+    expect(refreshed).not.toBe(eggs);
+    expect(refreshed.checked).toBe(true);
+    expect(document.activeElement).toBe(refreshed);
+  });
+
+  it('keeps focus on the picked weather entity after the list is rebuilt', async () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="weather-entities-list"></div><span id="current-weather-name"></span>'
+    );
+    state.setStates({
+      'weather.home': entity('weather.home', 'sunny'),
+      'weather.work': entity('weather.work', 'rainy'),
+    });
+    ui.populateWeatherEntitiesList();
+    const list = document.getElementById('weather-entities-list');
+    const findWork = () =>
+      [...list.querySelectorAll('.entity-item')].find((item) =>
+        item.textContent.includes('weather.work')
+      );
+    const work = findWork();
+    work.focus();
+    work.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await jest.advanceTimersByTimeAsync(0);
+    const rebuilt = findWork();
+    expect(rebuilt).not.toBe(work);
+    expect(rebuilt.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(rebuilt);
+  });
+
   it('does not repeat a successful add when only the subsequent refresh fails', async () => {
     mockCallServiceWithResponse
       .mockResolvedValueOnce({ 'todo.add': { items: [] } })

@@ -9100,6 +9100,7 @@ function renderTodoItemsInto(container, entity, items) {
       checkbox.type = 'checkbox';
       checkbox.checked = item.status === 'completed';
       checkbox.disabled = !item.uid;
+      if (item.uid) checkbox.dataset.uid = item.uid;
 
       const summary = document.createElement('span');
       summary.className = 'todo-item-summary';
@@ -9113,10 +9114,11 @@ function renderTodoItemsInto(container, entity, items) {
             item: item.uid,
             status: checkbox.checked ? 'completed' : 'needs_action',
           });
-          await loadTodoItemsInto(container, entity);
+          await loadTodoItemsInto(container, entity, { focusUid: item.uid });
         } catch (error) {
           checkbox.checked = !checkbox.checked;
           checkbox.disabled = false;
+          checkbox.focus();
           handleServiceError(error, utils.getEntityDisplayName(entity));
         }
       });
@@ -9130,7 +9132,9 @@ function renderTodoItemsInto(container, entity, items) {
   container.appendChild(list);
 }
 
-async function loadTodoItemsInto(container, entity) {
+// Reloading replaces the list, so the checkbox or Retry button that started it is gone and focus
+// falls to <body>. `focusUid` (an item uid, or true for the first control) puts it back.
+async function loadTodoItemsInto(container, entity, { focusUid = null } = {}) {
   container.textContent = t('Loading...');
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
@@ -9144,10 +9148,21 @@ async function loadTodoItemsInto(container, entity) {
     retry.className = 'btn btn-secondary';
     retry.textContent = t('Retry');
     retry.onclick = () => {
-      void loadTodoItemsInto(container, entity);
+      void loadTodoItemsInto(container, entity, { focusUid: true });
     };
     container.replaceChildren(message, retry);
   }
+  if (!focusUid || !container.isConnected) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && !container.contains(active)) return;
+  const controls = Array.from(container.querySelectorAll('input, button')).filter(
+    (control) => !control.disabled
+  );
+  const target =
+    controls.find((control) => control.dataset.uid === focusUid) ||
+    controls[0] ||
+    container.closest('.modal')?.querySelector('.todo-add-form input');
+  target?.focus();
 }
 
 function showTodoDetails(entity) {
@@ -10776,6 +10791,10 @@ function populateWeatherEntitiesList() {
       .filter((e) => e.entity_id.startsWith('weather.'))
       .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
 
+    // Rebuilding the list after a pick would otherwise drop focus to <body>, out of the dialog.
+    const focusedEntityId = list.contains(document.activeElement)
+      ? document.activeElement.closest('.entity-item')?.dataset.weatherEntityId
+      : null;
     list.innerHTML = '';
 
     if (weatherEntities.length === 0) {
@@ -10826,6 +10845,7 @@ function populateWeatherEntitiesList() {
       item.setAttribute('role', 'option');
       item.setAttribute('tabindex', '0');
       item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      item.dataset.weatherEntityId = entityId;
 
       const icon = utils.getEntityIcon(entity);
       const displayName = utils.getEntityDisplayName(entity);
@@ -10854,6 +10874,7 @@ function populateWeatherEntitiesList() {
       item.style.cursor = 'pointer';
 
       list.appendChild(item);
+      if (entityId === focusedEntityId) item.focus();
     });
   } catch (error) {
     console.error('Error populating weather entities list:', error);

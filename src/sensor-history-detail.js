@@ -56,7 +56,9 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
     // height instead of collapsing and re-centring on every request.
     frame.classList.add('is-loading');
     frame.setAttribute('aria-busy', 'true');
-    refresh.disabled = true;
+    // aria-disabled rather than disabled: disabling the focused button would drop focus to
+    // <body>, where Escape and the dialog's focus trap no longer work.
+    refresh.setAttribute('aria-disabled', 'true');
     try {
       let data = cache.get(hours);
       if (force || !data || Date.now() - data.end > CACHE_TTL) {
@@ -109,14 +111,16 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
       refresh.textContent = t('Retry');
     } finally {
       if (revision === requestRevision) {
-        refresh.disabled = false;
+        refresh.removeAttribute('aria-disabled');
         frame.classList.remove('is-loading');
         frame.removeAttribute('aria-busy');
       }
     }
   };
   period.onchange = () => void load();
-  refresh.onclick = () => void load(true);
+  refresh.onclick = () => {
+    if (refresh.getAttribute('aria-disabled') !== 'true') void load(true);
+  };
   void load();
 }
 

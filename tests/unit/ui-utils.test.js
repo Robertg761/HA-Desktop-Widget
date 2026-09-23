@@ -584,6 +584,85 @@ describe('UI Utilities', () => {
       document.body.removeChild(externalButton);
     });
 
+    it('wraps Tab using the controls present when Tab is pressed', () => {
+      uiUtils.trapFocus(modal);
+      const added = document.createElement('button');
+      modal.appendChild(added);
+      modal.querySelector('#last').disabled = true;
+      added.focus();
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      added.dispatchEvent(tab);
+      expect(tab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(modal.querySelector('#first'));
+    });
+
+    it('focuses the requested element, or nothing, instead of the first control', () => {
+      const middle = modal.querySelector('#middle');
+      uiUtils.trapFocus(modal, { initialFocus: middle });
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(middle);
+
+      middle.blur();
+      uiUtils.trapFocus(modal, { initialFocus: false });
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(document.body);
+      uiUtils.releaseFocusTrap(modal);
+    });
+
+    it('keeps Tab and Escape working after focus has fallen back to the page', () => {
+      const behind = document.createElement('button');
+      document.body.prepend(behind);
+      modal.classList.add('modal');
+      const onEscape = jest.fn();
+      modal.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') onEscape();
+      });
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      // The focused control was disabled or re-rendered: the browser moves focus to <body>.
+      document.activeElement.blur();
+
+      // The browser's own Tab then lands on the page behind the dialog.
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      behind.focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#first'));
+
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
+      );
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#last'));
+
+      // After a click on the dialog's text, Tab continues from there inside the dialog.
+      document.activeElement.blur();
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      modal.querySelector('#middle').focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#middle'));
+
+      document.activeElement.blur();
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(onEscape).toHaveBeenCalledTimes(1);
+      // Only the replayed event reaches page-level listeners, so nothing handles Escape twice.
+      expect(pageEscape).toHaveBeenCalledTimes(1);
+      document.removeEventListener('keydown', pageEscape);
+
+      // Once the dialog is hidden, keys on the page are left alone.
+      modal.classList.add('hidden');
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      behind.focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(behind);
+      uiUtils.releaseFocusTrap(modal);
+      behind.remove();
+    });
+
     it('should handle errors during focus trap', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
@@ -686,6 +765,28 @@ describe('UI Utilities', () => {
       focusSpy.mockRestore();
       document.body.removeChild(externalButton);
       document.body.removeChild(nextDialogField);
+    });
+
+    it('returns focus to the rebuilt tile when the opener was replaced', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="quick-controls"><div class="control-item" data-entity-id="light.hall">
+          <button class="tile-primary-button">Hall</button>
+          <button class="tile-details-button">Controls</button></div></div>`
+      );
+      const grid = document.getElementById('quick-controls');
+      grid.querySelector('.tile-details-button').focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+
+      // The entity changed while the dialog was open, so the tile was rebuilt.
+      grid.replaceChildren(grid.firstElementChild.cloneNode(true));
+      modal.remove();
+      uiUtils.releaseFocusTrap(modal);
+      jest.advanceTimersByTime(0);
+
+      expect(document.activeElement).toBe(grid.querySelector('.tile-details-button'));
+      grid.remove();
     });
 
     it('should handle modal without active trap', () => {
