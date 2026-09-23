@@ -12201,7 +12201,7 @@ function showFanControls(fanEntity) {
             <div class="fan-icon-wrapper">
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
             </div>
-            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : isOn ? 'On' : 'Off'}</div>
+            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
             <div class="fan-speed-label">${capabilities.canSetPercentage ? 'Fan Speed' : 'State'}</div>
 
             ${
@@ -12245,13 +12245,30 @@ function showFanControls(fanEntity) {
     const cancelBtn = modal.querySelector('#fan-cancel');
     const presetButtons = modal.querySelectorAll('.fan-preset-btn');
     let confirmedSpeed = currentSpeed;
-    let speedDebounceTimer;
+    let speedDebounceTimer = null;
+    let fanCommandRevision = 0;
+    let fanCommandsInFlight = 0;
+    let missedLiveUpdate = false;
+    const callFanService = (service, data, rollback) => {
+      const revision = ++fanCommandRevision;
+      fanCommandsInFlight += 1;
+      return callServiceWithUiRollback(fanEntity, 'fan', service, data, () => {
+        if (revision === fanCommandRevision) rollback?.();
+      }).then((result) => {
+        fanCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) setTimeout(() => syncFromEntity(state.STATES?.[fanEntity.entity_id]));
+        return { ...result, ok: result.ok && revision === fanCommandRevision };
+      });
+    };
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -12286,12 +12303,13 @@ function showFanControls(fanEntity) {
 
         clearTimeout(speedDebounceTimer);
         speedDebounceTimer = setTimeout(() => {
+          speedDebounceTimer = null;
           const service = speed > 0 ? 'set_percentage' : 'turn_off';
           const serviceData =
             speed > 0
               ? { entity_id: fanEntity.entity_id, percentage: speed }
               : { entity_id: fanEntity.entity_id };
-          callServiceWithUiRollback(fanEntity, 'fan', service, serviceData, () => {
+          callFanService(service, serviceData, () => {
             slider.value = String(confirmedSpeed);
             if (speedValue) speedValue.textContent = `${confirmedSpeed}%`;
             updateIcon(confirmedSpeed);
@@ -12301,6 +12319,35 @@ function showFanControls(fanEntity) {
         }, 200);
       });
     }
+
+    // Follow Home Assistant while open, but never under a pending command or a focused slider.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      missedLiveUpdate = fanCommandsInFlight > 0;
+      if (missedLiveUpdate || speedDebounceTimer) return;
+      const percentage = Number(nextEntity.attributes?.percentage);
+      const speed =
+        nextEntity.state === 'on' && Number.isFinite(percentage)
+          ? Math.max(0, Math.min(100, Math.round(percentage)))
+          : 0;
+      if (!slider) {
+        if (speedValue) speedValue.textContent = getLocalizedEntityStateLabel(nextEntity.state);
+        updateIcon(nextEntity.state === 'on' ? 1 : 0);
+        return;
+      }
+      confirmedSpeed = speed;
+      if (document.activeElement === slider) return;
+      slider.value = String(speed);
+      if (speedValue) speedValue.textContent = `${speed}%`;
+      updateIcon(speed);
+    };
+    unsubscribe = state.subscribeEntity(fanEntity.entity_id, syncFromEntity);
+    // A focused slider was skipped above; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[fanEntity.entity_id]));
 
     // Preset buttons
     presetButtons.forEach((btn) => {

@@ -320,6 +320,25 @@ describe('tile and device dialog polish', () => {
     });
   });
 
+  it('does not let an older failed fan request undo newer feedback', async () => {
+    const earlier = pendingCall();
+    const later = pendingCall();
+    ui.openEntityDetailModal(
+      entity('fan.ceiling', 'on', { percentage: 40, supported_features: 1 })
+    );
+    inputValue('#fan-slider', 80);
+    await jest.advanceTimersByTimeAsync(200);
+    inputValue('#fan-slider', 30);
+    await jest.advanceTimersByTimeAsync(200);
+    earlier.reject(new Error('Earlier speed failed'));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('#fan-slider').value).toBe('30');
+    expect(document.querySelector('#fan-speed-value').textContent).toBe('30%');
+    later.resolve({ success: true });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('#fan-speed-value').textContent).toBe('30%');
+  });
+
   describe('sensor history period failures', () => {
     it('hides the previous chart and dates on failure and restores them on retry', async () => {
       const modal = document.createElement('div');
@@ -395,5 +414,29 @@ describe('tile and device dialog polish', () => {
       state.setEntityState(entity('media_player.walkman', 'off', { supported_features: 119695 }));
       expect(document.querySelector('#media-volume-value').textContent).toBe('—');
     });
+  });
+
+  it('applies a fan state Home Assistant pushed while a command was in flight', async () => {
+    const call = pendingCall();
+    const fan = entity('fan.ceiling', 'on', { percentage: 33, supported_features: 1 });
+    state.setStates({ [fan.entity_id]: fan });
+    ui.openEntityDetailModal(fan);
+    inputValue('#fan-slider', 70);
+    await jest.advanceTimersByTimeAsync(200);
+    state.setEntityState(entity('fan.ceiling', 'on', { percentage: 67, supported_features: 1 }));
+    expect(document.querySelector('#fan-speed-value').textContent).toBe('70%');
+    call.resolve({ success: true });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('#fan-speed-value').textContent).toBe('67%');
+  });
+
+  it('follows fan speed changes made outside the dialog', () => {
+    const fan = entity('fan.ceiling', 'on', { percentage: 33, supported_features: 1 });
+    state.setStates({ [fan.entity_id]: fan });
+    ui.openEntityDetailModal(fan);
+    state.setEntityState(entity('fan.ceiling', 'on', { percentage: 67, supported_features: 1 }));
+    expect(document.querySelector('#fan-speed-value').textContent).toBe('67%');
+    state.setEntityState(entity('fan.ceiling', 'off', { percentage: 0, supported_features: 1 }));
+    expect(document.querySelector('#fan-slider').value).toBe('0');
   });
 });
