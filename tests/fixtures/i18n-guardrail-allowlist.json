@@ -34,7 +34,6 @@
   "src/settings.js|showToast|'Color already saved. Selected existing custom color.'",
   "src/settings.js|showToast|'Copied sync file and switched folders.'",
   "src/settings.js|showToast|'Copy is unavailable on this build. Kept current sync folder.'",
-  "src/settings.js|showToast|'Could not focus the pinned tile.'",
   "src/settings.js|showToast|'Could not open help instructions.'",
   "src/settings.js|showToast|'Could not persist custom colors. Try Save in settings.'",
   "src/settings.js|showToast|'Custom color removed.'",

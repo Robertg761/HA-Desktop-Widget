@@ -576,3 +576,25 @@ describe('hotkeys module', () => {
     });
   });
 });
+
+describe('entity hotkey row layout', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const styles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+  // Every declaration block whose selector list names `selector` exactly.
+  const declarationsFor = (selector) =>
+    [...styles.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter(([, selectors]) => selectors.split(',').some((part) => part.trim() === selector))
+      .map(([, , body]) => body)
+      .join(';');
+
+  it('sizes the hotkey field to its text so translated placeholders are not clipped', () => {
+    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field.
+    const input = declarationsFor('.hotkey-input');
+    expect(input).toMatch(/field-sizing:\s*content/);
+    expect(input).not.toMatch(/(^|[;\s])width:/);
+    // The row wraps the controls under the name instead of squeezing the field.
+    expect(declarationsFor('.hotkey-item')).toMatch(/flex-wrap:\s*wrap/);
+    expect(declarationsFor('.hotkey-item')).not.toMatch(/flex-wrap:\s*nowrap/);
+  });
+});

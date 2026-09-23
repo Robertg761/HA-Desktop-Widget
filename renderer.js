@@ -477,6 +477,10 @@ function getSettingsUiHooks() {
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
+    refreshLocale: async () => {
+      await refreshLocaleBootstrap();
+      renderCurrentMode();
+    },
     exitReorganizeMode: () => {
       const container = document.getElementById('quick-controls');
       if (container && container.classList.contains('reorganize-mode')) {
@@ -1217,6 +1221,8 @@ function applyRendererConfig(nextConfig) {
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
     }
+    // Keep unsaved Settings previews on screen; the echo carries the saved appearance.
+    settings.reapplySettingsPreviews?.();
   }
 
   // Keep Home Assistant's stored layout snapshot current (deduplicated in the client).

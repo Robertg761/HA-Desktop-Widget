@@ -404,17 +404,6 @@ function createSettingsModalDOM() {
             <div id="primary-cards-list"></div>
           </div>
         </div>
-        <div id="desktop-pins-section" class="personalization-section collapsed">
-          <button type="button" id="desktop-pins-toggle" class="section-toggle" aria-expanded="false">
-            Desktop Pins
-          </button>
-          <div class="section-body">
-            <div id="desktop-pins-current"></div>
-            <input type="text" id="desktop-pins-search" />
-            <div id="desktop-pins-list"></div>
-            <div id="desktop-pins-summary"></div>
-          </div>
-        </div>
         <div id="custom-entity-icons-section" class="personalization-section collapsed">
           <button type="button" id="custom-entity-icons-toggle" class="section-toggle" aria-expanded="false">
             Custom Entity Icons
@@ -530,21 +519,6 @@ describe('Settings + Config Integration', () => {
     const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
     if (customIconsToggle && customIconsToggle.getAttribute('aria-expanded') !== 'true') {
       customIconsToggle.click();
-    }
-  };
-  const openSettingsWithDesktopPinsExpanded = async (uiHooks = undefined) => {
-    const config = state.CONFIG;
-    config.ui = config.ui || {};
-    config.ui.personalizationSectionsCollapsed = {
-      ...(config.ui.personalizationSectionsCollapsed || {}),
-      'desktop-pins-section': false,
-    };
-    state.setConfig(config);
-
-    await settings.openSettings(uiHooks);
-    const desktopPinsToggle = document.getElementById('desktop-pins-toggle');
-    if (desktopPinsToggle && desktopPinsToggle.getAttribute('aria-expanded') !== 'true') {
-      desktopPinsToggle.click();
     }
   };
 
@@ -1015,106 +989,28 @@ describe('Settings + Config Integration', () => {
 
       // Collapsed sections should not eagerly render heavy lists.
       expect(document.querySelector('[data-primary-assign]')).toBeNull();
-      expect(document.querySelector('[data-desktop-pin-toggle]')).toBeNull();
       expect(document.querySelector('[data-custom-icon-input]')).toBeNull();
 
       const primaryCardsToggle = document.getElementById('primary-cards-toggle');
-      const desktopPinsToggle = document.getElementById('desktop-pins-toggle');
       const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
       primaryCardsToggle.click();
-      desktopPinsToggle.click();
       customIconsToggle.click();
 
       expect(document.querySelector('[data-primary-assign]')).toBeTruthy();
-      expect(document.querySelector('[data-desktop-pin-toggle]')).toBeTruthy();
       expect(document.querySelector('[data-custom-icon-input]')).toBeTruthy();
     });
   });
 
   describe('Desktop Pins', () => {
-    test('keeps keyboard focus on a toggled pin', async () => {
-      await openSettingsWithDesktopPinsExpanded();
-      const button = document.querySelector('[data-desktop-pin-toggle="light.living_room"]');
-      button.focus();
-      button.click();
-      expect(document.activeElement.dataset.desktopPinToggle).toBe('light.living_room');
-      expect(document.activeElement.textContent).toBe('Unpin');
-      document.activeElement.click();
-      expect(document.activeElement.dataset.desktopPinToggle).toBe('light.living_room');
-      expect(document.activeElement.textContent).toBe('Pin');
-    });
-
-    test('desktop pins section hydrates from saved config and allows focusing a saved pin', async () => {
+    test('save keeps the live desktop pins, including changes made while settings is open', async () => {
       state.CONFIG.desktopPins = {
         'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
+        'switch.bedroom': { x: 40, y: 60, width: 176, height: 176 },
       };
 
-      await openSettingsWithDesktopPinsExpanded();
+      await settings.openSettings();
 
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
-      expect(document.getElementById('desktop-pins-summary').textContent).toContain(
-        'persisted when you save settings'
-      );
-      expect(
-        document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent
-      ).toBe('Unpin');
-
-      const focusButton = document.querySelector('[data-desktop-pin-focus="light.living_room"]');
-      expect(focusButton).toBeTruthy();
-
-      focusButton.click();
-      await Promise.resolve();
-
-      expect(window.electronAPI.focusDesktopPin).toHaveBeenCalledWith('light.living_room');
-    });
-
-    test('desktop pins save persists pending pin changes without dropping existing hidden pins', async () => {
-      state.CONFIG.favoriteEntities = ['light.living_room', 'switch.bedroom'];
-      state.CONFIG.desktopPins = {
-        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
-        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-      };
-
-      await openSettingsWithDesktopPinsExpanded();
-
-      expect(document.querySelector('[data-desktop-pin-toggle="sensor.temperature"]')).toBeNull();
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
-
-      document.querySelector('[data-desktop-pin-toggle="light.living_room"]').click();
-      document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').click();
-
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
-      expect(
-        document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent
-      ).toBe('Pin');
-      expect(document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').textContent).toBe(
-        'Unpin'
-      );
-
-      await settings.saveSettings();
-
-      expect(state.CONFIG.desktopPins).toEqual({
-        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-        'switch.bedroom': {},
-      });
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          desktopPins: {
-            'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-            'switch.bedroom': {},
-          },
-        })
-      );
-    });
-
-    test('desktop pins save preserves live bounds updates that happen while settings is open', async () => {
-      state.CONFIG.favoriteEntities = ['light.living_room'];
-      state.CONFIG.desktopPins = {
-        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
-      };
-
-      await openSettingsWithDesktopPinsExpanded();
-
+      // Pins are managed from the tiles and the pin windows, not from Settings.
       state.setConfig({
         ...state.CONFIG,
         desktopPins: {
@@ -1124,9 +1020,6 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(state.CONFIG.desktopPins).toEqual({
-        'light.living_room': { x: 240, y: 160, width: 188, height: 152 },
-      });
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           desktopPins: {
@@ -1459,6 +1352,94 @@ describe('Settings + Config Integration', () => {
       expect(document.querySelector('#language-select option[value="fr"]')).toBeNull();
     });
 
+    describe('language pack actions', () => {
+      const { setLocaleBootstrap } = require('../../src/i18n.js');
+      const frenchPack = (installed) => ({
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.0.0',
+        latestVersion: '1.0.0',
+        installed,
+        updateAvailable: false,
+      });
+      const spanishPack = { ...frenchPack(true), locale: 'es', displayName: 'Español' };
+      const openWithLocaleHooks = async () => {
+        const hooks = {
+          initUpdateUI: jest.fn(),
+          // Mirrors the renderer: reload the bootstrap, which falls back to English once the
+          // selected pack is gone.
+          refreshLocale: jest.fn(async () => {
+            setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'fr', messages: {} });
+          }),
+        };
+        await settings.openSettings(hooks);
+        await waitForLanguagePackRefresh();
+        return hooks;
+      };
+
+      afterEach(() => {
+        setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'en', messages: {} });
+      });
+
+      test('removing the language in use falls back to English immediately', async () => {
+        state.CONFIG.ui.language = 'fr';
+        setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true)]);
+        const hooks = await openWithLocaleHooks();
+
+        const list = document.getElementById('language-packs-list');
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(false)]);
+        await list.onclick({ target: list.querySelector('[data-locale-action="remove"]') });
+
+        expect(hooks.refreshLocale).toHaveBeenCalledTimes(1);
+        // Same state as a restart without the pack: English, the selection kept, and the notice.
+        expect(document.getElementById('language-select').value).toBe('fr');
+        expect(
+          document.getElementById('language-fallback-summary').classList.contains('hidden')
+        ).toBe(false);
+      });
+
+      test('removing a language that is not in use leaves the interface alone', async () => {
+        setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true), spanishPack]);
+        const hooks = await openWithLocaleHooks();
+
+        const list = document.getElementById('language-packs-list');
+        await list.onclick({ target: list.querySelector('[data-locale="es"]') });
+
+        expect(window.electronAPI.removeLocalePack).toHaveBeenCalledWith('es');
+        expect(hooks.refreshLocale).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ['download', false, 'remove'],
+        ['remove', true, 'download'],
+      ])(
+        'keeps keyboard focus on the row after %s',
+        async (action, installedBefore, nextAction) => {
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+            spanishPack,
+            frenchPack(installedBefore),
+          ]);
+          await openWithLocaleHooks();
+          const list = document.getElementById('language-packs-list');
+          const button = list.querySelector(`[data-locale="fr"][data-locale-action="${action}"]`);
+          button.focus();
+
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+            spanishPack,
+            frenchPack(!installedBefore),
+          ]);
+          await list.onclick({ target: button });
+
+          expect(button.isConnected).toBe(false);
+          expect(document.activeElement.dataset.locale).toBe('fr');
+          expect(document.activeElement.dataset.localeAction).toBe(nextAction);
+        }
+      );
+    });
+
     test('an IPC rejection still displays a language pack error', async () => {
       window.electronAPI.getLocalePacks.mockRejectedValueOnce(new Error('IPC failed'));
       await settings.openSettings();
@@ -1468,6 +1449,57 @@ describe('Settings + Config Integration', () => {
       );
       expect(document.getElementById('language-packs-list').textContent).toBe('');
     });
+
+    test('Start at login is written only when a supported checkbox changed', async () => {
+      await settings.openSettings();
+      await settings.saveSettings();
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+
+      await settings.openSettings();
+      document.getElementById('start-with-windows').checked = true;
+      await settings.saveSettings();
+      expect(window.electronAPI.setLoginItemSettings).toHaveBeenCalledWith(true);
+    });
+
+    test('an isolated profile saves without touching or warning about Start at login', async () => {
+      // What main reports for --user-data-dir / --isolated-profile runs.
+      window.electronAPI.getLoginItemSettings.mockResolvedValueOnce({
+        openAtLogin: false,
+        supported: false,
+      });
+      await settings.openSettings();
+      expect(document.getElementById('start-with-windows').disabled).toBe(true);
+
+      await settings.saveSettings();
+
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        'Failed to update Start at login setting',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    test.each([
+      [null, true],
+      [{ accent: '#ff0000' }, false],
+    ])(
+      'Follow Omarchy theme is only offered where Omarchy is detected (%p)',
+      async (desktopAppearance, hidden) => {
+        document
+          .querySelector('#settings-modal .modal-content')
+          .insertAdjacentHTML(
+            'afterbegin',
+            '<div id="follow-omarchy-group"><input id="follow-omarchy" type="checkbox" /></div>'
+          );
+        state.CONFIG.desktopAppearance = desktopAppearance;
+        await settings.openSettings();
+        expect(document.getElementById('follow-omarchy-group').classList.contains('hidden')).toBe(
+          hidden
+        );
+        expect(document.getElementById('follow-omarchy').disabled).toBe(hidden);
+      }
+    );
 
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {
       state.CONFIG.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
@@ -2339,98 +2371,119 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('persists readability choices and restores them when settings reopen', async () => {
+    test('previews appearance choices live and persists them only on Save', async () => {
       await settings.openSettings();
       const scale = document.getElementById('ui-scale-select');
       const preset = document.getElementById('readable-preset');
-      scale.value = '1.5';
-      await scale.onchange();
-      preset.checked = true;
-      await preset.onchange();
-      expect(state.CONFIG.ui).toEqual(
-        expect.objectContaining({
-          scale: 1.5,
-          highContrast: true,
-          opaquePanels: true,
-        })
-      );
-      await settings.openSettings();
-      expect(scale.value).toBe('1.5');
-      expect(preset.checked).toBe(true);
-      await settings.saveSettings();
-      expect(state.CONFIG.ui.scale).toBe(1.5);
-    });
-
-    test('rolls back failed readability saves and re-enables the controls', async () => {
-      state.CONFIG.ui.scale = 1;
-      await settings.openSettings();
-      const scale = document.getElementById('ui-scale-select');
-      scale.value = '1.5';
-      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
-      await scale.onchange();
-      expect(state.CONFIG.ui.scale).toBe(1);
-      expect(scale.value).toBe('1');
-      expect(scale.disabled).toBe(false);
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
-        expect.objectContaining({ scale: 1 })
-      );
-    });
-
-    test('loads, previews, and saves layout density from personalization settings', async () => {
-      state.CONFIG.ui.density = 'compact';
-      await settings.openSettings();
-
       const densitySelect = document.getElementById('density-select');
-      expect(densitySelect.value).toBe('compact');
-
-      densitySelect.value = 'comfortable';
-      densitySelect.dispatchEvent(new Event('change'));
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(state.CONFIG.ui.density).toBe('comfortable');
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ density: 'comfortable' })
-      );
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ui: expect.objectContaining({ density: 'comfortable' }),
-        })
-      );
-
-      densitySelect.value = 'compact';
-      await settings.saveSettings();
-
-      expect(state.CONFIG.ui.density).toBe('compact');
-    });
-
-    test('loads, previews, and saves the active tile glow toggle', async () => {
-      await settings.openSettings();
-
       const activeTileGlow = document.getElementById('active-tile-glow');
       // Defaults on: a config that predates the setting still gets the glow.
       expect(activeTileGlow.checked).toBe(true);
 
+      scale.value = '1.5';
+      scale.dispatchEvent(new Event('change'));
+      preset.checked = true;
+      preset.dispatchEvent(new Event('change'));
+      densitySelect.value = 'compact';
+      densitySelect.dispatchEvent(new Event('change'));
       activeTileGlow.checked = false;
       activeTileGlow.dispatchEvent(new Event('change'));
       await Promise.resolve();
-      await Promise.resolve();
 
-      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ activeTileGlow: false })
-      );
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          ui: expect.objectContaining({ activeTileGlow: false }),
+          scale: 1.5,
+          highContrast: true,
+          opaquePanels: true,
+          density: 'compact',
+          activeTileGlow: false,
+        })
+      );
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({
+          highContrast: false,
+          opaquePanels: false,
+          density: 'comfortable',
         })
       );
 
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            scale: 1.5,
+            highContrast: true,
+            opaquePanels: true,
+            density: 'compact',
+            activeTileGlow: false,
+          }),
+        })
+      );
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({ scale: 1.5, density: 'compact', activeTileGlow: false })
+      );
+
       await settings.openSettings();
-      expect(document.getElementById('active-tile-glow').checked).toBe(false);
+      expect(scale.value).toBe('1.5');
+      expect(preset.checked).toBe(true);
+      expect(densitySelect.value).toBe('compact');
+      expect(activeTileGlow.checked).toBe(false);
+    });
+
+    test('cancel reverts previewed appearance choices without saving them', async () => {
+      state.CONFIG.ui.density = 'compact';
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      const densitySelect = document.getElementById('density-select');
+      scale.value = '1.3';
+      scale.dispatchEvent(new Event('change'));
+      densitySelect.value = 'comfortable';
+      densitySelect.dispatchEvent(new Event('change'));
+
+      settings.closeSettings();
+
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.ui.density).toBe('compact');
+      expect(state.CONFIG.ui.scale).toBeUndefined();
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ density: 'compact' })
+      );
+      expect(mockUiUtils.applyUiPreferences.mock.lastCall[0].scale).toBeUndefined();
+    });
+
+    test('saving unrelated settings keeps split contrast flags the preset does not represent', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = false;
+      await settings.openSettings();
+      expect(document.getElementById('readable-preset').checked).toBe(false);
 
       await settings.saveSettings();
-      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
+
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({ highContrast: true, opaquePanels: false })
+      );
+    });
+
+    test('a config echo keeps unsaved previews on screen while settings is open', async () => {
+      await settings.openSettings();
+      const densitySelect = document.getElementById('density-select');
+      densitySelect.value = 'compact';
+      densitySelect.dispatchEvent(new Event('change'));
+      mockUiUtils.applyUiPreferences.mockClear();
+
+      // The renderer re-applies the saved appearance for every config echo, then asks Settings
+      // to restore its previews.
+      settings.reapplySettingsPreviews();
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ density: 'compact' })
+      );
+
+      settings.closeSettings();
+      mockUiUtils.applyUiPreferences.mockClear();
+      settings.reapplySettingsPreviews();
+      expect(mockUiUtils.applyUiPreferences).not.toHaveBeenCalled();
     });
   });
 

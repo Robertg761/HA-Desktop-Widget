@@ -52,7 +52,6 @@ let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
-let pendingDesktopPins = {};
 let pendingCustomEntityIcons = {};
 let activeCustomEntityIconPickerEntityId = null;
 let customEntityIconPickerQueryByEntityId = {};
@@ -64,6 +63,8 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+// The Start at login state shown when Settings opened, so Save only writes a real change.
+let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
 let localePackListCache = [];
 let localePackListError = '';
@@ -73,7 +74,6 @@ const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set([
   'primary-cards-section',
-  'desktop-pins-section',
   'custom-entity-icons-section',
 ]);
 const personalizationSectionPersistTimers = new Map();
@@ -1748,8 +1748,6 @@ function hydratePersonalizationSectionIfNeeded(section) {
 
   if (section.id === 'primary-cards-section') {
     renderPrimaryCardsEntityList();
-  } else if (section.id === 'desktop-pins-section') {
-    renderDesktopPinsList();
   } else if (section.id === 'custom-entity-icons-section') {
     // Prime the icon catalog the first time the section opens.
     void ensureCustomEntityIconChoicesLoaded().catch((error) => {
@@ -2109,182 +2107,6 @@ function initPrimaryCardsUI() {
       primaryCardPage = 0;
       primaryCardSearchTimer = setTimeout(renderPrimaryCardsEntityList, 150);
     });
-  }
-
-  section.dataset.initialized = 'true';
-}
-
-function normalizeDesktopPinMap(desktopPins, options = {}) {
-  if (!desktopPins || typeof desktopPins !== 'object' || Array.isArray(desktopPins)) {
-    return {};
-  }
-
-  const requireFavorite = !!options.requireFavorite;
-  const favorites = new Set(
-    (state.CONFIG?.favoriteEntities || []).filter(
-      (entityId) => typeof entityId === 'string' && entityId.trim()
-    )
-  );
-  return Object.entries(desktopPins).reduce((acc, [entityId, bounds]) => {
-    if (typeof entityId !== 'string') return acc;
-    const trimmedEntityId = entityId.trim();
-    if (
-      !trimmedEntityId ||
-      (requireFavorite && !favorites.has(trimmedEntityId)) ||
-      !bounds ||
-      typeof bounds !== 'object'
-    ) {
-      return acc;
-    }
-    acc[trimmedEntityId] = { ...bounds };
-    return acc;
-  }, {});
-}
-
-function getSavedDesktopPins() {
-  return normalizeDesktopPinMap(state.CONFIG?.desktopPins);
-}
-
-function setPendingDesktopPins(desktopPins) {
-  pendingDesktopPins = normalizeDesktopPinMap(desktopPins);
-}
-
-function getPendingDesktopPinsForSave() {
-  const liveDesktopPins = normalizeDesktopPinMap(state.CONFIG?.desktopPins);
-  return Object.keys(pendingDesktopPins).reduce((acc, entityId) => {
-    acc[entityId] = liveDesktopPins[entityId] ? { ...liveDesktopPins[entityId] } : {};
-    return acc;
-  }, {});
-}
-
-function getDesktopPinEntityOptions(filter = '') {
-  const normalizedFilter = filter.toLowerCase();
-  return (state.CONFIG?.favoriteEntities || [])
-    .map((favoriteId) => {
-      const resolvedEntityId = utils.resolveEntityId(favoriteId, state.STATES) || favoriteId;
-      const entity = state.STATES?.[resolvedEntityId] || null;
-      const displayName = entity ? utils.getEntityDisplayName(entity) : favoriteId;
-      const haystackId = entity?.entity_id || favoriteId;
-      const score = normalizedFilter
-        ? utils.getSearchScore(displayName, normalizedFilter) +
-          utils.getSearchScore(haystackId, normalizedFilter)
-        : 1;
-      return {
-        entityId: favoriteId,
-        entity,
-        displayName,
-        score,
-      };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.displayName.localeCompare(b.displayName);
-    });
-}
-
-function updateDesktopPinsSummary() {
-  const currentEl = document.getElementById('desktop-pins-current');
-  const summaryEl = document.getElementById('desktop-pins-summary');
-  const count = Object.keys(pendingDesktopPins).length;
-  if (currentEl) {
-    currentEl.textContent = count === 0 ? 'None' : `${count} pinned tile${count === 1 ? '' : 's'}`;
-  }
-  if (summaryEl) {
-    summaryEl.textContent =
-      count === 0
-        ? 'Pin any Quick Access tile to create a small desktop mini-widget.'
-        : `${count} tile${count === 1 ? '' : 's'} will be persisted when you save settings.`;
-  }
-}
-
-function renderDesktopPinsList() {
-  const list = document.getElementById('desktop-pins-list');
-  if (list) preserveListFocus(list, renderDesktopPinRows);
-}
-
-function renderDesktopPinRows() {
-  const list = document.getElementById('desktop-pins-list');
-  const searchInput = document.getElementById('desktop-pins-search');
-  if (!list || !searchInput) return;
-
-  const filter = searchInput.value || '';
-  const options = getDesktopPinEntityOptions(filter);
-  list.innerHTML = '';
-
-  if (!options.length) {
-    list.innerHTML =
-      '<div class="no-entities-message">Add entities to Quick Access to pin them to the desktop.</div>';
-    updateDesktopPinsSummary();
-    syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
-    return;
-  }
-
-  options.forEach(({ entityId, entity, displayName }) => {
-    const isPinned = !!pendingDesktopPins[entityId];
-    const isSavedPinned = !!state.CONFIG?.desktopPins?.[entityId];
-    const iconValue = entity ? utils.getEntityIcon(entity) : '•';
-    const currentEntityId = entity?.entity_id || entityId;
-
-    const item = document.createElement('div');
-    item.className = 'entity-item';
-    item.innerHTML = `
-      <div class="entity-item-main">
-        <span class="entity-icon">${utils.escapeHtml(iconValue)}</span>
-        <div class="entity-item-info">
-          <span class="entity-name">${utils.escapeHtml(displayName)}</span>
-          <span class="entity-id" title="${utils.escapeHtmlAttribute(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
-          ${isPinned ? '<span class="desktop-pin-status-badge">Pinned</span>' : ''}
-        </div>
-      </div>
-      <div class="desktop-pins-list-actions">
-        ${isSavedPinned ? `<button class="btn btn-secondary btn-sm" type="button" data-desktop-pin-focus="${utils.escapeHtmlAttribute(entityId)}">Focus</button>` : ''}
-        <button class="btn ${isPinned ? 'btn-primary' : 'btn-secondary'} btn-sm" type="button" data-desktop-pin-toggle="${utils.escapeHtmlAttribute(entityId)}">${isPinned ? 'Unpin' : 'Pin'}</button>
-      </div>
-    `;
-
-    list.appendChild(item);
-  });
-
-  updateDesktopPinsSummary();
-  syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
-}
-
-function initDesktopPinsUI() {
-  const section = document.getElementById('desktop-pins-section');
-  if (!section || section.dataset.initialized) return;
-
-  section.addEventListener('click', async (event) => {
-    const toggleBtn = event.target.closest('[data-desktop-pin-toggle]');
-    if (toggleBtn) {
-      const entityId = toggleBtn.dataset.desktopPinToggle;
-      if (!entityId) return;
-      if (pendingDesktopPins[entityId]) {
-        delete pendingDesktopPins[entityId];
-      } else {
-        pendingDesktopPins[entityId] = {};
-      }
-      renderDesktopPinsList();
-      hydratedPersonalizationSections.add('desktop-pins-section');
-      return;
-    }
-
-    const focusBtn = event.target.closest('[data-desktop-pin-focus]');
-    if (focusBtn) {
-      const entityId = focusBtn.dataset.desktopPinFocus;
-      if (!entityId) return;
-      try {
-        await window.electronAPI.focusDesktopPin(entityId);
-      } catch (error) {
-        log.error('Failed to focus desktop pin window:', error);
-        showToast('Could not focus the pinned tile.', 'error', 2500);
-      }
-    }
-  });
-
-  const searchInput = document.getElementById('desktop-pins-search');
-  if (searchInput) {
-    searchInput.addEventListener('input', renderDesktopPinsList);
   }
 
   section.dataset.initialized = 'true';
@@ -2810,6 +2632,20 @@ function restorePreviewWindowEffects() {
   } catch (error) {
     log.error('Error restoring preview window effects:', error);
   }
+}
+
+/**
+ * Re-apply the unsaved Settings previews after a config echo reset the window to the saved
+ * appearance (for example when a collapsed section is remembered). No-op while Settings is closed.
+ */
+function reapplySettingsPreviews() {
+  if (!previewState) return;
+  setCustomThemes(pendingCustomColors);
+  applyUiPreferences(getAppearanceFromInputs());
+  applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+  // Also re-applies the pending background.
+  previewWindowEffectsNow();
+  if (hasDraftColorPreview) applyCustomColorPreview(getCustomColorHexFromEditor());
 }
 
 /**
@@ -3779,136 +3615,45 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
-async function persistDensitySelection(nextDensity) {
-  const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    density: normalizedDensity,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
+/**
+ * Read the text size, contrast, density and tile glow controls on top of `ui`.
+ *
+ * These preview live like the window effects and persist only on Save. The readable preset
+ * stands for both contrast flags, so they are left alone unless the preset was toggled.
+ */
+function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
+  const scale = document.getElementById('ui-scale-select');
+  const preset = document.getElementById('readable-preset');
+  const density = document.getElementById('density-select');
+  const activeTileGlow = document.getElementById('active-tile-glow');
+  const next = { ...ui };
+  if (scale) next.scale = Number(scale.value) || 1;
+  if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
+    next.highContrast = preset.checked;
+    next.opaquePanels = preset.checked;
   }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({
-      ui: nextUiConfig,
-    });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
+  if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
+  if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
+  return next;
 }
 
-async function persistActiveTileGlowSelection(enabled) {
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    activeTileGlow: !!enabled,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
-  }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({ ui: nextUiConfig });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
-}
-
-async function persistReadabilitySelection(patch) {
-  const previousUi = { ...(state.CONFIG.ui || {}) };
-  const nextUi = { ...previousUi, ...patch };
-  applyUiPreferences(nextUi);
-  try {
-    const updated = await window.electronAPI?.updateConfig?.({ ui: nextUi });
-    if (updated) applyPersistedConfigResponse(updated);
-    else state.CONFIG.ui = nextUi;
-  } catch (error) {
-    state.CONFIG.ui = previousUi;
-    applyUiPreferences(previousUi);
-    throw error;
-  }
+function previewAppearance() {
+  applyUiPreferences(getAppearanceFromInputs());
 }
 
 function bindAppearanceSettingsUi() {
+  const ui = state.CONFIG?.ui || {};
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const refresh = () => {
-    if (scale) scale.value = String(state.CONFIG?.ui?.scale || 1);
-    if (preset)
-      preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
-  };
-  refresh();
-  for (const control of [scale, preset].filter(Boolean)) {
-    control.onchange = async () => {
-      // Serialize saves so a slow response cannot undo a newer appearance choice.
-      if (scale) scale.disabled = true;
-      if (preset) preset.disabled = true;
-      try {
-        await persistReadabilitySelection(
-          control === scale
-            ? { scale: Number(scale.value) }
-            : { highContrast: preset.checked, opaquePanels: preset.checked }
-        );
-      } catch (error) {
-        log.error('Failed to save readability settings:', error);
-        refresh();
-        showToast(t('Failed to save readability settings'), 'warning', 3000);
-      } finally {
-        if (scale) scale.disabled = false;
-        if (preset) preset.disabled = false;
-      }
-    };
-  }
-
   const activeTileGlow = document.getElementById('active-tile-glow');
-  if (activeTileGlow) {
-    activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-    activeTileGlow.onchange = async () => {
-      try {
-        await persistActiveTileGlowSelection(activeTileGlow.checked);
-      } catch (error) {
-        log.error('Failed to save tile glow setting:', error);
-        activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-        showToast(t('Failed to save tile glow setting'), 'warning', 3000);
-      }
-    };
-  }
-
   const densitySelect = document.getElementById('density-select');
-  if (!densitySelect) return;
-
-  densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-  densitySelect.onchange = async () => {
-    try {
-      await persistDensitySelection(densitySelect.value);
-    } catch (error) {
-      log.error('Failed to save layout density:', error);
-      densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-      showToast(t('Failed to save layout density'), 'warning', 3000);
-    }
-  };
+  if (scale) scale.value = String(ui.scale || 1);
+  if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
+  if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
+  if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
+  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+    control.onchange = previewAppearance;
+  }
 }
 
 function bindLanguageSettingsUi() {
@@ -3945,11 +3690,13 @@ function bindLanguageSettingsUi() {
       const action = button.dataset.localeAction;
       if (!locale || !action) return;
 
+      const hadFocus = button === document.activeElement;
       button.disabled = true;
       try {
         if (action === 'download') {
           const result = await window.electronAPI.downloadLocalePack(locale);
           localePackListCache = Array.isArray(result?.packs) ? result.packs : localePackListCache;
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack downloaded: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -3959,6 +3706,7 @@ function bindLanguageSettingsUi() {
           );
         } else if (action === 'remove') {
           await window.electronAPI.removeLocalePack(locale);
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack removed: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -3978,9 +3726,41 @@ function bindLanguageSettingsUi() {
         );
       } finally {
         await refreshLanguagePackList(true);
+        if (hadFocus) focusLanguagePackRow(locale);
       }
     };
   }
+}
+
+/**
+ * Switch the interface language right away when a download or removal changes the pack in use,
+ * rather than on the next launch. A removed active language falls back to English with the
+ * same "Using English" notice as at startup; the selection stays for a later re-download.
+ */
+async function refreshLocaleIfAffected(locale) {
+  const baseLocale = (locale || '').split('-')[0].toLowerCase();
+  const { activeLocale, requestedLocale } = getLocaleState();
+  const inUse = [activeLocale, requestedLocale].some(
+    (value) => (value || '').split('-')[0].toLowerCase() === baseLocale
+  );
+  if (!inUse || !settingsUiHooks?.refreshLocale) return;
+  try {
+    await settingsUiHooks.refreshLocale();
+  } catch (error) {
+    log.error('Failed to refresh the interface language:', error);
+  }
+}
+
+// The pack list re-renders after every action; keep keyboard focus on the same language's row.
+function focusLanguagePackRow(locale) {
+  const buttons = Array.from(
+    document.querySelectorAll('#language-packs-list button[data-locale]:not(:disabled)')
+  );
+  // An offline catalog drops a removed pack's row; fall back to the language selector.
+  const target =
+    buttons.find((button) => button.dataset.locale === locale) ||
+    document.getElementById('language-select');
+  target?.focus({ preventScroll: true });
 }
 
 /**
@@ -4059,6 +3839,10 @@ async function openSettings(uiHooks) {
     if (followOmarchy) {
       followOmarchy.checked = !!state.CONFIG.ui?.followOmarchy;
       followOmarchy.disabled = !state.CONFIG.desktopAppearance;
+      // Like the Hyprland panel, the option only appears where Omarchy is detected.
+      document
+        .getElementById('follow-omarchy-group')
+        ?.classList.toggle('hidden', followOmarchy.disabled);
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
@@ -4076,6 +3860,7 @@ async function openSettings(uiHooks) {
         log.error('Failed to get login item settings:', error);
         startWithWindows.checked = false;
       }
+      loadedStartAtLogin = startWithWindows.checked;
     }
 
     bindLanguageSettingsUi();
@@ -4206,21 +3991,6 @@ async function openSettings(uiHooks) {
       renderList: shouldRenderPrimaryCardsList,
     });
 
-    const desktopPinsSection = document.getElementById('desktop-pins-section');
-    const desktopPinsList = document.getElementById('desktop-pins-list');
-    if (desktopPinsList) desktopPinsList.innerHTML = '';
-    const shouldRenderDesktopPinsList = !desktopPinsSection?.classList.contains('collapsed');
-    setPendingDesktopPins(getSavedDesktopPins());
-    initDesktopPinsUI();
-    const desktopPinsSearch = document.getElementById('desktop-pins-search');
-    if (desktopPinsSearch) desktopPinsSearch.value = '';
-    if (shouldRenderDesktopPinsList) {
-      renderDesktopPinsList();
-      hydratedPersonalizationSections.add('desktop-pins-section');
-    } else {
-      updateDesktopPinsSummary();
-    }
-
     const customIconsSection = document.getElementById('custom-entity-icons-section');
     const customIconsList = document.getElementById('custom-entity-icons-list');
     if (customIconsList) {
@@ -4272,6 +4042,7 @@ function closeSettings() {
     cancelPreviewWindowEffects();
     if (previewState) {
       restorePreviewWindowEffects();
+      applyUiPreferences(state.CONFIG?.ui || {});
       previewState = null;
     }
     if (hasDraftColorPreview) {
@@ -4289,7 +4060,6 @@ function closeSettings() {
     previewBackground = null;
     pendingBackground = null;
     pendingPrimaryCards = null;
-    pendingDesktopPins = {};
     pendingCustomEntityIcons = {};
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -4571,7 +4341,6 @@ async function saveSettings() {
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
     const weatherEntitySelect = document.getElementById('weather-entity-select');
-    const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -4657,11 +4426,7 @@ async function saveSettings() {
       : false;
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
-    nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
-    const activeTileGlow = document.getElementById('active-tile-glow');
-    nextConfig.ui.activeTileGlow = activeTileGlow
-      ? !!activeTileGlow.checked
-      : nextConfig.ui.activeTileGlow !== false;
+    nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
     if (enableInteractionDebugLogs) {
       nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
@@ -4708,7 +4473,6 @@ async function saveSettings() {
     nextConfig.primaryMediaPlayer = selectedValue || null;
 
     nextConfig.primaryCards = getPendingPrimaryCards();
-    nextConfig.desktopPins = getPendingDesktopPinsForSave();
     nextConfig.customEntityIcons = getPendingCustomEntityIconsForSave();
 
     const nextProfileSync = ensureProfileSyncConfig(nextConfig);
@@ -4940,7 +4704,12 @@ async function saveSettings() {
       }
     }
 
-    if (startWithWindows) {
+    // Only a changed, supported checkbox touches the OS; isolated profiles report it unsupported.
+    if (
+      startWithWindows &&
+      !startWithWindows.disabled &&
+      startWithWindows.checked !== loadedStartAtLogin
+    ) {
       try {
         const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
         if (!result.success) {
@@ -6081,6 +5850,7 @@ export {
   closeSettings,
   saveSettings,
   previewWindowEffects,
+  reapplySettingsPreviews,
   syncWeatherEffectsAvailability,
   renderAlertsListInline,
   openAlertEntityPicker,
