@@ -2,6 +2,8 @@
 // and into any pinned copies, so a pinned lamp keeps toggling wherever you drop it.
 import { WeatherEffectsManager } from '/weather-effects.js';
 
+const stage = document.getElementById('stage');
+
 const REPO = 'Robertg761/HA-Desktop-Widget';
 const store = {
   get(key, fallback) {
@@ -18,12 +20,12 @@ const finePointer = matchMedia('(pointer: fine)');
 /* ---------------- Demo entities ---------------- */
 
 const ENTITIES = {
-  'light.desk': { icon: '💡', name: 'Desk lamp', type: 'light', on: true, bri: 80 },
-  'light.shelf': { icon: '✨', name: 'Shelf LEDs', type: 'light', on: false, bri: 60 },
-  'switch.coffee': { icon: '☕', name: 'Coffee maker', type: 'switch', on: false },
-  'sensor.office': { icon: '🌡️', name: 'Office temp', type: 'sensor', val: 21.4, unit: '°C' },
-  'binary.door': { icon: '🚪', name: 'Front door', type: 'binary', on: false },
-  'scene.movie': { icon: '🎬', name: 'Movie time', type: 'scene' },
+  'light.desk': { icon: 'bulb', name: 'Desk lamp', type: 'light', on: true, bri: 80 },
+  'light.shelf': { icon: 'sparkle', name: 'Shelf LEDs', type: 'light', on: false, bri: 60 },
+  'switch.coffee': { icon: 'coffee', name: 'Coffee maker', type: 'switch', on: false },
+  'sensor.office': { icon: 'thermo', name: 'Office temp', type: 'sensor', val: 21.4, unit: '°C' },
+  'binary.door': { icon: 'door', name: 'Front door', type: 'binary', on: false },
+  'scene.movie': { icon: 'film', name: 'Movie time', type: 'scene' },
 };
 Object.entries(store.get('ents', {})).forEach(([id, saved]) => {
   if (ENTITIES[id]) Object.assign(ENTITIES[id], saved);
@@ -84,16 +86,16 @@ function renderTile(id, pinned = false) {
   }
   if (e.type === 'light') el.title = 'Click to toggle · hold or right-click for brightness';
   el.innerHTML = `
-    <span class="qa-icon" aria-hidden="true">${e.icon}</span>
+    <span class="qa-icon" aria-hidden="true"><svg class="ico"><use href="#i-${e.icon}"/></svg></span>
     <span class="qa-name">${e.name}</span>
     <span class="qa-state"></span>`;
 
   const pinBtn = document.createElement('button');
   pinBtn.type = 'button';
   pinBtn.className = 'pin-btn';
-  pinBtn.setAttribute('aria-label', pinned ? 'Unpin tile' : 'Pin tile to the page');
-  pinBtn.title = pinned ? 'Unpin' : 'Pin to page';
-  pinBtn.textContent = pinned ? '✕' : '📌';
+  pinBtn.setAttribute('aria-label', pinned ? 'Unpin tile' : 'Pin tile to the desktop');
+  pinBtn.title = pinned ? 'Unpin' : 'Pin to desktop';
+  pinBtn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-${pinned ? 'x' : 'pin'}"/></svg>`;
 
   slot.append(el, pinBtn);
   wireTile(slot, el, pinBtn, id, pinned);
@@ -101,7 +103,6 @@ function renderTile(id, pinned = false) {
 }
 
 const hint = document.getElementById('demo-hint');
-if (hint && narrowQuery.matches) hint.textContent = 'Go on, tap one. Hold a light to dim it.';
 let interacted = false;
 function markInteracted() {
   if (!interacted && hint) { interacted = true; hint.classList.add('dim'); }
@@ -219,15 +220,13 @@ function wireTile(slot, el, pinBtn, id, pinned) {
   if (pinned) {
     el.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
-      const rect = slot.getBoundingClientRect();
-      const dx = ev.clientX - rect.left;
-      const dy = ev.clientY - rect.top;
+      const dx = ev.clientX - slot.offsetLeft;
+      const dy = ev.clientY - slot.offsetTop;
       let moved = false;
       el.setPointerCapture(ev.pointerId);
       const move = (mv) => {
         if (Math.abs(mv.clientX - ev.clientX) + Math.abs(mv.clientY - ev.clientY) > 4) moved = true;
-        slot.style.left = Math.max(0, Math.min(innerWidth - rect.width, mv.clientX - dx)) + 'px';
-        slot.style.top = Math.max(0, Math.min(innerHeight - rect.height, mv.clientY - dy)) + 'px';
+        placePinned(slot, mv.clientX - dx, mv.clientY - dy);
       };
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', () => {
@@ -241,8 +240,7 @@ function wireTile(slot, el, pinBtn, id, pinned) {
       const step = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[ev.key];
       if (!step) return;
       ev.preventDefault();
-      slot.style.left = Math.max(0, Math.min(innerWidth - slot.offsetWidth, slot.offsetLeft + step[0])) + 'px';
-      slot.style.top = Math.max(0, Math.min(innerHeight - slot.offsetHeight, slot.offsetTop + step[1])) + 'px';
+      placePinned(slot, slot.offsetLeft + step[0], slot.offsetTop + step[1]);
       savePins();
     });
   }
@@ -250,15 +248,25 @@ function wireTile(slot, el, pinBtn, id, pinned) {
 
 /* ---------------- Desktop pins ---------------- */
 
+/* Pins sit on the demo wallpaper, not the page, so they stay with the desktop. */
+const STAGE_BAR = 38;
 const pinnedEls = new Map();
+
+function placePinned(slot, x, y) {
+  const maxX = stage.clientWidth - slot.offsetWidth - 8;
+  const maxY = stage.clientHeight - slot.offsetHeight - 8;
+  slot.style.left = Math.max(8, Math.min(maxX, x)) + 'px';
+  slot.style.top = Math.max(STAGE_BAR, Math.min(maxY, y)) + 'px';
+}
 
 function pin(id, x, y) {
   if (pinnedEls.has(id) || narrowQuery.matches) return;
   const slot = renderTile(id, true);
-  const demo = document.getElementById('widget-demo').getBoundingClientRect();
-  slot.style.left = (x ?? Math.min(demo.right + 24, innerWidth - 130)) + 'px';
-  slot.style.top = (y ?? demo.top + 40 + pinnedEls.size * 30) + 'px';
-  document.body.appendChild(slot);
+  stage.appendChild(slot);
+  const n = pinnedEls.size;
+  // Two columns fit left of the widget on a wide stage; one column otherwise.
+  const cols = stage.clientWidth >= 1020 ? 2 : 1;
+  placePinned(slot, x ?? 24 + (n % cols) * 128, y ?? 54 + Math.floor(n / cols) * 118);
   pinnedEls.set(id, slot);
   paint(id);
   savePins();
@@ -273,7 +281,7 @@ function savePins() {
   for (const [id, slot] of pinnedEls) out[id] = { x: slot.offsetLeft, y: slot.offsetTop };
   store.set('pins', out);
 }
-/* A desktop window narrowed past the breakpoint would strand fixed tiles offscreen. */
+/* Below the breakpoint the stage stacks vertically and has no room for pins. */
 narrowQuery.addEventListener('change', (ev) => {
   if (ev.matches) for (const [id, slot] of [...pinnedEls]) unpin(id, slot);
 });
@@ -287,7 +295,7 @@ Object.keys(ENTITIES).forEach((id) => {
 });
 if (!narrowQuery.matches) {
   Object.entries(store.get('pins', {})).forEach(([id, p]) => {
-    if (ENTITIES[id]) pin(id, Math.min(p.x, innerWidth - 120), Math.min(p.y, innerHeight - 120));
+    if (ENTITIES[id]) pin(id, p.x, p.y);
   });
 }
 
@@ -305,7 +313,7 @@ setInterval(() => {
 
 const timeEl = document.getElementById('clock-time');
 const dateEl = document.getElementById('clock-date');
-const tbClock = document.getElementById('tb-clock');
+const stageClock = document.getElementById('stage-clock');
 function tick() {
   const now = new Date();
   const t = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -314,7 +322,9 @@ function tick() {
   dateEl.textContent = now
     .toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
     .toUpperCase();
-  if (tbClock) tbClock.textContent = t;
+  if (stageClock) {
+    stageClock.textContent = `${now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}  ${t}`;
+  }
 }
 tick();
 setTimeout(function align() {
@@ -334,13 +344,11 @@ connDot.addEventListener('click', () => {
 
 /* ---------------- Personalization: accent + weather ---------------- */
 
-const accentReadout = document.getElementById('accent-readout');
 function applyAccent(sw) {
   const root = document.documentElement.style;
   root.setProperty('--accent', sw.c);
   root.setProperty('--accent-rgb', sw.rgb);
   root.setProperty('--accent-hover', sw.hover);
-  if (accentReadout) accentReadout.textContent = sw.c;
   document.querySelectorAll('.swatch').forEach((b) => {
     const on = b.dataset.c === sw.c;
     b.classList.toggle('is-on', on);
@@ -360,8 +368,21 @@ if (savedAccent) applyAccent(savedAccent);
 
 /* Weather: the app's own engine (src/weather-effects.js, copied verbatim),
    running behind the frosted windows. Off by default; the visitor turns it on. */
-const fx = new WeatherEffectsManager('weather-canvas');
-const fxBar = document.querySelector('.fx-switch');
+class StageWeather extends WeatherEffectsManager {
+  resizeCanvas() {
+    if (!this.canvas) return;
+    this.canvas.width = stage.clientWidth;
+    this.canvas.height = stage.clientHeight;
+    if (this.sun) {
+      this.sun.x = this.canvas.width * 0.15;
+      this.sun.y = this.canvas.height * 0.15;
+    }
+    if (this.activeEffect && this.prefersReducedMotion()) this.renderStaticFrame();
+  }
+}
+const fx = new StageWeather('weather-canvas');
+new ResizeObserver(() => fx.resizeCanvas()).observe(stage);
+const fxBar = document.querySelector('.dock .seg');
 function applyFx(effect) {
   fx.setEffect(effect || null);
   fxBar.querySelectorAll('button').forEach((b) => {
@@ -380,10 +401,16 @@ fxBar.addEventListener('click', (ev) => {
 const savedFx = store.get('fx', '');
 if (savedFx) applyFx(savedFx);
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) fx.stopAnimation();
+let stageVisible = true;
+function syncFxLoop() {
+  if (document.hidden || !stageVisible) fx.stopAnimation();
   else if (fx.activeEffect && !fx.prefersReducedMotion()) fx.startAnimation();
-});
+}
+document.addEventListener('visibilitychange', syncFxLoop);
+new IntersectionObserver(([entry]) => {
+  stageVisible = entry.isIntersecting;
+  syncFxLoop();
+}).observe(stage);
 
 /* ---------------- OS detection + latest release ---------------- */
 
@@ -409,21 +436,17 @@ function detectOS() {
 }
 
 const detected = detectOS();
-const osReadout = document.getElementById('os-readout');
 if (detected) {
-  osReadout.textContent = `${detected.os} · ${detected.arch}`;
   const card = document.querySelector(`.os-card[data-os="${detected.os}"]`);
   if (card) {
     card.classList.add('detected');
     const primary = card.querySelector('.btn-primary');
     const hero = document.getElementById('hero-download');
     if (primary && hero) {
-      hero.textContent = `Download for ${detected.label}`;
+      document.getElementById('hero-download-label').textContent = `Download for ${detected.label}`;
       hero.dataset.follow = primary.dataset.asset;
     }
   }
-} else {
-  osReadout.textContent = 'unknown os';
 }
 
 // Fallback hrefs point at /releases/latest (never stale, never 404). The API
@@ -433,8 +456,9 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   .then((release) => {
     const tag = release.tag_name || '';
     if (tag) {
-      document.getElementById('version-label').textContent = tag;
-      document.getElementById('tb-version').textContent = tag;
+      document.getElementById('version-label').textContent = `Latest release ${tag}`;
+      document.getElementById('eyebrow-version').textContent = tag;
+      document.getElementById('footer-version').textContent = tag;
       connDefault = tag;
       if (!connMeta.textContent.includes('·')) connMeta.textContent = tag;
     }
@@ -450,7 +474,7 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
     }
   })
   .catch(() => {
-    document.getElementById('tb-version').textContent = 'v3.9.1';
+    document.getElementById('footer-version').textContent = 'v3.10.0';
   });
 
 /* ---------------- Ghost hand-off ---------------- */
@@ -493,7 +517,7 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   const tr = target.getBoundingClientRect();
   const tx = tr.left + tr.width / 2 + 4;
   const ty = tr.top + tr.height / 2 + 6;
-  place(wr.right - 30, wr.bottom + 24);
+  place(wr.left - 40, wr.bottom + 10);
   document.body.appendChild(ghost);
   requestAnimationFrame(() => {
     ghost?.classList.add('show');
@@ -523,9 +547,26 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   if (cancelled) return;
   ghost.classList.remove('show');
   setTimeout(() => ghost?.remove(), 400);
-  if (!interacted && hint) {
-    hint.textContent = narrowQuery.matches
-      ? 'Your turn. Hold a light to dim it.'
-      : 'Your turn. Hold a light to dim it, pin one to the page.';
-  }
+  if (!interacted && hint) hint.textContent = 'Your turn. Hold a light to dim it, or pin one to the desktop.';
 })();
+
+/* ---------------- Page chrome ---------------- */
+
+const nav = document.querySelector('.nav');
+const onScroll = () => nav.classList.toggle('scrolled', scrollY > 8);
+addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+/* Fade sections in as they arrive. Siblings in the same row stagger slightly. */
+const revealer = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    entry.target.classList.add('in');
+    revealer.unobserve(entry.target);
+  }
+}, { rootMargin: '0px 0px -8% 0px' });
+document.querySelectorAll('.reveal').forEach((el) => {
+  const siblings = [...el.parentElement.children].filter((c) => c.classList.contains('reveal'));
+  el.style.setProperty('--d', `${Math.min(siblings.indexOf(el), 5) * 70}ms`);
+  revealer.observe(el);
+});

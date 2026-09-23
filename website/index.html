@@ -6,7 +6,7 @@
   <title>HA Desktop Widget | Home Assistant without the browser tab</title>
   <meta name="description" content="A free, open-source desktop widget for Home Assistant. Lights, cameras, climate, media and 24-hour sensor graphs in a translucent panel on Windows, macOS and Linux. No account, no telemetry.">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0e141a">
+  <meta name="theme-color" content="#0a0c10">
   <link rel="canonical" href="https://ha-desktop-widget.vercel.app/">
   <link rel="icon" type="image/png" href="/assets/icon.png">
   <link rel="apple-touch-icon" href="/assets/icon-180.png">
@@ -27,259 +27,376 @@
   <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
+  <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
-  <canvas id="weather-canvas" aria-hidden="true"></canvas>
+  <!-- Icon sprite (Lucide, ISC). Referenced with <use href="#i-name">. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></symbol>
+      <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M6 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/></symbol>
+      <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></symbol>
+      <symbol id="i-door" viewBox="0 0 24 24"><path d="M18 20V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14"/><path d="M2 20h20"/><path d="M14 12v.01"/></symbol>
+      <symbol id="i-film" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-cloudsun" viewBox="0 0 24 24"><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.95 12.65a4 4 0 0 0-5.93-4.13"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+      <symbol id="i-video" viewBox="0 0 24 24"><path d="m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.87a.5.5 0 0 0-.75-.43L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
+      <symbol id="i-command" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+      <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></symbol>
+      <symbol id="i-sync" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+      <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" stroke="none" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+    </defs>
+  </svg>
 
   <header class="nav">
     <div class="nav-inner">
-      <a class="nav-brand" href="#">
-        <img src="/assets/icon.png" alt="" width="24" height="24">
+      <a class="brand" href="#top" aria-label="HA Desktop Widget, back to top">
+        <img src="/assets/icon.png" alt="" width="26" height="26">
         <span>HA Desktop Widget</span>
       </a>
-      <nav class="nav-links">
+      <nav class="nav-links" aria-label="Sections">
         <a href="#features">Features</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#setup">Setup</a>
         <a href="#download">Download</a>
-        <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
       </nav>
+      <a class="nav-gh" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">
+        <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg>
+        <span>GitHub</span>
+      </a>
     </div>
   </header>
 
-  <main>
+  <main id="top">
     <section class="hero">
-      <div class="hero-text">
-        <h1>Home Assistant,<br>without the browser tab.</h1>
-        <p class="hero-sub">
-          A translucent panel that sits on your wallpaper, wired to your HA server over its
-          WebSocket API. Click a light to toggle it, hold it to dim. Cameras, thermostats,
-          media and 24-hour sensor graphs are all right there. Windows, macOS and Linux.
-        </p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" id="hero-download" href="#download">Download</a>
-          <a class="btn btn-ghost" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">
-            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-            Star on GitHub
-          </a>
-        </div>
-        <p class="hero-note">
-          The Windows installer and the Linux AppImage update themselves. No account, no
-          telemetry. It talks to your Home Assistant server, and to GitHub for updates and
-          language packs. Nothing else.
-        </p>
+      <a class="eyebrow" href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">
+        <span class="eyebrow-dot"></span>
+        <span id="eyebrow-version">v3.10.0</span>
+        <span class="eyebrow-sep"></span>
+        <span>Free and open source</span>
+        <svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg>
+      </a>
+      <h1>Home Assistant,<br><span class="h1-soft">without the browser tab.</span></h1>
+      <p class="lede">
+        A translucent panel that lives on your desktop, wired straight to your Home Assistant
+        server. Lights, cameras, climate, media and sensor graphs, one click away on
+        Windows, macOS and Linux.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" id="hero-download" href="#download">
+          <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>
+          <span id="hero-download-label">Download</span>
+        </a>
+        <a class="btn btn-quiet" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">
+          <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg>
+          Star on GitHub
+        </a>
       </div>
+      <ul class="facts" aria-label="At a glance">
+        <li>No account</li>
+        <li>No telemetry</li>
+        <li>MIT licensed</li>
+        <li>Updates itself</li>
+      </ul>
 
-      <div class="hero-demo">
-        <div class="win widget-demo" id="widget-demo">
-          <div class="win-bar">
-            <button class="win-dot" id="conn-dot" aria-label="Connection status" title="Connection details"></button>
-            <span>Home Assistant</span>
-            <span class="demo-badge">live demo</span>
-            <span class="win-meta" id="conn-meta">v3.9.1</span>
+      <!-- The live demo: a desktop wallpaper with the widget sitting on it. -->
+      <div class="stage-wrap">
+        <div class="stage" id="stage">
+          <canvas id="weather-canvas" aria-hidden="true"></canvas>
+          <div class="stage-bar" aria-hidden="true">
+            <span class="stage-bar-left"><img src="/assets/icon.png" alt="" width="14" height="14"> Desktop</span>
+            <span id="stage-clock"></span>
           </div>
-          <div class="win-body">
-            <div class="tile-row">
-              <div class="tile tile-weather">
-                <span class="wx-icon" aria-hidden="true">⛅</span>
+
+          <div class="widget" id="widget-demo">
+            <div class="widget-head">
+              <button class="conn" id="conn-dot" aria-label="Show connection details" title="Connection details"><span></span></button>
+              <span class="widget-title">Home Assistant</span>
+              <span class="widget-meta" id="conn-meta">v3.10.0</span>
+            </div>
+            <div class="widget-top">
+              <div class="card card-weather">
+                <svg class="ico ico-lg" aria-hidden="true"><use href="#i-cloudsun"/></svg>
                 <div>
                   <div class="wx-temp">4°</div>
                   <div class="wx-cond">Cloudy</div>
                 </div>
               </div>
-              <div class="tile tile-clock">
+              <div class="card card-clock">
                 <time class="clock-time" id="clock-time">--:--</time>
                 <div class="clock-date" id="clock-date"></div>
               </div>
             </div>
             <p class="qa-label">Quick access</p>
             <div class="qa-grid" id="qa-grid"></div>
-            <p class="demo-hint" id="demo-hint">Go on, click one. Hold a light to dim it, pin one to the page.</p>
-          </div>
-          <div class="bright-pop" id="bright-pop" role="dialog" aria-modal="true" aria-label="Brightness" hidden>
-            <div class="bright-name" id="bright-name"></div>
-            <div class="bright-value" id="bright-value">80%</div>
-            <input type="range" min="1" max="100" value="80" id="bright-slider" aria-label="Brightness">
-            <div class="bright-presets">
-              <button data-preset="25">25%</button>
-              <button data-preset="50">50%</button>
-              <button data-preset="75">75%</button>
-              <button data-preset="100">100%</button>
-            </div>
-            <button class="bright-close" id="bright-close">Close</button>
-          </div>
-        </div>
 
-        <div class="fx-strip">
-          <div class="fx-group">
-            <span class="fx-label">Accent</span>
-            <div class="swatches" role="group" aria-label="Accent color">
-              <button class="swatch is-on" data-c="#64b5f6" data-rgb="100,181,246" data-hover="#90caf9" style="--c:#64b5f6" aria-label="Blue" aria-pressed="true"></button>
-              <button class="swatch" data-c="#81c784" data-rgb="129,199,132" data-hover="#a5d6a7" style="--c:#81c784" aria-label="Green" aria-pressed="false"></button>
-              <button class="swatch" data-c="#ffb74d" data-rgb="255,183,77" data-hover="#ffcc80" style="--c:#ffb74d" aria-label="Orange" aria-pressed="false"></button>
-              <button class="swatch" data-c="#f06292" data-rgb="240,98,146" data-hover="#f48fb1" style="--c:#f06292" aria-label="Pink" aria-pressed="false"></button>
-              <button class="swatch" data-c="#ba68c8" data-rgb="186,104,200" data-hover="#ce93d8" style="--c:#ba68c8" aria-label="Purple" aria-pressed="false"></button>
-              <button class="swatch" data-c="#4dd0e1" data-rgb="77,208,225" data-hover="#80deea" style="--c:#4dd0e1" aria-label="Teal" aria-pressed="false"></button>
+            <div class="bright-pop" id="bright-pop" role="dialog" aria-modal="true" aria-label="Brightness" hidden>
+              <div class="bright-card">
+                <div class="bright-name" id="bright-name"></div>
+                <div class="bright-value" id="bright-value">80%</div>
+                <input type="range" min="1" max="100" value="80" id="bright-slider" aria-label="Brightness">
+                <div class="bright-presets">
+                  <button data-preset="25">25%</button>
+                  <button data-preset="50">50%</button>
+                  <button data-preset="75">75%</button>
+                  <button data-preset="100">100%</button>
+                </div>
+                <button class="bright-close" id="bright-close">Done</button>
+              </div>
             </div>
           </div>
-          <div class="fx-group">
-            <span class="fx-label">Weather</span>
-            <div class="fx-switch" role="group" aria-label="Weather effect">
-              <button data-fx="" class="is-on" aria-pressed="true">Off</button>
-              <button data-fx="sunny" aria-pressed="false">Sun</button>
-              <button data-fx="rainy" aria-pressed="false">Rain</button>
-              <button data-fx="snowy" aria-pressed="false">Snow</button>
-              <button data-fx="stormy" aria-pressed="false">Storm</button>
+
+          <p class="stage-hint" id="demo-hint">Click a tile. Hold a light to dim it, or pin one to the desktop.</p>
+
+          <div class="dock">
+            <div class="dock-group">
+              <span class="dock-label">Accent</span>
+              <div class="swatches" role="group" aria-label="Accent color">
+                <button class="swatch is-on" data-c="#64b5f6" data-rgb="100,181,246" data-hover="#90caf9" style="--c:#64b5f6" aria-label="Blue" aria-pressed="true"></button>
+                <button class="swatch" data-c="#81c784" data-rgb="129,199,132" data-hover="#a5d6a7" style="--c:#81c784" aria-label="Green" aria-pressed="false"></button>
+                <button class="swatch" data-c="#ffb74d" data-rgb="255,183,77" data-hover="#ffcc80" style="--c:#ffb74d" aria-label="Orange" aria-pressed="false"></button>
+                <button class="swatch" data-c="#f06292" data-rgb="240,98,146" data-hover="#f48fb1" style="--c:#f06292" aria-label="Pink" aria-pressed="false"></button>
+                <button class="swatch" data-c="#ba68c8" data-rgb="186,104,200" data-hover="#ce93d8" style="--c:#ba68c8" aria-label="Purple" aria-pressed="false"></button>
+                <button class="swatch" data-c="#4dd0e1" data-rgb="77,208,225" data-hover="#80deea" style="--c:#4dd0e1" aria-label="Teal" aria-pressed="false"></button>
+              </div>
+            </div>
+            <span class="dock-sep" aria-hidden="true"></span>
+            <div class="dock-group">
+              <span class="dock-label">Weather</span>
+              <div class="seg" role="group" aria-label="Weather effect">
+                <button data-fx="" class="is-on" aria-pressed="true">Off</button>
+                <button data-fx="sunny" aria-pressed="false">Sun</button>
+                <button data-fx="rainy" aria-pressed="false">Rain</button>
+                <button data-fx="snowy" aria-pressed="false">Snow</button>
+                <button data-fx="stormy" aria-pressed="false">Storm</button>
+              </div>
             </div>
           </div>
         </div>
-        <p class="fx-note">These two rows are real app settings. The rain falls behind the glass, same as it does on your desktop.</p>
+        <p class="stage-caption">An interactive demo. The accent colors and weather effects are real settings from the app.</p>
       </div>
     </section>
 
     <section id="features" class="section">
-      <h2>What's in it</h2>
-      <p class="section-sub">One WebSocket connection to your HA server. A tile flips at the same moment the light does.</p>
-      <div class="desk">
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Quick Access</span><span class="win-meta">drag · pages</span></div>
-          <div class="win-body"><p>Drag the entities you actually use into a grid, split across named pages if one screen isn't enough. Click a tile to toggle it, hold it for the rest: brightness, fan speed, cover stop, target temperature. Custom names and icons live in the widget's config, never in yours.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Desktop pins</span><span class="win-meta">brightness_pct</span></div>
-          <div class="win-body"><p>Pull a supported tile out of the widget and drop it on the desktop as its own movable, resizable window. Pinned lights get 25/50/75/100 preset buttons, so a lamp can sit next to your clock and go to a quarter brightness in one click.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Comparison graphs</span><span class="win-meta">7 series · 24 h</span></div>
-          <div class="win-body"><p>Up to seven sensors on one 24-hour chart, sharing a time axis and a value scale so the curves actually line up. Hover anywhere for a crosshair and every series' value at that moment. I mostly use it to put each room's temperature against the outdoor sensor and find out which radiator is slacking.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Live cameras</span><span class="win-meta">hls · 30/10/5 s</span></div>
-          <div class="win-body"><p>A camera tile can hold an authenticated HLS stream, or a snapshot every 30, 10 or 5 seconds if you'd rather not stream all day. Previews pause whenever the widget or the tile is hidden. Clicking a tile grows the feed you already have instead of reconnecting, and there's a Reconnect button for when the session goes stale anyway.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Global hotkeys</span><span class="win-meta">Ctrl+K</span></div>
-          <div class="win-body"><p>Bind a key to toggle an entity, run a script or fire an automation from inside any other app. A separate popup hotkey brings the widget to the front, hold-to-show or toggle. Once it's up, Ctrl+K searches every entity in HA and opens its controls.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>It never sees your password</span><span class="win-meta">oauth · loopback</span></div>
-          <div class="win-body"><p>You authorize it on Home Assistant's own login page in your real browser, over a temporary loopback callback. The refresh token goes into an OS-encrypted credential file, the short-lived access token stays in memory, and pairing fails closed if the OS keychain isn't available. Long-lived access tokens still work if you prefer them, filed under Advanced.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Themes and weather effects</span><span class="win-meta" id="accent-readout">#64b5f6</span></div>
-          <div class="win-body"><p>Accent and background colors, window opacity, frosted glass, and optional rain, snow, cloud, sun and storm animations behind the tiles. The weather effects are silly. It's your desktop.</p></div>
-        </div>
-        <div class="win feature">
-          <div class="win-bar"><span class="win-dot"></span><span>Profile sync, opt-in</span><span class="win-meta">AES-256-GCM</span></div>
-          <div class="win-body"><p>Your layout, theme and tiles go into one JSON file in a folder you already sync. Drive, iCloud, Syncthing, whatever you've got. Newest write wins, the last five local profiles are backed up before a remote one lands, and you can encrypt the file with a passphrase (AES-256-GCM, scrypt). Tokens, window positions and hotkeys never leave the machine they're on.</p></div>
-        </div>
+      <header class="section-head reveal">
+        <p class="kicker">Features</p>
+        <h2>Everything you reach for, none of the dashboard.</h2>
+        <p class="section-sub">One WebSocket connection to your server. A tile flips at the same moment the light does.</p>
+      </header>
+
+      <div class="bento">
+        <article class="tile t-wide reveal">
+          <div class="tile-text">
+            <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span>
+            <h3>Comparison graphs</h3>
+            <p>Up to seven sensors on one 24-hour chart with a shared time axis, so the curves actually line up. Hover anywhere for every value at that moment. Great for finding out which radiator is slacking.</p>
+          </div>
+          <div class="chart" aria-hidden="true">
+            <svg viewBox="0 0 400 150" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="g-area" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="var(--accent)" stop-opacity=".2"/>
+                  <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <g class="chart-grid"><path d="M0 37.5H400M0 75H400M0 112.5H400"/></g>
+              <path class="chart-area" d="M0 70 C40 64 70 52 110 56 S180 80 220 72 S300 38 340 44 S390 58 400 54 V150 H0Z"/>
+              <path class="chart-line l1" d="M0 70 C40 64 70 52 110 56 S180 80 220 72 S300 38 340 44 S390 58 400 54"/>
+              <path class="chart-line l2" d="M0 96 C50 92 80 84 120 88 S190 104 240 98 S320 76 360 80 S395 88 400 86"/>
+              <path class="chart-line l3" d="M0 124 C40 128 90 120 140 116 S210 124 260 118 S330 102 370 106 S396 112 400 110"/>
+              <path class="chart-cross" d="M300 0V150"/>
+              <circle class="chart-dot d1" cx="300" cy="42" r="4"/>
+              <circle class="chart-dot d2" cx="300" cy="81" r="4"/>
+              <circle class="chart-dot d3" cx="300" cy="106" r="4"/>
+            </svg>
+            <div class="chart-legend">
+              <span class="lg lg1">Office 21.8°</span>
+              <span class="lg lg2">Bedroom 19.6°</span>
+              <span class="lg lg3">Outside 4.2°</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="tile reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-command"/></svg></span>
+          <h3>Global hotkeys</h3>
+          <p>Toggle an entity, run a script or fire an automation from any app. Another hotkey brings the widget forward, and Ctrl+K searches everything in HA.</p>
+          <div class="keys" aria-hidden="true"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd></div>
+        </article>
+
+        <article class="tile reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
+          <h3>Quick Access</h3>
+          <p>Drag the entities you actually use into a grid, across named pages. Click to toggle, hold for brightness, fan speed, covers or target temperature.</p>
+        </article>
+
+        <article class="tile reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></span>
+          <h3>Desktop pins</h3>
+          <p>Pull a tile out of the widget and drop it on the desktop as its own small window. Pinned lights get one-click brightness presets.</p>
+          <div class="presets" aria-hidden="true"><span>25%</span><span>50%</span><span class="on">75%</span><span>100%</span></div>
+        </article>
+
+        <article class="tile reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-video"/></svg></span>
+          <h3>Live cameras</h3>
+          <p>Authenticated HLS streams, or a snapshot every 30, 10 or 5 seconds if you'd rather not stream all day. Previews pause whenever they're hidden.</p>
+        </article>
+
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></span>
+          <h3>It never sees your password</h3>
+          <p>You sign in on Home Assistant's own login page in your real browser. The refresh token is stored with OS encryption, the access token stays in memory, and pairing fails closed if the keychain isn't available.</p>
+          <ol class="flow" aria-label="Sign-in flow">
+            <li>Your browser</li>
+            <li>HA login</li>
+            <li>Loopback</li>
+            <li>OS keychain</li>
+          </ol>
+        </article>
+
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-sync"/></svg></span>
+          <h3>Profile sync, opt-in</h3>
+          <p>Layout, theme and tiles go into one JSON file in a folder you already sync: Drive, iCloud, Syncthing. Encrypt it with a passphrase if you like. Tokens, window positions and hotkeys never leave the machine.</p>
+          <div class="chips" aria-hidden="true"><span>AES-256-GCM</span><span>scrypt</span><span>5 local backups</span></div>
+        </article>
       </div>
     </section>
 
     <section id="screenshots" class="section">
-      <h2>The real thing</h2>
-      <p class="section-sub">The widget above is a demo. These are screenshots of the app itself.</p>
-      <div class="stack">
-        <figure class="win shot" tabindex="0">
-          <figcaption class="win-bar"><span class="win-dot"></span><span>Main view</span><span class="win-meta">Main_View.png</span></figcaption>
-          <img src="/assets/Main_View.png" alt="HA Desktop Widget main view showing weather, quick access tiles and media controls" loading="lazy" width="502" height="563">
+      <header class="section-head reveal">
+        <p class="kicker">Screenshots</p>
+        <h2>The real thing.</h2>
+        <p class="section-sub">The widget up top is a web demo. These are the app itself.</p>
+      </header>
+      <div class="shots">
+        <figure class="shot reveal">
+          <div class="shot-frame"><img src="/assets/Main_View.png" alt="Main view with weather, clock, media controls and quick access tiles" loading="lazy" width="502" height="563"></div>
+          <figcaption><strong>Main view</strong>Weather, clock, media and your tiles.</figcaption>
         </figure>
-        <figure class="win shot" tabindex="0">
-          <figcaption class="win-bar"><span class="win-dot"></span><span>Reorganize mode: drag, rename, remove</span><span class="win-meta">Edit_View.png</span></figcaption>
-          <img src="/assets/Edit_View.png" alt="Reorganize mode with editable tiles" loading="lazy" width="498" height="564">
+        <figure class="shot reveal">
+          <div class="shot-frame"><img src="/assets/Edit_View.png" alt="Reorganize mode with editable tiles" loading="lazy" width="498" height="564"></div>
+          <figcaption><strong>Reorganize mode</strong>Drag, rename and remove tiles.</figcaption>
         </figure>
-        <figure class="win shot" tabindex="0">
-          <figcaption class="win-bar"><span class="win-dot"></span><span>Personalization</span><span class="win-meta">Personalization_Tab.png</span></figcaption>
-          <img src="/assets/Personalization_Tab.png" alt="Personalization settings with color themes, accents and window opacity" loading="lazy" width="511" height="586">
+        <figure class="shot reveal">
+          <div class="shot-frame"><img src="/assets/Personalization_Tab.png" alt="Personalization settings with color themes, accents and window opacity" loading="lazy" width="511" height="586"></div>
+          <figcaption><strong>Personalization</strong>Accents, backgrounds and opacity.</figcaption>
         </figure>
-      </div>
-    </section>
-
-    <section id="download" class="section">
-      <div class="win">
-        <div class="win-bar"><span class="win-dot"></span><h2>Downloads</h2><span class="win-meta" id="os-readout">detecting…</span></div>
-        <div class="win-body">
-          <p class="dl-intro"><span class="version-label" id="version-label">latest</span> · all assets on the <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">releases page</a></p>
-          <div class="dl-grid">
-            <div class="os-card" data-os="windows">
-              <h3>Windows</h3>
-              <p>x64. The installer updates itself in-app; the portable build checks for updates and links you to the download.</p>
-              <div class="dl-buttons">
-                <a class="btn btn-primary" data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer (.exe)</a>
-                <a class="btn btn-ghost" data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable (.exe)</a>
-              </div>
-            </div>
-            <div class="os-card" data-os="mac">
-              <h3>macOS</h3>
-              <p>Universal build for Intel and Apple Silicon. Not yet Developer-ID signed, so on first launch Control-click the app and choose Open, or approve it under System Settings, Privacy &amp; Security.</p>
-              <div class="dl-buttons">
-                <a class="btn btn-primary" data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Disk image (.dmg)</a>
-                <a class="btn btn-ghost" data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Archive (.zip)</a>
-              </div>
-            </div>
-            <div class="os-card" data-os="linux">
-              <h3>Linux</h3>
-              <p>x64. The AppImage updates itself in-app; the deb package updates through GitHub Releases.</p>
-              <div class="dl-buttons">
-                <a class="btn btn-primary" data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage</a>
-                <a class="btn btn-ghost" data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Debian package (.deb)</a>
-              </div>
-            </div>
-          </div>
-          <p class="dl-beta">There's a beta channel too. Turn on <strong>Receive beta updates</strong> in Settings and you'll get the nightly prereleases, which are cut automatically whenever <code>main</code> has moved.</p>
-          <p class="spec-line">MIT · no account · no telemetry · tray · start at login · OS-encrypted tokens · downloadable language packs</p>
-        </div>
       </div>
     </section>
 
     <section id="setup" class="section">
-      <div class="win settings-win">
-        <div class="win-bar"><span class="win-dot"></span><h2>Setup, about two minutes</h2><span class="win-meta">config.json</span></div>
-        <div class="tab-strip" aria-hidden="true">
-          <span class="tab is-active">General</span><span class="tab">Personalization</span><span class="tab">Hotkeys</span><span class="tab">Alerts</span><span class="tab">Advanced</span>
+      <header class="section-head reveal">
+        <p class="kicker">Setup</p>
+        <h2>Running in about two minutes.</h2>
+      </header>
+      <ol class="steps">
+        <li class="reveal">
+          <span class="step-n">1</span>
+          <h3>Install and open</h3>
+          <p>Run the build for your OS and click the settings button.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">2</span>
+          <h3>Point it at Home Assistant</h3>
+          <p>Enter the URL you use in your browser, like <code>http://homeassistant.local</code>, click Connect and approve it on HA's login page.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">3</span>
+          <h3>Add your entities</h3>
+          <p>Hit <strong>+</strong>, search for your lights, sensors and cameras, and drag them into whatever order makes sense.</p>
+        </li>
+      </ol>
+      <aside class="callout reveal">
+        <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="#i-drop"/></svg></span>
+        <p>
+          <strong>Want automations to drive it?</strong> The optional
+          <a href="https://github.com/Robertg761/HA-Desktop-Widget#home-assistant-companion-integration" target="_blank" rel="noopener">companion integration</a>
+          registers each desktop as a Home Assistant device. Automations can show or hide the widget, switch its page,
+          or push a named profile to it. It only accepts those actions. No shell commands, no URLs, no arbitrary IPC.
+        </p>
+      </aside>
+    </section>
+
+    <section id="download" class="section">
+      <header class="section-head reveal">
+        <p class="kicker">Download</p>
+        <h2>Get it for your desktop.</h2>
+        <p class="section-sub"><span id="version-label">Latest release</span> · every file is on the <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">releases page</a></p>
+      </header>
+      <div class="dl-grid">
+        <div class="os-card reveal" data-os="windows">
+          <div class="os-head"><h3>Windows</h3><span class="os-badge">Your system</span></div>
+          <p class="os-arch">x64</p>
+          <p>The installer updates itself in-app. The portable build checks for updates and links you to the download.</p>
+          <div class="dl-buttons">
+            <a class="btn btn-primary" data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer<span class="ext">.exe</span></a>
+            <a class="btn btn-quiet" data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable<span class="ext">.exe</span></a>
+          </div>
         </div>
-        <div class="win-body">
-          <ol class="steps">
-            <li>
-              <h3>Install and open</h3>
-              <p>Run the build for your OS and click the settings button.</p>
-            </li>
-            <li>
-              <h3>Point it at Home Assistant</h3>
-              <p>Enter the same URL you use in your browser, like <code>http://homeassistant.local</code>. Click Connect and approve the widget on Home Assistant's own login page. Your password stays in the browser.</p>
-            </li>
-            <li>
-              <h3>Add your entities</h3>
-              <p>Hit the "+" button, search for your lights, sensors and cameras, and drag them into whatever order makes sense. That's it.</p>
-            </li>
-          </ol>
-          <p class="setup-note">
-            There's also an optional <a href="https://github.com/Robertg761/HA-Desktop-Widget#home-assistant-companion-integration" target="_blank" rel="noopener">companion integration</a>
-            that registers each desktop as a real Home Assistant device. Automations can then show it, hide it, switch its page,
-            or push a whole named profile at it: theme, primary cards, tiles, graphs. It accepts those five actions and nothing
-            else. No shell commands, no URLs, no arbitrary IPC.
-          </p>
-          <p class="fine-print">HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
+        <div class="os-card reveal" data-os="mac">
+          <div class="os-head"><h3>macOS</h3><span class="os-badge">Your system</span></div>
+          <p class="os-arch">Universal · Intel and Apple Silicon</p>
+          <p>Not yet Developer ID signed. On first launch, Control-click the app and choose Open, or allow it in Privacy &amp; Security.</p>
+          <div class="dl-buttons">
+            <a class="btn btn-primary" data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Disk image<span class="ext">.dmg</span></a>
+            <a class="btn btn-quiet" data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Archive<span class="ext">.zip</span></a>
+          </div>
+        </div>
+        <div class="os-card reveal" data-os="linux">
+          <div class="os-head"><h3>Linux</h3><span class="os-badge">Your system</span></div>
+          <p class="os-arch">x64</p>
+          <p>The AppImage updates itself in-app. The deb package updates through GitHub Releases.</p>
+          <div class="dl-buttons">
+            <a class="btn btn-primary" data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage</a>
+            <a class="btn btn-quiet" data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Debian<span class="ext">.deb</span></a>
+          </div>
         </div>
       </div>
-      <p class="colophon">Made by one person with more temperature sensors than rooms. If it earns a spot on your desktop, you can <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">sponsor it on GitHub</a>.</p>
+      <p class="dl-note reveal">
+        Want the newest builds? Turn on <strong>Receive beta updates</strong> in Settings to get nightly prereleases,
+        cut automatically whenever <code>main</code> moves.
+      </p>
+    </section>
+
+    <section class="section closing reveal">
+      <img src="/assets/icon-180.png" alt="" width="64" height="64">
+      <h2>Made by one person with more temperature sensors than rooms.</h2>
+      <p class="section-sub">If it earns a spot on your desktop, a star or a sponsorship keeps it going.</p>
+      <div class="cta-row">
+        <a class="btn btn-quiet" href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">
+          <svg class="ico ico-heart" aria-hidden="true"><use href="#i-heart"/></svg>
+          Sponsor on GitHub
+        </a>
+      </div>
     </section>
   </main>
 
-  <footer class="taskbar">
-    <img src="/assets/icon.png" alt="" width="18" height="18">
-    <span class="tb-name">HA Desktop Widget</span>
-    <span class="tb-version" id="tb-version"></span>
-    <nav class="tb-links">
-      <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">Releases</a>
-      <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener">Issues</a>
-      <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
-      <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
-    </nav>
-    <div class="tray">
-      <span class="tray-dot" title="Connected"></span>
-      <span>MIT</span>
-      <span id="tb-clock"></span>
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="/assets/icon.png" alt="" width="20" height="20">
+        <span>HA Desktop Widget</span>
+        <span class="footer-version" id="footer-version"></span>
+      </div>
+      <nav class="footer-links" aria-label="Project links">
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
+      </nav>
     </div>
+    <p class="fine-print">MIT licensed. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
   </footer>
 
   <script type="module" src="/script.js"></script>
