@@ -58,7 +58,11 @@ describe('room dashboards', () => {
       .fn()
       .mockResolvedValue({ success: false, error: { code: 'unauthorized' } });
     await expect(loadRoomRegistry({ request })).rejects.toThrow('permissions');
-    expect(request).toHaveBeenCalledTimes(3);
+    // Marked so the Add Page dialog does not offer a retry that cannot succeed.
+    await expect(loadRoomRegistry({ request })).rejects.toMatchObject({
+      code: 'registry_unavailable',
+    });
+    expect(request).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -155,6 +159,20 @@ describe('alert conditions', () => {
     evaluator.check('sensor', '24');
     evaluator.check('sensor', '26');
     expect(notify).toHaveBeenCalledTimes(2);
+  });
+  it('styles the target state field like the other condition fields', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const html = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8');
+    const markup = new DOMParser().parseFromString(html, 'text/html');
+    const label = markup.querySelector('label[for="target-state-input"]');
+    expect(label.textContent).toBe('Target state');
+    expect(label.dataset.i18n).toBe('Target state');
+    // The older form-group wrapper must not bring its own spacing or larger text into the grid.
+    const css = fs.readFileSync(path.join(__dirname, '../../dashboard-workflows.css'), 'utf8');
+    const rule = /\.alert-advanced-options > \.form-group \{([^}]*)\}/.exec(css)?.[1] || '';
+    expect(rule).toMatch(/margin: 0;/);
+    expect(rule).toMatch(/font-size: var\(--font-size-sm\);/);
   });
   it('handles overnight quiet hours and does not interpret missing readings as zero', () => {
     const quiet = { enabled: true, start: '22:00', end: '07:00' };

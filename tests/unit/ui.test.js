@@ -303,7 +303,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       room.onchange();
       expect(document.querySelector('input[value="light.desk"]')).toBeNull();
       expect(document.querySelector('input[value="sensor.temperature"]')).not.toBeNull();
-      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(1);
+      // Sensors are offered but not preselected, the same as in first-run setup.
+      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(0);
+      expect(document.querySelector('.room-device-search').hidden).toBe(false);
     });
 
     it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
@@ -325,7 +327,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
       expect(document.querySelectorAll('.room-entity-list input:checked')).toHaveLength(1);
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
-        'Desk lamp — on'
+        'Desk lamp — On'
+      );
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'Rooms are unavailable. Choose from your devices instead.'
       );
       const sensor = document.querySelector('input[value="sensor.temperature"]');
       sensor.click();
@@ -346,6 +351,108 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'sensor.temperature',
       ]);
     });
+    const registryResponses = (overrides = {}) =>
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            get_states: [
+              ...entities,
+              { entity_id: 'light.stove', state: 'off', attributes: { friendly_name: 'Stove' } },
+              { entity_id: 'button.restart', state: 'unknown', attributes: {} },
+            ],
+            'config/area_registry/list': [
+              { area_id: 'office', name: 'Office' },
+              { area_id: 'kitchen', name: 'Kitchen' },
+            ],
+            'config/entity_registry/list': [
+              { entity_id: 'light.desk', area_id: 'office' },
+              { entity_id: 'sensor.temperature', area_id: 'office' },
+              { entity_id: 'button.restart', area_id: 'office' },
+              { entity_id: 'light.stove', area_id: 'kitchen' },
+            ],
+            'config/device_registry/list': [],
+            ...overrides,
+          }[type],
+        })
+      );
+
+    it('fills the empty first page instead of adding another page beside it', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      expect(state.CONFIG.customTabs).toEqual([
+        { id: 'default', name: 'Kitchen', entityIds: ['light.stove'] },
+      ]);
+    });
+
+    it('makes a quick pick choose the matching room, not just the name', async () => {
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+      document.querySelector('.qa-add-chip[data-name="Office"]').click();
+      expect(document.querySelector('#add-page-room').value).toBe('office');
+      expect(document.querySelector('#add-page-name').value).toBe('Office');
+      expect(
+        [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
+      ).toEqual(['button.restart', 'light.desk', 'sensor.temperature']);
+    });
+
+    it('preselects the same controllable devices when adding an ordinary page', async () => {
+      registryResponses();
+      state.setStates(
+        Object.fromEntries(
+          [
+            ...entities,
+            { entity_id: 'button.restart', state: '2026-09-01T00:00:00Z', attributes: {} },
+          ].map((entity) => [entity.entity_id, entity])
+        )
+      );
+      ui.showAddPageModal();
+      await flush();
+      expect(document.querySelector('.room-device-search').hidden).toBe(true);
+      const room = document.querySelector('#add-page-room');
+      room.value = 'office';
+      room.onchange();
+      expect(
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        )
+      ).toEqual(['light.desk']);
+      const search = document.querySelector('.room-device-search');
+      expect(search.hidden).toBe(false);
+      search.value = 'temp';
+      search.dispatchEvent(new Event('input'));
+      expect(document.querySelector('input[value="light.desk"]').parentElement.hidden).toBe(true);
+    });
+
+    it('explains refused room access without offering a retry that cannot work', async () => {
+      mockRequest.mockResolvedValue({ success: false, error: { code: 'unauthorized' } });
+      ui.showAddPageModal();
+      await flush();
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'Room information is unavailable. Check your Home Assistant permissions.'
+      );
+      expect(document.querySelector('.room-dashboard button').hidden).toBe(true);
+    });
+
+    it('tells admins with no rooms apart from users who cannot read them', async () => {
+      registryResponses({ 'config/area_registry/list': [] });
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+      );
+    });
+
     it('preselects a populated room and lets users cancel without saving', async () => {
       mockRequest.mockImplementation(({ type }) =>
         Promise.resolve({
@@ -454,7 +561,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
       expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
-        'And 992 more devices'
+        'And 992 more entities'
       );
       document.querySelector('#add-page-save-btn').click();
       await flush();
@@ -510,6 +617,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.customTabs[0].id).toBe('previous');
       expect(state.CONFIG.homeAssistant).toEqual(current.homeAssistant);
       expect(state.CONFIG.globalHotkeys).toEqual(current.globalHotkeys);
+    });
+
+    it('returns to the page the restored layout was saved on, else a neighbouring page', async () => {
+      const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
+      // Undoing "add Bedroom" goes back to Kitchen, where the user added it from.
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: tabs('default', 'kitchen', 'bedroom'),
+        activeTabId: 'bedroom',
+      });
+      await ui.restoreDashboard(
+        { customTabs: tabs('default', 'kitchen') },
+        { activeTabId: 'kitchen' }
+      );
+      expect(state.CONFIG.activeTabId).toBe('kitchen');
+
+      // Without a saved page, the page now in the removed page's position is shown, not "All".
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: tabs('default', 'kitchen', 'bedroom', 'office'),
+        activeTabId: 'bedroom',
+      });
+      await ui.restoreDashboard({ customTabs: tabs('default', 'kitchen', 'office') });
+      expect(state.CONFIG.activeTabId).toBe('office');
     });
   });
 
@@ -6383,6 +6518,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       modal.style.display = 'flex';
       await ui.switchQuickAccessPage('default');
       expect(list.children.length).toBeGreaterThan(0);
+    });
+
+    it('draws a single history sample as a flat line on to now', async () => {
+      const sensor = {
+        entity_id: 'sensor.outside',
+        state: '15.6',
+        attributes: {
+          friendly_name: 'Outside',
+          unit_of_measurement: '°C',
+          state_class: 'measurement',
+        },
+      };
+      state.setStates({ 'sensor.outside': sensor });
+      const sampledAt = Date.now() - 3600000;
+      mockRequest.mockResolvedValue({
+        success: true,
+        result: { 'sensor.outside': [{ s: '15.6', lu: sampledAt / 1000 }] },
+      });
+      ui.openEntityDetailModal(sensor);
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      const line = document.querySelector('.sensor-detail-modal polyline');
+      const points = line
+        .getAttribute('points')
+        .split(' ')
+        .map((point) => point.split(',').map(Number));
+      expect(points).toHaveLength(2);
+      expect(points[0][1]).toBe(points[1][1]);
+      expect(points[1][0]).toBe(420);
+      expect(points[0][0]).toBeLessThan(420);
+      const dot = document.querySelector('.sensor-detail-modal circle');
+      expect(Number(dot.getAttribute('cx'))).toBe(points[0][0]);
+      expect(Number(dot.getAttribute('cy'))).toBe(points[0][1]);
+      document.querySelector('.sensor-detail-modal')?.remove();
     });
 
     it('fetches history for every chart tile on a page in one request', async () => {

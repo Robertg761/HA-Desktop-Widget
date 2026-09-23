@@ -4,8 +4,10 @@ import { openEntityDetailModal, getEntityDomain, switchQuickAccessPage } from '.
 import websocket from './websocket.js';
 import { showToast } from './ui-utils.js';
 import { t } from './i18n.js';
+import { getActiveQuickAccessTab } from './quick-access-tabs.js';
 
 const MAX_RESULTS = 20;
+const MAX_RECENT_COMMANDS = 10;
 
 let initialized = false;
 let recentCommands = [];
@@ -91,6 +93,39 @@ function rankCommandPaletteEntities(entities, query, options = {}) {
     });
 }
 
+// Recent commands are entity ids and page ids only, stored per server so they survive a restart.
+function recentCommandsKey(config) {
+  try {
+    const url = new URL(config?.homeAssistant?.url);
+    return `command-palette-recent:${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return 'command-palette-recent:local';
+  }
+}
+
+function readRecentCommands(config) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(recentCommandsKey(config)) || '[]');
+    return Array.isArray(stored)
+      ? stored.filter((key) => typeof key === 'string').slice(0, MAX_RECENT_COMMANDS)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentCommand(key, config = state.CONFIG) {
+  recentCommands = [key, ...recentCommands.filter((recent) => recent !== key)].slice(
+    0,
+    MAX_RECENT_COMMANDS
+  );
+  try {
+    localStorage.setItem(recentCommandsKey(config), JSON.stringify(recentCommands));
+  } catch {
+    /* Recents are a convenience; running the command already succeeded. */
+  }
+}
+
 function isPaletteOpen() {
   return !!overlay && !overlay.classList.contains('hidden');
 }
@@ -128,9 +163,9 @@ function createPaletteShell() {
   input.type = 'text';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.placeholder = t('Search entities');
+  input.placeholder = t('Search entities, commands, and pages');
   input.setAttribute('role', 'combobox');
-  input.setAttribute('aria-label', t('Search entities'));
+  input.setAttribute('aria-label', t('Search entities, commands, and pages'));
   input.setAttribute('aria-controls', 'command-palette-results');
   input.setAttribute('aria-autocomplete', 'list');
   input.setAttribute('aria-expanded', 'false');
@@ -147,7 +182,7 @@ function createPaletteShell() {
   list.id = 'command-palette-results';
   list.setAttribute('role', 'listbox');
 
-  emptyState = createElement('div', 'command-palette-empty', t('No matching entities'));
+  emptyState = createElement('div', 'command-palette-empty', t('No matching results'));
   emptyState.hidden = true;
 
   palettePanel.append(searchWrap, list, emptyState);
@@ -206,16 +241,22 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
         displayName,
         domain,
         service,
-        key: `${entity.entity_id}:${service}`,
+        // Recency belongs to the device, not the action: after "Turn on" the palette offers
+        // "Turn off", and that is the command the user most likely wants next.
+        key: entity.entity_id,
       }));
   });
-  (config?.customTabs || []).forEach((tab) =>
-    commands.push({
-      tabId: tab.id,
-      displayName: t('Switch to {{name}}', { name: tab.name }),
-      key: `page:${tab.id}`,
-    })
-  );
+  const customTabs = config?.customTabs || [];
+  const activeTabId = customTabs.length ? getActiveQuickAccessTab(config)?.id : null;
+  customTabs
+    .filter((tab) => tab.id !== activeTabId)
+    .forEach((tab) =>
+      commands.push({
+        tabId: tab.id,
+        displayName: t('Switch to {{name}}', { name: tab.name }),
+        key: `page:${tab.id}`,
+      })
+    );
   return commands;
 }
 
@@ -246,10 +287,7 @@ async function executeHighlightedResult() {
       });
       showToast(t('Command sent'), 'success', 1600);
     }
-    recentCommands = [selected.key, ...recentCommands.filter((key) => key !== selected.key)].slice(
-      0,
-      10
-    );
+    rememberRecentCommand(selected.key);
   } catch {
     showToast(t('Could not run command. Check your connection and retry.'), 'error');
   } finally {
@@ -302,7 +340,7 @@ function renderResults() {
   const query = input?.value || '';
   const server = state.CONFIG?.homeAssistant?.url || '';
   if (recentServer !== server) {
-    recentCommands = [];
+    recentCommands = readRecentCommands(state.CONFIG);
     recentServer = server;
   }
   const entities = Object.values(state.STATES || {});

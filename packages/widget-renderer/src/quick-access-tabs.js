@@ -163,7 +163,13 @@ function deleteQuickAccessView(config, tabId) {
   if (normalized.customTabs.length <= 1) return normalized;
   const nextTabs = normalized.customTabs.filter((tab) => tab.id !== tabId);
   if (nextTabs.length === normalized.customTabs.length) return normalized;
-  const activeTabId = normalized.activeTabId === tabId ? nextTabs[0].id : normalized.activeTabId;
+  // Deleting the page on screen moves to its neighbour (the next page, or the previous one when
+  // it was last) instead of jumping back to the first page.
+  const deletedIndex = normalized.customTabs.findIndex((tab) => tab.id === tabId);
+  const activeTabId =
+    normalized.activeTabId === tabId
+      ? nextTabs[Math.min(deletedIndex, nextTabs.length - 1)].id
+      : normalized.activeTabId;
   return normalizeQuickAccessConfig({
     ...normalized,
     customTabs: nextTabs,
