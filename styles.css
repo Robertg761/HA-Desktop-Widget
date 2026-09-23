@@ -11287,7 +11287,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .hotkey-item {
   display: flex;
-  flex-wrap: nowrap;
+  /* Controls drop below the name when a longer translation needs the room. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 12px;
@@ -11312,8 +11313,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-color);
-  flex: 1 1 120px;
-  min-width: 100px;
+  flex: 1 1 80px;
+  min-width: 80px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -11327,6 +11328,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   flex-wrap: nowrap;
   flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .hotkey-input-container:has(.hotkey-action-dropdown.open) {
@@ -11334,9 +11337,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .hotkey-input {
-  width: 140px;
+  /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
+  field-sizing: content;
   flex-shrink: 1;
-  min-width: 100px;
+  min-width: 120px;
+  max-width: 100%;
   text-align: center;
   cursor: pointer;
   padding: 6px 10px;
@@ -11684,7 +11689,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  width: 120px;
 }
 
 .hotkey-input:focus,
