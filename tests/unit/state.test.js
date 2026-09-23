@@ -44,6 +44,24 @@ describe('State Module', () => {
     });
   });
 
+  test('entity subscriptions follow snapshots, updates and deletion until unsubscribed', () => {
+    const listener = jest.fn();
+    const entity = sampleStates['light.living_room'];
+    const unsubscribe = state.subscribeEntity(entity.entity_id, listener);
+    state.setStates({ [entity.entity_id]: entity });
+    expect(listener).toHaveBeenLastCalledWith(entity);
+    const updated = { ...entity, state: 'off' };
+    state.setEntityState(updated);
+    expect(listener).toHaveBeenLastCalledWith(updated);
+    state.setEntityState(sampleStates['media_player.spotify']);
+    expect(listener).toHaveBeenCalledTimes(2);
+    state.deleteEntityState(entity.entity_id);
+    expect(listener).toHaveBeenLastCalledWith(undefined);
+    unsubscribe();
+    state.setStates({});
+    expect(listener).toHaveBeenCalledTimes(3);
+  });
+
   describe('Setter Functions', () => {
     describe('setConfig', () => {
       test('should update CONFIG', () => {

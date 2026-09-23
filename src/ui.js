@@ -9847,7 +9847,7 @@ function showMediaDetail(entity) {
         <div class="modal-body">
           <div class="media-detail-info">
             <div class="media-detail-title">${mediaTitle || '—'}</div>
-            ${mediaArtist ? `<div class="media-detail-artist">${mediaArtist}</div>` : ''}
+            <div class="media-detail-artist" ${mediaArtist ? '' : 'hidden'}>${mediaArtist}</div>
           </div>
           <div class="media-progress">
             <div class="media-time-row">
@@ -9896,6 +9896,7 @@ function showMediaDetail(entity) {
     if (playBtn) {
       const isPlaying = entity.state === 'playing';
       setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 24 });
+      playBtn.dataset.playbackIcon = isPlaying ? 'pause' : 'play';
       if (isPlaying) playBtn.classList.add('playing');
     }
 
@@ -9929,22 +9930,24 @@ function showMediaDetail(entity) {
     };
 
     let tick;
-    const startTick = () => {
-      if (tick) clearInterval(tick);
-      tick = setInterval(() => {
-        const timeline = getLiveTimeline();
-        curEl.textContent = fmt(timeline.currentPosition);
-        if (totalEl) totalEl.textContent = timeline.duration ? fmt(timeline.duration) : '--:--';
-        if (progressFill && timeline.duration > 0) {
-          const pct = Math.max(
-            0,
-            Math.min(100, (timeline.currentPosition / timeline.duration) * 100)
-          );
-          progressFill.style.width = pct + '%';
-        } else if (progressFill) {
-          progressFill.style.width = '0%';
-        }
-      }, 1000);
+    const updateProgress = () => {
+      const timeline = getLiveTimeline();
+      curEl.textContent = fmt(timeline.currentPosition);
+      if (totalEl) totalEl.textContent = timeline.duration ? fmt(timeline.duration) : '--:--';
+      if (progressFill) {
+        const pct =
+          timeline.duration > 0
+            ? Math.max(0, Math.min(100, (timeline.currentPosition / timeline.duration) * 100))
+            : 0;
+        progressFill.style.width = pct + '%';
+      }
+    };
+    const syncProgressTimer = () => {
+      clearInterval(tick);
+      tick = null;
+      if (!document.hidden && (state.STATES[entity.entity_id] || entity).state === 'playing') {
+        tick = setInterval(updateProgress, 1000);
+      }
     };
 
     // Wire up controls
@@ -9958,7 +9961,11 @@ function showMediaDetail(entity) {
       const pp = modal.querySelector('.play-pause-btn');
       if (pp) {
         // setIconContent already imported at top
-        setIconContent(pp, isCurrentlyPlaying ? 'pause' : 'play', { size: 24 });
+        const iconName = isCurrentlyPlaying ? 'pause' : 'play';
+        if (pp.dataset.playbackIcon !== iconName) {
+          setIconContent(pp, iconName, { size: 24 });
+          pp.dataset.playbackIcon = iconName;
+        }
         pp.classList.toggle('playing', isCurrentlyPlaying);
         pp.disabled = !canTogglePlayback;
         pp.setAttribute('aria-disabled', canTogglePlayback ? 'false' : 'true');
@@ -10011,23 +10018,51 @@ function showMediaDetail(entity) {
       });
     }
 
-    // Update button when entity state changes
-    const updateInterval = setInterval(() => {
-      if (!modal.isConnected) {
-        clearInterval(updateInterval);
-        return;
-      }
+    const renderMedia = () => {
+      const currentEntity = state.STATES[entity.entity_id] || entity;
+      const attrs = currentEntity.attributes || {};
+      modal.querySelector('.media-detail-title').textContent = attrs.media_title || '—';
+      const artist = modal.querySelector('.media-detail-artist');
+      artist.textContent = attrs.media_artist || '';
+      artist.hidden = !attrs.media_artist;
       updatePlayPauseBtn();
       updateVolumeControls();
-    }, 500);
+      updateProgress();
+    };
+    let unsubscribe = () => {};
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearInterval(tick);
+        tick = null;
+      } else {
+        refreshMedia();
+      }
+    };
+    const stopUpdates = () => {
+      clearInterval(tick);
+      tick = null;
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+    // Updates are pushed by entity state changes; progress only ticks while playing and visible.
+    const refreshMedia = () => {
+      if (!modal.isConnected) {
+        stopUpdates();
+        return;
+      }
+      if (document.hidden) return;
+      renderMedia();
+      syncProgressTimer();
+    };
+    unsubscribe = state.subscribeEntity(entity.entity_id, refreshMedia);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Close handlers
     let isClosing = false;
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
-      if (tick) clearInterval(tick);
-      if (updateInterval) clearInterval(updateInterval);
+      stopUpdates();
       if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -10043,21 +10078,8 @@ function showMediaDetail(entity) {
     };
 
     // Init
-    if (curEl) curEl.textContent = fmt(initialTimeline.currentPosition);
-    if (totalEl)
-      totalEl.textContent = initialTimeline.duration ? fmt(initialTimeline.duration) : '--:--';
-    if (progressFill && initialTimeline.duration > 0) {
-      const pct = Math.max(
-        0,
-        Math.min(100, (initialTimeline.currentPosition / initialTimeline.duration) * 100)
-      );
-      progressFill.style.width = pct + '%';
-    } else if (progressFill) {
-      progressFill.style.width = '0%';
-    }
-    updatePlayPauseBtn();
-    updateVolumeControls();
-    startTick();
+    renderMedia();
+    syncProgressTimer();
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);

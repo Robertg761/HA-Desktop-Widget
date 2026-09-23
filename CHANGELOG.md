@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Select a 1-hour, 6-hour, 24-hour, or 7-day sensor detail chart with minimum, maximum, sample average, and retry controls.
 - Add workflow message keys to bundled and downloadable catalogs, with English fallbacks for new labels.
 
+### Changed
+
+- Show the Primary Cards entity picker 50 entities per page and wait for a pause in typing before filtering. Keyboard focus and scroll position stay put when a card is assigned or a desktop pin is toggled.
+- Update the media player details dialog when the player's state changes instead of polling twice a second. The track title and artist now follow the current song, and the progress timer only runs while media is playing and the window is visible.
+
 ### Fixed
 
 - Repair generated AppImage launchers using the current app id or unquoted executable paths. Continue other launcher and login-startup repairs if an individual operation fails.

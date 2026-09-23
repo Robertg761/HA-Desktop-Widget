@@ -955,6 +955,61 @@ describe('Settings + Config Integration', () => {
       }
     });
 
+    test('preserves assignment focus and paginates and debounces primary-card search', async () => {
+      const entities = Object.fromEntries(
+        Array.from({ length: 121 }, (_, index) => {
+          const entity_id = `sensor.test_${String(index).padStart(3, '0')}`;
+          return [
+            entity_id,
+            {
+              entity_id,
+              state: '1',
+              attributes: { friendly_name: `Test ${String(index).padStart(3, '0')}` },
+            },
+          ];
+        })
+      );
+      state.setStates(entities);
+      await settings.openSettings();
+      document.getElementById('primary-cards-toggle').click();
+      const list = document.getElementById('primary-cards-list');
+      expect(list.querySelectorAll('.entity-item')).toHaveLength(50);
+      const assign = list.querySelector('[data-primary-assign="0"]');
+      assign.focus();
+      assign.click();
+      expect(document.activeElement.dataset.entityId).toBe(assign.dataset.entityId);
+      expect(document.activeElement.getAttribute('aria-disabled')).toBe('true');
+      const next = list.querySelector('[data-primary-page="next"]');
+      next.focus();
+      next.click();
+      expect(document.activeElement.dataset.primaryPage).toBe('next');
+      expect(list.querySelector('[data-primary-assign]').dataset.entityId).toBe('sensor.test_050');
+      expect(list.querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+      list.querySelector('[data-primary-page="next"]').click();
+      expect(list.querySelectorAll('.entity-item')).toHaveLength(21);
+      expect(list.querySelector('[data-primary-page="next"]').getAttribute('aria-disabled')).toBe(
+        'true'
+      );
+      jest.useFakeTimers();
+      try {
+        const search = document.getElementById('primary-cards-search');
+        search.value = 'Test 000';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(100);
+        expect(list.querySelectorAll('.entity-item')).toHaveLength(21);
+        search.value = 'Test 120';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(150);
+        expect(list.querySelector('[data-primary-assign]').dataset.entityId).toBe(
+          'sensor.test_120'
+        );
+      } finally {
+        settings.closeSettings();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    });
+
     test('lazy-hydrates heavy personalization lists when sections are expanded', async () => {
       await settings.openSettings();
 
@@ -977,6 +1032,18 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Desktop Pins', () => {
+    test('keeps keyboard focus on a toggled pin', async () => {
+      await openSettingsWithDesktopPinsExpanded();
+      const button = document.querySelector('[data-desktop-pin-toggle="light.living_room"]');
+      button.focus();
+      button.click();
+      expect(document.activeElement.dataset.desktopPinToggle).toBe('light.living_room');
+      expect(document.activeElement.textContent).toBe('Unpin');
+      document.activeElement.click();
+      expect(document.activeElement.dataset.desktopPinToggle).toBe('light.living_room');
+      expect(document.activeElement.textContent).toBe('Pin');
+    });
+
     test('desktop pins section hydrates from saved config and allows focusing a saved pin', async () => {
       state.CONFIG.desktopPins = {
         'light.living_room': { x: 10, y: 20, width: 176, height: 176 },

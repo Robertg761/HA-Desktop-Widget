@@ -1946,7 +1946,32 @@ function updatePrimaryCardActionButtons() {
   });
 }
 
+const PRIMARY_CARD_PAGE_SIZE = 50;
+let primaryCardPage = 0;
+let primaryCardSearchTimer;
+
+function preserveListFocus(list, render) {
+  const focused = list.contains(document.activeElement) ? document.activeElement : null;
+  const attributes = focused
+    ? Array.from(focused.attributes).filter(({ name }) => name.startsWith('data-'))
+    : [];
+  const scrollTop = list.scrollTop;
+  render();
+  if (attributes.length) {
+    const replacement = Array.from(list.querySelectorAll('button')).find((button) =>
+      attributes.every(({ name, value }) => button.getAttribute(name) === value)
+    );
+    replacement?.focus({ preventScroll: true });
+  }
+  list.scrollTop = scrollTop;
+}
+
 function renderPrimaryCardsEntityList() {
+  const list = document.getElementById('primary-cards-list');
+  if (list) preserveListFocus(list, renderPrimaryCardsEntityRows);
+}
+
+function renderPrimaryCardsEntityRows() {
   const list = document.getElementById('primary-cards-list');
   const searchInput = document.getElementById('primary-cards-search');
   if (!list || !searchInput) return;
@@ -1962,26 +1987,30 @@ function renderPrimaryCardsEntityList() {
     return;
   }
 
-  scoredEntities.forEach(({ entity }) => {
-    const item = document.createElement('div');
-    item.className = 'entity-item';
+  const pageCount = Math.ceil(scoredEntities.length / PRIMARY_CARD_PAGE_SIZE);
+  primaryCardPage = Math.min(primaryCardPage, pageCount - 1);
+  scoredEntities
+    .slice(primaryCardPage * PRIMARY_CARD_PAGE_SIZE, (primaryCardPage + 1) * PRIMARY_CARD_PAGE_SIZE)
+    .forEach(({ entity }) => {
+      const item = document.createElement('div');
+      item.className = 'entity-item';
 
-    const icon = utils.escapeHtml(utils.getEntityIcon(entity));
-    const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
-    const entityId = utils.escapeHtml(entity.entity_id);
-    const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
+      const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+      const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
+      const entityId = utils.escapeHtml(entity.entity_id);
+      const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
 
-    const isCardOne = selections[0] === entity.entity_id;
-    const isCardTwo = selections[1] === entity.entity_id;
+      const isCardOne = selections[0] === entity.entity_id;
+      const isCardTwo = selections[1] === entity.entity_id;
 
-    const cardOneLabel = isCardOne ? 'Card 1 ✓' : 'Set Card 1';
-    const cardTwoLabel = isCardTwo ? 'Card 2 ✓' : 'Set Card 2';
-    const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-    const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-    const cardOneDisabled = isCardOne ? 'disabled' : '';
-    const cardTwoDisabled = isCardTwo ? 'disabled' : '';
+      const cardOneLabel = isCardOne ? 'Card 1 ✓' : 'Set Card 1';
+      const cardTwoLabel = isCardTwo ? 'Card 2 ✓' : 'Set Card 2';
+      const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+      const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+      const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
+      const cardTwoDisabled = isCardTwo ? 'aria-disabled="true"' : '';
 
-    item.innerHTML = `
+      item.innerHTML = `
       <div class="entity-item-main">
         <span class="entity-icon">${icon}</span>
         <div class="entity-item-info">
@@ -1995,8 +2024,36 @@ function renderPrimaryCardsEntityList() {
       </div>
     `;
 
-    list.appendChild(item);
-  });
+      list.appendChild(item);
+    });
+
+  if (pageCount > 1) {
+    const navigation = document.createElement('div');
+    navigation.className = 'primary-cards-list-actions primary-cards-pagination';
+    const status = document.createElement('span');
+    status.setAttribute('role', 'status');
+    status.textContent = `${t('Page')} ${primaryCardPage + 1} / ${pageCount}`;
+    navigation.appendChild(status);
+    for (const [key, label, delta] of [
+      ['previous', t('Previous'), -1],
+      ['next', t('Next'), 1],
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-secondary btn-sm';
+      button.textContent = label;
+      button.dataset.primaryPage = key;
+      const unavailable = primaryCardPage + delta < 0 || primaryCardPage + delta >= pageCount;
+      button.setAttribute('aria-disabled', String(unavailable));
+      button.addEventListener('click', () => {
+        if (unavailable) return;
+        primaryCardPage += delta;
+        renderPrimaryCardsEntityList();
+      });
+      navigation.appendChild(button);
+    }
+    list.appendChild(navigation);
+  }
 
   syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
@@ -2036,6 +2093,7 @@ function initPrimaryCardsUI() {
 
     const assignBtn = event.target.closest('[data-primary-assign][data-entity-id]');
     if (assignBtn) {
+      if (assignBtn.getAttribute('aria-disabled') === 'true') return;
       const cardIndex = Number(assignBtn.dataset.primaryAssign);
       const entityId = assignBtn.dataset.entityId;
       const selections = getPendingPrimaryCards();
@@ -2046,7 +2104,11 @@ function initPrimaryCardsUI() {
 
   const searchInput = document.getElementById('primary-cards-search');
   if (searchInput) {
-    searchInput.addEventListener('input', renderPrimaryCardsEntityList);
+    searchInput.addEventListener('input', () => {
+      clearTimeout(primaryCardSearchTimer);
+      primaryCardPage = 0;
+      primaryCardSearchTimer = setTimeout(renderPrimaryCardsEntityList, 150);
+    });
   }
 
   section.dataset.initialized = 'true';
@@ -2137,6 +2199,11 @@ function updateDesktopPinsSummary() {
 }
 
 function renderDesktopPinsList() {
+  const list = document.getElementById('desktop-pins-list');
+  if (list) preserveListFocus(list, renderDesktopPinRows);
+}
+
+function renderDesktopPinRows() {
   const list = document.getElementById('desktop-pins-list');
   const searchInput = document.getElementById('desktop-pins-search');
   if (!list || !searchInput) return;
@@ -4196,6 +4263,8 @@ async function openSettings(uiHooks) {
  * Restores window effect previews and theme previews that were active while the settings modal was open, clears pending preview state, hides the theme tooltip, removes hotkey listeners, and hides/releases the settings modal's focus trap.
  */
 function closeSettings() {
+  clearTimeout(primaryCardSearchTimer);
+  primaryCardPage = 0;
   try {
     setMainSettingsSaveLocked(false);
     cancelPreviewWindowEffects();
