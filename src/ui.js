@@ -90,6 +90,7 @@ const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 const ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS = 8000;
+const MEDIA_PLAYER_SUPPORT_SEEK = 2;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
@@ -9712,6 +9713,8 @@ function hasMediaSeekData(entity) {
 function canSeekMedia(entity) {
   if (!entity?.entity_id?.startsWith('media_player.')) return false;
   if (!hasEntityService(entity, 'media_seek')) return false;
+  const features = entity.attributes?.supported_features;
+  if (!uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_SEEK)) return false;
   return hasMediaSeekData(entity);
 }
 
@@ -9947,9 +9950,14 @@ function showMediaDetail(entity) {
       const currentEntity = state.STATES[entity.entity_id] || entity;
       const attrs = currentEntity.attributes || {};
       if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
-        const volume = clampRange(Math.round(Number(attrs.volume_level ?? 0) * 100), 0, 100);
-        volumeSlider.value = String(volume);
-        volumeValue.textContent = `${volume}%`;
+        // An off player reports no volume; show that instead of a made-up 0%.
+        if (attrs.volume_level == null || !Number.isFinite(Number(attrs.volume_level))) {
+          volumeValue.textContent = '—';
+        } else {
+          const volume = clampRange(Math.round(Number(attrs.volume_level) * 100), 0, 100);
+          volumeSlider.value = String(volume);
+          volumeValue.textContent = `${volume}%`;
+        }
       }
       if (muteToggle) {
         const isMuted = attrs.is_volume_muted === true;

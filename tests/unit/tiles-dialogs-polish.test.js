@@ -361,4 +361,39 @@ describe('tile and device dialog polish', () => {
       modal.remove();
     });
   });
+
+  describe('media dialog', () => {
+    const player = (supported_features, attributes = {}) =>
+      entity('media_player.walkman', 'playing', {
+        supported_features,
+        media_position: 30,
+        media_duration: 200,
+        volume_level: 0.4,
+        ...attributes,
+      });
+    beforeEach(() => state.setServices({ media_player: { media_seek: {} } }));
+
+    it('hides seek buttons when the player lacks the seek feature', () => {
+      const walkman = player(914877);
+      state.setStates({ [walkman.entity_id]: walkman });
+      ui.openEntityDetailModal(walkman);
+      expect(document.querySelector('.media-detail-seek-btn')).toBeNull();
+    });
+
+    it('offers seek buttons when the player supports seeking', () => {
+      const livingRoom = player(119695);
+      state.setStates({ [livingRoom.entity_id]: livingRoom });
+      ui.openEntityDetailModal(livingRoom);
+      expect(document.querySelectorAll('.media-detail-seek-btn')).toHaveLength(2);
+    });
+
+    it('does not show 0% volume for a player that was turned off', () => {
+      const livingRoom = player(119695);
+      state.setStates({ [livingRoom.entity_id]: livingRoom });
+      ui.openEntityDetailModal(livingRoom);
+      expect(document.querySelector('#media-volume-value').textContent).toBe('40%');
+      state.setEntityState(entity('media_player.walkman', 'off', { supported_features: 119695 }));
+      expect(document.querySelector('#media-volume-value').textContent).toBe('—');
+    });
+  });
 });
