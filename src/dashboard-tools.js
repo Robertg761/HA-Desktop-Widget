@@ -7,11 +7,64 @@ import { closeModal, trapFocus, showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 
-const connection = { attempts: 0, lastConnectedAt: null, lastUpdateAt: null, lastIssue: null };
+const MAX_RECENT_ISSUES = 5;
+const connection = {
+  appVersion: null,
+  homeAssistantVersion: null,
+  lastConnectedAt: null,
+  lastUpdateAt: null,
+  reconnects: 0,
+  outage: null,
+  recentIssues: [],
+};
+
+// The operating system part of the user agent, e.g. "X11; Linux x86_64".
+function operatingSystem() {
+  return /\(([^)]+)\)/.exec(globalThis.navigator?.userAgent || '')?.[1] || null;
+}
 
 function diagnosticsReport() {
-  // Deliberately allowlist fields. Server messages, URLs, states and config may contain secrets.
-  return { connection: websocket.isConnected() ? 'connected' : 'disconnected', ...connection };
+  // Deliberately allowlist fields. Server messages, URLs, states and config may contain secrets,
+  // so issues are recorded as fixed reason codes and times only.
+  return {
+    connection: websocket.isConnected() ? 'connected' : 'disconnected',
+    appVersion: connection.appVersion,
+    platform: window.electronAPI?.platform || null,
+    os: operatingSystem(),
+    homeAssistantVersion: connection.homeAssistantVersion,
+    lastConnectedAt: connection.lastConnectedAt,
+    lastUpdateAt: connection.lastUpdateAt,
+    reconnects: connection.reconnects,
+    recentIssues: connection.recentIssues.map((issue) => ({ ...issue })),
+  };
+}
+
+function isStateSnapshot(message) {
+  return (
+    message?.type === 'result' &&
+    message.success &&
+    Array.isArray(message.result) &&
+    message.result.some((entity) => entity?.entity_id && typeof entity.state === 'string')
+  );
+}
+
+// An outage lasts from the first failure until Home Assistant accepts the connection again. It is
+// kept after recovery so a report copied later still shows the drop.
+function recordIssue(reason) {
+  if (!connection.outage) {
+    connection.outage = {
+      reason,
+      startedAt: new Date().toISOString(),
+      recoveredAt: null,
+      reconnectAttempts: 0,
+    };
+    connection.recentIssues = [connection.outage, ...connection.recentIssues].slice(
+      0,
+      MAX_RECENT_ISSUES
+    );
+  } else if (reason === 'authorization_failed') {
+    connection.outage.reason = reason;
+  }
 }
 
 function dialog(title, { key, onClose = null } = {}) {
@@ -117,7 +170,13 @@ function showConnectionDiagnostics() {
   // button so the report the user may be reading or selecting is not rewritten every second.
   const liveEvents = ['open', 'close', 'error', 'message'];
   const onLiveEvent = (message) => {
-    if (message?.type && !['auth_ok', 'auth_invalid'].includes(message.type)) return;
+    // Refresh once the reconnect's state snapshot arrives, not only on auth_ok before it.
+    if (
+      message?.type &&
+      !['auth_ok', 'auth_invalid'].includes(message.type) &&
+      !isStateSnapshot(message)
+    )
+      return;
     if (modal.isConnected) update();
   };
   const stopLiveUpdates = () => liveEvents.forEach((event) => websocket.off(event, onLiveEvent));
@@ -201,27 +260,42 @@ let initialized = false;
 function initializeDashboardTools() {
   if (initialized) return;
   initialized = true;
+  window.electronAPI
+    ?.getAppVersion?.()
+    ?.then((version) => {
+      if (typeof version === 'string') connection.appVersion = version.slice(0, 64);
+    })
+    .catch(() => {});
   websocket.on('connect-attempt', () => {
-    connection.attempts += 1;
+    if (connection.outage) connection.outage.reconnectAttempts += 1;
   });
-  websocket.on('close', () => {
-    connection.lastIssue = 'connection_closed';
+  websocket.on('close', (event) => {
+    // Closing a socket to reconnect with new settings is not a connection problem.
+    if (!event?.intentional) recordIssue('connection_closed');
   });
-  websocket.on('error', () => {
-    connection.lastIssue = 'connection_error';
+  websocket.on('error', (error) => {
+    recordIssue(
+      /invalid configuration|default token/i.test(error?.message || '')
+        ? 'invalid_configuration'
+        : 'connection_error'
+    );
   });
   websocket.on('message', (message) => {
     if (message.type === 'auth_ok') {
+      if (connection.lastConnectedAt) connection.reconnects += 1;
       connection.lastConnectedAt = new Date().toISOString();
-      connection.lastIssue = null;
+      if (typeof message.ha_version === 'string') {
+        connection.homeAssistantVersion = message.ha_version.slice(0, 32);
+      }
+      if (connection.outage) {
+        connection.outage.recoveredAt = connection.lastConnectedAt;
+        connection.outage = null;
+      }
     }
-    if (message.type === 'auth_invalid') connection.lastIssue = 'authorization_failed';
+    if (message.type === 'auth_invalid') recordIssue('authorization_failed');
     if (
       (message.type === 'event' && message.event?.event_type === 'state_changed') ||
-      (message.type === 'result' &&
-        message.success &&
-        Array.isArray(message.result) &&
-        message.result.some((entity) => entity?.entity_id && typeof entity.state === 'string'))
+      isStateSnapshot(message)
     ) {
       connection.lastUpdateAt = new Date().toISOString();
     }
