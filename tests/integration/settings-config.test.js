@@ -660,6 +660,17 @@ describe('Settings + Config Integration', () => {
       url.value = 'https://other.example.test';
       url.dispatchEvent(new Event('input'));
       expect(button.textContent).toBe('Reconnect with Home Assistant');
+      expect(button.classList).not.toContain('hidden');
+
+      // A working authorization for this server needs no new sign-in.
+      url.value = 'https://ha.example.test';
+      state.CONFIG.homeAssistant = {
+        ...state.CONFIG.homeAssistant,
+        token: 'short-lived-access-token',
+        oauthStatus: 'connected',
+      };
+      settings.refreshHomeAssistantAuthStatus();
+      expect(button.classList).toContain('hidden');
     });
 
     test('connect button delegates OAuth pairing to the main process', async () => {

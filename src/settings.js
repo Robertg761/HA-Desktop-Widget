@@ -4376,17 +4376,16 @@ function getHomeAssistantAuthState(homeAssistant) {
   ]);
 }
 
-// While Home Assistant is only unreachable, the saved authorization is still good: the button
-// retries restoring it instead of suggesting a new sign-in. A URL edited to another server still
-// pairs with that server.
+// A new sign-in is only offered when one is needed: no authorization yet, an expired one, or a URL
+// edited to another server. While the saved authorization is good but Home Assistant cannot be
+// reached, the button retries restoring it; once connected there is nothing to do.
 function getHomeAssistantConnectAction() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   if (homeAssistant.authMethod !== 'oauth') return 'connect';
   const typedUrl = normalizeBaseUrl(document.getElementById('ha-url')?.value || '');
   const sameServer = !typedUrl || typedUrl === normalizeBaseUrl(homeAssistant.url || '');
-  return ['offline', 'restoring'].includes(homeAssistant.oauthStatus) && sameServer
-    ? 'retry'
-    : 'reconnect';
+  if (!sameServer || homeAssistant.oauthStatus === 'reauth_required') return 'reconnect';
+  return homeAssistant.oauthStatus === 'connected' ? 'none' : 'retry';
 }
 
 function updateHomeAssistantConnectButton() {
@@ -4394,12 +4393,13 @@ function updateHomeAssistantConnectButton() {
   if (!connectButton) return;
   const action = getHomeAssistantConnectAction();
   connectButton.dataset.action = action;
+  connectButton.classList.toggle('hidden', action === 'none');
   connectButton.textContent =
     action === 'retry'
       ? t('Retry')
-      : action === 'reconnect'
-        ? t('Reconnect with Home Assistant')
-        : t('Connect with Home Assistant');
+      : action === 'connect'
+        ? t('Connect with Home Assistant')
+        : t('Reconnect with Home Assistant');
 }
 
 function updateHomeAssistantAuthUi() {
