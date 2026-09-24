@@ -61,9 +61,22 @@ async function detectArm() {
   return /aarch64|arm64/i.test(navigator.userAgent);
 }
 
-export const release = fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
+const getJson = (path) => fetch(`https://api.github.com/repos/${REPO}/${path}`)
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
   .catch(() => null);
+
+export const release = getJson('releases/latest');
+
+/* A published beta that's newer than the latest stable release, if any. */
+const coreVersion = (tag) => (tag || '').replace(/^v/, '').split('-')[0].split('.').map(Number);
+const isNewer = (a, b) => {
+  const [x, y] = [coreVersion(a), coreVersion(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+export const beta = Promise.all([release, getJson('releases?per_page=10')]).then(([stable, list]) =>
+  (list || []).find((r) => r.prerelease && !r.draft && isNewer(r.tag_name, stable?.tag_name)) || null
+);
 
 const platform = detectPlatform();
 const info = platform.os ? PLATFORMS[platform.os] : null;
@@ -154,11 +167,23 @@ if (rec) {
     if (platform.mobile) document.getElementById('no-detect').hidden = false;
   }
 
+  /* Offer a newer beta, quietly, for the visitor's own platform. */
+  beta.then((rel) => {
+    if (!rel || !info) return;
+    const asset = rel.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
+    const link = document.getElementById('beta-link');
+    const [major, minor] = coreVersion(rel.tag_name);
+    link.textContent = `Try the ${major}.${minor} beta`;
+    link.href = asset?.browser_download_url || rel.html_url;
+    link.dataset.betaAsset = info.primary;
+    document.getElementById('beta-line').hidden = false;
+  });
+
   /* Any download on the page opens the matching next steps up top. */
-  document.querySelectorAll('main [data-asset]').forEach((link) => {
+  document.querySelectorAll('main [data-asset], #beta-link').forEach((link) => {
     link.addEventListener('click', () => {
       rec.hidden = false;
-      showSteps(link.dataset.asset);
+      showSteps(link.dataset.asset || link.dataset.betaAsset);
       document.getElementById('install-started').hidden = false;
       document.getElementById('install-foot').hidden = false;
       document.getElementById('install-retry').href = link.href;

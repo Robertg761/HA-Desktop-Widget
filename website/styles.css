@@ -1054,6 +1054,8 @@ kbd {
 .btn.btn-lg { height: 56px; padding: 0 32px; font-size: 16px; }
 .rec-sub, .rec-arch { margin: 16px 0 0; font-size: 13.5px; color: var(--faint); }
 .rec-arch { margin-top: 4px; }
+.rec-beta { margin: 6px 0 0; font-size: 13.5px; color: var(--faint); }
+.rec-beta a { color: var(--accent); text-underline-offset: 3px; }
 .install-help { width: 100%; max-width: 460px; margin-top: 22px; font-size: 14.5px; color: var(--muted); text-align: left; }
 .install-help summary {
   width: max-content;
