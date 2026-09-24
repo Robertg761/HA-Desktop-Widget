@@ -47,6 +47,7 @@ import {
 } from './src/connection.js';
 import {
   describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
   renderConnectionStatus,
   setConnectionStatusBusy,
@@ -247,6 +248,14 @@ function clearReconnectTimer() {
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
+  // An OAuth setup without a usable access token (restore pending, offline, or expired) has
+  // nothing to connect with; trying would only report the placeholder token. Main reconnects
+  // through the config broadcast once it has a token.
+  if (usesOAuth() && !isConfigured(state.CONFIG)) {
+    setOAuthRestoreStatus();
+    renderMainWidgetState();
+    return;
+  }
   updateMainConnectionState('connecting');
   setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
   renderMainWidgetState();
@@ -326,7 +335,9 @@ function setOAuthRestoreStatus() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   if (homeAssistant.oauthStatus === 'reauth_required') {
     if (mainConnectionState !== 'auth-failed') updateMainConnectionState('auth-failed');
-    setDisconnectedStatus(getOAuthReauthRequiredStatus());
+    setDisconnectedStatus(
+      describeHomeAssistantOAuthReauthReason(homeAssistant) || getOAuthReauthRequiredStatus()
+    );
     return;
   }
   setDisconnectedStatus(
@@ -697,6 +708,7 @@ function getOAuthStatePanel() {
       message: pending
         ? t('Opening Home Assistant for authorization...')
         : error ||
+          describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant) ||
           t(
             'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
           ),
@@ -735,7 +747,7 @@ function getOAuthStatePanel() {
   return {
     tone: 'error',
     title: t('Home Assistant is disconnected'),
-    message: t('Home Assistant is offline. Authorization will retry automatically.'),
+    message: describeHomeAssistantOAuthRefreshError(state.CONFIG.homeAssistant),
     actions: [
       { label: t('Open Settings'), className: 'btn btn-primary', onClick: openSettingsModal },
       { label: t('Retry'), className: 'btn btn-secondary', onClick: retryOAuthRestore },

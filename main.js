@@ -5244,6 +5244,14 @@ function setupProfileSyncWakeTriggers() {
       requestOpportunisticProfileSync('resume');
       invalidateHaConnectionState('connecting');
       const requestReconnect = () => {
+        // An expired authorization (also one the refresh below just found revoked) waits for
+        // the user to reconnect; a reconnect could only fail on the placeholder token.
+        if (
+          config?.homeAssistant?.authMethod === 'oauth' &&
+          config.homeAssistant.oauthStatus === 'reauth_required'
+        ) {
+          return;
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
         }
@@ -6620,13 +6628,21 @@ async function refreshHomeAssistantOAuthSession() {
     }
     return applyHomeAssistantOAuthSession(session);
   } catch (error) {
+    // Retrying cannot fix a rejected grant or a saved authorization this system cannot read;
+    // only a new authorization can.
+    const reauthRequired = [
+      'OAUTH_INVALID_GRANT',
+      'OAUTH_STORE_READ',
+      'OAUTH_STORE_INVALID',
+      'OAUTH_STORE_DECRYPT',
+      'OAUTH_SECURE_STORAGE_UNAVAILABLE',
+    ].includes(error?.code);
     config.homeAssistant = config.homeAssistant || {};
-    config.homeAssistant.oauthStatus =
-      error?.code === 'OAUTH_INVALID_GRANT' ? 'reauth_required' : 'offline';
+    config.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
     // The renderer shows a translated message for known codes; the text is the fallback.
     config.homeAssistant.oauthLastErrorCode = String(error?.code || '');
-    if (error?.code === 'OAUTH_INVALID_GRANT') {
+    if (reauthRequired) {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
       delete config.homeAssistant.oauthAuthorizationId;
       delete config.homeAssistant.oauthExpiresAt;

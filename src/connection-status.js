@@ -140,8 +140,18 @@ function describeHomeAssistantOAuthRefreshError(homeAssistant = {}) {
   );
 }
 
+/**
+ * Why an authorization needs reconnecting (oauthStatus 'reauth_required') when it is not the usual
+ * expired or revoked grant: for example a saved authorization this system cannot read. '' otherwise.
+ */
+function describeHomeAssistantOAuthReauthReason(homeAssistant = {}) {
+  const code = homeAssistant.oauthLastErrorCode || '';
+  return code === 'OAUTH_INVALID_GRANT' ? '' : describeHomeAssistantOAuthError(code);
+}
+
 export {
   describeHomeAssistantOAuthError,
+  describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthFailure,
   describeHomeAssistantOAuthRefreshError,
   renderConnectionStatus,

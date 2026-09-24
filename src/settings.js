@@ -22,6 +22,7 @@ import {
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import {
   describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
   renderConnectionStatus,
   setConnectionStatusBusy,
@@ -4407,9 +4408,10 @@ function updateHomeAssistantAuthUi() {
     setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
   } else if (homeAssistant.oauthStatus === 'reauth_required') {
     setHomeAssistantOAuthStatus(
-      t(
-        'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
-      ),
+      describeHomeAssistantOAuthReauthReason(homeAssistant) ||
+        t(
+          'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+        ),
       'error'
     );
   } else {

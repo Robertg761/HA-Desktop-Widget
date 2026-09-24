@@ -416,6 +416,90 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     });
   });
 
+  describe('a saved authorization this system cannot read', () => {
+    it('asks to reconnect and explains why instead of retrying forever', async () => {
+      await loadRenderer({
+        config: oauthConfig({
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          oauthStatus: 'reauth_required',
+          oauthAuthorizationId: undefined,
+          oauthLastError: 'Saved Home Assistant authorization could not be decrypted',
+          oauthLastErrorCode: 'OAUTH_STORE_DECRYPT',
+        }),
+      });
+      const message =
+        'The saved Home Assistant authorization could not be read. Reconnect with Home Assistant.';
+      expect(panelText()).toContain(message);
+      expect(panelText()).not.toContain('offline');
+      expect(findButton('Reconnect with Home Assistant')).toBeTruthy();
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(false, message);
+    });
+
+    it('explains a refresh failure that is not an outage in the offline panel', async () => {
+      await loadRenderer({
+        config: oauthConfig({
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          oauthStatus: 'offline',
+          oauthAuthorizationId: undefined,
+          oauthLastError: 'bad response',
+          oauthLastErrorCode: 'OAUTH_TOKEN_RESPONSE',
+        }),
+      });
+      expect(panelText()).toContain(
+        'Home Assistant could not complete the authorization. Try again.'
+      );
+      expect(panelText()).not.toContain('Authorization will retry automatically');
+    });
+  });
+
+  describe('reconnect requests without a usable authorization', () => {
+    const tokenToasts = () =>
+      mockUiUtils.showToast.mock.calls.filter(([message]) => /token/i.test(String(message)));
+
+    it('keeps the reconnect prompt when main asks to reconnect after sleep', async () => {
+      await loadRenderer({
+        config: oauthConfig({
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          oauthStatus: 'reauth_required',
+          oauthAuthorizationId: undefined,
+        }),
+      });
+      triggerMockEvent('trayEntitiesRefreshNeeded', { reconnect: true });
+      await flushAsync();
+
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+      expect(tokenToasts()).toEqual([]);
+      expect(panelText()).toContain('Home Assistant authorization expired');
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        'Home Assistant authorization expired. Reconnect with Home Assistant in Settings.'
+      );
+    });
+
+    it('keeps the offline authorization state when the network comes back', async () => {
+      await loadRenderer({
+        config: oauthConfig({
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          oauthStatus: 'offline',
+          oauthAuthorizationId: undefined,
+        }),
+      });
+      window.dispatchEvent(new Event('offline'));
+      window.dispatchEvent(new Event('online'));
+      await flushAsync();
+
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+      expect(tokenToasts()).toEqual([]);
+      expect(panelText()).toContain(
+        'Home Assistant is offline. Authorization will retry automatically.'
+      );
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        'Home Assistant is offline. Authorization will retry automatically.'
+      );
+    });
+  });
+
   describe('first-run wizard for an existing dashboard', () => {
     it('skips choosing rooms and devices when pages already exist', async () => {
       await loadRenderer({

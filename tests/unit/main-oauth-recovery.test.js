@@ -90,7 +90,26 @@ describe('main-process Home Assistant authorization recovery', () => {
     handlers.resume();
     expect(context.refreshHomeAssistantOAuthSession).not.toHaveBeenCalled();
     expect(context.scheduleHomeAssistantOAuthRefresh).not.toHaveBeenCalled();
-    expect(events).toEqual([['tray-entities-refresh-needed', { reconnect: true }]]);
+    // Reconnecting would only fail on the placeholder token and bury the reconnect prompt.
+    expect(events).toEqual([]);
+  });
+
+  it('does not reconnect after sleep when the refresh finds the authorization revoked', async () => {
+    const { context, events, handlers } = createContext({
+      authMethod: 'oauth',
+      oauthStatus: 'connected',
+      oauthExpiresAt: 1_000_000 - 60_000,
+    });
+    context.refreshHomeAssistantOAuthSession.mockImplementation(async () => {
+      events.push('refresh');
+      context.config.homeAssistant = {
+        ...context.config.homeAssistant,
+        oauthStatus: 'reauth_required',
+      };
+    });
+    handlers.resume();
+    await flushAsync();
+    expect(events).toEqual(['refresh']);
   });
 
   it.each([
@@ -100,6 +119,15 @@ describe('main-process Home Assistant authorization recovery', () => {
         Promise.reject(Object.assign(new Error('invalid_grant'), { code: 'OAUTH_INVALID_GRANT' })),
     ],
     ['missing saved credentials', () => Promise.resolve(null)],
+    ...[
+      'OAUTH_STORE_READ',
+      'OAUTH_STORE_INVALID',
+      'OAUTH_STORE_DECRYPT',
+      'OAUTH_SECURE_STORAGE_UNAVAILABLE',
+    ].map((code) => [
+      `an unreadable saved authorization (${code})`,
+      () => Promise.reject(Object.assign(new Error('unreadable'), { code })),
+    ]),
   ])('requires reauthorization after %s and stops retrying', async (_label, refresh) => {
     const context = {
       config: {
