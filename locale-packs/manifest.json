@@ -8,7 +8,7 @@
       "version": "1.2.23",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/de.json",
-      "sha256": "61097a7ab995f8a23827542fca2338bde07e6217ff8ddd764f493e856a6beebf",
+      "sha256": "5b34c1d9f2997434935f25e7ba899ccf56034cd047d919c94ea4fcfedf6691a7",
       "notes": "German language pack for HA Desktop Widget, including German date and time formats."
     },
     {
@@ -28,7 +28,7 @@
       "version": "1.2.23",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/hi.json",
-      "sha256": "e309deeccba3a7384646ca5c7364a0a10d4a6f228eeb5e0d9ce51ffaab482d84",
+      "sha256": "4c37ec47f2c666bf35a8bd83d8dcf93891c8971e729689e371800fe4b856a97e",
       "notes": "Hindi language pack for HA Desktop Widget."
     },
     {
