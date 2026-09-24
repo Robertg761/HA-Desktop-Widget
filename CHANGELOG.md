@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one-second timer countdowns while hidden, and stale-reading protection after disconnects,
   sleep, and renderer failures. Stable builds keep these preferences without showing the feature.
 
-## [3.11.0] - 2026-09-23
+## [3.11.0] - 2026-09-24
 
 This release collects everything from the 3.11.0 betas, plus a round of fixes from pre-release
 testing. If you are coming from 3.10.0, your pages, pins, hotkeys, alerts, theme, and Home
