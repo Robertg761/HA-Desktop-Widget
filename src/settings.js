@@ -47,6 +47,9 @@ let previewAccent = null;
 let pendingAccent = null;
 let previewBackground = null;
 let pendingBackground = null;
+// Theme mode picked in Settings but not saved yet (null = unchanged).
+let pendingThemeMode = null;
+const THEME_MODES = ['auto', 'dark', 'light'];
 const COLOR_TARGETS = {
   accent: 'accent',
   background: 'background',
@@ -1702,6 +1705,86 @@ function renderColorThemeOptions() {
   updateThemeSummary();
   syncCustomColorEditorFromSelectedTheme();
   syncPersonalizationSectionHeight(document.getElementById('color-themes-section'));
+}
+
+function normalizeThemeMode(mode) {
+  return THEME_MODES.includes(mode) ? mode : 'auto';
+}
+
+function getSavedThemeMode() {
+  return normalizeThemeMode(state.CONFIG?.ui?.theme);
+}
+
+function isFollowingDesktopPalette() {
+  const followOmarchy = document.getElementById('follow-omarchy');
+  return !!followOmarchy && !followOmarchy.disabled && followOmarchy.checked;
+}
+
+function updateThemeModeControl() {
+  const control = document.getElementById('theme-mode-control');
+  if (!control) return;
+  const mode = pendingThemeMode || getSavedThemeMode();
+  // A followed desktop palette decides light or dark itself.
+  const locked = isFollowingDesktopPalette();
+  control.classList.toggle('is-disabled', locked);
+  control.querySelectorAll('[data-theme-mode]').forEach((option) => {
+    const selected = option.dataset.themeMode === mode;
+    option.classList.toggle('active', selected);
+    option.setAttribute('aria-checked', selected ? 'true' : 'false');
+    option.tabIndex = selected ? 0 : -1;
+    option.disabled = locked;
+  });
+}
+
+/**
+ * Preview a theme mode live. Accent, background and glass tints are derived per mode, so they
+ * are re-applied too; nothing is saved until Save.
+ * @param {string} mode - 'auto', 'dark' or 'light'.
+ */
+function previewThemeMode(mode) {
+  pendingThemeMode = normalizeThemeMode(mode);
+  applyTheme(pendingThemeMode);
+  applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+  refreshBackgroundTheme();
+  const values = getPreviewValuesFromInputs();
+  applyWindowEffects(values || state.CONFIG || {});
+  updateThemeModeControl();
+}
+
+function restoreSavedThemeMode() {
+  if (!pendingThemeMode) return;
+  const changed = pendingThemeMode !== getSavedThemeMode();
+  pendingThemeMode = null;
+  if (!changed) return;
+  applyTheme(getSavedThemeMode());
+  applyAccentTheme(state.CONFIG?.ui?.accent || getCurrentAccentTheme());
+  applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
+  applyWindowEffects(state.CONFIG || {});
+  applyDesktopAppearance(state.CONFIG || {});
+}
+
+function initThemeModeControl() {
+  const control = document.getElementById('theme-mode-control');
+  if (!control) return;
+  pendingThemeMode = null;
+  const options = [...control.querySelectorAll('[data-theme-mode]')];
+  options.forEach((option, index) => {
+    option.onclick = () => previewThemeMode(option.dataset.themeMode);
+    option.onkeydown = (event) => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!step) return;
+      event.preventDefault();
+      const next = options[(index + step + options.length) % options.length];
+      previewThemeMode(next.dataset.themeMode);
+      next.focus();
+    };
+  });
+  const followOmarchy = document.getElementById('follow-omarchy');
+  if (followOmarchy && !followOmarchy.dataset.themeModeBound) {
+    followOmarchy.dataset.themeModeBound = 'true';
+    followOmarchy.addEventListener('change', updateThemeModeControl);
+  }
+  updateThemeModeControl();
 }
 
 /**
@@ -4145,6 +4228,7 @@ async function openSettings(uiHooks) {
     activeColorTarget = COLOR_TARGETS.accent;
     renderColorThemeOptions();
     initColorTargetSelect();
+    initThemeModeControl();
     setMainSettingsSaveLocked(false);
     initCustomColorEditor();
     initColorThemeSectionToggle();
@@ -4294,6 +4378,7 @@ function closeSettings() {
     }
     previewBackground = null;
     pendingBackground = null;
+    restoreSavedThemeMode();
     pendingPrimaryCards = null;
     pendingDesktopPins = {};
     pendingCustomEntityIcons = {};
@@ -4675,6 +4760,7 @@ async function saveSettings() {
     if (allowPrereleaseUpdates) {
       nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
     }
+    nextConfig.ui.theme = pendingThemeMode || normalizeThemeMode(nextConfig.ui.theme);
     nextConfig.ui.accent = pendingAccent || getCurrentAccentTheme();
     nextConfig.ui.background = pendingBackground || getCurrentBackgroundTheme();
     nextConfig.ui.customColors = getCustomColorsForSave();

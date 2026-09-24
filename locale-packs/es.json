@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.21",
+  "version": "1.2.23",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -656,6 +656,24 @@
     "Rooms are unavailable. Choose from your devices instead.": "Las habitaciones no están disponibles. Elige entre tus dispositivos.",
     "Search devices": "Buscar dispositivos",
     "Skip for now": "Omitir por ahora",
-    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Tu conexión está guardada. Consulta la vista previa de una habitación o elige dispositivos para crear tu primera página. También puedes hacerlo más tarde desde el panel vacío."
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Tu conexión está guardada. Consulta la vista previa de una habitación o elige dispositivos para crear tu primera página. También puedes hacerlo más tarde desde el panel vacío.",
+    "Appearance": "Apariencia",
+    "Dashboard": "Panel",
+    "Theme": "Tema",
+    "Colors": "Colores",
+    "Readability": "Legibilidad",
+    "Date & time": "Fecha y hora",
+    "Home Assistant": "Home Assistant",
+    "Window Effects": "Efectos de ventana",
+    "Primary Cards": "Tarjetas principales",
+    "Media Tile": "Mosaico multimedia",
+    "Custom Entity Icons": "Iconos de entidad personalizados",
+    "Connection, window behaviour and language.": "Conexión, comportamiento de la ventana e idioma.",
+    "Theme, colours, glass and readability.": "Tema, colores, cristal y legibilidad.",
+    "What the main window shows.": "Lo que muestra la ventana principal.",
+    "Keyboard shortcuts for the widget and your entities.": "Atajos de teclado para el widget y tus entidades.",
+    "Desktop notifications when entities change.": "Notificaciones de escritorio cuando cambian las entidades.",
+    "Updates, sync, diagnostics and support.": "Actualizaciones, sincronización, diagnóstico y soporte.",
+    "Mode": "Modo"
   }
 }

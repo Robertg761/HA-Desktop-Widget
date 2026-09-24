@@ -13421,19 +13421,21 @@ select option {
 
 /* ============================================
    EXPERIMENT: LAYOUT REDESIGN
-   Exploratory layout pass (branch experiment/layout-redesign):
-   - Settings get an icon rail on the left at every width instead of a row of
-     text tabs that overflows in the default 500px window.
-   - Settings read as grouped lists: each switch is a row with its label on the
-     left and the switch on the right, help text tucked under the label.
-   - Card titles become quiet captions; the card is the group.
-   - The two primary cards merge into one "hero" pane split by a hairline.
-   - Quick Access views become a segmented control.
-   Markup and ids are unchanged apart from the rail's icons, so behaviour and
-   tests are unaffected.
+   Exploratory layout pass (branch experiment/layout-redesign).
+
+   Settings are reorganised into six pages on an icon rail: General,
+   Appearance, Dashboard, Hotkeys, Alerts and Advanced. Each page opens with
+   a title and one-line summary, then grouped lists in the style of system
+   settings apps: a small caption, then a pane of rows with the label and help
+   on the left and the control (switch, compact select, segmented control)
+   on the right. Long or rarely used content (custom colors, language packs,
+   entity pickers, icon editor) sits behind disclosure rows.
+
+   On the main view, the two primary cards share one pane and the Quick
+   Access views are a segmented control.
    ============================================ */
 
-/* --- Settings shell: header / rail + body / footer --- */
+/* --- Settings shell: header / rail + page / footer --- */
 
 #settings-modal .modal-content {
   grid-template:
@@ -13472,15 +13474,15 @@ select option {
 #settings-modal .tab-link {
   width: 100%;
   min-width: 0;
-  min-height: 58px;
-  white-space: normal;
-  overflow: visible;
+  min-height: 56px;
   flex-direction: column;
   justify-content: center;
   gap: 5px;
   padding: 8px 2px;
   border-radius: var(--radius-lg);
   text-align: center;
+  white-space: normal;
+  overflow: visible;
   color: color-mix(in srgb, var(--text-primary) 55%, transparent);
 }
 
@@ -13514,7 +13516,7 @@ select option {
 }
 
 #settings-modal .modal-body {
-  padding: 14px 16px 20px;
+  padding: 18px 18px 28px;
 }
 
 #settings-modal .modal-footer {
@@ -13539,23 +13541,93 @@ select option {
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
-    white-space: nowrap;
   }
 }
 
-/* --- Grouped lists --- */
+/* --- Page header --- */
 
-#settings-modal .settings-card,
-#settings-modal .personalization-section {
+.settings-page-header {
+  margin: 0 2px 18px;
+}
+
+.settings-page-title {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.settings-page-description {
+  margin-top: 2px;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+/* --- Groups: caption, then a pane of rows --- */
+
+.settings-group {
+  margin-bottom: 22px;
+}
+
+.settings-group-caption,
+.settings-group-caption-row {
+  margin: 0 4px 7px;
+}
+
+.settings-group-caption {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+}
+
+.settings-group-caption-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-group-caption-row .settings-group-caption {
+  margin: 0;
+}
+
+.settings-group-body {
+  padding: 0 14px;
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+/* Every direct child of a pane is a row, separated by hairlines. */
+#settings-modal .settings-group-body > * {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .settings-group-body > *:last-child {
+  border-bottom: none;
+}
+
+#settings-modal .settings-group-body > :empty,
+#settings-modal .settings-group-body > .hidden,
+#settings-modal .settings-group-body > [hidden] {
+  display: none;
+}
+
+/* Legacy cards that are still whole blocks (Hotkeys, Alerts) take the same pane. */
+#settings-modal .settings-card {
   padding: 4px 14px;
-  margin-bottom: 18px;
+  margin-bottom: 22px;
   border-radius: var(--radius-tile);
   background: var(--tile-bg);
   border: 1px solid var(--tile-border);
   box-shadow: none;
 }
 
-/* The card title steps outside the pane as a caption, like a grouped list. */
 #settings-modal .settings-card-header {
   margin: 10px 0 2px;
   padding: 0 0 8px;
@@ -13577,40 +13649,126 @@ select option {
   opacity: 0.85;
 }
 
-#settings-modal .settings-card > .form-group,
-#settings-modal .personalization-section .form-group {
+#settings-modal .settings-card > .form-group {
   margin: 0;
   padding: 12px 0;
   border-bottom: 1px solid var(--tile-border);
 }
 
-#settings-modal .settings-card > .form-group:last-child,
-#settings-modal .personalization-section .form-group:last-child {
+#settings-modal .settings-card > .form-group:last-child {
   border-bottom: none;
 }
 
-#settings-modal .form-group > label:not(:has(input[type='checkbox'])) {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+/* --- Rows --- */
+
+#settings-modal .form-group {
+  margin-bottom: 0;
+}
+
+#settings-modal .form-group > label:not(:has(input[type='checkbox'])),
+#settings-modal .setting-text > label,
+#settings-modal .setting-label {
+  display: block;
+  margin-bottom: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.005em;
   color: var(--text-primary);
 }
 
-/* Switch rows: label left, switch right. */
-#settings-modal .form-group label:has(input[type='checkbox']) {
-  flex-direction: row-reverse;
-  justify-content: space-between;
-  gap: 16px;
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
+/* A label above a full-width field (URL, search, the media picker) keeps a gap. */
+#settings-modal .form-group > label + input,
+#settings-modal .form-group > label + select,
+#settings-modal .form-group > label + .custom-dropdown,
+#settings-modal .form-group > label + textarea {
+  margin-top: 8px;
 }
 
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#settings-modal .setting-row > select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 120px;
+  max-width: 62%;
+  padding: 7px 10px;
+  font-size: var(--font-size-sm);
+}
+
+.setting-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.setting-row-action {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setting-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#settings-modal .setting-slider input[type='range'] {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
+.setting-slider-value {
+  min-width: 30px;
+  text-align: right;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#settings-modal .form-help,
+#settings-modal .help-text {
+  margin-top: 3px;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+}
+
+#settings-modal .setting-text > .form-help:first-of-type {
+  margin-top: 2px;
+}
+
+/* On non-Omarchy desktops the Follow Omarchy switch can never turn on; hide it. */
+#follow-omarchy-row:has(#follow-omarchy:disabled) {
+  display: none;
+}
+
+/* --- Switches --- */
+
 #settings-modal .form-group input[type='checkbox'] {
+  flex-shrink: 0;
   margin-right: 0;
-  width: 36px;
+  width: 38px;
   height: 22px;
   border-color: transparent;
   background: var(--tile-border-hover);
   box-shadow: none;
+}
+
+#settings-modal .form-group label:has(input[type='checkbox']) input[type='checkbox'] {
+  margin-right: 10px;
 }
 
 #settings-modal .form-group input[type='checkbox']::after {
@@ -13628,36 +13786,370 @@ select option {
 }
 
 #settings-modal .form-group input[type='checkbox']:checked::after {
-  transform: translateX(14px);
+  transform: translateX(16px);
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-#settings-modal .form-help,
-#settings-modal .help-text {
-  margin-top: 4px;
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
-  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+/* Switches still wrapped in their label (Hotkeys, Alerts, Updates, Sync) read as rows too. */
+#settings-modal .form-group > label:has(> input[type='checkbox']) {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
 }
 
-/* The switch sits on the label's first line, so the help text runs under the
-   label rather than under the switch. */
-#settings-modal .form-group:has(label > input[type='checkbox']) > .form-help,
-#settings-modal .form-group:has(label > input[type='checkbox']) > .help-text {
-  padding-right: 52px;
+#settings-modal .form-group > label:has(> input[type='checkbox']) input[type='checkbox'] {
+  margin-right: 0;
+}
+
+/* --- Segmented controls (theme mode, primary cards) --- */
+
+.segmented-control {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.segmented-control.is-disabled {
+  opacity: 0.45;
+}
+
+.segmented-option,
+.segmented-control .btn {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.segmented-option:hover,
+.segmented-control .btn:hover {
+  color: var(--text-primary);
+  background: var(--tile-bg-hover);
+  border-color: transparent;
+}
+
+.segmented-option.active,
+.segmented-control .btn.btn-primary {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--text-primary);
+}
+
+.segmented-option:focus-visible,
+.segmented-control .btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.segmented-option:disabled {
+  cursor: default;
+}
+
+.primary-card-row .segmented-control {
+  gap: 2px;
+}
+
+/* --- Disclosure rows: <details> and the lazy-loaded list sections --- */
+
+#settings-modal .settings-disclosure > summary,
+#settings-modal .settings-disclosure-section > .section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  padding: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  list-style: none;
+  cursor: pointer;
+}
+
+#settings-modal .settings-disclosure > summary::before {
+  content: none;
+}
+
+#settings-modal .settings-disclosure > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  opacity: 0.6;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-base);
+}
+
+#settings-modal .settings-disclosure[open] > summary::after {
+  transform: rotate(45deg);
+}
+
+#settings-modal .settings-disclosure > .settings-details-body {
+  margin-top: 12px;
+  padding: 0;
+  border: none;
+}
+
+#settings-modal .settings-disclosure-section {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  margin-bottom: 0;
+}
+
+#settings-modal .settings-disclosure-section .section-toggle-icon {
+  opacity: 0.6;
+  transform: rotate(90deg);
+}
+
+#settings-modal .settings-disclosure-section.collapsed .section-toggle-icon {
+  transform: none;
+}
+
+#settings-modal .settings-disclosure-section .section-body {
+  margin-top: 12px;
+}
+
+#settings-modal .settings-disclosure-section.collapsed .section-body {
+  margin-top: 0;
+}
+
+/* The legacy token disclosure keeps its own style but sits in a row now. */
+#settings-modal #legacy-ha-token-settings > summary {
+  font-size: var(--font-size-sm);
+}
+
+/* --- Specific blocks tidied into the grid --- */
+
+#settings-modal .connection-test-row {
+  margin-top: 0;
+}
+
+#settings-modal .settings-group-body > .connection-test-row {
+  padding-top: 0;
+  border-bottom: none;
+}
+
+#settings-modal .weather-entity-setting select,
+#settings-modal .language-section select {
+  width: 100%;
+}
+
+#settings-modal .language-section p.help-text + p.help-text {
+  margin-top: 1px;
+}
+
+#settings-modal .color-target-control {
+  margin-top: 8px;
+}
+
+/* The native select only mirrors the radio group for form state; keep it out of the layout. */
+#settings-modal .color-target-select-native {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+}
+
+#settings-modal .settings-group-body {
+  position: relative;
+}
+
+/* The summary rows line up with the other row labels. */
+#settings-modal .settings-disclosure > summary {
+  width: 100%;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-modal .accent-theme-grid {
+  margin-top: 10px;
+}
+
+#settings-modal .form-group.custom-color-editor > label:first-child {
+  display: none;
+}
+
+/* Custom color editor: swatch and hex on one line, then R G B, then Save. */
+#settings-modal .custom-color-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(5) {
+  grid-column: 2 / span 2;
+  grid-row: 1;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(6) {
+  grid-column: 1 / -1;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(1) .custom-color-field-label,
+#settings-modal .custom-color-editor-grid > :nth-child(6) .custom-color-field-label {
+  display: none;
+}
+
+#settings-modal .custom-color-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .custom-color-field input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+#settings-modal #custom-color-picker {
+  padding: 3px;
+  cursor: pointer;
+}
+
+#settings-modal .primary-card-value {
+  display: block;
+}
+
+/* Inside the picker disclosures the search box and list speak for themselves. */
+#settings-modal #primary-cards-body .form-group > label,
+#settings-modal #custom-entity-icons-body .form-group > label {
+  display: none;
+}
+
+#settings-modal #primary-cards-body > .form-group + .form-group,
+#settings-modal #custom-entity-icons-body > .form-group {
+  margin-top: 10px;
+}
+
+#settings-modal #primary-cards-body > .form-help,
+#settings-modal #custom-entity-icons-body > .form-help {
+  margin-top: 8px;
+}
+
+#settings-modal .preset-hotkey-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+#settings-modal .preset-hotkey-btn {
+  min-height: 28px;
+  padding: 3px 10px;
+  border-color: var(--tile-border-hover);
+  background: var(--tile-bg);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs-plus);
+}
+
+#settings-modal .preset-hotkey-btn:hover {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+#settings-modal .popup-hotkey-config {
+  margin-top: 10px;
+}
+
+#settings-modal .preset-hotkey-row .setting-label {
+  width: 100%;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .btn-link {
+  min-height: 0;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+#settings-modal .btn-link:hover {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+/* Profile sync reveals its options inside one row; flatten the old nested boxes
+   into the row rhythm. */
+#settings-modal .profile-sync-settings,
+#settings-modal .profile-sync-scope-group {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-modal .profile-sync-settings > .form-group,
+#settings-modal .profile-sync-settings > .help-text {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--tile-border);
+}
+
+#settings-modal .profile-sync-file-row input {
+  min-width: 0;
+}
+
+/* Update status reads as the version row's second line, not a boxed field. */
+#settings-modal .update-status {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-modal .update-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 6px;
 }
 
 #settings-modal hr {
   border: none;
   border-top: 1px solid var(--tile-border);
   margin: 4px 0;
-}
-
-/* Personalization's collapsible sections read as disclosure rows. */
-#settings-modal .section-toggle {
-  min-height: 44px;
-  font-size: var(--font-size-base);
 }
 
 /* --- Main view: one hero pane for the primary cards --- */

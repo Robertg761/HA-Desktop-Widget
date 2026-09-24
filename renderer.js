@@ -2540,7 +2540,10 @@ function wireUI() {
           .querySelectorAll('.modal-body .tab-content')
           .forEach((content) => content.classList.remove('active'));
         document.getElementById(`${tab}-tab`).classList.add('active');
-        if (tab === 'personalization') {
+        // Each page opens at its top rather than at the previous page's scroll position.
+        const settingsBody = button.closest('.modal-content')?.querySelector('.modal-body');
+        if (settingsBody) settingsBody.scrollTop = 0;
+        if (tab === 'personalization' || tab === 'dashboard') {
           requestAnimationFrame(() => {
             settings.refreshPersonalizationSectionHeights();
           });

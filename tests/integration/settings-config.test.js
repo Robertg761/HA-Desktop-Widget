@@ -339,6 +339,11 @@ function createSettingsModalDOM() {
       </div>
 
       <div id="personalization-tab" class="tab-content">
+        <div id="theme-mode-control" role="radiogroup">
+          <button type="button" data-theme-mode="auto">Auto</button>
+          <button type="button" data-theme-mode="dark">Dark</button>
+          <button type="button" data-theme-mode="light">Light</button>
+        </div>
         <div id="color-themes-section" class="personalization-section collapsed">
           <button type="button" id="color-themes-toggle" class="section-toggle" aria-expanded="false">
             Color Themes
@@ -1134,6 +1139,59 @@ describe('Settings + Config Integration', () => {
           },
         })
       );
+    });
+  });
+
+  describe('Theme mode control', () => {
+    const checkedMode = () =>
+      document.querySelector('#theme-mode-control [aria-checked="true"]')?.dataset.themeMode;
+
+    test('reflects the saved theme when settings open', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'light' };
+      await settings.openSettings();
+      expect(checkedMode()).toBe('light');
+      settings.closeSettings();
+    });
+
+    test('treats a missing or unknown theme as Auto', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'sepia' };
+      await settings.openSettings();
+      expect(checkedMode()).toBe('auto');
+      settings.closeSettings();
+    });
+
+    test('previews a mode live and saves it', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'dark' };
+      await settings.openSettings();
+      mockUiUtils.applyTheme.mockClear();
+
+      document.querySelector('#theme-mode-control [data-theme-mode="light"]').click();
+      expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('light');
+      expect(checkedMode()).toBe('light');
+
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.theme).toBe('light');
+    });
+
+    test('closing without saving restores the saved mode', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'dark' };
+      await settings.openSettings();
+      document.querySelector('#theme-mode-control [data-theme-mode="light"]').click();
+      mockUiUtils.applyTheme.mockClear();
+
+      settings.closeSettings();
+      expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('dark');
+      expect(state.CONFIG.ui.theme).toBe('dark');
+    });
+
+    test('arrow keys move the selection', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'auto' };
+      await settings.openSettings();
+      document
+        .querySelector('#theme-mode-control [data-theme-mode="auto"]')
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      expect(checkedMode()).toBe('dark');
+      settings.closeSettings();
     });
   });
 
