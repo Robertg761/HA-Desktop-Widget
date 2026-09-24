@@ -6314,7 +6314,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'bedroom'
       );
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      // Like the real confirmation, it is still animating out, with focus on its Delete button.
+      const confirmation = document.createElement('div');
+      confirmation.className = 'modal modal-closing';
+      confirmation.innerHTML = '<button>Delete</button>';
+      uiUtils.showConfirm.mockImplementationOnce(async () => {
+        document.body.appendChild(confirmation);
+        confirmation.querySelector('button').focus();
+        return true;
+      });
       const deleteButton = tabBar.querySelector('.qa-tab-delete');
       deleteButton.focus();
       deleteButton.click();
@@ -6326,6 +6334,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.activeElement).toBe(
         tabBar.querySelector('.quick-access-tab-link[data-tab="default"]')
       );
+      confirmation.remove();
     });
 
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {

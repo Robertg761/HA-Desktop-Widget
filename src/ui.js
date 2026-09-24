@@ -828,7 +828,9 @@ async function deleteQuickAccessPage(tabId) {
 // keyboard focus on the page now on screen: its tab when the tab bar shows, else its first tile.
 function focusActiveQuickAccessPage() {
   setTimeout(() => {
-    if (document.activeElement && document.activeElement !== document.body) return;
+    const active = document.activeElement;
+    // Focus still in a dialog that is animating out (the delete confirmation) is about to drop.
+    if (active && active !== document.body && !active.closest('.modal-closing')) return;
     const target =
       document.querySelector('#quick-access-tabs:not(.hidden) .quick-access-tab-link.active') ||
       document.querySelector(
