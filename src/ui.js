@@ -5489,7 +5489,8 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   }
 
   root.querySelectorAll('.desktop-pin-climate-mode').forEach((button) => {
-    const isActive = button.dataset.mode === mode;
+    // Mode buttons carry their mode in data-action (see createDesktopPinButtonMarkup).
+    const isActive = button.dataset.action === mode;
     button.dataset.active = isActive ? 'true' : 'false';
     button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });

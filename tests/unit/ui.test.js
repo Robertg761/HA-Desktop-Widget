@@ -5020,6 +5020,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control).toBeTruthy();
       expect(control.querySelector('.desktop-pin-climate-slider')).toBeTruthy();
 
+      // The current mode stays highlighted after the pin's first live-state pass.
+      const currentMode = state.STATES['climate.thermostat'].state;
+      const activeModes = [
+        ...control.querySelectorAll('.desktop-pin-climate-mode[data-active="true"]'),
+      ].map((button) => button.dataset.action);
+      expect(activeModes).toEqual([currentMode]);
+
       control.querySelector('.desktop-pin-climate-mode[data-action="cool"]').click();
 
       expect(mockCallService).toHaveBeenCalledWith('climate', 'set_hvac_mode', {
