@@ -34,7 +34,12 @@ async function loadRoomRegistry(websocket) {
   if (
     responses.some((response) => response?.success === false || !Array.isArray(response?.result))
   ) {
-    throw new Error(t('Room information is unavailable. Check your Home Assistant permissions.'));
+    // Home Assistant answered but refused, so retrying will not help (unlike a dropped connection).
+    const error = new Error(
+      t('Room information is unavailable. Check your Home Assistant permissions.')
+    );
+    error.code = 'registry_unavailable';
+    throw error;
   }
   return {
     areas: responses[0].result,

@@ -1,4 +1,4 @@
-import { formatDateTime, t } from './i18n.js';
+import { formatDateTime, formatNumber, isolateLtr, t } from './i18n.js';
 
 function summarizeHistory(series) {
   const values = series.map((point) => point.value).filter(Number.isFinite);
@@ -56,7 +56,9 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
     // height instead of collapsing and re-centring on every request.
     frame.classList.add('is-loading');
     frame.setAttribute('aria-busy', 'true');
-    refresh.disabled = true;
+    // aria-disabled rather than disabled: disabling the focused button would drop focus to
+    // <body>, where Escape and the dialog's focus trap no longer work.
+    refresh.setAttribute('aria-disabled', 'true');
     try {
       let data = cache.get(hours);
       if (force || !data || Date.now() - data.end > CACHE_TTL) {
@@ -88,17 +90,25 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         dates.textContent = '';
         return;
       }
-      const format = (value) =>
-        new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+      const format = (value) => formatNumber(value, { maximumFractionDigits: 2 });
       const unit = entity.attributes?.unit_of_measurement;
       status.textContent =
         t('Minimum {{min}} · Maximum {{max}} · Sample average {{average}}', {
           min: format(stats.min),
           max: format(stats.max),
           average: format(stats.average),
-        }) + (unit ? ` ${unit}` : '');
+        }) + (unit ? ` ${isolateLtr(unit)}` : '');
+      frame.hidden = false;
       render(frame, data.series, { start: data.start, end: data.end });
-      dates.textContent = `${formatDateTime(data.start)} – ${formatDateTime(data.end)}`;
+      // Minutes are precise enough for a history period; seconds only add noise.
+      const period = {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      };
+      dates.textContent = `${formatDateTime(data.start, period)} – ${formatDateTime(data.end, period)}`;
       refresh.textContent = t('Refresh');
     } catch (error) {
       console.warn('Sensor history request failed:', error);
@@ -106,17 +116,22 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
       status.textContent = t(
         'Could not load history. Check your connection and recorder, then retry.'
       );
+      // The previous chart and dates belong to another period; don't show them under this one.
+      frame.hidden = true;
+      dates.textContent = '';
       refresh.textContent = t('Retry');
     } finally {
       if (revision === requestRevision) {
-        refresh.disabled = false;
+        refresh.removeAttribute('aria-disabled');
         frame.classList.remove('is-loading');
         frame.removeAttribute('aria-busy');
       }
     }
   };
   period.onchange = () => void load();
-  refresh.onclick = () => void load(true);
+  refresh.onclick = () => {
+    if (refresh.getAttribute('aria-disabled') !== 'true') void load(true);
+  };
   void load();
 }
 

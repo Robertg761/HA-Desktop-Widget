@@ -318,6 +318,76 @@ describe('DesktopCompanionClient', () => {
     client.stop();
   });
 
+  const unknownCommand = {
+    success: false,
+    error: { code: 'unknown_command', message: 'Unknown command.' },
+  };
+  const clientWithUnknownCommands = (unknownTypes) => {
+    const websocket = new FakeWebSocket();
+    const answer = websocket.request.bind(websocket);
+    websocket.request = async (message) =>
+      unknownTypes.includes(message.type)
+        ? (websocket.requests.push(message), unknownCommand)
+        : answer(message);
+    let layout = 0;
+    const client = new DesktopCompanionClient({
+      websocket,
+      getRegistration: jest.fn(async () => ({ desktop_id: 'desktop-1', name: 'X' })),
+      getState: jest.fn(async () => ({ visible: true })),
+      // Every call is a new layout, like a dashboard edit.
+      getConfigDocument: jest.fn(async () => ({ layout: (layout += 1) })),
+      executeCommand: jest.fn(),
+      heartbeatIntervalMs: 60_000,
+      logger: mockLogger,
+    });
+    return { client, websocket };
+  };
+
+  test('goes quiet for the session when Home Assistant lacks the companion integration', async () => {
+    const { client, websocket } = clientWithUnknownCommands([
+      'ha_desktop_widget/get_info',
+      'ha_desktop_widget/report_state',
+      'ha_desktop_widget/put_config_snapshot',
+    ]);
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (let i = 0; i < 3; i += 1) {
+      await client.reportState();
+      await client.reportConfigSnapshot();
+    }
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledTimes(1);
+    expect(websocket.requests.map((request) => request.type)).toEqual([
+      'ha_desktop_widget/get_info',
+    ]);
+
+    // A new connection checks again, in case the integration was installed meanwhile.
+    websocket.emit('message', { type: 'auth_ok' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(websocket.requests.map((request) => request.type)).toEqual([
+      'ha_desktop_widget/get_info',
+      'ha_desktop_widget/get_info',
+    ]);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    client.stop();
+  });
+
+  test('keeps reporting state to an older integration that cannot store layouts', async () => {
+    const { client, websocket } = clientWithUnknownCommands([
+      'ha_desktop_widget/put_config_snapshot',
+    ]);
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await client.reportConfigSnapshot();
+    await client.reportConfigSnapshot();
+    expect(await client.reportState()).toBe(true);
+    const count = (type) => websocket.requests.filter((request) => request.type === type).length;
+    expect(count('ha_desktop_widget/put_config_snapshot')).toBe(1);
+    expect(count('ha_desktop_widget/report_state')).toBe(2);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    client.stop();
+  });
+
   test('resets subscriptions and heartbeat state on socket close', async () => {
     jest.useFakeTimers();
     const { client, websocket } = createClient();

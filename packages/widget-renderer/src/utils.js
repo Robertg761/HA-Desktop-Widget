@@ -1,5 +1,151 @@
 import state from './state.js';
-import { t } from './i18n.js';
+import { t, formatNumber, formatNumericState } from './i18n.js';
+import { normalizeWeatherCondition, WEATHER_LABELS } from './weather-icons.js';
+
+// Display names for raw Home Assistant states. The English names are the same as STATE_NAMES in
+// src/tray-entities.cjs (a unit test keeps the two in step), so both share one set of translation
+// keys. This package cannot import that CommonJS module, hence the copy.
+const HA_STATE_NAMES = Object.freeze({
+  on: 'On',
+  off: 'Off',
+  home: 'Home',
+  not_home: 'Away',
+  open: 'Open',
+  opening: 'Opening',
+  closed: 'Closed',
+  closing: 'Closing',
+  stopped: 'Stopped',
+  locked: 'Locked',
+  unlocked: 'Unlocked',
+  locking: 'Locking',
+  unlocking: 'Unlocking',
+  jammed: 'Jammed',
+  playing: 'Playing',
+  paused: 'Paused',
+  idle: 'Idle',
+  standby: 'Standby',
+  buffering: 'Buffering',
+  active: 'Active',
+  cleaning: 'Cleaning',
+  docked: 'Docked',
+  returning: 'Returning',
+  error: 'Error',
+  heat: 'Heating',
+  cool: 'Cooling',
+  heat_cool: 'Automatic',
+  auto: 'Automatic',
+  dry: 'Drying',
+  fan_only: 'Fan',
+  disarmed: 'Disarmed',
+  armed_home: 'Armed at home',
+  armed_away: 'Armed away',
+  armed_night: 'Armed at night',
+  armed_vacation: 'Armed on vacation',
+  armed_custom_bypass: 'Armed',
+  arming: 'Arming',
+  pending: 'Pending',
+  triggered: 'Alarm',
+  charging: 'Charging',
+  discharging: 'Discharging',
+  not_charging: 'Not charging',
+  full: 'Full',
+  running: 'Running',
+  unavailable: 'Unavailable',
+  unknown: 'Unknown',
+});
+
+// Names for the entity domains a tile can show. Anything else falls back to the domain id in
+// title case, as before. Their translation keys carry a "Domain: " prefix because bare nouns such
+// as "Light", "Lock" or "Update" are already keys with other meanings (a theme, verbs).
+const HA_DOMAIN_NAMES = Object.freeze({
+  ai_task: 'AI Task',
+  air_quality: 'Air Quality',
+  alarm_control_panel: 'Alarm Control Panel',
+  assist_satellite: 'Assist Satellite',
+  automation: 'Automation',
+  binary_sensor: 'Binary Sensor',
+  button: 'Button',
+  calendar: 'Calendar',
+  camera: 'Camera',
+  climate: 'Climate',
+  conversation: 'Conversation',
+  counter: 'Counter',
+  cover: 'Cover',
+  date: 'Date',
+  datetime: 'Date and Time',
+  device_tracker: 'Device Tracker',
+  event: 'Event',
+  fan: 'Fan',
+  geo_location: 'Geolocation',
+  group: 'Group',
+  humidifier: 'Humidifier',
+  image: 'Image',
+  image_processing: 'Image Processing',
+  infrared: 'Infrared',
+  input_boolean: 'Input Boolean',
+  input_button: 'Input Button',
+  input_datetime: 'Input Date and Time',
+  input_number: 'Input Number',
+  input_select: 'Input Select',
+  input_text: 'Input Text',
+  lawn_mower: 'Lawn Mower',
+  light: 'Light',
+  lock: 'Lock',
+  media_player: 'Media Player',
+  notify: 'Notifications',
+  number: 'Number',
+  person: 'Person',
+  radio_frequency: 'Radio Frequency',
+  remote: 'Remote',
+  scene: 'Scene',
+  schedule: 'Schedule',
+  script: 'Script',
+  select: 'Select',
+  sensor: 'Sensor',
+  siren: 'Siren',
+  stt: 'Speech-to-Text',
+  sun: 'Sun',
+  switch: 'Switch',
+  tag: 'Tag',
+  text: 'Text',
+  time: 'Time',
+  timer: 'Timer',
+  todo: 'To-do List',
+  tts: 'Text-to-Speech',
+  update: 'Update',
+  vacuum: 'Vacuum',
+  valve: 'Valve',
+  wake_word: 'Wake Word',
+  water_heater: 'Water Heater',
+  weather: 'Weather',
+  zone: 'Zone',
+});
+
+const TIMER_STATUS_NAMES = Object.freeze({
+  idle: 'Idle',
+  running: 'Running',
+  paused: 'Paused',
+  finished: 'Finished',
+  unavailable: 'Unavailable',
+});
+
+/**
+ * Localized display name for a raw Home Assistant state ("on" -> "On", "not_home" -> "Away").
+ * States without a known name keep their text with the first letter capitalized.
+ * @param {string} value - The raw state.
+ * @returns {string} - The label to show.
+ */
+function getLocalizedStateName(value) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return t('Unknown');
+  const key = raw.toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(HA_STATE_NAMES, key)) return t(HA_STATE_NAMES[key]);
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function isUnavailableOrUnknownState(value) {
+  return value === 'unavailable' || value === 'unknown';
+}
 const graphemeSegmenter =
   typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -87,97 +233,6 @@ function normalizeEntityIconGlyph(icon) {
   return countGraphemes(trimmed) === 1 ? trimmed : null;
 }
 
-// Display labels for well-known Home Assistant states. Each value is a literal t() call so the
-// catalog key collector sees it; states outside this map keep the capitalised raw value.
-const STATE_DISPLAY_LABELS = Object.freeze({
-  on: () => t('On'),
-  off: () => t('Off'),
-  open: () => t('Open'),
-  opening: () => t('Opening'),
-  closed: () => t('Closed'),
-  closing: () => t('Closing'),
-  stopped: () => t('Stopped'),
-  locked: () => t('Locked'),
-  unlocked: () => t('Unlocked'),
-  locking: () => t('Locking'),
-  unlocking: () => t('Unlocking'),
-  jammed: () => t('Jammed'),
-  home: () => t('Home'),
-  not_home: () => t('Away'),
-  playing: () => t('Playing'),
-  paused: () => t('Paused'),
-  idle: () => t('Idle'),
-  standby: () => t('Standby'),
-  buffering: () => t('Buffering'),
-  active: () => t('Active'),
-  unavailable: () => t('Unavailable'),
-  unknown: () => t('Unknown'),
-  heat: () => t('Heat'),
-  cool: () => t('Cool'),
-  auto: () => t('Auto'),
-  dry: () => t('Dry'),
-  fan_only: () => t('Fan only'),
-  heat_cool: () => t('Heat/Cool'),
-  disarmed: () => t('Disarmed'),
-  disarming: () => t('Disarming'),
-  armed_home: () => t('Armed at home'),
-  armed_away: () => t('Armed away'),
-  armed_night: () => t('Armed at night'),
-  armed_vacation: () => t('Armed on vacation'),
-  armed_custom_bypass: () => t('Armed'),
-  arming: () => t('Arming'),
-  pending: () => t('Pending'),
-  triggered: () => t('Triggered'),
-  above_horizon: () => t('Above horizon'),
-  below_horizon: () => t('Below horizon'),
-  docked: () => t('Docked'),
-  cleaning: () => t('Cleaning'),
-  returning: () => t('Returning'),
-  error: () => t('Error'),
-  charging: () => t('Charging'),
-});
-
-function capitalizeState(rawState) {
-  const value = String(rawState ?? '');
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-/**
- * Localised label for a raw Home Assistant state ("on" -> "On", "not_home" -> "Away").
- * Unrecognised states come back capitalised but otherwise untouched.
- * @param {string} rawState - The raw entity state.
- * @returns {string} - The display label in the active language.
- */
-function getStateDisplayLabel(rawState) {
-  const normalized = String(rawState ?? '').toLowerCase();
-  if (Object.prototype.hasOwnProperty.call(STATE_DISPLAY_LABELS, normalized)) {
-    return STATE_DISPLAY_LABELS[normalized]();
-  }
-  return capitalizeState(rawState);
-}
-
-// Title-case domain names shown as a tile's type caption. `light` is left out on purpose:
-// the "Light" catalog key already means the light-level sensor state (de "Hell").
-const DOMAIN_DISPLAY_LABELS = {
-  alarm_control_panel: () => t('Alarm Control Panel'),
-  automation: () => t('Automation'),
-  binary_sensor: () => t('Binary Sensor'),
-  button: () => t('Button'),
-  camera: () => t('Camera'),
-  climate: () => t('Climate'),
-  cover: () => t('Cover'),
-  fan: () => t('Fan'),
-  lock: () => t('Lock'),
-  media_player: () => t('Media Player'),
-  scene: () => t('Scene'),
-  script: () => t('Script'),
-  sensor: () => t('Sensor'),
-  switch: () => t('Switch'),
-  timer: () => t('Timer'),
-  vacuum: () => t('Vacuum'),
-  weather: () => t('Weather'),
-};
-
 function getEntityDisplayName(entity) {
   try {
     if (!entity) return t('Unknown');
@@ -198,8 +253,12 @@ function getEntityTypeDescription(entity) {
   try {
     if (!entity) return t('Unknown');
     const domain = entity.entity_id.split('.')[0];
-    if (Object.prototype.hasOwnProperty.call(DOMAIN_DISPLAY_LABELS, domain)) {
-      return DOMAIN_DISPLAY_LABELS[domain]();
+    if (Object.prototype.hasOwnProperty.call(HA_DOMAIN_NAMES, domain)) {
+      const name = HA_DOMAIN_NAMES[domain];
+      const key = `Domain: ${name}`;
+      const label = t(key);
+      // t() hands back the key itself when no catalog has it; English shows the plain name.
+      return label === key ? name : label;
     }
     return domain.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   } catch (error) {
@@ -291,6 +350,8 @@ function getEntityIcon(entity, options = {}) {
         return '✅';
       case 'calendar':
         return '📅';
+      case 'weather':
+        return '🌤️';
       default:
         return '❓';
     }
@@ -406,18 +467,29 @@ function getEntityDisplayState(entity) {
 
     // For sensors, return the actual value with unit
     if (entity.entity_id.startsWith('sensor.')) {
+      if (isUnavailableOrUnknownState(entity.state)) return getLocalizedStateName(entity.state);
       const unit = entity.attributes?.unit_of_measurement || '';
-      return unit ? `${entity.state} ${unit}` : entity.state;
+      // Like Home Assistant, only format measurements; a bare "2026" or "01234" stays as sent.
+      const value =
+        unit || entity.attributes?.state_class ? formatNumericState(entity.state) : entity.state;
+      return unit ? `${value} ${unit}` : value;
     }
 
     // For binary sensors
     if (entity.entity_id.startsWith('binary_sensor.')) {
+      if (isUnavailableOrUnknownState(entity.state)) return getLocalizedStateName(entity.state);
       return entity.state === 'on' ? t('Detected') : t('Clear');
     }
 
     // For scenes - just show "Ready" or hide the state
     if (entity.entity_id.startsWith('scene.')) {
       return t('Ready');
+    }
+
+    // Weather reports condition ids ("rainy", "clear-night"); show the same labels as the weather card.
+    if (entity.entity_id.startsWith('weather.') && !isUnavailableOrUnknownState(entity.state)) {
+      const condition = normalizeWeatherCondition(entity.state);
+      if (condition !== 'unknown') return t(WEATHER_LABELS[condition]);
     }
 
     // For lights with brightness
@@ -433,11 +505,11 @@ function getEntityDisplayState(entity) {
     // For climate
     if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes?.current_temperature || entity.attributes?.temperature;
-      if (temp) return `${temp}°`;
+      if (temp) return `${formatNumber(temp)}°`;
     }
 
-    // Default: a localised label for well-known states, else the capitalised raw state
-    return getStateDisplayLabel(entity.state);
+    // Default: the localized state name, or the raw state with its first letter capitalized
+    return getLocalizedStateName(entity.state);
   } catch (error) {
     console.error('Error getting entity display state:', error);
     return t('Unknown');
@@ -543,59 +615,50 @@ function getTimerRemainingFraction(entity) {
 }
 
 /**
- * Short run status for a timer entity ("Running", "Paused", ...), always in English so callers
- * can compare it. Show it through getTimerStatusDisplayLabel.
- * Never returns a raw timestamp, so it is safe to show as a compact badge.
+ * Run state of a timer entity, for logic that must not depend on the display language.
+ * @param {object} entity - The timer (or timer-like sensor) entity.
+ * @returns {'idle'|'running'|'paused'|'finished'|'unavailable'|'other'} - The run state.
+ */
+function getTimerRunState(entity) {
+  if (!entity?.entity_id) return 'idle';
+
+  const rawState = typeof entity.state === 'string' ? entity.state.trim() : '';
+  const normalizedState = rawState.toLowerCase();
+  if (normalizedState === 'unavailable') return 'unavailable';
+  if (!rawState || normalizedState === 'unknown') return 'idle';
+
+  if (entity.entity_id.startsWith('sensor.')) {
+    const finishesAt = resolveTimerFinishesAt(entity);
+    if (finishesAt) {
+      return new Date(finishesAt).getTime() > Date.now() ? 'running' : 'finished';
+    }
+    // A bare date state says nothing about whether the timer is running.
+    if (/^\d{4}-\d{2}-\d{2}/.test(rawState)) return 'idle';
+    return 'other';
+  }
+
+  if (normalizedState === 'active') return 'running';
+  if (normalizedState === 'paused') return 'paused';
+  if (normalizedState === 'idle') return 'idle';
+  return 'other';
+}
+
+/**
+ * Short, human-readable run status for a timer entity ("Running", "Paused", ...), in the
+ * active language. Never returns a raw timestamp, so it is safe to show as a compact badge.
+ * Compare getTimerRunState() instead of this label in logic.
  * @param {object} entity - The timer (or timer-like sensor) entity.
  * @returns {string} - The status label.
  */
 function getTimerStatusLabel(entity) {
   try {
-    if (!entity?.entity_id) return 'Idle';
-
-    const rawState = typeof entity.state === 'string' ? entity.state.trim() : '';
-    const normalizedState = rawState.toLowerCase();
-    if (normalizedState === 'unavailable') return 'Unavailable';
-    if (!rawState || normalizedState === 'unknown') return 'Idle';
-
-    if (entity.entity_id.startsWith('sensor.')) {
-      const finishesAt = resolveTimerFinishesAt(entity);
-      if (finishesAt) {
-        return new Date(finishesAt).getTime() > Date.now() ? 'Running' : 'Finished';
-      }
-      // A bare date state says nothing about whether the timer is running.
-      if (/^\d{4}-\d{2}-\d{2}/.test(rawState)) return 'Idle';
-      return rawState.charAt(0).toUpperCase() + rawState.slice(1);
-    }
-
-    if (normalizedState === 'active') return 'Running';
-    if (normalizedState === 'paused') return 'Paused';
-    if (normalizedState === 'idle') return 'Idle';
-    return rawState.charAt(0).toUpperCase() + rawState.slice(1);
+    const runState = getTimerRunState(entity);
+    if (runState !== 'other') return t(TIMER_STATUS_NAMES[runState]);
+    return getLocalizedStateName(entity.state);
   } catch (error) {
     console.error('Error getting timer status label:', error);
-    return 'Idle';
+    return t('Idle');
   }
-}
-
-const TIMER_STATUS_DISPLAY_LABELS = Object.freeze({
-  Running: () => t('Running'),
-  Paused: () => t('Paused'),
-  Idle: () => t('Idle'),
-  Finished: () => t('Finished'),
-  Unavailable: () => t('Unavailable'),
-});
-
-/**
- * getTimerStatusLabel in the active language, for display.
- * @param {object} entity - The timer (or timer-like sensor) entity.
- * @returns {string} - The localised status label.
- */
-function getTimerStatusDisplayLabel(entity) {
-  const label = getTimerStatusLabel(entity);
-  return Object.prototype.hasOwnProperty.call(TIMER_STATUS_DISPLAY_LABELS, label)
-    ? TIMER_STATUS_DISPLAY_LABELS[label]()
-    : getStateDisplayLabel(label);
 }
 
 function getTimerDisplay(entity) {
@@ -626,7 +689,9 @@ function getTimerDisplay(entity) {
       }
 
       // If no end time found, just return the state
-      return entity.state;
+      return Object.prototype.hasOwnProperty.call(HA_STATE_NAMES, entity.state)
+        ? t(HA_STATE_NAMES[entity.state])
+        : entity.state;
     }
 
     // Handle timer.* entities
@@ -653,7 +718,7 @@ function getTimerDisplay(entity) {
       return remaining.substring(0, 5); // Fallback to HH:MM
     }
 
-    return getStateDisplayLabel(entity.state);
+    return getLocalizedStateName(entity.state);
   } catch (error) {
     console.error('Error getting timer display:', error);
     return '--:--';
@@ -1012,8 +1077,10 @@ export {
   getEntityDisplayState,
   getTimerDisplay,
   getTimerStatusLabel,
-  getTimerStatusDisplayLabel,
-  getStateDisplayLabel,
+  getTimerRunState,
+  getLocalizedStateName,
+  HA_DOMAIN_NAMES,
+  HA_STATE_NAMES,
   getTimerRemainingSeconds,
   getTimerRemainingFraction,
   escapeHtml,

@@ -17,27 +17,30 @@ import {
   openModal,
   showToast,
   showConfirm,
+  copyTextToClipboard,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import { syncSlidingIndicator } from './motion.js';
-import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
-import * as utils from './utils.js';
 import {
-  entityIconMarkup,
-  lineIconMarkup,
-  renderEntityIcon,
-  setLineIconContent,
-} from './entity-icons.js';
+  describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
+  describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
+  setConnectionStatusBusy,
+} from './connection-status.js';
+import * as utils from './utils.js';
+import { entityIconMarkup, renderEntityIcon, setLineIconContent } from './entity-icons.js';
 import {
   PRIMARY_CARD_DEFAULTS,
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-import { formatDateTime, getLanguageDisplayName, getLocaleState, t } from './i18n.js';
+import { formatDateTime, formatNumber, getLanguageDisplayName, getLocaleState, t } from './i18n.js';
 import {
   classifyConnectionError,
   isPlaceholderOrEmptyToken,
   normalizeBaseUrl,
+  startHomeAssistantPairing,
 } from './connection.js';
 
 const BUILTIN_LANGUAGE_OPTIONS = new Set(['auto', 'en', 'de']);
@@ -55,6 +58,7 @@ const COLOR_TARGETS = {
   accent: 'accent',
   background: 'background',
 };
+// Called at render time so the warning follows the active language.
 const getWeatherEffectsGlassWarning = () =>
   t('Turn on Frosted glass background before enabling subtle weather effects.');
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
@@ -62,7 +66,6 @@ let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
-let pendingDesktopPins = {};
 let pendingCustomEntityIcons = {};
 let activeCustomEntityIconPickerEntityId = null;
 let customEntityIconPickerQueryByEntityId = {};
@@ -74,6 +77,9 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+let languageSaveQueue = Promise.resolve();
+// The Start at login state shown when Settings opened, so Save only writes a real change.
+let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
 let localePackListCache = [];
 let localePackListError = '';
@@ -83,7 +89,6 @@ const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set([
   'primary-cards-section',
-  'desktop-pins-section',
   'custom-entity-icons-section',
 ]);
 const personalizationSectionPersistTimers = new Map();
@@ -307,6 +312,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 // Replace this with your hosted docs URL when your help site is live.
 const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in';
+const PROFILE_SYNC_ISSUES_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/issues';
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
 // GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
 const GITHUB_SPONSORS_MAX_AMOUNT = 12000;
@@ -946,6 +952,12 @@ function persistCustomColorsImmediately() {
     });
 }
 
+// Built-in theme names are English keys in ui-utils; custom color names are the user's own text.
+function getThemeDisplayName(theme) {
+  if (!theme) return '';
+  return theme.isCustom ? theme.name || '' : t(theme.name || '');
+}
+
 function getThemeById(themeId) {
   if (!themeId) return null;
   return getAccentThemes().find((theme) => theme.id === themeId) || null;
@@ -1483,49 +1495,6 @@ function updateThemeOptionsLabel() {
     activeColorTarget === COLOR_TARGETS.background ? t('Background colors') : t('Accent colors');
 }
 
-// Built-in theme names/descriptions come from ui-utils in English; translate them for display
-// only. Custom colours keep the name the user gave them.
-const BUILTIN_THEME_DISPLAY_NAMES = {
-  original: () => t('Original'),
-  indigo: () => t('Indigo'),
-  violet: () => t('Violet'),
-  rose: () => t('Rose'),
-  coral: () => t('Coral'),
-  amber: () => t('Amber'),
-  emerald: () => t('Emerald'),
-  teal: () => t('Teal'),
-  aqua: () => t('Aqua'),
-  slate: () => t('Slate'),
-};
-const BUILTIN_THEME_DISPLAY_DESCRIPTIONS = {
-  original: () => t('The classic dark look'),
-  indigo: () => t('Focused and modern'),
-  violet: () => t('Creative and bold'),
-  rose: () => t('Vivid and energetic'),
-  coral: () => t('Warm and upbeat'),
-  amber: () => t('Golden and friendly'),
-  emerald: () => t('Fresh and balanced'),
-  teal: () => t('Calm and refined'),
-  aqua: () => t('Light and airy'),
-  slate: () => t('Neutral and understated'),
-};
-
-function getThemeDisplayName(theme) {
-  if (!theme) return t('Custom');
-  if (!theme.isCustom && BUILTIN_THEME_DISPLAY_NAMES[theme.id]) {
-    return BUILTIN_THEME_DISPLAY_NAMES[theme.id]();
-  }
-  return theme.name || t('Custom');
-}
-
-function getThemeDisplayDescription(theme) {
-  if (theme && !theme.isCustom && BUILTIN_THEME_DISPLAY_DESCRIPTIONS[theme.id]) {
-    return BUILTIN_THEME_DISPLAY_DESCRIPTIONS[theme.id]();
-  }
-  if (theme?.isCustom) return t('Saved custom color');
-  return theme?.description || t('Theme color');
-}
-
 /**
  * Update the visible summary text to show the current accent and background theme names.
  *
@@ -1537,15 +1506,13 @@ function updateThemeSummary() {
   const summary = document.getElementById('theme-current-selection');
   if (!summary) return;
   const themes = getAccentThemes();
-  const accentName = getThemeDisplayName(
-    themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.accent))
-  );
-  const backgroundName = getThemeDisplayName(
-    themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.background))
+  const accentTheme = themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.accent));
+  const backgroundTheme = themes.find(
+    (theme) => theme.id === getPendingTheme(COLOR_TARGETS.background)
   );
   summary.textContent = t('Accent: {{accent}} • Background: {{background}}', {
-    accent: accentName,
-    background: backgroundName,
+    accent: accentTheme ? getThemeDisplayName(accentTheme) : t('Custom'),
+    background: backgroundTheme ? getThemeDisplayName(backgroundTheme) : t('Custom'),
   });
 }
 
@@ -1702,7 +1669,11 @@ function renderColorThemeOptions() {
       ? isBackgroundTarget
         ? t('Original dark base (no tint)')
         : t('Original accent blue')
-      : getThemeDisplayDescription(theme);
+      : theme.isCustom
+        ? t('Saved custom color')
+        : theme.description
+          ? t(theme.description)
+          : t('Theme color');
     option.setAttribute('role', 'radio');
     option.setAttribute('aria-label', `${tooltipName}. ${tooltipDescription}`);
     option.setAttribute('aria-checked', theme.id === selectedTheme ? 'true' : 'false');
@@ -1902,8 +1873,6 @@ function hydratePersonalizationSectionIfNeeded(section) {
 
   if (section.id === 'primary-cards-section') {
     renderPrimaryCardsEntityList();
-  } else if (section.id === 'desktop-pins-section') {
-    renderDesktopPinsList();
   } else if (section.id === 'custom-entity-icons-section') {
     // Prime the icon catalog the first time the section opens.
     void ensureCustomEntityIconChoicesLoaded().catch((error) => {
@@ -2158,8 +2127,12 @@ function renderPrimaryCardsEntityRows() {
       const isCardOne = selections[0] === entity.entity_id;
       const isCardTwo = selections[1] === entity.entity_id;
 
-      const cardOneLabel = utils.escapeHtml(isCardOne ? t('Card 1 ✓') : t('Set Card 1'));
-      const cardTwoLabel = utils.escapeHtml(isCardTwo ? t('Card 2 ✓') : t('Set Card 2'));
+      const cardOneLabel = utils.escapeHtml(
+        isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
+      );
+      const cardTwoLabel = utils.escapeHtml(
+        isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
+      );
       const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
       const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
       const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
@@ -2207,6 +2180,8 @@ function renderPrimaryCardsEntityRows() {
         if (unavailable) return;
         primaryCardPage += delta;
         renderPrimaryCardsEntityList();
+        // A new page starts at its first row; focus stays on this pager button.
+        list.scrollTop = 0;
       });
       navigation.appendChild(button);
     }
@@ -2275,190 +2250,6 @@ function initPrimaryCardsUI() {
   section.dataset.initialized = 'true';
 }
 
-function normalizeDesktopPinMap(desktopPins, options = {}) {
-  if (!desktopPins || typeof desktopPins !== 'object' || Array.isArray(desktopPins)) {
-    return {};
-  }
-
-  const requireFavorite = !!options.requireFavorite;
-  const favorites = new Set(
-    (state.CONFIG?.favoriteEntities || []).filter(
-      (entityId) => typeof entityId === 'string' && entityId.trim()
-    )
-  );
-  return Object.entries(desktopPins).reduce((acc, [entityId, bounds]) => {
-    if (typeof entityId !== 'string') return acc;
-    const trimmedEntityId = entityId.trim();
-    if (
-      !trimmedEntityId ||
-      (requireFavorite && !favorites.has(trimmedEntityId)) ||
-      !bounds ||
-      typeof bounds !== 'object'
-    ) {
-      return acc;
-    }
-    acc[trimmedEntityId] = { ...bounds };
-    return acc;
-  }, {});
-}
-
-function getSavedDesktopPins() {
-  return normalizeDesktopPinMap(state.CONFIG?.desktopPins);
-}
-
-function setPendingDesktopPins(desktopPins) {
-  pendingDesktopPins = normalizeDesktopPinMap(desktopPins);
-}
-
-function getPendingDesktopPinsForSave() {
-  const liveDesktopPins = normalizeDesktopPinMap(state.CONFIG?.desktopPins);
-  return Object.keys(pendingDesktopPins).reduce((acc, entityId) => {
-    acc[entityId] = liveDesktopPins[entityId] ? { ...liveDesktopPins[entityId] } : {};
-    return acc;
-  }, {});
-}
-
-function getDesktopPinEntityOptions(filter = '') {
-  const normalizedFilter = filter.toLowerCase();
-  return (state.CONFIG?.favoriteEntities || [])
-    .map((favoriteId) => {
-      const resolvedEntityId = utils.resolveEntityId(favoriteId, state.STATES) || favoriteId;
-      const entity = state.STATES?.[resolvedEntityId] || null;
-      const displayName = entity ? utils.getEntityDisplayName(entity) : favoriteId;
-      const haystackId = entity?.entity_id || favoriteId;
-      const score = normalizedFilter
-        ? utils.getSearchScore(displayName, normalizedFilter) +
-          utils.getSearchScore(haystackId, normalizedFilter)
-        : 1;
-      return {
-        entityId: favoriteId,
-        entity,
-        displayName,
-        score,
-      };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.displayName.localeCompare(b.displayName);
-    });
-}
-
-function updateDesktopPinsSummary() {
-  const currentEl = document.getElementById('desktop-pins-current');
-  const summaryEl = document.getElementById('desktop-pins-summary');
-  const count = Object.keys(pendingDesktopPins).length;
-  if (currentEl) {
-    currentEl.textContent =
-      count === 0
-        ? t('None')
-        : count === 1
-          ? t('{{count}} pinned tile', { count })
-          : t('{{count}} pinned tiles', { count });
-  }
-  if (summaryEl) {
-    summaryEl.textContent =
-      count === 0
-        ? t('Pin any Quick Access tile to create a small desktop mini-widget.')
-        : count === 1
-          ? t('{{count}} tile will be persisted when you save settings.', { count })
-          : t('{{count}} tiles will be persisted when you save settings.', { count });
-  }
-}
-
-function renderDesktopPinsList() {
-  const list = document.getElementById('desktop-pins-list');
-  if (list) preserveListFocus(list, renderDesktopPinRows);
-}
-
-function renderDesktopPinRows() {
-  const list = document.getElementById('desktop-pins-list');
-  const searchInput = document.getElementById('desktop-pins-search');
-  if (!list || !searchInput) return;
-
-  const filter = searchInput.value || '';
-  const options = getDesktopPinEntityOptions(filter);
-  list.innerHTML = '';
-
-  if (!options.length) {
-    list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
-      t('Add entities to Quick Access to pin them to the desktop.')
-    )}</div>`;
-    updateDesktopPinsSummary();
-    syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
-    return;
-  }
-
-  options.forEach(({ entityId, entity, displayName }) => {
-    const isPinned = !!pendingDesktopPins[entityId];
-    const isSavedPinned = !!state.CONFIG?.desktopPins?.[entityId];
-    const iconMarkup = entity ? entityIconMarkup(entity) : lineIconMarkup('box');
-    const currentEntityId = entity?.entity_id || entityId;
-
-    const item = document.createElement('div');
-    item.className = 'entity-item';
-    item.innerHTML = `
-      <div class="entity-item-main">
-        <span class="entity-icon">${iconMarkup}</span>
-        <div class="entity-item-info">
-          <span class="entity-name">${utils.escapeHtml(displayName)}</span>
-          <span class="entity-id" title="${utils.escapeHtmlAttribute(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
-          ${isPinned ? `<span class="desktop-pin-status-badge">${utils.escapeHtml(t('Pinned'))}</span>` : ''}
-        </div>
-      </div>
-      <div class="desktop-pins-list-actions">
-        ${isSavedPinned ? `<button class="btn btn-secondary btn-sm" type="button" data-desktop-pin-focus="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Focus'))}</button>` : ''}
-        <button class="btn ${isPinned ? 'btn-primary' : 'btn-secondary'} btn-sm" type="button" data-desktop-pin-toggle="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(isPinned ? t('Unpin') : t('Pin'))}</button>
-      </div>
-    `;
-
-    list.appendChild(item);
-  });
-
-  updateDesktopPinsSummary();
-  syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
-}
-
-function initDesktopPinsUI() {
-  const section = document.getElementById('desktop-pins-section');
-  if (!section || section.dataset.initialized) return;
-
-  section.addEventListener('click', async (event) => {
-    const toggleBtn = event.target.closest('[data-desktop-pin-toggle]');
-    if (toggleBtn) {
-      const entityId = toggleBtn.dataset.desktopPinToggle;
-      if (!entityId) return;
-      if (pendingDesktopPins[entityId]) {
-        delete pendingDesktopPins[entityId];
-      } else {
-        pendingDesktopPins[entityId] = {};
-      }
-      renderDesktopPinsList();
-      hydratedPersonalizationSections.add('desktop-pins-section');
-      return;
-    }
-
-    const focusBtn = event.target.closest('[data-desktop-pin-focus]');
-    if (focusBtn) {
-      const entityId = focusBtn.dataset.desktopPinFocus;
-      if (!entityId) return;
-      try {
-        await window.electronAPI.focusDesktopPin(entityId);
-      } catch (error) {
-        log.error('Failed to focus desktop pin window:', error);
-        showToast(t('Could not focus the pinned tile.'), 'error', 2500);
-      }
-    }
-  });
-
-  const searchInput = document.getElementById('desktop-pins-search');
-  if (searchInput) {
-    searchInput.addEventListener('input', renderDesktopPinsList);
-  }
-
-  section.dataset.initialized = 'true';
-}
-
 function getPendingCustomIcon(entityId) {
   if (!entityId) return null;
   return pendingCustomEntityIcons[entityId] || null;
@@ -2474,7 +2265,7 @@ function updateCustomEntityIconSummary() {
   }
   summaryEl.textContent =
     count === 1
-      ? t('{{count}} custom icon configured.', { count })
+      ? t('1 custom icon configured.')
       : t('{{count}} custom icons configured.', { count });
 }
 
@@ -2861,6 +2652,37 @@ function initCustomEntityIconsUI() {
 }
 
 /**
+ * Map a stored window opacity (0.5-1.0) to the Window Opacity slider position (1-100).
+ * @param {number} opacity - Stored opacity.
+ * @returns {number} Slider position.
+ */
+function opacityToSliderValue(opacity) {
+  const storedOpacity = Math.max(0.5, Math.min(1, opacity || 0.95));
+  return Math.round(1 + (storedOpacity - 0.5) * 198);
+}
+
+/**
+ * Map a Window Opacity slider position (1-100) back to an opacity (0.5-1.0).
+ *
+ * The slider has 100 steps, so most stored opacities (the 0.95 default included) sit between two
+ * of them. While the slider still shows the position the stored value loaded at, the stored value
+ * is kept, so saving without touching the slider does not nudge it.
+ * @param {number} sliderValue - Slider position.
+ * @param {number} [storedOpacity] - Current stored opacity.
+ * @returns {number} Opacity to preview or save.
+ */
+function sliderValueToOpacity(sliderValue, storedOpacity) {
+  if (
+    storedOpacity >= 0.5 &&
+    storedOpacity <= 1 &&
+    sliderValue === opacityToSliderValue(storedOpacity)
+  ) {
+    return storedOpacity;
+  }
+  return 0.5 + ((sliderValue - 1) * 0.5) / 99;
+}
+
+/**
  * Read preview controls from the DOM and derive window effect values.
  *
  * Reads the #opacity-slider and #frosted-glass inputs; if either is missing, returns `null`.
@@ -2873,7 +2695,7 @@ function getPreviewValuesFromInputs() {
   if (!opacitySlider || !frostedGlass) return null;
 
   const sliderValue = parseInt(opacitySlider.value, 10) || 90;
-  const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+  const opacity = sliderValueToOpacity(sliderValue, state.CONFIG?.opacity);
   const frostedGlassEnabled = !!frostedGlass.checked;
 
   const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
@@ -2988,6 +2810,20 @@ function restorePreviewWindowEffects() {
   } catch (error) {
     log.error('Error restoring preview window effects:', error);
   }
+}
+
+/**
+ * Re-apply the unsaved Settings previews after a config echo reset the window to the saved
+ * appearance (for example when a collapsed section is remembered). No-op while Settings is closed.
+ */
+function reapplySettingsPreviews() {
+  if (!previewState) return;
+  setCustomThemes(pendingCustomColors);
+  applyUiPreferences(getAppearanceFromInputs());
+  applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+  // Also re-applies the pending background.
+  previewWindowEffectsNow();
+  if (hasDraftColorPreview) applyCustomColorPreview(getCustomColorHexFromEditor());
 }
 
 /**
@@ -3159,19 +2995,54 @@ function formatProfileSyncTimestamp(isoString) {
   return formatDateTime(value);
 }
 
-// lastSyncStatus is an internal code from main; translate only the text shown to the user.
-function getProfileSyncStatusLabel(code) {
-  switch (code || 'idle') {
+function getProfileSyncStateLabel(status = {}) {
+  if (status.inFlight) return t('Sync in progress...');
+  // The keys carry a "Profile sync: " context prefix because bare words such as "error" are too
+  // generic to translate once. English (no catalog entry) shows the plain lowercase word.
+  const withoutContext = (label) => label.replace(/^Profile sync: /, '');
+  switch (status.lastSyncStatus || 'idle') {
     case 'idle':
-      return t('idle');
+      return withoutContext(t('Profile sync: idle'));
     case 'success':
-      return t('success');
+      return withoutContext(t('Profile sync: success'));
     case 'error':
-      return t('error');
+      return withoutContext(t('Profile sync: error'));
     case 'needs_resolution':
-      return t('needs resolution');
+      return withoutContext(t('Profile sync: needs resolution'));
     default:
-      return code;
+      return String(status.lastSyncStatus);
+  }
+}
+
+/**
+ * Render the experimental Profile Sync warning in the active language. The sentence and its
+ * "Issues section" link text are separate catalog entries; the link wraps the matching part of
+ * the translated sentence, or follows it when a translation words the link differently.
+ */
+function renderProfileSyncWarning() {
+  const warningEl = document.querySelector('.profile-sync-warning');
+  if (!warningEl) return;
+  const sentence = t(
+    'Profile Sync is still experimental. Use it at your own risk, and please report bugs in the Issues section.'
+  );
+  const linkText = t('Issues section');
+  const link = document.createElement('a');
+  link.href = PROFILE_SYNC_ISSUES_URL;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = linkText;
+  const label = document.createElement('strong');
+  label.textContent = t('Warning:');
+  const linkIndex = linkText ? sentence.indexOf(linkText) : -1;
+  if (linkIndex >= 0) {
+    warningEl.replaceChildren(
+      label,
+      ` ${sentence.slice(0, linkIndex)}`,
+      link,
+      sentence.slice(linkIndex + linkText.length)
+    );
+  } else {
+    warningEl.replaceChildren(label, ` ${sentence} `, link);
   }
 }
 
@@ -3205,11 +3076,8 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   }
 
   if (statusEl) {
-    const stateLabel = status.inFlight
-      ? t('Sync in progress...')
-      : getProfileSyncStatusLabel(status.lastSyncStatus);
-    statusEl.textContent = t('Status: {{status}} | Last sync: {{time}}', {
-      status: stateLabel,
+    statusEl.textContent = t('Status: {{state}} | Last sync: {{time}}', {
+      state: getProfileSyncStateLabel(status),
       time: formatProfileSyncTimestamp(status.lastSyncAt),
     });
   }
@@ -3261,7 +3129,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
-        resolutionHelp.innerHTML = `<strong>${t('First-time conflict:')}</strong> ${t('Both local and remote profiles have data.')}`;
+        resolutionHelp.innerHTML = `<strong>${utils.escapeHtml(t('First-time conflict:'))}</strong> ${utils.escapeHtml(t('Both local and remote profiles have data.'))}`;
       }
       if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');
@@ -3688,7 +3556,7 @@ function bindProfileSyncSettingsUi() {
       const confirmed = await showConfirm(
         t('Clear Saved Passphrase'),
         t('Remove the saved sync passphrase from this device?'),
-        { confirmText: t('Clear passphrase'), confirmClass: 'btn-danger' }
+        { confirmText: t('Action: Clear'), confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
       try {
@@ -3861,13 +3729,14 @@ function renderLanguagePackList() {
   localePackListCache.forEach((pack) => {
     const row = document.createElement('div');
     row.className = 'language-pack-row';
+    const language = getLanguagePackDisplayName(pack);
 
     const info = document.createElement('div');
     info.className = 'language-pack-info';
 
     const name = document.createElement('div');
     name.className = 'language-pack-name';
-    name.textContent = getLanguagePackDisplayName(pack);
+    name.textContent = language;
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
@@ -3892,6 +3761,7 @@ function renderLanguagePackList() {
       updateBtn.dataset.localeAction = 'download';
       updateBtn.dataset.locale = pack.locale;
       updateBtn.textContent = t('Update');
+      updateBtn.setAttribute('aria-label', t('Update {{language}}', { language }));
       actions.appendChild(updateBtn);
     } else if (!pack.installed) {
       const downloadBtn = document.createElement('button');
@@ -3900,6 +3770,7 @@ function renderLanguagePackList() {
       downloadBtn.dataset.localeAction = 'download';
       downloadBtn.dataset.locale = pack.locale;
       downloadBtn.textContent = t('Download');
+      downloadBtn.setAttribute('aria-label', t('Download {{language}}', { language }));
       actions.appendChild(downloadBtn);
     }
 
@@ -3910,6 +3781,7 @@ function renderLanguagePackList() {
       removeBtn.dataset.localeAction = 'remove';
       removeBtn.dataset.locale = pack.locale;
       removeBtn.textContent = t('Remove');
+      removeBtn.setAttribute('aria-label', t('Remove {{language}}', { language }));
       actions.appendChild(removeBtn);
     }
 
@@ -3982,160 +3854,72 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
-async function persistDensitySelection(nextDensity) {
-  const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    density: normalizedDensity,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
+/**
+ * Read the text size, contrast, density and tile glow controls on top of `ui`.
+ *
+ * These preview live like the window effects and persist only on Save. The readable preset
+ * stands for both contrast flags, so they are left alone unless the preset was toggled.
+ */
+function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
+  const scale = document.getElementById('ui-scale-select');
+  const preset = document.getElementById('readable-preset');
+  const density = document.getElementById('density-select');
+  const activeTileGlow = document.getElementById('active-tile-glow');
+  const next = { ...ui };
+  if (scale) next.scale = Number(scale.value) || 1;
+  if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
+    next.highContrast = preset.checked;
+    next.opaquePanels = preset.checked;
   }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({
-      ui: nextUiConfig,
-    });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
+  if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
+  if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
+  return next;
 }
 
-async function persistActiveTileGlowSelection(enabled) {
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    activeTileGlow: !!enabled,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
-  }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({ ui: nextUiConfig });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
-}
-
-async function persistReadabilitySelection(patch) {
-  const previousUi = { ...(state.CONFIG.ui || {}) };
-  const nextUi = { ...previousUi, ...patch };
-  applyUiPreferences(nextUi);
-  try {
-    const updated = await window.electronAPI?.updateConfig?.({ ui: nextUi });
-    if (updated) applyPersistedConfigResponse(updated);
-    else state.CONFIG.ui = nextUi;
-  } catch (error) {
-    state.CONFIG.ui = previousUi;
-    applyUiPreferences(previousUi);
-    throw error;
-  }
+function previewAppearance() {
+  applyUiPreferences(getAppearanceFromInputs());
 }
 
 function bindAppearanceSettingsUi() {
+  const ui = state.CONFIG?.ui || {};
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const refresh = () => {
-    if (scale) scale.value = String(state.CONFIG?.ui?.scale || 1);
-    if (preset)
-      preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
-  };
-  refresh();
-  for (const control of [scale, preset].filter(Boolean)) {
-    control.onchange = async () => {
-      // Serialize saves so a slow response cannot undo a newer appearance choice.
-      if (scale) scale.disabled = true;
-      if (preset) preset.disabled = true;
-      try {
-        await persistReadabilitySelection(
-          control === scale
-            ? { scale: Number(scale.value) }
-            : { highContrast: preset.checked, opaquePanels: preset.checked }
-        );
-      } catch (error) {
-        log.error('Failed to save readability settings:', error);
-        refresh();
-        showToast(t('Failed to save readability settings'), 'warning', 3000);
-      } finally {
-        if (scale) scale.disabled = false;
-        if (preset) preset.disabled = false;
-      }
-    };
-  }
-
   const activeTileGlow = document.getElementById('active-tile-glow');
-  if (activeTileGlow) {
-    activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-    activeTileGlow.onchange = async () => {
-      try {
-        await persistActiveTileGlowSelection(activeTileGlow.checked);
-      } catch (error) {
-        log.error('Failed to save tile glow setting:', error);
-        activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-        showToast(t('Failed to save tile glow setting'), 'warning', 3000);
-      }
-    };
-  }
-
   const densitySelect = document.getElementById('density-select');
-  if (!densitySelect) return;
-
-  densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-  densitySelect.onchange = async () => {
-    try {
-      await persistDensitySelection(densitySelect.value);
-    } catch (error) {
-      log.error('Failed to save layout density:', error);
-      densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-      showToast(t('Failed to save layout density'), 'warning', 3000);
-    }
-  };
+  if (scale) scale.value = String(ui.scale || 1);
+  if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
+  if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
+  if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
+  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+    control.onchange = previewAppearance;
+  }
 }
 
 function bindLanguageSettingsUi() {
   const languageSelect = document.getElementById('language-select');
   if (languageSelect) {
     languageSelect.value = state.CONFIG?.ui?.language || 'auto';
-    languageSelect.onchange = async () => {
-      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
-      const nextLanguage = languageSelect.value || previousLanguage;
+    // Saves run one at a time instead of disabling the select, which would drop keyboard focus
+    // while someone arrows through the languages. A choice already replaced by a newer one is
+    // skipped.
+    languageSelect.onchange = () => {
       updateLanguageSummaryText();
-
-      if (nextLanguage === previousLanguage) return;
-
-      languageSelect.disabled = true;
-      try {
-        await persistLanguageSelection(nextLanguage);
-      } catch (error) {
-        log.error('Failed to update language selection:', error);
-        languageSelect.value = previousLanguage;
-        updateLanguageSummaryText();
-        showToast(t('Failed to save language selection'), 'error', 2600);
-      } finally {
-        languageSelect.disabled = false;
-      }
+      languageSaveQueue = languageSaveQueue.then(async () => {
+        const previousLanguage = state.CONFIG?.ui?.language || 'auto';
+        const nextLanguage = languageSelect.value || previousLanguage;
+        if (nextLanguage === previousLanguage) return;
+        try {
+          await persistLanguageSelection(nextLanguage);
+        } catch (error) {
+          log.error('Failed to update language selection:', error);
+          if (languageSelect.value === nextLanguage) {
+            languageSelect.value = previousLanguage;
+            updateLanguageSummaryText();
+          }
+          showToast(t('Failed to save language selection'), 'error', 2600);
+        }
+      });
+      return languageSaveQueue;
     };
   }
 
@@ -4148,11 +3932,13 @@ function bindLanguageSettingsUi() {
       const action = button.dataset.localeAction;
       if (!locale || !action) return;
 
+      const hadFocus = button === document.activeElement;
       button.disabled = true;
       try {
         if (action === 'download') {
           const result = await window.electronAPI.downloadLocalePack(locale);
           localePackListCache = Array.isArray(result?.packs) ? result.packs : localePackListCache;
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack downloaded: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -4162,6 +3948,7 @@ function bindLanguageSettingsUi() {
           );
         } else if (action === 'remove') {
           await window.electronAPI.removeLocalePack(locale);
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack removed: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -4181,9 +3968,154 @@ function bindLanguageSettingsUi() {
         );
       } finally {
         await refreshLanguagePackList(true);
+        if (hadFocus) focusLanguagePackRow(locale);
       }
     };
   }
+}
+
+/**
+ * Switch the interface language right away when a download or removal changes the pack in use,
+ * rather than on the next launch. A removed active language falls back to English with the
+ * same "Using English" notice as at startup; the selection stays for a later re-download.
+ */
+async function refreshLocaleIfAffected(locale) {
+  const baseLocale = (locale || '').split('-')[0].toLowerCase();
+  const { activeLocale, requestedLocale } = getLocaleState();
+  const inUse = [activeLocale, requestedLocale].some(
+    (value) => (value || '').split('-')[0].toLowerCase() === baseLocale
+  );
+  if (!inUse || !settingsUiHooks?.refreshLocale) return;
+  try {
+    await settingsUiHooks.refreshLocale();
+    relocalizeOpenSettings();
+  } catch (error) {
+    log.error('Failed to refresh the interface language:', error);
+  }
+}
+
+// The pack list re-renders after every action; keep keyboard focus on the same language's row.
+function focusLanguagePackRow(locale) {
+  const buttons = Array.from(
+    document.querySelectorAll('#language-packs-list button[data-locale]:not(:disabled)')
+  );
+  // An offline catalog drops a removed pack's row; fall back to the language selector.
+  const target =
+    buttons.find((button) => button.dataset.locale === locale) ||
+    document.getElementById('language-select');
+  target?.focus({ preventScroll: true });
+}
+
+function isSettingsModalOpen() {
+  const modal = document.getElementById('settings-modal');
+  return !!modal && !modal.classList.contains('hidden') && modal.style.display !== 'none';
+}
+
+function renderUpdateButtonLabels() {
+  // The update buttons' labels live in spans the update UI owns, so they are translated here
+  // rather than with data-i18n.
+  const checkUpdatesText = document.getElementById('check-updates-text');
+  if (checkUpdatesText) checkUpdatesText.textContent = t('Check for Updates');
+  const installUpdateText = document.getElementById('install-update-text');
+  if (installUpdateText) installUpdateText.textContent = t('Install Update');
+}
+
+function getSettingsLocaleSignature() {
+  const { activeLocale, usingEnglishFallback, messages } = getLocaleState();
+  return `${activeLocale}|${!!usingEnglishFallback}|${Object.keys(messages || {}).length}`;
+}
+
+// A pairing in progress shows its own status line; leave it until the attempt finishes.
+function updateHomeAssistantAuthStatusText() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  if (connectButton?.getAttribute('aria-busy') === 'true') return;
+  updateHomeAssistantAuthUi();
+}
+
+let settingsLocaleSignature = '';
+let settingsLocaleObserver = null;
+
+/**
+ * Re-render the Settings text that JavaScript writes (status lines, summaries, pickers, labels)
+ * after the interface language changes while Settings is open. translateDocument() only covers
+ * data-i18n markup. Pending edits, selections and the custom color draft are left untouched.
+ */
+function relocalizeOpenSettings({ force = false } = {}) {
+  if (!isSettingsModalOpen()) return;
+  const signature = getSettingsLocaleSignature();
+  if (!force && signature === settingsLocaleSignature) return;
+  settingsLocaleSignature = signature;
+  try {
+    updateHomeAssistantAuthStatusText();
+    const weatherSelect = document.getElementById('weather-entity-select');
+    const pendingWeather = weatherSelect?.value;
+    populateWeatherEntitySelect();
+    if (
+      weatherSelect &&
+      Array.from(weatherSelect.options).some((option) => option.value === pendingWeather)
+    ) {
+      weatherSelect.value = pendingWeather;
+    }
+    const alwaysOnTop = document.getElementById('always-on-top');
+    if (alwaysOnTop) {
+      alwaysOnTop.title = alwaysOnTop.disabled
+        ? t('Desktop layer mode keeps the widget behind normal windows.')
+        : '';
+    }
+    syncLanguageSelectOptions();
+    renderLanguagePackList();
+    updateLanguageSummaryText();
+    renderProfileSyncWarning();
+    if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
+    renderUpdateButtonLabels();
+    settingsUiHooks?.relocalizeUpdateStatus?.();
+    syncWeatherEffectsAvailability();
+    if (hasDraftColorPreview || isCustomEditorActive) {
+      // Rebuilding the swatches would reset the custom color draft; relabel only.
+      updateThemeOptionsLabel();
+      updateThemeSummary();
+    } else {
+      renderColorThemeOptions();
+    }
+    updatePrimaryCardSummary();
+    if (hydratedPersonalizationSections.has('primary-cards-section')) {
+      renderPrimaryCardsEntityList();
+    }
+    if (hydratedPersonalizationSections.has('custom-entity-icons-section')) {
+      renderCustomEntityIconsList();
+    } else {
+      updateCustomEntityIconSummary();
+    }
+    const noneOption = document.querySelector(
+      '#primary-media-player-menu .custom-dropdown-option[data-value=""]'
+    );
+    if (noneOption) {
+      noneOption.textContent = t('None (Hide Media Tile)');
+      if (noneOption.classList.contains('selected')) {
+        const valueSpan = document.querySelector('.custom-dropdown-value');
+        if (valueSpan) valueSpan.textContent = noneOption.textContent;
+      }
+    }
+    if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
+    relabelAlertAdvancedOptions();
+    relocalizePopupHotkeyText();
+    void refreshDesktopIntegration().catch((error) => {
+      log.error('Failed to refresh desktop integration text:', error);
+    });
+  } catch (error) {
+    log.error('Failed to relocalize settings:', error);
+  }
+}
+
+// setLocaleBootstrap() stamps <html lang> on every locale refresh, including the one that
+// follows a language change in Settings, so watching it keeps the open dialog in one language.
+function observeSettingsLocale() {
+  if (settingsLocaleObserver || typeof MutationObserver !== 'function') return;
+  settingsLocaleObserver = new MutationObserver(() => relocalizeOpenSettings());
+  settingsLocaleObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['lang', 'dir'],
+  });
 }
 
 /**
@@ -4195,6 +4127,7 @@ function bindLanguageSettingsUi() {
  * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
  * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
  * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ * @param {Function} [uiHooks.relocalizeUpdateStatus] - Called after a language change to re-render the update status line.
  * @param {Function} [uiHooks.renderActiveTab] - Called after save to fully re-render the active UI tab when available.
  * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
@@ -4202,6 +4135,8 @@ function bindLanguageSettingsUi() {
 async function openSettings(uiHooks) {
   try {
     settingsUiHooks = uiHooks || null;
+    settingsLocaleSignature = getSettingsLocaleSignature();
+    observeSettingsLocale();
     hydratedPersonalizationSections.clear();
 
     // Exit reorganize mode if active to prevent state conflicts
@@ -4264,6 +4199,10 @@ async function openSettings(uiHooks) {
     if (followOmarchy) {
       followOmarchy.checked = !!state.CONFIG.ui?.followOmarchy;
       followOmarchy.disabled = !state.CONFIG.desktopAppearance;
+      // Like the Hyprland panel, the option only appears where Omarchy is detected.
+      document
+        .getElementById('follow-omarchy-group')
+        ?.classList.toggle('hidden', followOmarchy.disabled);
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
@@ -4281,6 +4220,7 @@ async function openSettings(uiHooks) {
         log.error('Failed to get login item settings:', error);
         startWithWindows.checked = false;
       }
+      loadedStartAtLogin = startWithWindows.checked;
     }
 
     bindLanguageSettingsUi();
@@ -4290,15 +4230,14 @@ async function openSettings(uiHooks) {
     updateLanguageSummaryText();
     refreshLanguagePackListInBackground(true);
 
+    renderProfileSyncWarning();
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
 
-    // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
-    // Formula: scale = 1 + (opacity - 0.5) * 198
-    const sliderScale = Math.round(1 + (storedOpacity - 0.5) * 198);
+    const sliderScale = opacityToSliderValue(storedOpacity);
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
 
@@ -4375,6 +4314,8 @@ async function openSettings(uiHooks) {
       }
     }
 
+    renderUpdateButtonLabels();
+
     // Call UI hooks passed from renderer.js
     if (uiHooks) {
       uiHooks.initUpdateUI();
@@ -4411,21 +4352,6 @@ async function openSettings(uiHooks) {
     setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS, {
       renderList: shouldRenderPrimaryCardsList,
     });
-
-    const desktopPinsSection = document.getElementById('desktop-pins-section');
-    const desktopPinsList = document.getElementById('desktop-pins-list');
-    if (desktopPinsList) desktopPinsList.innerHTML = '';
-    const shouldRenderDesktopPinsList = !desktopPinsSection?.classList.contains('collapsed');
-    setPendingDesktopPins(getSavedDesktopPins());
-    initDesktopPinsUI();
-    const desktopPinsSearch = document.getElementById('desktop-pins-search');
-    if (desktopPinsSearch) desktopPinsSearch.value = '';
-    if (shouldRenderDesktopPinsList) {
-      renderDesktopPinsList();
-      hydratedPersonalizationSections.add('desktop-pins-section');
-    } else {
-      updateDesktopPinsSummary();
-    }
 
     const customIconsSection = document.getElementById('custom-entity-icons-section');
     const customIconsList = document.getElementById('custom-entity-icons-list');
@@ -4481,6 +4407,7 @@ function closeSettings() {
     cancelPreviewWindowEffects();
     if (previewState) {
       restorePreviewWindowEffects();
+      applyUiPreferences(state.CONFIG?.ui || {});
       previewState = null;
     }
     if (hasDraftColorPreview) {
@@ -4499,7 +4426,6 @@ function closeSettings() {
     pendingBackground = null;
     restoreSavedThemeMode();
     pendingPrimaryCards = null;
-    pendingDesktopPins = {};
     pendingCustomEntityIcons = {};
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -4585,19 +4511,52 @@ function setHomeAssistantOAuthBusy(isBusy, { cancellable = false } = {}) {
   setConnectionStatusBusy(document.getElementById('ha-oauth-status'), isBusy);
 }
 
+let renderedHomeAssistantAuthState = '';
+
+function getHomeAssistantAuthState(homeAssistant) {
+  return JSON.stringify([
+    homeAssistant.authMethod || '',
+    homeAssistant.oauthStatus || '',
+    homeAssistant.oauthLastError || '',
+    homeAssistant.oauthLastErrorCode || '',
+  ]);
+}
+
+// A new sign-in is only offered when one is needed: no authorization yet, an expired one, or a URL
+// edited to another server. While the saved authorization is good but Home Assistant cannot be
+// reached, the button retries restoring it; once connected there is nothing to do.
+function getHomeAssistantConnectAction() {
+  const homeAssistant = state.CONFIG?.homeAssistant || {};
+  if (homeAssistant.authMethod !== 'oauth') return 'connect';
+  const typedUrl = normalizeBaseUrl(document.getElementById('ha-url')?.value || '');
+  const sameServer = !typedUrl || typedUrl === normalizeBaseUrl(homeAssistant.url || '');
+  if (!sameServer || homeAssistant.oauthStatus === 'reauth_required') return 'reconnect';
+  return homeAssistant.oauthStatus === 'connected' ? 'none' : 'retry';
+}
+
+function updateHomeAssistantConnectButton() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  if (!connectButton) return;
+  const action = getHomeAssistantConnectAction();
+  connectButton.dataset.action = action;
+  connectButton.classList.toggle('hidden', action === 'none');
+  connectButton.textContent =
+    action === 'retry'
+      ? t('Retry')
+      : action === 'connect'
+        ? t('Connect with Home Assistant')
+        : t('Reconnect with Home Assistant');
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
-  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
   const legacySettings = document.getElementById('legacy-ha-token-settings');
 
-  if (connectButton) {
-    connectButton.textContent = usesOAuth
-      ? t('Reconnect with Home Assistant')
-      : t('Connect with Home Assistant');
-  }
+  updateHomeAssistantConnectButton();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -4615,13 +4574,42 @@ function updateHomeAssistantAuthUi() {
   } else if (homeAssistant.oauthStatus === 'restoring') {
     setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
   } else if (homeAssistant.oauthStatus === 'reauth_required') {
-    setHomeAssistantOAuthStatus(t('Authorization expired. Connect again to continue.'), 'error');
-  } else {
     setHomeAssistantOAuthStatus(
-      homeAssistant.oauthLastError ||
-        t('Home Assistant is offline. Authorization will retry automatically.'),
+      describeHomeAssistantOAuthReauthReason(homeAssistant) ||
+        t(
+          'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+        ),
       'error'
     );
+  } else {
+    setHomeAssistantOAuthStatus(describeHomeAssistantOAuthRefreshError(homeAssistant), 'error');
+  }
+}
+
+// Main can change the authorization state while Settings is open, for example when a refresh finds
+// the authorization revoked. Keep the status line truthful unless a pairing is showing progress.
+function refreshHomeAssistantAuthStatus() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (document.getElementById('connect-ha-oauth-btn')?.getAttribute('aria-busy') === 'true') return;
+  // Other config echoes (an autosaved toggle) must not reset the section the user is working in.
+  if (
+    getHomeAssistantAuthState(state.CONFIG?.homeAssistant || {}) === renderedHomeAssistantAuthState
+  )
+    return;
+  updateHomeAssistantAuthUi();
+}
+
+async function retryHomeAssistantOAuthFromSettings() {
+  setHomeAssistantOAuthBusy(true);
+  setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
+  try {
+    await window.electronAPI.refreshHomeAssistantOAuth();
+  } catch (error) {
+    log.warn('Retrying Home Assistant authorization failed:', error);
+  } finally {
+    setHomeAssistantOAuthBusy(false);
+    updateHomeAssistantAuthUi();
   }
 }
 
@@ -4635,7 +4623,7 @@ async function startHomeAssistantOAuthFromSettings() {
   setHomeAssistantOAuthBusy(true, { cancellable: true });
   setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
   try {
-    const result = await window.electronAPI.startHomeAssistantOAuth(validation.url);
+    const result = await startHomeAssistantPairing(window.electronAPI, validation.url);
     applyPersistedConfigResponse(result.config);
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || validation.url;
     updateHomeAssistantAuthUi();
@@ -4650,10 +4638,7 @@ async function startHomeAssistantOAuthFromSettings() {
         setHomeAssistantOAuthStatus(t('Home Assistant authorization canceled'), 'pending');
       }
     } else {
-      setHomeAssistantOAuthStatus(
-        error?.message || t('Home Assistant authorization failed'),
-        'error'
-      );
+      setHomeAssistantOAuthStatus(describeHomeAssistantOAuthFailure(error), 'error');
     }
   } finally {
     setHomeAssistantOAuthBusy(false);
@@ -4680,8 +4665,18 @@ async function disconnectHomeAssistantOAuthFromSettings() {
     const result = await window.electronAPI.disconnectHomeAssistantOAuth();
     applyPersistedConfigResponse(result.config);
     updateHomeAssistantAuthUi();
-    if (result.warning) showToast(result.warning, 'warning', 5000);
-    else showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+    // The warning is main-process English; it always means the remote revocation is unconfirmed.
+    if (result.warning) {
+      showToast(
+        t(
+          'Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.'
+        ),
+        'warning',
+        5000
+      );
+    } else {
+      showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+    }
   } catch (error) {
     setHomeAssistantOAuthStatus(error?.message || t('Could not disconnect authorization'), 'error');
   } finally {
@@ -4698,8 +4693,13 @@ function bindHomeAssistantOAuthUi() {
     cancelButton.dataset.initialized = 'true';
   }
   if (connectButton && connectButton.dataset.initialized !== 'true') {
-    connectButton.addEventListener('click', () => void startHomeAssistantOAuthFromSettings());
+    connectButton.addEventListener('click', () =>
+      getHomeAssistantConnectAction() === 'retry'
+        ? void retryHomeAssistantOAuthFromSettings()
+        : void startHomeAssistantOAuthFromSettings()
+    );
     connectButton.dataset.initialized = 'true';
+    document.getElementById('ha-url')?.addEventListener('input', updateHomeAssistantConnectButton);
   }
   if (disconnectButton && disconnectButton.dataset.initialized !== 'true') {
     disconnectButton.addEventListener(
@@ -4781,7 +4781,6 @@ async function saveSettings() {
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
     const weatherEntitySelect = document.getElementById('weather-entity-select');
-    const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -4867,11 +4866,7 @@ async function saveSettings() {
       : false;
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
-    nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
-    const activeTileGlow = document.getElementById('active-tile-glow');
-    nextConfig.ui.activeTileGlow = activeTileGlow
-      ? !!activeTileGlow.checked
-      : nextConfig.ui.activeTileGlow !== false;
+    nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
     if (enableInteractionDebugLogs) {
       nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
@@ -4898,10 +4893,9 @@ async function saveSettings() {
     // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');
 
-    // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
       const sliderValue = parseInt(opacitySlider.value) || 90;
-      nextConfig.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+      nextConfig.opacity = sliderValueToOpacity(sliderValue, currentConfig.opacity);
     }
 
     nextConfig.globalHotkeys = nextConfig.globalHotkeys || { enabled: false, hotkeys: {} };
@@ -4919,7 +4913,6 @@ async function saveSettings() {
     nextConfig.primaryMediaPlayer = selectedValue || null;
 
     nextConfig.primaryCards = getPendingPrimaryCards();
-    nextConfig.desktopPins = getPendingDesktopPinsForSave();
     nextConfig.customEntityIcons = getPendingCustomEntityIconsForSave();
 
     const nextProfileSync = ensureProfileSyncConfig(nextConfig);
@@ -5167,7 +5160,12 @@ async function saveSettings() {
       }
     }
 
-    if (startWithWindows) {
+    // Only a changed, supported checkbox touches the OS; isolated profiles report it unsupported.
+    if (
+      startWithWindows &&
+      !startWithWindows.disabled &&
+      startWithWindows.checked !== loadedStartAtLogin
+    ) {
       try {
         const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
         if (!result.success) {
@@ -5342,7 +5340,7 @@ function renderAlertsListInline() {
 
       const alertConfig = alerts[entityId];
       let alertType = alertConfig.onNumericThreshold
-        ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${Number(alertConfig.threshold)}`
+        ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${formatNumber(Number(alertConfig.threshold))}`
         : alertConfig.onStateChange
           ? t('State Change')
           : t('Specific State');
@@ -5370,7 +5368,7 @@ function renderAlertsListInline() {
     // Add "Add new alert" button
     const addButton = document.createElement('button');
     addButton.className = 'btn btn-secondary btn-block add-alert-btn';
-    addButton.textContent = t('+ Add New Alert');
+    addButton.textContent = `+ ${t('Add New Alert')}`;
     addButton.onclick = () => openAlertEntityPicker();
     addButton.style.marginTop = '10px';
     alertsList.appendChild(addButton);
@@ -5514,6 +5512,12 @@ function populateAlertEntityPicker() {
 
 let currentAlertEntity = null;
 
+function relabelAlertAdvancedOptions(root = document) {
+  root.querySelectorAll('#alert-advanced-options [data-alert-label-key]').forEach((node) => {
+    node.textContent = t(node.dataset.alertLabelKey);
+  });
+}
+
 function openAlertConfigModal(entityId) {
   try {
     if (!entityId) {
@@ -5539,13 +5543,21 @@ function openAlertConfigModal(entityId) {
       group.className = 'alert-advanced-options form-group';
       const addField = (id, labelText, type, options = []) => {
         const label = document.createElement('label');
-        label.textContent = labelText;
+        // The group is built once and reused, so the English keys stay on the nodes and
+        // relabelAlertAdvancedOptions() translates them each time the dialog opens.
+        const text = document.createElement('span');
+        text.dataset.alertLabelKey = labelText;
+        label.append(text);
         if (type === 'checkbox') label.className = 'workflow-checkbox';
         const input = document.createElement(type === 'select' ? 'select' : 'input');
         input.id = id;
         if (type !== 'checkbox') input.className = 'form-control';
         if (type === 'select')
-          options.forEach(([value, text]) => input.add(new Option(text, value)));
+          options.forEach(([value, key]) => {
+            const option = new Option(key, value);
+            option.dataset.alertLabelKey = key;
+            input.add(option);
+          });
         else input.type = type;
         if (type === 'number') {
           input.min = '0';
@@ -5556,24 +5568,25 @@ function openAlertConfigModal(entityId) {
         group.append(label);
         return input;
       };
-      addField('alert-condition', t('Condition'), 'select', [
-        ['state-change', t('State Change')],
-        ['specific-state', t('Specific State')],
-        ['above', t('Above threshold')],
-        ['below', t('Below threshold')],
+      addField('alert-condition', 'Condition', 'select', [
+        ['state-change', 'State Change'],
+        ['specific-state', 'Specific State'],
+        ['above', 'Above threshold'],
+        ['below', 'Below threshold'],
       ]);
-      const threshold = addField('alert-threshold', t('Threshold'), 'number');
+      const threshold = addField('alert-threshold', 'Threshold', 'number');
       threshold.removeAttribute('min');
       threshold.removeAttribute('max');
       threshold.step = 'any';
       group.insertBefore(specificStateGroup, threshold.parentElement);
-      addField('alert-duration', t('Condition duration in seconds'), 'number');
-      addField('alert-cooldown', t('Notification cooldown in seconds'), 'number');
-      addField('alert-quiet-enabled', t('Enable quiet hours'), 'checkbox');
-      addField('alert-quiet-start', t('Quiet hours start, local time'), 'time');
-      addField('alert-quiet-end', t('Quiet hours end, local time'), 'time');
+      addField('alert-duration', 'Condition duration in seconds', 'number');
+      addField('alert-cooldown', 'Notification cooldown in seconds', 'number');
+      addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
+      addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
+      addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
       modal.querySelector('.modal-body').append(group);
     }
+    relabelAlertAdvancedOptions(modal);
     modal.querySelector('.alert-type-options').parentElement.hidden = true;
     const condition = modal.querySelector('#alert-condition');
     condition.value = alertConfig?.onNumericThreshold
@@ -5898,6 +5911,60 @@ function populateMediaPlayerDropdown() {
 
 // Popup Hotkey Management
 let isCapturingPopupHotkey = false;
+let popupHotkeyAvailable = null;
+
+// The popup hotkey card's labels depend on the platform's shortcut backend.
+function renderPopupHotkeyModeText() {
+  const usesLinuxShortcutBackend = window.electronAPI?.platform === 'linux';
+  const modeLabel = document.getElementById('popup-hotkey-mode-label');
+  const helpText = document.getElementById('popup-hotkey-help-text');
+  const platformNotice = document.getElementById('popup-hotkey-platform-notice');
+  if (usesLinuxShortcutBackend) {
+    if (modeLabel) modeLabel.textContent = t('Popup hotkey');
+    if (helpText) {
+      helpText.textContent = t(
+        'Configure a global hotkey that brings the window to front when pressed.'
+      );
+    }
+    if (platformNotice) {
+      platformNotice.hidden = false;
+      platformNotice.textContent = t(
+        'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.'
+      );
+    }
+  } else {
+    if (modeLabel) modeLabel.textContent = t('Popup hotkey');
+    if (helpText) {
+      helpText.textContent = t(
+        'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
+      );
+    }
+    if (platformNotice) {
+      platformNotice.hidden = true;
+      platformNotice.textContent = '';
+    }
+  }
+}
+
+// Labels, placeholders and notices of the popup hotkey card in the active language, without
+// touching the recorded hotkey or an in-progress capture.
+function relocalizePopupHotkeyText() {
+  renderPopupHotkeyModeText();
+  const input = document.getElementById('popup-hotkey-input');
+  const setBtn = document.getElementById('popup-hotkey-set-btn');
+  if (setBtn) setBtn.textContent = isCapturingPopupHotkey ? t('Cancel') : t('Set hotkey');
+  if (input) {
+    if (isCapturingPopupHotkey) {
+      input.value = t('Press keys...');
+    } else if (popupHotkeyAvailable === false) {
+      input.placeholder = t('Not available on this platform');
+    } else {
+      input.placeholder = state.CONFIG?.popupHotkey || t('Not set');
+    }
+  }
+  const notice = document.querySelector('#popup-hotkey-container .unavailable-notice');
+  if (notice) notice.textContent = t('Popup hotkey feature is not available on this platform.');
+}
 
 async function initializePopupHotkey() {
   try {
@@ -5909,51 +5976,25 @@ async function initializePopupHotkey() {
     const setBtn = document.getElementById('popup-hotkey-set-btn');
     const clearBtn = document.getElementById('popup-hotkey-clear-btn');
     const container = document.getElementById('popup-hotkey-container');
-    const modeLabel = document.getElementById('popup-hotkey-mode-label');
-    const helpText = document.getElementById('popup-hotkey-help-text');
-    const platformNotice = document.getElementById('popup-hotkey-platform-notice');
     await refreshDesktopIntegration();
 
     if (!input || !setBtn || !clearBtn) return;
     const currentHotkey = state.CONFIG.popupHotkey || '';
+    // JS owns this label (it reads Cancel while capturing), so it is set here, not by data-i18n.
+    if (!isCapturingPopupHotkey) setBtn.textContent = t('Set hotkey');
 
     if (isAvailable) {
       container?.querySelector('.unavailable-notice')?.remove();
       input.disabled = false;
       input.value = currentHotkey;
       input.placeholder = currentHotkey || t('Not set');
-      // JS owns this label (it reads Cancel while capturing), so it is set here, not by data-i18n.
-      if (!isCapturingPopupHotkey) setBtn.textContent = t('Set hotkey');
       setBtn.disabled = false;
       clearBtn.disabled = false;
       clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
     }
 
-    if (usesLinuxShortcutBackend) {
-      if (modeLabel) modeLabel.textContent = t('Popup hotkey');
-      if (helpText) {
-        helpText.textContent = t(
-          'Configure a global hotkey that brings the window to front when pressed.'
-        );
-      }
-      if (platformNotice) {
-        platformNotice.hidden = false;
-        platformNotice.textContent = t(
-          'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.'
-        );
-      }
-    } else {
-      if (modeLabel) modeLabel.textContent = t('Popup hotkey');
-      if (helpText) {
-        helpText.textContent = t(
-          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
-        );
-      }
-      if (platformNotice) {
-        platformNotice.hidden = true;
-        platformNotice.textContent = '';
-      }
-    }
+    popupHotkeyAvailable = isAvailable;
+    renderPopupHotkeyModeText();
 
     // If not available, disable the UI and show a message
     if (!isAvailable) {
@@ -6329,6 +6370,7 @@ export {
   closeSettings,
   saveSettings,
   previewWindowEffects,
+  reapplySettingsPreviews,
   syncWeatherEffectsAvailability,
   renderAlertsListInline,
   openAlertEntityPicker,
@@ -6340,6 +6382,7 @@ export {
   refreshPersonalizationSectionHeights,
   handleProfileSyncStatusUpdate,
   waitForLanguagePackRefresh,
+  refreshHomeAssistantAuthStatus,
 };
 
 async function refreshDesktopIntegration() {
@@ -6347,8 +6390,15 @@ async function refreshDesktopIntegration() {
   if (!panel || !window.electronAPI.getDesktopIntegration) return;
   const output = document.getElementById('desktop-bindings');
   // Keep the controls usable even before Hyprland detection succeeds.
-  document.getElementById('desktop-bindings-copy').onclick = () =>
-    navigator.clipboard.writeText(output.value);
+  document.getElementById('desktop-bindings-copy').onclick = async () => {
+    if (await copyTextToClipboard(output.value)) {
+      showToast(t('Bindings copied'), 'success');
+      return;
+    }
+    output.focus();
+    output.select();
+    showToast(t('Select and copy the bindings manually.'), 'info');
+  };
   document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
   const info = await window.electronAPI.getDesktopIntegration();
   panel.hidden = !info?.hyprland;
@@ -6360,10 +6410,13 @@ async function refreshDesktopIntegration() {
   };
   renderBindings();
   if (format) format.onchange = renderBindings;
+  const activationTime = Date.parse(info.lastActivation?.at || '');
   document.getElementById('desktop-integration-status').textContent = info.lastActivation
     ? t('Last shortcut received: {{id}} at {{time}}', {
         id: info.lastActivation.id,
-        time: info.lastActivation.at,
+        time: Number.isNaN(activationTime)
+          ? info.lastActivation.at
+          : formatDateTime(activationTime),
       })
     : t('No shortcut received yet. Press a configured shortcut, then refresh.');
   // A bind still written for a retired app id keeps working, but only the

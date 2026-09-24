@@ -2,11 +2,13 @@ import state from './state.js';
 import * as utils from './utils.js';
 import { openEntityDetailModal, getEntityDomain, switchQuickAccessPage } from './ui.js';
 import websocket from './websocket.js';
-import { showToast } from './ui-utils.js';
+import { releaseFocusTrap, showToast, trapFocus } from './ui-utils.js';
 import { t } from './i18n.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
+import { getActiveQuickAccessTab } from './quick-access-tabs.js';
 
 const MAX_RESULTS = 20;
+const MAX_RECENT_COMMANDS = 10;
 
 let initialized = false;
 let recentCommands = [];
@@ -20,6 +22,16 @@ let results = [];
 let highlightedIndex = -1;
 let previouslyFocusedElement = null;
 let paletteCommands = null;
+let hint = null;
+// Where the pointer last moved, so a row that renders under a still pointer does not take the
+// highlight (and with it Enter) from the first result.
+let lastPointerPosition = null;
+
+// Commands that open something up are never offered from recents with an empty query: after
+// "Lock" the list would lead with "Unlock", one Enter away. Typing a matching query finds them.
+const QUERY_ONLY_SERVICES = new Set(['unlock', 'alarm_disarm']);
+// Devices whose result row has no safe default action; Enter looks for their explicit command.
+const COMMAND_ONLY_DOMAINS = new Set(['lock', 'alarm_control_panel']);
 
 function normalizeSearchValue(value) {
   return String(value ?? '')
@@ -92,6 +104,39 @@ function rankCommandPaletteEntities(entities, query, options = {}) {
     });
 }
 
+// Recent commands are entity ids and page ids only, stored per server so they survive a restart.
+function recentCommandsKey(config) {
+  try {
+    const url = new URL(config?.homeAssistant?.url);
+    return `command-palette-recent:${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return 'command-palette-recent:local';
+  }
+}
+
+function readRecentCommands(config) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(recentCommandsKey(config)) || '[]');
+    return Array.isArray(stored)
+      ? stored.filter((key) => typeof key === 'string').slice(0, MAX_RECENT_COMMANDS)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentCommand(key, config = state.CONFIG) {
+  recentCommands = [key, ...recentCommands.filter((recent) => recent !== key)].slice(
+    0,
+    MAX_RECENT_COMMANDS
+  );
+  try {
+    localStorage.setItem(recentCommandsKey(config), JSON.stringify(recentCommands));
+  } catch {
+    /* Recents are a convenience; running the command already succeeded. */
+  }
+}
+
 function isPaletteOpen() {
   return !!overlay && !overlay.classList.contains('hidden');
 }
@@ -121,7 +166,6 @@ function createPaletteShell() {
   const palettePanel = createElement('div', 'command-palette-panel');
   palettePanel.setAttribute('role', 'dialog');
   palettePanel.setAttribute('aria-modal', 'true');
-  palettePanel.setAttribute('aria-label', t('Command palette'));
 
   const searchWrap = createElement('div', 'command-palette-search');
 
@@ -129,17 +173,13 @@ function createPaletteShell() {
   input.type = 'text';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.placeholder = t('Search entities');
   input.setAttribute('role', 'combobox');
-  input.setAttribute('aria-label', t('Search entities'));
   input.setAttribute('aria-controls', 'command-palette-results');
   input.setAttribute('aria-autocomplete', 'list');
   input.setAttribute('aria-expanded', 'false');
 
   const closeButton = createElement('button', 'command-palette-close', '×');
   closeButton.type = 'button';
-  closeButton.title = t('Close');
-  closeButton.setAttribute('aria-label', t('Close command palette'));
   closeButton.addEventListener('click', closeCommandPalette);
 
   searchWrap.append(input, closeButton);
@@ -148,12 +188,17 @@ function createPaletteShell() {
   list.id = 'command-palette-results';
   list.setAttribute('role', 'listbox');
 
-  emptyState = createElement('div', 'command-palette-empty', t('No matching entities'));
+  emptyState = createElement('div', 'command-palette-empty');
   emptyState.hidden = true;
 
-  palettePanel.append(searchWrap, list, emptyState);
+  hint = createElement('div', 'command-palette-empty command-palette-hint');
+  hint.setAttribute('role', 'status');
+  hint.hidden = true;
+
+  palettePanel.append(searchWrap, list, emptyState, hint);
   overlay.appendChild(palettePanel);
   document.body.appendChild(overlay);
+  applyPaletteLabels();
 
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) closeCommandPalette();
@@ -162,8 +207,24 @@ function createPaletteShell() {
   input.addEventListener('input', renderResults);
 }
 
+// The shell outlives a language change, so its labels are applied again on every open.
+function applyPaletteLabels() {
+  if (!overlay) return;
+  overlay.querySelector('.command-palette-panel')?.setAttribute('aria-label', t('Command palette'));
+  if (input) {
+    input.placeholder = t('Search entities, commands, and pages');
+    input.setAttribute('aria-label', t('Search entities, commands, and pages'));
+  }
+  const closeButton = overlay.querySelector('.command-palette-close');
+  if (closeButton) {
+    closeButton.title = t('Close');
+    closeButton.setAttribute('aria-label', t('Close command palette'));
+  }
+  if (emptyState) emptyState.textContent = t('No matching results');
+}
+
 function ensurePaletteShell() {
-  if (!overlay || !input || !list || !emptyState) createPaletteShell();
+  if (!overlay || !input || !list || !emptyState || !hint) createPaletteShell();
 }
 
 function updateHighlightedResult(nextIndex) {
@@ -199,7 +260,12 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
         ].filter(Boolean)
       : ['scene', 'script'].includes(domain)
         ? [['turn_on', t('Run {{name}}', { name })]]
-        : [];
+        : domain === 'lock'
+          ? [
+              entity.state === 'unlocked' && ['lock', t('Lock {{name}}', { name })],
+              entity.state === 'locked' && ['unlock', t('Unlock {{name}}', { name })],
+            ].filter(Boolean)
+          : [];
     return actions
       .filter(([service]) => services?.[domain]?.[service])
       .map(([service, displayName]) => ({
@@ -207,22 +273,56 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
         displayName,
         domain,
         service,
-        key: `${entity.entity_id}:${service}`,
+        // Recency belongs to the device, not the action: after "Turn on" the palette offers
+        // "Turn off", and that is the command the user most likely wants next.
+        key: entity.entity_id,
       }));
   });
-  (config?.customTabs || []).forEach((tab) =>
-    commands.push({
-      tabId: tab.id,
-      displayName: t('Switch to {{name}}', { name: tab.name }),
-      key: `page:${tab.id}`,
-    })
-  );
+  const customTabs = config?.customTabs || [];
+  const activeTabId = customTabs.length ? getActiveQuickAccessTab(config)?.id : null;
+  customTabs
+    .filter((tab) => tab.id !== activeTabId)
+    .forEach((tab) =>
+      commands.push({
+        tabId: tab.id,
+        displayName: t('Switch to {{name}}', { name: tab.name }),
+        key: `page:${tab.id}`,
+      })
+    );
   return commands;
+}
+
+// A lock or alarm panel row has no default action. Point at its explicit command instead of
+// closing, or explain why there is none.
+function redirectToExplicitCommand(selected) {
+  const entityId = selected.entity.entity_id;
+  const commandIndex = results.findIndex(
+    (item) => item.service && item.entity?.entity_id === entityId
+  );
+  if (commandIndex >= 0) {
+    hint.hidden = true;
+    updateHighlightedResult(commandIndex);
+    return;
+  }
+  const name = utils.getEntityDisplayName(selected.entity);
+  const hasCommand = (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
+  hint.textContent = hasCommand
+    ? t('To control {{name}}, type "lock" or "unlock".', { name })
+    : t('No command is available for {{name}}.', { name });
+  hint.hidden = false;
 }
 
 async function executeHighlightedResult() {
   const selected = results[highlightedIndex];
   if (!selected || executing) return;
+  if (
+    !selected.service &&
+    !selected.tabId &&
+    COMMAND_ONLY_DOMAINS.has(getEntityDomain(selected.entity.entity_id))
+  ) {
+    redirectToExplicitCommand(selected);
+    return;
+  }
   closeCommandPalette();
   if (!selected.service && !selected.tabId) {
     openEntityDetailModal(selected.entity, { source: 'command-palette' });
@@ -247,10 +347,7 @@ async function executeHighlightedResult() {
       });
       showToast(t('Command sent'), 'success', 1600);
     }
-    recentCommands = [selected.key, ...recentCommands.filter((key) => key !== selected.key)].slice(
-      0,
-      10
-    );
+    rememberRecentCommand(selected.key);
   } catch {
     showToast(t('Could not run command. Check your connection and retry.'), 'error');
   } finally {
@@ -279,17 +376,24 @@ function createResultRow(item, index) {
   const domain = createElement(
     'span',
     'command-palette-result-domain',
-    item.tabId ? t('Page') : getEntityDomain(entity.entity_id)
+    item.tabId ? t('Page') : utils.getEntityTypeDescription(entity)
   );
   const value = createElement(
     'span',
     'command-palette-result-state',
     entity ? utils.getEntityDisplayState(entity) : ''
   );
+  // Long type names ("Panel de control de alarma") end in an ellipsis; the title keeps them whole.
+  domain.title = domain.textContent;
   meta.append(domain, value);
 
   row.append(icon, main, meta);
-  row.addEventListener('mouseenter', () => updateHighlightedResult(index));
+  row.addEventListener('mousemove', (event) => {
+    const position = `${event.screenX},${event.screenY}`;
+    const moved = lastPointerPosition !== null && position !== lastPointerPosition;
+    lastPointerPosition = position;
+    if (moved && highlightedIndex !== index) updateHighlightedResult(index);
+  });
   row.addEventListener('click', () => {
     highlightedIndex = index;
     executeHighlightedResult();
@@ -301,7 +405,7 @@ function renderResults() {
   const query = input?.value || '';
   const server = state.CONFIG?.homeAssistant?.url || '';
   if (recentServer !== server) {
-    recentCommands = [];
+    recentCommands = readRecentCommands(state.CONFIG);
     recentServer = server;
   }
   const entities = Object.values(state.STATES || {});
@@ -309,6 +413,7 @@ function renderResults() {
   // on every keystroke. Execution re-reads the live entity state before sending anything.
   paletteCommands ??= buildPaletteCommands(entities);
   const commands = paletteCommands
+    .filter((item) => query.trim() || !QUERY_ONLY_SERVICES.has(item.service))
     .map((item) => ({
       ...item,
       score: scoreCommandPaletteMatch(item.displayName, query),
@@ -333,19 +438,25 @@ function renderResults() {
   });
 
   emptyState.hidden = results.length > 0;
+  hint.hidden = true;
   updateHighlightedResult(highlightedIndex);
 }
 
 function openCommandPalette() {
   ensurePaletteShell();
+  applyPaletteLabels();
   if (!isPaletteOpen() && document.activeElement && document.activeElement !== document.body) {
     previouslyFocusedElement = document.activeElement;
   }
+  // Registered as the top dialog so Escape pressed with focus on <body> closes the palette, not
+  // a dialog open underneath it. The palette returns focus itself.
+  if (!isPaletteOpen()) trapFocus(overlay, { initialFocus: false });
   overlay.classList.remove('hidden');
   overlay.setAttribute('aria-hidden', 'false');
   input.setAttribute('aria-expanded', 'true');
   input.value = '';
   paletteCommands = null;
+  lastPointerPosition = null;
   renderResults();
   requestAnimationFrame(() => {
     input.focus();
@@ -355,6 +466,7 @@ function openCommandPalette() {
 
 function closeCommandPalette({ restoreFocus = true } = {}) {
   if (!overlay) return;
+  releaseFocusTrap(overlay, { restoreFocus: false });
   overlay.classList.add('hidden');
   overlay.setAttribute('aria-hidden', 'true');
   paletteCommands = null;

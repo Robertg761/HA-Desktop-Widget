@@ -11,7 +11,15 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatTime, t } from './i18n.js';
+import {
+  formatDate,
+  formatNumber,
+  formatTime,
+  getLocaleState,
+  isolateLtr,
+  t,
+  translateDocument,
+} from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import {
   getWeatherConditionLabel,
@@ -83,6 +91,8 @@ const { getClimateControlCapabilities } = climateControls;
 
 const climateDialogRefreshers = new Map();
 let isReorganizeMode = false;
+// Set when a drag in the current reorganize session actually changed a page's order.
+let quickAccessOrderChanged = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
 const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
@@ -100,6 +110,7 @@ const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
 const ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS = 8000;
+const MEDIA_PLAYER_SUPPORT_SEEK = 2;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
@@ -158,16 +169,17 @@ const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   dry: 'Dry',
   eco: 'Eco',
 };
-// Common Home Assistant HVAC, fan and preset mode values with a translatable label.
+// Labels for Home Assistant's standard HVAC, fan and preset modes in the climate dialog, translated
+// where they are shown. Modes outside this list are integration-specific and shown as reported.
 const CLIMATE_OPTION_LABELS = {
   off: 'Off',
   on: 'On',
   heat: 'Heat',
   cool: 'Cool',
-  auto: 'Auto',
   heat_cool: 'Heat Cool',
-  fan_only: 'Fan Only',
+  auto: 'Auto',
   dry: 'Dry',
+  fan_only: 'Fan Only',
   low: 'Low',
   medium: 'Medium',
   middle: 'Middle',
@@ -335,21 +347,41 @@ function scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState) 
   onOffToggleConfirmationTimers.set(entityId, timer);
 }
 
+// Socket-level failures reach here as transport jargon ("WebSocket not connected"); say what they
+// mean for the user instead. Home Assistant's own service errors are already readable.
+const CONNECTION_SERVICE_ERRORS = new Set([
+  'WebSocket not connected',
+  'WebSocket not authenticated',
+  'WebSocket connection closed',
+  'WebSocket connection replaced',
+  'Home Assistant connection lost',
+]);
+
+function describeServiceErrorMessage(error) {
+  const message = error?.message || '';
+  if (message === 'WebSocket request timeout') return t('Home Assistant did not respond');
+  if (CONNECTION_SERVICE_ERRORS.has(message)) return t('Not connected to Home Assistant');
+  return message || t('Unknown error');
+}
+
 /**
  * Handle WebSocket service call errors with user feedback
  * @param {Error} error - The error that occurred
  * @param {string} entityName - Optional entity name for better error messages
  */
 function handleServiceError(error, entityName = null) {
-  const errorMessage = error?.message || t('Unknown error');
+  const errorMessage = describeServiceErrorMessage(error);
   const displayMessage = entityName
     ? t('Failed to control {{entityName}}: {{errorMessage}}', { entityName, errorMessage })
     : t('Service call failed: {{errorMessage}}', { errorMessage });
 
-  console.error('WebSocket service call failed:', error);
+  // A control used during an outage is an expected outcome, not a fault in the widget.
+  const outage =
+    CONNECTION_SERVICE_ERRORS.has(error?.message) || error?.message === 'WebSocket request timeout';
+  console[outage ? 'warn' : 'error']('WebSocket service call failed:', error);
   emitUiDebug('service.error', {
     entityName: entityName || null,
-    message: errorMessage,
+    message: error?.message || 'Unknown error',
     code: error?.code || null,
     details: error?.details || null,
   });
@@ -373,7 +405,7 @@ function callServiceWithUiRollback(entity, domain, service, serviceData, rollbac
     });
 }
 
-function serializeDesktopPinActionError(error, fallbackMessage = 'Desktop pin action failed') {
+function serializeDesktopPinActionError(error, fallbackMessage = t('Desktop pin action failed')) {
   const message =
     typeof error?.message === 'string' && error.message.trim() ? error.message : fallbackMessage;
   const serialized = { message };
@@ -513,7 +545,7 @@ function renderQuickAccessConfigState() {
   renderQuickControls();
   // The manage list holds a row for every entity in the install, so rebuilding it on each page
   // switch is the most expensive part of the render. It is rebuilt again when the dialog opens.
-  if (isQuickAccessManageModalOpen()) populateQuickControlsList();
+  if (isQuickAccessManageModalOpen()) populateQuickControlsList({ resetSearch: false });
 }
 
 function buildQuickAccessConfigPatch(config) {
@@ -818,20 +850,43 @@ async function deleteQuickAccessPage(tabId) {
   if (!confirmed) return;
 
   const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
-  const result = await setQuickAccessConfig(nextConfig);
+  const pending = setQuickAccessConfig(nextConfig);
+  // The deleted page's tab took the focused button with it.
+  focusActiveQuickAccessPage();
+  const result = await pending;
   if (result.success) {
     uiUtils.showToast(t('Page deleted'), 'info', 1600);
   }
 }
 
-function createQuickAccessPage(name, entityIds = []) {
-  const nextConfig = addQuickAccessView(state.CONFIG, name, {
-    idFactory: generateQuickAccessViewId,
-  });
+// After the control that changed the pages is gone (a deleted tab, a closed starter), keep
+// keyboard focus on the page now on screen: its tab when the tab bar shows, else its first tile.
+function focusActiveQuickAccessPage() {
+  setTimeout(() => {
+    const active = document.activeElement;
+    // Focus still in a dialog that is animating out (the delete confirmation) is about to drop.
+    if (active && active !== document.body && !active.closest('.modal-closing')) return;
+    const target =
+      document.querySelector('#quick-access-tabs:not(.hidden) .quick-access-tab-link.active') ||
+      document.querySelector(
+        '#quick-controls button:not([disabled]), #quick-controls [tabindex]:not([tabindex="-1"])'
+      );
+    target?.focus();
+  }, 0);
+}
+
+function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } = {}) {
+  // First-run setup starts from the empty default page; fill that page rather than leaving it
+  // empty beside the new one, still inviting the user to set up a page.
+  const activePage = fillEmptyPage ? getActiveQuickAccessTab(state.CONFIG) : null;
+  const fillsActivePage = !!activePage && !activePage.entityIds.length;
+  const nextConfig = fillsActivePage
+    ? renameQuickAccessView(state.CONFIG, activePage.id, name)
+    : addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
   nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
-      uiUtils.showToast(t('Page added'), 'success', 1600);
+      uiUtils.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
     }
     return result;
   });
@@ -852,7 +907,7 @@ function showAddPageModal({ starter = false } = {}) {
 
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
     (preset) => `
-              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`
+              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}" data-preset="${escapeHtmlAttribute(preset)}">${utils.escapeHtml(t(preset))}</button>`
   ).join('');
 
   const modal = document.createElement('div');
@@ -910,14 +965,25 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.setAttribute('aria-label', t('Search devices'));
   const filterDevices = () => {
     const query = deviceSearch.value.trim().toLocaleLowerCase();
-    roomEntities.querySelectorAll('label').forEach((label) => {
+    const labels = [...roomEntities.querySelectorAll('label')];
+    labels.forEach((label) => {
       label.hidden = !`${label.textContent} ${label.querySelector('input').value}`
         .toLocaleLowerCase()
         .includes(query);
     });
+    // Say so when the search hides every device, and bring the previous hint back after.
+    if (labels.length && labels.every((label) => label.hidden)) {
+      statusBeforeNoMatches ??= roomStatus.textContent;
+      roomStatus.textContent = t('No matching entities found.');
+    } else if (statusBeforeNoMatches !== null) {
+      roomStatus.textContent = statusBeforeNoMatches;
+      statusBeforeNoMatches = null;
+    }
   };
+  let statusBeforeNoMatches = null;
   deviceSearch.addEventListener('input', filterDevices);
-  if (starter) roomGroup.insertBefore(deviceSearch, roomEntities);
+  deviceSearch.hidden = true;
+  roomGroup.insertBefore(deviceSearch, roomEntities);
   modal.querySelector('.modal-body').appendChild(roomGroup);
   let registry = null;
   let availableStates = state.STATES;
@@ -929,19 +995,26 @@ function showAddPageModal({ starter = false } = {}) {
     const selected = [...roomEntities.querySelectorAll('input:checked')];
     preview.replaceChildren();
     const title = document.createElement('p');
-    title.textContent = t('Page preview: {{count}} devices', { count: selected.length });
+    title.textContent =
+      selected.length === 1
+        ? t('Page preview: 1 entity')
+        : t('Page preview: {{count}} entities', { count: selected.length });
     preview.appendChild(title);
     selected.slice(0, 8).forEach(({ value }) => {
       const tile = document.createElement('div');
       tile.className = 'room-preview-tile';
       const entity = availableStates[value];
-      tile.textContent = `${utils.getEntityDisplayName(entity)} — ${entity.state}`;
+      tile.textContent = `${utils.getEntityDisplayName(entity)} — ${utils.getEntityDisplayState(entity)}`;
       preview.appendChild(tile);
     });
-    if (selected.length > 8) {
-      const remaining = document.createElement('p');
-      remaining.textContent = t('And {{count}} more devices', { count: selected.length - 8 });
-      preview.appendChild(remaining);
+    const remaining = selected.length - 8;
+    if (remaining > 0) {
+      const more = document.createElement('p');
+      more.textContent =
+        remaining === 1
+          ? t('And 1 more entity')
+          : t('And {{count}} more entities', { count: remaining });
+      preview.appendChild(more);
     }
   };
   roomEntities.addEventListener('change', updatePreview);
@@ -963,12 +1036,14 @@ function showAddPageModal({ starter = false } = {}) {
           response.result.map((entity) => [entity.entity_id, entity])
         );
       }
+      let registryUnavailable = false;
       try {
         registry = await loadRoomRegistry(websocket);
       } catch (error) {
         if (!starter) throw error;
         // State access does not require administrator registry permissions.
         registry = { areas: [], entities: [], devices: [] };
+        registryUnavailable = true;
       }
       if (!modal.isConnected) return;
       if (!starter) availableStates = state.STATES;
@@ -989,11 +1064,23 @@ function showAddPageModal({ starter = false } = {}) {
                 .length
           )?.area_id || '';
         roomSelect.onchange();
-        if (!registry.areas.length)
+        if (registryUnavailable) {
           roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
+        } else if (!registry.areas.length) {
+          roomStatus.textContent = t(
+            'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+          );
+        }
         saveBtn.disabled = false;
       }
-    } catch {
+    } catch (error) {
+      if (!modal.isConnected) return;
+      if (error?.code === 'registry_unavailable') {
+        // Home Assistant refused the request; retrying cannot succeed without new permissions.
+        roomStatus.textContent = error.message;
+        loadRooms.hidden = true;
+        return;
+      }
       roomStatus.textContent = t(
         'Could not load rooms. Check your connection and permissions, then retry.'
       );
@@ -1008,8 +1095,10 @@ function showAddPageModal({ starter = false } = {}) {
     if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
     preview.replaceChildren();
+    statusBeforeNoMatches = null;
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
+      deviceSearch.hidden = true;
       return;
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
@@ -1030,6 +1119,7 @@ function showAddPageModal({ starter = false } = {}) {
         .getEntityDisplayName(availableStates[a])
         .localeCompare(utils.getEntityDisplayName(availableStates[b]))
     );
+    // Suggest up to eight available devices you can control; sensors and buttons stay optional.
     const defaults = new Set(
       ids
         .filter(
@@ -1039,12 +1129,13 @@ function showAddPageModal({ starter = false } = {}) {
         )
         .slice(0, 8)
     );
+    deviceSearch.hidden = !ids.length;
     ids.forEach((id) => {
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.value = id;
-      checkbox.checked = !starter || defaults.has(id);
+      checkbox.checked = defaults.has(id);
       label.append(
         checkbox,
         document.createTextNode(utils.getEntityDisplayName(availableStates[id]))
@@ -1071,7 +1162,10 @@ function showAddPageModal({ starter = false } = {}) {
   const restoreLauncherFocus = () => {
     setTimeout(() => {
       if (document.activeElement && document.activeElement !== document.body) return;
-      document.querySelector('.qa-tab-add')?.focus();
+      const addPage = document.querySelector('.qa-tab-add');
+      // Outside reorganize mode (the first-run starter) there is no Add page control.
+      if (addPage) addPage.focus();
+      else focusActiveQuickAccessPage();
     }, 0);
   };
   const closeOptions = { remove: true, releaseFocus: true, onClosed: restoreLauncherFocus };
@@ -1090,7 +1184,7 @@ function showAddPageModal({ starter = false } = {}) {
       roomEntities.querySelectorAll('input:checked'),
       (checkbox) => checkbox.value
     );
-    const result = await createQuickAccessPage(name, selectedIds);
+    const result = await createQuickAccessPage(name, selectedIds, { fillEmptyPage: starter });
     if (result.success) {
       void uiUtils.closeModal(modal, closeOptions);
       return;
@@ -1105,6 +1199,23 @@ function showAddPageModal({ starter = false } = {}) {
     chip.addEventListener('click', () => {
       if (!input) return;
       input.value = chip.dataset.name || chip.textContent || '';
+      // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room,
+      // whether the room is named in English or in the interface language ("Küche", "kuche").
+      const names = [input.value, chip.dataset.preset].filter(Boolean).map((name) => name.trim());
+      const area = registry?.areas.find((entry) =>
+        names.some(
+          (name) => entry.name.trim().localeCompare(name, undefined, { sensitivity: 'base' }) === 0
+        )
+      );
+      if (area && roomSelect.value !== area.area_id) {
+        const chipName = input.value;
+        autoFilledName = chipName;
+        roomSelect.value = area.area_id;
+        roomSelect.onchange();
+        // The page keeps the chip's name ("Küche") when the room is named "Kitchen".
+        input.value = chipName;
+        autoFilledName = chipName;
+      }
       input.focus();
     });
   });
@@ -1145,12 +1256,23 @@ function showAddPageModal({ starter = false } = {}) {
   if (starter || websocket.isConnected?.()) void loadRooms.onclick();
 }
 
-async function restoreDashboard(layout) {
+async function restoreDashboard(layout, { activeTabId } = {}) {
   if (quickAccessPendingWriteCount)
     throw new Error(t('Wait for the current dashboard save to finish.'));
+  const current = normalizeQuickAccessConfig(state.CONFIG);
   const next = normalizeQuickAccessConfig({ ...state.CONFIG, ...dashboardSnapshot(layout) });
+  // Return to the page the layout was saved on, else stay put, else land on the page now in the
+  // current page's position rather than jumping to the first one.
+  const tabIds = next.customTabs.map((tab) => tab.id);
+  const currentIndex = current.customTabs.findIndex((tab) => tab.id === current.activeTabId);
+  next.activeTabId =
+    [activeTabId, current.activeTabId].find((id) => tabIds.includes(id)) ??
+    tabIds[Math.min(Math.max(currentIndex, 0), tabIds.length - 1)];
   await persistAuthoritativeConfig(next);
   renderQuickAccessConfigState();
+  if (state.CONFIG?.activeTabId !== current.activeTabId) {
+    window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
+  }
 }
 
 function getQuickAccessTiles() {
@@ -1197,7 +1319,7 @@ function handleQuickAccessGridKeydown(event) {
     event.preventDefault();
     if (event.shiftKey) {
       const entity = state.STATES?.[tile.dataset.entityId];
-      if (entity && !shouldBlockInteraction(tile)) openEntityDetailModal(entity);
+      if (entity && !shouldBlockInteraction(tile)) openEntityControls(entity);
     } else {
       tile.click();
     }
@@ -1424,6 +1546,9 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   );
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
+  ['tabindex', 'role', 'aria-haspopup', 'aria-keyshortcuts'].forEach((name) =>
+    cardEl.removeAttribute(name)
+  );
   cardEl.title = '';
 
   if (selection === PRIMARY_CARD_NONE) {
@@ -1438,6 +1563,13 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('weather-card');
     cardEl.title = t('Long-press to configure weather');
     cardEl.innerHTML = weatherCardTemplate || '';
+    // Keyboard users open the weather picker with Enter, Space, Shift+Enter or the menu key.
+    cardEl.tabIndex = 0;
+    cardEl.setAttribute('role', 'button');
+    cardEl.setAttribute('aria-haspopup', 'dialog');
+    cardEl.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+    // The markup was saved in the startup language; relabel its icons for the current one.
+    translateDocument(cardEl);
     return;
   }
 
@@ -1446,6 +1578,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('time-card');
     cardEl.title = t('Current time');
     cardEl.innerHTML = timeCardTemplate || '';
+    translateDocument(cardEl);
     return;
   }
 
@@ -1501,6 +1634,7 @@ function toggleReorganizeMode() {
     const btn = document.getElementById('reorganize-quick-controls-btn');
 
     if (isReorganizeMode) {
+      quickAccessOrderChanged = false;
       container.classList.add('reorganize-mode');
       if (btn) {
         setLineIconContent(btn, 'check');
@@ -1554,7 +1688,10 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(false).catch((error) => {
         console.error('Failed to disable desktop pin edit mode:', error);
       });
-      uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+      if (quickAccessOrderChanged) {
+        uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+      }
+      quickAccessOrderChanged = false;
     }
 
     // Refresh the tab bar so page-management affordances (or the plain tabs)
@@ -2220,6 +2357,9 @@ function saveQuickAccessOrder(movedItem = null) {
 
     const activeTab = getActiveQuickAccessTab(ensureQuickAccessConfig());
     const nextConfig = reorderQuickAccessView(state.CONFIG, activeTab?.id, newOrder);
+    const nextTab = getActiveQuickAccessTab(nextConfig);
+    if (JSON.stringify(nextTab?.entityIds) === JSON.stringify(activeTab?.entityIds)) return;
+    quickAccessOrderChanged = true;
 
     // Save to config
     setQuickAccessConfig(nextConfig, { render: false });
@@ -2543,6 +2683,8 @@ function getControlRenderSignature(entity) {
     quickAccessValueSize: hasQuickAccessValueSize
       ? getQuickAccessTileValueSize(entity.entity_id)
       : null,
+    // Tiles are reused while this is unchanged; a language switch must redraw their labels.
+    locale: getLocaleState().activeLocale || '',
   });
 }
 
@@ -2597,6 +2739,56 @@ function getEventDateValue(value) {
   return null;
 }
 
+const timeZoneFormatters = new Map();
+// How far a time zone's wall clock is ahead of UTC at an instant, in milliseconds.
+function getTimeZoneOffset(instant, timeZone) {
+  let formatter = timeZoneFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+    });
+    timeZoneFormatters.set(timeZone, formatter);
+  }
+  const parts = Object.fromEntries(
+    formatter.formatToParts(instant).map(({ type, value }) => [type, Number(value)])
+  );
+  const wallClock = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return wallClock - (instant - (((instant % 1000) + 1000) % 1000));
+}
+
+// Calendar entities report start_time as Home Assistant's wall-clock time without an offset. Read
+// it in Home Assistant's time zone, so a computer set to another zone still shows the right time.
+// Times with an offset, and everything before get_config arrives, parse as usual.
+function parseHomeAssistantDateTime(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  const timeZone = state.TIME_ZONE;
+  if (!match || !timeZone) return new Date(value);
+  const [, year, month, day, hour, minute, second = '0'] = match.map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, hour, minute, second);
+  try {
+    // Twice, so a time next to a daylight-saving change uses the offset in force at that time.
+    let instant = wallClock - getTimeZoneOffset(wallClock, timeZone);
+    instant = wallClock - getTimeZoneOffset(instant, timeZone);
+    return new Date(instant);
+  } catch {
+    return new Date(value);
+  }
+}
+
 function parseCalendarDate(value) {
   const dateValue = getEventDateValue(value);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue || '')) return null;
@@ -2604,21 +2796,27 @@ function parseCalendarDate(value) {
   return new Date(year, month - 1, day);
 }
 
-function formatDateTimeValue(value) {
-  const dateValue = getEventDateValue(value);
-  if (!dateValue) return '--';
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return String(dateValue);
-  return `${formatDate(date)} ${formatTime(date)}`;
+// Event times read in hours and minutes, following the clock's 12/24-hour setting.
+function formatEventTime(date) {
+  return formatTime(date, { hour: 'numeric', minute: '2-digit', ...getClockTimeOptions() });
 }
 
-function formatCalendarTileStart(startTime) {
+function formatDateTimeValue(value, { timeOnly = false } = {}) {
+  const dateValue = getEventDateValue(value);
+  if (!dateValue) return '--';
+  const date = parseHomeAssistantDateTime(dateValue);
+  if (Number.isNaN(date.getTime())) return String(dateValue);
+  return timeOnly ? formatEventTime(date) : `${formatDate(date)} ${formatEventTime(date)}`;
+}
+
+function formatCalendarTileStart(startTime, { allDay = false } = {}) {
   const dateValue = getEventDateValue(startTime);
   if (!dateValue) return '';
-  if (parseCalendarDate(dateValue)) return t('All day');
-  const date = new Date(dateValue);
+  // Calendar entities report all-day events as a midnight start_time plus all_day: true.
+  if (allDay || parseCalendarDate(dateValue)) return t('All day');
+  const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return formatTime(date);
+  return formatEventTime(date);
 }
 
 function formatCalendarEventRange(event) {
@@ -2632,8 +2830,17 @@ function formatCalendarEventRange(event) {
         : formatDate(startDate);
     return `${dates} · ${t('All day')}`;
   }
-  const start = formatDateTimeValue(event?.start || event?.start_time);
-  const end = formatDateTimeValue(event?.end || event?.end_time);
+  const startValue = event?.start || event?.start_time;
+  const endValue = event?.end || event?.end_time;
+  const startAt = parseHomeAssistantDateTime(getEventDateValue(startValue) || NaN);
+  const endAt = parseHomeAssistantDateTime(getEventDateValue(endValue) || NaN);
+  // An event that ends the same day shows its date once.
+  const sameDay =
+    !Number.isNaN(startAt.getTime()) &&
+    !Number.isNaN(endAt.getTime()) &&
+    startAt.toDateString() === endAt.toDateString();
+  const start = formatDateTimeValue(startValue);
+  const end = formatDateTimeValue(endValue, { timeOnly: sameDay });
   if (!end || end === '--') return start;
   return `${start} - ${end}`;
 }
@@ -2714,10 +2921,8 @@ function getQuickAccessSensorPrecision(entity) {
   return 2;
 }
 
-function formatQuickAccessSensorNumber(value, precision) {
-  return Number(value)
-    .toFixed(precision)
-    .replace(/\.?0+$/, '');
+function formatQuickAccessSensorNumber(value, precision, useGrouping = true) {
+  return formatNumber(Number(value), { maximumFractionDigits: precision, useGrouping });
 }
 
 function getQuickAccessSensorDisplayParts(entity) {
@@ -2731,7 +2936,12 @@ function getQuickAccessSensorDisplayParts(entity) {
     typeof entity.attributes?.unit_of_measurement === 'string'
       ? entity.attributes.unit_of_measurement.trim()
       : '';
-  const formattedValue = formatQuickAccessSensorNumber(value, precision);
+  // Unitless values without a state class may be years or codes; don't group them ("2026").
+  const formattedValue = formatQuickAccessSensorNumber(
+    value,
+    precision,
+    Boolean(unit || entity.attributes?.state_class)
+  );
 
   return {
     value: formattedValue,
@@ -3190,7 +3400,14 @@ function renderSensorDetailSparkline(container, series, timeDomain) {
   container.hidden = !stats;
   if (!stats) return;
   const padding = Math.max((stats.max - stats.min) * 0.05, Math.abs(stats.max) * 0.01, 0.01);
-  const points = buildTimeSeriesPoints(series, {
+  // A reading holds until the next one, so carry the last value on to "now". A period with a
+  // single sample then draws a flat line instead of one dot at the far end.
+  const last = series.findLast((point) => Number.isFinite(point.value));
+  const drawn =
+    Number.isFinite(timeDomain?.end) && last.timestamp < timeDomain.end
+      ? [...series, { value: last.value, timestamp: timeDomain.end }]
+      : series;
+  const points = buildTimeSeriesPoints(drawn, {
     timeDomain,
     valueDomain: { min: stats.min - padding, max: stats.max + padding },
     width: SENSOR_DETAIL_SPARKLINE_WIDTH,
@@ -3211,7 +3428,7 @@ function renderSensorDetailSparkline(container, series, timeDomain) {
     })
   );
   if (series.length === 1) {
-    const [cx, cy] = points.split(',');
+    const [cx, cy] = points.split(' ')[0].split(',');
     svg.append(createSvgElement('circle', { cx, cy, r: '3', fill: 'currentColor' }));
   }
   container.append(svg);
@@ -3406,8 +3623,8 @@ function buildComparisonGraphPlot(entries) {
  */
 function formatComparisonGraphValue(entry) {
   if (entry.value === null || entry.value === undefined) return t('No data');
-  const rounded = Math.round(entry.value * 10) / 10;
-  return entry.unit ? `${rounded} ${entry.unit}` : String(rounded);
+  const rounded = formatNumber(Math.round(entry.value * 10) / 10, { maximumFractionDigits: 1 });
+  return entry.unit ? `${rounded} ${entry.unit}` : rounded;
 }
 
 /**
@@ -3507,7 +3724,8 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
       const value = document.createElement('span');
       value.className = 'comparison-graph-tooltip-value';
-      value.textContent = entry.unit ? `${sample.value} ${entry.unit}` : String(sample.value);
+      const sampleValue = formatNumber(sample.value);
+      value.textContent = entry.unit ? `${sampleValue} ${entry.unit}` : sampleValue;
 
       const name = document.createElement('span');
       name.className = 'comparison-graph-tooltip-name';
@@ -4318,15 +4536,6 @@ function getDesktopPinCapabilitySignature(entity) {
   return JSON.stringify(getDesktopPinCapabilities(entity));
 }
 
-// The support module explains unsupported pins in English, so the UI rebuilds that reason itself.
-function getDesktopPinUnsupportedReason(profile) {
-  if (!profile?.entityId) return t('Desktop pin not supported yet');
-  const domain = profile.domain || getEntityDomain(profile.entityId);
-  return domain
-    ? t('The {{domain}} domain does not have a desktop-pin profile yet.', { domain })
-    : t('Desktop pin not supported yet');
-}
-
 function getDesktopPinSupportInfo(entityOrEntityId = null) {
   const profile = getDesktopPinSupportProfile(entityOrEntityId);
   return {
@@ -4509,24 +4718,52 @@ function getDesktopPinDenseRenderProfile(domain = '') {
 function formatDesktopPinClimateModeLabel(mode) {
   const normalizedMode = typeof mode === 'string' ? mode.trim() : '';
   if (!normalizedMode) return t('Mode');
-  const knownLabel = DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode];
-  return knownLabel ? t(knownLabel) : normalizedMode.replace(/_/g, ' ');
+  const label = DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode];
+  return label ? t(label) : normalizedMode.replace(/_/g, ' ');
 }
 
-const COVER_STATE_LABELS = {
-  open: 'Open',
-  closed: 'Closed',
-  opening: 'Opening',
-  closing: 'Closing',
-  stopped: 'Stopped',
-  unknown: 'Unknown',
-  unavailable: 'Unavailable',
-};
+// Some short words need a different translation per context ("Cool" as a colour temperature is not
+// the HVAC mode). The context lives in the key; English, where the key is missing, shows the word.
+function translateInContext(key, fallback) {
+  const label = t(key);
+  return label === key ? fallback : label;
+}
 
-function formatCoverStateLabel(coverState) {
-  const normalizedState = typeof coverState === 'string' ? coverState.trim() : '';
-  const knownLabel = COVER_STATE_LABELS[normalizedState];
-  return knownLabel ? t(knownLabel) : formatDesktopPinClimateModeLabel(normalizedState);
+// A temperature for display ("21,5°C" in German), or "--" when there is no reading.
+function formatTemperatureDisplay(value, unit = '') {
+  return value == null ? '--' : `${formatNumber(value)}${unit}`;
+}
+
+// Capitalized, translated device state ("open" -> "Open"), sharing the tray's state names.
+function getLocalizedEntityStateLabel(value) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!key) return t('Unknown');
+  const name = trayEntitySupport.STATE_NAMES[key];
+  if (name) return t(name);
+  const text = key.replace(/_/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function getDeviceTileStateText(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const attributes = entity?.attributes || {};
+  if (domain === 'light') {
+    const brightness = Number(attributes.brightness);
+    if (entity.state === 'on' && attributes.brightness != null && brightness >= 0) {
+      return `${Math.round((brightness / 255) * 100)}%`;
+    }
+    return getLocalizedEntityStateLabel(entity.state);
+  }
+  const label = getLocalizedEntityStateLabel(entity?.state);
+  const percent =
+    domain === 'cover' && entity.state !== 'closed'
+      ? attributes.current_position
+      : domain === 'fan' && entity.state === 'on'
+        ? attributes.percentage
+        : null;
+  return percent != null && Number.isFinite(Number(percent))
+    ? `${label} ${Math.round(Number(percent))}%`
+    : label;
 }
 
 function getDesktopPinClimateModesToShow(modes, activeMode, maxCount) {
@@ -4937,17 +5174,17 @@ function createDesktopPinLightControlElement(entity) {
         <div class="desktop-pin-light-glyph">${entityIconMarkup(entity)}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
-          <div class="desktop-pin-light-status">${
+          <div class="desktop-pin-light-status">${utils.escapeHtml(
             capabilities.canSetBrightness
               ? isOn
-                ? utils.escapeHtml(t('{{percent}}% brightness', { percent: brightnessPct }))
-                : utils.escapeHtml(t('Use slider or a preset'))
+                ? t('{{percent}}% brightness', { percent: brightnessPct })
+                : t('Use slider or a preset')
               : isOn
                 ? t('On')
                 : t('Off')
-          }</div>
+          )}</div>
         </div>
-        <button class="desktop-pin-light-power" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${isOn ? t('On') : t('Off')}</button>
+        <button class="desktop-pin-light-power" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${utils.escapeHtml(isOn ? t('On') : t('Off'))}</button>
       </div>
       ${
         capabilities.canSetBrightness
@@ -4955,7 +5192,7 @@ function createDesktopPinLightControlElement(entity) {
         <div class="desktop-pin-light-brightness-head">
           <div class="desktop-pin-light-brightness-copy">
             <div class="desktop-pin-light-brightness-label">${utils.escapeHtml(t('Brightness'))}</div>
-            <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : t('Off')}</div>
+            <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : utils.escapeHtml(t('Off'))}</div>
           </div>
         </div>
         <div class="desktop-pin-panel-progress desktop-pin-light-brightness-track">
@@ -5220,27 +5457,24 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   );
 
   const target = root.querySelector('.desktop-pin-climate-target-value');
-  if (target) target.textContent = targetTemp == null ? '--' : `${targetTemp}${unit}`;
+  if (target) target.textContent = formatTemperatureDisplay(targetTemp, unit);
 
   const current = root.querySelector('.desktop-pin-climate-current-value');
-  if (current) current.textContent = currentTemp == null ? '--' : `${currentTemp}${unit}`;
+  if (current) current.textContent = formatTemperatureDisplay(currentTemp, unit);
 
   const compactCurrent = root.querySelector('.desktop-pin-climate-inline-copy');
   if (compactCurrent) {
     compactCurrent.textContent =
       currentTemp == null
         ? t('No live room temperature')
-        : t('Now {{temperature}}', { temperature: `${currentTemp}${unit}` });
+        : t('Now {{temperature}}', {
+            temperature: isolateLtr(formatTemperatureDisplay(currentTemp, unit)),
+          });
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
   if (headerKpi) {
-    headerKpi.textContent =
-      targetTemp == null
-        ? currentTemp == null
-          ? '--'
-          : `${currentTemp}${unit}`
-        : `${targetTemp}${unit}`;
+    headerKpi.textContent = formatTemperatureDisplay(targetTemp ?? currentTemp, unit);
   }
 
   const status = root.querySelector('.desktop-pin-panel-status');
@@ -5280,7 +5514,17 @@ function createDesktopPinClimateControlElement(entity) {
   const currentSummary = utils.escapeHtml(
     climateValue.currentTemp == null
       ? t('No live room temperature')
-      : t('Now {{temperature}}', { temperature: `${climateValue.currentTemp}${climateValue.unit}` })
+      : t('Now {{temperature}}', {
+          temperature: isolateLtr(
+            formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
+          ),
+        })
+  );
+  const currentTempText = utils.escapeHtml(
+    formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
+  );
+  const targetTempText = utils.escapeHtml(
+    formatTemperatureDisplay(climateValue.targetTemp, climateValue.unit)
   );
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
@@ -5290,13 +5534,12 @@ function createDesktopPinClimateControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: climateStatus,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${
-          climateValue.targetTemp == null
-            ? climateValue.currentTemp == null
-              ? '--'
-              : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`
-            : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`
-        }</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${utils.escapeHtml(
+          formatTemperatureDisplay(
+            climateValue.targetTemp ?? climateValue.currentTemp,
+            climateValue.unit
+          )
+        )}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         ${
@@ -5307,18 +5550,18 @@ function createDesktopPinClimateControlElement(entity) {
           <div class="desktop-pin-climate-summary">
             <div class="desktop-pin-panel-stat">
               <span class="desktop-pin-panel-stat-label">${utils.escapeHtml(t('Current'))}</span>
-              <span class="desktop-pin-climate-current-value">${climateValue.currentTemp == null ? '--' : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+              <span class="desktop-pin-climate-current-value">${currentTempText}</span>
             </div>
             <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis">
               <span class="desktop-pin-panel-stat-label">${utils.escapeHtml(t('Target'))}</span>
-              <span class="desktop-pin-climate-target-value">${climateValue.targetTemp == null ? '--' : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+              <span class="desktop-pin-climate-target-value">${targetTempText}</span>
             </div>
           </div>
         `
               : `
           <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis desktop-pin-climate-target-stat">
             <span class="desktop-pin-panel-stat-label">${utils.escapeHtml(t('Target'))}</span>
-            <span class="desktop-pin-climate-target-value">${climateValue.targetTemp == null ? '--' : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+            <span class="desktop-pin-climate-target-value">${targetTempText}</span>
           </div>
         `
         }
@@ -5326,7 +5569,7 @@ function createDesktopPinClimateControlElement(entity) {
         ${
           climateValue.canSetTemperature
             ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
-          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Cool::color'))}</span>` : ''}
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(translateInContext('Color temperature: Cool', 'Cool'))}</span>` : ''}
           <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="${climateValue.targetTempStep}" value="${climateValue.targetTemp}" aria-label="${escapeHtmlAttribute(t('Target temperature'))}" />
           ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Warm'))}</span>` : ''}
         </div>`
@@ -5358,7 +5601,7 @@ function createDesktopPinClimateControlElement(entity) {
   `;
 
   bindClimateRangeControls(root, entity, getClimateControlCapabilities(entity), (range) => {
-    const text = `${range.low}–${range.high}${climateValue.unit}`;
+    const text = `${formatNumber(range.low)}–${formatNumber(range.high)}${climateValue.unit}`;
     root
       .querySelectorAll('.desktop-pin-climate-target-value, .desktop-pin-climate-kpi')
       .forEach((element) => {
@@ -5463,13 +5706,12 @@ function applyDesktopPinFanVisualState(root, fanValue) {
     String(Math.max(0, Math.min(1, percentage / 100)))
   );
 
+  const kpiText = isOn ? (canSetPercentage ? `${percentage}%` : t('On')) : t('Off');
   const headerKpi = root.querySelector('.desktop-pin-fan-kpi');
-  if (headerKpi)
-    headerKpi.textContent = isOn ? (canSetPercentage ? `${percentage}%` : t('On')) : t('Off');
+  if (headerKpi) headerKpi.textContent = kpiText;
 
   const meterKpi = root.querySelector('.desktop-pin-fan-value');
-  if (meterKpi)
-    meterKpi.textContent = isOn ? (canSetPercentage ? `${percentage}%` : t('On')) : t('Off');
+  if (meterKpi) meterKpi.textContent = kpiText;
 
   const spinner = root.querySelector('.desktop-pin-fan-glyph');
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
@@ -5533,6 +5775,11 @@ function createDesktopPinFanControlElement(entity) {
     state: fanValue.isOn ? 'on' : 'off',
     title: t('Compact fan controls'),
   });
+  const fanKpiText = fanValue.isOn
+    ? capabilities.canSetPercentage
+      ? `${fanValue.percentage}%`
+      : t('On')
+    : t('Off');
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
   root.dataset.canSetPercentage = capabilities.canSetPercentage ? 'true' : 'false';
@@ -5557,14 +5804,14 @@ function createDesktopPinFanControlElement(entity) {
               active: fanValue.isOn,
               title: t('Toggle fan'),
             })}
-            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : t('On')) : t('Off')}</div>` : ''}
+            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${utils.escapeHtml(fanKpiText)}</div>` : ''}
           </div>
         `,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${entityIconMarkup(entity)}</div>
-          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : t('On')) : t('Off')}</div>
+          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(fanKpiText)}</div>
         </div>
         ${
           capabilities.canSetPercentage
@@ -5668,17 +5915,10 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   if (value)
     value.textContent = canSetPosition
       ? `${coverValue.position}%`
-      : formatCoverStateLabel(coverValue.state || 'closed');
+      : getLocalizedEntityStateLabel(coverValue.state || 'closed');
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status)
-    status.textContent = canSetPosition
-      ? coverValue.position <= 0
-        ? t('Closed')
-        : coverValue.position >= 100
-          ? t('Open')
-          : t('{{percent}}% open', { percent: coverValue.position })
-      : formatCoverStateLabel(coverValue.state || 'closed');
+  if (status) status.textContent = getDesktopPinCoverStatusText(coverValue, canSetPosition);
 
   const slider = root.querySelector('.desktop-pin-cover-slider');
   if (slider && slider.value !== String(coverValue.position)) {
@@ -5689,6 +5929,13 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   if (sheet) {
     sheet.style.height = `${100 - coverValue.position}%`;
   }
+}
+
+function getDesktopPinCoverStatusText(coverValue, canSetPosition) {
+  if (!canSetPosition) return getLocalizedEntityStateLabel(coverValue.state || 'closed');
+  if (coverValue.position <= 0) return t('Closed');
+  if (coverValue.position >= 100) return t('Open');
+  return t('{{percent}}% open', { percent: coverValue.position });
 }
 
 function queueDesktopPinCoverPosition(entity, position) {
@@ -5712,9 +5959,11 @@ function createDesktopPinCoverControlElement(entity) {
   const coverValue = getDesktopPinCoverValue(entity);
   const capabilities = getDesktopPinCapabilities(entity);
   const availableActions = [
-    capabilities.canClose ? { action: 'close_cover', label: 'Close' } : null,
-    capabilities.canStop ? { action: 'stop_cover', label: 'Stop' } : null,
-    capabilities.canOpen ? { action: 'open_cover', label: 'Open::action' } : null,
+    capabilities.canClose ? { action: 'close_cover', label: t('Close') } : null,
+    capabilities.canStop ? { action: 'stop_cover', label: t('Stop') } : null,
+    capabilities.canOpen
+      ? { action: 'open_cover', label: translateInContext('Action: Open', 'Open') }
+      : null,
   ].filter(Boolean);
   const renderProfile = getDesktopPinCoverRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-cover-control'], {
@@ -5730,17 +5979,11 @@ function createDesktopPinCoverControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: capabilities.canSetPosition
-          ? coverValue.position <= 0
-            ? t('Closed')
-            : coverValue.position >= 100
-              ? t('Open')
-              : t('{{percent}}% open', { percent: coverValue.position })
-          : formatCoverStateLabel(coverValue.state || 'closed'),
+        statusText: getDesktopPinCoverStatusText(coverValue, capabilities.canSetPosition),
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${
           capabilities.canSetPosition
             ? `${coverValue.position}%`
-            : utils.escapeHtml(formatCoverStateLabel(coverValue.state || 'closed'))
+            : utils.escapeHtml(getLocalizedEntityStateLabel(coverValue.state || 'closed'))
         }</div>`,
       })}
       <div class="desktop-pin-panel-body">
@@ -5770,7 +6013,7 @@ function createDesktopPinCoverControlElement(entity) {
           ${availableActions
             .map(
               ({ action, label }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}">${utils.escapeHtml(t(label))}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}" title="${escapeHtmlAttribute(label)}">${utils.escapeHtml(label)}</button>`
             )
             .join('')}
         </div>`
@@ -5859,8 +6102,7 @@ function getDesktopPinMediaValue(entity) {
     artist:
       entity?.attributes?.media_artist ||
       entity?.attributes?.media_album_name ||
-      entity?.state ||
-      '',
+      (entity?.state ? getLocalizedEntityStateLabel(entity.state) : ''),
     playing: entity?.state === 'playing',
     progress:
       timeline.duration > 0
@@ -5915,16 +6157,16 @@ function createDesktopPinMediaControlElement(entity) {
   const canTogglePlayback = mediaValue.playing ? capabilities.canPause : capabilities.canPlay;
   const mediaActions = [
     capabilities.canPreviousTrack
-      ? { action: 'previous_track', label: 'Prev', className: '' }
+      ? { action: 'previous_track', label: t('Prev'), className: '' }
       : null,
     canTogglePlayback
       ? {
           action: mediaValue.playing ? 'pause' : 'play',
-          label: mediaValue.playing ? 'Pause' : 'Play',
+          label: mediaValue.playing ? t('Pause') : t('Play'),
           className: 'desktop-pin-media-play',
         }
       : null,
-    capabilities.canNextTrack ? { action: 'next_track', label: 'Next', className: '' } : null,
+    capabilities.canNextTrack ? { action: 'next_track', label: t('Next'), className: '' } : null,
   ].filter(Boolean);
   const renderProfile = getDesktopPinMediaRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-media-control'], {
@@ -5960,7 +6202,7 @@ function createDesktopPinMediaControlElement(entity) {
           ${mediaActions
             .map(
               ({ action, label, className }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action ${className}" type="button" data-action="${action}" data-active="${action === 'pause' ? 'true' : 'false'}" aria-pressed="${action === 'pause' ? 'true' : 'false'}">${utils.escapeHtml(t(label))}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action ${className}" type="button" data-action="${action}" data-active="${action === 'pause' ? 'true' : 'false'}" aria-pressed="${action === 'pause' ? 'true' : 'false'}">${utils.escapeHtml(label)}</button>`
             )
             .join('')}
         </div>`
@@ -6217,13 +6459,10 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
     }
 
     try {
-      // DOM measurements are CSS pixels; native window bounds are independent of page zoom.
-      const scale = [1, 1.15, 1.3, 1.5].includes(Number(state.CONFIG?.ui?.scale))
-        ? Number(state.CONFIG.ui.scale)
-        : 1;
+      // DOM measurements are CSS pixels, which is the 100% size main scales pin windows from.
       const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, {
-        width: Math.ceil(minBounds.width * scale),
-        height: Math.ceil(minBounds.height * scale),
+        width: Math.ceil(minBounds.width),
+        height: Math.ceil(minBounds.height),
       });
       desktopPinSceneMinSyncState.set(entityId, {
         ...latest,
@@ -6383,7 +6622,9 @@ function createDesktopPinToggleEntityControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-toggle-control'], {
     domain,
     state: entity.state,
-    title: isSceneLike ? t('Compact action tile') : t('Compact controls'),
+    title: isSceneLike
+      ? t('Compact action tile')
+      : t('Compact {{domain}} controls', { domain: utils.getEntityTypeDescription(entity) }),
   });
   const icon = entityIconMarkup(entity);
   const actionLabel = isSceneLike
@@ -6447,7 +6688,9 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
 
   syncDesktopPinPanelRootState(root, entity, {
     domain,
-    title: isSceneLike ? t('Compact action tile') : t('Compact controls'),
+    title: isSceneLike
+      ? t('Compact action tile')
+      : t('Compact {{domain}} controls', { domain: utils.getEntityTypeDescription(entity) }),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
@@ -6493,7 +6736,7 @@ function createDesktopPinCameraControlElement(entity) {
           <div class="desktop-pin-panel-caption">${utils.escapeHtml(t('Open camera feed'))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(t('Open::action'))}</button>
+          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(translateInContext('Action: Open', 'Open'))}</button>
         </div>
       </div>
     </div>
@@ -6582,16 +6825,16 @@ function updateExistingDesktopPinSensorControl(root, entity) {
 }
 
 function getDesktopPinTimerStatusLabel(entity) {
-  if (utils.getTimerStatusDisplayLabel) return utils.getTimerStatusDisplayLabel(entity);
-  if (utils.getTimerStatusLabel) return utils.getTimerStatusLabel(entity);
+  if (utils.getTimerStatusLabel) return t(utils.getTimerStatusLabel(entity));
   const rawState = typeof entity?.state === 'string' ? entity.state.trim() : '';
-  return rawState ? rawState.charAt(0).toUpperCase() + rawState.slice(1) : 'Idle';
+  return rawState ? rawState.charAt(0).toUpperCase() + rawState.slice(1) : t('Idle');
 }
 
-// The status label may arrive in English or already localized, so match either form.
-function isDesktopPinTimerStatus(entity, englishLabel) {
+// Compares against the English status and its translation, so the check holds whether or not the
+// shared timer helper already translates its label.
+function isDesktopPinTimerStatus(entity, status) {
   const label = getDesktopPinTimerStatusLabel(entity);
-  return label === englishLabel || label === t(englishLabel);
+  return label === status || label === t(status);
 }
 
 function getDesktopPinTimerTileTitle(entity) {
@@ -6882,9 +7125,13 @@ function formatDesktopPinNumericValue(value, entity, options = {}) {
   }
 
   const hasFraction = Math.abs(spec.step) > 0 && Math.abs(spec.step) < 1;
+  const fractionDigits = Math.min(2, String(spec.step).split('.')[1]?.length || 1);
   const formatted = hasFraction
-    ? safeValue.toFixed(Math.min(2, String(spec.step).split('.')[1]?.length || 1))
-    : String(Math.round(safeValue));
+    ? formatNumber(safeValue, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      })
+    : formatNumber(Math.round(safeValue));
   return spec.unit ? `${formatted} ${spec.unit}` : formatted;
 }
 
@@ -7241,15 +7488,17 @@ function getDesktopPinWeatherStats(entity) {
   const attrs = entity?.attributes || {};
   const stats = [];
   if (attrs.humidity != null) {
-    stats.push(t('{{percent}}% humidity', { percent: attrs.humidity }));
+    stats.push(t('{{percent}}% humidity', { percent: formatNumber(attrs.humidity) }));
   }
   if (attrs.wind_speed != null) {
     const unit = attrs.wind_speed_unit || state.UNIT_SYSTEM?.wind_speed || '';
-    stats.push(unit ? `${attrs.wind_speed} ${unit}` : String(attrs.wind_speed));
+    const windSpeed = formatNumber(attrs.wind_speed);
+    stats.push(unit ? `${windSpeed} ${unit}` : windSpeed);
   }
   if (attrs.pressure != null && stats.length < 2) {
     const unit = attrs.pressure_unit || state.UNIT_SYSTEM?.pressure || '';
-    stats.push(unit ? `${attrs.pressure} ${unit}` : String(attrs.pressure));
+    const pressure = formatNumber(attrs.pressure);
+    stats.push(unit ? `${pressure} ${unit}` : pressure);
   }
   return stats.slice(0, 2);
 }
@@ -7260,7 +7509,9 @@ function createDesktopPinWeatherControlElement(entity) {
   const temperatureUnit =
     entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
   const temperatureValue =
-    temperature != null ? `${temperature}${temperatureUnit}` : utils.getEntityDisplayState(entity);
+    temperature != null
+      ? formatTemperatureDisplay(temperature, temperatureUnit)
+      : utils.getEntityDisplayState(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-weather-control'], {
     domain: 'weather',
     state: entity.state,
@@ -7270,7 +7521,7 @@ function createDesktopPinWeatherControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: utils.getEntityDisplayState(entity),
+        statusText: getWeatherConditionLabel(entity.state),
         asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(temperatureValue)}</div>`,
       })}
       <div class="desktop-pin-panel-body">
@@ -7311,7 +7562,9 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   const temperatureUnit =
     entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
   const temperatureValue =
-    temperature != null ? `${temperature}${temperatureUnit}` : utils.getEntityDisplayState(entity);
+    temperature != null
+      ? formatTemperatureDisplay(temperature, temperatureUnit)
+      : utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: 'weather',
@@ -7322,7 +7575,7 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   if (name) name.textContent = utils.getEntityDisplayName(entity);
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = utils.getEntityDisplayState(entity);
+  if (status) status.textContent = getWeatherConditionLabel(entity.state);
 
   const kpi = root.querySelector('.desktop-pin-panel-kpi');
   if (kpi) kpi.textContent = temperatureValue;
@@ -7353,78 +7606,76 @@ function getDesktopPinVacuumActionConfig(entity) {
   const hasReturn = hasEntityService(entity, 'return_to_base');
   const hasStop = hasEntityService(entity, 'stop') || hasEntityService(entity, 'turn_off');
 
-  const makeServiceAction = (label, serviceName) => ({
+  const name = utils.getEntityDisplayName(entity);
+  const makeServiceAction = (label, ariaLabel, serviceName) => ({
     label,
+    ariaLabel,
     type: 'service',
     serviceName,
   });
   const focusAction = {
-    label: 'Open widget',
+    label: t('Open widget'),
+    ariaLabel: t('Focus main widget for {{name}}', { name }),
     type: 'focus-main',
   };
+  const returnAction = hasReturn
+    ? makeServiceAction(t('Return'), t('Return {{name}}', { name }), 'return_to_base')
+    : focusAction;
 
   if (stateValue === 'cleaning') {
     return {
-      primary: hasPause ? makeServiceAction('Pause', 'pause') : focusAction,
-      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+      primary: hasPause
+        ? makeServiceAction(t('Pause'), t('Pause {{name}}', { name }), 'pause')
+        : focusAction,
+      secondary: returnAction,
     };
   }
 
   if (stateValue === 'paused') {
     return {
-      primary: hasStart ? makeServiceAction('Resume', 'start') : focusAction,
-      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+      primary: hasStart
+        ? makeServiceAction(t('Resume'), t('Resume {{name}}', { name }), 'start')
+        : focusAction,
+      secondary: returnAction,
     };
   }
 
   if (stateValue === 'returning') {
     return {
       primary: hasStop
-        ? makeServiceAction('Stop', hasEntityService(entity, 'stop') ? 'stop' : 'turn_off')
+        ? makeServiceAction(
+            t('Stop'),
+            t('Stop {{name}}', { name }),
+            hasEntityService(entity, 'stop') ? 'stop' : 'turn_off'
+          )
         : focusAction,
-      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+      secondary: returnAction,
     };
   }
 
   return {
-    primary: hasStart ? makeServiceAction('Start', 'start') : focusAction,
+    primary: hasStart
+      ? makeServiceAction(t('Start'), t('Start {{name}}', { name }), 'start')
+      : focusAction,
     secondary: null,
   };
 }
 
-function getDesktopPinVacuumActionAriaLabel(label, entity) {
-  const name = utils.getEntityDisplayName(entity);
-  switch (label) {
-    case 'Pause':
-      return t('Pause {{name}}', { name });
-    case 'Resume':
-      return t('Resume {{name}}', { name });
-    case 'Return':
-      return t('Return {{name}}', { name });
-    case 'Stop':
-      return t('Stop {{name}}', { name });
-    case 'Start':
-      return t('Start {{name}}', { name });
-    default:
-      return t('Focus main widget for {{name}}', { name });
-  }
-}
-
-function getDesktopPinVacuumActionButtonsMarkup(entity, actionConfig) {
-  const primaryLabel = actionConfig.primary?.label || 'Open widget';
+// The action config carries translated labels and aria-labels (see getDesktopPinVacuumActionConfig).
+function getDesktopPinVacuumActionButtonsMarkup(actionConfig) {
   return `
     ${createDesktopPinButtonMarkup({
       className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-      label: t(primaryLabel),
-      ariaLabel: getDesktopPinVacuumActionAriaLabel(primaryLabel, entity),
+      label: actionConfig.primary.label,
+      ariaLabel: actionConfig.primary.ariaLabel,
       action: 'primary',
     })}
     ${
       actionConfig.secondary
         ? createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-            label: t(actionConfig.secondary.label),
-            ariaLabel: getDesktopPinVacuumActionAriaLabel(actionConfig.secondary.label, entity),
+            label: actionConfig.secondary.label,
+            ariaLabel: actionConfig.secondary.ariaLabel,
             action: 'secondary',
           })
         : ''
@@ -7461,7 +7712,7 @@ function createDesktopPinVacuumControlElement(entity) {
           <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-vacuum-actions">
-          ${getDesktopPinVacuumActionButtonsMarkup(entity, actionConfig)}
+          ${getDesktopPinVacuumActionButtonsMarkup(actionConfig)}
         </div>
       </div>
     </div>
@@ -7507,7 +7758,7 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
 
   const actions = root.querySelector('.desktop-pin-vacuum-actions');
   if (actions) {
-    actions.innerHTML = getDesktopPinVacuumActionButtonsMarkup(entity, actionConfig);
+    actions.innerHTML = getDesktopPinVacuumActionButtonsMarkup(actionConfig);
     actions.querySelectorAll('.desktop-pin-vacuum-action').forEach((button) => {
       bindDesktopPinButton(button, () => {
         const config =
@@ -7589,6 +7840,15 @@ function updateExistingDesktopPinPanelControl(root, entity) {
   return false;
 }
 
+// The support module's reasons are English sentences built around the domain name, so the
+// message is phrased here where it can be translated.
+function getDesktopPinUnsupportedMessage(entityId) {
+  const domain = getEntityDomain(entityId);
+  return domain
+    ? t('The "{{domain}}" domain does not have a desktop-pin profile yet.', { domain })
+    : t('Desktop pin not supported yet');
+}
+
 function syncQuickAccessControlButton(control, entityId) {
   if (!control || !entityId) return;
   // A graph is not an entity, so it can't be pinned to the desktop as one.
@@ -7635,7 +7895,7 @@ function syncQuickAccessControlButton(control, entityId) {
     ? t('Unpin from desktop')
     : supportProfile.supported
       ? t('Pin to desktop')
-      : getDesktopPinUnsupportedReason(supportProfile);
+      : getDesktopPinUnsupportedMessage(resolvedEntityId);
   // An icon rather than a word: "Pinned" in German or French ran under the edit buttons.
   const label = isPinned ? t('Pinned') : supportProfile.supported ? t('Pin') : t('Unsupported');
   button.setAttribute('aria-label', label);
@@ -7646,20 +7906,27 @@ function syncQuickAccessControlButton(control, entityId) {
   }
 }
 
+function focusQuickAccessPinToggle(entityId) {
+  const button = Array.from(
+    document.querySelectorAll('#quick-controls .desktop-pin-quick-toggle')
+  ).find((candidate) => candidate.dataset.desktopPinQuickToggle === entityId);
+  const tile = button?.closest('.control-item');
+  if (tile) syncQuickAccessRovingTabIndex(tile);
+  (button && !button.disabled ? button : tile)?.focus();
+}
+
 async function toggleDesktopPinFromQuickAccess(entityId) {
   if (!entityId) return { success: false, error: 'Missing entity ID' };
 
   const isPinned = isEntityDesktopPinned(entityId);
   const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
   const supportInfo = getDesktopPinSupportInfo(state.STATES?.[resolvedEntityId] || entityId);
+  // Rebuilding the tiles detaches the focused Pin button; a keyboard user keeps their place.
+  const hadFocus =
+    document.activeElement?.dataset?.desktopPinQuickToggle === entityId &&
+    !!document.activeElement.closest('#quick-controls');
   if (!isPinned && !supportInfo.supported) {
-    uiUtils.showToast(
-      getDesktopPinUnsupportedReason(
-        getDesktopPinSupportProfile(state.STATES?.[resolvedEntityId] || entityId)
-      ),
-      'error',
-      2600
-    );
+    uiUtils.showToast(getDesktopPinUnsupportedMessage(resolvedEntityId), 'error', 2600);
     return { success: false, error: supportInfo.reason || 'Desktop pin not supported yet' };
   }
   try {
@@ -7681,6 +7948,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
         if (container) container.classList.add('reorganize-mode');
         addRemoveButtons();
       }
+      if (hadFocus) focusQuickAccessPinToggle(entityId);
       uiUtils.showToast(t('Removed desktop pin'), 'info', 1800);
       return { success: true, pinned: false, result };
     }
@@ -7702,6 +7970,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
       if (container) container.classList.add('reorganize-mode');
       addRemoveButtons();
     }
+    if (hadFocus) focusQuickAccessPinToggle(entityId);
 
     uiUtils.showToast(t('Pinned to desktop'), 'success', 1800);
     return { success: true, pinned: true, result };
@@ -7737,12 +8006,16 @@ function getCachedTodoItems(entityId) {
 
 function getTodoTileCountLabel(entity) {
   const cachedItems = getCachedTodoItems(entity?.entity_id);
-  if (cachedItems) return t('{{count}} active', { count: getTodoActiveCount(cachedItems) });
+  if (cachedItems) return formatTodoActiveCount(getTodoActiveCount(cachedItems));
 
   const stateCount = Number(entity?.state);
-  if (Number.isFinite(stateCount)) return t('{{count}} active', { count: stateCount });
+  if (Number.isFinite(stateCount)) return formatTodoActiveCount(stateCount);
 
-  return t('{{count}} active', { count: '--' });
+  return t('-- active');
+}
+
+function formatTodoActiveCount(count) {
+  return count === 1 ? t('1 active') : t('{{count}} active', { count: formatNumber(count) });
 }
 
 function updateTodoTileCount(entityId) {
@@ -7816,7 +8089,8 @@ function renderTodoTileStateMarkup(entity) {
 function getCalendarNextEventSummary(entity) {
   const message = entity?.attributes?.message || t('No upcoming event');
   const start = formatCalendarTileStart(
-    entity?.attributes?.start_time || entity?.attributes?.start
+    entity?.attributes?.start_time || entity?.attributes?.start,
+    { allDay: entity?.attributes?.all_day === true }
   );
   return start ? `${message} · ${start}` : message;
 }
@@ -8101,7 +8375,11 @@ function getDesktopPinFallbackDescriptor(
       label,
       kicker: t('Unsupported'),
       title: t('Desktop pin not supported yet'),
-      detail: getDesktopPinUnsupportedReason(supportProfile),
+      // The shared support profile's reason is English-only; with an entity ID the only one it
+      // gives is the missing domain profile, so the fallback words that one itself.
+      detail: t('The "{{domain}}" domain does not have a desktop-pin profile yet.', {
+        domain: supportProfile.domain || 'unknown',
+      }),
       showFocusMain: true,
       canOpen: false,
     };
@@ -8172,7 +8450,11 @@ function renderDesktopPinFallbackSurface(emptyState, fallback) {
 
   if (kicker) kicker.textContent = fallback.kicker;
   if (title) title.textContent = fallback.title;
-  if (copy) copy.textContent = fallback.detail;
+  if (copy) {
+    copy.textContent = fallback.detail;
+    // Small pins clamp the detail to a few lines; hovering still shows all of it.
+    copy.title = fallback.detail;
+  }
 
   emptyState.classList.remove('hidden');
 }
@@ -8239,13 +8521,32 @@ function renderDesktopPinTileInto({
   syncDesktopPinFallbackActions({
     showFocusMain: false,
   });
-  if (existingControl && updateExistingDesktopPinPanelControl(existingControl, entity)) {
+  const localeKey = getDesktopPinLocaleKey();
+  if (
+    existingControl &&
+    existingControl.dataset.localeKey === localeKey &&
+    updateExistingDesktopPinPanelControl(existingControl, entity)
+  ) {
     return;
   }
   container.innerHTML = '';
   const control = createDesktopPinControlElement(entity);
+  control.dataset.localeKey = localeKey;
   if (!interactive) control.style.pointerEvents = 'none';
   container.appendChild(control);
+}
+
+let desktopPinLocaleMessages = null;
+let desktopPinLocaleKey = '';
+
+// Pins update in place, which keeps static labels; a different catalog must rebuild the tile.
+function getDesktopPinLocaleKey() {
+  const { activeLocale, messages } = getLocaleState();
+  if (messages !== desktopPinLocaleMessages) {
+    desktopPinLocaleMessages = messages;
+    desktopPinLocaleKey = `${activeLocale}|${Object.keys(messages || {}).length}`;
+  }
+  return desktopPinLocaleKey;
 }
 
 function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
@@ -8324,7 +8625,7 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
     if (!entity) {
       sendResponse({
         success: false,
-        error: { message: 'Entity is not available' },
+        error: { message: t('Entity is not available') },
       });
       return;
     }
@@ -8345,7 +8646,7 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
         if (!domain || !serviceName) {
           sendResponse({
             success: false,
-            error: { message: 'Invalid service call request' },
+            error: { message: t('Invalid service call request') },
           });
           return;
         }
@@ -8468,7 +8769,7 @@ function createControlElement(entity, options = {}) {
         event.preventDefault();
         if (shouldBlockInteraction(div)) return;
         const liveEntity = state.STATES?.[entity.entity_id] || entity;
-        if (event.shiftKey) openEntityDetailModal(liveEntity);
+        if (event.shiftKey) openEntityControls(liveEntity);
         else executeEntityPrimaryAction(liveEntity, { source: 'primary-card-keyboard' });
       });
     }
@@ -8621,22 +8922,12 @@ function createControlElement(entity, options = {}) {
         utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state
       );
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
-    } else if (
-      entity.entity_id.startsWith('light.') &&
-      entity.state === 'on' &&
-      entity.attributes.brightness
-    ) {
-      const brightnessValue = Number(entity.attributes.brightness);
-      if (!isNaN(brightnessValue) && brightnessValue >= 0) {
-        const brightness = Math.round((brightnessValue / 255) * 100);
-        stateDisplay = `<div class="control-state">${brightness}%</div>`;
-      }
-    } else if (entity.entity_id.startsWith('light.') && entity.state !== 'on') {
-      stateDisplay = `<div class="control-state">${utils.escapeHtml(t('Off'))}</div>`;
+    } else if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
+      stateDisplay = `<div class="control-state">${utils.escapeHtml(getDeviceTileStateText(entity))}</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
       if (temp)
-        stateDisplay = `<div class="control-state">${utils.escapeHtml(String(temp))}°</div>`;
+        stateDisplay = `<div class="control-state">${utils.escapeHtml(formatNumber(temp))}°</div>`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
@@ -8739,7 +9030,7 @@ function createControlElement(entity, options = {}) {
       });
       details.addEventListener('click', (event) => {
         event.stopPropagation();
-        if (!shouldBlockInteraction(div)) openEntityDetailModal(entity);
+        if (!shouldBlockInteraction(div)) openEntityControls(entity);
       });
       div.appendChild(details);
       applyQuickAccessTileAccessibility(div, entity);
@@ -8826,7 +9117,8 @@ function applyQuickAccessTileAccessibility(div, entity) {
       );
   } else {
     div.setAttribute('tabindex', '-1');
-    div.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+    // Only tiles with a Controls button advertise Shift+Enter.
+    div.setAttribute('aria-keyshortcuts', 'Enter Space');
   }
 }
 
@@ -9128,21 +9420,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     return true;
   }
 
+  if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
+    // A tile without a state line is redrawn with one.
+    if (!stateEl) return false;
+    stateEl.textContent = getDeviceTileStateText(displayEntity);
+  }
+
   if (displayEntity.entity_id.startsWith('light.')) {
     div.title = t('Click to toggle, hold for brightness control');
-    if (stateEl) {
-      if (displayEntity.state === 'on' && displayEntity.attributes?.brightness) {
-        const brightnessValue = Number(displayEntity.attributes.brightness);
-        stateEl.textContent =
-          !isNaN(brightnessValue) && brightnessValue >= 0
-            ? `${Math.round((brightnessValue / 255) * 100)}%`
-            : '';
-      } else if (displayEntity.state === 'on') {
-        stateEl.textContent = getQuickAccessTileStateText(displayEntity);
-      } else {
-        stateEl.textContent = t('Off');
-      }
-    }
     return true;
   }
 
@@ -9151,20 +9436,18 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     if (stateEl) {
       const temp =
         displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature;
-      stateEl.textContent = temp ? `${temp}°` : '';
+      stateEl.textContent = temp ? `${formatNumber(temp)}°` : '';
     }
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('fan.')) {
     div.title = t('Click to toggle, hold for speed control');
-    setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('cover.')) {
     div.title = t('Click to toggle, hold for position control');
-    setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
     return true;
   }
 
@@ -9316,29 +9599,45 @@ function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' }
 /**
  * An entity Home Assistant reports as unavailable keeps its pop-up (so its name and last values
  * stay readable) but says so up front and disables the controls, instead of showing "Off" and
- * sliders that would only fail.
+ * sliders that would only fail. Dialogs that follow live state call this again after each update,
+ * so the note and disabled controls also clear when the entity comes back.
  */
 function showUnavailableDialogState(modal, entity) {
-  if (!modal || entity?.state !== 'unavailable') return;
+  if (!modal) return;
+  if (entity?.state !== 'unavailable') {
+    if (!modal.classList.contains('entity-unavailable')) return;
+    modal.classList.remove('entity-unavailable');
+    modal.querySelector('.dialog-unavailable-note')?.remove();
+    // Only re-enable what this disabled; controls a device can't use stay disabled.
+    modal.querySelectorAll('[data-unavailable-disabled]').forEach((control) => {
+      control.disabled = false;
+      delete control.dataset.unavailableDisabled;
+    });
+    return;
+  }
   const body = modal.querySelector('.modal-body');
   if (!body) return;
-  modal.classList.add('entity-unavailable');
-  const note = document.createElement('div');
-  note.className = 'dialog-unavailable-note';
-  note.setAttribute('role', 'status');
-  note.innerHTML = `
+  if (!modal.classList.contains('entity-unavailable')) {
+    modal.classList.add('entity-unavailable');
+    const note = document.createElement('div');
+    note.className = 'dialog-unavailable-note';
+    note.setAttribute('role', 'status');
+    note.innerHTML = `
     <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
     <span class="dialog-unavailable-note-text">
       <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
       <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Close this and try again once it's back."))}</span>
     </span>`;
-  body.prepend(note);
+    body.prepend(note);
+  }
   modal
     .querySelectorAll(
       '.modal-body input, .modal-body button, .modal-body select, .modal-footer .btn-primary'
     )
     .forEach((control) => {
+      if (control.disabled) return;
       control.disabled = true;
+      control.dataset.unavailableDisabled = 'true';
     });
   modal
     .querySelectorAll('#brightness-value-large, #fan-speed-value, #cover-position-value')
@@ -9414,6 +9713,7 @@ function renderTodoItemsInto(container, entity, items) {
       checkbox.type = 'checkbox';
       checkbox.checked = item.status === 'completed';
       checkbox.disabled = !item.uid;
+      if (item.uid) checkbox.dataset.uid = item.uid;
 
       const summary = document.createElement('span');
       summary.className = 'todo-item-summary';
@@ -9427,10 +9727,11 @@ function renderTodoItemsInto(container, entity, items) {
             item: item.uid,
             status: checkbox.checked ? 'completed' : 'needs_action',
           });
-          await loadTodoItemsInto(container, entity);
+          await loadTodoItemsInto(container, entity, { focusUid: item.uid });
         } catch (error) {
           checkbox.checked = !checkbox.checked;
           checkbox.disabled = false;
+          checkbox.focus();
           handleServiceError(error, utils.getEntityDisplayName(entity));
         }
       });
@@ -9444,7 +9745,9 @@ function renderTodoItemsInto(container, entity, items) {
   container.appendChild(list);
 }
 
-async function loadTodoItemsInto(container, entity) {
+// Reloading replaces the list, so the checkbox or Retry button that started it is gone and focus
+// falls to <body>. `focusUid` (an item uid, or true for the first control) puts it back.
+async function loadTodoItemsInto(container, entity, { focusUid = null } = {}) {
   container.textContent = t('Loading...');
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
@@ -9458,10 +9761,21 @@ async function loadTodoItemsInto(container, entity) {
     retry.className = 'btn btn-secondary';
     retry.textContent = t('Retry');
     retry.onclick = () => {
-      void loadTodoItemsInto(container, entity);
+      void loadTodoItemsInto(container, entity, { focusUid: true });
     };
     container.replaceChildren(message, retry);
   }
+  if (!focusUid || !container.isConnected) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && !container.contains(active)) return;
+  const controls = Array.from(container.querySelectorAll('input, button')).filter(
+    (control) => !control.disabled
+  );
+  const target =
+    controls.find((control) => control.dataset.uid === focusUid) ||
+    controls[0] ||
+    container.closest('.modal')?.querySelector('.todo-add-form input');
+  target?.focus();
 }
 
 function showTodoDetails(entity) {
@@ -9480,6 +9794,7 @@ function showTodoDetails(entity) {
     input.type = 'text';
     input.className = 'form-control';
     input.placeholder = t('Add item');
+    input.setAttribute('aria-label', t('Add item'));
     const addButton = document.createElement('button');
     addButton.type = 'submit';
     addButton.className = 'btn btn-primary';
@@ -9997,6 +10312,8 @@ function hasMediaSeekData(entity) {
 function canSeekMedia(entity) {
   if (!entity?.entity_id?.startsWith('media_player.')) return false;
   if (!hasEntityService(entity, 'media_seek')) return false;
+  const features = entity.attributes?.supported_features;
+  if (!uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_SEEK)) return false;
   return hasMediaSeekData(entity);
 }
 
@@ -10232,9 +10549,14 @@ function showMediaDetail(entity) {
       const currentEntity = state.STATES[entity.entity_id] || entity;
       const attrs = currentEntity.attributes || {};
       if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
-        const volume = clampRange(Math.round(Number(attrs.volume_level ?? 0) * 100), 0, 100);
-        volumeSlider.value = String(volume);
-        volumeValue.textContent = `${volume}%`;
+        // An off player reports no volume; show that instead of a made-up 0%.
+        if (attrs.volume_level == null || !Number.isFinite(Number(attrs.volume_level))) {
+          volumeValue.textContent = '—';
+        } else {
+          const volume = clampRange(Math.round(Number(attrs.volume_level) * 100), 0, 100);
+          volumeSlider.value = String(volume);
+          volumeValue.textContent = `${volume}%`;
+        }
       }
       if (muteToggle) {
         const isMuted = attrs.is_volume_muted === true;
@@ -10772,12 +11094,13 @@ function executeEntityPrimaryAction(entity, options = {}) {
 }
 
 // Open the richest detail/control modal for an entity — the same modal a Quick
-// Access tile shows on long-press. Domains without a dedicated modal
-// (switches, scenes, scripts, etc.) fall back to the entity's primary action.
-function openEntityDetailModal(entity, options = {}) {
+// Access tile shows on long-press. Returns false for domains without one
+// (switches, locks, scenes, scripts, etc.) and never runs the primary action,
+// so Shift+Enter and the Controls button cannot unlock or toggle anything.
+function openEntityControls(entity) {
   try {
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
-    if (!liveEntity?.entity_id) return;
+    if (!liveEntity?.entity_id) return false;
 
     const domain = getEntityDomain(liveEntity.entity_id);
     const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
@@ -10785,40 +11108,51 @@ function openEntityDetailModal(entity, options = {}) {
     switch (domain) {
       case 'camera':
         camera.openCamera(liveEntity.entity_id);
-        return;
+        return true;
       case 'light':
         showBrightnessSlider(liveEntity);
-        return;
+        return true;
       case 'climate':
         showClimateControls(liveEntity);
-        return;
+        return true;
       case 'fan':
         showFanControls(liveEntity);
-        return;
+        return true;
       case 'cover':
         showCoverControls(liveEntity);
-        return;
+        return true;
       case 'media_player':
         showMediaDetail(liveEntity);
-        return;
+        return true;
       case 'todo':
         showTodoDetails(liveEntity);
-        return;
+        return true;
       case 'calendar':
         showCalendarDetails(liveEntity);
-        return;
+        return true;
       case 'sensor':
-        if (!isTimer) {
-          showSensorDetails(liveEntity);
-          return;
-        }
-        break;
+        if (isTimer) return false;
+        showSensorDetails(liveEntity);
+        return true;
       default:
-        break;
+        return false;
     }
+  } catch (error) {
+    console.error('Error opening entity controls:', error);
+    return false;
+  }
+}
 
-    // No dedicated detail modal for this domain — fall back to primary action.
-    executeEntityPrimaryAction(liveEntity, options);
+// The command palette opens an entity's controls, or runs its primary action
+// when the domain has no controls modal. Locks and alarm panels are never
+// toggled from a plain search result: the palette offers explicit, named
+// commands for those instead.
+function openEntityDetailModal(entity, options = {}) {
+  try {
+    if (openEntityControls(entity)) return;
+    const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+    if (['lock', 'alarm_control_panel'].includes(getEntityDomain(liveEntity?.entity_id))) return;
+    if (liveEntity?.entity_id) executeEntityPrimaryAction(liveEntity, options);
   } catch (error) {
     console.error('Error opening entity detail modal:', error);
   }
@@ -10990,8 +11324,10 @@ function updateWeatherFromHA() {
     if (tempEl)
       tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
     if (conditionEl) conditionEl.textContent = getWeatherConditionLabel(weatherEntity.state);
-    if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
-    if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
+    if (humidityEl) {
+      humidityEl.textContent = `${formatNumber(weatherEntity.attributes.humidity || 0)}%`;
+    }
+    if (windEl) windEl.textContent = `${formatNumber(windSpeed)} ${windUnit}`;
 
     // Render a deterministic SVG for every Home Assistant weather condition.
     if (iconEl) {
@@ -11081,10 +11417,16 @@ function populateWeatherEntitiesList() {
       .filter((e) => e.entity_id.startsWith('weather.'))
       .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
 
+    // Rebuilding the list after a pick would otherwise drop focus to <body>, out of the dialog.
+    const focusedEntityId = list.contains(document.activeElement)
+      ? document.activeElement.closest('.entity-item')?.dataset.weatherEntityId
+      : null;
     list.innerHTML = '';
 
     if (weatherEntities.length === 0) {
-      list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(t("No weather entities available. Make sure you're connected to Home Assistant."))}</div>`;
+      list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
+        t("No weather entities available. Make sure you're connected to Home Assistant.")
+      )}</div>`;
       return;
     }
 
@@ -11132,19 +11474,28 @@ function populateWeatherEntitiesList() {
       item.setAttribute('role', 'option');
       item.setAttribute('tabindex', '0');
       item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      item.dataset.weatherEntityId = entityId;
 
       const displayName = utils.getEntityDisplayName(entity);
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon">${entityIconMarkup(entity)}</span>
+          <span class="entity-icon" aria-hidden="true">${entityIconMarkup(entity)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
           </div>
         </div>
-        ${isSelected ? `<span class="selected-badge">✓ ${utils.escapeHtml(t('Selected'))}</span>` : ''}
+        ${isSelected ? `<span class="selected-badge">${utils.escapeHtml(t('✓ Selected'))}</span>` : ''}
       `;
+      // Show each entity's current condition, like the weather card, unless it has its own icon.
+      if (!state.CONFIG?.customEntityIcons?.[entityId] && !entity.attributes?.icon) {
+        const iconEl = item.querySelector('.entity-icon');
+        const condition = normalizeWeatherCondition(entity.state);
+        // The card's classes carry the colours for each condition.
+        iconEl.classList.add('weather-icon', 'weather-icon-svg', `weather-icon-${condition}`);
+        renderWeatherIcon(iconEl, condition, { size: 24 });
+      }
 
       // Add click handler to select this entity
       item.onclick = () => {
@@ -11159,6 +11510,7 @@ function populateWeatherEntitiesList() {
       item.style.cursor = 'pointer';
 
       list.appendChild(item);
+      if (entityId === focusedEntityId) item.focus();
     });
   } catch (error) {
     console.error('Error populating weather entities list:', error);
@@ -11399,10 +11751,13 @@ function showNoConnectionMessage() {
   try {
     const container = document.getElementById('quick-controls');
     if (!container) return;
+    // An OAuth setup without a token is configured but waiting on its authorization; the
+    // main window's connection panel explains that, so it never gets setup instructions.
     const needsSetup =
       !state.CONFIG ||
       !state.CONFIG.homeAssistant ||
-      state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+      (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
+        state.CONFIG.homeAssistant.authMethod !== 'oauth');
     const title = needsSetup ? t('Set up your connection') : t('Connecting to Home Assistant...');
     const detail = needsSetup
       ? t(
@@ -11613,8 +11968,8 @@ function showBrightnessSlider(light) {
                 aria-label="${escapeHtmlAttribute(t('Color Temperature'))}"
               />
               <div class="brightness-slider-labels">
-                <span>${utils.escapeHtml(t('Warm'))}</span>
-                <span>${utils.escapeHtml(t('Cool::color'))}</span>
+                <span>${utils.escapeHtml(translateInContext('Color temperature: Warm', 'Warm'))}</span>
+                <span>${utils.escapeHtml(translateInContext('Color temperature: Cool', 'Cool'))}</span>
               </div>
             </div>
         `
@@ -11664,8 +12019,8 @@ function showBrightnessSlider(light) {
             <div class="brightness-icon-wrapper">
               <div class="brightness-icon" id="brightness-icon">${lineIconMarkup('lightbulb')}</div>
             </div>
-            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : light.state === 'on' ? t('On') : t('Off')}</div>
-            <div class="brightness-label">${utils.escapeHtml(canSetBrightness ? t('Brightness') : t('State'))}</div>
+            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : utils.escapeHtml(t(light.state === 'on' ? 'On' : 'Off'))}</div>
+            <div class="brightness-label">${utils.escapeHtml(t(canSetBrightness ? 'Brightness' : 'State'))}</div>
             ${
               canSetBrightness
                 ? `<div class="brightness-slider-wrapper">
@@ -11721,22 +12076,36 @@ function showBrightnessSlider(light) {
     let confirmedBrightness = currentBrightness;
     let confirmedColorTemp = currentColorTemp;
     let confirmedColorHex = currentColorHex;
-    let brightnessDebounceTimer;
-    let colorTempDebounceTimer;
-    let colorDebounceTimer;
+    // Shown optimistically by Turn On, which lets the light restore its own last brightness.
+    let lastOnBrightness = currentBrightness;
+    let brightnessDebounceTimer = null;
+    let colorTempDebounceTimer = null;
+    let colorDebounceTimer = null;
     let lightCommandRevision = 0;
+    let lightCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const cancelPendingLightCommands = () => {
       clearTimeout(brightnessDebounceTimer);
       clearTimeout(colorTempDebounceTimer);
       clearTimeout(colorDebounceTimer);
+      brightnessDebounceTimer = colorTempDebounceTimer = colorDebounceTimer = null;
       lightCommandRevision += 1;
     };
     const callLightService = (service, data, rollback) => {
       const revision = ++lightCommandRevision;
+      lightCommandsInFlight += 1;
       return callServiceWithUiRollback(light, 'light', service, data, () => {
         if (revision === lightCommandRevision) rollback?.();
-      }).then((result) => ({ ...result, ok: result.ok && revision === lightCommandRevision }));
+      }).then((result) => {
+        lightCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) setTimeout(() => syncFromEntity(state.STATES?.[light.entity_id]));
+        return { ...result, ok: result.ok && revision === lightCommandRevision };
+      });
     };
+    const hasPendingLightCommand = () =>
+      !!(brightnessDebounceTimer || colorTempDebounceTimer || colorDebounceTimer) ||
+      lightCommandsInFlight > 0;
 
     // Update turn off/on button text
     const updateTurnButton = () => {
@@ -11751,9 +12120,11 @@ function showBrightnessSlider(light) {
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
@@ -11790,8 +12161,10 @@ function showBrightnessSlider(light) {
       const applyValue = (value) => {
         if (valueLarge) valueLarge.textContent = `${value}%`;
         updateIconAndAccent(value);
+        if (value > 0) lastOnBrightness = value;
         clearTimeout(brightnessDebounceTimer);
         brightnessDebounceTimer = setTimeout(() => {
+          brightnessDebounceTimer = null;
           const brightness = Math.round((value / 100) * 255);
           const nextIsOn = brightness > 0;
           const service = nextIsOn ? 'turn_on' : 'turn_off';
@@ -11843,6 +12216,7 @@ function showBrightnessSlider(light) {
         if (colorTempValue) colorTempValue.textContent = `${kelvin}K`;
         clearTimeout(colorTempDebounceTimer);
         colorTempDebounceTimer = setTimeout(() => {
+          colorTempDebounceTimer = null;
           lightIsOn = true;
           updateTurnButton();
           callLightService(
@@ -11872,6 +12246,7 @@ function showBrightnessSlider(light) {
       if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
       clearTimeout(colorDebounceTimer);
       colorDebounceTimer = setTimeout(() => {
+        colorDebounceTimer = null;
         lightIsOn = true;
         updateTurnButton();
         callLightService(
@@ -11928,25 +12303,20 @@ function showBrightnessSlider(light) {
             confirmedBrightness = 0;
           });
         } else {
-          // Turn on to last brightness or 100%
-          const brightness =
-            currentBrightness > 0 ? Math.round((currentBrightness / 100) * 255) : 255;
+          // Like Home Assistant's own toggle, send no brightness so the light restores its
+          // last level; show the last level seen here until the live state confirms it.
           lightIsOn = true;
-          const targetValue = currentBrightness > 0 ? currentBrightness : 100;
+          const targetValue = lastOnBrightness > 0 ? lastOnBrightness : 100;
           if (slider) slider.value = String(targetValue);
           if (valueLarge) valueLarge.textContent = `${targetValue}%`;
           updateIconAndAccent(targetValue);
-          callLightService(
-            'turn_on',
-            { entity_id: light.entity_id, ...(canSetBrightness ? { brightness } : {}) },
-            () => {
-              lightIsOn = previousLightIsOn;
-              if (slider) slider.value = String(previousBrightness);
-              if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
-              updateIconAndAccent(previousBrightness);
-              updateTurnButton();
-            }
-          ).then(({ ok }) => {
+          callLightService('turn_on', { entity_id: light.entity_id }, () => {
+            lightIsOn = previousLightIsOn;
+            if (slider) slider.value = String(previousBrightness);
+            if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+            updateIconAndAccent(previousBrightness);
+            updateTurnButton();
+          }).then(({ ok }) => {
             if (!ok) return;
             confirmedLightIsOn = true;
             confirmedBrightness = targetValue;
@@ -11955,6 +12325,55 @@ function showBrightnessSlider(light) {
         updateTurnButton();
       };
     }
+
+    // Follow Home Assistant while open (e.g. an external turn-off), but never under a pending
+    // command or a focused control.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      syncLightControls(nextEntity);
+      // After the values and turn button, which would otherwise write over "Unavailable".
+      showUnavailableDialogState(modal, nextEntity);
+    };
+    const syncLightControls = (nextEntity) => {
+      // Only a state pushed while a command is in flight can reflect it; replay that one later.
+      missedLiveUpdate = lightCommandsInFlight > 0;
+      if (hasPendingLightCommand()) return;
+      const attributes = nextEntity.attributes || {};
+      const isOn = nextEntity.state === 'on';
+      const brightness =
+        isOn && attributes.brightness ? Math.round((attributes.brightness / 255) * 100) : 0;
+      lightIsOn = confirmedLightIsOn = isOn;
+      confirmedBrightness = brightness;
+      if (brightness > 0) lastOnBrightness = brightness;
+      if (slider && document.activeElement !== slider) {
+        slider.value = String(brightness);
+        if (valueLarge) valueLarge.textContent = `${brightness}%`;
+        updateIconAndAccent(brightness);
+      }
+      if (
+        colorTempSlider &&
+        document.activeElement !== colorTempSlider &&
+        (attributes.color_temp_kelvin != null || attributes.color_temp != null)
+      ) {
+        confirmedColorTemp = getInitialLightColorTempKelvin(attributes, colorTempRange);
+        colorTempSlider.value = String(confirmedColorTemp);
+        if (colorTempValue) colorTempValue.textContent = `${confirmedColorTemp}K`;
+      }
+      if (colorPicker && document.activeElement !== colorPicker && attributes.rgb_color) {
+        confirmedColorHex = rgbToHex(attributes.rgb_color);
+        colorPicker.value = confirmedColorHex;
+      }
+      updateTurnButton();
+    };
+    unsubscribe = state.subscribeEntity(light.entity_id, syncFromEntity);
+    // A focused control was skipped above; catch up once the user leaves it.
+    [slider, colorTempSlider, colorPicker].forEach((control) =>
+      control?.addEventListener('blur', () => syncFromEntity(state.STATES?.[light.entity_id]))
+    );
 
     // Close on backdrop click only when clicking the overlay
     modal.onclick = (e) => {
@@ -11967,8 +12386,15 @@ function showBrightnessSlider(light) {
 
 const climateRangeControllers = new WeakMap();
 
-function climateRangeMarkup(capabilities, { pin = false } = {}) {
+function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
   if (!capabilities.canSetRange) return '';
+  // Both bounds share the entity's full scale so their thumbs sit where the values are.
+  const scaleLabels = pin
+    ? ''
+    : `<span class="climate-slider-labels" aria-hidden="true">
+        <span>${formatNumber(capabilities.minTemp)}${unit}</span>
+        <span>${formatNumber(capabilities.maxTemp)}${unit}</span>
+      </span>`;
   return ['low', 'high']
     .map((bound) => {
       const low = bound === 'low';
@@ -11977,9 +12403,10 @@ function climateRangeMarkup(capabilities, { pin = false } = {}) {
       return `<label class="${pin ? 'desktop-pin-panel-slider-row' : 'climate-slider-wrapper'}">
       <span class="${pin ? 'desktop-pin-panel-slider-label' : 'climate-temp-label'}">${utils.escapeHtml(visibleLabel)}</span>
       <input type="range" class="${pin ? 'desktop-pin-panel-slider' : 'climate-slider'}" data-climate-range="${bound}"
-        min="${low ? capabilities.minTemp : capabilities.targetLow}" max="${low ? capabilities.targetHigh : capabilities.maxTemp}"
+        min="${capabilities.minTemp}" max="${capabilities.maxTemp}"
         step="${capabilities.temperatureStep}" value="${low ? capabilities.targetLow : capabilities.targetHigh}"
         aria-label="${utils.escapeHtml(label)}" />
+      ${scaleLabels}
     </label>`;
     })
     .join('');
@@ -11994,22 +12421,28 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   let timer;
   let pending = false;
   let displayedRange = confirmed;
+  let draggedInput = null;
   const apply = (range) => {
     displayedRange = range;
-    low.max = String(capabilities.maxTemp);
-    high.min = String(capabilities.minTemp);
     low.value = String(range.low);
     high.value = String(range.high);
-    low.max = String(range.high);
-    high.min = String(range.low);
     onChange(range);
+  };
+  // A thumb the user is dragging or has focused keeps its value when Home Assistant reports a
+  // change; it catches up once released or left.
+  const isHeld = (input) => input === draggedInput || document.activeElement === input;
+  const applyAroundHeld = (range) => {
+    apply({
+      low: isHeld(low) ? Number(low.value) : range.low,
+      high: isHeld(high) ? Number(high.value) : range.high,
+    });
   };
   const controller = {
     sync(range) {
       if (pending) onChange(displayedRange);
       else {
         confirmed = range;
-        apply(range);
+        applyAroundHeld(range);
       }
     },
     cancel() {
@@ -12019,8 +12452,23 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
     },
   };
   [low, high].forEach((input) => {
+    const release = () => {
+      if (draggedInput === input) draggedInput = null;
+      if (!pending) applyAroundHeld(confirmed);
+    };
+    input.addEventListener('pointerdown', () => {
+      draggedInput = input;
+    });
+    input.addEventListener('pointerup', release);
+    input.addEventListener('pointercancel', release);
+    input.addEventListener('blur', release);
     input.addEventListener('input', (event) => {
       event.stopPropagation();
+      // The bounds cannot cross: the dragged thumb stops at the other one.
+      if (Number(low.value) > Number(high.value)) {
+        if (input === low) low.value = high.value;
+        else high.value = low.value;
+      }
       const range = { low: Number(low.value), high: Number(high.value) };
       if (!Number.isFinite(range.low) || !Number.isFinite(range.high) || range.low > range.high)
         return;
@@ -12072,7 +12520,7 @@ function showClimateControls(climateEntity) {
     const hasCurrentHumidity =
       attributes.current_humidity !== undefined && attributes.current_humidity !== null;
     const currentHumidity = hasCurrentHumidity
-      ? utils.escapeHtml(String(attributes.current_humidity))
+      ? utils.escapeHtml(formatNumber(attributes.current_humidity))
       : '';
     const availableModes = capabilities.hvacModes;
     const availableFanModes = capabilities.fanModes;
@@ -12099,11 +12547,11 @@ function showClimateControls(climateEntity) {
             <div class="climate-temp-display">
               <div class="climate-current-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Current'))}</div>
-                <div class="climate-temp-value">${currentTemp === null ? '—' : `${currentTemp}${tempUnit}`}</div>
+                <div class="climate-temp-value">${currentTemp === null ? '—' : `${formatNumber(currentTemp)}${tempUnit}`}</div>
               </div>
               <div class="climate-target-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Target'))}</div>
-                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : `${targetTemp}${tempUnit}`}</div>
+                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : `${formatNumber(targetTemp)}${tempUnit}`}</div>
               </div>
             </div>
             ${
@@ -12133,14 +12581,14 @@ function showClimateControls(climateEntity) {
                 aria-label="${escapeHtmlAttribute(t('Target temperature'))}"
               />
               <div class="climate-slider-labels">
-                <span>${minTemp}${tempUnit}</span>
-                <span>${maxTemp}${tempUnit}</span>
+                <span>${formatNumber(minTemp)}${tempUnit}</span>
+                <span>${formatNumber(maxTemp)}${tempUnit}</span>
               </div>
             </div>`
                 : ''
             }
 
-            ${climateRangeMarkup(capabilities)}
+            ${climateRangeMarkup(capabilities, { unit: tempUnit })}
             ${
               availableModes.length
                 ? `<div class="climate-modes">
@@ -12187,12 +12635,13 @@ function showClimateControls(climateEntity) {
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
+    const currentTempValue = modal.querySelector('.climate-current-temp .climate-temp-value');
     const rangeController = bindClimateRangeControls(
       modal,
       climateEntity,
       capabilities,
       (range) => {
-        targetValue.textContent = `${range.low}–${range.high}${tempUnit}`;
+        targetValue.textContent = `${formatNumber(range.low)}–${formatNumber(range.high)}${tempUnit}`;
       }
     );
     const closeBtn = modal.querySelector('#climate-close');
@@ -12283,7 +12732,10 @@ function showClimateControls(climateEntity) {
     let confirmedMode = currentMode;
     let confirmedFanMode = currentFanMode;
     let confirmedPresetMode = currentPresetMode;
-    let temperatureDebounceTimer;
+    let temperatureDebounceTimer = null;
+    let temperatureCommandsInFlight = 0;
+    let optionCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const setActiveClimateOption = (buttons, value) => {
       buttons.forEach((button) => {
         button.classList.toggle('active', button.getAttribute('data-mode') === value);
@@ -12335,6 +12787,28 @@ function showClimateControls(climateEntity) {
       } else {
         rangeController?.sync({ low: next.targetLow, high: next.targetHigh });
         setActiveClimateOption(modeButtons, nextEntity.state);
+        if (optionCommandsInFlight === 0) {
+          setActiveClimateOption(fanModeButtons, String(nextEntity.attributes?.fan_mode || ''));
+          setActiveClimateOption(
+            presetModeButtons,
+            String(nextEntity.attributes?.preset_mode || '')
+          );
+        }
+        if (currentTempValue) {
+          currentTempValue.textContent =
+            next.currentTemp === null ? '—' : `${formatNumber(next.currentTemp)}${tempUnit}`;
+        }
+        missedLiveUpdate = temperatureCommandsInFlight > 0;
+        if (slider && next.targetTemp !== null && !missedLiveUpdate && !temperatureDebounceTimer) {
+          confirmedTargetTemp = next.targetTemp;
+          if (document.activeElement !== slider) {
+            slider.value = String(next.targetTemp);
+            if (targetValue) {
+              targetValue.textContent = `${formatNumber(next.targetTemp)}${tempUnit}`;
+            }
+          }
+        }
+        showUnavailableDialogState(modal, nextEntity);
       }
     });
     if (closeBtn) closeBtn.onclick = closeModal;
@@ -12350,10 +12824,12 @@ function showClimateControls(climateEntity) {
     if (slider) {
       slider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
-        if (targetValue) targetValue.textContent = `${value}${tempUnit}`;
+        if (targetValue) targetValue.textContent = `${formatNumber(value)}${tempUnit}`;
 
         clearTimeout(temperatureDebounceTimer);
         temperatureDebounceTimer = setTimeout(() => {
+          temperatureDebounceTimer = null;
+          temperatureCommandsInFlight += 1;
           callServiceWithUiRollback(
             climateEntity,
             'climate',
@@ -12364,20 +12840,34 @@ function showClimateControls(climateEntity) {
             },
             () => {
               slider.value = String(confirmedTargetTemp);
-              if (targetValue) targetValue.textContent = `${confirmedTargetTemp}${tempUnit}`;
+              if (targetValue) {
+                targetValue.textContent = `${formatNumber(confirmedTargetTemp)}${tempUnit}`;
+              }
             }
           ).then(({ ok }) => {
+            temperatureCommandsInFlight -= 1;
             if (ok) confirmedTargetTemp = value;
+            // Apply a state Home Assistant pushed while this change was pending.
+            const latest = state.STATES?.[climateEntity.entity_id];
+            if (missedLiveUpdate && latest)
+              climateDialogRefreshers.get(climateEntity.entity_id)?.(latest);
           });
         }, 300);
       });
     }
+
+    // A focused slider skips live updates; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => {
+      const latest = state.STATES?.[climateEntity.entity_id];
+      if (latest) climateDialogRefreshers.get(climateEntity.entity_id)?.(latest);
+    });
 
     // Mode button handlers
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         clearTimeout(temperatureDebounceTimer);
+        temperatureDebounceTimer = null;
         rangeController?.cancel();
 
         // Update UI immediately
@@ -12403,6 +12893,7 @@ function showClimateControls(climateEntity) {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         setActiveClimateOption(fanModeButtons, mode);
+        optionCommandsInFlight += 1;
         callServiceWithUiRollback(
           climateEntity,
           'climate',
@@ -12413,6 +12904,7 @@ function showClimateControls(climateEntity) {
           },
           () => setActiveClimateOption(fanModeButtons, confirmedFanMode)
         ).then(({ ok }) => {
+          optionCommandsInFlight -= 1;
           if (ok) confirmedFanMode = mode;
         });
       });
@@ -12422,6 +12914,7 @@ function showClimateControls(climateEntity) {
       btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         setActiveClimateOption(presetModeButtons, mode);
+        optionCommandsInFlight += 1;
         callServiceWithUiRollback(
           climateEntity,
           'climate',
@@ -12432,6 +12925,7 @@ function showClimateControls(climateEntity) {
           },
           () => setActiveClimateOption(presetModeButtons, confirmedPresetMode)
         ).then(({ ok }) => {
+          optionCommandsInFlight -= 1;
           if (ok) confirmedPresetMode = mode;
         });
       });
@@ -12469,7 +12963,7 @@ function showFanControls(fanEntity) {
             <div class="fan-icon-wrapper">
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
-            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : isOn ? t('On') : t('Off')}</div>
+            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
             <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
 
             ${
@@ -12519,13 +13013,30 @@ function showFanControls(fanEntity) {
     const cancelBtn = modal.querySelector('#fan-cancel');
     const presetButtons = modal.querySelectorAll('.fan-preset-btn');
     let confirmedSpeed = currentSpeed;
-    let speedDebounceTimer;
+    let speedDebounceTimer = null;
+    let fanCommandRevision = 0;
+    let fanCommandsInFlight = 0;
+    let missedLiveUpdate = false;
+    const callFanService = (service, data, rollback) => {
+      const revision = ++fanCommandRevision;
+      fanCommandsInFlight += 1;
+      return callServiceWithUiRollback(fanEntity, 'fan', service, data, () => {
+        if (revision === fanCommandRevision) rollback?.();
+      }).then((result) => {
+        fanCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) setTimeout(() => syncFromEntity(state.STATES?.[fanEntity.entity_id]));
+        return { ...result, ok: result.ok && revision === fanCommandRevision };
+      });
+    };
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -12537,7 +13048,7 @@ function showFanControls(fanEntity) {
     const powerBtn = modal.querySelector('#fan-power');
     if (powerBtn) {
       powerBtn.onclick = () => {
-        toggleEntity(fanEntity);
+        toggleEntity(state.STATES?.[fanEntity.entity_id] || fanEntity);
         closeModal();
       };
     }
@@ -12567,12 +13078,13 @@ function showFanControls(fanEntity) {
 
         clearTimeout(speedDebounceTimer);
         speedDebounceTimer = setTimeout(() => {
+          speedDebounceTimer = null;
           const service = speed > 0 ? 'set_percentage' : 'turn_off';
           const serviceData =
             speed > 0
               ? { entity_id: fanEntity.entity_id, percentage: speed }
               : { entity_id: fanEntity.entity_id };
-          callServiceWithUiRollback(fanEntity, 'fan', service, serviceData, () => {
+          callFanService(service, serviceData, () => {
             slider.value = String(confirmedSpeed);
             if (speedValue) speedValue.textContent = `${confirmedSpeed}%`;
             updateIcon(confirmedSpeed);
@@ -12582,6 +13094,43 @@ function showFanControls(fanEntity) {
         }, 200);
       });
     }
+
+    // Follow Home Assistant while open, but never under a pending command or a focused slider.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      syncFanControls(nextEntity);
+      // After the values, which would otherwise write over "Unavailable".
+      showUnavailableDialogState(modal, nextEntity);
+    };
+    const syncFanControls = (nextEntity) => {
+      if (powerBtn) {
+        powerBtn.textContent = nextEntity.state === 'on' ? t('Turn Off') : t('Turn On');
+      }
+      missedLiveUpdate = fanCommandsInFlight > 0;
+      if (missedLiveUpdate || speedDebounceTimer) return;
+      const percentage = Number(nextEntity.attributes?.percentage);
+      const speed =
+        nextEntity.state === 'on' && Number.isFinite(percentage)
+          ? Math.max(0, Math.min(100, Math.round(percentage)))
+          : 0;
+      if (!slider) {
+        if (speedValue) speedValue.textContent = getLocalizedEntityStateLabel(nextEntity.state);
+        updateIcon(nextEntity.state === 'on' ? 1 : 0);
+        return;
+      }
+      confirmedSpeed = speed;
+      if (document.activeElement === slider) return;
+      slider.value = String(speed);
+      if (speedValue) speedValue.textContent = `${speed}%`;
+      updateIcon(speed);
+    };
+    unsubscribe = state.subscribeEntity(fanEntity.entity_id, syncFromEntity);
+    // A focused slider was skipped above; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[fanEntity.entity_id]));
 
     // Preset buttons
     presetButtons.forEach((btn) => {
@@ -12608,13 +13157,17 @@ function showCoverControls(coverEntity) {
     const capabilities = getDesktopPinCapabilities(coverEntity);
     const availableActions = [
       capabilities.canClose
-        ? { action: 'close_cover', icon: lineIconMarkup('chevron-down'), label: 'Close' }
+        ? { action: 'close_cover', icon: lineIconMarkup('chevron-down'), label: t('Close') }
         : null,
       capabilities.canStop
-        ? { action: 'stop_cover', icon: lineIconMarkup('pause'), label: 'Stop' }
+        ? { action: 'stop_cover', icon: lineIconMarkup('pause'), label: t('Stop') }
         : null,
       capabilities.canOpen
-        ? { action: 'open_cover', icon: lineIconMarkup('chevron-up'), label: 'Open::action' }
+        ? {
+            action: 'open_cover',
+            icon: lineIconMarkup('chevron-up'),
+            label: translateInContext('Action: Open', 'Open'),
+          }
         : null,
     ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
@@ -12640,7 +13193,7 @@ function showCoverControls(coverEntity) {
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
-            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : utils.escapeHtml(formatCoverStateLabel(coverEntity.state || 'unknown'))}</div>
+            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : utils.escapeHtml(getLocalizedEntityStateLabel(coverEntity.state))}</div>
             <div class="cover-position-label">${utils.escapeHtml(capabilities.canSetPosition ? t('Position') : t('State'))}</div>
 
             ${
@@ -12672,7 +13225,7 @@ function showCoverControls(coverEntity) {
                   ({ action, icon, label }) => `
                 <button class="cover-action-btn" type="button" data-action="${action}">
                   <span class="cover-action-icon">${icon}</span>
-                  <span class="cover-action-label">${utils.escapeHtml(t(label))}</span>
+                  <span class="cover-action-label">${utils.escapeHtml(label)}</span>
                 </button>`
                 )
                 .join('')}
@@ -12698,20 +13251,32 @@ function showCoverControls(coverEntity) {
     const cancelBtn = modal.querySelector('#cover-cancel');
     const actionButtons = modal.querySelectorAll('.cover-action-btn');
     let confirmedPosition = currentPosition;
-    let positionDebounceTimer;
+    let positionDebounceTimer = null;
     let coverCommandRevision = 0;
+    let coverCommandsInFlight = 0;
+    let missedLiveUpdate = false;
     const callCoverService = (service, data, rollback) => {
       const revision = ++coverCommandRevision;
+      coverCommandsInFlight += 1;
       return callServiceWithUiRollback(coverEntity, 'cover', service, data, () => {
         if (revision === coverCommandRevision) rollback?.();
-      }).then((result) => ({ ...result, ok: result.ok && revision === coverCommandRevision }));
+      }).then((result) => {
+        coverCommandsInFlight -= 1;
+        // Apply a state Home Assistant pushed while this command was pending, after its handler.
+        if (missedLiveUpdate) {
+          setTimeout(() => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
+        }
+        return { ...result, ok: result.ok && revision === coverCommandRevision };
+      });
     };
 
     // Close handlers
     let isClosing = false;
+    let unsubscribe = () => {};
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
       void uiUtils.closeModal(modal, {
         remove: true,
@@ -12743,6 +13308,7 @@ function showCoverControls(coverEntity) {
 
         clearTimeout(positionDebounceTimer);
         positionDebounceTimer = setTimeout(() => {
+          positionDebounceTimer = null;
           callCoverService(
             'set_cover_position',
             {
@@ -12765,6 +13331,7 @@ function showCoverControls(coverEntity) {
     actionButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         clearTimeout(positionDebounceTimer);
+        positionDebounceTimer = null;
         const action = btn.getAttribute('data-action');
         const previousPosition = confirmedPosition;
 
@@ -12790,6 +13357,38 @@ function showCoverControls(coverEntity) {
       });
     });
 
+    // Follow Home Assistant while open (e.g. where Stop left the cover), but never under a
+    // pending command or a focused slider.
+    const syncFromEntity = (nextEntity) => {
+      if (!modal.isConnected || isClosing) {
+        unsubscribe();
+        return;
+      }
+      if (!nextEntity) return;
+      syncCoverControls(nextEntity);
+      // After the values, which would otherwise write over "Unavailable".
+      showUnavailableDialogState(modal, nextEntity);
+    };
+    const syncCoverControls = (nextEntity) => {
+      missedLiveUpdate = coverCommandsInFlight > 0;
+      if (missedLiveUpdate || positionDebounceTimer) return;
+      if (!slider) {
+        if (positionValue)
+          positionValue.textContent = getLocalizedEntityStateLabel(nextEntity.state);
+        return;
+      }
+      const position = Number(nextEntity.attributes?.current_position);
+      if (nextEntity.attributes?.current_position == null || !Number.isFinite(position)) return;
+      confirmedPosition = Math.max(0, Math.min(100, Math.round(position)));
+      if (document.activeElement === slider) return;
+      slider.value = String(confirmedPosition);
+      if (positionValue) positionValue.textContent = `${confirmedPosition}%`;
+      updateVisual(confirmedPosition);
+    };
+    unsubscribe = state.subscribeEntity(coverEntity.entity_id, syncFromEntity);
+    // A focused slider was skipped above; catch up once the user leaves it.
+    slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
+
     // Close on backdrop click
     modal.onclick = (e) => {
       if (e.target === modal) closeModal();
@@ -12799,7 +13398,9 @@ function showCoverControls(coverEntity) {
   }
 }
 
-function populateQuickControlsList() {
+// Opening the dialog starts a fresh search; a rebuild after Add or Remove keeps the search, and
+// focus on the same row's button.
+function populateQuickControlsList({ resetSearch = true } = {}) {
   try {
     const list = document.getElementById('quick-controls-list');
     const searchInput = document.getElementById('quick-controls-search');
@@ -12904,12 +13505,20 @@ function populateQuickControlsList() {
       });
     };
 
-    // Initial render
+    if (searchInput && resetSearch) searchInput.value = '';
+    const focusedEntityId = list.contains(document.activeElement)
+      ? document.activeElement.dataset.entityId
+      : null;
     renderList();
+    if (focusedEntityId) {
+      const button = [...list.querySelectorAll('.entity-selector-btn')].find(
+        (candidate) => candidate.dataset.entityId === focusedEntityId
+      );
+      (button || searchInput)?.focus();
+    }
 
     // Set up search with proper scoring
     if (searchInput) {
-      searchInput.value = '';
       searchInput.oninput = () => renderList();
       // Note: Focus is managed by trapFocus() in renderer.js when modal opens
     }
@@ -12930,6 +13539,14 @@ function toggleQuickAccess(entityId) {
   } catch (error) {
     console.error('Error toggling quick access:', error);
   }
+}
+
+let updateStatusRender = null;
+
+// Re-renders the Settings update status line in the current language.
+function relocalizeUpdateStatus() {
+  const updateStatusText = document.getElementById('update-status-text');
+  if (updateStatusText && updateStatusRender) updateStatusText.textContent = updateStatusRender();
 }
 
 function initUpdateUI() {
@@ -12957,6 +13574,11 @@ function initUpdateUI() {
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
     let portableDownloadUrl = null;
+    // Keep how the status line was produced so a language change can re-render it.
+    const showUpdateStatus = (render) => {
+      updateStatusRender = render;
+      if (updateStatusText) updateStatusText.textContent = render();
+    };
 
     // Enable the check button
     if (checkUpdatesBtn) {
@@ -12964,22 +13586,19 @@ function initUpdateUI() {
       checkUpdatesBtn.onclick = async () => {
         // Disable button and show checking status
         if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-        if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
+        showUpdateStatus(() => t('Checking for updates...'));
 
         try {
           const result = await window.electronAPI.checkForUpdates();
           if (result.status === 'dev') {
             // In development mode, auto-updater doesn't work
-            if (updateStatusText)
-              updateStatusText.textContent = t('Auto-updates only work in packaged builds');
+            showUpdateStatus(() => t('Auto-updates only work in packaged builds'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
           } else if (result.status === 'portable' || result.status === 'manual') {
             portableDownloadUrl = result.downloadUrl || null;
-            if (updateStatusText) {
-              const baseMessage =
-                result.message || t('Portable builds do not support in-app updates.');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(
+              () => result.message || t('Portable builds do not support in-app updates.')
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
@@ -12993,21 +13612,17 @@ function initUpdateUI() {
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'none') {
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const baseMessage = result.message || t('You are up to date!');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(() => result.message || t('You are up to date!'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'error') {
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const baseMessage = t('Error: {{error}}', {
+            showUpdateStatus(() =>
+              t('Error: {{error}}', {
                 error: result.error || t('Unknown error'),
-              });
-              updateStatusText.textContent = baseMessage;
-            }
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13016,7 +13631,7 @@ function initUpdateUI() {
           // The button will be re-enabled by the event handlers
         } catch (error) {
           console.error('Error checking for updates:', error);
-          if (updateStatusText) updateStatusText.textContent = t('Error checking for updates');
+          showUpdateStatus(() => t('Error checking for updates'));
           if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
         }
       };
@@ -13045,7 +13660,7 @@ function initUpdateUI() {
         switch (data.status) {
           case 'checking':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
+            showUpdateStatus(() => t('Checking for updates...'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13053,17 +13668,16 @@ function initUpdateUI() {
 
           case 'available':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = t('Update available: v{{version}}', { version });
-            }
+            showUpdateStatus(() =>
+              t('Update available: v{{version}}', { version: data.info?.version || 'unknown' })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (updateProgress) updateProgress.classList.remove('hidden');
             break;
 
           case 'none':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('You are up to date!');
+            showUpdateStatus(() => t('You are up to date!'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13071,7 +13685,7 @@ function initUpdateUI() {
 
           case 'downloading':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('Downloading update...');
+            showUpdateStatus(() => t('Downloading update...'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (updateProgress) updateProgress.classList.remove('hidden');
             if (data.progress) {
@@ -13083,10 +13697,11 @@ function initUpdateUI() {
 
           case 'downloaded':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = t('Update v{{version}} ready to install', { version });
-            }
+            showUpdateStatus(() =>
+              t('Update v{{version}} ready to install', {
+                version: data.info?.version || 'unknown',
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               installUpdateBtn.textContent = t('Install update');
@@ -13097,11 +13712,11 @@ function initUpdateUI() {
 
           case 'error':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              updateStatusText.textContent = t('Error: {{error}}', {
+            showUpdateStatus(() =>
+              t('Error: {{error}}', {
                 error: data.error || t('Unknown error'),
-              });
-            }
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13110,11 +13725,9 @@ function initUpdateUI() {
           case 'portable':
           case 'manual':
             portableDownloadUrl = data.downloadUrl || null;
-            if (updateStatusText) {
-              const baseMessage =
-                data.message || t('Portable builds do not support in-app updates.');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(
+              () => data.message || t('Portable builds do not support in-app updates.')
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
@@ -13137,7 +13750,7 @@ function initUpdateUI() {
     }
 
     // Initialize with ready status
-    if (updateStatusText) updateStatusText.textContent = t('Ready to check for updates');
+    showUpdateStatus(() => t('Ready to check for updates'));
   } catch (error) {
     console.error('Error initializing update UI:', error);
   }
@@ -13188,6 +13801,7 @@ export {
   populateWeatherEntitiesList,
   selectWeatherEntity,
   initUpdateUI,
+  relocalizeUpdateStatus,
   updateTimeDisplay,
   startTimeTicker,
   stopTimeTicker,

@@ -15,8 +15,6 @@ describe('renderer i18n helpers', () => {
         'Selected language: {{language}}': 'Langue choisie : {{language}}',
         Title: 'Titre',
         Placeholder: 'Valeur',
-        Open: 'Ouvert',
-        'Open::action': 'Ouvrir',
       },
     });
   });
@@ -28,13 +26,6 @@ describe('renderer i18n helpers', () => {
 
   it('falls back to source text when a key is missing', () => {
     expect(i18n.t('Missing string')).toBe('Missing string');
-  });
-
-  it('tells apart one English word used as a state and as an action', () => {
-    expect(i18n.t('Open')).toBe('Ouvert');
-    expect(i18n.t('Open::action')).toBe('Ouvrir');
-    // Without a translation the context suffix never reaches the screen.
-    expect(i18n.t('Close::action')).toBe('Close');
   });
 
   it('translates DOM text and attributes', () => {
@@ -73,6 +64,28 @@ describe('renderer i18n helpers', () => {
     i18n.translateDocument(document);
 
     expect(document.getElementById('summary').textContent).toBe('Langue choisie : French');
+  });
+
+  it('keeps <code> in translated help text but renders any other markup as text', () => {
+    const key = 'Press <code>ESC</code> to clear.';
+    i18n.setLocaleBootstrap({
+      activeLocale: 'fr',
+      messages: {
+        [key]: 'Appuyez sur <code>ESC</code> <img src=x onerror="window.__packXss=1"><b>vite</b>.',
+      },
+    });
+    document.body.innerHTML = `<p id="help" data-i18n-html="${key}"></p>`;
+
+    i18n.translateDocument(document);
+
+    const help = document.getElementById('help');
+    expect(help.querySelector('img')).toBeNull();
+    expect(help.querySelector('b')).toBeNull();
+    expect(Array.from(help.querySelectorAll('code'), (code) => code.textContent)).toEqual(['ESC']);
+    expect(help.textContent).toBe(
+      'Appuyez sur ESC <img src=x onerror="window.__packXss=1"><b>vite</b>.'
+    );
+    expect(window.__packXss).toBeUndefined();
   });
 
   it('switches document direction for RTL locales', () => {
@@ -114,5 +127,32 @@ describe('renderer i18n helpers', () => {
     expect(longDate.toLowerCase()).toContain('september');
     expect(longDate).toMatch(/8/);
     expect(time).toMatch(/14:35/);
+  });
+  it('formats numbers with the active language', () => {
+    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+    expect(i18n.formatNumber(15.6)).toBe('15,6');
+    expect(i18n.formatNumber(3.14159, { maximumFractionDigits: 1 })).toBe('3,1');
+    expect(i18n.formatNumber(1234.5)).toBe('1.234,5');
+
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    expect(i18n.formatNumber(15.6)).toBe('15.6');
+    // Like Home Assistant's own frontend, large values get the locale's grouping separator.
+    expect(i18n.formatNumber(1234.5)).toBe('1,234.5');
+    expect(i18n.formatNumber('not a number')).toBe('not a number');
+    expect(i18n.formatNumber(null)).toBe('');
+  });
+
+  it('keeps the decimals Home Assistant sent when formatting numeric states', () => {
+    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+    expect(i18n.formatNumericState('15.6')).toBe('15,6');
+    expect(i18n.formatNumericState('15.60')).toBe('15,60');
+    expect(i18n.formatNumericState('-3')).toBe('-3');
+    expect(i18n.formatNumericState('on')).toBe('on');
+    expect(i18n.formatNumericState('2026-09-08')).toBe('2026-09-08');
+    expect(i18n.formatNumericState('007')).toBe('007');
+    expect(i18n.formatNumericState('0.5')).toBe('0,5');
+
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    expect(i18n.formatNumericState('15.60')).toBe('15.60');
   });
 });

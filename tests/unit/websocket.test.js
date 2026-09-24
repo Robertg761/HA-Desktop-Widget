@@ -146,7 +146,7 @@ describe('WebSocket Manager', () => {
       expect(wsManager.isConnected()).toBe(false);
       expect(wsManager.ws).toBeNull();
       expect(closed).toHaveBeenCalledTimes(1);
-      expect(closed).toHaveBeenCalledWith({ intentional: false });
+      expect(closed).toHaveBeenCalledWith({ intentional: false, reason: 'timeout' });
     });
 
     test('requires a matching pong and starts the next heartbeat after acknowledgment', () => {
@@ -170,6 +170,7 @@ describe('WebSocket Manager', () => {
       jest.advanceTimersByTime(15000);
       expect(wsManager.ws).toBeNull();
       expect(closed).toHaveBeenCalledTimes(1);
+      expect(closed).toHaveBeenCalledWith({ intentional: false, reason: 'timeout' });
     });
 
     test('authentication rejection cannot be overwritten by a close-time transport error', () => {
@@ -406,6 +407,19 @@ describe('WebSocket Manager', () => {
       );
     });
 
+    test('leaves reporting a socket error to the listener instead of logging it again', async () => {
+      state.setConfig(sampleConfig);
+      wsManager.on('error', () => {});
+      mockLogger.error.mockClear();
+
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      wsManager.ws.simulateError(new Error('Connection failed'));
+
+      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith('WebSocket error:', 'Connection failed');
+    });
+
     test('should emit friendly error when browser does not provide details', async () => {
       state.setConfig(sampleConfig);
 
@@ -550,7 +564,10 @@ describe('WebSocket Manager', () => {
       // Fast-forward time by 15 seconds
       jest.advanceTimersByTime(15000);
 
-      await expect(promise).rejects.toThrow('WebSocket request timeout');
+      await expect(promise).rejects.toMatchObject({
+        message: 'WebSocket request timeout',
+        code: 'timeout',
+      });
 
       jest.useRealTimers();
     });

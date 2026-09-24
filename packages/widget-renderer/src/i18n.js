@@ -47,14 +47,17 @@ export function getLocaleState() {
   return localeState;
 }
 
-// A key may end in "::context" when the same English word needs different translations
-// (German "Open" is "Offen" as a state but "Öffnen" as a button). English drops the suffix.
-const CONTEXT_SUFFIX_PATTERN = /::[a-z-]+$/;
+// Keeps a left-to-right run such as "23°C" in order inside a right-to-left sentence ("الآن 23°C"),
+// where the bidi algorithm would otherwise move the degree sign. The isolate marks are invisible
+// and only added while a right-to-left language is active.
+export function isolateLtr(text) {
+  const value = text == null ? '' : String(text);
+  const isRtl = RTL_LANGUAGE_CODES.has((localeState.activeLocale || 'en').split('-')[0]);
+  return value && isRtl ? `\u2066${value}\u2069` : value;
+}
 
 export function t(key, vars = {}) {
-  const template =
-    localeState.messages?.[key] ||
-    (typeof key === 'string' ? key.replace(CONTEXT_SUFFIX_PATTERN, '') : key);
+  const template = localeState.messages?.[key] || key;
   return formatTemplate(template, vars);
 }
 
@@ -71,6 +74,43 @@ export function formatTime(date, options = {}) {
 export function formatDateTime(date, options = {}) {
   const value = date instanceof Date ? date : new Date(date);
   return value.toLocaleString(localeState.activeLocale || undefined, options);
+}
+
+const numberFormatCache = new Map();
+
+// Formats a number for display in the active language ("15,6" in German). Inputs, slider values
+// and anything sent to Home Assistant keep plain machine numbers; only use this for visible text.
+export function formatNumber(value, options = {}) {
+  const number = typeof value === 'number' ? value : Number(value);
+  if (value == null || value === '' || !Number.isFinite(number)) {
+    return value == null ? '' : String(value);
+  }
+  const locale = localeState.activeLocale || 'en';
+  const cacheKey = `${locale}|${JSON.stringify(options)}`;
+  let formatter = numberFormatCache.get(cacheKey);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(locale, options);
+    } catch {
+      formatter = new Intl.NumberFormat('en', options);
+    }
+    numberFormatCache.set(cacheKey, formatter);
+  }
+  return formatter.format(number);
+}
+
+// Formats a numeric state string from Home Assistant ("15.60") in the active language while
+// keeping exactly the decimals Home Assistant sent. Non-numeric text and codes with leading
+// zeros ("007") are returned unchanged.
+export function formatNumericState(value) {
+  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : '';
+  const match = /^\s*-?(?:0|[1-9]\d*)(?:\.(\d+))?\s*$/.exec(text);
+  if (!match) return value == null ? '' : String(value);
+  const decimals = Math.min(match[1]?.length || 0, 20);
+  return formatNumber(Number(text), {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }
 
 export function getLanguageDisplayName(locale, fallback = '') {
@@ -121,6 +161,27 @@ function resolveTranslation(key, vars = {}) {
   return formatTemplate(template, vars);
 }
 
+// Language packs are downloaded, so their text never becomes markup. The only formatting these
+// strings need is <code>…</code>, which is rebuilt as real elements; anything else stays text.
+function setTextWithCodeSpans(element, text) {
+  const ownerDocument = element.ownerDocument || document;
+  const nodes = [];
+  const pattern = /<code>([\s\S]*?)<\/code>/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(text))) {
+    if (match.index > lastIndex) {
+      nodes.push(ownerDocument.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const code = ownerDocument.createElement('code');
+    code.textContent = match[1];
+    nodes.push(code);
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < text.length) nodes.push(ownerDocument.createTextNode(text.slice(lastIndex)));
+  element.replaceChildren(...nodes);
+}
+
 function translateElement(element) {
   if (!element || typeof element.getAttribute !== 'function') return;
   const vars = parseI18nVars(element);
@@ -137,7 +198,7 @@ function translateElement(element) {
   if (htmlKey) {
     const translatedHtml = resolveTranslation(htmlKey, vars);
     if (translatedHtml != null) {
-      element.innerHTML = translatedHtml;
+      setTextWithCodeSpans(element, translatedHtml);
     }
   }
 

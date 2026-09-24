@@ -1,8 +1,18 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
+import {
+  escapeHtml,
+  escapeHtmlAttribute,
+  getEntityDisplayName,
+  getLocalizedStateName,
+} from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
-import { closeModal as closeModalAnimated, showToast } from './ui-utils.js';
+import {
+  closeModal as closeModalAnimated,
+  releaseFocusTrap,
+  showToast,
+  trapFocus,
+} from './ui-utils.js';
 import { formatDateTime, formatTime, t } from './i18n.js';
 import { lineIconMarkup } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
@@ -45,22 +55,6 @@ let cameraPreviewObserver = null;
 let cameraPreviewSequence = 0;
 let cameraPreviewLifecycleInstalled = false;
 let activeExpandedCameraPreview = null;
-
-const CAMERA_STATE_LABELS = {
-  idle: 'Idle',
-  recording: 'Recording',
-  streaming: 'Streaming',
-  unavailable: 'Unavailable',
-  unknown: 'Unknown',
-};
-
-/** Home Assistant camera states ("idle", "streaming") as a translated, capitalised label. */
-function getCameraStateLabel(value) {
-  const key = CAMERA_STATE_LABELS[String(value || '').toLowerCase()];
-  if (key) return t(key);
-  const text = String(value || '');
-  return text ? text.charAt(0).toUpperCase() + text.slice(1) : t('Unknown');
-}
 
 /** "Updated 11:22 AM" today, or with the date once the frame is older than today. */
 function getCameraUpdatedLabel(value) {
@@ -137,7 +131,8 @@ function setCameraPreviewState(record, previewState, statusText, tileStatusText 
   const translatedStatus = statusText ? t(statusText) : '';
   const translatedTileStatus = tileStatusText ? t(tileStatusText) : '';
   record.previewState = previewState;
-  record.statusText = translatedStatus;
+  // Kept untranslated: the expanded view opened later may be in another language.
+  record.statusText = statusText || '';
   record.tile.dataset.cameraPreviewState = previewState;
   const status = record.tile.querySelector('.camera-tile-preview-status');
   if (status) status.textContent = translatedTileStatus;
@@ -1053,7 +1048,7 @@ function openExpandedCameraPreview(record, camera) {
       </header>
       <div class="camera-expanded-preview-stage"></div>
       <footer class="camera-expanded-preview-footer">
-        <span class="camera-expanded-preview-status" role="status">${escapeHtml(record.statusText || t('Loading preview…'))}</span>
+        <span class="camera-expanded-preview-status" role="status">${escapeHtml(t(record.statusText || 'Loading preview…'))}</span>
         ${
           record.previewMode === 'live'
             ? `<button type="button" class="camera-expanded-preview-reconnect" aria-label="${escapeHtmlAttribute(t('Reconnect camera'))}">${escapeHtml(t('Reconnect'))}</button>`
@@ -1099,6 +1094,7 @@ function openExpandedCameraPreview(record, camera) {
     record.expandedPreview = null;
     if (activeExpandedCameraPreview === expandedPreview) activeExpandedCameraPreview = null;
     document.removeEventListener('keydown', handleKeydown, true);
+    releaseFocusTrap(overlay, { restoreFocus: false });
 
     if (wasVisualHidden) visual.setAttribute('aria-hidden', 'true');
     getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', ''));
@@ -1157,6 +1153,9 @@ function openExpandedCameraPreview(record, camera) {
     if (event.target === overlay) close();
   };
   document.addEventListener('keydown', handleKeydown, true);
+  // Registered as the top dialog so Escape pressed with focus on <body> closes this preview, not
+  // a dialog open underneath it. The preview returns focus itself.
+  trapFocus(overlay, { initialFocus: false });
 
   const transition = runCameraPreviewViewTransition(() => {
     if (expandedPreview.closed) return;
@@ -1228,6 +1227,13 @@ function stopHlsStream(entityId) {
       console.warn('Failed to destroy HLS instance:', error);
     }
   }
+}
+
+// Camera entities report "streaming" and "recording", which the shared state names don't cover.
+function getCameraStateLabel(value) {
+  if (value === 'streaming') return t('Streaming');
+  if (value === 'recording') return t('Recording');
+  return getLocalizedStateName(value);
 }
 
 async function openCamera(cameraId, options = {}) {

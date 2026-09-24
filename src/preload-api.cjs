@@ -180,11 +180,16 @@ function createElectronApi(ipcRenderer, platform) {
     quitAndInstall: () => invoke('quit-and-install'),
 
     getAppVersion: () => invoke('get-app-version'),
+    getOsInfo: () => invoke('get-os-info'),
     openLogs: () => invoke('open-logs'),
     openExternal: (url) => invoke('open-external', url),
+    writeClipboardText: (text) => invokeChecked('write-clipboard-text', text),
     testHaConnection: (url, token) => invoke('test-ha-connection', url, token),
-    startHomeAssistantOAuth: (url) => invokeChecked('start-home-assistant-oauth', url),
+    // Resolves with { success: false, code } instead of throwing: an error thrown across the
+    // context bridge keeps only its message, and callers need the code (canceled, unreachable).
+    startHomeAssistantOAuth: (url) => invoke('start-home-assistant-oauth', url),
     cancelHomeAssistantOAuth: () => invokeChecked('cancel-home-assistant-oauth'),
+    refreshHomeAssistantOAuth: () => invoke('refresh-home-assistant-oauth'),
     disconnectHomeAssistantOAuth: () => invokeChecked('disconnect-home-assistant-oauth'),
     getDesktopCompanionRegistration: async () =>
       (await invokeChecked('get-desktop-companion-registration')).registration,

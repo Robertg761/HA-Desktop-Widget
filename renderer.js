@@ -2,7 +2,11 @@ import { applyDesktopAppearance } from './src/desktop-appearance.js';
 import { installLayerDrag } from './src/layer-drag.js';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
-import { initializeDashboardTools, refreshDashboardUndoState } from './src/dashboard-tools.js';
+import {
+  initializeDashboardTools,
+  recordConnectionIssue,
+  refreshDashboardUndoState,
+} from './src/dashboard-tools.js';
 import state from './src/state.js';
 import websocket from './src/websocket.js';
 import * as hotkeys from './src/hotkeys.js';
@@ -41,15 +45,26 @@ import {
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
 } from '@dev-climate-demo';
-import { isConfigured, normalizeBaseUrl } from './src/connection.js';
-import { renderConnectionStatus, setConnectionStatusBusy } from './src/connection-status.js';
+import {
+  getConnectionIdentity,
+  isConfigured,
+  isExpectedPairingFailure,
+  normalizeBaseUrl,
+  startHomeAssistantPairing,
+} from './src/connection.js';
+import {
+  describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
+  describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
+  setConnectionStatusBusy,
+} from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
 if (window.electronAPI) {
   setRendererHost(createElectronHost(window.electronAPI));
 }
 
-const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
 const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
@@ -194,10 +209,19 @@ let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
 let uiTickNudgeTimerId = null;
 let offlineConnectionToastShown = false;
-let lastConnectionToast = { key: null, shownAt: 0 };
+// Kinds of connection failure already reported in this outage, and the toasts showing them.
+const shownConnectionToastKeys = new Set();
+const connectionToasts = new Set();
+let connectionErrorLoggedThisOutage = false;
 let browserReportedOffline = false;
 let lastDisconnectReason = '';
 let mainConnectionState = 'idle';
+// One refresh per rejected token: if Home Assistant also rejects the refreshed token, asking
+// again would only loop, so the user is asked to reconnect instead.
+let oauthAuthRecoveryAttempted = false;
+let oauthAuthRefreshInFlight = false;
+// The main window's own reconnect prompt for an expired or revoked authorization.
+let oauthReauthorization = { pending: false, error: '' };
 function updateMainConnectionState(nextState) {
   mainConnectionState = nextState;
   if (!IS_DESKTOP_PIN_MODE) {
@@ -231,6 +255,14 @@ function clearReconnectTimer() {
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
+  // An OAuth setup without a usable access token (restore pending, offline, or expired) has
+  // nothing to connect with; trying would only report the placeholder token. Main reconnects
+  // through the config broadcast once it has a token.
+  if (usesOAuth() && !isConfigured(state.CONFIG)) {
+    setOAuthRestoreStatus();
+    renderMainWidgetState();
+    return;
+  }
   updateMainConnectionState('connecting');
   setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
   renderMainWidgetState();
@@ -258,18 +290,22 @@ function setDesktopPinConnectionIssue(detailMessage = '') {
 }
 
 function applyDesktopPinConnectionState(connection = {}) {
+  const oauth = connection.authMethod === 'oauth';
   if (connection.secureStoragePending === true) {
     setDesktopPinConnectionIssue(t('Unlocking saved Home Assistant credentials...'));
   } else if (connection.hasUrl !== true) {
     setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
+  } else if (oauth && connection.oauthStatus === 'reauth_required') {
+    setDesktopPinConnectionIssue(getOAuthReauthRequiredStatus());
+  } else if (oauth && connection.hasToken !== true) {
+    // Configured, but the saved authorization has not been restored yet (Home Assistant down).
+    setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
   } else if (connection.hasToken !== true) {
     setDesktopPinConnectionIssue(
       t('Please configure your Home Assistant token in Settings (gear icon).')
     );
   } else if (connection.runtimeState === 'auth-failed') {
-    setDesktopPinConnectionIssue(
-      t('Authentication failed. Please check your Home Assistant token in Settings.')
-    );
+    setDesktopPinConnectionIssue(getAuthFailureMessage(oauth));
   } else if (connection.runtimeState && connection.runtimeState !== 'connected') {
     setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
   } else {
@@ -279,6 +315,46 @@ function applyDesktopPinConnectionState(connection = {}) {
 
 function isSecureStoragePending(targetConfig = state.CONFIG) {
   return targetConfig?.secureStoragePending === true;
+}
+
+function usesOAuth(targetConfig = state.CONFIG) {
+  return targetConfig?.homeAssistant?.authMethod === 'oauth';
+}
+
+function getOAuthStatus(targetConfig = state.CONFIG) {
+  return usesOAuth(targetConfig) ? targetConfig.homeAssistant.oauthStatus || '' : '';
+}
+
+function getAuthFailureMessage(oauth = usesOAuth()) {
+  return oauth
+    ? t(
+        'Home Assistant rejected the authorization for this app. Reconnect with Home Assistant to continue.'
+      )
+    : t('Authentication failed. Please check your Home Assistant token in Settings.');
+}
+
+function getOAuthReauthRequiredStatus() {
+  return t('Home Assistant authorization expired. Reconnect with Home Assistant in Settings.');
+}
+
+// Status for an OAuth setup whose saved authorization is not usable yet.
+function setOAuthRestoreStatus() {
+  const homeAssistant = state.CONFIG?.homeAssistant || {};
+  if (homeAssistant.oauthStatus === 'reauth_required') {
+    recordConnectionIssue('authorization_failed');
+    if (mainConnectionState !== 'auth-failed') updateMainConnectionState('auth-failed');
+    setDisconnectedStatus(
+      describeHomeAssistantOAuthReauthReason(homeAssistant) || getOAuthReauthRequiredStatus()
+    );
+    return;
+  }
+  // Without an access token there is no socket to report the outage, so record it here.
+  if (homeAssistant.oauthStatus !== 'restoring') recordConnectionIssue('authorization_unavailable');
+  setDisconnectedStatus(
+    homeAssistant.oauthStatus === 'restoring'
+      ? t('Restoring Home Assistant authorization...')
+      : describeHomeAssistantOAuthRefreshError(homeAssistant)
+  );
 }
 
 function hasDesktopPinsConfigured() {
@@ -475,10 +551,15 @@ function reconcileFavoriteStalePreservation(newStates) {
 function getSettingsUiHooks() {
   return {
     initUpdateUI: ui.initUpdateUI,
+    relocalizeUpdateStatus: ui.relocalizeUpdateStatus,
     renderActiveTab: ui.renderActiveTab,
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
+    refreshLocale: async () => {
+      await refreshLocaleBootstrap();
+      renderCurrentMode();
+    },
     exitReorganizeMode: () => {
       const container = document.getElementById('quick-controls');
       if (container && container.classList.contains('reorganize-mode')) {
@@ -489,6 +570,7 @@ function getSettingsUiHooks() {
 }
 
 function openSettingsModal() {
+  dismissConnectionToasts();
   settings.openSettings(getSettingsUiHooks());
 }
 
@@ -516,6 +598,12 @@ function createActionButton(label, className, onClick) {
   return button;
 }
 
+function hasDashboardEntities() {
+  return normalizeQuickAccessConfig(state.CONFIG || {}).customTabs.some(
+    (tab) => Array.isArray(tab.entityIds) && tab.entityIds.length > 0
+  );
+}
+
 function getActiveQuickAccessCount() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {});
   const activeTab =
@@ -533,6 +621,10 @@ function removeWidgetStatePanel() {
 function renderWidgetStatePanel({ tone, title, message, actions }) {
   const widgetContent = document.querySelector('.widget-content');
   if (!widgetContent) return;
+  const previousPanel = document.getElementById('widget-state-panel');
+  // Pressing a panel button re-renders the panel; keep keyboard focus inside it.
+  const hadFocus = !!previousPanel?.contains(document.activeElement);
+  const previousTitle = previousPanel?.querySelector('.widget-state-title')?.textContent;
   removeWidgetStatePanel();
 
   const panel = document.createElement('div');
@@ -554,11 +646,164 @@ function renderWidgetStatePanel({ tone, title, message, actions }) {
 
   widgetContent.appendChild(panel);
   document.body.classList.add('widget-state-active');
+  if (hadFocus) panel.querySelector('button')?.focus();
+  // The panel follows the tiles, so on a full page a new problem could appear below the fold.
+  if (tone === 'error' && title !== previousTitle) panel.scrollIntoView?.({ block: 'nearest' });
+}
+
+async function retryOAuthRestore() {
+  if (oauthAuthRefreshInFlight) return;
+  oauthAuthRefreshInFlight = true;
+  try {
+    await window.electronAPI.refreshHomeAssistantOAuth?.();
+  } catch (error) {
+    log.warn('Home Assistant authorization refresh failed:', error);
+  } finally {
+    oauthAuthRefreshInFlight = false;
+  }
+}
+
+async function reauthorizeHomeAssistant() {
+  if (oauthReauthorization.pending) return;
+  const url = normalizeBaseUrl(state.CONFIG?.homeAssistant?.url);
+  if (!url) {
+    openSettingsModal();
+    return;
+  }
+  oauthReauthorization = { pending: true, error: '' };
+  renderMainWidgetState();
+  try {
+    const result = await startHomeAssistantPairing(window.electronAPI, url);
+    if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
+    oauthAuthRecoveryAttempted = false;
+    // A running widget reconnects from main's config broadcast for the new authorization.
+    // Applying this reply as well would race that broadcast into a second connection.
+    if (!configuredRuntimeStarted) {
+      applyRendererConfig(result.config);
+      startConfiguredRuntime();
+    }
+  } catch (error) {
+    if (error?.result?.code !== 'OAUTH_AUTHORIZATION_CANCELED') {
+      log[isExpectedPairingFailure(error) ? 'warn' : 'error'](
+        'Failed to reconnect Home Assistant authorization:',
+        error
+      );
+      oauthReauthorization.error = describeHomeAssistantOAuthFailure(error);
+    }
+  } finally {
+    oauthReauthorization.pending = false;
+    renderCurrentMode();
+  }
+}
+
+async function cancelOAuthReauthorization() {
+  try {
+    await window.electronAPI.cancelHomeAssistantOAuth?.();
+  } catch (error) {
+    log.warn('Failed to cancel Home Assistant authorization:', error);
+  }
+}
+
+// OAuth setups whose saved authorization is not usable right now. They are configured (never
+// onboarding), so they get a connection state rather than setup instructions.
+function getOAuthStatePanel() {
+  if (
+    !usesOAuth() ||
+    isConfigured(state.CONFIG) ||
+    !normalizeBaseUrl(state.CONFIG.homeAssistant.url)
+  )
+    return null;
+  const oauthStatus = getOAuthStatus();
+  if (oauthStatus === 'reauth_required') {
+    const { pending, error } = oauthReauthorization;
+    return {
+      tone: 'error',
+      title: t('Home Assistant authorization expired'),
+      message: pending
+        ? t('Opening Home Assistant for authorization...')
+        : error ||
+          describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant) ||
+          t(
+            'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+          ),
+      actions: pending
+        ? [
+            {
+              label: t('Cancel'),
+              className: 'btn btn-secondary',
+              onClick: cancelOAuthReauthorization,
+            },
+          ]
+        : [
+            {
+              label: t('Reconnect with Home Assistant'),
+              className: 'btn btn-primary',
+              onClick: reauthorizeHomeAssistant,
+            },
+            {
+              label: t('Open Settings'),
+              className: 'btn btn-secondary',
+              onClick: openSettingsModal,
+            },
+          ],
+    };
+  }
+  if (oauthStatus === 'restoring') {
+    return {
+      tone: '',
+      title: t('Waiting for live Home Assistant data...'),
+      message: t('Restoring Home Assistant authorization...'),
+      actions: [
+        { label: t('Open Settings'), className: 'btn btn-primary', onClick: openSettingsModal },
+      ],
+    };
+  }
+  return {
+    tone: 'error',
+    title: t('Home Assistant is disconnected'),
+    message: describeHomeAssistantOAuthRefreshError(state.CONFIG.homeAssistant),
+    actions: [
+      { label: t('Open Settings'), className: 'btn btn-primary', onClick: openSettingsModal },
+      { label: t('Retry'), className: 'btn btn-secondary', onClick: retryOAuthRestore },
+    ],
+  };
+}
+
+function retryConnection() {
+  // Retrying is a fresh start: a rejected OAuth token gets its refresh attempt again.
+  oauthAuthRecoveryAttempted = false;
+  connectWebSocket();
 }
 
 function renderMainWidgetState() {
-  if (IS_DESKTOP_PIN_MODE || !isConfigured(state.CONFIG) || firstRunWizard?.visible) {
+  if (IS_DESKTOP_PIN_MODE || firstRunWizard?.visible) {
     removeWidgetStatePanel();
+    return;
+  }
+  const oauthStatePanel = getOAuthStatePanel();
+  if (oauthStatePanel) {
+    renderWidgetStatePanel(oauthStatePanel);
+    return;
+  }
+  if (!isConfigured(state.CONFIG)) {
+    removeWidgetStatePanel();
+    return;
+  }
+
+  if (mainConnectionState === 'auth-failed' && usesOAuth()) {
+    renderWidgetStatePanel({
+      tone: 'error',
+      title: t('Authentication failed'),
+      message: lastDisconnectReason || getAuthFailureMessage(true),
+      actions: [
+        {
+          label: t('Reconnect with Home Assistant'),
+          className: 'btn btn-primary',
+          onClick: reauthorizeHomeAssistant,
+        },
+        { label: t('Retry'), className: 'btn btn-secondary', onClick: retryConnection },
+      ],
+    });
     return;
   }
 
@@ -582,7 +827,7 @@ function renderMainWidgetState() {
         {
           label: t('Retry'),
           className: 'btn btn-secondary',
-          onClick: connectWebSocket,
+          onClick: retryConnection,
         },
       ],
     });
@@ -615,10 +860,31 @@ function renderMainWidgetState() {
 
 function setFirstRunWizardVisible(visible) {
   if (!firstRunWizard?.overlay) return;
+  const wasVisible = firstRunWizard.visible;
   firstRunWizard.visible = !!visible;
   firstRunWizard.overlay.classList.toggle('hidden', !visible);
   document.body.classList.toggle('first-run-active', !!visible);
+  // The wizard is modal: keep Tab inside it instead of on the header buttons behind it.
+  if (visible && !wasVisible) {
+    uiUtils.trapFocus(firstRunWizard.overlay, { initialFocus: false });
+  } else if (!visible && wasVisible) {
+    uiUtils.releaseFocusTrap(firstRunWizard.overlay);
+  }
+  if (visible) focusWizardStep();
   renderMainWidgetState();
+}
+
+// Each step starts with focus on its URL field or heading, so keyboard and screen reader users
+// land on the new content rather than on whichever button changed the step.
+function focusWizardStep() {
+  if (!firstRunWizard?.visible) return;
+  const target =
+    firstRunWizard.step === 1
+      ? firstRunWizard.urlInput
+      : firstRunWizard.content?.querySelector('.first-run-title');
+  if (!target?.isConnected) return;
+  if (target.tagName === 'H2') target.tabIndex = -1;
+  target.focus();
 }
 
 function setWizardStatus(message = '', type = '') {
@@ -766,6 +1032,11 @@ function renderWizardStep() {
     input.addEventListener('input', () => {
       firstRunWizard.urlInput = input;
     });
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      firstRunWizard.nextButton?.click();
+    });
     firstRunWizard.urlInput = input;
     content.appendChild(label);
     content.appendChild(input);
@@ -817,6 +1088,7 @@ function renderWizardStep() {
       firstRunWizard.finishInProgress ? 'true' : 'false'
     );
   }
+  focusWizardStep();
 }
 
 async function finishFirstRunWizard() {
@@ -837,9 +1109,16 @@ async function finishFirstRunWizard() {
       return;
     }
     setWizardStatus(t('Opening Home Assistant for authorization...'), 'pending');
-    const result = await window.electronAPI.startHomeAssistantOAuth(normalizedUrl);
+    const result = await startHomeAssistantPairing(window.electronAPI, normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
+    if (hasDashboardEntities()) {
+      // Reconnecting an existing setup: its pages are already there, so there is nothing to choose.
+      setWizardStatus('', '');
+      setFirstRunWizardVisible(false);
+      startConfiguredRuntime();
+      return;
+    }
     firstRunWizard.step = 3;
     setWizardStatus('', '');
     renderWizardStep();
@@ -851,9 +1130,11 @@ async function finishFirstRunWizard() {
     if (firstRunWizard?.cancelRequested) {
       setWizardStatus('', '');
     } else {
-      const detail = error?.message || t('Unknown error');
-      const message = t('Could not connect to Home Assistant. {{error}}', { error: detail });
-      log.error('Failed to finish first-run setup:', error);
+      const message = describeHomeAssistantOAuthFailure(error);
+      log[isExpectedPairingFailure(error) ? 'warn' : 'error'](
+        'Failed to finish first-run setup:',
+        error
+      );
       setWizardStatus(message, 'error');
       uiUtils.showToast(message, 'error', 6000);
     }
@@ -864,6 +1145,10 @@ async function finishFirstRunWizard() {
       if (firstRunWizard.nextButton) {
         firstRunWizard.nextButton.disabled = false;
         firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
+        // Disabling the button while connecting dropped focus to <body>; give it back.
+        if (firstRunWizard.visible && document.activeElement === document.body) {
+          firstRunWizard.nextButton.focus();
+        }
       }
     }
   }
@@ -882,9 +1167,14 @@ function maybeShowWizardAfterSettingsClose() {
 
 function skipWizardToSettings() {
   const finishedConnection = firstRunWizard?.step === 3;
+  // A pairing left waiting in the browser would otherwise capture the next Connect in Settings.
+  void cancelFirstRunAuthorization();
+  const wizardUrl = normalizeBaseUrl(getWizardUrl());
   setFirstRunWizardVisible(false);
   if (finishedConnection) return;
   openSettingsModal();
+  const settingsUrl = document.getElementById('ha-url');
+  if (settingsUrl && !settingsUrl.value && wizardUrl) settingsUrl.value = wizardUrl;
   const modal = document.getElementById('settings-modal');
   if (!modal || firstRunSettingsObserver) return;
   firstRunSettingsObserver = new MutationObserver(maybeShowWizardAfterSettingsClose);
@@ -939,6 +1229,11 @@ function ensureFirstRunWizard() {
       await finishFirstRunWizard();
       return;
     }
+    if (firstRunWizard.step === 1 && !normalizeBaseUrl(getWizardUrl())) {
+      setWizardStatus(t('Enter a valid Home Assistant URL before connecting.'), 'error');
+      firstRunWizard.urlInput?.focus();
+      return;
+    }
     firstRunWizard.step = Math.min(2, firstRunWizard.step + 1);
     renderWizardStep();
   });
@@ -976,9 +1271,11 @@ function maybeShowFirstRunWizard() {
   if (firstRunWizard?.visible && firstRunWizard.step === 3 && isConfigured(state.CONFIG))
     return true;
   const oauthStatus = state.CONFIG?.homeAssistant?.oauthStatus;
+  // An expired authorization belongs to an existing setup: the main window explains it and
+  // offers to reconnect instead of starting onboarding over.
   const oauthRestorePending =
     state.CONFIG?.homeAssistant?.authMethod === 'oauth' &&
-    (oauthStatus === 'restoring' || oauthStatus === 'offline');
+    ['restoring', 'offline', 'reauth_required'].includes(oauthStatus);
   if (
     IS_DESKTOP_PIN_MODE ||
     isConfigured(state.CONFIG) ||
@@ -1136,15 +1433,26 @@ const QUICK_ACCESS_CONFIG_KEYS = [
   'favoriteEntities',
   'comparisonGraphs',
 ];
+// Main replaces the OAuth access token about every half hour. The token, its expiry and the
+// authorization id are connection state that the config-updated handler reconnects on by itself;
+// on their own they need no theme, locale or tile refresh.
+const OAUTH_RUNTIME_CONNECTION_KEYS = ['token', 'oauthExpiresAt', 'oauthAuthorizationId'];
 // The config as of the previous applyRendererConfig call. Persistence paths in ui.js and
 // settings.js store their result in state before the echo arrives, so state alone cannot tell
 // whether the appearance pass has already run for it.
 let lastAppliedRendererConfig = null;
 
+function withoutOAuthRuntimeConnection(config) {
+  if (config?.homeAssistant?.authMethod !== 'oauth') return config;
+  const homeAssistant = { ...config.homeAssistant };
+  OAUTH_RUNTIME_CONNECTION_KEYS.forEach((key) => delete homeAssistant[key]);
+  return { ...config, homeAssistant };
+}
+
 function describeRendererConfigChange(renderedConfig, appliedConfig, nextConfig) {
   const serialize = (config, quickAccess) =>
     JSON.stringify(
-      Object.entries(config || {})
+      Object.entries(withoutOAuthRuntimeConnection(config) || {})
         .filter(([key]) => QUICK_ACCESS_CONFIG_KEYS.includes(key) === quickAccess)
         .sort(([a], [b]) => a.localeCompare(b))
     );
@@ -1219,6 +1527,8 @@ function applyRendererConfig(nextConfig) {
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
     }
+    // Keep unsaved Settings previews on screen; the echo carries the saved appearance.
+    settings.reapplySettingsPreviews?.();
   }
 
   // Keep Home Assistant's stored layout snapshot current (deduplicated in the client).
@@ -1259,19 +1569,46 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
+// The language the window was last drawn in; null until the first locale is applied.
+let appliedLocale = null;
 async function refreshLocaleBootstrap() {
   if (!window?.electronAPI?.getLocaleBootstrap) return null;
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
   translateDocument(document);
+  const locale = bootstrap?.activeLocale || '';
+  if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
+  appliedLocale = locale;
   return bootstrap;
+}
+
+// The connection indicator's label and tooltip are written when the connection changes. After a
+// language change, write them again in the new language. A failure's own explanation was
+// translated when it happened and stays until the next connection change.
+function refreshConnectionStatusLanguage() {
+  if (IS_DESKTOP_PIN_MODE) return;
+  if (mainConnectionState === 'demo') {
+    setConnectedStatus(t('Development climate demo — no Home Assistant connection'));
+  } else if (mainConnectionState === 'connected') {
+    setConnectedStatus();
+  } else if (usesOAuth() && !isConfigured(state.CONFIG)) {
+    setOAuthRestoreStatus();
+  } else if (mainConnectionState === 'connecting') {
+    setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+  } else {
+    setDisconnectedStatus();
+  }
 }
 
 function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
+    // The edit-mode hint is drawn by CSS from this attribute so it follows the language.
+    document
+      .getElementById('desktop-pin-content')
+      ?.setAttribute('data-edit-hint', t('Drag or resize'));
     document.body.classList.toggle(
       'desktop-pin-compositor-placement',
       !desktopPinSupportsWindowPositioning
@@ -1290,7 +1627,12 @@ async function handleDesktopPinUpdate(message = {}) {
   try {
     if (!IS_DESKTOP_PIN_MODE) return;
     if (message.config?.homeAssistant) {
+      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
       applyRendererConfig(message.config);
+      // Pins get config through this message, not config-updated, so follow a language change here.
+      if ((state.CONFIG?.ui?.language || 'auto') !== previousLanguage) {
+        await refreshLocaleBootstrap();
+      }
     }
     if (message.connection && typeof message.connection === 'object') {
       applyDesktopPinConnectionState(message.connection);
@@ -1369,6 +1711,8 @@ function classifyConnectionError(error) {
   };
 }
 
+// Each kind of failure is toasted once per outage. The status indicator and the connection panel
+// already show that the widget keeps retrying, so repeating the toast every retry is only noise.
 function shouldShowConnectionToast(toastInfo) {
   if (!toastInfo) return false;
 
@@ -1376,17 +1720,8 @@ function shouldShowConnectionToast(toastInfo) {
     return false;
   }
 
-  const now = Date.now();
-  const recentlyShown =
-    lastConnectionToast.key === toastInfo.key &&
-    now - lastConnectionToast.shownAt < CONNECTION_ERROR_TOAST_COOLDOWN_MS;
-
-  if (recentlyShown) return false;
-
-  lastConnectionToast = {
-    key: toastInfo.key,
-    shownAt: now,
-  };
+  if (shownConnectionToastKeys.has(toastInfo.key)) return false;
+  shownConnectionToastKeys.add(toastInfo.key);
 
   if (toastInfo.persistUntilOnline) {
     offlineConnectionToastShown = true;
@@ -1397,15 +1732,70 @@ function shouldShowConnectionToast(toastInfo) {
 
 function resetConnectionToastTracking() {
   offlineConnectionToastShown = false;
-  lastConnectionToast = { key: null, shownAt: 0 };
+  shownConnectionToastKeys.clear();
+  connectionErrorLoggedThisOutage = false;
+}
+
+function showConnectionToast(message, timeout) {
+  const toast = uiUtils.showToast(message, 'error', timeout);
+  if (toast) connectionToasts.add(toast);
+}
+
+// Connection toasts point the user at Settings. Once Settings is open they have done their job,
+// and left up they cover its footer, Save button included.
+function dismissConnectionToasts() {
+  connectionToasts.forEach((toast) => uiUtils.dismissToast?.(toast));
+  connectionToasts.clear();
 }
 
 function showClassifiedConnectionToast(error) {
   const toastInfo = classifyConnectionError(error);
   if (shouldShowConnectionToast(toastInfo)) {
-    uiUtils.showToast(toastInfo.message, 'error', 15000);
+    showConnectionToast(toastInfo.message, 15000);
   }
   return toastInfo;
+}
+
+async function recoverOAuthAuthorization() {
+  const tokenBefore = state.CONFIG?.homeAssistant?.token;
+  oauthAuthRefreshInFlight = true;
+  let result = null;
+  try {
+    result = await window.electronAPI.refreshHomeAssistantOAuth?.();
+  } catch (error) {
+    log.warn('Home Assistant authorization refresh failed:', error);
+  } finally {
+    oauthAuthRefreshInFlight = false;
+  }
+  if (!usesOAuth()) return;
+  const oauthStatus = result?.oauthStatus || getOAuthStatus();
+  if (oauthStatus === 'reauth_required') {
+    // The config broadcast renders the reconnect prompt; the status line and pins follow here.
+    updateMainConnectionState('auth-failed');
+    setDisconnectedStatus(getOAuthReauthRequiredStatus());
+    setDesktopPinConnectionIssue(getOAuthReauthRequiredStatus());
+    renderCurrentMode();
+    return;
+  }
+  if (oauthStatus === 'connected') {
+    // The new token arrives in a config broadcast, which reconnects. Connect here only when it
+    // was applied before this reply and nothing has connected yet.
+    if (
+      state.CONFIG?.homeAssistant?.token !== tokenBefore &&
+      !websocket.ws &&
+      isConfigured(state.CONFIG)
+    ) {
+      connectWebSocket();
+    }
+    return;
+  }
+  // Could not refresh (Home Assistant or the network is down). Main keeps retrying, and its new
+  // token reconnects through the config broadcast.
+  updateMainConnectionState('disconnected');
+  const offlineMessage = t('Home Assistant is offline. Authorization will retry automatically.');
+  setDisconnectedStatus(offlineMessage);
+  setDesktopPinConnectionIssue(offlineMessage);
+  renderCurrentMode();
 }
 
 function scheduleReconnect() {
@@ -1559,6 +1949,7 @@ websocket.on('message', (msg) => {
     if (msg.type === 'auth_ok') {
       log.debug('WebSocket authentication successful');
       reconnectAttempts = 0; // Reset on successful connection
+      oauthAuthRecoveryAttempted = false;
       if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
       updateMainConnectionState('connecting');
       browserReportedOffline = false;
@@ -1593,7 +1984,9 @@ websocket.on('message', (msg) => {
             websocket.failConnection(snapshotSocket);
           }
         })
-        .catch(() => websocket.failConnection(snapshotSocket));
+        .catch((error) =>
+          websocket.failConnection(snapshotSocket, error?.code === 'timeout' ? 'timeout' : '')
+        );
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
       configReq.catch((err) => {
@@ -1624,18 +2017,29 @@ websocket.on('message', (msg) => {
           });
       }
     } else if (msg.type === 'auth_invalid') {
-      log.error('[WS] Invalid authentication token');
       clearReconnectTimer();
+      if (usesOAuth() && !oauthAuthRecoveryAttempted) {
+        // Home Assistant rejects an OAuth access token when the authorization was revoked or the
+        // token expired while the machine slept. Refreshing tells the two apart.
+        log.warn('[WS] Home Assistant rejected the access token; refreshing authorization');
+        oauthAuthRecoveryAttempted = true;
+        updateMainConnectionState('connecting');
+        websocket.close();
+        setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
+        uiUtils.showLoading(false);
+        renderCurrentMode();
+        void recoverOAuthAuthorization();
+        return;
+      }
+      log.error('[WS] Invalid authentication token');
       updateMainConnectionState('auth-failed');
       websocket.close();
-      const authFailureMessage = t(
-        'Authentication failed. Please check your Home Assistant token in Settings.'
-      );
+      const authFailureMessage = getAuthFailureMessage();
       setDisconnectedStatus(authFailureMessage);
       setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
       // Show clear error message to user
-      uiUtils.showToast(authFailureMessage, 'error', 15000);
+      showConnectionToast(authFailureMessage, 15000);
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
@@ -1758,6 +2162,10 @@ websocket.on('message', (msg) => {
         } else if (msg.id === getConfigId) {
           // get_config response
           log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
+          const previousTimeZone = state.TIME_ZONE;
+          state.setTimeZone(msg.result?.time_zone);
+          // Calendar tiles read Home Assistant's offset-less times in its zone.
+          if (state.TIME_ZONE !== previousTimeZone && !IS_SPECIAL_PIN_MODE) ui.renderActiveTab();
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
             state.setUnitSystem(msg.result.unit_system);
@@ -1784,7 +2192,11 @@ websocket.on('close', (closeInfo = {}) => {
   try {
     alerts.suspendEntityAlerts?.();
     if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
-    if (closeInfo?.intentional || mainConnectionState === 'auth-failed') {
+    if (
+      closeInfo?.intentional ||
+      mainConnectionState === 'auth-failed' ||
+      oauthAuthRefreshInFlight
+    ) {
       log.debug('WebSocket closed intentionally; skipping reconnect schedule');
       return;
     }
@@ -1807,7 +2219,13 @@ websocket.on('close', (closeInfo = {}) => {
 
 websocket.on('error', (error) => {
   try {
-    log.error('WebSocket error:', error);
+    // The first failure of an outage is logged in full; the retries after it would only repeat it.
+    if (connectionErrorLoggedThisOutage) {
+      log.debug('WebSocket error (still retrying):', error?.message || error);
+    } else {
+      connectionErrorLoggedThisOutage = true;
+      log.error('WebSocket error:', error);
+    }
     updateMainConnectionState('disconnected');
     const classifiedIssue = classifyConnectionError(error);
     let desktopPinIssueMessage = classifiedIssue.message;
@@ -1821,11 +2239,11 @@ websocket.on('error', (error) => {
         'Please configure your Home Assistant token in Settings (gear icon).'
       );
       setDisconnectedStatus(desktopPinIssueMessage);
-      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
+      showConnectionToast(desktopPinIssueMessage, 20000);
     } else if (errorMessage.includes('Invalid configuration')) {
       desktopPinIssueMessage = t('Please configure connection settings (gear icon).');
       setDisconnectedStatus(desktopPinIssueMessage);
-      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
+      showConnectionToast(desktopPinIssueMessage, 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
       const toastInfo = showClassifiedConnectionToast(error);
@@ -1896,9 +2314,8 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     if (!nextConfig || !nextConfig.homeAssistant) return;
     const wasConfigured = isConfigured(state.CONFIG);
     const wasSecureStoragePending = isSecureStoragePending();
-    const previousConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
-      state.CONFIG?.homeAssistant?.token || ''
-    }`;
+    const previousConnection = getConnectionIdentity(state.CONFIG);
+    const previousToken = state.CONFIG?.homeAssistant?.token || '';
     const applied = applyRendererConfig(nextConfig);
     if (applied === false) return;
     // A page switch or tile edit echoes back a config the renderer already holds and drew.
@@ -1906,9 +2323,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     const change =
       applied && typeof applied === 'object' ? applied : { quickAccess: true, other: true };
     if (!IS_DESKTOP_PIN_MODE && change.other) syncTrayEntityIconsWithConfig();
-    const nextConnection = `${state.CONFIG?.homeAssistant?.url || ''}\u0000${
-      state.CONFIG?.homeAssistant?.token || ''
-    }`;
+    const nextConnection = getConnectionIdentity(state.CONFIG);
     // Apply the versioned config synchronously before yielding. The preload
     // buffers config echoes while writes are pending, and this avoids an older
     // event resuming after a newer optimistic mutation.
@@ -1929,10 +2344,21 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
       ) {
         websocket.close();
         connectWebSocket();
+      } else if (previousToken !== (state.CONFIG?.homeAssistant?.token || '') && !websocket.ws) {
+        // A refreshed OAuth access token is only needed for the next handshake: an open socket
+        // stays authenticated, and one mid-handshake is left to finish. With no socket at all,
+        // retry with the new token now rather than after a backoff, or never after an auth
+        // failure.
+        connectWebSocket();
       }
     } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
       websocket.close();
     }
+    if (!nowConfigured && usesOAuth() && !IS_DESKTOP_PIN_MODE) {
+      setOAuthRestoreStatus();
+      renderMainWidgetState();
+    }
+    if (!IS_SPECIAL_PIN_MODE) settings.refreshHomeAssistantAuthStatus?.();
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }
@@ -2169,18 +2595,21 @@ async function init() {
       }
       delete state.CONFIG.tokenResetReason;
 
-      let message = t('Your Home Assistant token needs to be re-entered.');
+      // One full sentence per reason, so translations never have to be pieced together.
+      let message = t(
+        'Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.'
+      );
       let detailMessage = '';
       if (reason === 'encryption_unavailable') {
         message = t(
-          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
+          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.'
         );
         detailMessage = t(
           'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.'
         );
       } else if (reason === 'decryption_failed') {
         message = t(
-          'Your Home Assistant token needs to be re-entered. The stored token could not be decrypted.'
+          'Your Home Assistant token needs to be re-entered. The stored token could not be decrypted. Click the gear icon to open Settings.'
         );
         detailMessage = t(
           'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.'
@@ -2191,11 +2620,7 @@ async function init() {
       log.info('[Init]', detailMessage);
 
       // Show prominent warning message with extended duration
-      uiUtils.showToast(
-        t('{{message}} Click the gear icon to open Settings.', { message }),
-        'warning',
-        20000
-      );
+      uiUtils.showToast(message, 'warning', 20000);
     }
 
     if (!isConfigured(state.CONFIG)) {
@@ -2209,12 +2634,7 @@ async function init() {
       }
 
       if (state.CONFIG?.homeAssistant?.authMethod === 'oauth') {
-        const detail = state.CONFIG.homeAssistant.oauthLastError;
-        setDisconnectedStatus(
-          state.CONFIG.homeAssistant.oauthStatus === 'restoring'
-            ? t('Restoring Home Assistant authorization...')
-            : detail || t('Home Assistant is offline. Authorization will retry automatically.')
-        );
+        setOAuthRestoreStatus();
         uiUtils.showLoading(false);
         renderCurrentMode();
         maybeShowFirstRunWizard();
@@ -2234,6 +2654,15 @@ async function init() {
     log.error('Initialization error:', error);
     uiUtils.showLoading(false);
     throw error;
+  }
+}
+
+// Disabling a toggle while main applies it drops keyboard focus to the page. Put it back unless
+// the user has moved on meanwhile.
+function reenableSettingsToggle(toggle, hadFocus) {
+  toggle.disabled = false;
+  if (hadFocus && (!document.activeElement || document.activeElement === document.body)) {
+    toggle.focus();
   }
 }
 
@@ -2258,6 +2687,24 @@ function wireUI() {
 
     const cancelSettingsBtn = document.getElementById('cancel-settings');
     if (cancelSettingsBtn) cancelSettingsBtn.onclick = settings.closeSettings;
+
+    // Escape works like Cancel, unless it is closing a dropdown open inside Settings. That is
+    // checked on the way down, because the dropdown closes itself before the event bubbles back.
+    const settingsModal = document.getElementById('settings-modal');
+    let settingsEscapeClosesDropdown = false;
+    settingsModal?.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape') return;
+        settingsEscapeClosesDropdown = !!event.target?.closest?.('.custom-dropdown.open');
+      },
+      true
+    );
+    settingsModal?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || settingsEscapeClosesDropdown) return;
+      event.preventDefault();
+      settings.closeSettings();
+    });
 
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
@@ -2372,6 +2819,12 @@ function wireUI() {
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
     }
+    document.getElementById('quick-controls-modal')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation(); // close the dialog without also exiting reorganize mode
+      void closeQuickControlsModal();
+    });
 
     const addComparisonGraphBtn = document.getElementById('add-comparison-graph-btn');
     if (addComparisonGraphBtn) {
@@ -2393,19 +2846,22 @@ function wireUI() {
       document.getElementById('weather-card'),
       document.getElementById('time-card'),
     ];
+    // The picker's focus trap returns focus to the card when it closes.
+    const openWeatherPicker = () => {
+      const modal = document.getElementById('weather-config-modal');
+      if (!modal) return;
+      ui.populateWeatherEntitiesList();
+      uiUtils.openModal(modal);
+      uiUtils.trapFocus(modal);
+    };
     statusCards.forEach((card) => {
       if (!card) return;
       let pressTimer = null;
+      const isWeatherCard = () =>
+        card.dataset.primaryType === 'weather' || card.classList.contains('weather-card');
       const startPress = () => {
-        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card'))
-          return;
-        pressTimer = setTimeout(() => {
-          const modal = document.getElementById('weather-config-modal');
-          if (modal) {
-            ui.populateWeatherEntitiesList();
-            uiUtils.openModal(modal);
-          }
-        }, 500);
+        if (!isWeatherCard()) return;
+        pressTimer = setTimeout(openWeatherPicker, 500);
       };
       const cancelPress = () => {
         clearTimeout(pressTimer);
@@ -2413,6 +2869,15 @@ function wireUI() {
       card.addEventListener('mousedown', startPress);
       card.addEventListener('mouseup', cancelPress);
       card.addEventListener('mouseleave', cancelPress);
+      card.addEventListener('keydown', (event) => {
+        if (event.target !== card || !isWeatherCard()) return;
+        const opensPicker =
+          ['Enter', ' ', 'ContextMenu'].includes(event.key) ||
+          (event.key === 'F10' && event.shiftKey);
+        if (!opensPicker || event.ctrlKey || event.metaKey || event.altKey) return;
+        event.preventDefault();
+        openWeatherPicker();
+      });
     });
 
     // Wire up alerts management
@@ -2459,15 +2924,22 @@ function wireUI() {
       mediaTileNext.onclick = () => ui.callMediaTileService('next');
     }
 
+    const closeWeatherConfig = () => {
+      const modal = document.getElementById('weather-config-modal');
+      if (modal) {
+        void uiUtils.closeModal(modal, { releaseFocus: true });
+      }
+    };
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
     if (closeWeatherConfigBtn) {
-      closeWeatherConfigBtn.onclick = () => {
-        const modal = document.getElementById('weather-config-modal');
-        if (modal) {
-          void uiUtils.closeModal(modal);
-        }
-      };
+      closeWeatherConfigBtn.onclick = closeWeatherConfig;
     }
+    document.getElementById('weather-config-modal')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation(); // close the dialog without also exiting reorganize mode
+      closeWeatherConfig();
+    });
 
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {
@@ -2499,6 +2971,7 @@ function wireUI() {
         const requestedEnabled = !!e.target.checked;
         const previousEnabled = !!state.CONFIG.globalHotkeys?.enabled;
         const hotkeysSection = document.getElementById('hotkeys-section');
+        const hadFocus = document.activeElement === e.target;
         e.target.disabled = true;
         try {
           const success = await hotkeys.toggleHotkeys(requestedEnabled);
@@ -2508,7 +2981,7 @@ function wireUI() {
             hotkeysSection.style.display = appliedEnabled ? 'block' : 'none';
           }
         } finally {
-          e.target.disabled = false;
+          reenableSettingsToggle(e.target, hadFocus);
         }
       };
     }
@@ -2519,6 +2992,7 @@ function wireUI() {
         const requestedEnabled = !!e.target.checked;
         const previousEnabled = !!state.CONFIG.entityAlerts?.enabled;
         const alertsSection = document.getElementById('alerts-section');
+        const hadFocus = document.activeElement === e.target;
         e.target.disabled = true;
         try {
           const success = await alerts.toggleAlerts(requestedEnabled);
@@ -2531,7 +3005,7 @@ function wireUI() {
             settings.renderAlertsListInline();
           }
         } finally {
-          e.target.disabled = false;
+          reenableSettingsToggle(e.target, hadFocus);
         }
       };
     }
@@ -2590,7 +3064,7 @@ function wireUI() {
         const target = e.target;
         if (target.classList.contains('hotkey-input')) {
           const entityId = target.dataset.entityId;
-          target.value = 'Recording...';
+          target.value = t('Recording...');
           const hotkey = await hotkeys.captureHotkey();
           if (hotkey) {
             // Get selected action from custom dropdown

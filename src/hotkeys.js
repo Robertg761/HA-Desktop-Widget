@@ -1,5 +1,5 @@
 import state from './state.js';
-import { closeModal, showToast } from './ui-utils.js';
+import { closeModal, showToast, trapFocus } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { t } from './i18n.js';
 
@@ -39,6 +39,7 @@ function initializeHotkeys() {
   }
 }
 
+// Labels are translated here because the options are rebuilt on every render.
 function getActionOptionsForDomain(domain) {
   const options = {
     light: [
@@ -174,7 +175,7 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     const entity = state.STATES?.[entityId];
     if (!entity) {
       showToast(t('Entity not found'), 'error', 2500);
-      return { success: false, error: 'Entity not found' };
+      return { success: false, error: t('Entity not found') };
     }
 
     if (!state.CONFIG.globalHotkeys) {
@@ -310,6 +311,9 @@ function captureHotkey() {
                 </div>
             `;
       document.body.appendChild(modal);
+      // Registered as the top dialog so Escape pressed with focus on <body> reaches this overlay
+      // rather than closing the dialog underneath it (Settings).
+      trapFocus(modal, { initialFocus: false });
       // Scoped rather than by id: the overlay now animates out, so a previous capture's node can
       // still be in the document when the next one opens.
       const previewBox = modal.querySelector('#hotkey-preview');
@@ -350,7 +354,7 @@ function captureHotkey() {
         if (cleanedUp) return;
         cleanedUp = true;
         document.removeEventListener('keydown', onKeyDown, true);
-        void closeModal(modal, { remove: true });
+        void closeModal(modal, { remove: true, releaseFocus: true });
       };
 
       document.addEventListener('keydown', onKeyDown, true);

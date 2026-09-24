@@ -326,8 +326,10 @@ function createMockElectronAPI() {
 
     // Utility Operations
     getAppVersion: jest.fn(() => Promise.resolve('1.0.0-test')),
+    getOsInfo: jest.fn(() => Promise.resolve({ platform: 'linux', release: '6.0.0-test' })),
     openLogs: jest.fn(() => Promise.resolve()),
     openExternal: jest.fn(() => Promise.resolve({ success: true })),
+    writeClipboardText: jest.fn(() => Promise.resolve({ success: true })),
     testHaConnection: jest.fn(() => Promise.resolve({ success: true, code: 'ok' })),
     startHomeAssistantOAuth: jest.fn((url) => {
       mockConfig = {
@@ -343,6 +345,9 @@ function createMockElectronAPI() {
       return Promise.resolve({ success: true, config: { ...mockConfig } });
     }),
     cancelHomeAssistantOAuth: jest.fn(() => Promise.resolve({ success: true, canceled: false })),
+    refreshHomeAssistantOAuth: jest.fn(() =>
+      Promise.resolve({ success: true, oauthStatus: 'connected' })
+    ),
     disconnectHomeAssistantOAuth: jest.fn(() => {
       mockConfig = {
         ...mockConfig,

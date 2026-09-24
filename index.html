@@ -684,7 +684,7 @@
                     <option value="auto" data-i18n="Auto (System Default)">
                       Auto (System Default)
                     </option>
-                    <option value="en" data-i18n="English">English</option>
+                    <option value="en">English</option>
                     <option value="de">Deutsch</option>
                   </select>
                   <p
@@ -693,6 +693,9 @@
                     data-i18n="Download a language pack below to enable it in the selector."
                   >
                     Download a language pack below to enable it in the selector.
+                  </p>
+                  <p class="help-text" data-i18n="Language changes take effect immediately.">
+                    Language changes take effect immediately.
                   </p>
                   <p id="language-current-summary" class="help-text">Selected language: English</p>
                   <p id="language-system-summary" class="help-text">
@@ -768,7 +771,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="form-group setting-row" id="follow-omarchy-row">
+                <div class="form-group setting-row hidden" id="follow-omarchy-group">
                   <div class="setting-text">
                     <label for="follow-omarchy"
                       ><span data-i18n="Follow Omarchy theme">Follow Omarchy theme</span></label
@@ -1187,7 +1190,11 @@
               <div class="settings-group-body">
                 <div class="form-group setting-row primary-card-row">
                   <div class="setting-text">
-                    <span class="setting-label" data-i18n="Card 1">Card 1</span
+                    <span
+                      class="setting-label"
+                      data-i18n="Card {{index}}"
+                      data-i18n-vars='{"index": 1}'
+                      >Card 1</span
                     ><span class="form-help primary-card-value" id="primary-card-1-current"
                       >Weather (default)</span
                     >
@@ -1224,7 +1231,11 @@
                 </div>
                 <div class="form-group setting-row primary-card-row">
                   <div class="setting-text">
-                    <span class="setting-label" data-i18n="Card 2">Card 2</span
+                    <span
+                      class="setting-label"
+                      data-i18n="Card {{index}}"
+                      data-i18n-vars='{"index": 2}'
+                      >Card 2</span
                     ><span class="form-help primary-card-value" id="primary-card-2-current"
                       >Time (default)</span
                     >
@@ -1568,6 +1579,9 @@
                     released, the window returns to normal z-order.
                   </p>
                   <p id="popup-hotkey-platform-notice" class="form-help" hidden></p>
+                  <p class="help-text" data-i18n="Popup hotkey changes take effect immediately.">
+                    Popup hotkey changes take effect immediately.
+                  </p>
                   <div class="popup-hotkey-config">
                     <input type="text" id="popup-hotkey-input" readonly />
                     <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">
@@ -1577,9 +1591,9 @@
                       id="popup-hotkey-clear-btn"
                       class="btn btn-danger btn-small"
                       style="display: none"
-                      data-i18n="Remove"
+                      data-i18n="Action: Clear"
                     >
-                      Remove
+                      Clear
                     </button>
                   </div>
                   <div class="preset-hotkey-row">
@@ -1656,6 +1670,9 @@
                       Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift,
                       Command, Super (for example <code>Ctrl+Shift+A</code>).
                     </p>
+                    <p class="help-text" data-i18n="Entity hotkey changes take effect immediately.">
+                      Entity hotkey changes take effect immediately.
+                    </p>
                   </div>
                   <input type="checkbox" id="global-hotkeys-enabled" />
                 </div>
@@ -1698,6 +1715,9 @@
                       data-i18n="Choose which entities send a desktop notification when they change."
                     >
                       Choose which entities send a desktop notification when they change.
+                    </p>
+                    <p class="help-text" data-i18n="Entity alert changes take effect immediately.">
+                      Entity alert changes take effect immediately.
                     </p>
                   </div>
                   <input type="checkbox" id="entity-alerts-enabled" />
@@ -1782,10 +1802,7 @@
                     Sync your widget profile across devices using a shared JSON file in iCloud,
                     Dropbox, OneDrive, or similar.
                   </p>
-                  <p
-                    class="help-text profile-sync-warning"
-                    data-i18n-html="<strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please report bugs in the <a href='https://github.com/Robertg761/HA-Desktop-Widget/issues' target='_blank' rel='noopener noreferrer'>Issues section</a>."
-                  >
+                  <p class="help-text profile-sync-warning">
                     <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own
                     risk, and please report bugs in the
                     <a
@@ -2124,7 +2141,17 @@
               placeholder="Search entities..."
               data-i18n-placeholder="Search entities..."
               class="form-control"
+              aria-describedby="command-palette-hint"
             />
+            <!-- The command palette has no button of its own; point out its shortcut where
+                 people already search for entities. -->
+            <div
+              id="command-palette-hint"
+              class="form-help"
+              data-i18n="Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages."
+            >
+              Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.
+            </div>
           </div>
           <div id="quick-controls-list" class="entity-selector-list">
             <!-- Available entities will be loaded here -->
@@ -2309,8 +2336,8 @@
             <label data-i18n="Current weather entity">Current weather entity</label>
             <div id="current-weather-info" class="weather-info">
               <span id="current-weather-name">None selected</span>
-              <button id="clear-weather" class="btn btn-secondary btn-sm" data-i18n="Remove">
-                Remove
+              <button id="clear-weather" class="btn btn-secondary btn-sm" data-i18n="Action: Clear">
+                Clear
               </button>
             </div>
           </div>
@@ -2363,17 +2390,13 @@
           </div>
           <div class="hotkey-help">
             <h4 data-i18n="Hotkey format">Hotkey format</h4>
-            <p
-              data-i18n-html="Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>"
-            >
-              Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>,
-              <code>Alt+F1</code>
+            <p>
+              <span data-i18n="Use combinations like:">Use combinations like:</span>
+              <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>
             </p>
-            <p
-              data-i18n-html="Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code>"
-            >
-              Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>,
-              <code>Win</code>
+            <p>
+              <span data-i18n="Available modifiers:">Available modifiers:</span> <code>Ctrl</code>,
+              <code>Alt</code>, <code>Shift</code>, <code>Win</code>
             </p>
           </div>
         </div>

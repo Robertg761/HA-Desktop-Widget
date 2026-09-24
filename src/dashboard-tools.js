@@ -3,15 +3,83 @@ import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
 import { readDashboardHistory, writeDashboardHistory } from './dashboard-history.js';
-import { closeModal, trapFocus, showToast } from './ui-utils.js';
+import { closeModal, copyTextToClipboard, trapFocus, showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 
-const connection = { attempts: 0, lastConnectedAt: null, lastUpdateAt: null, lastIssue: null };
+const MAX_RECENT_ISSUES = 5;
+const connection = {
+  appVersion: null,
+  operatingSystem: null,
+  homeAssistantVersion: null,
+  lastConnectedAt: null,
+  lastUpdateAt: null,
+  reconnects: 0,
+  outage: null,
+  recentIssues: [],
+};
+
+// The system and its version from the main process, e.g. "Ubuntu 24.04 LTS (linux 6.8.0-45)".
+// Until that arrives, the operating system part of the user agent ("X11; Linux x86_64").
+function operatingSystem() {
+  return (
+    connection.operatingSystem ||
+    /\(([^)]+)\)/.exec(globalThis.navigator?.userAgent || '')?.[1] ||
+    null
+  );
+}
+
+function describeOperatingSystem(info) {
+  const text = (value) => (typeof value === 'string' ? value.trim().slice(0, 128) : '');
+  const platform = text(info?.platform);
+  if (!platform) return null;
+  const system = [platform, text(info.release)].filter(Boolean).join(' ');
+  const distro = text(info.distro);
+  return distro ? `${distro} (${system})` : system;
+}
 
 function diagnosticsReport() {
-  // Deliberately allowlist fields. Server messages, URLs, states and config may contain secrets.
-  return { connection: websocket.isConnected() ? 'connected' : 'disconnected', ...connection };
+  // Deliberately allowlist fields. Server messages, URLs, states and config may contain secrets,
+  // so issues are recorded as fixed reason codes and times only.
+  return {
+    connection: websocket.isConnected() ? 'connected' : 'disconnected',
+    appVersion: connection.appVersion,
+    platform: window.electronAPI?.platform || null,
+    os: operatingSystem(),
+    homeAssistantVersion: connection.homeAssistantVersion,
+    lastConnectedAt: connection.lastConnectedAt,
+    lastUpdateAt: connection.lastUpdateAt,
+    reconnects: connection.reconnects,
+    recentIssues: connection.recentIssues.map((issue) => ({ ...issue })),
+  };
+}
+
+function isStateSnapshot(message) {
+  return (
+    message?.type === 'result' &&
+    message.success &&
+    Array.isArray(message.result) &&
+    message.result.some((entity) => entity?.entity_id && typeof entity.state === 'string')
+  );
+}
+
+// An outage lasts from the first failure until Home Assistant accepts the connection again. It is
+// kept after recovery so a report copied later still shows the drop.
+function recordIssue(reason) {
+  if (!connection.outage) {
+    connection.outage = {
+      reason,
+      startedAt: new Date().toISOString(),
+      recoveredAt: null,
+      reconnectAttempts: 0,
+    };
+    connection.recentIssues = [connection.outage, ...connection.recentIssues].slice(
+      0,
+      MAX_RECENT_ISSUES
+    );
+  } else if (reason === 'authorization_failed') {
+    connection.outage.reason = reason;
+  }
 }
 
 function dialog(title, { key, onClose = null } = {}) {
@@ -79,7 +147,9 @@ function showDashboardHistory() {
     button.className = 'btn btn-secondary dashboard-restore-entry';
     const date = document.createElement('span');
     date.className = 'dashboard-restore-date';
-    date.textContent = formatDateTime(entry.at);
+    date.textContent = entry.undone
+      ? `${formatDateTime(entry.at)} · ${t('Before undo')}`
+      : formatDateTime(entry.at);
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
     pages.textContent = entry.layout.customTabs.map((tab) => tab.name).join(', ');
@@ -94,7 +164,7 @@ function showDashboardHistory() {
         control.disabled = true;
       });
       try {
-        await restoreDashboard(entry.layout);
+        await restoreDashboard(entry.layout, { activeTabId: entry.activeTabId });
         refreshRestoredDashboardSettings();
         void closeModal(modal, { remove: true, releaseFocus: true });
         showToast(t('Dashboard restored'), 'success');
@@ -115,7 +185,13 @@ function showConnectionDiagnostics() {
   // button so the report the user may be reading or selecting is not rewritten every second.
   const liveEvents = ['open', 'close', 'error', 'message'];
   const onLiveEvent = (message) => {
-    if (message?.type && !['auth_ok', 'auth_invalid'].includes(message.type)) return;
+    // Refresh once the reconnect's state snapshot arrives, not only on auth_ok before it.
+    if (
+      message?.type &&
+      !['auth_ok', 'auth_invalid'].includes(message.type) &&
+      !isStateSnapshot(message)
+    )
+      return;
     if (modal.isConnected) update();
   };
   const stopLiveUpdates = () => liveEvents.forEach((event) => websocket.off(event, onLiveEvent));
@@ -149,14 +225,13 @@ function showConnectionDiagnostics() {
   copy.className = 'btn btn-primary';
   copy.textContent = t('Copy report');
   copy.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(report.value);
+    if (await copyTextToClipboard(report.value)) {
       showToast(t('Report copied'), 'success');
-    } catch {
-      report.focus();
-      report.select();
-      showToast(t('Select and copy the report manually.'), 'info');
+      return;
     }
+    report.focus();
+    report.select();
+    showToast(t('Select and copy the report manually.'), 'info');
   };
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
@@ -168,37 +243,80 @@ function showConnectionDiagnostics() {
   trapFocus(modal);
 }
 
+const sameEntry = (a, b) => a.at === b.at && JSON.stringify(a.layout) === JSON.stringify(b.layout);
+
+// Restoring saved the layout Undo replaced as the newest entry. Keep it so an accidental Undo can
+// be reversed from Restore dashboard, but mark it so the next Undo steps further back instead of
+// bouncing between the two layouts. The restored entry is the current layout now, so it goes.
+function historyAfterUndo(before, after, restored) {
+  let removed = false;
+  return after
+    .filter((entry) => {
+      if (removed || !sameEntry(entry, restored)) return true;
+      removed = true;
+      return false;
+    })
+    .map((entry) =>
+      before.some((previous) => sameEntry(previous, entry)) ? entry : { ...entry, undone: true }
+    );
+}
+
 let undoInFlight = false;
 function refreshDashboardUndoState() {
   const undo = document.getElementById('undo-dashboard-btn');
-  if (undo) undo.disabled = undoInFlight || !readDashboardHistory(state.CONFIG).length;
+  if (undo) {
+    undo.disabled =
+      undoInFlight || !readDashboardHistory(state.CONFIG).some((entry) => !entry.undone);
+  }
 }
 
 let initialized = false;
 function initializeDashboardTools() {
   if (initialized) return;
   initialized = true;
+  window.electronAPI
+    ?.getAppVersion?.()
+    ?.then((version) => {
+      if (typeof version === 'string') connection.appVersion = version.slice(0, 64);
+    })
+    .catch(() => {});
+  window.electronAPI
+    ?.getOsInfo?.()
+    ?.then((info) => {
+      connection.operatingSystem = describeOperatingSystem(info);
+    })
+    .catch(() => {});
   websocket.on('connect-attempt', () => {
-    connection.attempts += 1;
+    if (connection.outage) connection.outage.reconnectAttempts += 1;
   });
-  websocket.on('close', () => {
-    connection.lastIssue = 'connection_closed';
+  websocket.on('close', (event) => {
+    // Closing a socket to reconnect with new settings is not a connection problem.
+    if (event?.intentional) return;
+    recordIssue(event?.reason === 'timeout' ? 'connection_timeout' : 'connection_closed');
   });
-  websocket.on('error', () => {
-    connection.lastIssue = 'connection_error';
+  websocket.on('error', (error) => {
+    recordIssue(
+      /invalid configuration|default token/i.test(error?.message || '')
+        ? 'invalid_configuration'
+        : 'connection_error'
+    );
   });
   websocket.on('message', (message) => {
     if (message.type === 'auth_ok') {
+      if (connection.lastConnectedAt) connection.reconnects += 1;
       connection.lastConnectedAt = new Date().toISOString();
-      connection.lastIssue = null;
+      if (typeof message.ha_version === 'string') {
+        connection.homeAssistantVersion = message.ha_version.slice(0, 32);
+      }
+      if (connection.outage) {
+        connection.outage.recoveredAt = connection.lastConnectedAt;
+        connection.outage = null;
+      }
     }
-    if (message.type === 'auth_invalid') connection.lastIssue = 'authorization_failed';
+    if (message.type === 'auth_invalid') recordIssue('authorization_failed');
     if (
       (message.type === 'event' && message.event?.event_type === 'state_changed') ||
-      (message.type === 'result' &&
-        message.success &&
-        Array.isArray(message.result) &&
-        message.result.some((entity) => entity?.entity_id && typeof entity.state === 'string'))
+      isStateSnapshot(message)
     ) {
       connection.lastUpdateAt = new Date().toISOString();
     }
@@ -210,13 +328,17 @@ function initializeDashboardTools() {
       if (undoInFlight) return;
       const config = state.CONFIG;
       const entries = readDashboardHistory(config);
-      if (!entries.length) return;
+      const target = entries.find((entry) => !entry.undone);
+      if (!target) return;
       undoInFlight = true;
       refreshDashboardUndoState();
       try {
-        await restoreDashboard(entries[0].layout);
+        await restoreDashboard(target.layout, { activeTabId: target.activeTabId });
         refreshRestoredDashboardSettings();
-        writeDashboardHistory(config, entries.slice(1));
+        writeDashboardHistory(
+          config,
+          historyAfterUndo(entries, readDashboardHistory(config), target)
+        );
         showToast(t('Dashboard edit undone'), 'success');
       } catch {
         showToast(t('Could not restore dashboard. Please retry.'), 'error');
@@ -235,6 +357,9 @@ function initializeDashboardTools() {
 
 export {
   initializeDashboardTools,
+  // For failures seen without a socket event, such as an OAuth authorization that could not be
+  // restored because Home Assistant was down at launch.
+  recordIssue as recordConnectionIssue,
   refreshDashboardUndoState,
   showDashboardHistory,
   diagnosticsReport,
