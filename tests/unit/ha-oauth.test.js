@@ -40,6 +40,21 @@ function requestCallback(url) {
   });
 }
 
+function requestCallbackPage(url) {
+  return new Promise((resolve, reject) => {
+    http
+      .get(url, (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => resolve({ statusCode: response.statusCode, body }));
+      })
+      .on('error', reject);
+  });
+}
+
 describe('Home Assistant OAuth', () => {
   const temporaryDirectories = [];
 
@@ -119,6 +134,62 @@ describe('Home Assistant OAuth', () => {
         exchangeCode: jest.fn(),
       })
     ).rejects.toMatchObject({ code: 'OAUTH_STATE_MISMATCH' });
+  });
+
+  test('shows the browser callback pages in the app language, escaped', async () => {
+    const catalog = {
+      'HA Desktop Widget connected': 'HA Desktop Widget verbunden',
+      'You can close this browser tab and return to the desktop app.':
+        'Du kannst diesen Tab schließen & zur <App> zurückkehren.',
+    };
+    let page;
+
+    await authorizeWithLoopback({
+      baseUrl: 'https://ha.example.test/',
+      timeoutMs: 2000,
+      translate: (key) => catalog[key] || key,
+      openExternal: async (rawAuthorizationUrl) => {
+        const authorizationUrl = new URL(rawAuthorizationUrl);
+        const callbackUrl = new URL(authorizationUrl.searchParams.get('redirect_uri'));
+        callbackUrl.searchParams.set('code', 'one-time-code');
+        callbackUrl.searchParams.set('state', authorizationUrl.searchParams.get('state'));
+        page = await requestCallbackPage(callbackUrl);
+      },
+      exchangeCode: jest.fn(async () => ({})),
+    });
+
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('<title>HA Desktop Widget verbunden</title>');
+    expect(page.body).toContain(
+      '<p>Du kannst diesen Tab schließen &amp; zur &lt;App&gt; zurückkehren.</p>'
+    );
+  });
+
+  test('passes the client translator to the pairing callback pages', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    let page;
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: async (rawAuthorizationUrl) => {
+        const authorizationUrl = new URL(rawAuthorizationUrl);
+        const callbackUrl = new URL(authorizationUrl.searchParams.get('redirect_uri'));
+        callbackUrl.searchParams.set('code', 'stolen-code');
+        callbackUrl.searchParams.set('state', 'wrong-state');
+        page = await requestCallbackPage(callbackUrl);
+      },
+      postForm: jest.fn(),
+      isSecureStorageAvailable: () => true,
+      translate: (key) => ({ 'Authorization rejected': 'Autorisierung abgelehnt' })[key] || key,
+    });
+
+    await expect(client.pair('http://ha.local:8123')).rejects.toMatchObject({
+      code: 'OAUTH_STATE_MISMATCH',
+    });
+    expect(page.statusCode).toBe(400);
+    expect(page.body).toContain('<h1>Autorisierung abgelehnt</h1>');
   });
 
   test('abandons a pairing attempt and releases the loopback port when cancelled', async () => {

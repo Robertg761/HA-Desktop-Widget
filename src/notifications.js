@@ -65,14 +65,14 @@ function formatRelativeTime(createdAt, now = Date.now()) {
 
   const elapsedMs = Math.max(0, now - timestamp);
   const elapsedMinutes = Math.floor(elapsedMs / 60000);
-  if (elapsedMinutes < 1) return 'just now';
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  if (elapsedMinutes < 1) return t('just now');
+  if (elapsedMinutes < 60) return t('{{count}}m ago', { count: elapsedMinutes });
 
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+  if (elapsedHours < 24) return t('{{count}}h ago', { count: elapsedHours });
 
   const elapsedDays = Math.floor(elapsedHours / 24);
-  return `${elapsedDays}d ago`;
+  return t('{{count}}d ago', { count: elapsedDays });
 }
 
 function getSortedNotifications() {

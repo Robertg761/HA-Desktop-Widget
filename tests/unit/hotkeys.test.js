@@ -280,6 +280,46 @@ describe('hotkeys module', () => {
       );
     });
 
+    it('translates action labels and the action-updated toast', async () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          Toggle: 'Umschalten',
+          'Turn On': 'Einschalten',
+          Remove: 'Entfernen',
+          'Action updated to: {{action}}': 'Aktion geändert: {{action}}',
+        },
+      });
+      try {
+        const container = document.createElement('div');
+        const searchInput = document.createElement('input');
+        const existing = document.createElement('div');
+        container.id = 'hotkeys-list';
+        searchInput.id = 'hotkey-entity-search';
+        searchInput.value = 'living';
+        existing.id = 'existing-hotkeys-list';
+        document.body.append(container, searchInput, existing);
+        mockElectronAPI.updateConfig.mockImplementationOnce((nextConfig) =>
+          Promise.resolve(nextConfig)
+        );
+        mockElectronAPI.registerHotkeys.mockResolvedValueOnce({ success: true });
+
+        hotkeys.renderHotkeysTab();
+        const row = container.querySelector('.custom-dropdown[data-entity-id="light.living_room"]');
+        expect(row.querySelector('.custom-dropdown-value').textContent).toBe('Umschalten');
+        row.querySelector('.custom-dropdown-option[data-value="turn_on"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(showToast).toHaveBeenCalledWith('Aktion geändert: Einschalten', 'success', 2000);
+
+        hotkeys.renderExistingHotkeys();
+        expect(existing.querySelector('.btn-remove-hotkey').textContent).toBe('Entfernen');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('should include script, button, and input_button action entities in the picker', () => {
       const container = document.createElement('div');
       const searchInput = document.createElement('input');

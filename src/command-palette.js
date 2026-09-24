@@ -155,7 +155,6 @@ function createPaletteShell() {
   const palettePanel = createElement('div', 'command-palette-panel');
   palettePanel.setAttribute('role', 'dialog');
   palettePanel.setAttribute('aria-modal', 'true');
-  palettePanel.setAttribute('aria-label', t('Command palette'));
 
   const searchWrap = createElement('div', 'command-palette-search');
 
@@ -163,17 +162,13 @@ function createPaletteShell() {
   input.type = 'text';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.placeholder = t('Search entities, commands, and pages');
   input.setAttribute('role', 'combobox');
-  input.setAttribute('aria-label', t('Search entities, commands, and pages'));
   input.setAttribute('aria-controls', 'command-palette-results');
   input.setAttribute('aria-autocomplete', 'list');
   input.setAttribute('aria-expanded', 'false');
 
   const closeButton = createElement('button', 'command-palette-close', '×');
   closeButton.type = 'button';
-  closeButton.title = t('Close');
-  closeButton.setAttribute('aria-label', t('Close command palette'));
   closeButton.addEventListener('click', closeCommandPalette);
 
   searchWrap.append(input, closeButton);
@@ -182,18 +177,35 @@ function createPaletteShell() {
   list.id = 'command-palette-results';
   list.setAttribute('role', 'listbox');
 
-  emptyState = createElement('div', 'command-palette-empty', t('No matching results'));
+  emptyState = createElement('div', 'command-palette-empty');
   emptyState.hidden = true;
 
   palettePanel.append(searchWrap, list, emptyState);
   overlay.appendChild(palettePanel);
   document.body.appendChild(overlay);
+  applyPaletteLabels();
 
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) closeCommandPalette();
   });
   overlay.addEventListener('keydown', handlePaletteKeydown);
   input.addEventListener('input', renderResults);
+}
+
+// The shell outlives a language change, so its labels are applied again on every open.
+function applyPaletteLabels() {
+  if (!overlay) return;
+  overlay.querySelector('.command-palette-panel')?.setAttribute('aria-label', t('Command palette'));
+  if (input) {
+    input.placeholder = t('Search entities, commands, and pages');
+    input.setAttribute('aria-label', t('Search entities, commands, and pages'));
+  }
+  const closeButton = overlay.querySelector('.command-palette-close');
+  if (closeButton) {
+    closeButton.title = t('Close');
+    closeButton.setAttribute('aria-label', t('Close command palette'));
+  }
+  if (emptyState) emptyState.textContent = t('No matching results');
 }
 
 function ensurePaletteShell() {
@@ -323,7 +335,7 @@ function createResultRow(item, index) {
   const domain = createElement(
     'span',
     'command-palette-result-domain',
-    item.tabId ? t('Page') : getEntityDomain(entity.entity_id)
+    item.tabId ? t('Page') : utils.getEntityTypeDescription(entity)
   );
   const value = createElement(
     'span',
@@ -382,6 +394,7 @@ function renderResults() {
 
 function openCommandPalette() {
   ensurePaletteShell();
+  applyPaletteLabels();
   if (!isPaletteOpen() && document.activeElement && document.activeElement !== document.body) {
     previouslyFocusedElement = document.activeElement;
   }

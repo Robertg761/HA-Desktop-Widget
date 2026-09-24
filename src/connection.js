@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 const URL_PLACEHOLDER_VALUES = new Set(['YOUR_HOME_ASSISTANT_URL', 'HOME_ASSISTANT_URL']);
 
@@ -58,7 +60,7 @@ function getConnectionIdentity(config) {
 async function startHomeAssistantPairing(api, url) {
   const result = await api.startHomeAssistantOAuth(url);
   if (result?.success === false) {
-    const error = new Error(result.error || 'Home Assistant authorization failed');
+    const error = new Error(result.error || t('Home Assistant authorization failed'));
     error.result = result;
     throw error;
   }

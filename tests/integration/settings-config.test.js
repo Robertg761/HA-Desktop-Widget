@@ -3491,4 +3491,141 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
     });
   });
+
+  describe('Settings translations', () => {
+    const i18n = require('../../src/i18n.js');
+    const GERMAN = {
+      'Set Card {{index}}': 'Karte {{index}} setzen',
+      'Card {{index}} ✓': 'Karte {{index}} ✓',
+      'Weather (default)': 'Wetter (Standard)',
+      'Time (default)': 'Uhrzeit (Standard)',
+      'Status: {{state}} | Last sync: {{time}}': 'Status: {{state}} | Letzte Sync: {{time}}',
+      'Profile sync: success': 'erfolgreich',
+      never: 'nie',
+      '1 custom icon configured.': '1 eigenes Symbol festgelegt.',
+      '{{count}} custom icons configured.': '{{count}} eigene Symbole festgelegt.',
+      'All custom icons cleared. Click Save to persist changes.':
+        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
+      'Remove Alert': 'Warnung entfernen',
+      'Remove alert for "{{name}}"?': 'Warnung für „{{name}}“ entfernen?',
+      Remove: 'Entfernen',
+      'Profile sync upload complete.': 'Profil-Upload abgeschlossen.',
+      'Color Options (Accent)': 'Farboptionen (Akzent)',
+    };
+
+    beforeEach(() => {
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+    });
+
+    afterEach(() => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    });
+
+    test('renders the Primary Cards picker and summary in the active language', async () => {
+      await settings.openSettings();
+      const toggle = document.getElementById('primary-cards-toggle');
+      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+
+      expect(document.getElementById('primary-card-1-current').textContent).toBe(
+        'Wetter (Standard)'
+      );
+      expect(document.getElementById('primary-card-2-current').textContent).toBe(
+        'Uhrzeit (Standard)'
+      );
+      const assignButtons = [
+        ...document.querySelectorAll('#primary-cards-list [data-primary-assign]'),
+      ].map((button) => button.textContent);
+      expect(assignButtons).toContain('Karte 1 setzen');
+      expect(assignButtons).toContain('Karte 2 setzen');
+      expect(assignButtons.some((label) => label.includes('Set Card'))).toBe(false);
+
+      document.querySelector('#primary-cards-list [data-primary-assign="0"]').click();
+      const cardOneLabels = [
+        ...document.querySelectorAll('#primary-cards-list [data-primary-assign="0"]'),
+      ].map((button) => button.textContent);
+      expect(cardOneLabels).toContain('Karte 1 ✓');
+      expect(document.getElementById('theme-options-label').textContent).toBe(
+        'Farboptionen (Akzent)'
+      );
+    });
+
+    test('re-renders script-written Settings text when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡', 'light.bedroom': '🛏️' };
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'success', lastSyncAt: null })
+      );
+      await settings.openSettings();
+      const status = document.getElementById('profile-sync-status');
+      const summary = document.getElementById('custom-entity-icons-summary');
+      expect(status.textContent).toBe('Status: success | Last sync: never');
+      expect(summary.textContent).toBe('2 custom icons configured.');
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      // The locale observer runs as a microtask after <html lang> changes.
+      await Promise.resolve();
+
+      expect(status.textContent).toBe('Status: erfolgreich | Letzte Sync: nie');
+      expect(summary.textContent).toBe('2 eigene Symbole festgelegt.');
+      expect(document.getElementById('primary-card-1-current').textContent).toBe(
+        'Wetter (Standard)'
+      );
+    });
+
+    test('translates the profile sync status line', () => {
+      settings.handleProfileSyncStatusUpdate(
+        buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'success', lastSyncAt: null })
+      );
+      expect(document.getElementById('profile-sync-status').textContent).toBe(
+        'Status: erfolgreich | Letzte Sync: nie'
+      );
+    });
+
+    test('uses singular and plural custom icon counts', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡' };
+      await settings.openSettings();
+      const summary = document.getElementById('custom-entity-icons-summary');
+      expect(summary.textContent).toBe('1 eigenes Symbol festgelegt.');
+
+      settings.closeSettings();
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡', 'light.bedroom': '🛏️' };
+      await settings.openSettings();
+      expect(summary.textContent).toBe('2 eigene Symbole festgelegt.');
+    });
+
+    test('passes translated text to toasts and confirmations', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      document.getElementById('custom-entity-icons-reset-all').click();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
+        'info',
+        2400
+      );
+
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      state.CONFIG.entityAlerts = {
+        enabled: true,
+        alerts: { 'light.living_room': { onStateChange: true } },
+      };
+      const alertsList = document.getElementById('inline-alerts-list');
+      settings.renderAlertsListInline();
+      alertsList.querySelector('.remove-alert').click();
+      await Promise.resolve();
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        'Warnung entfernen',
+        'Warnung für „Living Room Light“ entfernen?',
+        expect.objectContaining({ confirmText: 'Entfernen' })
+      );
+      expect(alertsList.querySelector('.remove-alert').textContent).toBe('Entfernen');
+
+      mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+      document.getElementById('profile-sync-push-now').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Profil-Upload abgeschlossen.',
+        'success',
+        2200
+      );
+    });
+  });
 });

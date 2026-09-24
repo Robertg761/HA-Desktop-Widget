@@ -70,6 +70,10 @@ jest.mock('../../src/utils.js', () => ({
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
   }),
+  getLocalizedStateName: jest.fn((value) => {
+    const text = String(value || '');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }),
 }));
 
 // Mock WebSocket
@@ -1572,6 +1576,19 @@ describe('Camera Module', () => {
 
       expect(cameraInfo.textContent).toContain('Status:');
       expect(cameraInfo.textContent).toContain('Last Updated:');
+    });
+
+    it('names the streaming camera state in the active language', () => {
+      const i18n = require('../../src/i18n.js');
+      try {
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { Streaming: 'Überträgt' } });
+        mockState.STATES['camera.front_door'].state = 'streaming';
+        camera.openCamera('camera.front_door');
+        const info = document.querySelector('.camera-modal .camera-info');
+        expect(info.textContent).toContain('Überträgt');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
   });
 

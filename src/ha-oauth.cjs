@@ -69,8 +69,19 @@ function statesMatch(expected, received) {
   );
 }
 
+function escapeCallbackPageText(value) {
+  return String(value).replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]
+  );
+}
+
+// Title and message are already translated; language packs are downloaded data, so escape them.
 function sendCallbackPage(response, statusCode, title, message) {
-  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${title}</title></head><body style="font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem"><h1>${title}</h1><p>${message}</p></body></html>`;
+  const safeTitle = escapeCallbackPageText(title);
+  const safeMessage = escapeCallbackPageText(message);
+  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${safeTitle}</title></head><body style="font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem"><h1>${safeTitle}</h1><p>${safeMessage}</p></body></html>`;
   response.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -88,6 +99,8 @@ async function authorizeWithLoopback({
   timeoutMs = OAUTH_PAIRING_TIMEOUT_MS,
   createServer = http.createServer,
   randomBytes = nodeCrypto.randomBytes,
+  // Translates the browser pages shown after Home Assistant redirects back to the app.
+  translate: t = (text) => text,
 }) {
   const normalizedBaseUrl = normalizeHomeAssistantBaseUrl(baseUrl);
   if (!normalizedBaseUrl) {
@@ -134,7 +147,7 @@ async function authorizeWithLoopback({
       return;
     }
     if (settled) {
-      sendCallbackPage(response, 409, 'Authorization already handled', 'Return to the app.');
+      sendCallbackPage(response, 409, t('Authorization already handled'), t('Return to the app.'));
       return;
     }
 
@@ -144,8 +157,8 @@ async function authorizeWithLoopback({
       sendCallbackPage(
         response,
         400,
-        'Authorization rejected',
-        'The authorization state did not match. Return to the app and try again.'
+        t('Authorization rejected'),
+        t('The authorization state did not match. Return to the app and try again.')
       );
       rejectCallback(
         createOAuthError('Home Assistant returned an invalid OAuth state', 'OAUTH_STATE_MISMATCH')
@@ -161,7 +174,12 @@ async function authorizeWithLoopback({
       .trim()
       .slice(0, 512);
     if (oauthError) {
-      sendCallbackPage(response, 400, 'Authorization declined', 'Return to the app to try again.');
+      sendCallbackPage(
+        response,
+        400,
+        t('Authorization declined'),
+        t('Return to the app to try again.')
+      );
       rejectCallback(createOAuthError(oauthError, 'OAUTH_AUTHORIZATION_DECLINED'));
       return;
     }
@@ -171,8 +189,8 @@ async function authorizeWithLoopback({
       sendCallbackPage(
         response,
         400,
-        'Authorization incomplete',
-        'Home Assistant did not return a valid authorization code.'
+        t('Authorization incomplete'),
+        t('Home Assistant did not return a valid authorization code.')
       );
       rejectCallback(
         createOAuthError(
@@ -186,8 +204,8 @@ async function authorizeWithLoopback({
     sendCallbackPage(
       response,
       200,
-      'HA Desktop Widget connected',
-      'You can close this browser tab and return to the desktop app.'
+      t('HA Desktop Widget connected'),
+      t('You can close this browser tab and return to the desktop app.')
     );
     settleCallback(code);
   });
@@ -427,6 +445,7 @@ class HomeAssistantOAuthClient {
     probeServer = null,
     now = Date.now,
     log = console,
+    translate = (text) => text,
   }) {
     this.safeStorage = safeStorage;
     this.platform = platform;
@@ -437,6 +456,7 @@ class HomeAssistantOAuthClient {
     this.probeServer = probeServer;
     this.now = now;
     this.log = log;
+    this.translate = translate;
     this.credentialsPath = path.join(userDataPath, OAUTH_CREDENTIALS_FILE);
     this.session = null;
     this.refreshPromise = null;
@@ -598,6 +618,7 @@ class HomeAssistantOAuthClient {
         baseUrl,
         signal: controller.signal,
         openExternal: this.openExternal,
+        translate: this.translate,
         exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
           const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
             grant_type: 'authorization_code',

@@ -67,6 +67,43 @@ export function formatDateTime(date, options = {}) {
   return value.toLocaleString(localeState.activeLocale || undefined, options);
 }
 
+const numberFormatCache = new Map();
+
+// Formats a number for display in the active language ("15,6" in German). Inputs, slider values
+// and anything sent to Home Assistant keep plain machine numbers; only use this for visible text.
+export function formatNumber(value, options = {}) {
+  const number = typeof value === 'number' ? value : Number(value);
+  if (value == null || value === '' || !Number.isFinite(number)) {
+    return value == null ? '' : String(value);
+  }
+  const locale = localeState.activeLocale || 'en';
+  const cacheKey = `${locale}|${JSON.stringify(options)}`;
+  let formatter = numberFormatCache.get(cacheKey);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(locale, options);
+    } catch {
+      formatter = new Intl.NumberFormat('en', options);
+    }
+    numberFormatCache.set(cacheKey, formatter);
+  }
+  return formatter.format(number);
+}
+
+// Formats a numeric state string from Home Assistant ("15.60") in the active language while
+// keeping exactly the decimals Home Assistant sent. Non-numeric text and codes with leading
+// zeros ("007") are returned unchanged.
+export function formatNumericState(value) {
+  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : '';
+  const match = /^\s*-?(?:0|[1-9]\d*)(?:\.(\d+))?\s*$/.exec(text);
+  if (!match) return value == null ? '' : String(value);
+  const decimals = Math.min(match[1]?.length || 0, 20);
+  return formatNumber(Number(text), {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 export function getLanguageDisplayName(locale, fallback = '') {
   try {
     if (!locale) return fallback || '';

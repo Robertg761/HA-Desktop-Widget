@@ -39,41 +39,42 @@ function initializeHotkeys() {
   }
 }
 
+// Labels are translated here because the options are rebuilt on every render.
 function getActionOptionsForDomain(domain) {
   const options = {
     light: [
-      { value: 'toggle', label: 'Toggle' },
-      { value: 'turn_on', label: 'Turn On' },
-      { value: 'turn_off', label: 'Turn Off' },
-      { value: 'brightness_up', label: 'Brightness Up' },
-      { value: 'brightness_down', label: 'Brightness Down' },
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Turn On') },
+      { value: 'turn_off', label: t('Turn Off') },
+      { value: 'brightness_up', label: t('Brightness Up') },
+      { value: 'brightness_down', label: t('Brightness Down') },
     ],
     switch: [
-      { value: 'toggle', label: 'Toggle' },
-      { value: 'turn_on', label: 'Turn On' },
-      { value: 'turn_off', label: 'Turn Off' },
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Turn On') },
+      { value: 'turn_off', label: t('Turn Off') },
     ],
-    scene: [{ value: 'turn_on', label: 'Activate' }],
-    script: [{ value: 'turn_on', label: 'Run' }],
+    scene: [{ value: 'turn_on', label: t('Activate') }],
+    script: [{ value: 'turn_on', label: t('Run') }],
     automation: [
-      { value: 'trigger', label: 'Trigger' },
-      { value: 'toggle', label: 'Toggle' },
-      { value: 'turn_on', label: 'Enable' },
-      { value: 'turn_off', label: 'Disable' },
+      { value: 'trigger', label: t('Trigger') },
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Enable') },
+      { value: 'turn_off', label: t('Disable') },
     ],
-    button: [{ value: 'press', label: 'Press' }],
-    input_button: [{ value: 'press', label: 'Press' }],
+    button: [{ value: 'press', label: t('Press') }],
+    input_button: [{ value: 'press', label: t('Press') }],
     input_boolean: [
-      { value: 'toggle', label: 'Toggle' },
-      { value: 'turn_on', label: 'Turn On' },
-      { value: 'turn_off', label: 'Turn Off' },
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Turn On') },
+      { value: 'turn_off', label: t('Turn Off') },
     ],
     fan: [
-      { value: 'toggle', label: 'Toggle' },
-      { value: 'turn_on', label: 'Turn On' },
-      { value: 'turn_off', label: 'Turn Off' },
-      { value: 'increase_speed', label: 'Increase Speed' },
-      { value: 'decrease_speed', label: 'Decrease Speed' },
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Turn On') },
+      { value: 'turn_off', label: t('Turn Off') },
+      { value: 'increase_speed', label: t('Increase Speed') },
+      { value: 'decrease_speed', label: t('Decrease Speed') },
     ],
   };
 
@@ -174,7 +175,7 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     const entity = state.STATES?.[entityId];
     if (!entity) {
       showToast(t('Entity not found'), 'error', 2500);
-      return { success: false, error: 'Entity not found' };
+      return { success: false, error: t('Entity not found') };
     }
 
     if (!state.CONFIG.globalHotkeys) {
@@ -382,7 +383,7 @@ function renderExistingHotkeys() {
       item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <span class="hotkey-display">${hotkeyDisplay}</span>
-                <button class="btn-remove-hotkey" data-entity-id="${escapedEntityId}">Remove</button>
+                <button class="btn-remove-hotkey" data-entity-id="${escapedEntityId}">${escapeHtml(t('Remove'))}</button>
             `;
       container.appendChild(item);
     });
@@ -474,7 +475,7 @@ function setupHotkeyEventListenersInternal() {
           try {
             const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
             if (!updatedConfig?.homeAssistant) {
-              throw new Error(updatedConfig?.error || 'Failed to save hotkey action');
+              throw new Error(updatedConfig?.error || t('Failed to save hotkey action'));
             }
             state.setConfig(updatedConfig);
             updatePersisted = true;
@@ -482,29 +483,29 @@ function setupHotkeyEventListenersInternal() {
             const registrationResult = await window.electronAPI.registerHotkeys();
             if (registrationResult?.success === false) {
               throw new Error(
-                registrationResult.error || 'Failed to activate the updated hotkey action'
+                registrationResult.error || t('Failed to activate the updated hotkey action')
               );
             }
 
-            showToast(`Action updated to: ${actionLabel}`, 'success', 2000);
+            showToast(t('Action updated to: {{action}}', { action: actionLabel }), 'success', 2000);
           } catch (error) {
-            let failureMessage = error?.message || 'Failed to update hotkey action';
+            let failureMessage = error?.message || t('Failed to update hotkey action');
             if (updatePersisted) {
               try {
                 const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
                 if (!restoredConfig?.homeAssistant) {
-                  throw new Error(restoredConfig?.error || 'Failed to restore hotkey action');
+                  throw new Error(restoredConfig?.error || t('Failed to restore hotkey action'));
                 }
                 state.setConfig(restoredConfig);
                 const rollbackRegistration = await window.electronAPI.registerHotkeys();
                 if (rollbackRegistration?.success === false) {
                   throw new Error(
                     rollbackRegistration.error ||
-                      'The previous hotkey action was restored, but its runtime binding was not'
+                      t('The previous hotkey action was restored, but its runtime binding was not')
                   );
                 }
               } catch (rollbackError) {
-                failureMessage = `${failureMessage}. ${rollbackError?.message || 'Rollback failed'}`;
+                failureMessage = `${failureMessage}. ${rollbackError?.message || t('Rollback failed')}`;
               }
             }
             renderHotkeysTab();

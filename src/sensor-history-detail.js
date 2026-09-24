@@ -1,4 +1,4 @@
-import { formatDateTime, t } from './i18n.js';
+import { formatDateTime, formatNumber, t } from './i18n.js';
 
 function summarizeHistory(series) {
   const values = series.map((point) => point.value).filter(Number.isFinite);
@@ -90,8 +90,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         dates.textContent = '';
         return;
       }
-      const format = (value) =>
-        new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+      const format = (value) => formatNumber(value, { maximumFractionDigits: 2 });
       const unit = entity.attributes?.unit_of_measurement;
       status.textContent =
         t('Minimum {{min}} · Maximum {{max}} · Sample average {{average}}', {

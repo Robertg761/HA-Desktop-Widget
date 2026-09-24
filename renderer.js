@@ -1388,9 +1388,9 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
   if (now - lastTokenPersistenceWarningAt < 5000) return;
   lastTokenPersistenceWarningAt = now;
   uiUtils.showToast(
-    `${t('Your Home Assistant token needs to be re-entered. ')}${t(
-      'Token encryption is not available on this system.'
-    )}`,
+    t(
+      'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
+    ),
     'warning',
     20000
   );
@@ -1553,6 +1553,10 @@ function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
+    // The edit-mode hint is drawn by CSS from this attribute so it follows the language.
+    document
+      .getElementById('desktop-pin-content')
+      ?.setAttribute('data-edit-hint', t('Drag or resize'));
     document.body.classList.toggle(
       'desktop-pin-compositor-placement',
       !desktopPinSupportsWindowPositioning
@@ -1571,7 +1575,12 @@ async function handleDesktopPinUpdate(message = {}) {
   try {
     if (!IS_DESKTOP_PIN_MODE) return;
     if (message.config?.homeAssistant) {
+      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
       applyRendererConfig(message.config);
+      // Pins get config through this message, not config-updated, so follow a language change here.
+      if ((state.CONFIG?.ui?.language || 'auto') !== previousLanguage) {
+        await refreshLocaleBootstrap();
+      }
     }
     if (message.connection && typeof message.connection === 'object') {
       applyDesktopPinConnectionState(message.connection);
@@ -2536,15 +2545,22 @@ async function init() {
       }
       delete state.CONFIG.tokenResetReason;
 
-      let message = t('Your Home Assistant token needs to be re-entered. ');
+      // One full sentence per reason, so translations never have to be pieced together.
+      let message = t(
+        'Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.'
+      );
       let detailMessage = '';
       if (reason === 'encryption_unavailable') {
-        message += t('Token encryption is not available on this system.');
+        message = t(
+          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.'
+        );
         detailMessage = t(
           'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.'
         );
       } else if (reason === 'decryption_failed') {
-        message += t('The stored token could not be decrypted.');
+        message = t(
+          'Your Home Assistant token needs to be re-entered. The stored token could not be decrypted. Click the gear icon to open Settings.'
+        );
         detailMessage = t(
           'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.'
         );
@@ -2554,7 +2570,7 @@ async function init() {
       log.info('[Init]', detailMessage);
 
       // Show prominent warning message with extended duration
-      uiUtils.showToast(message + t(' Click the gear icon to open Settings.'), 'warning', 20000);
+      uiUtils.showToast(message, 'warning', 20000);
     }
 
     if (!isConfigured(state.CONFIG)) {
@@ -2980,7 +2996,7 @@ function wireUI() {
         const target = e.target;
         if (target.classList.contains('hotkey-input')) {
           const entityId = target.dataset.entityId;
-          target.value = 'Recording...';
+          target.value = t('Recording...');
           const hotkey = await hotkeys.captureHotkey();
           if (hotkey) {
             // Get selected action from custom dropdown

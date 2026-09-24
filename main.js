@@ -914,6 +914,7 @@ const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   log,
   presenter: popupWindowPresenter,
   layerSurfaceMode: isLayerShellChildProcess,
+  translate: (key, vars) => mainT(key, vars),
 });
 const desktopPinWindows = new Map();
 const desktopPinContentMinBounds = new Map();
@@ -1065,6 +1066,27 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
 
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
+}
+
+// Shared helpers (profile-sync-core.js, src/cloud-sync-path.cjs,
+// src/profile-sync-rewrite-transaction.cjs) throw English messages that are also catalog
+// keys, so they are translated where they reach the renderer. Text without a catalog entry
+// (OS errors, text that is already translated) passes through unchanged.
+function mainTError(errorOrMessage) {
+  const message =
+    typeof errorOrMessage === 'string'
+      ? errorOrMessage
+      : errorOrMessage?.message || String(errorOrMessage ?? '');
+  return message ? mainT(message) : message;
+}
+
+// Hotkey changes roll back on failure; when the rollback fails as well, report both.
+function withRollbackWarning(message, rollbackWarning) {
+  if (!rollbackWarning) return message;
+  return mainT('{{error}}. Rollback failed: {{warning}}', {
+    error: message,
+    warning: rollbackWarning,
+  });
 }
 
 function finishSmokeTest(success, error = '') {
@@ -1744,13 +1766,13 @@ function normalizeDesktopPinActionError(error) {
       message:
         typeof error.message === 'string' && error.message.trim()
           ? error.message
-          : 'Desktop pin action failed',
+          : mainT('Desktop pin action failed'),
     };
   }
   if (typeof error === 'string' && error.trim()) {
     return { message: error };
   }
-  return { message: 'Desktop pin action failed' };
+  return { message: mainT('Desktop pin action failed') };
 }
 
 function normalizeDesktopPinActionResponse(response) {
@@ -1942,7 +1964,7 @@ async function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
       }
       return {
         success: false,
-        error: `Failed to save desktop pin size: ${persistence.error}`,
+        error: mainT('Failed to save desktop pin size: {{error}}', { error: persistence.error }),
       };
     }
     const runtimeWarnings = [];
@@ -2030,7 +2052,7 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   if (!favorites.has(normalizedEntityId)) {
     return {
       success: false,
-      error: 'Only Quick Access entities can be pinned in this version',
+      error: mainT('Only Quick Access entities can be pinned in this version'),
       supportProfile,
     };
   }
@@ -2053,7 +2075,7 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
     }
     return {
       success: false,
-      error: `Failed to save desktop pin: ${persistence.error}`,
+      error: mainT('Failed to save desktop pin: {{error}}', { error: persistence.error }),
       supportProfile,
     };
   }
@@ -2100,7 +2122,7 @@ async function unpinEntityFromDesktopInternal(entityId) {
     }
     return {
       success: false,
-      error: `Failed to save desktop pin removal: ${persistence.error}`,
+      error: mainT('Failed to save desktop pin removal: {{error}}', { error: persistence.error }),
     };
   }
   const runtimeWarnings = [];
@@ -2428,7 +2450,7 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
     config.desktopPins[normalizedEntityId] = previousBounds;
     return {
       success: false,
-      error: `Failed to save desktop pin position: ${persistence.error}`,
+      error: mainT('Failed to save desktop pin position: {{error}}', { error: persistence.error }),
       pinBounds: previousBounds,
     };
   }
@@ -2847,10 +2869,11 @@ function buildProfileSyncStatus(extra = {}) {
     rememberPassphrase: !!profileSync.rememberPassphrase,
     passphraseEncrypted: !!profileSync.passphraseEncrypted,
     passphraseStored: !!profileSync.storedPassphrase,
-    passphraseWarning: profileSyncRuntime.passphraseWarning || '',
+    // Stored messages may be English text from shared helpers or older versions.
+    passphraseWarning: mainTError(profileSyncRuntime.passphraseWarning || ''),
     lastSyncAt: profileSync.lastSyncAt || null,
     lastSyncStatus: profileSync.lastSyncStatus || 'idle',
-    lastSyncError: profileSync.lastSyncError || '',
+    lastSyncError: mainTError(profileSync.lastSyncError || ''),
     inFlight: !!profileSyncRuntime.inFlight,
     needsResolution:
       !!profileSyncRuntime.needsResolution || !!profileSync.firstEnableResolutionPending,
@@ -2930,8 +2953,9 @@ function decodeStoredProfileSyncPassphrase() {
 
   if (profileSync.passphraseEncrypted) {
     if (!safeStorage.isEncryptionAvailable()) {
-      profileSyncRuntime.passphraseWarning =
-        'Stored passphrase could not be decrypted on this system.';
+      profileSyncRuntime.passphraseWarning = mainT(
+        'Stored passphrase could not be decrypted on this system.'
+      );
       return '';
     }
     try {
@@ -2939,7 +2963,7 @@ function decodeStoredProfileSyncPassphrase() {
       return safeStorage.decryptString(encryptedBuffer);
     } catch (error) {
       log.warn('Failed to decrypt remembered profile sync passphrase:', error.message);
-      profileSyncRuntime.passphraseWarning = 'Stored passphrase could not be decrypted.';
+      profileSyncRuntime.passphraseWarning = mainT('Stored passphrase could not be decrypted.');
       return '';
     }
   }
@@ -2976,8 +3000,9 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
   profileSync.rememberPassphrase = false;
   profileSync.passphraseEncrypted = false;
   profileSync.storedPassphrase = '';
-  profileSyncRuntime.passphraseWarning =
-    'Passphrase will only be kept for this session because OS encryption is unavailable.';
+  profileSyncRuntime.passphraseWarning = mainT(
+    'Passphrase will only be kept for this session because OS encryption is unavailable.'
+  );
   return { remembered: false, encrypted: false };
 }
 
@@ -2995,7 +3020,7 @@ function getActiveProfileSyncPassphrase() {
 function sealProfileSyncTransitionSecret(secret) {
   if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
     throw new Error(
-      'Secure OS credential storage is required to change an active sync passphrase safely'
+      mainT('Secure OS credential storage is required to change an active sync passphrase safely')
     );
   }
   const encrypted = safeStorage.encryptString(typeof secret === 'string' ? secret : '');
@@ -3004,12 +3029,14 @@ function sealProfileSyncTransitionSecret(secret) {
 
 function unsealProfileSyncTransitionSecret(encryptedSecret) {
   if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
-    throw new Error('Secure OS credential storage is unavailable for pending sync-key recovery');
+    throw new Error(
+      mainT('Secure OS credential storage is unavailable for pending sync-key recovery')
+    );
   }
   try {
     return safeStorage.decryptString(Buffer.from(encryptedSecret, 'base64'));
   } catch {
-    throw new Error('Pending sync-key recovery credentials could not be decrypted');
+    throw new Error(mainT('Pending sync-key recovery credentials could not be decrypted'));
   }
 }
 
@@ -3048,7 +3075,9 @@ function assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig) {
     computeScopedProfileHash(localProfile, decodedRemote.syncScope)
   ) {
     throw new Error(
-      'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+      mainT(
+        'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+      )
     );
   }
 }
@@ -3066,10 +3095,12 @@ async function stageProfileSyncRewrite({
 }) {
   const profileSync = getProfileSyncConfig();
   if (profileSync.passphraseTransition) {
-    throw new Error('A sync-key rewrite is already pending recovery');
+    throw new Error(mainT('A sync-key rewrite is already pending recovery'));
   }
   if (!profileSync.enabled || !profileSync.cloudFilePath) {
-    throw new Error('Profile sync must have an active remote file before it can be rewritten');
+    throw new Error(
+      mainT('Profile sync must have an active remote file before it can be rewritten')
+    );
   }
 
   // Seal both credentials before either side changes. This is intentionally
@@ -3109,7 +3140,9 @@ async function stageProfileSyncRewrite({
     if (!persistence.success) {
       profileSync.passphraseTransition = previousTransition;
       profileSync.remoteRewritePending = previousRemoteRewritePending;
-      throw new Error(`Failed to stage sync-key recovery: ${persistence.error}`);
+      throw new Error(
+        mainT('Failed to stage sync-key recovery: {{error}}', { error: persistence.error })
+      );
     }
   });
   return transaction;
@@ -3129,7 +3162,9 @@ async function executePendingProfileSyncRewrite() {
     )
   ) {
     throw new Error(
-      'The sync provider or file changed during key recovery. Restore the original target before retrying.'
+      mainT(
+        'The sync provider or file changed during key recovery. Restore the original target before retrying.'
+      )
     );
   }
 
@@ -3222,7 +3257,10 @@ async function executePendingProfileSyncRewrite() {
           profileSync.profileUpdatedAt = previous.profileUpdatedAt;
           profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
           const error = new Error(
-            `The remote rewrite committed, but local key promotion could not be saved: ${persistence.error}`
+            mainT(
+              'The remote rewrite committed, but local key promotion could not be saved: {{error}}',
+              { error: persistence.error }
+            )
           );
           error.remoteRewriteCommitted = true;
           throw error;
@@ -3254,10 +3292,10 @@ async function readCloudFileEnvelope(filePath) {
   try {
     const stats = await fs.promises.stat(filePath);
     if (!stats.isFile()) {
-      throw new Error('Selected sync path is not a file');
+      throw new Error(mainT('Selected sync path is not a file'));
     }
     if (stats.size > PROFILE_SYNC_MAX_FILE_BYTES) {
-      throw new Error('Sync file exceeds size limit (512 KB)');
+      throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
     }
     const raw = await fs.promises.readFile(filePath, 'utf8');
     const envelope = profileSyncCore.parseSyncEnvelope(raw);
@@ -3273,7 +3311,7 @@ async function readCloudFileEnvelope(filePath) {
 
 async function writeCloudFileEnvelope(filePath, envelope) {
   if (!filePath) {
-    throw new Error('Sync file path is not configured');
+    throw new Error(mainT('Sync file path is not configured'));
   }
   const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
   await requireExistingSyncParentDirectory(filePath, fs);
@@ -3321,7 +3359,7 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
     }
 
     if (!sourceStats.isFile()) {
-      return { ok: false, status: 'error', error: 'Source sync file is not a file' };
+      return { ok: false, status: 'error', error: mainT('Source sync file is not a file') };
     }
 
     await requireExistingSyncParentDirectory(destinationPath, fs);
@@ -3336,7 +3374,7 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
       throw error;
     }
   } catch (error) {
-    return { ok: false, status: 'error', error: error?.message || String(error) };
+    return { ok: false, status: 'error', error: mainTError(error) };
   }
 }
 
@@ -3443,7 +3481,7 @@ async function buildLocalProfileEnvelope(
   const encrypt = !!profileSync.encryptionEnabled;
   const passphrase = getActiveProfileSyncPassphrase();
   if (encrypt && !passphrase) {
-    throw new Error('A passphrase is required to sync encrypted profiles');
+    throw new Error(mainT('A passphrase is required to sync encrypted profiles'));
   }
   return profileSyncCore.buildSyncEnvelope({
     profile,
@@ -3481,7 +3519,9 @@ async function backupLocalProfileBeforePullApply(syncScope) {
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
     throw new Error(
-      `Remote profile was not applied because the local backup failed: ${error?.message || String(error)}`
+      mainT('Remote profile was not applied because the local backup failed: {{error}}', {
+        error: error?.message || String(error),
+      })
     );
   }
 
@@ -3547,7 +3587,9 @@ async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeVal
     config = previous;
     Object.assign(profileSyncRuntime, previousRuntimeTracking);
     preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
-    throw new Error(`Failed to persist pulled profile: ${persistence.error}`);
+    throw new Error(
+      mainT('Failed to persist pulled profile: {{error}}', { error: persistence.error })
+    );
   }
 
   const runtimeWarnings = [];
@@ -3897,7 +3939,12 @@ function loadConfig(options = {}) {
       try {
         serializedConfig = fs.readFileSync(configPath, 'utf8');
       } catch (error) {
-        configWriteBlockedReason = `The existing config could not be read safely: ${error?.message || String(error)}`;
+        configWriteBlockedReason = mainT(
+          'The existing config could not be read safely: {{error}}',
+          {
+            error: error?.message || String(error),
+          }
+        );
         lastConfigWriteError = configWriteBlockedReason;
         configRecoveryNotice = {
           recovered: false,
@@ -3937,7 +3984,10 @@ function loadConfig(options = {}) {
             error: persisted.success ? '' : persisted.error,
           };
         } else {
-          lastConfigWriteError = `The existing config is invalid and could not be moved aside: ${recovery.error}`;
+          lastConfigWriteError = mainT(
+            'The existing config is invalid and could not be moved aside: {{error}}',
+            { error: recovery.error }
+          );
           configWriteBlockedReason = lastConfigWriteError;
           configRecoveryNotice = {
             recovered: false,
@@ -4168,7 +4218,10 @@ function loadConfig(options = {}) {
   } catch (error) {
     log.error('Error loading config:', error);
     if (!configWriteBlockedReason && fs.existsSync(configPath)) {
-      configWriteBlockedReason = `The existing config could not be normalized safely: ${error?.message || String(error)}`;
+      configWriteBlockedReason = mainT(
+        'The existing config could not be normalized safely: {{error}}',
+        { error: error?.message || String(error) }
+      );
       lastConfigWriteError = configWriteBlockedReason;
       configRecoveryNotice = {
         recovered: false,
@@ -4505,7 +4558,7 @@ function buildConfigSnapshotForSave() {
 async function writeConfigSnapshotAsync(snapshot) {
   try {
     if (shouldBlockPotentialConfigClobber(snapshot)) {
-      throw new Error(configWriteBlockedReason || 'Configuration writes are blocked');
+      throw new Error(configWriteBlockedReason || mainT('Configuration writes are blocked'));
     }
     await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
     await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
@@ -4810,7 +4863,7 @@ async function prepareProfileSyncFirstEnableResolution() {
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   updateProfileSyncStatus(
     'needs_resolution',
-    'Choose how to resolve initial profile sync conflict.'
+    mainT('Choose how to resolve initial profile sync conflict.')
   );
   emitProfileSyncStatus();
   return { needsResolution: true };
@@ -4838,7 +4891,9 @@ async function prepareRemoteRewriteBaseline(passphrase, baselineConfig = config)
       computeScopedProfileHash(localProfile, syncScope)
     ) {
       throw new Error(
-        'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+        mainT(
+          'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+        )
       );
     }
   }
@@ -4848,7 +4903,9 @@ async function prepareRemoteRewriteBaseline(passphrase, baselineConfig = config)
 async function verifyPendingRemoteEnvelopeUnchanged() {
   const expectedIdentity = profileSyncRuntime.pendingRemoteIdentity;
   if (!expectedIdentity) {
-    throw new Error('The pending profile conflict is no longer available; retry conflict check');
+    throw new Error(
+      mainT('The pending profile conflict is no longer available; retry conflict check')
+    );
   }
   const currentResult = await readConfiguredSyncEnvelope();
   const currentIdentity = getSyncEnvelopeIdentity(currentResult);
@@ -4858,10 +4915,12 @@ async function verifyPendingRemoteEnvelopeUnchanged() {
     profileSyncRuntime.needsResolution = true;
     updateProfileSyncStatus(
       'needs_resolution',
-      'The remote profile changed while waiting for a choice. Review it and choose again.'
+      mainT('The remote profile changed while waiting for a choice. Review it and choose again.')
     );
     emitProfileSyncStatus();
-    const error = new Error('The remote profile changed while waiting for conflict resolution');
+    const error = new Error(
+      mainT('The remote profile changed while waiting for conflict resolution')
+    );
     error.remoteConflictRefreshed = true;
     throw error;
   }
@@ -4878,7 +4937,9 @@ async function clearProfileSyncFirstEnableResolutionPending() {
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
     profileSync.firstEnableResolutionPending = true;
-    throw new Error(`Failed to save profile sync conflict check: ${persistence.error}`);
+    throw new Error(
+      mainT('Failed to save profile sync conflict check: {{error}}', { error: persistence.error })
+    );
   }
   return persistence;
 }
@@ -4895,7 +4956,9 @@ async function completeProfileSyncFirstEnablePreparation(source) {
   const expectedRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
   const result = await runProfileSyncInternal('push', source, { expectedRemoteIdentity });
   if (result?.ok !== true || result?.reason === 'remote_changed') {
-    throw new Error(result?.error || result?.reason || 'Initial profile sync did not complete');
+    throw new Error(
+      result?.error || result?.reason || mainT('Initial profile sync did not complete')
+    );
   }
   await clearProfileSyncFirstEnableResolutionPending();
   profileSyncRuntime.needsResolution = false;
@@ -4947,7 +5010,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     throw new Error('Unsupported profile sync provider');
   }
   if (!profileSync.cloudFilePath) {
-    throw new Error('Profile sync file is not configured');
+    throw new Error(mainT('Profile sync file is not configured'));
   }
   if (profileSync.passphraseTransition) {
     if (source === 'manual' || source === 'startup_rewrite_recovery') {
@@ -5014,7 +5077,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       profileSyncRuntime.needsResolution = false;
       profileSyncRuntime.pendingRemoteEnvelope = remoteResult.envelope;
       profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(remoteResult);
-      const error = new Error('The remote profile changed before the initial sync could complete');
+      const error = new Error(
+        mainT('The remote profile changed before the initial sync could complete')
+      );
       error.remoteChangedBeforeResolution = true;
       error.remoteConflictRefreshed = true;
       throw error;
@@ -5077,7 +5142,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
         log.info('Remote sync file changed while preparing a push; re-resolving direction');
         if (source === 'conflict_recheck') {
-          throw new Error('Sync file kept changing on the other device; try again');
+          throw new Error(mainT('Sync file kept changing on the other device; try again'));
         }
         void runProfileSync('auto', 'conflict_recheck');
         const status = buildProfileSyncStatus();
@@ -5111,7 +5176,10 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           profileSyncRuntime.passphraseSession = previousCredential.passphraseSession;
           profileSyncRuntime.passphraseWarning = previousCredential.passphraseWarning;
           const markerError = new Error(
-            `Remote profile was rewritten, but the local completion marker could not be saved: ${markerPersistence.error}`
+            mainT(
+              'Remote profile was rewritten, but the local completion marker could not be saved: {{error}}',
+              { error: markerPersistence.error }
+            )
           );
           markerError.remoteRewriteCommitted = true;
           throw markerError;
@@ -5346,6 +5414,7 @@ function createWindow() {
   forwardRendererConsole(mainWindow.webContents, 'renderer');
   attachEditHandlers(mainWindow, Menu, process.platform, {
     suspendAutoHide: () => windowAutoHide.suspend(),
+    translate: (key) => mainT(key),
   });
 
   // Transparent windows use renderer CSS surface opacity; opaque fallback
@@ -6106,7 +6175,7 @@ ipcMain.handle(
       Object.assign(profileSyncRuntime, previousRuntimeTracking);
       return {
         success: false,
-        error: `Failed to save entity replacement: ${persistence.error}`,
+        error: mainT('Failed to save entity replacement: {{error}}', { error: persistence.error }),
         config: sanitizeConfigForRenderer(config),
       };
     }
@@ -6228,8 +6297,9 @@ ipcMain.handle(
     ) {
       return {
         success: false,
-        error:
-          'Finish the pending sync-key recovery before changing the sync target or encryption setting',
+        error: mainT(
+          'Finish the pending sync-key recovery before changing the sync target or encryption setting'
+        ),
         config: sanitizeConfigForRenderer(config),
       };
     }
@@ -6322,7 +6392,7 @@ ipcMain.handle(
       log.error('Configuration update was not persisted:', persistence.error);
       return {
         success: false,
-        error: `Failed to save settings: ${persistence.error}`,
+        error: mainT('Failed to save settings: {{error}}', { error: persistence.error }),
         config: sanitizeConfigForRenderer(config),
       };
     }
@@ -6431,7 +6501,9 @@ ipcMain.handle(
         config.tokenResetReason = previousReason;
         return {
           success: false,
-          error: `Failed to save token recovery acknowledgement: ${persistence.error}`,
+          error: mainT('Failed to save token recovery acknowledgement: {{error}}', {
+            error: persistence.error,
+          }),
           config: sanitizeConfigForRenderer(config),
         };
       }
@@ -6461,6 +6533,8 @@ function getHomeAssistantOAuthClient() {
       userDataPath: app.getPath('userData'),
       openExternal: (url) => shell.openExternal(url),
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
+      // The browser pages shown after Home Assistant redirects back to the app.
+      translate: (key) => mainT(key),
       probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,
@@ -7119,7 +7193,7 @@ ipcMain.handle(
       }
       return {
         success: false,
-        error: `Failed to save window opacity: ${persistence.error}`,
+        error: mainT('Failed to save window opacity: {{error}}', { error: persistence.error }),
       };
     }
     return { success: true, opacity: safeOpacity };
@@ -7182,7 +7256,9 @@ ipcMain.handle(
       }
       return {
         success: false,
-        error: `Failed to save always-on-top setting: ${persistence.error}`,
+        error: mainT('Failed to save always-on-top setting: {{error}}', {
+          error: persistence.error,
+        }),
         applied: false,
       };
     }
@@ -7359,7 +7435,7 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
     const normalizedDirection = allowedDirections.has(direction) ? direction : 'auto';
     return await runProfileSync(normalizedDirection, 'manual');
   } catch (error) {
-    return { ok: false, error: error.message, status: buildProfileSyncStatus() };
+    return { ok: false, error: mainTError(error), status: buildProfileSyncStatus() };
   }
 });
 
@@ -7377,7 +7453,9 @@ ipcMain.handle(
         ) {
           return {
             success: false,
-            error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+            error: mainT('Passphrase must be at least {{count}} characters long', {
+              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+            }),
           };
         }
         const profileSync = getProfileSyncConfig();
@@ -7388,7 +7466,10 @@ ipcMain.handle(
           } catch (error) {
             return {
               success: false,
-              error: `Finish the pending sync-key recovery before changing the passphrase: ${error?.message || String(error)}`,
+              error: mainT(
+                'Finish the pending sync-key recovery before changing the passphrase: {{error}}',
+                { error: mainTError(error) }
+              ),
               status: buildProfileSyncStatus(),
             };
           }
@@ -7405,7 +7486,9 @@ ipcMain.handle(
         if (targetEncryptionEnabled && !effectiveNewPassphrase) {
           return {
             success: false,
-            error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+            error: mainT('Passphrase must be at least {{count}} characters long', {
+              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+            }),
             status: buildProfileSyncStatus(),
           };
         }
@@ -7429,7 +7512,9 @@ ipcMain.handle(
             profileSync.encryptionChangePending = previousPendingTarget;
             return {
               success: false,
-              error: `Failed to cancel the pending encryption change: ${cancellationPersistence.error}`,
+              error: mainT('Failed to cancel the pending encryption change: {{error}}', {
+                error: cancellationPersistence.error,
+              }),
               status: buildProfileSyncStatus(),
             };
           }
@@ -7464,7 +7549,9 @@ ipcMain.handle(
           if (profileSync.encryptionEnabled && !oldPassphrase) {
             return {
               success: false,
-              error: 'Enter the current remote passphrase before disabling profile encryption',
+              error: mainT(
+                'Enter the current remote passphrase before disabling profile encryption'
+              ),
               status: buildProfileSyncStatus(),
             };
           }
@@ -7503,7 +7590,9 @@ ipcMain.handle(
               const persistence = await saveConfigDurably({ allowDebouncedPush: false });
               if (!persistence.success) {
                 throw new Error(
-                  `Failed to save the requested encryption mode: ${persistence.error}`
+                  mainT('Failed to save the requested encryption mode: {{error}}', {
+                    error: persistence.error,
+                  })
                 );
               }
               localEncryptionCommitPersisted = true;
@@ -7525,7 +7614,7 @@ ipcMain.handle(
                   throw new Error(
                     createResult?.error ||
                       createResult?.reason ||
-                      'The missing remote profile could not be created'
+                      mainT('The missing remote profile could not be created')
                   );
                 }
                 setupProfileSyncInterval();
@@ -7585,7 +7674,9 @@ ipcMain.handle(
             emitProfileSyncStatus();
             return {
               success: false,
-              error: `Cannot change profile encryption safely: ${error?.message || String(error)}`,
+              error: mainT('Cannot change profile encryption safely: {{error}}', {
+                error: mainTError(error),
+              }),
               status: buildProfileSyncStatus(),
               config: sanitizeConfigForRenderer(config),
             };
@@ -7642,7 +7733,9 @@ ipcMain.handle(
             emitProfileSyncStatus();
             return {
               success: false,
-              error: `Cannot change the sync passphrase safely: ${error?.message || String(error)}`,
+              error: mainT('Cannot change the sync passphrase safely: {{error}}', {
+                error: mainTError(error),
+              }),
               status: buildProfileSyncStatus(),
               config: sanitizeConfigForRenderer(config),
             };
@@ -7652,8 +7745,9 @@ ipcMain.handle(
         if (passphraseSubmission === 'reject') {
           return {
             success: false,
-            error:
-              'That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.',
+            error: mainT(
+              'That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.'
+            ),
             status: buildProfileSyncStatus(),
           };
         }
@@ -7682,7 +7776,7 @@ ipcMain.handle(
           emitProfileSyncStatus();
           return {
             success: false,
-            error: `Failed to save sync passphrase: ${persistence.error}`,
+            error: mainT('Failed to save sync passphrase: {{error}}', { error: persistence.error }),
             status: buildProfileSyncStatus(),
           };
         }
@@ -7700,7 +7794,7 @@ ipcMain.handle(
           }
         } catch (error) {
           clearProfileSyncTimers();
-          resolutionWarning = error?.message || String(error);
+          resolutionWarning = mainTError(error);
           updateProfileSyncStatus('error', resolutionWarning);
         }
         emitProfileSyncStatus();
@@ -7712,7 +7806,7 @@ ipcMain.handle(
           config: sanitizeConfigForRenderer(config),
         };
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: mainTError(error) };
       }
     }
   )
@@ -7727,8 +7821,9 @@ ipcMain.handle(
     if (hasProfileSyncCredentialTransitionPending(profileSync)) {
       return {
         success: false,
-        error:
-          'The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds',
+        error: mainT(
+          'The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds'
+        ),
         status: buildProfileSyncStatus(),
       };
     }
@@ -7754,7 +7849,7 @@ ipcMain.handle(
       emitProfileSyncStatus();
       return {
         success: false,
-        error: `Failed to clear sync passphrase: ${persistence.error}`,
+        error: mainT('Failed to clear sync passphrase: {{error}}', { error: persistence.error }),
         status: buildProfileSyncStatus(),
       };
     }
@@ -7782,7 +7877,9 @@ ipcMain.handle(
     ) {
       return {
         success: false,
-        error: 'Finish the pending encryption or key recovery before resolving this conflict',
+        error: mainT(
+          'Finish the pending encryption or key recovery before resolving this conflict'
+        ),
         status: buildProfileSyncStatus(),
       };
     }
@@ -7814,7 +7911,7 @@ ipcMain.handle(
         }
         return {
           success: false,
-          error: 'A remote profile conflict was found. Review it and choose again.',
+          error: mainT('A remote profile conflict was found. Review it and choose again.'),
           status: buildProfileSyncStatus(),
           config: sanitizeConfigForRenderer(config),
         };
@@ -7850,7 +7947,9 @@ ipcMain.handle(
           emitProfileSyncStatus();
           return {
             success: false,
-            error: `Failed to save profile sync cancellation: ${persistence.error}`,
+            error: mainT('Failed to save profile sync cancellation: {{error}}', {
+              error: persistence.error,
+            }),
             status: buildProfileSyncStatus(),
             config: sanitizeConfigForRenderer(config),
           };
@@ -7871,8 +7970,8 @@ ipcMain.handle(
         if (result?.ok !== true || result?.reason === 'remote_changed') {
           throw new Error(
             result?.reason === 'remote_changed'
-              ? 'The remote profile changed during upload; review the conflict and try again'
-              : result?.error || result?.reason || 'Profile upload did not complete'
+              ? mainT('The remote profile changed during upload; review the conflict and try again')
+              : result?.error || result?.reason || mainT('Profile upload did not complete')
           );
         }
         await clearProfileSyncFirstEnableResolutionPending();
@@ -7892,7 +7991,7 @@ ipcMain.handle(
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
         const envelope = remoteResult.envelope;
         if (!envelope) {
-          throw new Error('Remote profile is no longer available');
+          throw new Error(mainT('Remote profile is no longer available'));
         }
         const { profile: remoteProfile, syncScope: remoteSyncScope } =
           await decodeEnvelopeProfile(envelope);
@@ -7908,9 +8007,11 @@ ipcMain.handle(
           if (rewriteResult?.ok !== true || rewriteResult?.reason === 'remote_changed') {
             throw new Error(
               rewriteResult?.reason === 'remote_changed'
-                ? 'The remote profile changed before encryption could be applied; review it again'
+                ? mainT(
+                    'The remote profile changed before encryption could be applied; review it again'
+                  )
                 : rewriteResult?.error ||
-                    'The accepted remote profile could not be rewritten safely'
+                    mainT('The accepted remote profile could not be rewritten safely')
             );
           }
         }
@@ -7934,7 +8035,7 @@ ipcMain.handle(
       }
       updateProfileSyncStatus('error', error.message);
       emitProfileSyncStatus();
-      return { success: false, error: error.message, status: buildProfileSyncStatus() };
+      return { success: false, error: mainTError(error), status: buildProfileSyncStatus() };
     }
   })
 );
@@ -8328,7 +8429,7 @@ ipcMain.handle(
     if (!validateHotkey(hotkey)) {
       return {
         success: false,
-        error: 'Invalid hotkey format or conflicts with common system shortcuts',
+        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
       };
     }
 
@@ -8336,7 +8437,7 @@ ipcMain.handle(
       typeof config.popupHotkey === 'string' &&
       config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
     ) {
-      return { success: false, error: 'Hotkey already assigned to the popup trigger' };
+      return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
     }
 
     // Check for conflicts with existing hotkeys first
@@ -8344,8 +8445,12 @@ ipcMain.handle(
     const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
 
     if (existingEntity) {
-      const entityName = existingEntity[0] || 'another action';
-      return { success: false, error: `Hotkey already assigned to ${entityName}` };
+      return {
+        success: false,
+        error: existingEntity[0]
+          ? mainT('Hotkey already assigned to {{entity}}', { entity: existingEntity[0] })
+          : mainT('Hotkey already assigned to another action'),
+      };
     }
 
     if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
@@ -8395,14 +8500,15 @@ ipcMain.handle(
         );
         const rollbackWarning =
           rollbackResult?.success === false
-            ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
             : '';
         return {
           success: false,
-          error:
-            (registrationResult?.error ||
-              'Hotkey is in use, unsupported, or was not approved by the desktop') +
-            (rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''),
+          error: withRollbackWarning(
+            registrationResult?.error ||
+              mainT('Hotkey is in use, unsupported, or was not approved by the desktop'),
+            rollbackWarning
+          ),
           rollbackWarning,
         };
       }
@@ -8420,11 +8526,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save hotkey: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save hotkey: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8465,22 +8574,28 @@ ipcMain.handle(
         );
         const rollbackWarning =
           rollbackResult?.success === false
-            ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
             : '';
         return {
           success: false,
-          error: `Failed to save hotkey removal: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+          error: withRollbackWarning(
+            mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+            rollbackWarning
+          ),
           rollbackWarning,
         };
       }
-      return { success: false, error: `Failed to save hotkey removal: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+      };
     }
     return {
       success: true,
       warning:
         registrationResult?.success === false
           ? registrationResult.error ||
-            'The hotkey was removed, but another shortcut could not be activated'
+            mainT('The hotkey was removed, but another shortcut could not be activated')
           : '',
     };
   })
@@ -8545,11 +8660,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
           : '';
       return {
         ...registrationResult,
-        error: `${registrationResult.error || 'Failed to activate global hotkeys'}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          registrationResult.error || mainT('Failed to activate global hotkeys'),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8561,11 +8679,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save hotkey setting: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save hotkey setting: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8574,7 +8695,7 @@ ipcMain.handle(
       warning:
         registrationResult?.success === false
           ? registrationResult.error ||
-            'Global hotkeys were disabled, but another shortcut could not be activated'
+            mainT('Global hotkeys were disabled, but another shortcut could not be activated')
           : '',
     };
   })
@@ -8605,7 +8726,10 @@ ipcMain.handle(
       } else {
         config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
       }
-      return { success: false, error: `Failed to save alert: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to save alert: {{error}}', { error: persistence.error }),
+      };
     }
     setupEntityAlerts();
     return { success: true };
@@ -8628,7 +8752,10 @@ ipcMain.handle(
       if (previousAlert !== undefined) {
         config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
       }
-      return { success: false, error: `Failed to remove alert: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to remove alert: {{error}}', { error: persistence.error }),
+      };
     }
     setupEntityAlerts();
     return { success: true };
@@ -8645,7 +8772,10 @@ ipcMain.handle(
     const persistence = await saveConfigDurably();
     if (!persistence.success) {
       config.entityAlerts.enabled = previousEnabled;
-      return { success: false, error: `Failed to save alert setting: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+      };
     }
     setupEntityAlerts();
     return { success: true };
@@ -8664,24 +8794,32 @@ ipcMain.handle(
     if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
       return {
         success: false,
-        error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+        error: mainT(
+          'The desktop does not provide the Global Shortcuts portal required on Wayland'
+        ),
       };
     }
     if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
-      return { success: false, error: 'Popup hotkey feature is not available on this platform' };
+      return {
+        success: false,
+        error: mainT('Popup hotkey feature is not available on this platform'),
+      };
     }
 
     // Validate the hotkey
     if (!validateHotkey(hotkey)) {
       return {
         success: false,
-        error: 'Invalid hotkey format or conflicts with common system shortcuts',
+        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
       };
     }
 
     const conflictingEntity = findConfiguredEntityHotkey(hotkey);
     if (conflictingEntity) {
-      return { success: false, error: `Hotkey already assigned to ${conflictingEntity[0]}` };
+      return {
+        success: false,
+        error: mainT('Hotkey already assigned to {{entity}}', { entity: conflictingEntity[0] }),
+      };
     }
 
     const previousHotkey = config.popupHotkey || '';
@@ -8699,8 +8837,9 @@ ipcMain.handle(
               : {
                   success: false,
                   backend: PORTAL_SHORTCUTS_BACKEND,
-                  error:
-                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.',
+                  error: mainT(
+                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+                  ),
                 };
           })
         : registerPopupHotkey()
@@ -8733,12 +8872,15 @@ ipcMain.handle(
         if (!rollbackResult.success) {
           log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
           rollbackWarning =
-            rollbackResult.error || 'The previous popup hotkey could not be restored';
+            rollbackResult.error || mainT('The previous popup hotkey could not be restored');
         }
       }
       return {
         ...registrationResult,
-        error: `${registrationResult.error || 'Failed to register popup hotkey'}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          registrationResult.error || mainT('Failed to register popup hotkey'),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8751,11 +8893,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'The previous popup hotkey could not be restored'
+          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save popup hotkey: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save popup hotkey: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8787,11 +8932,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'The previous popup hotkey could not be restored'
+          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save popup hotkey removal: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save popup hotkey removal: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8801,7 +8949,7 @@ ipcMain.handle(
       warning:
         unregisterResult?.success === false
           ? unregisterResult.error ||
-            'The popup hotkey was removed, but another shortcut could not be activated'
+            mainT('The popup hotkey was removed, but another shortcut could not be activated')
           : '',
     };
   })
@@ -8967,7 +9115,14 @@ function collectPortalShortcuts() {
       if (hotkey && hotkey.trim()) {
         shortcuts.push({
           id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
-          description: `${action === 'turn_on' ? 'Turn on' : action === 'turn_off' ? 'Turn off' : 'Toggle'} ${entityId}`,
+          // Shown in the desktop's shortcut settings. Sent with every bind, so a
+          // language change applies the next time the shortcuts are rebound.
+          description:
+            action === 'turn_on'
+              ? mainT('Turn on {{entity}}', { entity: entityId })
+              : action === 'turn_off'
+                ? mainT('Turn off {{entity}}', { entity: entityId })
+                : mainT('Toggle {{entity}}', { entity: entityId }),
           accelerator: hotkey,
         });
       }
@@ -8977,7 +9132,7 @@ function collectPortalShortcuts() {
   if (popupHotkey) {
     shortcuts.push({
       id: PORTAL_POPUP_SHORTCUT_ID,
-      description: 'Show or hide the widget window',
+      description: mainT('Show or hide the widget window'),
       accelerator: popupHotkey,
     });
   }
@@ -9078,7 +9233,7 @@ function syncPortalShortcuts({ immediate = false } = {}) {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
       bound: [],
-      error: 'Global shortcuts portal is unavailable',
+      error: mainT('Global shortcuts portal is unavailable'),
     });
   }
 
@@ -9156,7 +9311,7 @@ function deactivatePortalShortcutsForLegacyFallback(reason) {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
       bound: [],
-      error: 'The desktop portal did not assign active shortcut triggers',
+      error: mainT('The desktop portal did not assign active shortcut triggers'),
     })
   );
   if (portalShortcutsController) {
@@ -9285,7 +9440,7 @@ function registerGlobalHotkeys() {
     return {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
-      error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+      error: mainT('The desktop does not provide the Global Shortcuts portal required on Wayland'),
     };
   }
 
@@ -9322,7 +9477,7 @@ function registerGlobalHotkeys() {
   return {
     success: allRegistered,
     backend: 'globalShortcut',
-    error: allRegistered ? '' : 'One or more entity hotkeys could not be registered',
+    error: allRegistered ? '' : mainT('One or more entity hotkeys could not be registered'),
   };
 }
 
@@ -9591,8 +9746,9 @@ function registerPopupHotkey() {
         return {
           success: false,
           backend: PORTAL_SHORTCUTS_BACKEND,
-          error:
-            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.',
+          error: mainT(
+            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+          ),
         };
       }
       return { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding: popupBinding };
@@ -9603,7 +9759,7 @@ function registerPopupHotkey() {
     return {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
-      error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+      error: mainT('The desktop does not provide the Global Shortcuts portal required on Wayland'),
     };
   }
 
@@ -9616,14 +9772,14 @@ function registerPopupHotkey() {
     return {
       success: false,
       backend: 'uiohook',
-      error: 'Popup hotkey feature is not available on this platform',
+      error: mainT('Popup hotkey feature is not available on this platform'),
     };
   }
 
   const hotkeyConfig = acceleratorToUIOhookKey(config.popupHotkey);
   if (!hotkeyConfig) {
     log.warn(`Failed to parse popup hotkey: ${config.popupHotkey}`);
-    return { success: false, backend: 'uiohook', error: 'Unsupported popup hotkey' };
+    return { success: false, backend: 'uiohook', error: mainT('Unsupported popup hotkey') };
   }
 
   try {
@@ -9896,7 +10052,7 @@ async function checkManualReleaseUpdate() {
     if (!latestVersion) {
       return {
         status: 'error',
-        error: 'Unable to determine the latest release version.',
+        error: mainT('Unable to determine the latest release version.'),
         downloadUrl,
       };
     }
@@ -9940,7 +10096,7 @@ async function checkPortableUpdate() {
     if (!latestVersion) {
       return {
         status: 'error',
-        error: 'Unable to determine the latest Portable release version.',
+        error: mainT('Unable to determine the latest Portable release version.'),
         downloadUrl,
       };
     }
@@ -10015,7 +10171,20 @@ function setupAutoUpdates() {
     });
 
     // Keep the first packaged-launch window responsive before doing network/update work.
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 30000);
+    // electron-updater fills {appName} and {version} itself when the download finishes.
+    setTimeout(
+      () =>
+        autoUpdater
+          .checkForUpdatesAndNotify({
+            title: mainT('A new update is ready to install'),
+            body: mainT(
+              '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
+              { appName: '{appName}', version: '{version}' }
+            ),
+          })
+          .catch(() => {}),
+      30000
+    );
   } catch (error) {
     log.error('Auto-update setup failed:', error);
   }
@@ -10186,8 +10355,10 @@ app.on('before-quit', (event) => {
     .catch((error) => {
       log.error('Quit canceled because configuration could not be saved:', error);
       dialog.showErrorBox(
-        'Could not save settings',
-        `The app stayed open because its configuration could not be saved.\n\n${error?.message || String(error)}`
+        mainT('Could not save settings'),
+        `${mainT('The app stayed open because its configuration could not be saved.')}\n\n${
+          error?.message || String(error)
+        }`
       );
     });
 });

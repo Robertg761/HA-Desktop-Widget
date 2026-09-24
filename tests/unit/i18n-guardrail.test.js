@@ -6,25 +6,27 @@ const enCatalog = require('../../locales/en.json');
 const allowlist = require('../fixtures/i18n-guardrail-allowlist.json');
 
 function collectTranslateKeys() {
+  const listSources = (dir) =>
+    fs
+      .readdirSync(path.resolve(__dirname, '../../', dir))
+      .filter((file) => /\.c?js$/.test(file))
+      .map((file) => `${dir}/${file}`);
   const files = [
     'renderer.js',
-    'src/ui.js',
-    'src/ui-utils.js',
-    'src/settings.js',
-    'src/alerts.js',
-    'src/hotkeys.js',
-    'src/camera.js',
-    'src/connection-status.js',
     'main.js',
+    ...listSources('src'),
+    ...listSources('packages/widget-renderer/src'),
   ];
-  const keyPattern = /\b(?:t|mainT)\(\s*'([^']+)'/g;
+  // Prettier switches to double quotes for keys with an apostrophe ("you're").
+  const keyPattern =
+    /\b(?:t|mainT|translateInContext)\(\s*(?:'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)")/g;
   const keys = new Set();
 
   files.forEach((file) => {
     const text = fs.readFileSync(path.resolve(__dirname, '../../', file), 'utf8');
     let match;
     while ((match = keyPattern.exec(text))) {
-      keys.add(match[1]);
+      keys.add((match[1] ?? match[2]).replace(/\\(.)/g, '$1'));
     }
   });
 

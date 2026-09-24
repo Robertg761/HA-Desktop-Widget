@@ -36,10 +36,54 @@ describe('application edit menus', () => {
       canSelectAll: true,
     });
 
-    expect(template).toContainEqual({ role: 'copy', enabled: true });
-    expect(template).toContainEqual({ role: 'paste', enabled: true });
-    expect(template).toContainEqual({ role: 'cut', enabled: false });
-    expect(template).toContainEqual({ role: 'selectAll', enabled: true });
+    expect(template).toContainEqual({ role: 'copy', label: 'Copy', enabled: true });
+    expect(template).toContainEqual({ role: 'paste', label: 'Paste', enabled: true });
+    expect(template).toContainEqual({ role: 'cut', label: 'Cut', enabled: false });
+    expect(template).toContainEqual({ role: 'selectAll', label: 'Select All', enabled: true });
+  });
+
+  test('labels the editable context menu in the app language when it opens', () => {
+    const catalog = {
+      Undo: 'Rückgängig',
+      Redo: 'Wiederholen',
+      Cut: 'Ausschneiden',
+      Copy: 'Kopieren',
+      Paste: 'Einfügen',
+      Delete: 'Löschen',
+      'Select All': 'Alles auswählen',
+    };
+    let language = 'en';
+    const translate = jest.fn((key) => (language === 'de' ? catalog[key] || key : key));
+    let contextMenuHandler;
+    const Menu = { buildFromTemplate: jest.fn(() => ({ popup: jest.fn() })) };
+    const targetWindow = {
+      webContents: {
+        on: (eventName, handler) => {
+          if (eventName === 'context-menu') contextMenuHandler = handler;
+        },
+      },
+    };
+    attachEditHandlers(targetWindow, Menu, 'linux', { translate });
+
+    const openMenu = () => {
+      contextMenuHandler({}, { isEditable: true, editFlags: { canCopy: true } });
+      return Menu.buildFromTemplate.mock.lastCall[0]
+        .filter((item) => item.role)
+        .map((item) => item.label);
+    };
+
+    expect(openMenu()).toEqual(['Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Delete', 'Select All']);
+    // The menu is rebuilt on every open, so a language change applies without a restart.
+    language = 'de';
+    expect(openMenu()).toEqual([
+      'Rückgängig',
+      'Wiederholen',
+      'Ausschneiden',
+      'Kopieren',
+      'Einfügen',
+      'Löschen',
+      'Alles auswählen',
+    ]);
   });
 
   test('recognizes only the platform paste accelerator', () => {

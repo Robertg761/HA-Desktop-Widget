@@ -1,6 +1,11 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
+import {
+  escapeHtml,
+  escapeHtmlAttribute,
+  getEntityDisplayName,
+  getLocalizedStateName,
+} from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { closeModal as closeModalAnimated, showToast } from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
@@ -1010,7 +1015,7 @@ function openExpandedCameraPreview(record, camera) {
   overlay.dataset.cameraPreviewSource = record.previewSource || 'image';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', `${displayName} ${t('Camera preview')}`);
+  overlay.setAttribute('aria-label', t('{{name}} Camera preview', { name: displayName }));
   overlay.innerHTML = `
     <div class="camera-expanded-preview-shell">
       <header class="camera-expanded-preview-header">
@@ -1048,7 +1053,7 @@ function openExpandedCameraPreview(record, camera) {
   // Inside the tile the visual is decorative, but it is the dialog's only content once expanded.
   const wasVisualHidden = visual.getAttribute('aria-hidden') === 'true';
   visual.removeAttribute('aria-hidden');
-  const previewAltText = `${displayName} ${t('Preview')}`;
+  const previewAltText = t('{{name}} Preview', { name: displayName });
   getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', previewAltText));
 
   const expandedPreview = {
@@ -1202,6 +1207,13 @@ function stopHlsStream(entityId) {
   }
 }
 
+// Camera entities report "streaming" and "recording", which the shared state names don't cover.
+function getCameraStateLabel(value) {
+  if (value === 'streaming') return t('Streaming');
+  if (value === 'recording') return t('Recording');
+  return getLocalizedStateName(value);
+}
+
 async function openCamera(cameraId, options = {}) {
   try {
     if (!state.CONFIG || !state.CONFIG.homeAssistant.url) {
@@ -1229,7 +1241,10 @@ async function openCamera(cameraId, options = {}) {
     modal.className = 'modal camera-modal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-label', `${getEntityDisplayName(camera)} ${t('Camera preview')}`);
+    modal.setAttribute(
+      'aria-label',
+      t('{{name}} Camera preview', { name: getEntityDisplayName(camera) })
+    );
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
@@ -1249,7 +1264,7 @@ async function openCamera(cameraId, options = {}) {
             <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
           </div>
           <div class="camera-info">
-            <p><strong>${escapeHtml(t('Status:'))}</strong> ${escapeHtml(camera.state)}</p>
+            <p><strong>${escapeHtml(t('Status:'))}</strong> ${escapeHtml(getCameraStateLabel(camera.state))}</p>
             <p><strong>${escapeHtml(t('Last Updated:'))}</strong> ${escapeHtml(formatDateTime(camera.last_updated))}</p>
           </div>
         </div>

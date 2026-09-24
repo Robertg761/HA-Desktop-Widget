@@ -11,9 +11,9 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatTime, getLocaleState, t } from './i18n.js';
+import { formatDate, formatNumber, formatTime, getLocaleState, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
-import { normalizeWeatherCondition, renderWeatherIcon } from './weather-icons.js';
+import { normalizeWeatherCondition, renderWeatherIcon, WEATHER_LABELS } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import {
@@ -147,6 +147,32 @@ const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
   fan_only: 'Fan',
   dry: 'Dry',
   eco: 'Eco',
+};
+// Labels for Home Assistant's standard HVAC, fan and preset modes in the climate dialog, translated
+// where they are shown. Modes outside this list are integration-specific and shown as reported.
+const CLIMATE_OPTION_LABELS = {
+  off: 'Off',
+  on: 'On',
+  heat: 'Heat',
+  cool: 'Cool',
+  heat_cool: 'Heat Cool',
+  auto: 'Auto',
+  dry: 'Dry',
+  fan_only: 'Fan Only',
+  low: 'Low',
+  medium: 'Medium',
+  middle: 'Middle',
+  high: 'High',
+  focus: 'Focus',
+  diffuse: 'Diffuse',
+  none: 'None',
+  eco: 'Eco',
+  away: 'Away',
+  boost: 'Boost',
+  comfort: 'Comfort',
+  home: 'Home',
+  sleep: 'Sleep',
+  activity: 'Activity',
 };
 const DESKTOP_PIN_FAN_PRESETS_FULL = [
   { value: 0, label: 'Off' },
@@ -357,7 +383,7 @@ function callServiceWithUiRollback(entity, domain, service, serviceData, rollbac
     });
 }
 
-function serializeDesktopPinActionError(error, fallbackMessage = 'Desktop pin action failed') {
+function serializeDesktopPinActionError(error, fallbackMessage = t('Desktop pin action failed')) {
   const message =
     typeof error?.message === 'string' && error.message.trim() ? error.message : fallbackMessage;
   const serialized = { message };
@@ -433,7 +459,7 @@ function cloneConfigSnapshot(config = state.CONFIG) {
 
 function requireAuthoritativeConfig(response) {
   if (!response || response.success === false || !response.homeAssistant) {
-    const error = new Error(response?.error || 'The main process rejected the settings update');
+    const error = new Error(response?.error || t('The main process rejected the settings update'));
     if (response && typeof response === 'object') {
       error.result = response;
     }
@@ -445,7 +471,7 @@ function requireAuthoritativeConfig(response) {
 async function persistAuthoritativeConfig(nextConfig) {
   const host = getRendererHost();
   if (!host.canPersistConfig) {
-    throw new Error('Configuration updates are unavailable on this build.');
+    throw new Error(t('Configuration updates are unavailable on this build.'));
   }
   try {
     const previousConfig = cloneConfigSnapshot(state.CONFIG);
@@ -465,7 +491,7 @@ async function persistAuthoritativeConfig(nextConfig) {
 async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId) {
   const host = getRendererHost();
   if (!host.canPersistConfig || typeof host.replaceConfigEntityId !== 'function') {
-    throw new Error('Configuration updates are unavailable on this build.');
+    throw new Error(t('Configuration updates are unavailable on this build.'));
   }
   try {
     const result = await host.replaceConfigEntityId(oldEntityId, newEntityId);
@@ -1454,7 +1480,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (selection === 'weather') {
     cardEl.dataset.primaryType = 'weather';
     cardEl.classList.add('weather-card');
-    cardEl.title = 'Long-press to configure weather';
+    cardEl.title = t('Long-press to configure weather');
     cardEl.innerHTML = weatherCardTemplate || '';
     return;
   }
@@ -1462,7 +1488,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (selection === 'time') {
     cardEl.dataset.primaryType = 'time';
     cardEl.classList.add('time-card');
-    cardEl.title = 'Current time';
+    cardEl.title = t('Current time');
     cardEl.innerHTML = timeCardTemplate || '';
     return;
   }
@@ -1524,7 +1550,7 @@ function toggleReorganizeMode() {
       if (btn) {
         setIconContent(btn, 'check', { size: 18 });
         btn.classList.add('reorganize-active');
-        btn.title = 'Save & Exit Reorganize Mode (ESC)';
+        btn.title = t('Save & Exit Reorganize Mode (ESC)');
       }
 
       // Initialize SortableJS for drag-and-drop
@@ -1565,7 +1591,7 @@ function toggleReorganizeMode() {
       if (btn) {
         setIconContent(btn, 'dragHandle', { size: 18 });
         btn.classList.remove('reorganize-active');
-        btn.title = 'Reorganize Quick Access';
+        btn.title = t('Reorganize Quick Access');
       }
       saveQuickAccessOrder();
       removeRemoveButtons();
@@ -1655,7 +1681,7 @@ function addButtonsToElement(item) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'remove-btn';
       setIconContent(removeBtn, 'close', { size: 16 });
-      removeBtn.title = 'Remove from Quick Access';
+      removeBtn.title = t('Remove from Quick Access');
       removeBtn.setAttribute('draggable', 'false');
       removeBtn.addEventListener(
         'mousedown',
@@ -1684,9 +1710,9 @@ function addButtonsToElement(item) {
           const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
           const confirmed = await uiUtils.showConfirm(
-            'Remove from Quick Access',
-            `Remove "${entityName}" from Quick Access?`,
-            { confirmText: 'Remove', confirmClass: 'btn-danger' }
+            t('Remove from Quick Access'),
+            t('Remove "{{name}}" from Quick Access?', { name: entityName }),
+            { confirmText: t('Remove'), confirmClass: 'btn-danger' }
           );
 
           if (confirmed) {
@@ -2196,7 +2222,7 @@ async function removeFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    uiUtils.showToast('Entity removed from Quick Access', 'success', 2000);
+    uiUtils.showToast(t('Entity removed from Quick Access'), 'success', 2000);
     return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);
@@ -2654,10 +2680,8 @@ function getQuickAccessSensorPrecision(entity) {
   return 2;
 }
 
-function formatQuickAccessSensorNumber(value, precision) {
-  return Number(value)
-    .toFixed(precision)
-    .replace(/\.?0+$/, '');
+function formatQuickAccessSensorNumber(value, precision, useGrouping = true) {
+  return formatNumber(Number(value), { maximumFractionDigits: precision, useGrouping });
 }
 
 function getQuickAccessSensorDisplayParts(entity) {
@@ -2671,7 +2695,12 @@ function getQuickAccessSensorDisplayParts(entity) {
     typeof entity.attributes?.unit_of_measurement === 'string'
       ? entity.attributes.unit_of_measurement.trim()
       : '';
-  const formattedValue = formatQuickAccessSensorNumber(value, precision);
+  // Unitless values without a state class may be years or codes; don't group them ("2026").
+  const formattedValue = formatQuickAccessSensorNumber(
+    value,
+    precision,
+    Boolean(unit || entity.attributes?.state_class)
+  );
 
   return {
     value: formattedValue,
@@ -3353,8 +3382,8 @@ function buildComparisonGraphPlot(entries) {
  */
 function formatComparisonGraphValue(entry) {
   if (entry.value === null || entry.value === undefined) return t('No data');
-  const rounded = Math.round(entry.value * 10) / 10;
-  return entry.unit ? `${rounded} ${entry.unit}` : String(rounded);
+  const rounded = formatNumber(Math.round(entry.value * 10) / 10, { maximumFractionDigits: 1 });
+  return entry.unit ? `${rounded} ${entry.unit}` : rounded;
 }
 
 /**
@@ -3454,7 +3483,8 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
       const value = document.createElement('span');
       value.className = 'comparison-graph-tooltip-value';
-      value.textContent = entry.unit ? `${sample.value} ${entry.unit}` : String(sample.value);
+      const sampleValue = formatNumber(sample.value);
+      value.textContent = entry.unit ? `${sampleValue} ${entry.unit}` : sampleValue;
 
       const name = document.createElement('span');
       name.className = 'comparison-graph-tooltip-name';
@@ -4438,8 +4468,21 @@ function getDesktopPinDenseRenderProfile(domain = '') {
 
 function formatDesktopPinClimateModeLabel(mode) {
   const normalizedMode = typeof mode === 'string' ? mode.trim() : '';
-  if (!normalizedMode) return 'Mode';
-  return DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode] || normalizedMode.replace(/_/g, ' ');
+  if (!normalizedMode) return t('Mode');
+  const label = DESKTOP_PIN_CLIMATE_MODE_LABELS[normalizedMode];
+  return label ? t(label) : normalizedMode.replace(/_/g, ' ');
+}
+
+// Some short words need a different translation per context ("Cool" as a colour temperature is not
+// the HVAC mode). The context lives in the key; English, where the key is missing, shows the word.
+function translateInContext(key, fallback) {
+  const label = t(key);
+  return label === key ? fallback : label;
+}
+
+// A temperature for display ("21,5°C" in German), or "--" when there is no reading.
+function formatTemperatureDisplay(value, unit = '') {
+  return value == null ? '--' : `${formatNumber(value)}${unit}`;
 }
 
 // Capitalized, translated device state ("open" -> "Open"), sharing the tray's state names.
@@ -4538,11 +4581,11 @@ function getDesktopPinMediaRenderProfile() {
     ...layoutProfile,
     showArtist: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
     statusText: layoutProfile.isDenseTight
-      ? { playing: 'Playing', paused: 'Paused' }
-      : { playing: 'Playing now', paused: 'Paused' },
+      ? { playing: t('Playing'), paused: t('Paused') }
+      : { playing: t('Playing now'), paused: t('Paused') },
     headerKpi: layoutProfile.isDenseTight
-      ? { playing: 'On', paused: 'Idle' }
-      : { playing: 'Live', paused: 'Idle' },
+      ? { playing: t('On'), paused: t('Idle') }
+      : { playing: t('Live'), paused: t('Idle') },
   };
 }
 
@@ -4766,7 +4809,7 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
 
   const meterValue = root.querySelector('.desktop-pin-light-meter-value');
   if (meterValue) {
-    meterValue.textContent = isOn ? `${safePct}%` : 'Off';
+    meterValue.textContent = isOn ? `${safePct}%` : t('Off');
   }
 
   const brightnessFill = root.querySelector('.desktop-pin-light-brightness-fill');
@@ -4778,16 +4821,16 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (status) {
     status.textContent = canSetBrightness
       ? isOn
-        ? `${safePct}% brightness`
-        : 'Use slider or a preset'
+        ? t('{{percent}}% brightness', { percent: safePct })
+        : t('Use slider or a preset')
       : isOn
-        ? 'On'
-        : 'Off';
+        ? t('On')
+        : t('Off');
   }
 
   const powerButton = root.querySelector('.desktop-pin-light-power');
   if (powerButton) {
-    powerButton.textContent = isOn ? 'On' : 'Off';
+    powerButton.textContent = isOn ? t('On') : t('Off');
     powerButton.dataset.active = isOn ? 'true' : 'false';
     powerButton.setAttribute('aria-pressed', isOn ? 'true' : 'false');
   }
@@ -4875,37 +4918,37 @@ function createDesktopPinLightControlElement(entity) {
   div.dataset.layout = layout;
   div.dataset.canSetBrightness = capabilities.canSetBrightness ? 'true' : 'false';
   div.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
-  div.title = 'Compact light controls';
+  div.title = t('Compact light controls');
   div.innerHTML = `
     <div class="desktop-pin-light-shell">
       <div class="desktop-pin-light-topline">
         <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
-          <div class="desktop-pin-light-status">${
+          <div class="desktop-pin-light-status">${utils.escapeHtml(
             capabilities.canSetBrightness
               ? isOn
-                ? `${brightnessPct}% brightness`
-                : 'Use slider or a preset'
+                ? t('{{percent}}% brightness', { percent: brightnessPct })
+                : t('Use slider or a preset')
               : isOn
-                ? 'On'
-                : 'Off'
-          }</div>
+                ? t('On')
+                : t('Off')
+          )}</div>
         </div>
-        <button class="desktop-pin-light-power" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${isOn ? 'On' : 'Off'}</button>
+        <button class="desktop-pin-light-power" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${utils.escapeHtml(isOn ? t('On') : t('Off'))}</button>
       </div>
       ${
         capabilities.canSetBrightness
           ? `<div class="desktop-pin-light-brightness">
         <div class="desktop-pin-light-brightness-head">
           <div class="desktop-pin-light-brightness-copy">
-            <div class="desktop-pin-light-brightness-label">Brightness</div>
-            <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : 'Off'}</div>
+            <div class="desktop-pin-light-brightness-label">${utils.escapeHtml(t('Brightness'))}</div>
+            <div class="desktop-pin-light-meter-value">${isOn ? `${brightnessPct}%` : utils.escapeHtml(t('Off'))}</div>
           </div>
         </div>
         <div class="desktop-pin-panel-progress desktop-pin-light-brightness-track">
           <div class="desktop-pin-panel-progress-fill desktop-pin-light-brightness-fill"></div>
-          <input class="desktop-pin-light-slider" type="range" min="0" max="100" step="1" value="${brightnessPct}" aria-label="Light brightness" />
+          <input class="desktop-pin-light-slider" type="range" min="0" max="100" step="1" value="${brightnessPct}" aria-label="${escapeHtmlAttribute(t('Light brightness'))}" />
         </div>
       </div>
       <div class="desktop-pin-light-presets">
@@ -5165,31 +5208,28 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   );
 
   const target = root.querySelector('.desktop-pin-climate-target-value');
-  if (target) target.textContent = targetTemp == null ? '--' : `${targetTemp}${unit}`;
+  if (target) target.textContent = formatTemperatureDisplay(targetTemp, unit);
 
   const current = root.querySelector('.desktop-pin-climate-current-value');
-  if (current) current.textContent = currentTemp == null ? '--' : `${currentTemp}${unit}`;
+  if (current) current.textContent = formatTemperatureDisplay(currentTemp, unit);
 
   const compactCurrent = root.querySelector('.desktop-pin-climate-inline-copy');
   if (compactCurrent) {
     compactCurrent.textContent =
-      currentTemp == null ? 'No live room temperature' : `Now ${currentTemp}${unit}`;
+      currentTemp == null
+        ? t('No live room temperature')
+        : t('Now {{temperature}}', { temperature: formatTemperatureDisplay(currentTemp, unit) });
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
   if (headerKpi) {
-    headerKpi.textContent =
-      targetTemp == null
-        ? currentTemp == null
-          ? '--'
-          : `${currentTemp}${unit}`
-        : `${targetTemp}${unit}`;
+    headerKpi.textContent = formatTemperatureDisplay(targetTemp ?? currentTemp, unit);
   }
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) {
     const modeLabel = formatDesktopPinClimateModeLabel(mode || 'off');
-    status.textContent = compactStatus ? modeLabel : `${modeLabel} mode`;
+    status.textContent = compactStatus ? modeLabel : t('{{mode}} mode', { mode: modeLabel });
   }
 
   const slider = root.querySelector('.desktop-pin-climate-slider');
@@ -5215,15 +5255,24 @@ function createDesktopPinClimateControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-climate-control'], {
     domain: 'climate',
     state: climateValue.mode,
-    title: 'Compact climate controls',
+    title: t('Compact climate controls'),
   });
   const climateStatus = renderProfile.showCompactCurrent
     ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
-    : `${formatDesktopPinClimateModeLabel(climateValue.mode || 'off')} mode`;
-  const currentSummary =
+    : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
+  const currentSummary = utils.escapeHtml(
     climateValue.currentTemp == null
-      ? 'No live room temperature'
-      : `Now ${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`;
+      ? t('No live room temperature')
+      : t('Now {{temperature}}', {
+          temperature: formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit),
+        })
+  );
+  const currentTempText = utils.escapeHtml(
+    formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
+  );
+  const targetTempText = utils.escapeHtml(
+    formatTemperatureDisplay(climateValue.targetTemp, climateValue.unit)
+  );
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
   root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
@@ -5232,13 +5281,12 @@ function createDesktopPinClimateControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: climateStatus,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${
-          climateValue.targetTemp == null
-            ? climateValue.currentTemp == null
-              ? '--'
-              : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`
-            : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`
-        }</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${utils.escapeHtml(
+          formatTemperatureDisplay(
+            climateValue.targetTemp ?? climateValue.currentTemp,
+            climateValue.unit
+          )
+        )}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         ${
@@ -5248,19 +5296,19 @@ function createDesktopPinClimateControlElement(entity) {
               ? `
           <div class="desktop-pin-climate-summary">
             <div class="desktop-pin-panel-stat">
-              <span class="desktop-pin-panel-stat-label">Current</span>
-              <span class="desktop-pin-climate-current-value">${climateValue.currentTemp == null ? '--' : `${climateValue.currentTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+              <span class="desktop-pin-panel-stat-label">${utils.escapeHtml(t('Current'))}</span>
+              <span class="desktop-pin-climate-current-value">${currentTempText}</span>
             </div>
             <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis">
-              <span class="desktop-pin-panel-stat-label">Target</span>
-              <span class="desktop-pin-climate-target-value">${climateValue.targetTemp == null ? '--' : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+              <span class="desktop-pin-panel-stat-label">${utils.escapeHtml(t('Target'))}</span>
+              <span class="desktop-pin-climate-target-value">${targetTempText}</span>
             </div>
           </div>
         `
               : `
           <div class="desktop-pin-panel-stat desktop-pin-panel-stat-emphasis desktop-pin-climate-target-stat">
-            <span class="desktop-pin-panel-stat-label">Target</span>
-            <span class="desktop-pin-climate-target-value">${climateValue.targetTemp == null ? '--' : `${climateValue.targetTemp}${utils.escapeHtml(climateValue.unit)}`}</span>
+            <span class="desktop-pin-panel-stat-label">${utils.escapeHtml(t('Target'))}</span>
+            <span class="desktop-pin-climate-target-value">${targetTempText}</span>
           </div>
         `
         }
@@ -5268,9 +5316,9 @@ function createDesktopPinClimateControlElement(entity) {
         ${
           climateValue.canSetTemperature
             ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
-          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Cool</span>' : ''}
-          <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="${climateValue.targetTempStep}" value="${climateValue.targetTemp}" aria-label="Target temperature" />
-          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Warm</span>' : ''}
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Cool'))}</span>` : ''}
+          <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="${climateValue.targetTempStep}" value="${climateValue.targetTemp}" aria-label="${escapeHtmlAttribute(t('Target temperature'))}" />
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Warm'))}</span>` : ''}
         </div>`
             : ''
         }
@@ -5283,7 +5331,9 @@ function createDesktopPinClimateControlElement(entity) {
               createDesktopPinButtonMarkup({
                 className: 'desktop-pin-panel-button desktop-pin-climate-mode',
                 label: formatDesktopPinClimateModeLabel(mode),
-                ariaLabel: `Set mode to ${mode}`,
+                ariaLabel: t('Set mode to {{mode}}', {
+                  mode: formatDesktopPinClimateModeLabel(mode),
+                }),
                 action: mode,
                 active: mode === climateValue.mode,
                 title: formatDesktopPinClimateModeLabel(mode),
@@ -5298,7 +5348,7 @@ function createDesktopPinClimateControlElement(entity) {
   `;
 
   bindClimateRangeControls(root, entity, getClimateControlCapabilities(entity), (range) => {
-    const text = `${range.low}–${range.high}${climateValue.unit}`;
+    const text = `${formatNumber(range.low)}–${formatNumber(range.high)}${climateValue.unit}`;
     root
       .querySelectorAll('.desktop-pin-climate-target-value, .desktop-pin-climate-kpi')
       .forEach((element) => {
@@ -5403,12 +5453,12 @@ function applyDesktopPinFanVisualState(root, fanValue) {
     String(Math.max(0, Math.min(1, percentage / 100)))
   );
 
+  const kpiText = isOn ? (canSetPercentage ? `${percentage}%` : t('On')) : t('Off');
   const headerKpi = root.querySelector('.desktop-pin-fan-kpi');
-  if (headerKpi)
-    headerKpi.textContent = isOn ? (canSetPercentage ? `${percentage}%` : 'On') : 'Off';
+  if (headerKpi) headerKpi.textContent = kpiText;
 
   const meterKpi = root.querySelector('.desktop-pin-fan-value');
-  if (meterKpi) meterKpi.textContent = isOn ? (canSetPercentage ? `${percentage}%` : 'On') : 'Off';
+  if (meterKpi) meterKpi.textContent = kpiText;
 
   const spinner = root.querySelector('.desktop-pin-fan-glyph');
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
@@ -5417,11 +5467,11 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (status)
     status.textContent = isOn
       ? canSetPercentage
-        ? `${percentage}% airflow`
-        : 'On'
+        ? t('{{percent}}% airflow', { percent: percentage })
+        : t('On')
       : compactStatus
-        ? 'Ready'
-        : 'Ready to start';
+        ? t('Ready')
+        : t('Ready to start');
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -5430,7 +5480,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
 
   const power = root.querySelector('.desktop-pin-fan-power');
   if (power) {
-    power.textContent = isOn ? 'On' : 'Off';
+    power.textContent = isOn ? t('On') : t('Off');
     power.dataset.active = isOn ? 'true' : 'false';
     power.setAttribute('aria-pressed', isOn ? 'true' : 'false');
   }
@@ -5470,8 +5520,13 @@ function createDesktopPinFanControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-fan-control'], {
     domain: 'fan',
     state: fanValue.isOn ? 'on' : 'off',
-    title: 'Compact fan controls',
+    title: t('Compact fan controls'),
   });
+  const fanKpiText = fanValue.isOn
+    ? capabilities.canSetPercentage
+      ? `${fanValue.percentage}%`
+      : t('On')
+    : t('Off');
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
   root.dataset.canSetPercentage = capabilities.canSetPercentage ? 'true' : 'false';
@@ -5482,41 +5537,41 @@ function createDesktopPinFanControlElement(entity) {
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: fanValue.isOn
           ? capabilities.canSetPercentage
-            ? `${fanValue.percentage}% airflow`
-            : 'On'
+            ? t('{{percent}}% airflow', { percent: fanValue.percentage })
+            : t('On')
           : renderProfile.isDenseTight || renderProfile.isDenseMicro
-            ? 'Ready'
-            : 'Ready to start',
+            ? t('Ready')
+            : t('Ready to start'),
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             ${createDesktopPinButtonMarkup({
               className: 'desktop-pin-panel-button desktop-pin-fan-power',
-              label: fanValue.isOn ? 'On' : 'Off',
-              ariaLabel: 'Toggle fan',
+              label: fanValue.isOn ? t('On') : t('Off'),
+              ariaLabel: t('Toggle fan'),
               active: fanValue.isOn,
-              title: 'Toggle fan',
+              title: t('Toggle fan'),
             })}
-            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : 'On') : 'Off'}</div>` : ''}
+            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${utils.escapeHtml(fanKpiText)}</div>` : ''}
           </div>
         `,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
-          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${fanValue.isOn ? (capabilities.canSetPercentage ? `${fanValue.percentage}%` : 'On') : 'Off'}</div>
+          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(fanKpiText)}</div>
         </div>
         ${
           capabilities.canSetPercentage
             ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
-          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Still</span>' : ''}
-          <input class="desktop-pin-panel-slider desktop-pin-fan-slider" type="range" min="0" max="100" step="1" value="${fanValue.percentage}" aria-label="Fan speed" />
-          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Fast</span>' : ''}
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Still'))}</span>` : ''}
+          <input class="desktop-pin-panel-slider desktop-pin-fan-slider" type="range" min="0" max="100" step="1" value="${fanValue.percentage}" aria-label="${escapeHtmlAttribute(t('Fan speed'))}" />
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Fast'))}</span>` : ''}
         </div>
         <div class="desktop-pin-panel-actions">
           ${renderProfile.presets
             .map(
               ({ value, label }) => `
-            <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="${value}">${label}</button>
+            <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-fan-preset" type="button" data-speed="${value}">${utils.escapeHtml(t(label))}</button>
           `
             )
             .join('')}
@@ -5607,17 +5662,10 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   if (value)
     value.textContent = canSetPosition
       ? `${coverValue.position}%`
-      : formatDesktopPinClimateModeLabel(coverValue.state || 'closed');
+      : getLocalizedEntityStateLabel(coverValue.state || 'closed');
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status)
-    status.textContent = canSetPosition
-      ? coverValue.position <= 0
-        ? 'Closed'
-        : coverValue.position >= 100
-          ? 'Open'
-          : `${coverValue.position}% open`
-      : formatDesktopPinClimateModeLabel(coverValue.state || 'closed');
+  if (status) status.textContent = getDesktopPinCoverStatusText(coverValue, canSetPosition);
 
   const slider = root.querySelector('.desktop-pin-cover-slider');
   if (slider && slider.value !== String(coverValue.position)) {
@@ -5628,6 +5676,13 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   if (sheet) {
     sheet.style.height = `${100 - coverValue.position}%`;
   }
+}
+
+function getDesktopPinCoverStatusText(coverValue, canSetPosition) {
+  if (!canSetPosition) return getLocalizedEntityStateLabel(coverValue.state || 'closed');
+  if (coverValue.position <= 0) return t('Closed');
+  if (coverValue.position >= 100) return t('Open');
+  return t('{{percent}}% open', { percent: coverValue.position });
 }
 
 function queueDesktopPinCoverPosition(entity, position) {
@@ -5651,15 +5706,15 @@ function createDesktopPinCoverControlElement(entity) {
   const coverValue = getDesktopPinCoverValue(entity);
   const capabilities = getDesktopPinCapabilities(entity);
   const availableActions = [
-    capabilities.canClose ? { action: 'close_cover', label: 'Close' } : null,
-    capabilities.canStop ? { action: 'stop_cover', label: 'Stop' } : null,
-    capabilities.canOpen ? { action: 'open_cover', label: 'Open' } : null,
+    capabilities.canClose ? { action: 'close_cover', label: t('Close') } : null,
+    capabilities.canStop ? { action: 'stop_cover', label: t('Stop') } : null,
+    capabilities.canOpen ? { action: 'open_cover', label: t('Open') } : null,
   ].filter(Boolean);
   const renderProfile = getDesktopPinCoverRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-cover-control'], {
     domain: 'cover',
     state: coverValue.state,
-    title: 'Compact cover controls',
+    title: t('Compact cover controls'),
   });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
@@ -5669,17 +5724,11 @@ function createDesktopPinCoverControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: capabilities.canSetPosition
-          ? coverValue.position <= 0
-            ? 'Closed'
-            : coverValue.position >= 100
-              ? 'Open'
-              : `${coverValue.position}% open`
-          : formatDesktopPinClimateModeLabel(coverValue.state || 'closed'),
+        statusText: getDesktopPinCoverStatusText(coverValue, capabilities.canSetPosition),
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${
           capabilities.canSetPosition
             ? `${coverValue.position}%`
-            : formatDesktopPinClimateModeLabel(coverValue.state || 'closed')
+            : utils.escapeHtml(getLocalizedEntityStateLabel(coverValue.state || 'closed'))
         }</div>`,
       })}
       <div class="desktop-pin-panel-body">
@@ -5697,9 +5746,9 @@ function createDesktopPinCoverControlElement(entity) {
         ${
           capabilities.canSetPosition
             ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
-          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Closed</span>' : ''}
-          <input class="desktop-pin-panel-slider desktop-pin-cover-slider" type="range" min="0" max="100" step="1" value="${coverValue.position}" aria-label="Cover position" />
-          ${renderProfile.showSliderLabels ? '<span class="desktop-pin-panel-slider-label">Open</span>' : ''}
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Closed'))}</span>` : ''}
+          <input class="desktop-pin-panel-slider desktop-pin-cover-slider" type="range" min="0" max="100" step="1" value="${coverValue.position}" aria-label="${escapeHtmlAttribute(t('Cover position'))}" />
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Open'))}</span>` : ''}
         </div>`
             : ''
         }
@@ -5709,11 +5758,11 @@ function createDesktopPinCoverControlElement(entity) {
           ${availableActions
             .map(
               ({ action, label }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}">${label}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}">${utils.escapeHtml(label)}</button>`
             )
             .join('')}
         </div>`
-            : '<div class="desktop-pin-panel-caption">No position or movement controls advertised</div>'
+            : `<div class="desktop-pin-panel-caption">${utils.escapeHtml(t('No position or movement controls advertised'))}</div>`
         }
       </div>
     </div>
@@ -5798,8 +5847,7 @@ function getDesktopPinMediaValue(entity) {
     artist:
       entity?.attributes?.media_artist ||
       entity?.attributes?.media_album_name ||
-      entity?.state ||
-      '',
+      (entity?.state ? getLocalizedEntityStateLabel(entity.state) : ''),
     playing: entity?.state === 'playing',
     progress:
       timeline.duration > 0
@@ -5818,14 +5866,14 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
   );
 
   const title = root.querySelector('.desktop-pin-media-title');
-  if (title) title.textContent = mediaValue.title || 'Nothing playing';
+  if (title) title.textContent = mediaValue.title || t('Nothing playing');
 
   const artist = root.querySelector('.desktop-pin-media-artist');
-  if (artist) artist.textContent = mediaValue.artist || 'Ready';
+  if (artist) artist.textContent = mediaValue.artist || t('Ready');
 
   const play = root.querySelector('.desktop-pin-media-play');
   if (play) {
-    play.textContent = mediaValue.playing ? 'Pause' : 'Play';
+    play.textContent = mediaValue.playing ? t('Pause') : t('Play');
     play.dataset.active = mediaValue.playing ? 'true' : 'false';
     play.setAttribute('aria-pressed', mediaValue.playing ? 'true' : 'false');
     play.dataset.action = mediaValue.playing ? 'pause' : 'play';
@@ -5854,22 +5902,22 @@ function createDesktopPinMediaControlElement(entity) {
   const canTogglePlayback = mediaValue.playing ? capabilities.canPause : capabilities.canPlay;
   const mediaActions = [
     capabilities.canPreviousTrack
-      ? { action: 'previous_track', label: 'Prev', className: '' }
+      ? { action: 'previous_track', label: t('Prev'), className: '' }
       : null,
     canTogglePlayback
       ? {
           action: mediaValue.playing ? 'pause' : 'play',
-          label: mediaValue.playing ? 'Pause' : 'Play',
+          label: mediaValue.playing ? t('Pause') : t('Play'),
           className: 'desktop-pin-media-play',
         }
       : null,
-    capabilities.canNextTrack ? { action: 'next_track', label: 'Next', className: '' } : null,
+    capabilities.canNextTrack ? { action: 'next_track', label: t('Next'), className: '' } : null,
   ].filter(Boolean);
   const renderProfile = getDesktopPinMediaRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-media-control'], {
     domain: 'media_player',
     state: mediaValue.playing ? 'playing' : 'paused',
-    title: 'Compact media controls',
+    title: t('Compact media controls'),
   });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
@@ -5882,12 +5930,12 @@ function createDesktopPinMediaControlElement(entity) {
         statusText: mediaValue.playing
           ? renderProfile.statusText.playing
           : renderProfile.statusText.paused,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-media-kpi">${mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused}</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-media-kpi">${utils.escapeHtml(mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused)}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-media-copy">
-          <div class="desktop-pin-media-title">${utils.escapeHtml(mediaValue.title || 'Nothing playing')}</div>
-          ${renderProfile.showArtist ? `<div class="desktop-pin-media-artist">${utils.escapeHtml(mediaValue.artist || 'Ready')}</div>` : ''}
+          <div class="desktop-pin-media-title">${utils.escapeHtml(mediaValue.title || t('Nothing playing'))}</div>
+          ${renderProfile.showArtist ? `<div class="desktop-pin-media-artist">${utils.escapeHtml(mediaValue.artist || t('Ready'))}</div>` : ''}
         </div>
         <div class="desktop-pin-panel-progress">
           <div class="desktop-pin-panel-progress-fill" style="width: ${mediaValue.progress}%"></div>
@@ -5898,11 +5946,11 @@ function createDesktopPinMediaControlElement(entity) {
           ${mediaActions
             .map(
               ({ action, label, className }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action ${className}" type="button" data-action="${action}" data-active="${action === 'pause' ? 'true' : 'false'}" aria-pressed="${action === 'pause' ? 'true' : 'false'}">${label}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-media-action ${className}" type="button" data-action="${action}" data-active="${action === 'pause' ? 'true' : 'false'}" aria-pressed="${action === 'pause' ? 'true' : 'false'}">${utils.escapeHtml(label)}</button>`
             )
             .join('')}
         </div>`
-            : '<div class="desktop-pin-panel-caption">No playback controls advertised</div>'
+            : `<div class="desktop-pin-panel-caption">${utils.escapeHtml(t('No playback controls advertised'))}</div>`
         }
       </div>
     </div>
@@ -6232,7 +6280,7 @@ function createDesktopPinSceneControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-scene-control'], {
     domain,
     state: entity.state,
-    title: 'Compact scene tile',
+    title: t('Compact scene tile'),
   });
   root.dataset.layout = layoutProfile.layout;
 
@@ -6298,7 +6346,7 @@ function updateExistingDesktopPinSceneControl(root, entity) {
       : getDesktopPinLayoutProfile(domain);
   syncDesktopPinPanelRootState(root, entity, {
     domain,
-    title: 'Compact scene tile',
+    title: t('Compact scene tile'),
   });
   applyDesktopPinSceneSizing(root, layoutProfile.width, layoutProfile.height, domain);
 
@@ -6321,30 +6369,32 @@ function createDesktopPinToggleEntityControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-toggle-control'], {
     domain,
     state: entity.state,
-    title: isSceneLike ? 'Compact action tile' : `Compact ${domain.replace(/_/g, ' ')} controls`,
+    title: isSceneLike
+      ? t('Compact action tile')
+      : t('Compact {{domain}} controls', { domain: utils.getEntityTypeDescription(entity) }),
   });
   const icon = utils.escapeHtml(utils.getEntityIcon(entity));
   const actionLabel = isSceneLike
-    ? 'Run'
+    ? t('Run')
     : isLock
       ? isOn
-        ? 'Unlock'
-        : 'Lock'
+        ? t('Unlock')
+        : t('Lock')
       : isOn
-        ? 'On'
-        : 'Off';
-  const statusText = isSceneLike ? 'Tap to trigger' : utils.getEntityDisplayState(entity);
+        ? t('On')
+        : t('Off');
+  const statusText = isSceneLike ? t('Tap to trigger') : utils.getEntityDisplayState(entity);
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText,
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? 'Ready' : actionLabel)}</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? t('Ready') : actionLabel)}</div>`,
       })}
       <div class="desktop-pin-panel-body desktop-pin-toggle-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-panel-glyph">${icon}</div>
-          <div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? 'Run' : utils.getEntityDisplayState(entity))}</div>
+          <div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? t('Run') : utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
           <button class="desktop-pin-panel-button desktop-pin-toggle-action" type="button" data-active="${isOn ? 'true' : 'false'}" aria-pressed="${isOn ? 'true' : 'false'}">${utils.escapeHtml(actionLabel)}</button>
@@ -6370,30 +6420,32 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   const isLock = domain === 'lock';
   const isOn = isLock ? entity.state === 'locked' : entity.state === 'on';
   const actionLabel = isSceneLike
-    ? 'Run'
+    ? t('Run')
     : isLock
       ? isOn
-        ? 'Unlock'
-        : 'Lock'
+        ? t('Unlock')
+        : t('Lock')
       : isOn
-        ? 'On'
-        : 'Off';
+        ? t('On')
+        : t('Off');
   const displayState = utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
     domain,
-    title: isSceneLike ? 'Compact action tile' : `Compact ${domain.replace(/_/g, ' ')} controls`,
+    title: isSceneLike
+      ? t('Compact action tile')
+      : t('Compact {{domain}} controls', { domain: utils.getEntityTypeDescription(entity) }),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = isSceneLike ? 'Tap to trigger' : displayState;
+  if (status) status.textContent = isSceneLike ? t('Tap to trigger') : displayState;
 
   const kpis = root.querySelectorAll('.desktop-pin-panel-kpi');
-  if (kpis[0]) kpis[0].textContent = isSceneLike ? 'Ready' : actionLabel;
-  if (kpis[1]) kpis[1].textContent = isSceneLike ? 'Run' : displayState;
+  if (kpis[0]) kpis[0].textContent = isSceneLike ? t('Ready') : actionLabel;
+  if (kpis[1]) kpis[1].textContent = isSceneLike ? t('Run') : displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) glyph.textContent = utils.getEntityIcon(entity);
@@ -6412,22 +6464,22 @@ function createDesktopPinCameraControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-camera-control'], {
     domain: 'camera',
     state: entity.state,
-    title: 'Compact camera tile',
+    title: t('Compact camera tile'),
   });
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityDisplayState(entity),
-        asideMarkup: '<div class="desktop-pin-panel-kpi">Live</div>',
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Live'))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter desktop-pin-camera-preview">
           <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
-          <div class="desktop-pin-panel-caption">Open camera feed</div>
+          <div class="desktop-pin-panel-caption">${utils.escapeHtml(t('Open camera feed'))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">Open</button>
+          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(t('Open'))}</button>
         </div>
       </div>
     </div>
@@ -6447,7 +6499,7 @@ function updateExistingDesktopPinCameraControl(root, entity) {
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: 'camera',
-    title: 'Compact camera tile',
+    title: t('Compact camera tile'),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
@@ -6468,14 +6520,14 @@ function createDesktopPinSensorControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-sensor-control'], {
     domain: isBinary ? 'binary_sensor' : 'sensor',
     state: entity.state,
-    title: 'Compact status tile',
+    title: t('Compact status tile'),
   });
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isBinary ? entity.state : '')}</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isBinary ? getLocalizedEntityStateLabel(entity.state) : '')}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
@@ -6497,7 +6549,7 @@ function updateExistingDesktopPinSensorControl(root, entity) {
   const isBinary = entity.entity_id.startsWith('binary_sensor.');
   syncDesktopPinPanelRootState(root, entity, {
     domain: isBinary ? 'binary_sensor' : 'sensor',
-    title: 'Compact status tile',
+    title: t('Compact status tile'),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
@@ -6507,7 +6559,7 @@ function updateExistingDesktopPinSensorControl(root, entity) {
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
   const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = isBinary ? entity.state : '';
+  if (kpi) kpi.textContent = isBinary ? getLocalizedEntityStateLabel(entity.state) : '';
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) glyph.textContent = utils.getEntityIcon(entity);
@@ -6519,13 +6571,20 @@ function updateExistingDesktopPinSensorControl(root, entity) {
 }
 
 function getDesktopPinTimerStatusLabel(entity) {
-  if (utils.getTimerStatusLabel) return utils.getTimerStatusLabel(entity);
+  if (utils.getTimerStatusLabel) return t(utils.getTimerStatusLabel(entity));
   const rawState = typeof entity?.state === 'string' ? entity.state.trim() : '';
-  return rawState ? rawState.charAt(0).toUpperCase() + rawState.slice(1) : 'Idle';
+  return rawState ? rawState.charAt(0).toUpperCase() + rawState.slice(1) : t('Idle');
+}
+
+// Compares against the English status and its translation, so the check holds whether or not the
+// shared timer helper already translates its label.
+function isDesktopPinTimerStatus(entity, status) {
+  const label = getDesktopPinTimerStatusLabel(entity);
+  return label === status || label === t(status);
 }
 
 function getDesktopPinTimerTileTitle(entity) {
-  return `${utils.getEntityDisplayName(entity)} · Timer`;
+  return t('{{name}} · Timer', { name: utils.getEntityDisplayName(entity) });
 }
 
 // The badge carries the run state, so the readout is always a plain countdown — no
@@ -6533,7 +6592,7 @@ function getDesktopPinTimerTileTitle(entity) {
 function getDesktopPinTimerDisplay(entity) {
   const remainingSeconds = getDesktopPinTimerRemainingSeconds(entity);
   if (remainingSeconds == null) {
-    return getDesktopPinTimerStatusLabel(entity) === 'Finished' ? '0:00' : '—';
+    return isDesktopPinTimerStatus(entity, 'Finished') ? '0:00' : '—';
   }
   return utils.formatDuration(remainingSeconds * 1000);
 }
@@ -6593,7 +6652,7 @@ function applyDesktopPinTimerVisualState(root, entity) {
 
   const display = getDesktopPinTimerDisplay(entity);
   const remainingSeconds = getDesktopPinTimerRemainingSeconds(entity);
-  const isRunning = getDesktopPinTimerStatusLabel(entity) === 'Running';
+  const isRunning = isDesktopPinTimerStatus(entity, 'Running');
 
   const readout = root.querySelector('.desktop-pin-timer-readout');
   if (readout) {
@@ -6686,9 +6745,17 @@ function updateExistingDesktopPinTimerControl(root, entity) {
 
 function getDesktopPinActionCtaLabel(entity) {
   const domain = getEntityDomain(entity?.entity_id);
-  if (domain === 'automation') return 'Trigger';
-  if (isPressActionDomain(domain)) return 'Press';
-  return 'Run';
+  if (domain === 'automation') return t('Trigger');
+  if (isPressActionDomain(domain)) return t('Press');
+  return t('Run');
+}
+
+function getDesktopPinActionAriaLabel(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const name = utils.getEntityDisplayName(entity);
+  if (domain === 'automation') return t('Trigger {{name}}', { name });
+  if (isPressActionDomain(domain)) return t('Press {{name}}', { name });
+  return t('Run {{name}}', { name });
 }
 
 function createDesktopPinActionControlElement(entity) {
@@ -6696,14 +6763,14 @@ function createDesktopPinActionControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-action-control'], {
     domain: getEntityDomain(entity.entity_id),
     state: entity.state,
-    title: 'Compact action tile',
+    title: t('Compact action tile'),
   });
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: '<div class="desktop-pin-panel-kpi">Ready</div>',
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Ready'))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
@@ -6714,7 +6781,7 @@ function createDesktopPinActionControlElement(entity) {
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-action-primary',
             label: ctaLabel,
-            ariaLabel: `${ctaLabel} ${utils.getEntityDisplayName(entity)}`,
+            ariaLabel: getDesktopPinActionAriaLabel(entity),
             active: false,
           })}
         </div>
@@ -6741,7 +6808,7 @@ function updateExistingDesktopPinActionControl(root, entity) {
   const ctaLabel = getDesktopPinActionCtaLabel(entity);
   syncDesktopPinPanelRootState(root, entity, {
     domain: getEntityDomain(entity.entity_id),
-    title: 'Compact action tile',
+    title: t('Compact action tile'),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
@@ -6751,7 +6818,7 @@ function updateExistingDesktopPinActionControl(root, entity) {
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
   const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = 'Ready';
+  if (kpi) kpi.textContent = t('Ready');
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) glyph.textContent = utils.getEntityIcon(entity);
@@ -6804,9 +6871,13 @@ function formatDesktopPinNumericValue(value, entity, options = {}) {
   }
 
   const hasFraction = Math.abs(spec.step) > 0 && Math.abs(spec.step) < 1;
+  const fractionDigits = Math.min(2, String(spec.step).split('.')[1]?.length || 1);
   const formatted = hasFraction
-    ? safeValue.toFixed(Math.min(2, String(spec.step).split('.')[1]?.length || 1))
-    : String(Math.round(safeValue));
+    ? formatNumber(safeValue, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      })
+    : formatNumber(Math.round(safeValue));
   return spec.unit ? `${formatted} ${spec.unit}` : formatted;
 }
 
@@ -6833,7 +6904,7 @@ function createDesktopPinNumericControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-numeric-control'], {
     domain: getEntityDomain(entity.entity_id),
     state: entity.state,
-    title: 'Compact numeric tile',
+    title: t('Compact numeric tile'),
   });
 
   const meterMarkup = `
@@ -6846,7 +6917,7 @@ function createDesktopPinNumericControlElement(entity) {
     ? `
       <div class="desktop-pin-panel-slider-row">
         <span class="desktop-pin-panel-slider-label">${utils.escapeHtml(formatDesktopPinNumericValue(spec.min, entity, { spec }))}</span>
-      <input class="desktop-pin-panel-slider desktop-pin-numeric-slider" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.value}" aria-label="${escapeHtmlAttribute(`${utils.getEntityDisplayName(entity)} value`)}" />
+      <input class="desktop-pin-panel-slider desktop-pin-numeric-slider" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.value}" aria-label="${escapeHtmlAttribute(t('{{name}} value', { name: utils.getEntityDisplayName(entity) }))}" />
         <span class="desktop-pin-panel-slider-label">${utils.escapeHtml(formatDesktopPinNumericValue(spec.max, entity, { spec }))}</span>
       </div>
     `
@@ -6855,13 +6926,13 @@ function createDesktopPinNumericControlElement(entity) {
         ${createDesktopPinButtonMarkup({
           className: 'desktop-pin-panel-button desktop-pin-numeric-step',
           label: '-',
-          ariaLabel: `Decrease ${utils.getEntityDisplayName(entity)}`,
+          ariaLabel: t('Decrease {{name}}', { name: utils.getEntityDisplayName(entity) }),
           action: 'decrease',
         })}
         ${createDesktopPinButtonMarkup({
           className: 'desktop-pin-panel-button desktop-pin-numeric-step',
           label: '+',
-          ariaLabel: `Increase ${utils.getEntityDisplayName(entity)}`,
+          ariaLabel: t('Increase {{name}}', { name: utils.getEntityDisplayName(entity) }),
           action: 'increase',
         })}
       </div>
@@ -6928,7 +6999,7 @@ function updateExistingDesktopPinNumericControl(root, entity) {
   const formattedValue = formatDesktopPinNumericValue(spec.value, entity, { spec });
   syncDesktopPinPanelRootState(root, entity, {
     domain: getEntityDomain(entity.entity_id),
-    title: 'Compact numeric tile',
+    title: t('Compact numeric tile'),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
@@ -7016,31 +7087,33 @@ function createDesktopPinEnumControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-enum-control'], {
     domain: getEntityDomain(entity.entity_id),
     state: entity.state,
-    title: 'Compact select tile',
+    title: t('Compact select tile'),
   });
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(enumState.currentOption || 'Unknown')}</div>`,
+        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(enumState.currentOption || t('Unknown'))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
-          <div class="desktop-pin-panel-value">${utils.escapeHtml(enumState.currentOption || 'Unknown')}</div>
+          <div class="desktop-pin-panel-value">${utils.escapeHtml(enumState.currentOption || t('Unknown'))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-enum-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-enum-step',
-            label: 'Prev',
-            ariaLabel: `Previous option for ${utils.getEntityDisplayName(entity)}`,
+            label: t('Prev'),
+            ariaLabel: t('Previous option for {{name}}', {
+              name: utils.getEntityDisplayName(entity),
+            }),
             action: 'previous',
           })}
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-enum-step',
-            label: 'Next',
-            ariaLabel: `Next option for ${utils.getEntityDisplayName(entity)}`,
+            label: t('Next'),
+            ariaLabel: t('Next option for {{name}}', { name: utils.getEntityDisplayName(entity) }),
             action: 'next',
           })}
         </div>
@@ -7069,7 +7142,7 @@ function updateExistingDesktopPinEnumControl(root, entity) {
   const enumState = getDesktopPinEnumState(entity);
   syncDesktopPinPanelRootState(root, entity, {
     domain: getEntityDomain(entity.entity_id),
-    title: 'Compact select tile',
+    title: t('Compact select tile'),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
@@ -7079,13 +7152,13 @@ function updateExistingDesktopPinEnumControl(root, entity) {
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
   const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = enumState.currentOption || 'Unknown';
+  if (kpi) kpi.textContent = enumState.currentOption || t('Unknown');
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) glyph.textContent = utils.getEntityIcon(entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
-  if (value) value.textContent = enumState.currentOption || 'Unknown';
+  if (value) value.textContent = enumState.currentOption || t('Unknown');
 
   return true;
 }
@@ -7094,7 +7167,7 @@ function createDesktopPinPresenceControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-presence-control'], {
     domain: getEntityDomain(entity.entity_id),
     state: entity.state,
-    title: 'Compact presence tile',
+    title: t('Compact presence tile'),
   });
 
   root.innerHTML = `
@@ -7111,8 +7184,10 @@ function createDesktopPinPresenceControlElement(entity) {
         <div class="desktop-pin-panel-actions desktop-pin-presence-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-presence-focus',
-            label: 'Focus Main',
-            ariaLabel: `Focus main widget for ${utils.getEntityDisplayName(entity)}`,
+            label: t('Focus Main'),
+            ariaLabel: t('Focus main widget for {{name}}', {
+              name: utils.getEntityDisplayName(entity),
+            }),
           })}
         </div>
       </div>
@@ -7133,7 +7208,7 @@ function updateExistingDesktopPinPresenceControl(root, entity) {
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: getEntityDomain(entity.entity_id),
-    title: 'Compact presence tile',
+    title: t('Compact presence tile'),
   });
 
   const displayState = utils.getEntityDisplayState(entity);
@@ -7158,14 +7233,18 @@ function updateExistingDesktopPinPresenceControl(root, entity) {
 function getDesktopPinWeatherStats(entity) {
   const attrs = entity?.attributes || {};
   const stats = [];
-  if (attrs.humidity != null) stats.push(`${attrs.humidity}% humidity`);
+  if (attrs.humidity != null) {
+    stats.push(t('{{percent}}% humidity', { percent: formatNumber(attrs.humidity) }));
+  }
   if (attrs.wind_speed != null) {
     const unit = attrs.wind_speed_unit || state.UNIT_SYSTEM?.wind_speed || '';
-    stats.push(unit ? `${attrs.wind_speed} ${unit}` : String(attrs.wind_speed));
+    const windSpeed = formatNumber(attrs.wind_speed);
+    stats.push(unit ? `${windSpeed} ${unit}` : windSpeed);
   }
   if (attrs.pressure != null && stats.length < 2) {
     const unit = attrs.pressure_unit || state.UNIT_SYSTEM?.pressure || '';
-    stats.push(unit ? `${attrs.pressure} ${unit}` : String(attrs.pressure));
+    const pressure = formatNumber(attrs.pressure);
+    stats.push(unit ? `${pressure} ${unit}` : pressure);
   }
   return stats.slice(0, 2);
 }
@@ -7176,17 +7255,19 @@ function createDesktopPinWeatherControlElement(entity) {
   const temperatureUnit =
     entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
   const temperatureValue =
-    temperature != null ? `${temperature}${temperatureUnit}` : utils.getEntityDisplayState(entity);
+    temperature != null
+      ? formatTemperatureDisplay(temperature, temperatureUnit)
+      : utils.getEntityDisplayState(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-weather-control'], {
     domain: 'weather',
     state: entity.state,
-    title: 'Compact weather tile',
+    title: t('Compact weather tile'),
   });
 
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: utils.getEntityDisplayState(entity),
+        statusText: getWeatherConditionLabel(entity.state),
         asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(temperatureValue)}</div>`,
       })}
       <div class="desktop-pin-panel-body">
@@ -7200,8 +7281,10 @@ function createDesktopPinWeatherControlElement(entity) {
         <div class="desktop-pin-panel-actions desktop-pin-weather-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-weather-focus',
-            label: 'Focus Main',
-            ariaLabel: `Focus main widget for ${utils.getEntityDisplayName(entity)}`,
+            label: t('Focus Main'),
+            ariaLabel: t('Focus main widget for {{name}}', {
+              name: utils.getEntityDisplayName(entity),
+            }),
           })}
         </div>
       </div>
@@ -7225,18 +7308,20 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   const temperatureUnit =
     entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
   const temperatureValue =
-    temperature != null ? `${temperature}${temperatureUnit}` : utils.getEntityDisplayState(entity);
+    temperature != null
+      ? formatTemperatureDisplay(temperature, temperatureUnit)
+      : utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: 'weather',
-    title: 'Compact weather tile',
+    title: t('Compact weather tile'),
   });
 
   const name = root.querySelector('.desktop-pin-panel-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = utils.getEntityDisplayState(entity);
+  if (status) status.textContent = getWeatherConditionLabel(entity.state);
 
   const kpi = root.querySelector('.desktop-pin-panel-kpi');
   if (kpi) kpi.textContent = temperatureValue;
@@ -7267,41 +7352,57 @@ function getDesktopPinVacuumActionConfig(entity) {
   const hasReturn = hasEntityService(entity, 'return_to_base');
   const hasStop = hasEntityService(entity, 'stop') || hasEntityService(entity, 'turn_off');
 
-  const makeServiceAction = (label, serviceName) => ({
+  const name = utils.getEntityDisplayName(entity);
+  const makeServiceAction = (label, ariaLabel, serviceName) => ({
     label,
+    ariaLabel,
     type: 'service',
     serviceName,
   });
   const focusAction = {
-    label: 'Focus Main',
+    label: t('Focus Main'),
+    ariaLabel: t('Focus main widget for {{name}}', { name }),
     type: 'focus-main',
   };
+  const returnAction = hasReturn
+    ? makeServiceAction(t('Return'), t('Return {{name}}', { name }), 'return_to_base')
+    : focusAction;
 
   if (stateValue === 'cleaning') {
     return {
-      primary: hasPause ? makeServiceAction('Pause', 'pause') : focusAction,
-      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+      primary: hasPause
+        ? makeServiceAction(t('Pause'), t('Pause {{name}}', { name }), 'pause')
+        : focusAction,
+      secondary: returnAction,
     };
   }
 
   if (stateValue === 'paused') {
     return {
-      primary: hasStart ? makeServiceAction('Resume', 'start') : focusAction,
-      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+      primary: hasStart
+        ? makeServiceAction(t('Resume'), t('Resume {{name}}', { name }), 'start')
+        : focusAction,
+      secondary: returnAction,
     };
   }
 
   if (stateValue === 'returning') {
     return {
       primary: hasStop
-        ? makeServiceAction('Stop', hasEntityService(entity, 'stop') ? 'stop' : 'turn_off')
+        ? makeServiceAction(
+            t('Stop'),
+            t('Stop {{name}}', { name }),
+            hasEntityService(entity, 'stop') ? 'stop' : 'turn_off'
+          )
         : focusAction,
-      secondary: hasReturn ? makeServiceAction('Return', 'return_to_base') : focusAction,
+      secondary: returnAction,
     };
   }
 
   return {
-    primary: hasStart ? makeServiceAction('Start', 'start') : focusAction,
+    primary: hasStart
+      ? makeServiceAction(t('Start'), t('Start {{name}}', { name }), 'start')
+      : focusAction,
     secondary: null,
   };
 }
@@ -7320,7 +7421,7 @@ function createDesktopPinVacuumControlElement(entity) {
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-vacuum-control'], {
     domain: 'vacuum',
     state: entity.state,
-    title: 'Compact vacuum tile',
+    title: t('Compact vacuum tile'),
   });
 
   root.innerHTML = `
@@ -7337,8 +7438,8 @@ function createDesktopPinVacuumControlElement(entity) {
         <div class="desktop-pin-panel-actions desktop-pin-vacuum-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-            label: actionConfig.primary?.label || 'Focus Main',
-            ariaLabel: `${actionConfig.primary?.label || 'Focus Main'} ${utils.getEntityDisplayName(entity)}`,
+            label: actionConfig.primary.label,
+            ariaLabel: actionConfig.primary.ariaLabel,
             action: 'primary',
           })}
           ${
@@ -7346,7 +7447,7 @@ function createDesktopPinVacuumControlElement(entity) {
               ? createDesktopPinButtonMarkup({
                   className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
                   label: actionConfig.secondary.label,
-                  ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
+                  ariaLabel: actionConfig.secondary.ariaLabel,
                   action: 'secondary',
                 })
               : ''
@@ -7375,7 +7476,7 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
   const actionConfig = getDesktopPinVacuumActionConfig(entity);
   syncDesktopPinPanelRootState(root, entity, {
     domain: 'vacuum',
-    title: 'Compact vacuum tile',
+    title: t('Compact vacuum tile'),
   });
 
   const displayState = utils.getEntityDisplayState(entity);
@@ -7399,8 +7500,8 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
     actions.innerHTML = `
       ${createDesktopPinButtonMarkup({
         className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-        label: actionConfig.primary?.label || 'Focus Main',
-        ariaLabel: `${actionConfig.primary?.label || 'Focus Main'} ${utils.getEntityDisplayName(entity)}`,
+        label: actionConfig.primary.label,
+        ariaLabel: actionConfig.primary.ariaLabel,
         action: 'primary',
       })}
       ${
@@ -7408,7 +7509,7 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
           ? createDesktopPinButtonMarkup({
               className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
               label: actionConfig.secondary.label,
-              ariaLabel: `${actionConfig.secondary.label} ${utils.getEntityDisplayName(entity)}`,
+              ariaLabel: actionConfig.secondary.ariaLabel,
               action: 'secondary',
             })
           : ''
@@ -7433,7 +7534,7 @@ function updateExistingDesktopPinFallbackControl(root, entity) {
 
   syncDesktopPinPanelRootState(root, entity, {
     domain: getEntityDomain(entity.entity_id),
-    title: 'Compact entity tile',
+    title: t('Compact entity tile'),
   });
 
   const displayState = utils.getEntityDisplayState(entity);
@@ -7495,6 +7596,15 @@ function updateExistingDesktopPinPanelControl(root, entity) {
   return false;
 }
 
+// The support module's reasons are English sentences built around the domain name, so the
+// message is phrased here where it can be translated.
+function getDesktopPinUnsupportedMessage(entityId) {
+  const domain = getEntityDomain(entityId);
+  return domain
+    ? t('The "{{domain}}" domain does not have a desktop-pin profile yet.', { domain })
+    : t('Desktop pin not supported yet');
+}
+
 function syncQuickAccessControlButton(control, entityId) {
   if (!control || !entityId) return;
   // A graph is not an entity, so it can't be pinned to the desktop as one.
@@ -7538,11 +7648,15 @@ function syncQuickAccessControlButton(control, entityId) {
   button.disabled = !isPinned && !supportProfile.supported;
   button.setAttribute('aria-disabled', !isPinned && !supportProfile.supported ? 'true' : 'false');
   button.title = isPinned
-    ? 'Unpin from desktop'
+    ? t('Unpin from desktop')
     : supportProfile.supported
-      ? 'Pin to desktop'
-      : supportProfile.reason || 'Desktop pin not supported yet';
-  button.textContent = isPinned ? 'Pinned' : supportProfile.supported ? 'Pin' : 'Unsupported';
+      ? t('Pin to desktop')
+      : getDesktopPinUnsupportedMessage(resolvedEntityId);
+  button.textContent = isPinned
+    ? t('Pinned')
+    : supportProfile.supported
+      ? t('Pin')
+      : t('Unsupported');
 }
 
 function focusQuickAccessPinToggle(entityId) {
@@ -7565,7 +7679,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
     document.activeElement?.dataset?.desktopPinQuickToggle === entityId &&
     !!document.activeElement.closest('#quick-controls');
   if (!isPinned && !supportInfo.supported) {
-    uiUtils.showToast(supportInfo.reason || 'Desktop pin not supported yet', 'error', 2600);
+    uiUtils.showToast(getDesktopPinUnsupportedMessage(resolvedEntityId), 'error', 2600);
     return { success: false, error: supportInfo.reason || 'Desktop pin not supported yet' };
   }
   try {
@@ -7588,7 +7702,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
         addRemoveButtons();
       }
       if (hadFocus) focusQuickAccessPinToggle(entityId);
-      uiUtils.showToast('Removed desktop pin', 'info', 1800);
+      uiUtils.showToast(t('Removed desktop pin'), 'info', 1800);
       return { success: true, pinned: false, result };
     }
 
@@ -7611,12 +7725,12 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
     }
     if (hadFocus) focusQuickAccessPinToggle(entityId);
 
-    uiUtils.showToast('Pinned to desktop', 'success', 1800);
+    uiUtils.showToast(t('Pinned to desktop'), 'success', 1800);
     return { success: true, pinned: true, result };
   } catch (error) {
     console.error('Error toggling desktop pin from quick access:', error);
     uiUtils.showToast(
-      isPinned ? 'Could not remove desktop pin' : 'Could not pin tile to desktop',
+      isPinned ? t('Could not remove desktop pin') : t('Could not pin tile to desktop'),
       'error',
       2600
     );
@@ -7633,7 +7747,7 @@ function updateExistingMediaPlayerControl(item, entity) {
 
   item.dataset.entityId = entity.entity_id;
   applyQuickAccessTileActiveState(item, entity);
-  item.title = 'Click to play/pause, hold for controls';
+  item.title = t('Click to play/pause, hold for controls');
   setupMediaPlayerControls(item, entity);
   return true;
 }
@@ -7645,12 +7759,16 @@ function getCachedTodoItems(entityId) {
 
 function getTodoTileCountLabel(entity) {
   const cachedItems = getCachedTodoItems(entity?.entity_id);
-  if (cachedItems) return `${getTodoActiveCount(cachedItems)} active`;
+  if (cachedItems) return formatTodoActiveCount(getTodoActiveCount(cachedItems));
 
   const stateCount = Number(entity?.state);
-  if (Number.isFinite(stateCount)) return `${stateCount} active`;
+  if (Number.isFinite(stateCount)) return formatTodoActiveCount(stateCount);
 
-  return '-- active';
+  return t('-- active');
+}
+
+function formatTodoActiveCount(count) {
+  return count === 1 ? t('1 active') : t('{{count}} active', { count: formatNumber(count) });
 }
 
 function updateTodoTileCount(entityId) {
@@ -7661,7 +7779,9 @@ function updateTodoTileCount(entityId) {
     const entity = state.STATES?.[entityId];
     const countEl = item.querySelector('.todo-active-count');
     if (countEl && entity) countEl.textContent = getTodoTileCountLabel(entity);
-    item.title = entity ? `Click to view ${utils.getEntityDisplayName(entity)}` : item.title;
+    item.title = entity
+      ? t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) })
+      : item.title;
   });
 }
 
@@ -7720,7 +7840,7 @@ function renderTodoTileStateMarkup(entity) {
 }
 
 function getCalendarNextEventSummary(entity) {
-  const message = entity?.attributes?.message || 'No upcoming event';
+  const message = entity?.attributes?.message || t('No upcoming event');
   const start = formatCalendarTileStart(
     entity?.attributes?.start_time || entity?.attributes?.start,
     { allDay: entity?.attributes?.all_day === true }
@@ -7948,7 +8068,7 @@ function getDesktopPinFallbackDescriptor(
   const fallbackName =
     customName ||
     (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '') ||
-    'Pinned Tile';
+    t('Pinned Tile');
   const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
   const normalizedConnectionIssue =
     typeof connectionIssue === 'string' ? connectionIssue.trim() : '';
@@ -7957,7 +8077,7 @@ function getDesktopPinFallbackDescriptor(
   if (!entityId) {
     return {
       state: 'no-entity',
-      label: 'Pinned Tile',
+      label: t('Pinned Tile'),
       kicker: t('Pin setup'),
       title: t('No entity selected'),
       detail: t('Choose an entity in the main widget and pin it again.'),
@@ -8109,7 +8229,7 @@ function renderDesktopPinTileInto({
       const liveEntity = entity || state.STATES?.[entityId];
       label.textContent = liveEntity
         ? utils.getEntityDisplayName(liveEntity)
-        : entityId || 'Pinned Tile';
+        : entityId || t('Pinned Tile');
     }
   }
 
@@ -8129,13 +8249,32 @@ function renderDesktopPinTileInto({
   syncDesktopPinFallbackActions({
     showFocusMain: false,
   });
-  if (existingControl && updateExistingDesktopPinPanelControl(existingControl, entity)) {
+  const localeKey = getDesktopPinLocaleKey();
+  if (
+    existingControl &&
+    existingControl.dataset.localeKey === localeKey &&
+    updateExistingDesktopPinPanelControl(existingControl, entity)
+  ) {
     return;
   }
   container.innerHTML = '';
   const control = createDesktopPinControlElement(entity);
+  control.dataset.localeKey = localeKey;
   if (!interactive) control.style.pointerEvents = 'none';
   container.appendChild(control);
+}
+
+let desktopPinLocaleMessages = null;
+let desktopPinLocaleKey = '';
+
+// Pins update in place, which keeps static labels; a different catalog must rebuild the tile.
+function getDesktopPinLocaleKey() {
+  const { activeLocale, messages } = getLocaleState();
+  if (messages !== desktopPinLocaleMessages) {
+    desktopPinLocaleMessages = messages;
+    desktopPinLocaleKey = `${activeLocale}|${Object.keys(messages || {}).length}`;
+  }
+  return desktopPinLocaleKey;
 }
 
 function renderDesktopPinnedTile(entityId, entity = null, options = {}) {
@@ -8214,7 +8353,7 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
     if (!entity) {
       sendResponse({
         success: false,
-        error: { message: 'Entity is not available' },
+        error: { message: t('Entity is not available') },
       });
       return;
     }
@@ -8235,7 +8374,7 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
         if (!domain || !serviceName) {
           sendResponse({
             success: false,
-            error: { message: 'Invalid service call request' },
+            error: { message: t('Invalid service call request') },
           });
           return;
         }
@@ -8418,7 +8557,7 @@ function createControlElement(entity, options = {}) {
             sourceElement: div,
           });
       };
-      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
+      div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else if (domain === 'sensor' && !isTimerSensor) {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
@@ -8430,21 +8569,21 @@ function createControlElement(entity, options = {}) {
         if (!shouldBlockInteraction(div))
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
-      div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
+      div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
-      div.title = `Click to toggle, hold for brightness control`;
+      div.title = t('Click to toggle, hold for brightness control');
     } else if (entity.entity_id.startsWith('climate.')) {
       setupClimateControls(div, entity);
-      div.title = `Click to toggle, hold for temperature control`;
+      div.title = t('Click to toggle, hold for temperature control');
     } else if (entity.entity_id.startsWith('fan.')) {
       setupFanControls(div, entity);
-      div.title = `Click to toggle, hold for speed control`;
+      div.title = t('Click to toggle, hold for speed control');
     } else if (entity.entity_id.startsWith('cover.')) {
       setupCoverControls(div, entity);
-      div.title = `Click to toggle, hold for position control`;
+      div.title = t('Click to toggle, hold for position control');
     } else if (entity.entity_id.startsWith('media_player.')) {
-      div.title = `Click to play/pause, hold for controls`;
+      div.title = t('Click to play/pause, hold for controls');
     } else if (domain === 'todo') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
@@ -8452,7 +8591,7 @@ function createControlElement(entity, options = {}) {
             source: 'quick-access-click',
           });
       };
-      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
+      div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) });
       void fetchTodoItems(entity.entity_id).catch(() => {});
     } else if (domain === 'calendar') {
       div.onclick = () => {
@@ -8461,7 +8600,7 @@ function createControlElement(entity, options = {}) {
             source: 'quick-access-click',
           });
       };
-      div.title = `Click to view ${utils.getEntityDisplayName(entity)}`;
+      div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else if (
       entity.entity_id.startsWith('button.') ||
       entity.entity_id.startsWith('input_button.')
@@ -8470,13 +8609,13 @@ function createControlElement(entity, options = {}) {
         if (!shouldBlockInteraction(div))
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
-      div.title = `Click to press ${utils.getEntityDisplayName(entity)}`;
+      div.title = t('Click to press {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
-      div.title = `Click to toggle ${utils.getEntityDisplayName(entity)}`;
+      div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
     }
 
     const icon = utils.escapeHtml(utils.getEntityIcon(entity));
@@ -8511,7 +8650,7 @@ function createControlElement(entity, options = {}) {
     } else if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes.current_temperature || entity.attributes.temperature;
       if (temp)
-        stateDisplay = `<div class="control-state">${utils.escapeHtml(String(temp))}°</div>`;
+        stateDisplay = `<div class="control-state">${utils.escapeHtml(formatNumber(temp))}°</div>`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
@@ -8982,7 +9121,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (isTimer) {
     div.classList.add('timer-entity');
     div.dataset.state = displayEntity.state;
-    div.title = `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
+    div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
     if (stateEl)
       stateEl.textContent = utils.getTimerDisplay
         ? utils.getTimerDisplay(displayEntity)
@@ -8997,27 +9136,27 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('light.')) {
-    div.title = 'Click to toggle, hold for brightness control';
+    div.title = t('Click to toggle, hold for brightness control');
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    div.title = 'Click to toggle, hold for temperature control';
+    div.title = t('Click to toggle, hold for temperature control');
     if (stateEl) {
       const temp =
         displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature;
-      stateEl.textContent = temp ? `${temp}°` : '';
+      stateEl.textContent = temp ? `${formatNumber(temp)}°` : '';
     }
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('fan.')) {
-    div.title = 'Click to toggle, hold for speed control';
+    div.title = t('Click to toggle, hold for speed control');
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('cover.')) {
-    div.title = 'Click to toggle, hold for position control';
+    div.title = t('Click to toggle, hold for position control');
     return true;
   }
 
@@ -9034,7 +9173,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
           sourceElement: div,
         });
     };
-    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
     if (expectsPreview) {
       camera.mountCameraPreview(div, displayEntity.entity_id, cameraPreviewRefresh);
     }
@@ -9049,7 +9188,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
           source: 'quick-access-click',
         });
     };
-    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
     if (stateEl) stateEl.textContent = getTodoTileCountLabel(displayEntity);
     void fetchTodoItems(displayEntity.entity_id).catch(() => {});
     return true;
@@ -9063,7 +9202,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
           source: 'quick-access-click',
         });
     };
-    div.title = `Click to view ${utils.getEntityDisplayName(displayEntity)}`;
+    div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
     if (stateEl) stateEl.textContent = getCalendarNextEventSummary(displayEntity);
     return true;
   }
@@ -9076,8 +9215,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   div.title =
     displayEntity.entity_id.startsWith('button.') ||
     displayEntity.entity_id.startsWith('input_button.')
-      ? `Click to press ${utils.getEntityDisplayName(displayEntity)}`
-      : `Click to toggle ${utils.getEntityDisplayName(displayEntity)}`;
+      ? t('Click to press {{name}}', { name: utils.getEntityDisplayName(displayEntity) })
+      : t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
   return true;
 }
 
@@ -9215,7 +9354,7 @@ function renderTodoItemsInto(container, entity, items) {
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'entity-detail-empty';
-    empty.textContent = 'No active items';
+    empty.textContent = t('No active items');
     list.appendChild(empty);
   } else {
     items.forEach((item) => {
@@ -9231,7 +9370,7 @@ function renderTodoItemsInto(container, entity, items) {
 
       const summary = document.createElement('span');
       summary.className = 'todo-item-summary';
-      summary.textContent = item.summary || 'Untitled item';
+      summary.textContent = item.summary || t('Untitled item');
 
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
@@ -9307,17 +9446,18 @@ function showTodoDetails(entity) {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'form-control';
-    input.placeholder = 'Add item';
+    input.placeholder = t('Add item');
+    input.setAttribute('aria-label', t('Add item'));
     const addButton = document.createElement('button');
     addButton.type = 'submit';
     addButton.className = 'btn btn-primary';
-    addButton.textContent = 'Add';
+    addButton.textContent = t('Add');
     addForm.appendChild(input);
     addForm.appendChild(addButton);
 
     const listContainer = document.createElement('div');
     listContainer.className = 'todo-detail-list-container';
-    listContainer.textContent = 'Loading...';
+    listContainer.textContent = t('Loading...');
 
     addForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -9357,7 +9497,7 @@ function renderCalendarEventsInto(container, events) {
   if (!events.length) {
     const empty = document.createElement('div');
     empty.className = 'entity-detail-empty';
-    empty.textContent = 'No upcoming events';
+    empty.textContent = t('No upcoming events');
     container.appendChild(empty);
     return;
   }
@@ -9368,7 +9508,7 @@ function renderCalendarEventsInto(container, events) {
 
     const summary = document.createElement('div');
     summary.className = 'calendar-event-summary';
-    summary.textContent = event.summary || event.message || 'Untitled event';
+    summary.textContent = event.summary || event.message || t('Untitled event');
 
     const time = document.createElement('div');
     time.className = 'calendar-event-time';
@@ -9400,7 +9540,7 @@ function showCalendarDetails(entity) {
 
     const listContainer = document.createElement('div');
     listContainer.className = 'calendar-events-list';
-    listContainer.textContent = 'Loading...';
+    listContainer.textContent = t('Loading...');
     body.appendChild(listContainer);
 
     const start = new Date();
@@ -9418,7 +9558,7 @@ function showCalendarDetails(entity) {
       })
       .catch((error) => {
         console.warn('Unable to fetch calendar events:', error);
-        listContainer.textContent = 'Unable to load events';
+        listContainer.textContent = t('Unable to load events');
       });
   } catch (error) {
     console.error('Error showing calendar details:', error);
@@ -9593,9 +9733,9 @@ function setupMediaPlayerControls(div, entity) {
         ${mediaAlbum && !mediaArtist ? `<div class="media-album">${mediaAlbum}</div>` : ''}
       </div>`;
     } else if (isOff) {
-      mediaInfo = '<div class="media-info"><div class="media-title">No media</div></div>';
+      mediaInfo = `<div class="media-info"><div class="media-title">${utils.escapeHtml(t('No media'))}</div></div>`;
     } else {
-      mediaInfo = '<div class="media-info"><div class="media-title">Ready</div></div>';
+      mediaInfo = `<div class="media-info"><div class="media-title">${utils.escapeHtml(t('Ready'))}</div></div>`;
     }
 
     // Update the control info section (no inline controls; whole tile toggles)
@@ -9657,7 +9797,7 @@ function setupMediaPlayerControls(div, entity) {
           // Replace icon with album art image only when the source changed.
           const img = document.createElement('img');
           img.src = proxyUrl;
-          img.alt = 'Album art';
+          img.alt = t('Album art');
           img.className = 'media-player-artwork';
           img.onload = function () {
             failedMediaArtworkRetryAtByUrl.delete(retryKey);
@@ -9947,7 +10087,7 @@ function showMediaDetail(entity) {
               supportsVolumeSet
                 ? `
               <div class="media-volume-row">
-                <label class="media-volume-label" for="media-volume-slider">Volume</label>
+                <label class="media-volume-label" for="media-volume-slider">${utils.escapeHtml(t('Volume'))}</label>
                 <input
                   type="range"
                   min="0"
@@ -9956,7 +10096,7 @@ function showMediaDetail(entity) {
                   value="${initialVolume}"
                   id="media-volume-slider"
                   class="media-volume-slider"
-                  aria-label="Volume"
+                  aria-label="${escapeHtmlAttribute(t('Volume'))}"
                 />
                 <span class="media-volume-value" id="media-volume-value">${initialVolume}%</span>
               </div>
@@ -9971,7 +10111,7 @@ function showMediaDetail(entity) {
                 id="media-mute-toggle"
                 type="button"
                 aria-pressed="${initialMuted ? 'true' : 'false'}"
-              >${initialMuted ? 'Muted' : 'Mute'}</button>
+              >${utils.escapeHtml(initialMuted ? t('Muted') : t('Mute'))}</button>
             `
                 : ''
             }
@@ -10005,23 +10145,23 @@ function showMediaDetail(entity) {
           </div>
           ${volumeControlsMarkup}
           <div class="media-detail-controls">
-            ${mediaCapabilities.canPreviousTrack ? '<button class="btn media-detail-prev-btn" data-action="previous_track" title="Previous" aria-label="Previous track"></button>' : ''}
-            ${supportsSeek ? '<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="Rewind 10 seconds" aria-label="Rewind 10 seconds">-10</button>' : ''}
-            ${supportsAnyPlaybackToggle ? '<button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="Play/Pause" aria-label="Play or pause"></button>' : ''}
-            ${supportsSeek ? '<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="Forward 10 seconds" aria-label="Forward 10 seconds">+10</button>' : ''}
-            ${mediaCapabilities.canNextTrack ? '<button class="btn media-detail-next-btn" data-action="next_track" title="Next" aria-label="Next track"></button>' : ''}
+            ${mediaCapabilities.canPreviousTrack ? `<button class="btn media-detail-prev-btn" data-action="previous_track" title="${escapeHtmlAttribute(t('Previous'))}" aria-label="${escapeHtmlAttribute(t('Previous track'))}"></button>` : ''}
+            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="${escapeHtmlAttribute(t('Rewind 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Rewind 10 seconds'))}">-10</button>` : ''}
+            ${supportsAnyPlaybackToggle ? `<button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="${escapeHtmlAttribute(t('Play/Pause'))}" aria-label="${escapeHtmlAttribute(t('Play or pause'))}"></button>` : ''}
+            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="${escapeHtmlAttribute(t('Forward 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Forward 10 seconds'))}">+10</button>` : ''}
+            ${mediaCapabilities.canNextTrack ? `<button class="btn media-detail-next-btn" data-action="next_track" title="${escapeHtmlAttribute(t('Next'))}" aria-label="${escapeHtmlAttribute(t('Next track'))}"></button>` : ''}
             ${
               !mediaCapabilities.canPreviousTrack &&
               !supportsSeek &&
               !supportsAnyPlaybackToggle &&
               !mediaCapabilities.canNextTrack
-                ? '<span class="control-capability-note">This media player does not advertise transport controls.</span>'
+                ? `<span class="control-capability-note">${utils.escapeHtml(t('This media player does not advertise transport controls.'))}</span>`
                 : ''
             }
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="media-close-footer">Close</button>
+          <button class="btn btn-secondary" id="media-close-footer">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;
@@ -10075,7 +10215,7 @@ function showMediaDetail(entity) {
         const isMuted = attrs.is_volume_muted === true;
         muteToggle.classList.toggle('active', isMuted);
         muteToggle.setAttribute('aria-pressed', isMuted ? 'true' : 'false');
-        muteToggle.textContent = isMuted ? 'Muted' : 'Mute';
+        muteToggle.textContent = isMuted ? t('Muted') : t('Mute');
       }
     };
 
@@ -10161,7 +10301,7 @@ function showMediaDetail(entity) {
         const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
         muteToggle.classList.toggle('active', nextMuted);
         muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
-        muteToggle.textContent = nextMuted ? 'Muted' : 'Mute';
+        muteToggle.textContent = nextMuted ? t('Muted') : t('Mute');
         callMediaPlayerService(entity.entity_id, 'volume_mute', {
           isVolumeMuted: nextMuted,
         });
@@ -10836,9 +10976,11 @@ function updateWeatherFromHA() {
 
     if (tempEl)
       tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
-    if (conditionEl) conditionEl.textContent = weatherEntity.state || '--';
-    if (humidityEl) humidityEl.textContent = `${weatherEntity.attributes.humidity || 0}%`;
-    if (windEl) windEl.textContent = `${windSpeed} ${windUnit}`;
+    if (conditionEl) conditionEl.textContent = getWeatherConditionLabel(weatherEntity.state);
+    if (humidityEl) {
+      humidityEl.textContent = `${formatNumber(weatherEntity.attributes.humidity || 0)}%`;
+    }
+    if (windEl) windEl.textContent = `${formatNumber(windSpeed)} ${windUnit}`;
 
     // Render a deterministic SVG for every Home Assistant weather condition.
     if (iconEl) {
@@ -10851,6 +10993,13 @@ function updateWeatherFromHA() {
   } catch (error) {
     console.error('Error updating weather:', error);
   }
+}
+
+// Home Assistant reports conditions as ids ("partlycloudy"); show the translated label instead.
+function getWeatherConditionLabel(condition) {
+  if (!condition) return '--';
+  const label = WEATHER_LABELS?.[normalizeWeatherCondition(condition)];
+  return label ? t(label) : condition;
 }
 
 function getWeatherEffectForState(condition) {
@@ -10935,8 +11084,9 @@ function populateWeatherEntitiesList() {
     list.innerHTML = '';
 
     if (weatherEntities.length === 0) {
-      list.innerHTML =
-        '<div class="no-entities-message">No weather entities available. Make sure you\'re connected to Home Assistant.</div>';
+      list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
+        t("No weather entities available. Make sure you're connected to Home Assistant.")
+      )}</div>`;
       return;
     }
 
@@ -10945,8 +11095,9 @@ function populateWeatherEntitiesList() {
     // Update current weather name display
     if (currentNameEl) {
       if (selectedEntityId && state.STATES[selectedEntityId]) {
-        currentNameEl.textContent =
-          utils.getEntityDisplayName(state.STATES[selectedEntityId]) + ' ✓ (selected)';
+        currentNameEl.textContent = t('{{name}} ✓ (selected)', {
+          name: utils.getEntityDisplayName(state.STATES[selectedEntityId]),
+        });
         currentNameEl.style.fontWeight = '600';
         currentNameEl.style.color = 'var(--primary-color)';
         currentNameEl.style.fontStyle = 'normal';
@@ -10959,13 +11110,14 @@ function populateWeatherEntitiesList() {
           )[0];
 
         if (fallbackEntity) {
-          currentNameEl.textContent =
-            utils.getEntityDisplayName(fallbackEntity) + ' (auto-detected)';
+          currentNameEl.textContent = t('{{name}} (auto-detected)', {
+            name: utils.getEntityDisplayName(fallbackEntity),
+          });
           currentNameEl.style.fontWeight = '400';
           currentNameEl.style.color = 'var(--text-secondary)';
           currentNameEl.style.fontStyle = 'italic';
         } else {
-          currentNameEl.textContent = 'None available';
+          currentNameEl.textContent = t('None available');
           currentNameEl.style.fontWeight = '400';
           currentNameEl.style.color = 'var(--text-secondary)';
           currentNameEl.style.fontStyle = 'normal';
@@ -10995,7 +11147,7 @@ function populateWeatherEntitiesList() {
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
           </div>
         </div>
-        ${isSelected ? '<span class="selected-badge">✓ Selected</span>' : ''}
+        ${isSelected ? `<span class="selected-badge">${utils.escapeHtml(t('✓ Selected'))}</span>` : ''}
       `;
 
       // Add click handler to select this entity
@@ -11118,7 +11270,7 @@ function updateMediaTile() {
     // Update media info
     const titleEl = document.getElementById('media-tile-title');
     const artistEl = document.getElementById('media-tile-artist');
-    const mediaTitle = entity.attributes?.media_title || 'No media playing';
+    const mediaTitle = entity.attributes?.media_title || t('No media playing');
     const mediaArtist = entity.attributes?.media_artist || '';
     const isPlaying = entity.state === 'playing';
     const proxyUrl = buildMediaArtworkProxyUrl(artworkUrl);
@@ -11152,7 +11304,7 @@ function updateMediaTile() {
           if (!existingImg || existingSrc !== proxyUrl || lastMediaTileArtworkSrc !== proxyUrl) {
             const img = document.createElement('img');
             img.src = proxyUrl;
-            img.alt = 'Album art';
+            img.alt = t('Album art');
             img.onerror = function () {
               this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
               lastMediaTileArtworkSrc = '';
@@ -11217,7 +11369,7 @@ function callMediaTileService(action) {
     if (!primaryPlayer) return;
 
     const entity = state.STATES[primaryPlayer];
-    const entityName = entity ? utils.getEntityDisplayName(entity) : 'Media Player';
+    const entityName = entity ? utils.getEntityDisplayName(entity) : t('Media Player');
 
     const serviceCalls = {
       play: () =>
@@ -11263,23 +11415,23 @@ function showNoConnectionMessage() {
       ) {
         container.innerHTML = `
           <div class="status-message">
-            <h3>⚙️ Setup Required</h3>
-            <p>Your Home Assistant connection needs to be configured.</p>
-            <p>Click the settings button (⚙️) in the top right to:</p>
+            <h3>⚙️ ${utils.escapeHtml(t('Setup Required'))}</h3>
+            <p>${utils.escapeHtml(t('Your Home Assistant connection needs to be configured.'))}</p>
+            <p>${utils.escapeHtml(t('Click the settings button (⚙️) in the top right to:'))}</p>
             <ul style="margin: 10px 0; padding-left: 20px;">
-              <li>Set your Home Assistant URL</li>
-              <li>Add your Long-Lived Access Token</li>
+              <li>${utils.escapeHtml(t('Set your Home Assistant URL'))}</li>
+              <li>${utils.escapeHtml(t('Add your Long-Lived Access Token'))}</li>
             </ul>
-            <p><strong>Status:</strong> Configuration incomplete</p>
+            <p><strong>${utils.escapeHtml(t('Status:'))}</strong> ${utils.escapeHtml(t('Configuration incomplete'))}</p>
           </div>`;
       } else {
         container.innerHTML = `
           <div class="status-message">
-            <h3>🔄 Connecting to Home Assistant</h3>
-            <p>Attempting to connect to: ${utils.escapeHtml(state.CONFIG.homeAssistant.url)}</p>
-            <p><strong>Status:</strong> Connecting...</p>
+            <h3>🔄 ${utils.escapeHtml(t('Connecting to Home Assistant'))}</h3>
+            <p>${utils.escapeHtml(t('Attempting to connect to: {{url}}', { url: state.CONFIG.homeAssistant.url }))}</p>
+            <p><strong>${utils.escapeHtml(t('Status:'))}</strong> ${utils.escapeHtml(t('Connecting...'))}</p>
             <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">
-              If this persists, check your Home Assistant URL and token in settings.
+              ${utils.escapeHtml(t('If this persists, check your Home Assistant URL and token in settings.'))}
             </p>
           </div>`;
       }
@@ -11414,7 +11566,7 @@ function updateTimerDisplays() {
           // Timer finished
           const countdownEl = timerEl.querySelector('.timer-countdown');
           if (countdownEl) {
-            countdownEl.textContent = 'Finished';
+            countdownEl.textContent = t('Finished');
           }
           return;
         }
@@ -11463,7 +11615,7 @@ function showBrightnessSlider(light) {
       ? `
             <div class="brightness-color-temp">
               <div class="brightness-control-heading">
-                <span>Color Temperature</span>
+                <span>${utils.escapeHtml(t('Color Temperature'))}</span>
                 <span id="light-color-temp-value">${currentColorTemp}K</span>
               </div>
               <input
@@ -11474,11 +11626,11 @@ function showBrightnessSlider(light) {
                 value="${currentColorTemp}"
                 id="light-color-temp-slider"
                 class="light-color-temp-slider"
-                aria-label="Color Temperature"
+                aria-label="${escapeHtmlAttribute(t('Color Temperature'))}"
               />
               <div class="brightness-slider-labels">
-                <span>Warm</span>
-                <span>Cool</span>
+                <span>${utils.escapeHtml(translateInContext('Color temperature: Warm', 'Warm'))}</span>
+                <span>${utils.escapeHtml(translateInContext('Color temperature: Cool', 'Cool'))}</span>
               </div>
             </div>
         `
@@ -11487,7 +11639,7 @@ function showBrightnessSlider(light) {
       ? `
             <div class="brightness-color-picker">
               <div class="brightness-control-heading">
-                <span>Color</span>
+                <span>${utils.escapeHtml(t('Color'))}</span>
               </div>
               <div class="brightness-color-row">
                 <input
@@ -11495,7 +11647,7 @@ function showBrightnessSlider(light) {
                   value="${escapeHtmlAttribute(currentColorHex)}"
                   id="light-color-picker"
                   class="light-color-picker"
-                  aria-label="Light Color"
+                  aria-label="${escapeHtmlAttribute(t('Light Color'))}"
                 />
                 <div class="light-color-swatches">
                   ${LIGHT_COLOR_PRESETS.map(
@@ -11505,7 +11657,7 @@ function showBrightnessSlider(light) {
                       type="button"
                       data-color="${escapeHtmlAttribute(color)}"
                       style="--swatch-color: ${escapeHtmlAttribute(color)}"
-                      aria-label="Set light color ${escapeHtmlAttribute(color)}"
+                      aria-label="${escapeHtmlAttribute(t('Set light color {{color}}', { color }))}"
                     ></button>
                   `
                   ).join('')}
@@ -11521,7 +11673,7 @@ function showBrightnessSlider(light) {
       <div class="modal-content brightness-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="brightness-close" type="button" title="Close" aria-label="Close">×</button>
+          <button class="close-btn" id="brightness-close" type="button" title="${escapeHtmlAttribute(t('Close'))}" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div class="brightness-content">
@@ -11540,7 +11692,7 @@ function showBrightnessSlider(light) {
                 value="${currentBrightness}" 
                 id="brightness-slider" 
                 class="brightness-slider" 
-                aria-label="Brightness" 
+                aria-label="${escapeHtmlAttribute(t('Brightness'))}" 
                 orient="vertical" 
               />
             </div>
@@ -11558,8 +11710,8 @@ function showBrightnessSlider(light) {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="brightness-cancel">Close</button>
-          <button class="btn btn-primary" id="turn-off-btn">Turn Off</button>
+          <button class="btn btn-secondary" id="brightness-cancel">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-primary" id="turn-off-btn">${utils.escapeHtml(t('Turn Off'))}</button>
         </div>
       </div>
     `;
@@ -11620,7 +11772,7 @@ function showBrightnessSlider(light) {
     const updateTurnButton = () => {
       if (!canSetBrightness && valueLarge) valueLarge.textContent = t(lightIsOn ? 'On' : 'Off');
       if (turnOffBtn) {
-        turnOffBtn.textContent = lightIsOn ? 'Turn Off' : 'Turn On';
+        turnOffBtn.textContent = lightIsOn ? t('Turn Off') : t('Turn On');
       }
     };
     updateTurnButton();
@@ -11901,8 +12053,8 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
   const scaleLabels = pin
     ? ''
     : `<span class="climate-slider-labels" aria-hidden="true">
-        <span>${capabilities.minTemp}${unit}</span>
-        <span>${capabilities.maxTemp}${unit}</span>
+        <span>${formatNumber(capabilities.minTemp)}${unit}</span>
+        <span>${formatNumber(capabilities.maxTemp)}${unit}</span>
       </span>`;
   return ['low', 'high']
     .map((bound) => {
@@ -12009,7 +12161,7 @@ function showClimateControls(climateEntity) {
     const hasCurrentHumidity =
       attributes.current_humidity !== undefined && attributes.current_humidity !== null;
     const currentHumidity = hasCurrentHumidity
-      ? utils.escapeHtml(String(attributes.current_humidity))
+      ? utils.escapeHtml(formatNumber(attributes.current_humidity))
       : '';
     const availableModes = capabilities.hvacModes;
     const availableFanModes = capabilities.fanModes;
@@ -12029,18 +12181,18 @@ function showClimateControls(climateEntity) {
       <div class="modal-content climate-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="climate-close" type="button" title="Close" aria-label="Close">×</button>
+          <button class="close-btn" id="climate-close" type="button" title="${escapeHtmlAttribute(t('Close'))}" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div class="climate-content">
             <div class="climate-temp-display">
               <div class="climate-current-temp">
-                <div class="climate-temp-label">Current</div>
-                <div class="climate-temp-value">${currentTemp === null ? '—' : `${currentTemp}${tempUnit}`}</div>
+                <div class="climate-temp-label">${utils.escapeHtml(t('Current'))}</div>
+                <div class="climate-temp-value">${currentTemp === null ? '—' : `${formatNumber(currentTemp)}${tempUnit}`}</div>
               </div>
               <div class="climate-target-temp">
-                <div class="climate-temp-label">Target</div>
-                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : `${targetTemp}${tempUnit}`}</div>
+                <div class="climate-temp-label">${utils.escapeHtml(t('Target'))}</div>
+                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : `${formatNumber(targetTemp)}${tempUnit}`}</div>
               </div>
             </div>
             ${
@@ -12048,7 +12200,7 @@ function showClimateControls(climateEntity) {
                 ? `
               <div class="climate-extra-stats">
                 <div class="climate-stat">
-                  <div class="climate-temp-label">Humidity</div>
+                  <div class="climate-temp-label">${utils.escapeHtml(t('Humidity'))}</div>
                   <div class="climate-temp-value">${currentHumidity}%</div>
                 </div>
               </div>
@@ -12067,11 +12219,11 @@ function showClimateControls(climateEntity) {
                 value="${targetTemp}"
                 id="climate-slider"
                 class="climate-slider"
-                aria-label="Target Temperature"
+                aria-label="${escapeHtmlAttribute(t('Target Temperature'))}"
               />
               <div class="climate-slider-labels">
-                <span>${minTemp}${tempUnit}</span>
-                <span>${maxTemp}${tempUnit}</span>
+                <span>${formatNumber(minTemp)}${tempUnit}</span>
+                <span>${formatNumber(maxTemp)}${tempUnit}</span>
               </div>
             </div>`
                 : ''
@@ -12081,7 +12233,7 @@ function showClimateControls(climateEntity) {
             ${
               availableModes.length
                 ? `<div class="climate-modes">
-              <div class="climate-modes-label">Mode</div>
+              <div class="climate-modes-label">${utils.escapeHtml(t('Mode'))}</div>
               <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
             </div>`
                 : ''
@@ -12090,7 +12242,7 @@ function showClimateControls(climateEntity) {
               availableFanModes.length
                 ? `
               <div class="climate-modes">
-                <div class="climate-modes-label">Fan</div>
+                <div class="climate-modes-label">${utils.escapeHtml(t('Fan'))}</div>
                 <div class="climate-option-buttons" id="climate-fan-buttons"></div>
               </div>
             `
@@ -12100,7 +12252,7 @@ function showClimateControls(climateEntity) {
               availablePresetModes.length
                 ? `
               <div class="climate-modes">
-                <div class="climate-modes-label">Preset</div>
+                <div class="climate-modes-label">${utils.escapeHtml(t('Preset'))}</div>
                 <div class="climate-option-buttons" id="climate-preset-buttons"></div>
               </div>
             `
@@ -12109,12 +12261,12 @@ function showClimateControls(climateEntity) {
             ${
               hasControls
                 ? ''
-                : '<p class="climate-controls-unavailable">This climate entity does not advertise controls that Home Assistant can safely change.</p>'
+                : `<p class="climate-controls-unavailable">${utils.escapeHtml(t('This climate entity does not advertise controls that Home Assistant can safely change.'))}</p>`
             }
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="climate-cancel">Close</button>
+          <button class="btn btn-secondary" id="climate-cancel">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;
@@ -12130,7 +12282,7 @@ function showClimateControls(climateEntity) {
       climateEntity,
       capabilities,
       (range) => {
-        targetValue.textContent = `${range.low}–${range.high}${tempUnit}`;
+        targetValue.textContent = `${formatNumber(range.low)}–${formatNumber(range.high)}${tempUnit}`;
       }
     );
     const closeBtn = modal.querySelector('#climate-close');
@@ -12155,7 +12307,9 @@ function showClimateControls(climateEntity) {
 
     function formatModeLabel(mode) {
       const normalizedMode = String(mode ?? '').trim();
-      if (!normalizedMode) return 'Mode';
+      if (!normalizedMode) return t('Mode');
+      const knownLabel = CLIMATE_OPTION_LABELS[normalizedMode.toLowerCase()];
+      if (knownLabel) return t(knownLabel);
       return normalizedMode
         .replace(/[_-]+/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -12281,14 +12435,16 @@ function showClimateControls(climateEntity) {
         }
         if (currentTempValue) {
           currentTempValue.textContent =
-            next.currentTemp === null ? '—' : `${next.currentTemp}${tempUnit}`;
+            next.currentTemp === null ? '—' : `${formatNumber(next.currentTemp)}${tempUnit}`;
         }
         missedLiveUpdate = temperatureCommandsInFlight > 0;
         if (slider && next.targetTemp !== null && !missedLiveUpdate && !temperatureDebounceTimer) {
           confirmedTargetTemp = next.targetTemp;
           if (document.activeElement !== slider) {
             slider.value = String(next.targetTemp);
-            if (targetValue) targetValue.textContent = `${next.targetTemp}${tempUnit}`;
+            if (targetValue) {
+              targetValue.textContent = `${formatNumber(next.targetTemp)}${tempUnit}`;
+            }
           }
         }
       }
@@ -12306,7 +12462,7 @@ function showClimateControls(climateEntity) {
     if (slider) {
       slider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
-        if (targetValue) targetValue.textContent = `${value}${tempUnit}`;
+        if (targetValue) targetValue.textContent = `${formatNumber(value)}${tempUnit}`;
 
         clearTimeout(temperatureDebounceTimer);
         temperatureDebounceTimer = setTimeout(() => {
@@ -12322,7 +12478,9 @@ function showClimateControls(climateEntity) {
             },
             () => {
               slider.value = String(confirmedTargetTemp);
-              if (targetValue) targetValue.textContent = `${confirmedTargetTemp}${tempUnit}`;
+              if (targetValue) {
+                targetValue.textContent = `${formatNumber(confirmedTargetTemp)}${tempUnit}`;
+              }
             }
           ).then(({ ok }) => {
             temperatureCommandsInFlight -= 1;
@@ -12436,7 +12594,7 @@ function showFanControls(fanEntity) {
       <div class="modal-content fan-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="fan-close" type="button" title="Close" aria-label="Close">×</button>
+          <button class="close-btn" id="fan-close" type="button" title="${escapeHtmlAttribute(t('Close'))}" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div class="fan-content">
@@ -12444,7 +12602,7 @@ function showFanControls(fanEntity) {
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
             </div>
             <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
-            <div class="fan-speed-label">${capabilities.canSetPercentage ? 'Fan Speed' : 'State'}</div>
+            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
 
             ${
               capabilities.canSetPercentage
@@ -12457,22 +12615,22 @@ function showFanControls(fanEntity) {
                 value="${currentSpeed}"
                 id="fan-slider"
                 class="fan-slider"
-                aria-label="Fan Speed"
+                aria-label="${escapeHtmlAttribute(t('Fan Speed'))}"
               />
             </div>
 
             <div class="fan-presets">
-              <button class="fan-preset-btn" data-speed="0">Off</button>
-              <button class="fan-preset-btn" data-speed="33">Low</button>
-              <button class="fan-preset-btn" data-speed="66">Medium</button>
-              <button class="fan-preset-btn" data-speed="100">High</button>
+              <button class="fan-preset-btn" data-speed="0">${utils.escapeHtml(t('Off'))}</button>
+              <button class="fan-preset-btn" data-speed="33">${utils.escapeHtml(t('Low'))}</button>
+              <button class="fan-preset-btn" data-speed="66">${utils.escapeHtml(t('Medium'))}</button>
+              <button class="fan-preset-btn" data-speed="100">${utils.escapeHtml(t('High'))}</button>
             </div>`
-                : '<p class="control-capability-note">This fan does not advertise percentage control.</p>'
+                : `<p class="control-capability-note">${utils.escapeHtml(t('This fan does not advertise percentage control.'))}</p>`
             }
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="fan-cancel">Close</button>
+          <button class="btn btn-secondary" id="fan-cancel">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;
@@ -12615,9 +12773,9 @@ function showCoverControls(coverEntity) {
   try {
     const capabilities = getDesktopPinCapabilities(coverEntity);
     const availableActions = [
-      capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: 'Close' } : null,
-      capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: 'Stop' } : null,
-      capabilities.canOpen ? { action: 'open_cover', icon: '⬆', label: 'Open' } : null,
+      capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: t('Close') } : null,
+      capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: t('Stop') } : null,
+      capabilities.canOpen ? { action: 'open_cover', icon: '⬆', label: t('Open') } : null,
     ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPositionValue = Number(coverEntity.attributes.current_position);
@@ -12632,7 +12790,7 @@ function showCoverControls(coverEntity) {
       <div class="modal-content cover-modal-content">
         <div class="modal-header">
           <h2>${name}</h2>
-          <button class="close-btn" id="cover-close" type="button" title="Close" aria-label="Close">×</button>
+          <button class="close-btn" id="cover-close" type="button" title="${escapeHtmlAttribute(t('Close'))}" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
           <div class="cover-content">
@@ -12643,7 +12801,7 @@ function showCoverControls(coverEntity) {
               </div>
             </div>
             <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : utils.escapeHtml(getLocalizedEntityStateLabel(coverEntity.state))}</div>
-            <div class="cover-position-label">${capabilities.canSetPosition ? 'Position' : 'State'}</div>
+            <div class="cover-position-label">${utils.escapeHtml(capabilities.canSetPosition ? t('Position') : t('State'))}</div>
 
             ${
               capabilities.canSetPosition
@@ -12656,11 +12814,11 @@ function showCoverControls(coverEntity) {
                 value="${currentPosition}"
                 id="cover-slider"
                 class="cover-slider"
-                aria-label="Cover Position"
+                aria-label="${escapeHtmlAttribute(t('Cover Position'))}"
               />
               <div class="cover-slider-labels">
-                <span>Closed</span>
-                <span>Open</span>
+                <span>${utils.escapeHtml(t('Closed'))}</span>
+                <span>${utils.escapeHtml(t('Open'))}</span>
               </div>
             </div>`
                 : ''
@@ -12674,17 +12832,17 @@ function showCoverControls(coverEntity) {
                   ({ action, icon, label }) => `
                 <button class="cover-action-btn" type="button" data-action="${action}">
                   <span class="cover-action-icon">${icon}</span>
-                  <span class="cover-action-label">${label}</span>
+                  <span class="cover-action-label">${utils.escapeHtml(label)}</span>
                 </button>`
                 )
                 .join('')}
             </div>`
-                : '<p class="control-capability-note">This cover does not advertise movement controls.</p>'
+                : `<p class="control-capability-note">${utils.escapeHtml(t('This cover does not advertise movement controls.'))}</p>`
             }
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="cover-cancel">Close</button>
+          <button class="btn btn-secondary" id="cover-cancel">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;

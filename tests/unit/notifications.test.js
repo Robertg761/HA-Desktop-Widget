@@ -12,7 +12,9 @@ jest.mock('../../src/websocket.js', () => ({
 
 jest.mock('../../src/i18n.js', () => ({
   __esModule: true,
-  t: jest.fn((key) => key),
+  t: jest.fn((key, vars = {}) =>
+    key.replace(/\{\{(\w+)\}\}/g, (_match, name) => String(vars[name] ?? ''))
+  ),
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
