@@ -22,6 +22,8 @@ function createLinuxPopupHotkeyController(options = {}) {
     // toggling off must lower the widget back to its layer instead of hiding
     // it: the widget is desktop furniture there, not a tray popup.
     layerSurfaceMode = false,
+    // Registration errors are shown in Settings, so they go through the app's translations.
+    translate: t = (text) => text,
   } = options;
 
   if (!globalShortcut || typeof globalShortcut.register !== 'function') {
@@ -101,7 +103,7 @@ function createLinuxPopupHotkeyController(options = {}) {
       return {
         success: false,
         backend: LINUX_POPUP_HOTKEY_BACKEND,
-        error: 'Popup hotkey is empty',
+        error: t('Popup hotkey is empty'),
       };
     }
 
@@ -119,7 +121,7 @@ function createLinuxPopupHotkeyController(options = {}) {
     try {
       const registered = globalShortcut.register(normalizedAccelerator, handleShortcut);
       if (!registered) {
-        const error = 'Hotkey is likely in use by another application';
+        const error = t('Hotkey is likely in use by another application');
         log.warn?.(`Failed to register Linux popup hotkey: ${normalizedAccelerator}`);
         return { success: false, backend: LINUX_POPUP_HOTKEY_BACKEND, error };
       }

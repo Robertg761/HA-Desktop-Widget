@@ -19,6 +19,7 @@ function runtime(platform = 'darwin', opaquePanels = false) {
     mainWindow,
     desktopPinWindows: new Map([['light.test', pin]]),
     log: { warn: jest.fn() },
+    mainT: (key, vars = {}) => key.replace(/\{\{(\w+)\}\}/g, (_match, name) => vars[name] ?? ''),
     applyAlwaysOnTopPreference: jest.fn(),
     applyFrostedGlass: jest.fn(),
     applyDesktopPinWindowEffects: jest.fn(),
