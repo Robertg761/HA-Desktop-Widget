@@ -4,8 +4,9 @@
  * jsdom's getComputedStyle ignores selector specificity (the last matching rule wins), so it
  * cannot catch a rule that loses to a more specific one. This resolves the value a property gets
  * on an element using specificity, !important, source order, simple width/height media queries,
- * inheritance for colours and custom properties, and var() fallbacks. Interaction states are
- * modelled with attributes: give the element `data-focus-visible`, `data-focus` or `data-hover`.
+ * inheritance for colours and custom properties, inline styles, var() fallbacks and srgb
+ * color-mix(). Interaction states are modelled with attributes: give the element
+ * `data-focus-visible`, `data-focus` or `data-hover`.
  */
 const fs = require('fs');
 const path = require('path');
@@ -217,6 +218,10 @@ function cascadedDeclaration(element, property, { viewport = { width: 500, heigh
       if (beats) winner = candidate;
     }
   }
+  const inline = element.style?.getPropertyValue(property);
+  if (inline && !winner?.important) {
+    winner = { value: inline.trim(), selector: 'style', specificity: [1, 0, 0], important: false };
+  }
   return winner;
 }
 
@@ -249,6 +254,15 @@ function resolvedValue(element, property, options = {}) {
 
 function parseColor(value) {
   const text = String(value).trim();
+  const mix = text.match(/^color-mix\(in srgb,\s*(.+)\)$/i);
+  if (mix) {
+    // Only the form the stylesheets use: color-mix(in srgb, <color> <p>%, <color>).
+    const [first, second] = splitTopLevel(mix[1]);
+    const [, firstColor, percent] = first.match(/^(.*?)\s+([\d.]+)%$/);
+    const weight = Number(percent) / 100;
+    const [a, b] = [parseColor(firstColor), parseColor(second)];
+    return a.map((channel, index) => channel * weight + b[index] * (1 - weight));
+  }
   const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
     const digits =

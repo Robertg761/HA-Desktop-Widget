@@ -7921,7 +7921,7 @@ function getDesktopPinFallbackDescriptor(
   entity,
   {
     hasSnapshot = false,
-    waitingMessage = 'Waiting for live Home Assistant data...',
+    waitingMessage = t('Waiting for live Home Assistant data...'),
     connectionIssue = '',
   } = {}
 ) {
@@ -7939,9 +7939,9 @@ function getDesktopPinFallbackDescriptor(
     return {
       state: 'no-entity',
       label: 'Pinned Tile',
-      kicker: 'Pin setup',
-      title: 'No entity selected',
-      detail: 'Choose an entity in the main widget and pin it again.',
+      kicker: t('Pin setup'),
+      title: t('No entity selected'),
+      detail: t('Choose an entity in the main widget and pin it again.'),
       showFocusMain: true,
       canOpen: false,
     };
@@ -7951,8 +7951,8 @@ function getDesktopPinFallbackDescriptor(
     return {
       state: 'disconnected',
       label,
-      kicker: 'Connection issue',
-      title: 'Home Assistant unavailable',
+      kicker: t('Connection issue'),
+      title: t('Home Assistant unavailable'),
       detail: normalizedConnectionIssue,
       showFocusMain: true,
       canOpen: false,
@@ -7963,11 +7963,13 @@ function getDesktopPinFallbackDescriptor(
     return {
       state: 'unsupported',
       label,
-      kicker: 'Unsupported',
-      title: 'Desktop pin not supported yet',
-      detail:
-        supportProfile.reason ||
-        `The ${supportProfile.domain || 'selected'} entity type does not have a desktop-pin experience yet.`,
+      kicker: t('Unsupported'),
+      title: t('Desktop pin not supported yet'),
+      // The shared support profile's reason is English-only; with an entity ID the only one it
+      // gives is the missing domain profile, so the fallback words that one itself.
+      detail: t('The "{{domain}}" domain does not have a desktop-pin profile yet.', {
+        domain: supportProfile.domain || 'unknown',
+      }),
       showFocusMain: true,
       canOpen: false,
     };
@@ -7978,10 +7980,11 @@ function getDesktopPinFallbackDescriptor(
       return {
         state: 'missing',
         label,
-        kicker: 'Missing entity',
-        title: 'Pinned entity not found',
-        detail:
-          'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
+        kicker: t('Missing entity'),
+        title: t('Pinned entity not found'),
+        detail: t(
+          'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+        ),
         showFocusMain: true,
         canOpen: false,
       };
@@ -7990,8 +7993,8 @@ function getDesktopPinFallbackDescriptor(
     return {
       state: 'waiting',
       label,
-      kicker: 'Connecting',
-      title: 'Waiting for first live update',
+      kicker: t('Connecting'),
+      title: t('Waiting for first live update'),
       detail: waitingMessage,
       showFocusMain: true,
       canOpen: false,
@@ -8002,9 +8005,9 @@ function getDesktopPinFallbackDescriptor(
     return {
       state: 'unavailable',
       label,
-      kicker: 'Unavailable',
-      title: `${label} is unavailable`,
-      detail: 'Latest Home Assistant data reports this entity as unavailable right now.',
+      kicker: t('Unavailable'),
+      title: t('{{name}} is unavailable', { name: label }),
+      detail: t('Latest Home Assistant data reports this entity as unavailable right now.'),
       showFocusMain: true,
       canOpen: false,
     };
@@ -8052,7 +8055,7 @@ function renderDesktopPinTileInto({
   entityId,
   entity,
   interactive = true,
-  emptyMessage = 'Waiting for live Home Assistant data...',
+  emptyMessage = t('Waiting for live Home Assistant data...'),
   hasSnapshot = false,
   connectionIssue = '',
 }) {
