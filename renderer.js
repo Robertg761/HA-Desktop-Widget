@@ -549,6 +549,7 @@ function reconcileFavoriteStalePreservation(newStates) {
 function getSettingsUiHooks() {
   return {
     initUpdateUI: ui.initUpdateUI,
+    relocalizeUpdateStatus: ui.relocalizeUpdateStatus,
     renderActiveTab: ui.renderActiveTab,
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,

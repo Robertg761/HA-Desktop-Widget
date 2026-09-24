@@ -11,7 +11,15 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatNumber, formatTime, getLocaleState, t } from './i18n.js';
+import {
+  formatDate,
+  formatNumber,
+  formatTime,
+  getLocaleState,
+  isolateLtr,
+  t,
+  translateDocument,
+} from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon, WEATHER_LABELS } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
@@ -872,7 +880,7 @@ function showAddPageModal({ starter = false } = {}) {
 
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
     (preset) => `
-              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`
+              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}" data-preset="${escapeHtmlAttribute(preset)}">${utils.escapeHtml(t(preset))}</button>`
   ).join('');
 
   const modal = document.createElement('div');
@@ -1164,13 +1172,22 @@ function showAddPageModal({ starter = false } = {}) {
     chip.addEventListener('click', () => {
       if (!input) return;
       input.value = chip.dataset.name || chip.textContent || '';
-      // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room.
-      const name = input.value.trim().toLocaleLowerCase();
-      const area = registry?.areas.find((entry) => entry.name.trim().toLocaleLowerCase() === name);
+      // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room,
+      // whether the room is named in English or in the interface language ("Küche", "kuche").
+      const names = [input.value, chip.dataset.preset].filter(Boolean).map((name) => name.trim());
+      const area = registry?.areas.find((entry) =>
+        names.some(
+          (name) => entry.name.trim().localeCompare(name, undefined, { sensitivity: 'base' }) === 0
+        )
+      );
       if (area && roomSelect.value !== area.area_id) {
-        autoFilledName = input.value;
+        const chipName = input.value;
+        autoFilledName = chipName;
         roomSelect.value = area.area_id;
         roomSelect.onchange();
+        // The page keeps the chip's name ("Küche") when the room is named "Kitchen".
+        input.value = chipName;
+        autoFilledName = chipName;
       }
       input.focus();
     });
@@ -1524,6 +1541,8 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.setAttribute('role', 'button');
     cardEl.setAttribute('aria-haspopup', 'dialog');
     cardEl.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
+    // The markup was saved in the startup language; relabel its icons for the current one.
+    translateDocument(cardEl);
     return;
   }
 
@@ -1532,6 +1551,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('time-card');
     cardEl.title = t('Current time');
     cardEl.innerHTML = timeCardTemplate || '';
+    translateDocument(cardEl);
     return;
   }
 
@@ -5324,7 +5344,9 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
     compactCurrent.textContent =
       currentTemp == null
         ? t('No live room temperature')
-        : t('Now {{temperature}}', { temperature: formatTemperatureDisplay(currentTemp, unit) });
+        : t('Now {{temperature}}', {
+            temperature: isolateLtr(formatTemperatureDisplay(currentTemp, unit)),
+          });
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
@@ -5370,7 +5392,9 @@ function createDesktopPinClimateControlElement(entity) {
     climateValue.currentTemp == null
       ? t('No live room temperature')
       : t('Now {{temperature}}', {
-          temperature: formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit),
+          temperature: isolateLtr(
+            formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
+          ),
         })
   );
   const currentTempText = utils.escapeHtml(
@@ -5814,7 +5838,9 @@ function createDesktopPinCoverControlElement(entity) {
   const availableActions = [
     capabilities.canClose ? { action: 'close_cover', label: t('Close') } : null,
     capabilities.canStop ? { action: 'stop_cover', label: t('Stop') } : null,
-    capabilities.canOpen ? { action: 'open_cover', label: t('Open') } : null,
+    capabilities.canOpen
+      ? { action: 'open_cover', label: translateInContext('Action: Open', 'Open') }
+      : null,
   ].filter(Boolean);
   const renderProfile = getDesktopPinCoverRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-cover-control'], {
@@ -5864,7 +5890,7 @@ function createDesktopPinCoverControlElement(entity) {
           ${availableActions
             .map(
               ({ action, label }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}">${utils.escapeHtml(label)}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}" title="${escapeHtmlAttribute(label)}">${utils.escapeHtml(label)}</button>`
             )
             .join('')}
         </div>`
@@ -6582,7 +6608,7 @@ function createDesktopPinCameraControlElement(entity) {
           <div class="desktop-pin-panel-caption">${utils.escapeHtml(t('Open camera feed'))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(t('Open'))}</button>
+          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(translateInContext('Action: Open', 'Open'))}</button>
         </div>
       </div>
     </div>
@@ -12906,7 +12932,9 @@ function showCoverControls(coverEntity) {
     const availableActions = [
       capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: t('Close') } : null,
       capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: t('Stop') } : null,
-      capabilities.canOpen ? { action: 'open_cover', icon: '⬆', label: t('Open') } : null,
+      capabilities.canOpen
+        ? { action: 'open_cover', icon: '⬆', label: translateInContext('Action: Open', 'Open') }
+        : null,
     ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPositionValue = Number(coverEntity.attributes.current_position);
@@ -13264,6 +13292,14 @@ function toggleQuickAccess(entityId) {
   }
 }
 
+let updateStatusRender = null;
+
+// Re-renders the Settings update status line in the current language.
+function relocalizeUpdateStatus() {
+  const updateStatusText = document.getElementById('update-status-text');
+  if (updateStatusText && updateStatusRender) updateStatusText.textContent = updateStatusRender();
+}
+
 function initUpdateUI() {
   try {
     // Use version injected by Vite at build time
@@ -13283,6 +13319,11 @@ function initUpdateUI() {
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
     let portableDownloadUrl = null;
+    // Keep how the status line was produced so a language change can re-render it.
+    const showUpdateStatus = (render) => {
+      updateStatusRender = render;
+      if (updateStatusText) updateStatusText.textContent = render();
+    };
 
     // Enable the check button
     if (checkUpdatesBtn) {
@@ -13290,22 +13331,19 @@ function initUpdateUI() {
       checkUpdatesBtn.onclick = async () => {
         // Disable button and show checking status
         if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-        if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
+        showUpdateStatus(() => t('Checking for updates...'));
 
         try {
           const result = await window.electronAPI.checkForUpdates();
           if (result.status === 'dev') {
             // In development mode, auto-updater doesn't work
-            if (updateStatusText)
-              updateStatusText.textContent = t('Auto-updates only work in packaged builds');
+            showUpdateStatus(() => t('Auto-updates only work in packaged builds'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
           } else if (result.status === 'portable' || result.status === 'manual') {
             portableDownloadUrl = result.downloadUrl || null;
-            if (updateStatusText) {
-              const baseMessage =
-                result.message || t('Portable builds do not support in-app updates.');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(
+              () => result.message || t('Portable builds do not support in-app updates.')
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
@@ -13319,21 +13357,17 @@ function initUpdateUI() {
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'none') {
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const baseMessage = result.message || t('You are up to date!');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(() => result.message || t('You are up to date!'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'error') {
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const baseMessage = t('Error: {{error}}', {
+            showUpdateStatus(() =>
+              t('Error: {{error}}', {
                 error: result.error || t('Unknown error'),
-              });
-              updateStatusText.textContent = baseMessage;
-            }
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13342,7 +13376,7 @@ function initUpdateUI() {
           // The button will be re-enabled by the event handlers
         } catch (error) {
           console.error('Error checking for updates:', error);
-          if (updateStatusText) updateStatusText.textContent = t('Error checking for updates');
+          showUpdateStatus(() => t('Error checking for updates'));
           if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
         }
       };
@@ -13371,7 +13405,7 @@ function initUpdateUI() {
         switch (data.status) {
           case 'checking':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
+            showUpdateStatus(() => t('Checking for updates...'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13379,17 +13413,16 @@ function initUpdateUI() {
 
           case 'available':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = t('Update available: v{{version}}', { version });
-            }
+            showUpdateStatus(() =>
+              t('Update available: v{{version}}', { version: data.info?.version || 'unknown' })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (updateProgress) updateProgress.classList.remove('hidden');
             break;
 
           case 'none':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('You are up to date!');
+            showUpdateStatus(() => t('You are up to date!'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13397,7 +13430,7 @@ function initUpdateUI() {
 
           case 'downloading':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('Downloading update...');
+            showUpdateStatus(() => t('Downloading update...'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (updateProgress) updateProgress.classList.remove('hidden');
             if (data.progress) {
@@ -13409,10 +13442,11 @@ function initUpdateUI() {
 
           case 'downloaded':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = t('Update v{{version}} ready to install', { version });
-            }
+            showUpdateStatus(() =>
+              t('Update v{{version}} ready to install', {
+                version: data.info?.version || 'unknown',
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               installUpdateBtn.textContent = t('Install Update');
@@ -13423,11 +13457,11 @@ function initUpdateUI() {
 
           case 'error':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              updateStatusText.textContent = t('Error: {{error}}', {
+            showUpdateStatus(() =>
+              t('Error: {{error}}', {
                 error: data.error || t('Unknown error'),
-              });
-            }
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13436,11 +13470,9 @@ function initUpdateUI() {
           case 'portable':
           case 'manual':
             portableDownloadUrl = data.downloadUrl || null;
-            if (updateStatusText) {
-              const baseMessage =
-                data.message || t('Portable builds do not support in-app updates.');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(
+              () => data.message || t('Portable builds do not support in-app updates.')
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
@@ -13463,7 +13495,7 @@ function initUpdateUI() {
     }
 
     // Initialize with ready status
-    if (updateStatusText) updateStatusText.textContent = t('Ready to check for updates');
+    showUpdateStatus(() => t('Ready to check for updates'));
   } catch (error) {
     console.error('Error initializing update UI:', error);
   }
@@ -13514,6 +13546,7 @@ export {
   populateWeatherEntitiesList,
   selectWeatherEntity,
   initUpdateUI,
+  relocalizeUpdateStatus,
   updateTimeDisplay,
   startTimeTicker,
   stopTimeTicker,

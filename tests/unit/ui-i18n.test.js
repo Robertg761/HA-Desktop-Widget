@@ -271,8 +271,10 @@ describe('ui.js translations and number formatting', () => {
   });
 
   it('translates the cover dialog actions and labels', () => {
+    // "Open" is the state (Offen); the button is the verb (Öffnen).
     useGerman({
-      Open: 'Öffnen',
+      Open: 'Offen',
+      'Action: Open': 'Öffnen',
       Close: 'Schließen',
       Stop: 'Stopp',
       Position: 'Position DE',
@@ -286,7 +288,9 @@ describe('ui.js translations and number formatting', () => {
     );
     expect(actions).toEqual(['Schließen', 'Stopp', 'Öffnen']);
     expect(text('.cover-position-label')).toBe('Position DE');
-    expect(text('.cover-slider-labels span')).toBe('Geschlossen');
+    expect(
+      [...document.querySelectorAll('.cover-slider-labels span')].map((node) => node.textContent)
+    ).toEqual(['Geschlossen', 'Offen']);
     expect(text('#cover-cancel')).toBe('Schließen');
   });
 
@@ -429,9 +433,59 @@ describe('ui.js translations and number formatting', () => {
       );
     expect(actions()).toEqual(['Close', 'Stop', 'Open']);
 
-    useGerman({ Close: 'Schließen', Stop: 'Stopp', Open: 'Öffnen' });
+    useGerman({ Close: 'Schließen', Stop: 'Stopp', Open: 'Offen', 'Action: Open': 'Öffnen' });
     ui.renderDesktopPinnedTile(cover.entity_id, cover);
     expect(actions()).toEqual(['Schließen', 'Stopp', 'Öffnen']);
+  });
+
+  it('labels the camera desktop pin button with the verb, not the Open state', () => {
+    useGerman({ Open: 'Offen', 'Action: Open': 'Öffnen' });
+    const cam = entity('camera.porch', 'idle');
+    state.setStates({ [cam.entity_id]: cam });
+    ui.renderDesktopPinnedTile(cam.entity_id, cam);
+    expect(
+      document.querySelector('#desktop-pin-content .desktop-pin-camera-open').textContent
+    ).toBe('Öffnen');
+  });
+
+  it('keeps the current temperature readable inside an Arabic climate pin sentence', () => {
+    i18n.setLocaleBootstrap({
+      activeLocale: 'ar',
+      messages: { 'Now {{temperature}}': 'الآن {{temperature}}' },
+    });
+    const climate = entity('climate.hall', 'heat', {
+      current_temperature: 23,
+      temperature: 21,
+      hvac_modes: ['heat', 'off'],
+      supported_features: 1,
+    });
+    state.setStates({ [climate.entity_id]: climate });
+    const { innerWidth, innerHeight } = window;
+    // The smallest pin shows the current temperature as a sentence.
+    window.innerWidth = 168;
+    window.innerHeight = 148;
+    try {
+      ui.renderDesktopPinnedTile(climate.entity_id, climate);
+    } finally {
+      window.innerWidth = innerWidth;
+      window.innerHeight = innerHeight;
+    }
+    expect(
+      document.querySelector('#desktop-pin-content .desktop-pin-climate-inline-copy').textContent
+    ).toBe('الآن \u206623°C\u2069');
+  });
+
+  it('relabels the weather card icons when the primary cards are drawn in a new language', () => {
+    // Icons carry the key of their built-in label (see icons.js).
+    document.getElementById('weather-card').innerHTML =
+      '<span class="detail-icon-humidity"><svg aria-label="Humidity" data-i18n-aria-label="Humidity"></svg></span>';
+    state.setConfig({ ...state.CONFIG, primaryCards: ['weather', 'time'] });
+    ui.renderPrimaryCards();
+    useGerman({ Humidity: 'Luftfeuchtigkeit' });
+    ui.renderPrimaryCards();
+    expect(
+      document.querySelector('#weather-card .detail-icon-humidity svg').getAttribute('aria-label')
+    ).toBe('Luftfeuchtigkeit');
   });
 
   it('names the weather condition on a weather desktop pin', () => {

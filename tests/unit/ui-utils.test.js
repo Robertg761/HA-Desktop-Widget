@@ -1097,6 +1097,31 @@ describe('UI Utilities', () => {
       preventDefaultSpy.mockRestore();
     });
 
+    it('builds the tooltip text in the language that is active when it opens', () => {
+      const i18n = require('../../src/i18n.js');
+      uiUtils.setStatus(true);
+      uiUtils.initializeConnectionStatusTooltip();
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Connected to Home Assistant': 'Mit Home Assistant verbunden',
+          'Real-time updates active.': 'Echtzeit-Updates aktiv.',
+        },
+      });
+      try {
+        statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        const tooltip = document.getElementById('connection-status-tooltip');
+        expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe(
+          'Mit Home Assistant verbunden'
+        );
+        expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe(
+          'Echtzeit-Updates aktiv.'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('should not throw when status indicator is missing', () => {
       document.body.removeChild(statusIndicator);
       expect(() => uiUtils.initializeConnectionStatusTooltip()).not.toThrow();

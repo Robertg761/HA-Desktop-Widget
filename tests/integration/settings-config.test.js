@@ -1465,6 +1465,50 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.ui.language).toBe('en');
     });
 
+    test('keeps the language selector usable while saves run one after another', async () => {
+      state.CONFIG.ui.language = 'auto';
+      window.electronAPI.getLocalePacks.mockResolvedValue([
+        { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: true },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      let finishFirstSave;
+      window.electronAPI.updateConfig.mockClear();
+      window.electronAPI.updateConfig
+        .mockImplementationOnce(
+          (patch) =>
+            new Promise((resolve) => {
+              finishFirstSave = () => resolve({ ...state.CONFIG, ui: patch.ui });
+            })
+        )
+        .mockImplementationOnce(async (patch) => ({ ...state.CONFIG, ui: patch.ui }));
+
+      const languageSelect = document.getElementById('language-select');
+      languageSelect.focus();
+      languageSelect.value = 'en';
+      const firstSave = languageSelect.onchange();
+      await Promise.resolve();
+      expect(languageSelect.disabled).toBe(false);
+      expect(document.activeElement).toBe(languageSelect);
+
+      // Two more arrow presses while the first save is still running: only the last one is saved.
+      languageSelect.value = 'auto';
+      languageSelect.onchange();
+      languageSelect.value = 'fr';
+      const lastSave = languageSelect.onchange();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      finishFirstSave();
+      await firstSave;
+      await lastSave;
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ui: expect.objectContaining({ language: 'fr' }) })
+      );
+      expect(state.CONFIG.ui.language).toBe('fr');
+      expect(document.activeElement).toBe(languageSelect);
+    });
+
     test('language pack load failures surface an error while still showing installed packs', async () => {
       const installedPacks = [
         {
@@ -1495,6 +1539,25 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
       expect(document.querySelector('#language-select option[value="fr"]').disabled).toBe(false);
       expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
+    });
+
+    test('names the language on every language pack button', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: false },
+        {
+          locale: 'es',
+          displayName: 'Español',
+          version: '1.0.0',
+          latestVersion: '1.1.0',
+          installed: true,
+        },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const labels = [...document.querySelectorAll('#language-packs-list button')].map((button) =>
+        button.getAttribute('aria-label')
+      );
+      expect(labels).toEqual(['Download Français', 'Update Español', 'Remove Español']);
     });
 
     test('a failed manifest fetch is distinct from an empty catalog and recovers on reopen', async () => {
@@ -3634,6 +3697,16 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('primary-card-1-current').textContent).toBe(
         'Wetter (Standard)'
       );
+    });
+
+    test('asks the update UI to re-render its status line after a language change', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      const relocalizeUpdateStatus = jest.fn();
+      await settings.openSettings({ initUpdateUI: jest.fn(), relocalizeUpdateStatus });
+      relocalizeUpdateStatus.mockClear();
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await Promise.resolve();
+      expect(relocalizeUpdateStatus).toHaveBeenCalled();
     });
 
     test('translates the profile sync status line', () => {

@@ -601,4 +601,109 @@ describe('stylesheet cascade regressions', () => {
       expect(minimumButtons + minimumGap * (buttons.length - 1)).toBeLessThanOrEqual(rowWidth);
     });
   });
+
+  describe('longer translations fit their controls', () => {
+    it('sizes the smallest cover pin buttons to their labels, in sentence case', () => {
+      render(
+        '',
+        `<div class="desktop-pin-panel-control desktop-pin-cover-control" data-dense-variant="tight">
+          <div class="desktop-pin-panel-actions">
+            <button class="desktop-pin-panel-button desktop-pin-cover-action">Schließen</button>
+          </div>
+        </div>`
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display')).toBe(
+        'flex'
+      );
+      const button = document.querySelector('.desktop-pin-cover-action');
+      expect(resolvedValue(button, 'flex')).toBe('1 1 auto');
+      expect(resolvedValue(button, 'text-transform')).toBe('none');
+      expect(resolvedValue(button, 'text-overflow')).toBe('ellipsis');
+    });
+
+    it('keeps reorganize-mode pin badges clear of the rename and remove buttons', () => {
+      render(
+        '',
+        `<div id="quick-controls" class="reorganize-mode"><div class="control-item">
+          <button class="desktop-pin-quick-toggle">Nicht unterstützt</button>
+          <button class="rename-btn"></button><button class="remove-btn"></button>
+        </div></div>`
+      );
+      const badge = document.querySelector('.desktop-pin-quick-toggle');
+      // Remove (24px at 8px) and rename (24px at 38px) take the last 62px of the tile.
+      expect(resolvedValue(badge, 'max-width')).toBe('calc(100% - 74px)');
+      expect(resolvedValue(badge, 'white-space')).toBe('nowrap');
+      expect(resolvedValue(badge, 'text-overflow')).toBe('ellipsis');
+      expect(resolvedValue(badge, 'text-transform')).toBeFalsy();
+    });
+
+    it('gives the popup hotkey field a row of its own and the command palette pill one line', () => {
+      render(
+        '',
+        `<div class="popup-hotkey-config"><input id="popup-hotkey-input"></div>
+        <span class="command-palette-result-domain">Geräte-Tracker</span>`
+      );
+      expect(resolvedValue(document.getElementById('popup-hotkey-input'), 'flex')).toBe('1 1 100%');
+      expect(
+        resolvedValue(document.querySelector('.command-palette-result-domain'), 'white-space')
+      ).toBe('nowrap');
+    });
+  });
+
+  describe('right-to-left languages', () => {
+    beforeEach(() => {
+      document.documentElement.dir = 'rtl';
+    });
+    afterEach(() => {
+      document.documentElement.removeAttribute('dir');
+    });
+
+    it('lets numbers with units and entity names keep their own direction', () => {
+      render(
+        '',
+        `<div class="weather-temp">-24°C</div><span class="detail-value">8 km/h</span>
+        <div class="control-name">Outlet 1</div><div class="control-state">مفتوح 50%</div>
+        <div class="climate-temp-value-large">21–24°C</div>
+        <div class="desktop-pin-panel-kpi">21–24°C</div>
+        <div class="control-state control-sensor-readout"><span>15,6</span><span>°C</span></div>`
+      );
+      for (const selector of [
+        '.weather-temp',
+        '.detail-value',
+        '.control-name',
+        '.control-state',
+        '.climate-temp-value-large',
+        '.desktop-pin-panel-kpi',
+      ]) {
+        expect(resolvedValue(document.querySelector(selector), 'unicode-bidi')).toBe('plaintext');
+      }
+      expect(resolvedValue(document.querySelector('.control-sensor-readout'), 'direction')).toBe(
+        'ltr'
+      );
+    });
+
+    it('does not mirror media transport controls', () => {
+      render(
+        '',
+        `<div class="media-detail-controls"><button class="btn media-detail-seek-btn">-10</button></div>
+        <div class="media-tile-controls"></div>`
+      );
+      expect(resolvedValue(document.querySelector('.media-detail-controls'), 'direction')).toBe(
+        'ltr'
+      );
+      expect(resolvedValue(document.querySelector('.media-tile-controls'), 'direction')).toBe(
+        'ltr'
+      );
+    });
+
+    it('puts the switch gap on the label side', () => {
+      render(
+        '',
+        `<div class="form-group"><label><input type="checkbox" checked><span>Label</span></label></div>`
+      );
+      const toggle = document.querySelector('input');
+      expect(resolvedValue(toggle, 'margin-inline-end')).toMatch(/^[\d.]+(rem|px)$/);
+      expect(resolvedValue(toggle, 'margin-right')).toBeFalsy();
+    });
+  });
 });

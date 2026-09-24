@@ -126,6 +126,70 @@ describe('domain names', () => {
   });
 });
 
+describe('weather states and newer domains', () => {
+  it('shows weather conditions with the translated weather card labels', () => {
+    const weather = (state) => ({ entity_id: 'weather.home', state, attributes: {} });
+    expect(utils.getEntityDisplayState(weather('clear-night'))).toBe('Clear night');
+    expect(utils.getEntityDisplayState(weather('partlycloudy'))).toBe('Partly cloudy');
+    useGerman();
+    expect(utils.getEntityDisplayState(weather('partlycloudy'))).toBe('Teilweise bewölkt');
+    expect(utils.getEntityDisplayState(weather('unavailable'))).toBe('Nicht verfügbar');
+    // A condition id the widget does not know stays readable.
+    expect(utils.getEntityDisplayState(weather('volcanic_ash'))).toBe('Volcanic_ash');
+  });
+
+  it('names the newer Home Assistant domains, with a translation in every pack', () => {
+    expect(utils.getEntityTypeDescription({ entity_id: 'lawn_mower.front' })).toBe('Lawn Mower');
+    expect(utils.getEntityTypeDescription({ entity_id: 'radio_frequency.rf' })).toBe(
+      'Radio Frequency'
+    );
+    expect(utils.getEntityTypeDescription({ entity_id: 'notify.phone' })).toBe('Notifications');
+    const fs = require('fs');
+    const path = require('path');
+    const readJson = (file) =>
+      JSON.parse(fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8'));
+    const english = readJson('locales/en.json');
+    const packs = ['de', 'es', 'fr', 'hi', 'zh', 'ar'].map(
+      (locale) => readJson(`locale-packs/${locale}.json`).messages
+    );
+    for (const name of Object.values(utils.HA_DOMAIN_NAMES)) {
+      expect(english[`Domain: ${name}`]).toBe(name);
+      for (const messages of packs) expect(messages[`Domain: ${name}`]).toEqual(expect.any(String));
+    }
+  });
+});
+
+describe('icon labels', () => {
+  it('relabel built-in icon names when the document is translated again', () => {
+    const { Icons } = require('../../src/icons.js');
+    const container = document.createElement('div');
+    container.appendChild(Icons.close());
+    container.appendChild(Icons.waterDrop());
+    container.appendChild(Icons.close({ ariaLabel: 'Close dialog' }));
+    i18n.setLocaleBootstrap({
+      activeLocale: 'de',
+      messages: { Close: 'Schließen', Humidity: 'Luftfeuchtigkeit' },
+    });
+    i18n.translateDocument(container);
+    expect(
+      [...container.querySelectorAll('svg')].map((svg) => svg.getAttribute('aria-label'))
+    ).toEqual(['Schließen', 'Luftfeuchtigkeit', 'Close dialog']);
+  });
+});
+
+describe('action buttons that share their English word with a state', () => {
+  it('label Clear buttons with the verb key, not the binary sensor "Clear" state', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+    for (const id of ['popup-hotkey-clear-btn', 'clear-weather']) {
+      expect(html).toMatch(new RegExp(`id="${id}"[^>]*data-i18n="Action: Clear"`));
+    }
+    const settings = fs.readFileSync(path.resolve(__dirname, '../../src/settings.js'), 'utf8');
+    expect(settings).toContain("confirmText: t('Action: Clear')");
+  });
+});
+
 describe('English display changes from the shared state names', () => {
   it('shows the app-wide state names instead of capitalized raw states', () => {
     expect(utils.getEntityDisplayState({ entity_id: 'person.anna', state: 'not_home' })).toBe(
@@ -305,6 +369,37 @@ describe('sensor history summary in the active language', () => {
     expect(summary).toContain('2,25');
     expect(summary).toContain('1,88');
     expect(summary).not.toContain('1.5');
+    modal.remove();
+  });
+});
+
+describe('left-to-right values in right-to-left languages', () => {
+  it('isolates a value only while a right-to-left language is active', () => {
+    expect(i18n.isolateLtr('23°C')).toBe('23°C');
+    useGerman();
+    expect(i18n.isolateLtr('23°C')).toBe('23°C');
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    expect(i18n.isolateLtr('23°C')).toBe('\u206623°C\u2069');
+    expect(i18n.isolateLtr('')).toBe('');
+  });
+
+  it('keeps the unit after the sensor history average in Arabic', async () => {
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    const modal = document.createElement('div');
+    const body = document.createElement('div');
+    modal.appendChild(body);
+    document.body.appendChild(modal);
+    const now = Date.now();
+    mountSensorHistoryDetail({
+      body,
+      modal,
+      entity: { entity_id: 'sensor.outside', attributes: { unit_of_measurement: '°C' } },
+      websocket: { request: jest.fn(async () => ({ success: true, result: {} })) },
+      normalize: () => [{ timestamp: now - 3600000, value: 1.5 }],
+      render: jest.fn(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(body.querySelector('.sensor-history-summary').textContent).toMatch(/\u2066°C\u2069$/);
     modal.remove();
   });
 });

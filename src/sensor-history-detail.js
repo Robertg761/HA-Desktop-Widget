@@ -1,4 +1,4 @@
-import { formatDateTime, formatNumber, t } from './i18n.js';
+import { formatDateTime, formatNumber, isolateLtr, t } from './i18n.js';
 
 function summarizeHistory(series) {
   const values = series.map((point) => point.value).filter(Number.isFinite);
@@ -97,7 +97,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
           min: format(stats.min),
           max: format(stats.max),
           average: format(stats.average),
-        }) + (unit ? ` ${unit}` : '');
+        }) + (unit ? ` ${isolateLtr(unit)}` : '');
       frame.hidden = false;
       render(frame, data.series, { start: data.start, end: data.end });
       // Minutes are precise enough for a history period; seconds only add noise.

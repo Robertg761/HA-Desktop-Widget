@@ -384,6 +384,8 @@ function createResultRow(item, index) {
     'command-palette-result-state',
     entity ? utils.getEntityDisplayState(entity) : ''
   );
+  // Long type names ("Panel de control de alarma") end in an ellipsis; the title keeps them whole.
+  domain.title = domain.textContent;
   meta.append(domain, value);
 
   row.append(icon, main, meta);

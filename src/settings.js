@@ -72,6 +72,7 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+let languageSaveQueue = Promise.resolve();
 // The Start at login state shown when Settings opened, so Save only writes a real change.
 let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
@@ -3453,7 +3454,7 @@ function bindProfileSyncSettingsUi() {
       const confirmed = await showConfirm(
         t('Clear Saved Passphrase'),
         t('Remove the saved sync passphrase from this device?'),
-        { confirmText: t('Clear'), confirmClass: 'btn-danger' }
+        { confirmText: t('Action: Clear'), confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
       try {
@@ -3626,13 +3627,14 @@ function renderLanguagePackList() {
   localePackListCache.forEach((pack) => {
     const row = document.createElement('div');
     row.className = 'language-pack-row';
+    const language = getLanguagePackDisplayName(pack);
 
     const info = document.createElement('div');
     info.className = 'language-pack-info';
 
     const name = document.createElement('div');
     name.className = 'language-pack-name';
-    name.textContent = getLanguagePackDisplayName(pack);
+    name.textContent = language;
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
@@ -3657,6 +3659,7 @@ function renderLanguagePackList() {
       updateBtn.dataset.localeAction = 'download';
       updateBtn.dataset.locale = pack.locale;
       updateBtn.textContent = t('Update');
+      updateBtn.setAttribute('aria-label', t('Update {{language}}', { language }));
       actions.appendChild(updateBtn);
     } else if (!pack.installed) {
       const downloadBtn = document.createElement('button');
@@ -3665,6 +3668,7 @@ function renderLanguagePackList() {
       downloadBtn.dataset.localeAction = 'download';
       downloadBtn.dataset.locale = pack.locale;
       downloadBtn.textContent = t('Download');
+      downloadBtn.setAttribute('aria-label', t('Download {{language}}', { language }));
       actions.appendChild(downloadBtn);
     }
 
@@ -3675,6 +3679,7 @@ function renderLanguagePackList() {
       removeBtn.dataset.localeAction = 'remove';
       removeBtn.dataset.locale = pack.locale;
       removeBtn.textContent = t('Remove');
+      removeBtn.setAttribute('aria-label', t('Remove {{language}}', { language }));
       actions.appendChild(removeBtn);
     }
 
@@ -3792,24 +3797,27 @@ function bindLanguageSettingsUi() {
   const languageSelect = document.getElementById('language-select');
   if (languageSelect) {
     languageSelect.value = state.CONFIG?.ui?.language || 'auto';
-    languageSelect.onchange = async () => {
-      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
-      const nextLanguage = languageSelect.value || previousLanguage;
+    // Saves run one at a time instead of disabling the select, which would drop keyboard focus
+    // while someone arrows through the languages. A choice already replaced by a newer one is
+    // skipped.
+    languageSelect.onchange = () => {
       updateLanguageSummaryText();
-
-      if (nextLanguage === previousLanguage) return;
-
-      languageSelect.disabled = true;
-      try {
-        await persistLanguageSelection(nextLanguage);
-      } catch (error) {
-        log.error('Failed to update language selection:', error);
-        languageSelect.value = previousLanguage;
-        updateLanguageSummaryText();
-        showToast(t('Failed to save language selection'), 'error', 2600);
-      } finally {
-        languageSelect.disabled = false;
-      }
+      languageSaveQueue = languageSaveQueue.then(async () => {
+        const previousLanguage = state.CONFIG?.ui?.language || 'auto';
+        const nextLanguage = languageSelect.value || previousLanguage;
+        if (nextLanguage === previousLanguage) return;
+        try {
+          await persistLanguageSelection(nextLanguage);
+        } catch (error) {
+          log.error('Failed to update language selection:', error);
+          if (languageSelect.value === nextLanguage) {
+            languageSelect.value = previousLanguage;
+            updateLanguageSummaryText();
+          }
+          showToast(t('Failed to save language selection'), 'error', 2600);
+        }
+      });
+      return languageSaveQueue;
     };
   }
 
@@ -3958,6 +3966,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     renderProfileSyncWarning();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
     renderUpdateButtonLabels();
+    settingsUiHooks?.relocalizeUpdateStatus?.();
     syncWeatherEffectsAvailability();
     if (hasDraftColorPreview || isCustomEditorActive) {
       // Rebuilding the swatches would reset the custom color draft; relabel only.
@@ -4016,6 +4025,7 @@ function observeSettingsLocale() {
  * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
  * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
  * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ * @param {Function} [uiHooks.relocalizeUpdateStatus] - Called after a language change to re-render the update status line.
  * @param {Function} [uiHooks.renderActiveTab] - Called after save to fully re-render the active UI tab when available.
  * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.

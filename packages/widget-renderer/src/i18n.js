@@ -47,6 +47,15 @@ export function getLocaleState() {
   return localeState;
 }
 
+// Keeps a left-to-right run such as "23°C" in order inside a right-to-left sentence ("الآن 23°C"),
+// where the bidi algorithm would otherwise move the degree sign. The isolate marks are invisible
+// and only added while a right-to-left language is active.
+export function isolateLtr(text) {
+  const value = text == null ? '' : String(text);
+  const isRtl = RTL_LANGUAGE_CODES.has((localeState.activeLocale || 'en').split('-')[0]);
+  return value && isRtl ? `\u2066${value}\u2069` : value;
+}
+
 export function t(key, vars = {}) {
   const template = localeState.messages?.[key] || key;
   return formatTemplate(template, vars);

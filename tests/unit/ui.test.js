@@ -459,6 +459,32 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ).toEqual(['button.restart', 'light.desk', 'sensor.temperature']);
     });
 
+    it('matches a translated quick pick to a room named in English or the interface language', async () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { Kitchen: 'Küche', Office: 'Büro' },
+      });
+      try {
+        registryResponses({
+          'config/area_registry/list': [
+            { area_id: 'office', name: 'buro' },
+            { area_id: 'kitchen', name: 'Kitchen' },
+          ],
+        });
+        ui.showAddPageModal();
+        await flush();
+        const room = document.querySelector('#add-page-room');
+        document.querySelector('.qa-add-chip[data-name="Küche"]').click();
+        expect(room.value).toBe('kitchen');
+        expect(document.querySelector('#add-page-name').value).toBe('Küche');
+        document.querySelector('.qa-add-chip[data-name="Büro"]').click();
+        expect(room.value).toBe('office');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('preselects the same controllable devices when adding an ordinary page', async () => {
       registryResponses();
       state.setStates(
@@ -1880,6 +1906,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.onAutoUpdate).toHaveBeenCalledTimes(2);
       expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
       expect(secondUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('re-renders the update status line in a new language', () => {
+      const i18n = require('../../src/i18n.js');
+      document.body.insertAdjacentHTML('beforeend', '<span id="update-status-text"></span>');
+      let onUpdate = null;
+      mockElectronAPI.onAutoUpdate = jest.fn((callback) => {
+        onUpdate = callback;
+        return jest.fn();
+      });
+      const status = document.getElementById('update-status-text');
+      try {
+        ui.initUpdateUI();
+        expect(status.textContent).toBe('Ready to check for updates');
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            'Ready to check for updates': 'Bereit zur Suche nach Updates',
+            'You are up to date!': 'Du bist auf dem neuesten Stand!',
+          },
+        });
+        ui.relocalizeUpdateStatus();
+        expect(status.textContent).toBe('Bereit zur Suche nach Updates');
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        onUpdate({ status: 'none' });
+        expect(status.textContent).toBe('You are up to date!');
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'You are up to date!': 'Du bist auf dem neuesten Stand!' },
+        });
+        ui.relocalizeUpdateStatus();
+        expect(status.textContent).toBe('Du bist auf dem neuesten Stand!');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        status.remove();
+      }
     });
   });
 

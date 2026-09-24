@@ -1,5 +1,6 @@
 import state from './state.js';
 import { t, formatNumber, formatNumericState } from './i18n.js';
+import { normalizeWeatherCondition, WEATHER_LABELS } from './weather-icons.js';
 
 // Display names for raw Home Assistant states. The English names are the same as STATE_NAMES in
 // src/tray-entities.cjs (a unit test keeps the two in step), so both share one set of translation
@@ -57,41 +58,67 @@ const HA_STATE_NAMES = Object.freeze({
 // title case, as before. Their translation keys carry a "Domain: " prefix because bare nouns such
 // as "Light", "Lock" or "Update" are already keys with other meanings (a theme, verbs).
 const HA_DOMAIN_NAMES = Object.freeze({
+  ai_task: 'AI Task',
+  air_quality: 'Air Quality',
   alarm_control_panel: 'Alarm Control Panel',
+  assist_satellite: 'Assist Satellite',
   automation: 'Automation',
   binary_sensor: 'Binary Sensor',
   button: 'Button',
   calendar: 'Calendar',
   camera: 'Camera',
   climate: 'Climate',
+  conversation: 'Conversation',
   counter: 'Counter',
   cover: 'Cover',
+  date: 'Date',
+  datetime: 'Date and Time',
   device_tracker: 'Device Tracker',
+  event: 'Event',
   fan: 'Fan',
+  geo_location: 'Geolocation',
+  group: 'Group',
   humidifier: 'Humidifier',
+  image: 'Image',
+  image_processing: 'Image Processing',
+  infrared: 'Infrared',
   input_boolean: 'Input Boolean',
   input_button: 'Input Button',
+  input_datetime: 'Input Date and Time',
   input_number: 'Input Number',
   input_select: 'Input Select',
   input_text: 'Input Text',
+  lawn_mower: 'Lawn Mower',
   light: 'Light',
   lock: 'Lock',
   media_player: 'Media Player',
+  notify: 'Notifications',
   number: 'Number',
   person: 'Person',
+  radio_frequency: 'Radio Frequency',
   remote: 'Remote',
   scene: 'Scene',
+  schedule: 'Schedule',
   script: 'Script',
   select: 'Select',
   sensor: 'Sensor',
   siren: 'Siren',
+  stt: 'Speech-to-Text',
+  sun: 'Sun',
   switch: 'Switch',
+  tag: 'Tag',
+  text: 'Text',
+  time: 'Time',
   timer: 'Timer',
+  todo: 'To-do List',
+  tts: 'Text-to-Speech',
   update: 'Update',
   vacuum: 'Vacuum',
   valve: 'Valve',
+  wake_word: 'Wake Word',
   water_heater: 'Water Heater',
   weather: 'Weather',
+  zone: 'Zone',
 });
 
 const TIMER_STATUS_NAMES = Object.freeze({
@@ -457,6 +484,12 @@ function getEntityDisplayState(entity) {
     // For scenes - just show "Ready" or hide the state
     if (entity.entity_id.startsWith('scene.')) {
       return t('Ready');
+    }
+
+    // Weather reports condition ids ("rainy", "clear-night"); show the same labels as the weather card.
+    if (entity.entity_id.startsWith('weather.') && !isUnavailableOrUnknownState(entity.state)) {
+      const condition = normalizeWeatherCondition(entity.state);
+      if (condition !== 'unknown') return t(WEATHER_LABELS[condition]);
     }
 
     // For lights with brightness
@@ -1044,6 +1077,7 @@ export {
   getTimerStatusLabel,
   getTimerRunState,
   getLocalizedStateName,
+  HA_DOMAIN_NAMES,
   HA_STATE_NAMES,
   getTimerRemainingSeconds,
   getTimerRemainingFraction,
