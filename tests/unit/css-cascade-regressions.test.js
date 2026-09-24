@@ -181,6 +181,51 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('desktop pin corners', () => {
+    const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
+
+    it.each([
+      { width: 168, height: 148 },
+      { width: 156, height: 122 },
+      { width: 260, height: 148 },
+    ])('keeps the top-right value inside the rounded %o pin window', (viewport) => {
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-toggle-control"
+            data-layout="compact">
+            <div class="desktop-pin-panel-shell">
+              <div class="desktop-pin-panel-topline">
+                <div class="desktop-pin-panel-meta"><div class="desktop-pin-panel-name">Outlet</div></div>
+                <div class="desktop-pin-panel-kpi">Off</div>
+              </div>
+            </div>
+          </div>
+        </div></div>`
+      );
+      const options = { viewport };
+      const radius = toPx(
+        resolvedValue(document.querySelector('.desktop-pin-shell'), 'clip-path', options).match(
+          /round\s+([\d.]+px)/
+        )[1]
+      );
+      const control = document.querySelector('.desktop-pin-panel-control');
+      const padding = toPx(resolvedValue(control, 'padding', options));
+      const margin = toPx(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-kpi'),
+          'margin-inline-end',
+          options
+        ) || '0px'
+      );
+      // The value's top-right corner, measured from the centre of the window's corner arc.
+      const dx = radius - padding - margin;
+      const dy = radius - padding;
+
+      expect(dx <= 0 || dx * dx + dy * dy <= radius * radius).toBe(true);
+    });
+  });
+
   describe('desktop pin text', () => {
     const TEXT_CLASSES = [
       'desktop-pin-panel-name',

@@ -1702,6 +1702,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-width: 0;
 }
 
+/* Pin windows clip to a 24px corner radius, and in small windows the tile keeps only 4px of
+   padding (the narrow-window .control-item rule), so the top-right value is held clear of the
+   rounded corner. */
+.desktop-pin-panel-topline > :is(.desktop-pin-panel-kpi, .desktop-pin-panel-aside) {
+  margin-inline-end: 8px;
+}
+
 .desktop-pin-panel-aside {
   display: grid;
   justify-items: end;
