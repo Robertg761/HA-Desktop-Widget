@@ -126,6 +126,39 @@ describe('domain names', () => {
   });
 });
 
+describe('weather states and newer domains', () => {
+  it('shows weather conditions with the translated weather card labels', () => {
+    const weather = (state) => ({ entity_id: 'weather.home', state, attributes: {} });
+    expect(utils.getEntityDisplayState(weather('clear-night'))).toBe('Clear night');
+    expect(utils.getEntityDisplayState(weather('partlycloudy'))).toBe('Partly cloudy');
+    useGerman();
+    expect(utils.getEntityDisplayState(weather('partlycloudy'))).toBe('Teilweise bewölkt');
+    expect(utils.getEntityDisplayState(weather('unavailable'))).toBe('Nicht verfügbar');
+    // A condition id the widget does not know stays readable.
+    expect(utils.getEntityDisplayState(weather('volcanic_ash'))).toBe('Volcanic_ash');
+  });
+
+  it('names the newer Home Assistant domains, with a translation in every pack', () => {
+    expect(utils.getEntityTypeDescription({ entity_id: 'lawn_mower.front' })).toBe('Lawn Mower');
+    expect(utils.getEntityTypeDescription({ entity_id: 'radio_frequency.rf' })).toBe(
+      'Radio Frequency'
+    );
+    expect(utils.getEntityTypeDescription({ entity_id: 'notify.phone' })).toBe('Notifications');
+    const fs = require('fs');
+    const path = require('path');
+    const readJson = (file) =>
+      JSON.parse(fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8'));
+    const english = readJson('locales/en.json');
+    const packs = ['de', 'es', 'fr', 'hi', 'zh', 'ar'].map(
+      (locale) => readJson(`locale-packs/${locale}.json`).messages
+    );
+    for (const name of Object.values(utils.HA_DOMAIN_NAMES)) {
+      expect(english[`Domain: ${name}`]).toBe(name);
+      for (const messages of packs) expect(messages[`Domain: ${name}`]).toEqual(expect.any(String));
+    }
+  });
+});
+
 describe('English display changes from the shared state names', () => {
   it('shows the app-wide state names instead of capitalized raw states', () => {
     expect(utils.getEntityDisplayState({ entity_id: 'person.anna', state: 'not_home' })).toBe(
