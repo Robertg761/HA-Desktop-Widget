@@ -3421,7 +3421,7 @@ function bindProfileSyncSettingsUi() {
       const confirmed = await showConfirm(
         t('Clear Saved Passphrase'),
         t('Remove the saved sync passphrase from this device?'),
-        { confirmText: t('Clear'), confirmClass: 'btn-danger' }
+        { confirmText: t('Action: Clear'), confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
       try {

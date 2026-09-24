@@ -5708,7 +5708,9 @@ function createDesktopPinCoverControlElement(entity) {
   const availableActions = [
     capabilities.canClose ? { action: 'close_cover', label: t('Close') } : null,
     capabilities.canStop ? { action: 'stop_cover', label: t('Stop') } : null,
-    capabilities.canOpen ? { action: 'open_cover', label: t('Open') } : null,
+    capabilities.canOpen
+      ? { action: 'open_cover', label: translateInContext('Action: Open', 'Open') }
+      : null,
   ].filter(Boolean);
   const renderProfile = getDesktopPinCoverRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-cover-control'], {
@@ -6479,7 +6481,7 @@ function createDesktopPinCameraControlElement(entity) {
           <div class="desktop-pin-panel-caption">${utils.escapeHtml(t('Open camera feed'))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(t('Open'))}</button>
+          <button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-camera-open" type="button">${utils.escapeHtml(translateInContext('Action: Open', 'Open'))}</button>
         </div>
       </div>
     </div>
@@ -12775,7 +12777,9 @@ function showCoverControls(coverEntity) {
     const availableActions = [
       capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: t('Close') } : null,
       capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: t('Stop') } : null,
-      capabilities.canOpen ? { action: 'open_cover', icon: '⬆', label: t('Open') } : null,
+      capabilities.canOpen
+        ? { action: 'open_cover', icon: '⬆', label: translateInContext('Action: Open', 'Open') }
+        : null,
     ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
     const currentPositionValue = Number(coverEntity.attributes.current_position);

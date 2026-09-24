@@ -159,6 +159,19 @@ describe('weather states and newer domains', () => {
   });
 });
 
+describe('action buttons that share their English word with a state', () => {
+  it('label Clear buttons with the verb key, not the binary sensor "Clear" state', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+    for (const id of ['popup-hotkey-clear-btn', 'clear-weather']) {
+      expect(html).toMatch(new RegExp(`id="${id}"[^>]*data-i18n="Action: Clear"`));
+    }
+    const settings = fs.readFileSync(path.resolve(__dirname, '../../src/settings.js'), 'utf8');
+    expect(settings).toContain("confirmText: t('Action: Clear')");
+  });
+});
+
 describe('English display changes from the shared state names', () => {
   it('shows the app-wide state names instead of capitalized raw states', () => {
     expect(utils.getEntityDisplayState({ entity_id: 'person.anna', state: 'not_home' })).toBe(

@@ -261,8 +261,10 @@ describe('ui.js translations and number formatting', () => {
   });
 
   it('translates the cover dialog actions and labels', () => {
+    // "Open" is the state (Offen); the button is the verb (Öffnen).
     useGerman({
-      Open: 'Öffnen',
+      Open: 'Offen',
+      'Action: Open': 'Öffnen',
       Close: 'Schließen',
       Stop: 'Stopp',
       Position: 'Position DE',
@@ -276,7 +278,9 @@ describe('ui.js translations and number formatting', () => {
     );
     expect(actions).toEqual(['Schließen', 'Stopp', 'Öffnen']);
     expect(text('.cover-position-label')).toBe('Position DE');
-    expect(text('.cover-slider-labels span')).toBe('Geschlossen');
+    expect(
+      [...document.querySelectorAll('.cover-slider-labels span')].map((node) => node.textContent)
+    ).toEqual(['Geschlossen', 'Offen']);
     expect(text('#cover-cancel')).toBe('Schließen');
   });
 
@@ -419,9 +423,19 @@ describe('ui.js translations and number formatting', () => {
       );
     expect(actions()).toEqual(['Close', 'Stop', 'Open']);
 
-    useGerman({ Close: 'Schließen', Stop: 'Stopp', Open: 'Öffnen' });
+    useGerman({ Close: 'Schließen', Stop: 'Stopp', Open: 'Offen', 'Action: Open': 'Öffnen' });
     ui.renderDesktopPinnedTile(cover.entity_id, cover);
     expect(actions()).toEqual(['Schließen', 'Stopp', 'Öffnen']);
+  });
+
+  it('labels the camera desktop pin button with the verb, not the Open state', () => {
+    useGerman({ Open: 'Offen', 'Action: Open': 'Öffnen' });
+    const cam = entity('camera.porch', 'idle');
+    state.setStates({ [cam.entity_id]: cam });
+    ui.renderDesktopPinnedTile(cam.entity_id, cam);
+    expect(
+      document.querySelector('#desktop-pin-content .desktop-pin-camera-open').textContent
+    ).toBe('Öffnen');
   });
 
   it('names the weather condition on a weather desktop pin', () => {
