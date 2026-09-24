@@ -63,6 +63,22 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
+  describe('single-action primary card focus ring', () => {
+    // Lock, switch and scene cards focus the tile itself; the card clips anything outside it.
+    it.each(THEME_CASES)('draws the ring inside the card (%s)', (_, theme) => {
+      render(
+        theme,
+        `<div class="status-card primary-entity-card">
+          <div class="control-item" role="button" tabindex="0" data-primary-card="true"
+            data-focus-visible></div>
+        </div>`
+      );
+      const tileElement = document.querySelector('.control-item');
+      expect(resolvedValue(tileElement, 'outline-offset')).toBe('-3px');
+      expect(resolvedValue(tileElement, 'outline')).toMatch(/^\d+px solid /);
+    });
+  });
+
   describe('keyboard focus ring colour', () => {
     const uiUtils = require('../../src/ui-utils.js');
     const focusMarkup = `
