@@ -60,6 +60,26 @@ describe('desktop pin IPC helpers', () => {
     ).toEqual({ hasUrl: false, hasToken: false, secureStoragePending: true });
   });
 
+  it('tells a pin when the connection uses Home Assistant authorization', () => {
+    expect(
+      createDesktopPinConnectionState({
+        homeAssistant: {
+          url: 'https://ha.example.test',
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          authMethod: 'oauth',
+          oauthStatus: 'reauth_required',
+          oauthAuthorizationId: 'not-for-pins',
+        },
+      })
+    ).toEqual({
+      hasUrl: true,
+      hasToken: false,
+      secureStoragePending: false,
+      authMethod: 'oauth',
+      oauthStatus: 'reauth_required',
+    });
+  });
+
   it('allows only focus and entity-scoped service calls from a pin', () => {
     expect(normalizeDesktopPinActionRequest('light.office', 'focus-main')).toEqual({
       success: true,

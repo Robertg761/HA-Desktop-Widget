@@ -1,0 +1,709 @@
+const {
+  contrastRatio,
+  loadAppStylesheets,
+  parseColor,
+  resolvedValue,
+  splitTopLevel,
+} = require('../helpers/css-cascade.js');
+
+// Each case is a body class list; the readable preset forces its dark palette in either theme.
+const THEMES = {
+  dark: '',
+  light: 'theme-light',
+  'frosted dark': 'frosted-glass',
+  'frosted light': 'theme-light frosted-glass',
+  'readable dark': 'high-contrast opaque-panels',
+  'readable light': 'theme-light high-contrast opaque-panels',
+};
+const THEME_CASES = Object.entries(THEMES);
+
+function render(bodyClass, html) {
+  document.body.className = bodyClass;
+  document.body.innerHTML = html;
+}
+
+function isOpaque(color) {
+  return parseColor(color)?.[3] === 1;
+}
+
+describe('stylesheet cascade regressions', () => {
+  beforeAll(() => {
+    loadAppStylesheets(document);
+  });
+
+  afterEach(() => {
+    document.body.className = '';
+    document.body.innerHTML = '';
+  });
+
+  describe('tile keyboard focus ring', () => {
+    // The tile clips its overflow, so a ring drawn outside the full-tile button is invisible.
+    it.each(THEME_CASES)(
+      'draws the ring inside Quick Access and primary cards (%s)',
+      (_, theme) => {
+        render(
+          theme,
+          `<div id="quick-controls">
+          <div class="control-item" role="group">
+            <button class="tile-primary-button" tabindex="0" data-focus-visible></button>
+          </div>
+        </div>
+        <div class="status-card primary-entity-card">
+          <div class="control-item" data-primary-card="true">
+            <button class="tile-primary-button" tabindex="0" data-focus-visible></button>
+          </div>
+        </div>`
+        );
+
+        for (const button of document.querySelectorAll('.tile-primary-button')) {
+          expect(resolvedValue(button, 'outline-offset')).toBe('-3px');
+          expect(resolvedValue(button, 'outline')).toMatch(/^\d+px solid /);
+        }
+      }
+    );
+  });
+
+  describe('single-action primary card focus ring', () => {
+    // Lock, switch and scene cards focus the tile itself; the card clips anything outside it.
+    it.each(THEME_CASES)('draws the ring inside the card (%s)', (_, theme) => {
+      render(
+        theme,
+        `<div class="status-card primary-entity-card">
+          <div class="control-item" role="button" tabindex="0" data-primary-card="true"
+            data-focus-visible></div>
+        </div>`
+      );
+      const tileElement = document.querySelector('.control-item');
+      expect(resolvedValue(tileElement, 'outline-offset')).toBe('-3px');
+      expect(resolvedValue(tileElement, 'outline')).toMatch(/^\d+px solid /);
+    });
+  });
+
+  describe('keyboard focus ring colour', () => {
+    const uiUtils = require('../../src/ui-utils.js');
+    const focusMarkup = `
+      <div id="quick-controls"><div class="control-item">
+        <button class="tile-primary-button" tabindex="0" data-focus-visible></button>
+      </div></div>
+      <div class="status-card primary-entity-card"><div class="control-item" data-primary-card="true">
+        <button class="tile-primary-button" tabindex="0" data-focus-visible></button>
+      </div></div>
+      <div class="control-item" role="button" tabindex="0" data-focus-visible></div>
+      <button class="btn btn-secondary" data-focus-visible>Save</button>
+      <button class="close-btn" data-focus-visible></button>
+      <a href="#" data-focus-visible>Link</a>
+      <div class="media-detail-controls"><button class="btn" data-focus-visible></button></div>
+      <div class="form-group"><input type="text" data-focus data-focus-visible></div>`;
+    // Outlines carry the ring; text fields show focus through their border instead.
+    const ringColor = (element) =>
+      element.matches('input')
+        ? resolvedValue(element, 'border-color')
+        : resolvedValue(element, 'outline').replace(/^\S+\s+\S+\s+/, '');
+
+    afterEach(() => {
+      document.documentElement.removeAttribute('style');
+    });
+
+    it.each([
+      ...uiUtils.getAccentThemes().map((theme) => [theme.id, theme.color]),
+      ['custom white', '#ffffff'],
+    ])('reaches 3:1 on light surfaces with the %s accent', (_, accent) => {
+      render(THEMES.light, focusMarkup);
+      uiUtils.applyAccentThemeFromColor(accent);
+      const surfaces = ['#ffffff', `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`];
+
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        const color = ringColor(element);
+        for (const surface of surfaces) {
+          expect({
+            element: element.className,
+            contrast: contrastRatio(color, surface) >= 3,
+          }).toEqual({ element: element.className, contrast: true });
+        }
+      }
+    });
+
+    it('keeps the accent itself in the dark theme and white under the readable preset', () => {
+      render(THEMES.dark, focusMarkup);
+      uiUtils.applyAccentThemeFromColor('#64b5f6');
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        expect(parseColor(ringColor(element))).toEqual(parseColor('#64b5f6'));
+      }
+
+      // The preset draws a white outline on everything, text fields included.
+      document.body.className = THEMES['readable light'];
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        const outline = resolvedValue(element, 'outline').replace(/^\S+\s+\S+\s+/, '');
+        expect(parseColor(outline)).toEqual([255, 255, 255, 1]);
+      }
+    });
+  });
+
+  describe('controls that turned their focus outline off', () => {
+    const uiUtils = require('../../src/ui-utils.js');
+    // Each of these once replaced the ring with a faint translucent border or glow (or nothing).
+    const controlMarkup = `
+      <div class="command-palette-panel">
+        <input class="command-palette-input" data-focus>
+        <div class="command-palette-results">
+          <button class="command-palette-result highlighted"></button>
+          <button class="command-palette-result" data-focus-visible></button>
+        </div>
+      </div>
+      <button class="command-palette-close" data-focus-visible></button>
+      <div class="reorganize-mode"><div class="control-item">
+        <button class="desktop-pin-quick-toggle" data-focus-visible>Pin</button>
+      </div></div>
+      <input class="qa-tab-rename-input" type="text" data-focus data-focus-visible>
+      <div class="add-page-modal"><button class="qa-add-chip" data-focus-visible></button></div>
+      <div class="form-group"><input type="checkbox" data-focus data-focus-visible></div>
+      <button class="desktop-pin-light-power" data-focus-visible></button>
+      <input class="desktop-pin-light-slider" type="range" data-focus data-focus-visible>
+      <button class="desktop-pin-light-preset" data-focus-visible></button>
+      <button class="desktop-pin-panel-button" data-focus-visible></button>`;
+    const cameraMarkup = `
+      <div class="camera-expanded-preview"><div class="camera-expanded-preview-footer">
+        <button class="camera-expanded-preview-close" data-focus-visible></button>
+        <button class="camera-expanded-preview-reconnect" data-focus-visible></button>
+      </div></div>`;
+    const ring = (element) => {
+      const [width, style, ...color] = (resolvedValue(element, 'outline') || '').split(/\s+/);
+      return { width: parseFloat(width), style, color: color.join(' ') };
+    };
+    const rows = () =>
+      [...document.querySelectorAll('.command-palette-result, [data-focus-visible]')].filter(
+        (element, index, all) => all.indexOf(element) === index
+      );
+
+    afterEach(() => {
+      document.documentElement.removeAttribute('style');
+    });
+
+    it.each([
+      ...uiUtils.getAccentThemes().map((theme) => [theme.id, theme.color]),
+      ['custom white', '#ffffff'],
+    ])('draws a solid 3:1 ring in the light theme with the %s accent', (_, accent) => {
+      render(THEMES.light, controlMarkup + cameraMarkup);
+      uiUtils.applyAccentThemeFromColor(accent);
+      const lightSurfaces = ['#ffffff', `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`];
+      // The camera viewer stays dark in every theme.
+      const cameraSurface = 'rgb(13, 18, 25)';
+
+      for (const element of rows()) {
+        const { width, style, color } = ring(element);
+        const surfaces = element.closest('.camera-expanded-preview')
+          ? [cameraSurface]
+          : lightSurfaces;
+        for (const surface of surfaces) {
+          expect({
+            element: element.className || element.type,
+            ring: width >= 2 && style === 'solid' && contrastRatio(color, surface) >= 3,
+          }).toEqual({ element: element.className || element.type, ring: true });
+        }
+      }
+    });
+
+    it('uses the accent in the dark theme and white under the readable preset', () => {
+      render(THEMES.dark, controlMarkup + cameraMarkup);
+      uiUtils.applyAccentThemeFromColor('#64b5f6');
+      for (const element of rows()) {
+        const { width, style, color } = ring(element);
+        expect({
+          element: element.className || element.type,
+          width,
+          style,
+          color: parseColor(color),
+        }).toEqual({
+          element: element.className || element.type,
+          width: 2,
+          style: 'solid',
+          color: parseColor('#64b5f6'),
+        });
+      }
+
+      document.body.className = THEMES['readable light'];
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        expect(parseColor(ring(element).color)).toEqual([255, 255, 255, 1]);
+      }
+    });
+
+    it.each(THEME_CASES)('keeps the Pin label readable on its dark pill (%s)', (_, theme) => {
+      render(
+        theme,
+        `<div class="reorganize-mode"><div class="control-item">
+          <button class="desktop-pin-quick-toggle">Pin</button>
+          <button class="desktop-pin-quick-toggle" data-hover>Pin</button>
+          <button class="desktop-pin-quick-toggle" data-focus-visible>Pin</button>
+        </div></div>`
+      );
+      for (const toggle of document.querySelectorAll('.desktop-pin-quick-toggle')) {
+        const pill = resolvedValue(toggle, 'background');
+        expect(contrastRatio(resolvedValue(toggle, 'color'), pill)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('rings the highlighted palette row only while the search field has focus', () => {
+      const palette = (inputState) => `
+        <div class="command-palette-panel">
+          <input class="command-palette-input" ${inputState}>
+          <button class="command-palette-close" data-focus-visible></button>
+          <div class="command-palette-results">
+            <button class="command-palette-result highlighted"></button>
+            <button class="command-palette-result" data-hover></button>
+          </div>
+        </div>`;
+      render(THEMES.dark, palette('data-focus'));
+      const [highlighted, hovered] = document.querySelectorAll('.command-palette-result');
+      expect(ring(highlighted).style).toBe('solid');
+      expect(ring(hovered).style).not.toBe('solid');
+
+      // Tabbing on to the close button leaves one ring, on the button.
+      render(THEMES.dark, palette(''));
+      expect(ring(document.querySelector('.command-palette-result.highlighted')).style).not.toBe(
+        'solid'
+      );
+    });
+  });
+
+  describe('hidden rows in workflow pick lists', () => {
+    it('hides device rows filtered out by the starter search', () => {
+      render(
+        '',
+        `<div class="form-group room-dashboard">
+          <div class="room-entity-list">
+            <label hidden><input type="checkbox" value="light.desk">Desk</label>
+            <label><input type="checkbox" value="sensor.temp">Temperature</label>
+          </div>
+        </div>`
+      );
+
+      const [hidden, shown] = document.querySelectorAll('.room-entity-list > label');
+      expect(resolvedValue(hidden, 'display')).toBe('none');
+      expect(resolvedValue(shown, 'display')).toBe('flex');
+    });
+
+    it('hides checkbox rows in the advanced alert options', () => {
+      render(
+        '',
+        `<div class="alert-advanced-options form-group">
+          <label class="workflow-checkbox" hidden>Quiet hours<input type="checkbox"></label>
+        </div>`
+      );
+
+      expect(resolvedValue(document.querySelector('label'), 'display')).toBe('none');
+    });
+  });
+
+  describe('primary cards pager', () => {
+    const pagerMarkup = `
+      <div id="settings-modal">
+        <div id="primary-cards-list" class="entity-selector-list">
+          <div class="entity-item"></div>
+          <div class="primary-cards-list-actions primary-cards-pagination"></div>
+        </div>
+      </div>`;
+
+    it.each(THEME_CASES)('paints the sticky bar opaque in the list colour (%s)', (_, theme) => {
+      render(theme, pagerMarkup);
+      const list = document.getElementById('primary-cards-list');
+      const background = resolvedValue(
+        list.querySelector('.primary-cards-pagination'),
+        'background'
+      );
+      const layers = splitTopLevel(background);
+
+      expect(isOpaque(layers.at(-1))).toBe(true);
+      expect(background).toContain(resolvedValue(list, 'background'));
+    });
+
+    it('keeps keyboard-focused rows clear of the sticky bar', () => {
+      render('', pagerMarkup);
+      const list = document.getElementById('primary-cards-list');
+
+      // The bar is about 38px tall (28px buttons, padding and border) plus a focus ring.
+      expect(parseFloat(resolvedValue(list, 'scroll-padding-bottom'))).toBeGreaterThanOrEqual(44);
+    });
+  });
+
+  describe('desktop pin connection issue', () => {
+    const emptyMarkup = `
+      <div class="desktop-pin-shell">
+        <div id="desktop-pin-empty" class="desktop-pin-empty" data-state="disconnected">
+          <div class="desktop-pin-empty-kicker">Connection issue</div>
+          <div class="desktop-pin-empty-title">Home Assistant unavailable</div>
+          <div class="desktop-pin-empty-copy">Disconnected. Retrying automatically.</div>
+          <div class="desktop-pin-empty-actions">
+            <button class="control-btn desktop-pin-action desktop-pin-empty-action">Focus Main</button>
+          </div>
+        </div>
+      </div>`;
+    const part = (name) => document.querySelector(`.desktop-pin-empty-${name}`);
+
+    it('sizes the Focus Main button to its label instead of the 24px icon-button circle', () => {
+      render('desktop-pin-mode', emptyMarkup);
+      const button = part('action');
+
+      expect(resolvedValue(button, 'width')).toBe('auto');
+      expect(resolvedValue(button, 'height')).toBe('auto');
+      expect(resolvedValue(button, 'white-space')).toBe('nowrap');
+      // Anything that still overflows is cut at the bottom, never above the top edge.
+      expect(resolvedValue(document.getElementById('desktop-pin-empty'), 'justify-content')).toBe(
+        'safe center'
+      );
+    });
+
+    it.each([
+      [
+        { width: 168, height: 148 },
+        { kicker: true, copyLines: '3' },
+      ],
+      [
+        { width: 156, height: 122 },
+        { kicker: false, copyLines: '2' },
+      ],
+      [
+        { width: 140, height: 110 },
+        { kicker: false, copyLines: '1' },
+      ],
+      [
+        { width: 97, height: 83 },
+        { kicker: false, copyLines: null },
+      ],
+    ])('drops lower-priority lines to fit a %o pin', (viewport, expected) => {
+      render('desktop-pin-mode', emptyMarkup);
+      const options = { viewport };
+
+      expect(resolvedValue(part('kicker'), 'display', options) !== 'none').toBe(expected.kicker);
+      if (expected.copyLines) {
+        expect(resolvedValue(part('copy'), '-webkit-line-clamp', options)).toBe(expected.copyLines);
+      } else {
+        expect(resolvedValue(part('copy'), 'display', options)).toBe('none');
+      }
+      expect(resolvedValue(part('actions'), 'display', options)).toBe('flex');
+    });
+  });
+
+  describe('switch desktop pin state', () => {
+    const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
+    const renderSwitchPin = (layout) =>
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-toggle-control"
+            data-layout="${layout}">
+            <div class="desktop-pin-panel-shell">
+              <div class="desktop-pin-panel-body desktop-pin-toggle-body">
+                <div class="desktop-pin-panel-meter">
+                  <div class="desktop-pin-panel-glyph"></div>
+                  <div class="desktop-pin-panel-kpi">Off</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div></div>`
+      );
+
+    // At the 156x122 minimum the middle panel is about 40px tall (measured in a real pin window).
+    it.each(['compact', 'micro'])('fits the glyph and state in a 156x122 %s pin', (layout) => {
+      renderSwitchPin(layout);
+      const options = { viewport: { width: 156, height: 122 } };
+      const meter = document.querySelector('.desktop-pin-panel-meter');
+      const glyph = toPx(
+        resolvedValue(document.querySelector('.desktop-pin-panel-glyph'), 'height', options)
+      );
+      const padding = toPx(resolvedValue(meter, 'padding', options).split(/\s+/)[0]);
+      // The state's line box: at least 14px type at line-height 0.95.
+      const state = 14 * 0.95;
+      const gap = toPx(resolvedValue(meter, 'gap', options));
+      const sideBySide = resolvedValue(meter, 'grid-auto-flow', options) === 'column';
+      const content = sideBySide ? Math.max(glyph, state) : glyph + gap + state;
+
+      expect(content + 2 * padding + 2).toBeLessThanOrEqual(40);
+    });
+
+    it('keeps the glyph above the state in the default 168x148 pin', () => {
+      renderSwitchPin('compact');
+      const meter = document.querySelector('.desktop-pin-panel-meter');
+      expect(
+        resolvedValue(meter, 'grid-auto-flow', { viewport: { width: 168, height: 148 } })
+      ).not.toBe('column');
+    });
+  });
+
+  describe('desktop pin corners', () => {
+    const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
+
+    it.each([
+      { width: 168, height: 148 },
+      { width: 156, height: 122 },
+      { width: 260, height: 148 },
+    ])('keeps the top-right value inside the rounded %o pin window', (viewport) => {
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-toggle-control"
+            data-layout="compact">
+            <div class="desktop-pin-panel-shell">
+              <div class="desktop-pin-panel-topline">
+                <div class="desktop-pin-panel-meta"><div class="desktop-pin-panel-name">Outlet</div></div>
+                <div class="desktop-pin-panel-kpi">Off</div>
+              </div>
+            </div>
+          </div>
+        </div></div>`
+      );
+      const options = { viewport };
+      const radius = toPx(
+        resolvedValue(document.querySelector('.desktop-pin-shell'), 'clip-path', options).match(
+          /round\s+([\d.]+px)/
+        )[1]
+      );
+      const control = document.querySelector('.desktop-pin-panel-control');
+      const padding = toPx(resolvedValue(control, 'padding', options));
+      const margin = toPx(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-kpi'),
+          'margin-inline-end',
+          options
+        ) || '0px'
+      );
+      // The value's top-right corner, measured from the centre of the window's corner arc.
+      const dx = radius - padding - margin;
+      const dy = radius - padding;
+
+      expect(dx <= 0 || dx * dx + dy * dy <= radius * radius).toBe(true);
+    });
+  });
+
+  describe('desktop pin text', () => {
+    const TEXT_CLASSES = [
+      'desktop-pin-panel-name',
+      'desktop-pin-panel-status',
+      'desktop-pin-panel-caption',
+      'desktop-pin-panel-value',
+      'desktop-pin-panel-button',
+      'desktop-pin-light-name',
+      'desktop-pin-light-status',
+      'desktop-pin-light-power',
+      'desktop-pin-light-meter-value',
+      'desktop-pin-light-preset',
+      'desktop-pin-media-title',
+      'desktop-pin-media-artist',
+      'desktop-pin-scene-name',
+    ];
+    const TIMER_TEXT_CLASSES = [
+      'desktop-pin-timer-badge',
+      'desktop-pin-timer-endsat',
+      'desktop-pin-timer-readout',
+    ];
+
+    it.each(THEME_CASES)('stays readable on the pin window background (%s)', (_, theme) => {
+      render(
+        `desktop-pin-mode ${theme}`,
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control">
+            ${TEXT_CLASSES.map((name) => `<div class="${name}"></div>`).join('')}
+          </div>
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-timer-control"
+            data-layout="micro" data-urgent="true">
+            ${TIMER_TEXT_CLASSES.map((name) => `<div class="${name}"></div>`).join('')}
+          </div>
+        </div></div>`
+      );
+      const windowBackground = `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`;
+
+      for (const name of [...TEXT_CLASSES, ...TIMER_TEXT_CLASSES]) {
+        const color = resolvedValue(document.querySelector(`.${name}`), 'color');
+        expect({ name, contrast: contrastRatio(color, windowBackground) >= 4.5 }).toEqual({
+          name,
+          contrast: true,
+        });
+      }
+    });
+  });
+
+  describe('readable preset', () => {
+    const readableThemes = [THEMES['readable dark'], THEMES['readable light']];
+
+    it.each(readableThemes)('keeps the settings title readable (%s)', (theme) => {
+      render(
+        theme,
+        `<div id="settings-modal" class="modal"><div class="modal-content">
+          <div class="modal-header"><h2>Settings</h2></div>
+        </div></div>`
+      );
+      const header = document.querySelector('.modal-header');
+      const background = resolvedValue(header, 'background');
+
+      expect(isOpaque(background)).toBe(true);
+      expect(
+        contrastRatio(resolvedValue(header.querySelector('h2'), 'color'), background)
+      ).toBeGreaterThanOrEqual(7);
+    });
+
+    it.each(readableThemes)('draws slider tracks that stand out from the panels (%s)', (theme) => {
+      render(
+        theme,
+        `<input type="range" class="brightness-slider">
+        <input type="range" class="media-volume-slider">
+        <input type="range" class="climate-slider">
+        <input type="range" class="light-color-temp-slider">`
+      );
+      const panel = resolvedValue(document.body, '--bg-primary');
+
+      for (const slider of document.querySelectorAll('input:not(.light-color-temp-slider)')) {
+        expect(contrastRatio(resolvedValue(slider, 'background'), panel)).toBeGreaterThanOrEqual(3);
+      }
+      // The colour temperature scale keeps its warm-to-cool gradient.
+      expect(
+        resolvedValue(document.querySelector('.light-color-temp-slider'), 'background')
+      ).toMatch(/^linear-gradient\(to right, #ffb45f/);
+    });
+
+    it('leaves transparent tile and transport buttons alone', () => {
+      render(
+        THEMES['readable light'],
+        `<div class="control-item"><button class="tile-primary-button"></button></div>
+        <div class="media-detail-controls"><button class="btn"></button></div>`
+      );
+
+      for (const button of document.querySelectorAll('button')) {
+        expect(resolvedValue(button, 'background')).toBe('transparent');
+      }
+    });
+  });
+
+  describe('media dialog transport row', () => {
+    it('shrinks to fit the dialog at 150% interface scale', () => {
+      render(
+        'large-interface',
+        `<div class="media-detail-controls">
+          <button class="btn media-detail-prev-btn"></button>
+          <button class="btn media-detail-seek-btn"></button>
+          <button class="btn play-pause-btn media-detail-play-btn"></button>
+          <button class="btn media-detail-seek-btn"></button>
+          <button class="btn media-detail-next-btn"></button>
+        </div>`
+      );
+      const row = document.querySelector('.media-detail-controls');
+      const buttons = [...row.children];
+      // A 500px window at 150% is 333 CSS px wide; its media dialog row measures 262px.
+      const viewportWidth = 333;
+      const rowWidth = 262;
+      const gap = resolvedValue(row, 'gap').match(/^min\((\d+)px, (\d+)vw\)$/);
+      const minimumGap = Math.min(Number(gap[1]), (Number(gap[2]) / 100) * viewportWidth);
+      const minimumButtons = buttons.reduce(
+        (total, button) => total + parseFloat(resolvedValue(button, 'min-width')),
+        0
+      );
+
+      for (const button of buttons) expect(resolvedValue(button, 'flex')).toBe('0 1 auto');
+      expect(minimumButtons + minimumGap * (buttons.length - 1)).toBeLessThanOrEqual(rowWidth);
+    });
+  });
+
+  describe('longer translations fit their controls', () => {
+    it('sizes the smallest cover pin buttons to their labels, in sentence case', () => {
+      render(
+        '',
+        `<div class="desktop-pin-panel-control desktop-pin-cover-control" data-dense-variant="tight">
+          <div class="desktop-pin-panel-actions">
+            <button class="desktop-pin-panel-button desktop-pin-cover-action">Schließen</button>
+          </div>
+        </div>`
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display')).toBe(
+        'flex'
+      );
+      const button = document.querySelector('.desktop-pin-cover-action');
+      expect(resolvedValue(button, 'flex')).toBe('1 1 auto');
+      expect(resolvedValue(button, 'text-transform')).toBe('none');
+      expect(resolvedValue(button, 'text-overflow')).toBe('ellipsis');
+    });
+
+    it('keeps reorganize-mode pin badges clear of the rename and remove buttons', () => {
+      render(
+        '',
+        `<div id="quick-controls" class="reorganize-mode"><div class="control-item">
+          <button class="desktop-pin-quick-toggle">Nicht unterstützt</button>
+          <button class="rename-btn"></button><button class="remove-btn"></button>
+        </div></div>`
+      );
+      const badge = document.querySelector('.desktop-pin-quick-toggle');
+      // Remove (24px at 8px) and rename (24px at 38px) take the last 62px of the tile.
+      expect(resolvedValue(badge, 'max-width')).toBe('calc(100% - 74px)');
+      expect(resolvedValue(badge, 'white-space')).toBe('nowrap');
+      expect(resolvedValue(badge, 'text-overflow')).toBe('ellipsis');
+      expect(resolvedValue(badge, 'text-transform')).toBeFalsy();
+    });
+
+    it('gives the popup hotkey field a row of its own and the command palette pill one line', () => {
+      render(
+        '',
+        `<div class="popup-hotkey-config"><input id="popup-hotkey-input"></div>
+        <span class="command-palette-result-domain">Geräte-Tracker</span>`
+      );
+      expect(resolvedValue(document.getElementById('popup-hotkey-input'), 'flex')).toBe('1 1 100%');
+      expect(
+        resolvedValue(document.querySelector('.command-palette-result-domain'), 'white-space')
+      ).toBe('nowrap');
+    });
+  });
+
+  describe('right-to-left languages', () => {
+    beforeEach(() => {
+      document.documentElement.dir = 'rtl';
+    });
+    afterEach(() => {
+      document.documentElement.removeAttribute('dir');
+    });
+
+    it('lets numbers with units and entity names keep their own direction', () => {
+      render(
+        '',
+        `<div class="weather-temp">-24°C</div><span class="detail-value">8 km/h</span>
+        <div class="control-name">Outlet 1</div><div class="control-state">مفتوح 50%</div>
+        <div class="climate-temp-value-large">21–24°C</div>
+        <div class="desktop-pin-panel-kpi">21–24°C</div>
+        <div class="control-state control-sensor-readout"><span>15,6</span><span>°C</span></div>`
+      );
+      for (const selector of [
+        '.weather-temp',
+        '.detail-value',
+        '.control-name',
+        '.control-state',
+        '.climate-temp-value-large',
+        '.desktop-pin-panel-kpi',
+      ]) {
+        expect(resolvedValue(document.querySelector(selector), 'unicode-bidi')).toBe('plaintext');
+      }
+      expect(resolvedValue(document.querySelector('.control-sensor-readout'), 'direction')).toBe(
+        'ltr'
+      );
+    });
+
+    it('does not mirror media transport controls', () => {
+      render(
+        '',
+        `<div class="media-detail-controls"><button class="btn media-detail-seek-btn">-10</button></div>
+        <div class="media-tile-controls"></div>`
+      );
+      expect(resolvedValue(document.querySelector('.media-detail-controls'), 'direction')).toBe(
+        'ltr'
+      );
+      expect(resolvedValue(document.querySelector('.media-tile-controls'), 'direction')).toBe(
+        'ltr'
+      );
+    });
+
+    it('puts the switch gap on the label side', () => {
+      render(
+        '',
+        `<div class="form-group"><label><input type="checkbox" checked><span>Label</span></label></div>`
+      );
+      const toggle = document.querySelector('input');
+      expect(resolvedValue(toggle, 'margin-inline-end')).toMatch(/^[\d.]+(rem|px)$/);
+      expect(resolvedValue(toggle, 'margin-right')).toBeFalsy();
+    });
+  });
+});

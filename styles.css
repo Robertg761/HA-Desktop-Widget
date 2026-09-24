@@ -181,6 +181,8 @@ html {
   --accent-rgb: 100, 181, 246;
   --accent-hover: #90caf9;
   --accent-bg: rgba(var(--accent-rgb), 0.15);
+  /* Keyboard focus outlines and focus borders. */
+  --focus-ring: var(--accent);
   --primary: #64b5f6;
   --primary-hover: #90caf9;
 
@@ -248,6 +250,8 @@ html {
   --settings-modal-bg-alpha: 0.82;
   --settings-modal-panel-rgb: 31, 31, 37;
   --settings-modal-panel-alpha: 0.88;
+  /* Text and hairline fills of desktop pin controls, which draw straight on the window background. */
+  --desktop-pin-ink-rgb: 255, 255, 255;
 
   /* ============================================
      ELEVATION & SHADOWS
@@ -442,6 +446,10 @@ html {
   --settings-modal-bg-alpha: 0.84;
   --settings-modal-panel-rgb: 255, 255, 255;
   --settings-modal-panel-alpha: 0.9;
+  --desktop-pin-ink-rgb: 0, 0, 0;
+  /* Light accents sit near 2:1 on white; darkening the ring to 55% keeps it at least 3:1 against
+     the light surfaces for any accent, even a user's custom white. */
+  --focus-ring: color-mix(in srgb, var(--accent) 55%, #000);
 
   /* Shadows (lighter for light theme) */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -875,7 +883,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty {
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
-  content: 'Drag or resize';
+  content: attr(data-edit-hint);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -888,8 +896,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
   font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
+  text-align: center;
   text-transform: uppercase;
-  white-space: nowrap;
+  /* Wraps inside the pin instead of running off it ("Verschieben oder Größe ändern"). */
+  width: max-content;
+  max-width: calc(100% - 16px);
   pointer-events: none;
 }
 
@@ -988,10 +999,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 0 10px;
   font-size: var(--font-size-sm);
   font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
   color: var(--text-primary);
   border-radius: var(--radius-full);
   box-shadow:
@@ -1024,9 +1039,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-action:hover {
   transform: translateY(-1px);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-    rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.15);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.12),
+      rgba(var(--desktop-pin-ink-rgb), 0.04)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.04);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.15);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 10px 20px rgba(0, 0, 0, 0.25);
@@ -1036,7 +1055,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-action[aria-disabled='true'] {
   opacity: 0.48;
   cursor: default;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.03);
   color: var(--text-secondary);
 }
 
@@ -1087,7 +1106,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   isolation: isolate;
   padding: 0;
-  text-align: left;
+  text-align: start;
   background:
     radial-gradient(
       circle at top left,
@@ -1095,7 +1114,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
       transparent 70%
     ),
     linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-radius: var(--radius-xl);
   box-shadow: var(--desktop-pin-control-shadow);
   backdrop-filter: blur(24px) saturate(180%);
@@ -1124,7 +1143,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-control:hover {
   transform: none;
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.16);
   box-shadow:
     0 24px 44px rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
@@ -1158,7 +1177,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: clamp(10px, 1.9vw, 12px);
   font-weight: 700;
   line-height: 1.1;
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1172,16 +1191,16 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.56);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.56);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .desktop-pin-light-power {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.1);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.04);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
   border-radius: var(--radius-full);
   padding: 4px 10px;
   min-width: 44px;
@@ -1205,15 +1224,20 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-light-power[data-active='true'] {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.4);
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
 }
 
 .desktop-pin-light-power:hover,
 .desktop-pin-light-power:focus-visible {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  outline: none;
+  background: rgba(var(--desktop-pin-ink-rgb), 0.08);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.15);
+}
+
+/* Pins are small and clip at their edges, so the ring is drawn inside the button. */
+.desktop-pin-light-power:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .desktop-pin-light-brightness {
@@ -1250,8 +1274,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   display: grid;
   place-items: center;
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--desktop-pin-ink-rgb), 0.12),
+    rgba(var(--desktop-pin-ink-rgb), 0.04)
+  );
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.06);
   font-size: var(--font-size-md);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -1264,7 +1292,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.46);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.46);
 }
 
 .desktop-pin-light-meter-value {
@@ -1273,7 +1301,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 800;
   line-height: 0.95;
   letter-spacing: -0.05em;
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1292,6 +1320,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-slider:focus {
   outline: none;
+}
+
+/* The slider is a transparent overlay on the track, so the ring hugs the track. */
+.desktop-pin-light-slider:focus-visible {
+  border-radius: var(--radius-full);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
 .desktop-pin-light-slider::-webkit-slider-runnable-track {
@@ -1410,11 +1445,15 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-light-preset {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-  color: rgba(255, 255, 255, 0.86);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.06),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.86);
   border-radius: var(--radius-lg);
   min-height: 28px;
   font-family: var(--desktop-pin-display-font);
@@ -1434,7 +1473,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: translateY(-1px);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.35);
   background: rgba(var(--desktop-pin-tint-rgb), 0.1);
-  outline: none;
+}
+
+.desktop-pin-light-preset:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .desktop-pin-light-control[data-state='off'] .desktop-pin-light-brightness {
@@ -1610,11 +1653,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   isolation: isolate;
   padding: var(--desktop-pin-panel-pad);
-  text-align: left;
+  text-align: start;
   background:
     radial-gradient(circle at top left, rgba(var(--desktop-pin-tint-rgb), 0.15), transparent 70%),
     linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-radius: var(--desktop-pin-panel-radius);
   box-shadow: var(--desktop-pin-control-shadow);
   backdrop-filter: blur(24px) saturate(180%);
@@ -1627,7 +1670,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-panel-control:hover {
   transform: none;
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.16);
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
@@ -1683,6 +1726,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-width: 0;
 }
 
+/* Pin windows clip to a 24px corner radius, and in small windows the tile keeps only 4px of
+   padding (the narrow-window .control-item rule), so the top-right value is held clear of the
+   rounded corner. */
+.desktop-pin-panel-topline > :is(.desktop-pin-panel-kpi, .desktop-pin-panel-aside) {
+  margin-inline-end: 8px;
+}
+
 .desktop-pin-panel-aside {
   display: grid;
   justify-items: end;
@@ -1702,7 +1752,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: clamp(10px, 1.9vw, 12px);
   font-weight: 700;
   line-height: 1.1;
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   letter-spacing: 0.01em;
 }
 
@@ -1711,7 +1761,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-slider-label,
 .desktop-pin-panel-caption {
   font-family: var(--desktop-pin-display-font);
-  color: rgba(255, 255, 255, 0.58);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.58);
   font-size: var(--font-size-3xs);
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -1728,7 +1778,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-kpi,
 .desktop-pin-panel-value {
   font-family: var(--desktop-pin-display-font);
-  color: rgba(255, 255, 255, 0.98);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-weight: 800;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
@@ -1758,13 +1808,17 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   padding: 8px 10px;
   border-radius: var(--desktop-pin-panel-meter-radius);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
     radial-gradient(
       circle at center,
       rgba(var(--desktop-pin-tint-rgb), calc(var(--desktop-pin-progress, 0) * 0.35)),
       transparent 70%
     );
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.06);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     inset 0 -12px 24px rgba(0, 0, 0, 0.15);
@@ -1792,8 +1846,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--desktop-pin-ink-rgb), 0.12),
+    rgba(var(--desktop-pin-ink-rgb), 0.04)
+  );
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.06);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 8px 16px rgba(0, 0, 0, 0.15);
@@ -1829,9 +1887,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   padding: 6px 8px;
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.06),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.05);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -1887,11 +1949,15 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-height: 28px;
   padding: 6px 8px;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-  color: rgba(255, 255, 255, 0.92);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
@@ -1930,13 +1996,21 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-button:focus-visible {
   transform: translateY(-1px);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-    rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.12),
+      rgba(var(--desktop-pin-ink-rgb), 0.04)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.04);
+  border-color: rgba(var(--desktop-pin-ink-rgb), 0.12);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 10px 20px rgba(0, 0, 0, 0.2);
-  outline: none;
+}
+
+.desktop-pin-panel-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .desktop-pin-media-copy {
@@ -1947,14 +2021,14 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-media-title {
   font-family: var(--desktop-pin-ui-font);
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   font-size: clamp(11px, 2.3vw, 13px);
   font-weight: 700;
 }
 
 .desktop-pin-media-artist {
   font-family: var(--desktop-pin-ui-font);
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.62);
   font-size: var(--font-size-xs);
 }
 
@@ -1963,8 +2037,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   height: 6px;
   border-radius: var(--radius-full);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(
+      180deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.08),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    ),
+    rgba(var(--desktop-pin-ink-rgb), 0.02);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
@@ -2041,8 +2119,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
       rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.15),
       transparent 70%
     ),
-    linear-gradient(155deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+    linear-gradient(
+      155deg,
+      rgba(var(--desktop-pin-ink-rgb), 0.05),
+      rgba(var(--desktop-pin-ink-rgb), 0.02)
+    );
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 12px 24px rgba(0, 0, 0, 0.2);
@@ -2077,7 +2159,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-scene-name {
   max-width: 100%;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--desktop-pin-scene-name-font-size, clamp(8px, min(5.2vmin, 14px), 24px));
   font-weight: 800;
@@ -2176,6 +2258,23 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   grid-template-columns: 1fr;
 }
 
+/* Stacked, the glyph and the state need about 63px, more than the middle panel gets below the
+   default pin height (42px at the 156x122 minimum), which cut the state off at the bottom. Short
+   pins put them side by side. */
+@media (max-height: 142px) {
+  .desktop-pin-toggle-body .desktop-pin-panel-meter {
+    grid-auto-flow: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .desktop-pin-toggle-body .desktop-pin-panel-glyph {
+    width: 24px;
+    height: 24px;
+  }
+}
+
 .desktop-pin-climate-modes {
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
@@ -2220,8 +2319,20 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   justify-content: center;
 }
 
+/* Three verbs share the smallest pins. Equal thirds in capitals cannot hold "Schließen", so the
+   buttons take their label's width in sentence case and fall back to an ellipsis (with a title). */
 .desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+}
+
+.desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-cover-action {
+  flex: 1 1 auto;
+  padding-inline: 4px;
+  overflow: hidden;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-media-copy {
@@ -2309,7 +2420,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.66);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.66);
 }
 
 .desktop-pin-timer-pulse {
@@ -2337,8 +2448,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.78);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.08);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.78);
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-2xs);
   font-weight: 800;
@@ -2363,7 +2474,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: calc(min(23vw, 30vh) * var(--desktop-pin-timer-readout-scale, 1));
   line-height: 1;
   letter-spacing: -0.045em;
-  color: rgba(255, 255, 255, 1);
+  color: rgba(var(--desktop-pin-ink-rgb), 1);
 }
 
 .desktop-pin-timer-endsat {
@@ -2374,7 +2485,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: none;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2386,7 +2497,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   z-index: 2;
   overflow: hidden;
   height: 4px;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(var(--desktop-pin-ink-rgb), 0.07);
 }
 
 .desktop-pin-timer-progress-fill {
@@ -2401,7 +2512,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-timer-control[data-state='paused'] .desktop-pin-timer-progress-fill {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.42));
+  background: linear-gradient(
+    90deg,
+    rgba(var(--desktop-pin-ink-rgb), 0.24),
+    rgba(var(--desktop-pin-ink-rgb), 0.42)
+  );
   box-shadow: none;
 }
 
@@ -2412,6 +2527,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-timer-control[data-urgent='true'] .desktop-pin-timer-readout {
   color: rgba(255, 214, 208, 1);
+}
+
+/* The pale red would vanish on the light theme's white window. */
+body.theme-light:not(.high-contrast)
+  .desktop-pin-timer-control[data-urgent='true']
+  .desktop-pin-timer-readout {
+  color: #c62828;
 }
 
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-actions {
@@ -2472,25 +2594,27 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-empty {
   flex: 1;
-  margin: 8px;
+  margin: 6px;
   --desktop-pin-empty-accent-rgb: var(--accent-rgb);
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-radius: var(--radius-xl);
-  padding: 14px 12px;
+  padding: 8px 10px;
   color: var(--text-secondary);
+  /* Tinted over the window background like the pin controls, so theme text stays readable. */
   background:
     radial-gradient(
       circle at top left,
       rgba(var(--desktop-pin-empty-accent-rgb), 0.12),
       transparent 70%
     ),
-    linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
+    rgba(var(--desktop-pin-ink-rgb), 0.04);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 6px;
+  /* Overflow runs off the bottom, never above the top edge. */
+  justify-content: safe center;
+  gap: 4px;
   text-align: center;
   min-height: 0;
   -webkit-app-region: no-drag;
@@ -2563,21 +2687,87 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-empty-copy {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-sm);
-  line-height: 1.45;
+  line-height: 1.35;
   color: var(--text-secondary);
 }
 
 .desktop-pin-empty-actions {
   display: flex;
+  flex-shrink: 0;
   justify-content: center;
-  margin-top: 4px;
+  margin-top: 2px;
   -webkit-app-region: no-drag;
 }
 
-.desktop-pin-empty-action {
-  min-width: 86px;
+/* Outranks .control-btn, whose 24px circle would squash the label. */
+.desktop-pin-empty .desktop-pin-empty-action {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 24px;
+  padding: 3px 12px;
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  opacity: 1;
+}
+
+/* The default pin (168x148) and the smaller minimum sizes keep the whole message and the
+   Focus Main button inside the tile by tightening type and dropping the least important lines. */
+@media (max-height: 170px) {
+  .desktop-pin-empty-title {
+    font-size: var(--font-size-sm);
+    line-height: 1.15;
+  }
+
+  .desktop-pin-empty-copy {
+    -webkit-line-clamp: 3;
+    font-size: var(--font-size-xs);
+    line-height: 1.3;
+  }
+}
+
+@media (max-height: 130px) {
+  .desktop-pin-empty-kicker {
+    display: none;
+  }
+
+  .desktop-pin-empty-copy {
+    -webkit-line-clamp: 2;
+  }
+}
+
+@media (max-height: 115px) {
+  .desktop-pin-empty-copy {
+    -webkit-line-clamp: 1;
+  }
+}
+
+@media (max-height: 100px) {
+  .desktop-pin-empty {
+    margin: 4px;
+    padding: 6px;
+  }
+
+  .desktop-pin-empty-title {
+    font-size: var(--font-size-xs);
+  }
+
+  .desktop-pin-empty-copy {
+    display: none;
+  }
+
+  .desktop-pin-empty .desktop-pin-empty-action {
+    min-height: 22px;
+    padding: 2px 8px;
+  }
 }
 
 .desktop-pin-resize-handle {
@@ -2677,7 +2867,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   background: var(--danger);
   transition: background-color var(--transition-slow);
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-inline-start: 8px;
   box-shadow: 0 0 4px var(--danger);
   -webkit-app-region: no-drag;
   cursor: help;
@@ -2715,7 +2905,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .connection-indicator:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -3138,7 +3328,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
@@ -3376,7 +3566,7 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs .tab-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -3389,7 +3579,7 @@ body.first-run-active .widget-content > * {
 
 .quick-access-header .section-buttons {
   flex: 0 0 auto;
-  margin-left: auto; /* keep the reorganize/manage buttons pinned to the right */
+  margin-inline-start: auto; /* keep the reorganize/manage buttons pinned to the end */
 }
 
 .quick-access-header .quick-access-tabs {
@@ -3428,7 +3618,7 @@ body.first-run-active .widget-content > * {
     transparent 100%
   );
   box-shadow: none;
-  padding-right: 2px;
+  padding-inline-end: 2px;
 }
 
 /* In reorganize mode the wrapper owns the active highlight. */
@@ -3480,9 +3670,11 @@ body.first-run-active .widget-content > * {
   font-weight: var(--font-weight-medium);
 }
 
+/* The tab strip clips anything outside the field, so the ring is drawn over its border. */
 .qa-tab-rename-input:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.35);
+  border-color: var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .qa-tab-add {
@@ -3532,10 +3724,14 @@ body.first-run-active .widget-content > * {
 
 .add-page-modal .qa-add-chip:hover,
 .add-page-modal .qa-add-chip:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--accent-bg);
   color: var(--accent);
-  outline: none;
+}
+
+.add-page-modal .qa-add-chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .quick-controls-target-hint {
@@ -3620,7 +3816,7 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--shadow-sm), var(--glow-focus);
 }
@@ -3897,7 +4093,7 @@ body.first-run-active .widget-content > * {
 
 .entity-item.selected {
   background: var(--primary-alpha);
-  border-left: 3px solid var(--primary-color);
+  border-inline-start: 3px solid var(--primary-color);
 }
 
 .selected-badge {
@@ -3914,6 +4110,12 @@ body.first-run-active .widget-content > * {
   width: 28px;
   text-align: center;
   flex-shrink: 0;
+}
+
+/* A weather picker entry borrows the weather card's icon colours, at list size. */
+.entity-item .entity-icon.weather-icon {
+  width: 28px;
+  height: 28px;
 }
 
 .entity-item .entity-name {
@@ -4552,7 +4754,6 @@ body.first-run-active .widget-content > * {
 .weather-condition {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  text-transform: capitalize;
   line-height: 1.2;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -4838,18 +5039,33 @@ body.first-run-active .widget-content > * {
   opacity: 0.7;
 }
 
+/* The picked card's button is inert too, but it shows a selection, not an unavailable action. */
+.primary-cards-list-actions .btn-primary[aria-disabled='true'] {
+  opacity: 1;
+}
+
+/* Rows scroll under the sticky pager, so it is painted opaque: the list tint layered over the
+   solid settings panel colour, which matches the list look in every theme (--surface-2 alone is
+   translucent in frosted glass). */
 .primary-cards-pagination {
   position: sticky;
   bottom: 0;
   justify-content: flex-end;
   padding: var(--space-2) 12px;
-  background: var(--surface-2);
+  background:
+    linear-gradient(var(--surface-2), var(--surface-2)), rgb(var(--settings-modal-panel-rgb));
   border-top: 1px solid var(--border-color);
   font-size: var(--font-size-sm);
 }
 
+/* Keyboard focus scrolls rows clear of the sticky pager (about 38px tall) and its focus ring,
+   instead of just to the list edge. */
+#primary-cards-list:has(> .primary-cards-pagination) {
+  scroll-padding-bottom: 48px;
+}
+
 .primary-cards-pagination [role='status'] {
-  margin-right: auto;
+  margin-inline-end: auto;
   color: var(--muted-text);
 }
 
@@ -4933,7 +5149,7 @@ body.first-run-active .widget-content > * {
   width: 170px;
   min-height: 30px;
   padding: 6px 8px;
-  text-align: left;
+  text-align: start;
   font-size: var(--font-size-base);
   line-height: 1.2;
 }
@@ -4973,7 +5189,7 @@ body.first-run-active .widget-content > * {
   gap: 8px;
   max-height: min(52vh, 380px);
   overflow-y: auto;
-  padding-right: 2px;
+  padding-inline-end: 2px;
 }
 
 .custom-entity-icon-choice {
@@ -4989,7 +5205,7 @@ body.first-run-active .widget-content > * {
 
 .custom-entity-icon-choice:hover,
 .custom-entity-icon-choice:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: rgb(var(--accent-rgb) / 14%);
 }
 
@@ -5054,11 +5270,11 @@ body.first-run-active .widget-content > * {
 .sensor-value .unit {
   font-size: var(--font-size-lg);
   color: var(--text-secondary);
-  margin-left: 8px;
+  margin-inline-start: 8px;
 }
 
 .sensor-info {
-  text-align: left;
+  text-align: start;
   background: var(--surface-1);
   padding: 16px;
   border-radius: var(--radius-md);
@@ -5419,7 +5635,7 @@ body.first-run-active .widget-content > * {
 
 .light-color-swatch:hover,
 .light-color-swatch:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   transform: translateY(-1px) scale(1.06);
   outline: none;
   box-shadow:
@@ -5709,7 +5925,6 @@ body.first-run-active .widget-content > * {
 .climate-mode-label {
   font-size: var(--font-size-sm);
   font-weight: 500;
-  text-transform: capitalize;
 }
 
 .climate-modal {
@@ -6293,6 +6508,12 @@ body.density-compact #quick-controls .control-icon {
   font-size: var(--font-size-xl);
 }
 
+/* The narrow compact icon box would squash album art; keep it square. */
+body.density-compact #quick-controls .media-player-entity .control-icon.has-artwork {
+  width: 40px;
+  height: 40px;
+}
+
 body.density-compact #quick-controls .control-name {
   font-size: var(--font-size-xs);
   line-height: 1.15;
@@ -6435,7 +6656,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   z-index: 2;
   min-width: 0;
   padding: 28px 10px 9px;
-  text-align: left;
+  text-align: start;
   pointer-events: none;
 }
 
@@ -6457,7 +6678,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   font-size: var(--font-size-xs);
   font-weight: 500;
   line-height: 1.2;
-  text-align: left;
+  text-align: start;
   text-overflow: ellipsis;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
@@ -6466,7 +6687,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 .camera-tile-preview-badge {
   position: absolute;
   top: 7px;
-  right: 7px;
+  inset-inline-end: 7px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -6548,6 +6769,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .camera-expanded-preview {
+  /* The viewer stays dark in every theme, so its focus ring keeps the (light) accent rather than
+     the light theme's darkened ring. */
+  --focus-ring: var(--accent);
   position: fixed;
   inset: 0;
   z-index: var(--z-modal-backdrop);
@@ -6590,7 +6814,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-header {
   min-height: 58px;
   gap: 14px;
-  padding: 10px 12px 10px 16px;
+  padding: 10px 12px;
+  padding-inline-start: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -6675,7 +6900,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-close:hover,
 .camera-expanded-preview-close:focus-visible {
   border-color: rgba(255, 255, 255, 0.22);
-  outline: none;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   transform: scale(1.04);
@@ -6768,9 +6992,14 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-reconnect:hover,
 .camera-expanded-preview-reconnect:focus-visible {
   border-color: rgba(var(--accent-rgb), 0.42);
-  outline: none;
   background: rgba(var(--accent-rgb), 0.14);
   color: #fff;
+}
+
+.camera-expanded-preview-close:focus-visible,
+.camera-expanded-preview-reconnect:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .camera-expanded-preview-reconnect:disabled {
@@ -6820,7 +7049,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
   .camera-expanded-preview-header {
     min-height: 52px;
-    padding: 8px 9px 8px 12px;
+    padding: 8px 9px;
+    padding-inline-start: 12px;
   }
 
   .camera-expanded-preview-heading h2 {
@@ -7700,7 +7930,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #settings-modal input[type='text']:focus-visible,
 #settings-modal input[type='password']:focus-visible,
 #settings-modal select:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
   outline: none;
 }
@@ -7776,7 +8006,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   overflow-x: hidden;
   overflow-y: auto;
   padding: var(--space-3) var(--space-2);
-  border-right: 1px solid var(--border-color);
+  border-inline-end: 1px solid var(--border-color);
   border-bottom: none;
   background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
   backdrop-filter: blur(28px) saturate(160%) !important;
@@ -7854,7 +8084,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .close-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--shadow-sm), var(--glow-focus);
 }
@@ -8163,7 +8393,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--glass-elevated);
   box-shadow:
     var(--glow-focus),
@@ -8191,7 +8421,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border: 1px solid var(--border-color);
   position: relative;
   transition: var(--transition-base);
-  margin-right: var(--space-3);
+  margin-inline-end: var(--space-3);
   outline: none;
   cursor: pointer;
   flex-shrink: 0;
@@ -8202,7 +8432,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   content: '';
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -8228,7 +8458,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .form-group input[type='checkbox']:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
 
@@ -8266,7 +8497,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .section-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -8347,7 +8578,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .color-target-option:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -8424,7 +8655,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   -webkit-appearance: none;
   transition: var(--transition-base);
   box-shadow: var(--shadow-sm);
-  text-align: left;
+  text-align: start;
   justify-content: center;
   aspect-ratio: 1 / 1;
   position: relative;
@@ -8438,7 +8669,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .theme-option:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -8563,8 +8794,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-editor-save-lock-hint {
-  border-left: 3px solid rgba(var(--accent-rgb), 0.6);
-  padding-left: var(--space-3);
+  border-inline-start: 3px solid rgba(var(--accent-rgb), 0.6);
+  padding-inline-start: var(--space-3);
   color: var(--accent);
 }
 
@@ -8600,7 +8831,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #custom-color-hex:focus,
 #custom-color-name-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: var(--glow-focus);
 }
 
@@ -8656,7 +8887,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -8669,7 +8900,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .custom-dropdown-trigger:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--glass-elevated);
   box-shadow:
     var(--glow-focus),
@@ -8728,17 +8959,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-base);
   cursor: pointer;
   transition: var(--transition-base);
-  border-left: 3px solid transparent;
+  border-inline-start: 3px solid transparent;
 }
 
 .custom-dropdown-option:hover {
   background: rgba(255, 255, 255, 0.05);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
 }
 
 .custom-dropdown-option.selected {
   background: var(--accent-bg);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
   color: var(--accent);
 }
 
@@ -8823,7 +9054,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow:
     var(--glow-focus),
@@ -8937,7 +9168,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   gap: var(--space-2);
   width: fit-content;
   padding: var(--space-2) var(--space-3);
-  margin-left: calc(var(--space-3) * -1);
+  margin-inline-start: calc(var(--space-3) * -1);
   border-radius: var(--radius-md);
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
@@ -8973,7 +9204,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .settings-details > summary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -8981,7 +9212,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
    than continuing the card above it. */
 .settings-details-body {
   margin-top: var(--space-4);
-  padding-left: var(--space-3);
+  padding-inline-start: var(--space-3);
 }
 
 .settings-details-body > .form-group:first-child {
@@ -9141,7 +9372,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .first-run-content input:focus-visible {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.22);
 }
 
@@ -9160,7 +9391,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .first-run-actions .btn:first-child {
-  margin-right: auto;
+  margin-inline-end: auto;
 }
 
 .widget-state-panel {
@@ -9197,6 +9428,25 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   gap: var(--space-2);
   margin-top: 14px;
   flex-wrap: wrap;
+}
+
+/* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled. */
+.widget-state-actions .btn-secondary {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.widget-state-actions .btn-secondary:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* The connection panel is the one explanation of a missing connection; the legacy placeholder
+   in the tile area would contradict it (for example "Connecting..." beside "Authentication
+   failed"). */
+body.widget-state-active #quick-controls .status-message {
+  display: none;
 }
 
 .language-section {
@@ -9520,7 +9770,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding: var(--space-4) var(--space-5);
   min-width: 200px;
   max-width: min(420px, 90vw);
-  text-align: left;
+  text-align: start;
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(var(--bg-blur));
   -webkit-backdrop-filter: blur(var(--bg-blur));
@@ -9756,7 +10006,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .reorganize-mode .control-item .remove-btn {
   position: absolute;
   top: 8px;
-  right: 8px;
+  inset-inline-end: 8px;
   width: 24px;
   height: 24px;
   background: rgba(211, 47, 47, 0.95);
@@ -9860,7 +10110,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .reorganize-mode .control-item .rename-btn {
   position: absolute;
   top: 8px;
-  right: 38px;
+  inset-inline-end: 38px;
   width: 24px;
   height: 24px;
   background: rgba(25, 118, 210, 0.95);
@@ -9902,18 +10152,24 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .reorganize-mode .control-item .desktop-pin-quick-toggle {
   position: absolute;
   top: 8px;
-  left: 8px;
+  inset-inline-start: 8px;
   z-index: 20;
   min-width: 0;
+  /* Stops short of the rename and remove buttons; a longer label ("Nicht unterstützt") ends in
+     an ellipsis and the title explains it. */
+  max-width: calc(100% - 74px);
+  overflow: hidden;
   padding: 4px 8px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-full);
   background: rgba(12, 18, 32, 0.92);
-  color: var(--text-secondary);
+  /* The pill stays dark in every theme, so its label keeps the dark theme's colours. */
+  color: #b0b0b0;
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition: all var(--transition-base);
   backdrop-filter: blur(18px) saturate(170%);
@@ -9925,14 +10181,18 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle:hover,
 .reorganize-mode .control-item .desktop-pin-quick-toggle:focus-visible {
-  color: var(--text-primary);
+  color: #f5f5f5;
   border-color: rgba(var(--accent-rgb), 0.42);
   background: rgba(14, 22, 40, 0.98);
   transform: scale(1.06);
   box-shadow:
     0 10px 20px rgba(0, 0, 0, 0.36),
     0 0 0 2px rgba(var(--accent-rgb), 0.16);
-  outline: none;
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle[data-active='true'] {
@@ -10083,7 +10343,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .rename-modal input:focus,
 .rename-modal select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
 }
 
@@ -10619,7 +10879,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .media-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
@@ -10776,7 +11036,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .brightness-value {
   min-width: 50px;
-  text-align: right;
+  text-align: end;
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--accent);
@@ -10873,7 +11133,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .media-volume-value {
-  text-align: right;
+  text-align: end;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
@@ -10932,11 +11192,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   background: var(--accent-bg);
 }
 
+/* Gaps and buttons shrink before the row overflows a narrow dialog (e.g. at 150% interface
+   scale); at normal sizes they keep their full width. */
 .media-detail-controls {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: min(12px, 3vw);
   margin-top: 16px;
 }
 
@@ -10944,9 +11206,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   appearance: none;
   background: transparent !important;
   border: none !important;
+  flex: 0 1 auto;
   width: 48px;
   height: 48px;
-  min-width: 48px;
+  min-width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10983,8 +11246,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   -webkit-backdrop-filter: none !important;
 }
 
+/* The buttons have no border or background of their own, so focus needs a visible outline. */
 .media-detail-controls .btn:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .media-detail-controls .btn:disabled {
@@ -11008,7 +11273,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .media-detail-controls .play-pause-btn {
   width: 56px;
   height: 56px;
-  min-width: 56px;
+  min-width: 44px;
   color: var(--accent);
   background: transparent !important;
   box-shadow: none !important;
@@ -11155,7 +11420,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  text-align: left;
+  text-align: start;
   transition: var(--transition-base);
 }
 
@@ -11167,14 +11432,14 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 #settings-modal .tab-link.active {
   border-color: rgba(var(--accent-rgb), 0.36);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
   background: var(--accent-bg);
   color: var(--text-primary);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
 #settings-modal .tab-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -11202,7 +11467,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     overflow-x: auto;
     overflow-y: hidden;
     padding: var(--space-2) var(--space-3);
-    border-right: none;
+    border-inline-end: none;
     border-bottom: 1px solid var(--border-color);
   }
 
@@ -11215,7 +11480,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   }
 
   #settings-modal .tab-link.active {
-    border-left-color: rgba(var(--accent-rgb), 0.36);
+    border-inline-start-color: rgba(var(--accent-rgb), 0.36);
     box-shadow: inset 0 -2px 0 var(--accent);
   }
 
@@ -11241,8 +11506,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   flex-wrap: wrap;
 }
 
+/* The field gets its own row: "Not set (click Set Hotkey)" runs long in most languages. */
 #popup-hotkey-input {
-  flex: 1 1 200px;
+  flex: 1 1 100%;
   min-width: 200px;
   text-align: center;
   font-family: var(--font-mono);
@@ -11255,6 +11521,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-color);
 }
 
+/* The saved hotkey and the "Not set" hint are placeholders; read them as text, not as code. */
+#popup-hotkey-input::placeholder {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0;
+}
+
 .help-text {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -11263,7 +11536,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .preset-hotkey-btn {
-  margin: 4px 4px 4px 0;
+  margin: 4px 0;
+  margin-inline-end: 4px;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
 }
@@ -11287,7 +11561,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .hotkey-item {
   display: flex;
-  flex-wrap: nowrap;
+  /* Controls drop below the name when a longer translation needs the room. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 12px;
@@ -11312,8 +11587,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-color);
-  flex: 1 1 120px;
-  min-width: 100px;
+  flex: 1 1 80px;
+  min-width: 80px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -11327,6 +11602,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   flex-wrap: nowrap;
   flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
 }
 
 .hotkey-input-container:has(.hotkey-action-dropdown.open) {
@@ -11334,9 +11611,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .hotkey-input {
-  width: 140px;
+  /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
+  field-sizing: content;
   flex-shrink: 1;
-  min-width: 100px;
+  min-width: 120px;
+  max-width: 100%;
   text-align: center;
   cursor: pointer;
   padding: 6px 10px;
@@ -11591,7 +11870,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .alert-badge {
   display: inline-block;
   font-size: var(--font-size-base);
-  margin-left: 8px;
+  margin-inline-start: 8px;
   opacity: 0.8;
   transition: opacity var(--transition-base);
 }
@@ -11684,13 +11963,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  width: 120px;
 }
 
 .hotkey-input:focus,
 .alert-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
@@ -11798,7 +12076,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 /* Hotkey input capture styling */
 #hotkey-input:focus {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
@@ -12217,7 +12495,7 @@ select:focus-visible,
 textarea:focus-visible,
 [role='button']:focus-visible,
 [tabindex]:not([tabindex='-1']):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -12432,7 +12710,11 @@ label.disabled {
   border-color: rgba(var(--accent-rgb), 0.4);
   background: rgba(var(--accent-rgb), 0.14);
   color: var(--text-primary);
-  outline: none;
+}
+
+.command-palette-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .command-palette-results {
@@ -12454,7 +12736,7 @@ label.disabled {
   padding: 8px 12px;
   background: transparent;
   color: var(--text-primary);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -12463,7 +12745,14 @@ label.disabled {
 .command-palette-result:focus-visible {
   border-color: rgba(var(--accent-rgb), 0.38);
   background: rgba(var(--accent-rgb), 0.14);
-  outline: none;
+}
+
+/* Arrow keys move the highlight while focus stays in the search field, so the highlighted row
+   carries the ring then. It sits inside the row to stay clear of the scrolling list's edge. */
+.command-palette-panel:has(.command-palette-input:focus) .command-palette-result.highlighted,
+.command-palette-result:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .command-palette-result-icon {
@@ -12509,9 +12798,10 @@ label.disabled {
 
 .command-palette-result-domain {
   flex: none;
-  max-width: 120px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-full);
   padding: 2px 8px;
@@ -12637,7 +12927,7 @@ label.disabled {
 }
 
 .donate-frequency-option input[type='radio']:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -12725,6 +13015,18 @@ body.high-contrast {
   --accent: #8ed1ff !important;
   --accent-rgb: 142, 209, 255 !important;
   --window-bg-rgb: 20, 20, 20 !important;
+  /* The light theme's glass and settings panel colours are near-white, so the dark preset
+     replaces them too (white text would otherwise sit on them). */
+  --glass-surface: #202020 !important;
+  --glass-elevated: #202020 !important;
+  --glass-overlay: #141414 !important;
+  --modal-backstop-rgb: 20, 20, 20 !important;
+  --settings-modal-bg-rgb: 20, 20, 20 !important;
+  --settings-modal-bg-alpha: 1 !important;
+  --settings-modal-panel-rgb: 32, 32, 32 !important;
+  --settings-modal-panel-alpha: 1 !important;
+  --desktop-pin-ink-rgb: 255, 255, 255 !important;
+  --focus-ring: #fff !important;
   color: #fff;
   color-scheme: dark;
 }
@@ -12745,10 +13047,34 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
-body.high-contrast :is(button, input, select, textarea) {
+/* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
+   tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
+   active and focus styles stay visible without it. */
+body.high-contrast
+  :is(button, input, select, textarea):not(:where([type='range'], .section-toggle, .tab-link)) {
   color: #fff !important;
   background: #202020 !important;
   border-color: #aaa !important;
+}
+
+/* The primary fill marks the main action and the selected choice (Primary Cards), so it stays a
+   solid accent fill with dark text instead of the grey fill every other button gets. */
+body.high-contrast .btn-primary {
+  color: #141414 !important;
+  background: var(--accent) !important;
+  border-color: #fff !important;
+}
+
+body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* A range input's background is its track: give it one that stands out from the #141414 panels.
+   The colour temperature gradient already does, and the pin light slider is a transparent
+   overlay above its own track. */
+body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
+  background: #8a8a8a !important;
 }
 
 body.high-contrast :focus-visible {
@@ -12813,8 +13139,10 @@ body.high-contrast .tile-primary-button,
   -webkit-app-region: no-drag;
 }
 
-.tile-primary-button:focus-visible {
-  outline: 2px solid var(--accent);
+/* The tile clips anything outside it, so the ring sits inside the button. Scoped to the tile so it
+   outranks the global [tabindex]:not([tabindex='-1']):focus-visible rule, which pushes it outside. */
+.control-item .tile-primary-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: -3px;
 }
 
@@ -12826,4 +13154,78 @@ body.high-contrast .tile-primary-button,
 
 body.high-contrast .tile-primary-button:focus-visible {
   outline-offset: -3px !important;
+}
+
+/* A primary card tile with a single action (lock, switch, scene, button) takes focus itself, and
+   the card clips its overflow, so its ring sits inside too. */
+.status-card.primary-entity-card .control-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+/* Right-to-left languages.
+   Numbers with units ("-24°C", "8 km/h", "21–24°C") and Home Assistant names are usually
+   left-to-right text. In a right-to-left page the bidi algorithm would move the minus sign and the
+   unit to the wrong side, so these elements take their direction from their own text instead:
+   "15,6 °C" reads left to right, a translated "مفتوح 50%" still reads right to left, and a long
+   English name is cut at its end. */
+[dir='rtl']
+  :is(
+    .weather-temp,
+    .detail-value,
+    .control-name,
+    .control-state,
+    .brightness-value-large,
+    .brightness-preset-btn,
+    .climate-temp-value,
+    .climate-temp-value-large,
+    .cover-position-value,
+    .fan-speed-value,
+    .media-volume-value,
+    .media-title,
+    .media-detail-title,
+    .media-detail-artist,
+    .sensor-detail-value,
+    .desktop-pin-panel-name,
+    .desktop-pin-panel-kpi,
+    .desktop-pin-panel-value,
+    .desktop-pin-media-title,
+    .desktop-pin-climate-target-value
+  ) {
+  unicode-bidi: plaintext;
+}
+
+/* A value and its unit in separate spans keep their left-to-right order. */
+[dir='rtl'] :is(.control-sensor-readout, .sensor-detail-readout) {
+  direction: ltr;
+}
+
+/* Media timelines and transport controls are not mirrored: rewind stays on the left of forward,
+   and "-10" and "+10" keep their signs in front. */
+[dir='rtl']
+  :is(
+    .media-progress,
+    .media-detail-controls,
+    .media-tile-seek,
+    .media-tile-controls,
+    .desktop-pin-media-control .desktop-pin-panel-actions,
+    .desktop-pin-media-control .desktop-pin-panel-progress
+  ) {
+  direction: ltr;
+}
+
+/* Names in the command palette keep the row's alignment while cutting at their own end. */
+[dir='rtl'] .command-palette-result-name {
+  unicode-bidi: plaintext;
+  text-align: match-parent;
+}
+
+/* Switches start on the right and slide left when turned on. */
+[dir='rtl'] .form-group input[type='checkbox']:checked::after {
+  transform: translateX(-18px);
+}
+
+/* A closed disclosure points towards the text, which runs leftwards. */
+[dir='rtl'] .settings-details:not([open]) > summary::before {
+  transform: rotate(135deg);
 }

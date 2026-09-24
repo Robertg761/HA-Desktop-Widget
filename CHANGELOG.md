@@ -7,56 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Explain Hyprland desktop-layer visibility during first-run setup and provide a popup shortcut check.
-
-- Follow the active Omarchy palette, including live theme changes.
-- Provide Hyprland shortcut bindings and an activation status panel.
-- Build an Arch Linux package from a checksum-pinned release bundle, with a stable launcher and `--show`, `--hide`, and `--toggle` commands.
-
-- Add an optional "Hide to tray when focus is lost" setting under General. It defaults off and preserves desktop pins, Linux desktop-layer visibility, and held popup hotkeys.
-- Create a Quick Access page from a Home Assistant room and select which entities to include.
-- Search explicit device actions, scenes, scripts, and page switches in the command palette, with recent successful commands shown first.
-- Configure numeric alert thresholds, sustained conditions, notification cooldowns, and local quiet hours. Repeated matching updates no longer generate duplicate alerts.
-- Undo dashboard edits and restore one of the last 20 local layout snapshots from Advanced settings.
-- Inspect connection diagnostics and copy a report that excludes connection credentials and entity data.
-- Select a 1-hour, 6-hour, 24-hour, or 7-day sensor detail chart with minimum, maximum, sample average, and retry controls.
-- Add workflow message keys to bundled and downloadable catalogs, with English fallbacks for new labels.
-- Translate the new alert, history, diagnostics, command palette, dashboard restore, and Hyprland setup labels in the German, Spanish, French, Hindi, Chinese, and Arabic language packs.
-
-### Changed
-
-- Show the Primary Cards entity picker 50 entities per page and wait for a pause in typing before filtering. Keyboard focus and scroll position stay put when a card is assigned or a desktop pin is toggled.
-- Update the media player details dialog when the player's state changes instead of polling twice a second. The track title and artist now follow the current song, and the progress timer only runs while media is playing and the window is visible.
-
-### Fixed
-
-- Keep entities from Home Assistant 2026.9 child devices in their room. A child device with no area of its own now uses its parent device's area.
-- Repair generated AppImage launchers using the current app id or unquoted executable paths. Continue other launcher and login-startup repairs if an individual operation fails.
-- Recover shortcuts automatically when the Wayland portal starts late, restarts, or closes a shortcut session. Retry transient failures with backoff without repeating cancelled shortcut approval.
-
-- Keep Hyprland binds written for the retired `ha_desktop_widget:` portal id working after the app id rename. The widget also answers to the old id, logs the replacement bind on first use, and shows it in the Hyprland shortcuts panel.
-- Repair a menu launcher an AppImage integration tool left pointing at a deleted AppImage, so the app menu entry keeps starting the widget after an in-app update.
-
-- Offer Lua and legacy Hyprlang shortcut bindings in Settings, and preserve inline text colors when Omarchy theme following is inactive.
-- Avoid a renderer startup error when profile-sync status arrives before configuration has loaded.
-- Keep Hyprland animation settings intact while dragging the widget. Store each desktop pin's position separately and raise only the main widget for popup shortcuts.
-- Use the installed desktop identity for portal shortcuts and accept Hyprland targets that require a compositor binding.
-- Preserve working and custom autostart entries when another installation or test profile is launched.
-- Report desktop-layer window capabilities accurately, recover placement after monitor changes, and clamp positions to the usable monitor area.
-- Stop the idle connection indicator animation after two cycles.
-
-- Align the panel preview's simulated config-save responses with Electron so successful dashboard edits are acknowledged correctly.
-- Switching Quick Access pages no longer rebuilds the entity picker while it is closed, re-applies the theme and window effects, or fetches chart history one tile at a time.
-
 ### Beta features
 
 - Live tray values remain available only in numbered beta builds. They include per-entity short
   names and Windows/Linux icon colors, full macOS menu-bar values, localized state labels,
   one-second timer countdowns while hidden, and stale-reading protection after disconnects,
-  sleep, and renderer failures. Stable builds preserve these preferences without showing the
-  feature. The next beta cycle targets 3.11.0.
+  sleep, and renderer failures. Stable builds keep these preferences without showing the feature.
+
+## [3.11.0] - 2026-09-24
+
+This release collects everything from the 3.11.0 betas, plus a round of fixes from pre-release
+testing. If you are coming from 3.10.0, your pages, pins, hotkeys, alerts, theme, and Home
+Assistant connection carry over unchanged.
+
+### Added
+
+- Guided setup after connecting. Pick a Home Assistant room or choose devices, and the widget
+  builds your first page from them. You can skip it and do it later from the empty dashboard.
+- Quick Access pages built from Home Assistant rooms, with device search and a preview. Controllable
+  devices are pre-selected. Child devices from Home Assistant 2026.9 appear in their parent
+  device's room.
+- A command palette (Ctrl+K) that runs device actions, lock and unlock commands, scenes, scripts,
+  and page switches. The devices you used last are listed first, also after a restart.
+- Alert rules with numeric thresholds, conditions that must hold for a set time, notification
+  cooldowns, and quiet hours. A rule notifies once per match instead of on every update.
+- Undo for dashboard edits, and a restore list of the last 20 layouts in Advanced settings. A
+  layout replaced by Undo stays in that list.
+- Connection diagnostics with a report you can copy. It includes the app, OS, and Home Assistant
+  versions and recent outages, and leaves out credentials, URLs, and entity data.
+- 1-hour, 6-hour, 24-hour, and 7-day periods in the sensor detail chart, with minimum, maximum,
+  and average values.
+- A text and control size setting and a readable preset with high contrast and opaque panels.
+- A visible Controls button on light, climate, fan, cover, and media tiles. Keyboard users can also
+  press Shift+Enter on a tile.
+- An optional "Hide to tray when focus is lost" setting under General. It is off by default and
+  leaves desktop pins and Linux desktop-layer windows visible.
+- Live connection status on desktop pins.
+- On Linux, optional live Omarchy theme following, a Hyprland shortcuts panel with Lua and legacy
+  Hyprlang bindings and activation status, a popup shortcut check during first-run setup, and an
+  Arch Linux package with a stable launcher and `--show`, `--hide`, and `--toggle` commands.
+
+### Changed
+
+- Almost all of the interface can now be translated, including device dialogs, desktop pins,
+  Settings, menus, and error messages. The German, Spanish, French, Hindi, Chinese, and Arabic
+  language packs cover all of it. Numbers use the decimal separator of your language, and
+  measurements of 1,000 or more get thousands separators, as in Home Assistant.
+- Appearance settings in Settings preview live and are saved with Save. Cancel or Escape reverts
+  them. Language, popup hotkey, and entity hotkey changes still apply immediately, and Settings
+  now says so.
+- The light, cover, fan, climate, and media dialogs follow changes made in Home Assistant while
+  they are open. The media dialog's title and artist follow the current track, and its progress
+  timer only runs while media plays and the window is visible.
+- Entity states use the same names everywhere, for example "Away" instead of "Not_home" and
+  "Heating" instead of "Heat". Unavailable sensors show "Unavailable" instead of
+  "unavailable °C". Alert messages use these names too.
+- Cover, lock, and fan tiles show their state. Calendar tiles show "All day" for all-day events
+  and times without seconds.
+- Heating and cooling sliders in heat/cool mode share one scale with its limits shown.
+- Turning a light back on from its dialog restores its last brightness.
+- Shift+Enter and the Controls button only open controls. They never toggle a device or unlock a
+  lock. Locks and alarm panels in the command palette only act through their named commands.
+- Connection problems show one notification per outage, in plain wording, instead of repeating
+  every minute.
+- The Primary Cards picker shows 50 entities per page and waits for a pause in typing before
+  filtering.
+- Desktop pins grow with the text and control size setting.
+- In the command palette, unlock and disarm commands only appear when you type them, and choosing
+  a lock or alarm panel itself highlights its command instead of acting on it.
+- Primary buttons keep their accent color in the readable preset, so selected choices stand out.
+- Light-theme keyboard focus rings are darker, so they stay visible on white.
+
+### Fixed
+
+- On Linux, moving or resizing the widget or a desktop pin is now saved. Before, only Hyprland's
+  desktop-layer mode saved positions.
+- Home Assistant authorization refreshes, about every 25 minutes, no longer cancel alerts that are
+  waiting on a condition duration, reset alert cooldowns, or reconnect the widget.
+- Expired or revoked Home Assistant authorization now shows a "Reconnect with Home Assistant"
+  prompt. Before, the widget blamed a token the user never entered, showed "Setup Required", or
+  reopened the welcome wizard. After sleep, the widget refreshes authorization before it
+  reconnects.
+- Starting the widget while Home Assistant is down shows the disconnected state and recovers on
+  its own.
+- Waking the computer or reconnecting to a network no longer tells Home Assistant authorization
+  users to configure a token, and a saved authorization that can't be read asks you to reconnect
+  instead of retrying forever.
+- First-run setup checks the URL before it continues and before it opens the browser, so an
+  unreachable address fails right away. Leaving setup for Settings cancels a waiting
+  authorization, and pairing with a different URL starts over. Setup skips the room step when you
+  already have pages.
+- Keyboard focus rings are visible on tiles and primary cards. Focus stays inside dialogs after
+  actions like Refresh or ticking a to-do item, Escape closes Settings, Manage Quick Access, and
+  the weather picker, and the setup wizard keeps focus and accepts Enter.
+- Copy report in connection diagnostics and Copy in the Hyprland shortcuts panel copy to the
+  clipboard.
+- Escape closes the command palette, hotkey capture, or camera preview on top instead of the dialog
+  underneath, and notifications no longer cover a dialog's buttons.
+- Heating and cooling sliders keep the value you are dragging while Home Assistant updates.
+- Calendar tiles read event times in Home Assistant's time zone, and calendar and history times no
+  longer show seconds.
+- Right-to-left languages keep numbers, units, and media controls in reading order.
+- The weather card opens its entity picker from the keyboard, and the picker shows weather icons.
+- Device search in the room picker filters the list.
+- The fan dialog keeps your latest speed when an earlier request fails.
+- Seek buttons appear only for media players that support seeking.
+- A sensor chart that fails to load no longer shows the previous period under the new label, and a
+  single reading draws a line to now.
+- Undo returns to the page you were on. Deleting the page you're viewing opens its neighbour
+  instead of "All". Guided setup fills the empty first page instead of adding another one.
+- Desktop pins are readable in the light theme, and their connection message fits small pins.
+- The readable preset keeps the Settings title, sliders, and media controls readable at every size.
+- The command palette no longer offers to switch to the page you are on.
+- Removing the language pack you are using switches the interface back right away, and a failed
+  language pack list shows its error once.
+- Settings no longer reports a Start at login error when that option is unavailable. The Omarchy
+  theme option is hidden on systems without Omarchy.
+- Messages about the optional desktop companion integration are logged once per connection
+  instead of on every page switch.
+- Quick Access shows every entity in a page instead of stopping after twelve.
+- Stop and power-off actions cancel queued cover and light slider commands, including on desktop
+  pins, and a late failed request no longer undoes a newer action.
+- Climate dialogs and pins support separate heating and cooling targets in heat/cool mode, and
+  temperature labels use Home Assistant's unit when the entity has none.
+- All-day calendar events keep their dates. Failed to-do loads show Retry, and retrying does not
+  repeat an item you already added.
+- On/off-only lights no longer show brightness controls.
+- On Hyprland, the widget keeps your animation settings while dragging, keeps binds written for the
+  old `ha_desktop_widget:` portal id working, and accepts portal targets that need a compositor
+  binding. Shortcuts recover when the portal starts late or restarts.
+- On Linux, AppImage updates repair app menu launchers and start-at-login entries that point at an
+  old file, and a test or second installation no longer overwrites them. Desktop pins keep
+  separate positions, and placement recovers after monitor changes.
+- Switching Quick Access pages is faster. It no longer rebuilds hidden pickers, reapplies the theme,
+  or loads chart history one tile at a time.
 
 ## [3.11.0-beta.3] - 2026-09-14
 

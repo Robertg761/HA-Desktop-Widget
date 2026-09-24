@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const WEATHER_CONDITION_ALIASES = new Map([
@@ -265,7 +267,7 @@ function createWeatherIcon(condition, options = {}) {
     svg.setAttribute('aria-hidden', 'true');
   } else {
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', WEATHER_LABELS[normalizedCondition]);
+    svg.setAttribute('aria-label', t(WEATHER_LABELS[normalizedCondition]));
   }
 
   drawWeatherGlyph(svg, normalizedCondition);

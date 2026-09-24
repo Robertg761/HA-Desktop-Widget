@@ -4,6 +4,7 @@ import { setIconContent } from './icons.js';
 
 const focusTrapHandlers = new WeakMap();
 const focusTrapPreviousFocus = new WeakMap();
+const focusTrapPreviousTile = new WeakMap();
 const activeFocusTrapModals = new Set();
 // One entry per modal that is currently animating out, so a later close (or a re-open) can take
 // the in-flight timer and listener away from the call that installed them.
@@ -227,8 +228,8 @@ function setCustomThemes(customColors = []) {
       id = `${CUSTOM_THEME_ID_PREFIX}${color.slice(1).toLowerCase()}-${index + 1}`;
     }
 
-    const name =
-      typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `Custom ${color}`;
+    const hasName = typeof entry.name === 'string' && !!entry.name.trim();
+    const name = hasName ? entry.name.trim() : `Custom ${color}`;
     const createdAt =
       typeof entry.createdAt === 'string' && entry.createdAt.trim() ? entry.createdAt : nowIso;
     const updatedAt =
@@ -240,6 +241,7 @@ function setCustomThemes(customColors = []) {
       color,
       description: 'Saved custom color',
       isCustom: true,
+      hasDefaultName: !hasName,
       createdAt,
       updatedAt,
     });
@@ -256,7 +258,20 @@ function setCustomThemes(customColors = []) {
  * @returns {Array<{id: string, name: string, color: string, description?: string, rgb: string|null}>} An array of accent theme objects; each includes original theme properties and an `rgb` string in the form `"r, g, b"` when `color` could be parsed, or `null` otherwise.
  */
 function getAccentThemes() {
-  return getAllThemes().map(toThemeWithRgb);
+  return getAllThemes().map((theme) => toThemeWithRgb(localizeTheme(theme)));
+}
+
+// Theme names and descriptions are stored in English and translated whenever the list is read,
+// so a language change applies to them too. Names the user gave a custom color stay as typed.
+function localizeTheme(theme) {
+  if (!theme.isCustom) {
+    return { ...theme, name: t(theme.name), description: t(theme.description) };
+  }
+  return {
+    ...theme,
+    name: theme.hasDefaultName ? t('Custom {{color}}', { color: theme.color }) : theme.name,
+    description: t(theme.description),
+  };
 }
 
 /**
@@ -707,10 +722,28 @@ function dismissToast(toast) {
  * @param {number} [timeout=2000] - Time in milliseconds before the toast begins animating out.
  * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
  */
+// Toasts sit at the bottom of the window, where an open dialog keeps its footer buttons (Close,
+// Save, Turn On). While a dialog is open, stack them just above its footer instead.
+const TOAST_FOOTER_GAP_PX = 8;
+function placeToastContainer(container) {
+  const footerTops = Array.from(
+    document.querySelectorAll('.modal:not(.hidden):not(.modal-closing) .modal-footer')
+  )
+    .filter((footer) => footer.getClientRects().length > 0)
+    .map((footer) => footer.getBoundingClientRect().top);
+  if (!footerTops.length) {
+    container.style.removeProperty('bottom');
+    return;
+  }
+  const bottom = Math.max(0, window.innerHeight - Math.min(...footerTops)) + TOAST_FOOTER_GAP_PX;
+  container.style.bottom = `${Math.round(bottom)}px`;
+}
+
 function showToast(message, type = 'success', timeout = 2000) {
   try {
     const container = document.getElementById('toast-container');
     if (!container) return undefined;
+    placeToastContainer(container);
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
 
@@ -894,27 +927,130 @@ function applyWindowEffects(config = {}) {
   }
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+// Read at key time rather than when the trap starts: dialogs add, remove and disable controls
+// while open, and a stale list lets Tab walk out of the dialog.
+function getFocusableElements(modal) {
+  return Array.from(modal?.querySelectorAll?.(FOCUSABLE_SELECTOR) || []).filter(
+    (element) =>
+      !element.disabled &&
+      !element.closest('[hidden], .hidden') &&
+      element.checkVisibility?.() !== false
+  );
+}
+
+function isFocusTrapModalShown(modal) {
+  if (!modal?.isConnected || modal.hidden) return false;
+  if (modal.classList.contains('hidden') || modal.classList.contains('modal-closing')) return false;
+  return modal.style?.display !== 'none';
+}
+
+function getTopFocusTrapModal() {
+  const modals = Array.from(activeFocusTrapModals);
+  for (let index = modals.length - 1; index >= 0; index -= 1) {
+    if (isFocusTrapModalShown(modals[index])) return modals[index];
+  }
+  return null;
+}
+
+/**
+ * Keep Tab and Escape working in an open dialog after focus has fallen back to `<body>`.
+ *
+ * A dialog's keydown listeners only hear keys while focus is inside it, and the browser drops
+ * focus to `<body>` whenever the focused control is disabled or re-rendered. Tab then walks the
+ * page behind an `aria-modal` dialog and Escape does nothing. This brings Tab back into the top
+ * dialog and replays Escape inside it so the dialog's own handler closes it as usual.
+ * @param {KeyboardEvent} event - A keydown event seen on the window before any other listener.
+ */
+let replayingEscape = false;
+function handleKeydownWithoutFocus(event) {
+  if (replayingEscape || (event.key !== 'Tab' && event.key !== 'Escape')) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && active !== document.documentElement) return;
+  const modal = getTopFocusTrapModal();
+  if (!modal) return;
+  if (event.key === 'Tab') {
+    // Let the browser move focus first: after a click on the dialog's text it continues from that
+    // spot. Only bring focus back if it went to the page behind the dialog.
+    const backwards = event.shiftKey;
+    setTimeout(() => {
+      if (!isFocusTrapModalShown(modal) || modal.contains(document.activeElement)) return;
+      const focusable = getFocusableElements(modal);
+      (backwards ? focusable[focusable.length - 1] : focusable[0])?.focus();
+    }, 0);
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  replayingEscape = true;
+  try {
+    (modal.querySelector('.modal-content') || modal).dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  } finally {
+    replayingEscape = false;
+  }
+}
+
+let keydownWithoutFocusInstalled = false;
+function installKeydownWithoutFocusHandler() {
+  if (keydownWithoutFocusInstalled || typeof window === 'undefined') return;
+  keydownWithoutFocusInstalled = true;
+  window.addEventListener('keydown', handleKeydownWithoutFocus, true);
+}
+
+// Entity tiles are rebuilt when their entity changes, so a dialog opened from a tile may close
+// after the tile it would return focus to has been replaced. Remember enough to find the new one.
+function describeTileFocusTarget(element) {
+  const tile = element?.closest?.('[data-entity-id]');
+  if (!tile) return null;
+  return {
+    entityId: tile.dataset.entityId,
+    scopeId: tile.parentElement?.closest('[id]')?.id || null,
+    className: element === tile ? null : element.classList?.[0] || null,
+  };
+}
+
+function findTileFocusTarget(descriptor) {
+  if (!descriptor) return null;
+  const scope = (descriptor.scopeId && document.getElementById(descriptor.scopeId)) || document;
+  const tile = Array.from(scope.querySelectorAll('[data-entity-id]')).find(
+    (candidate) => candidate.dataset.entityId === descriptor.entityId
+  );
+  if (!tile) return null;
+  return (descriptor.className && tile.getElementsByClassName(descriptor.className)[0]) || tile;
+}
+
 /**
  * Activate a focus trap inside a modal element so keyboard Tab navigation cycles within it.
  *
  * Attaches a keydown handler to the provided modal that confines Tab (and Shift+Tab) focus movement to the modal's focusable descendants, sets focus to the first focusable element, and records the previously focused element for later restoration. The handler is stored in the module-level `focusTrapHandlers` WeakMap keyed by the modal.
  * @param {HTMLElement} modal - The modal container element within which focus should be trapped.
+ * @param {Object} [options] - Trap behaviour.
+ * @param {HTMLElement|false} [options.initialFocus] - Element to focus instead of the first focusable one, or false to leave focus where the caller puts it.
  */
-function trapFocus(modal) {
+function trapFocus(modal, { initialFocus } = {}) {
   try {
     const existingHandler = focusTrapHandlers.get(modal);
     if (existingHandler) {
       modal.removeEventListener('keydown', existingHandler);
     }
     focusTrapPreviousFocus.set(modal, document.activeElement);
-    const focusable = modal.querySelectorAll(
-      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
+    focusTrapPreviousTile.set(modal, describeTileFocusTarget(document.activeElement));
     const handler = (e) => {
-      if (e.key !== 'Tab') return;
+      // Overlays with their own Tab order (camera preview, command palette) already moved focus.
+      if (e.key !== 'Tab' || e.defaultPrevented) return;
+      const focusable = getFocusableElements(modal);
       if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
       if (e.shiftKey) {
         if (document.activeElement === first) {
           e.preventDefault();
@@ -931,7 +1067,11 @@ function trapFocus(modal) {
     focusTrapHandlers.set(modal, handler);
     activeFocusTrapModals.delete(modal);
     activeFocusTrapModals.add(modal);
-    setTimeout(() => first?.focus(), 0);
+    installKeydownWithoutFocusHandler();
+    if (initialFocus !== false) {
+      const target = initialFocus || getFocusableElements(modal)[0];
+      setTimeout(() => target?.focus(), 0);
+    }
   } catch (error) {
     console.error('Error trapping focus:', error);
   }
@@ -960,7 +1100,13 @@ function canRestorePreviousFocus(modal) {
   }
 }
 
-function releaseFocusTrap(modal) {
+/**
+ * Release a focus trap started by {@link trapFocus} and hand focus back to where it was.
+ * @param {HTMLElement} [modal] - The modal to release; the top trapped modal when omitted.
+ * @param {Object} [options] - Release behaviour.
+ * @param {boolean} [options.restoreFocus=true] - False when the caller moves focus itself.
+ */
+function releaseFocusTrap(modal, { restoreFocus = true } = {}) {
   try {
     let targetModal = modal;
     if (!targetModal) {
@@ -983,12 +1129,17 @@ function releaseFocusTrap(modal) {
     activeFocusTrapModals.delete(targetModal);
 
     const previousFocus = focusTrapPreviousFocus.get(targetModal);
+    const previousTile = focusTrapPreviousTile.get(targetModal);
     focusTrapPreviousFocus.delete(targetModal);
-    if (previousFocus?.isConnected && previousFocus.focus) {
+    focusTrapPreviousTile.delete(targetModal);
+    if (restoreFocus && previousFocus?.focus && (previousFocus.isConnected || previousTile)) {
       setTimeout(() => {
-        if (!previousFocus.isConnected) return;
+        const target = previousFocus.isConnected
+          ? previousFocus
+          : findTileFocusTarget(previousTile);
+        if (!target?.isConnected) return;
         if (!canRestorePreviousFocus(targetModal)) return;
-        previousFocus.focus();
+        target.focus();
       }, 0);
     }
   } catch (error) {
@@ -1038,8 +1189,7 @@ function getConnectionStatusSummary(connected) {
 function getConnectionStatusDetail(statusElement) {
   const explicitDetail = statusElement?.dataset?.statusDetail?.trim();
   if (explicitDetail) return explicitDetail;
-  const summary = statusElement?.dataset?.statusSummary || '';
-  if (summary === t('Connected to Home Assistant')) return t('Real-time updates active.');
+  if (statusElement?.classList?.contains('connected')) return t('Real-time updates active.');
   return t('Disconnected from Home Assistant. Retrying automatically.');
 }
 
@@ -1063,8 +1213,10 @@ function showConnectionStatusTooltip(target, { pinned = false } = {}) {
   const tooltip = ensureConnectionStatusTooltip();
   const titleEl = tooltip.querySelector('.connection-status-tooltip-title');
   const detailEl = tooltip.querySelector('.connection-status-tooltip-detail');
-  const summary =
-    target.dataset.statusSummary || target.title || t('Disconnected from Home Assistant');
+  // Built from the connection state each time, so the tooltip follows a language change.
+  const summary = target.dataset.statusSummary
+    ? getConnectionStatusSummary(target.classList.contains('connected'))
+    : target.title || t('Disconnected from Home Assistant');
   const detail = getConnectionStatusDetail(target);
   if (titleEl) titleEl.textContent = summary;
   if (detailEl) detailEl.textContent = detail;
@@ -1319,8 +1471,23 @@ function showConfirm(title, message, options = {}) {
   });
 }
 
+/**
+ * Copy text through the main process, since the renderer's own clipboard permission is denied.
+ * @param {string} text - Text to place on the system clipboard.
+ * @returns {Promise<boolean>} True once the text is on the clipboard; false when copying failed.
+ */
+async function copyTextToClipboard(text) {
+  try {
+    await window.electronAPI.writeClipboardText(String(text ?? ''));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export {
   showToast,
+  copyTextToClipboard,
   dismissToast,
   closeModal,
   openModal,

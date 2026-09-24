@@ -1,8 +1,18 @@
 import state from './state.js';
 import websocket from './websocket.js';
-import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
+import {
+  escapeHtml,
+  escapeHtmlAttribute,
+  getEntityDisplayName,
+  getLocalizedStateName,
+} from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
-import { closeModal as closeModalAnimated, showToast } from './ui-utils.js';
+import {
+  closeModal as closeModalAnimated,
+  releaseFocusTrap,
+  showToast,
+  trapFocus,
+} from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
@@ -109,7 +119,8 @@ function setCameraPreviewState(record, previewState, statusText, tileStatusText 
   const translatedStatus = statusText ? t(statusText) : '';
   const translatedTileStatus = tileStatusText ? t(tileStatusText) : '';
   record.previewState = previewState;
-  record.statusText = translatedStatus;
+  // Kept untranslated: the expanded view opened later may be in another language.
+  record.statusText = statusText || '';
   record.tile.dataset.cameraPreviewState = previewState;
   const status = record.tile.querySelector('.camera-tile-preview-status');
   if (status) status.textContent = translatedTileStatus;
@@ -1010,7 +1021,7 @@ function openExpandedCameraPreview(record, camera) {
   overlay.dataset.cameraPreviewSource = record.previewSource || 'image';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', `${displayName} ${t('Camera preview')}`);
+  overlay.setAttribute('aria-label', t('{{name}} Camera preview', { name: displayName }));
   overlay.innerHTML = `
     <div class="camera-expanded-preview-shell">
       <header class="camera-expanded-preview-header">
@@ -1025,7 +1036,7 @@ function openExpandedCameraPreview(record, camera) {
       </header>
       <div class="camera-expanded-preview-stage"></div>
       <footer class="camera-expanded-preview-footer">
-        <span class="camera-expanded-preview-status" role="status">${escapeHtml(record.statusText || t('Loading preview…'))}</span>
+        <span class="camera-expanded-preview-status" role="status">${escapeHtml(t(record.statusText || 'Loading preview…'))}</span>
         ${
           record.previewMode === 'live'
             ? `<button type="button" class="camera-expanded-preview-reconnect" aria-label="${escapeHtmlAttribute(t('Reconnect camera'))}">${escapeHtml(t('Reconnect'))}</button>`
@@ -1048,7 +1059,7 @@ function openExpandedCameraPreview(record, camera) {
   // Inside the tile the visual is decorative, but it is the dialog's only content once expanded.
   const wasVisualHidden = visual.getAttribute('aria-hidden') === 'true';
   visual.removeAttribute('aria-hidden');
-  const previewAltText = `${displayName} ${t('Preview')}`;
+  const previewAltText = t('{{name}} Preview', { name: displayName });
   getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', previewAltText));
 
   const expandedPreview = {
@@ -1071,6 +1082,7 @@ function openExpandedCameraPreview(record, camera) {
     record.expandedPreview = null;
     if (activeExpandedCameraPreview === expandedPreview) activeExpandedCameraPreview = null;
     document.removeEventListener('keydown', handleKeydown, true);
+    releaseFocusTrap(overlay, { restoreFocus: false });
 
     if (wasVisualHidden) visual.setAttribute('aria-hidden', 'true');
     getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', ''));
@@ -1129,6 +1141,9 @@ function openExpandedCameraPreview(record, camera) {
     if (event.target === overlay) close();
   };
   document.addEventListener('keydown', handleKeydown, true);
+  // Registered as the top dialog so Escape pressed with focus on <body> closes this preview, not
+  // a dialog open underneath it. The preview returns focus itself.
+  trapFocus(overlay, { initialFocus: false });
 
   const transition = runCameraPreviewViewTransition(() => {
     if (expandedPreview.closed) return;
@@ -1202,6 +1217,13 @@ function stopHlsStream(entityId) {
   }
 }
 
+// Camera entities report "streaming" and "recording", which the shared state names don't cover.
+function getCameraStateLabel(value) {
+  if (value === 'streaming') return t('Streaming');
+  if (value === 'recording') return t('Recording');
+  return getLocalizedStateName(value);
+}
+
 async function openCamera(cameraId, options = {}) {
   try {
     if (!state.CONFIG || !state.CONFIG.homeAssistant.url) {
@@ -1229,7 +1251,10 @@ async function openCamera(cameraId, options = {}) {
     modal.className = 'modal camera-modal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-label', `${getEntityDisplayName(camera)} ${t('Camera preview')}`);
+    modal.setAttribute(
+      'aria-label',
+      t('{{name}} Camera preview', { name: getEntityDisplayName(camera) })
+    );
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
@@ -1249,7 +1274,7 @@ async function openCamera(cameraId, options = {}) {
             <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
           </div>
           <div class="camera-info">
-            <p><strong>${escapeHtml(t('Status:'))}</strong> ${escapeHtml(camera.state)}</p>
+            <p><strong>${escapeHtml(t('Status:'))}</strong> ${escapeHtml(getCameraStateLabel(camera.state))}</p>
             <p><strong>${escapeHtml(t('Last Updated:'))}</strong> ${escapeHtml(formatDateTime(camera.last_updated))}</p>
           </div>
         </div>

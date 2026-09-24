@@ -17,20 +17,28 @@ import {
   openModal,
   showToast,
   showConfirm,
+  copyTextToClipboard,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
-import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
+import {
+  describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
+  describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
+  setConnectionStatusBusy,
+} from './connection-status.js';
 import * as utils from './utils.js';
 import {
   PRIMARY_CARD_DEFAULTS,
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-import { formatDateTime, getLanguageDisplayName, getLocaleState, t } from './i18n.js';
+import { formatDateTime, formatNumber, getLanguageDisplayName, getLocaleState, t } from './i18n.js';
 import {
   classifyConnectionError,
   isPlaceholderOrEmptyToken,
   normalizeBaseUrl,
+  startHomeAssistantPairing,
 } from './connection.js';
 
 const BUILTIN_LANGUAGE_OPTIONS = new Set(['auto', 'en', 'de']);
@@ -45,14 +53,14 @@ const COLOR_TARGETS = {
   accent: 'accent',
   background: 'background',
 };
-const WEATHER_EFFECTS_GLASS_WARNING =
-  'Turn on Frosted glass background before enabling subtle weather effects.';
+// Called at render time so the warning follows the active language.
+const getWeatherEffectsGlassWarning = () =>
+  t('Turn on Frosted glass background before enabling subtle weather effects.');
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
 let themeTooltipScrollBound = false;
 let pendingPrimaryCards = null;
-let pendingDesktopPins = {};
 let pendingCustomEntityIcons = {};
 let activeCustomEntityIconPickerEntityId = null;
 let customEntityIconPickerQueryByEntityId = {};
@@ -64,6 +72,9 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+let languageSaveQueue = Promise.resolve();
+// The Start at login state shown when Settings opened, so Save only writes a real change.
+let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
 let localePackListCache = [];
 let localePackListError = '';
@@ -73,7 +84,6 @@ const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
 const PERSONALIZATION_SECTION_PERSIST_DEBOUNCE_MS = 250;
 const PERSONALIZATION_LAZY_SECTION_IDS = new Set([
   'primary-cards-section',
-  'desktop-pins-section',
   'custom-entity-icons-section',
 ]);
 const personalizationSectionPersistTimers = new Map();
@@ -82,7 +92,7 @@ const CUSTOM_THEME_ID_PREFIX = 'custom-';
 
 function applyPersistedConfigResponse(updatedConfig) {
   if (!updatedConfig || updatedConfig.success === false || !updatedConfig.homeAssistant) {
-    throw new Error(updatedConfig?.error || 'The main process rejected the settings update');
+    throw new Error(updatedConfig?.error || t('The main process rejected the settings update'));
   }
 
   const persistentConfig = { ...updatedConfig };
@@ -158,7 +168,7 @@ function syncWeatherEffectsAvailability(options = {}) {
   const wasChecked = !!weatherEffectsEnabled.checked;
   weatherEffectsEnabled.disabled = !frostedGlassEnabled;
   weatherEffectsEnabled.setAttribute('aria-disabled', String(!frostedGlassEnabled));
-  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : WEATHER_EFFECTS_GLASS_WARNING;
+  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : getWeatherEffectsGlassWarning();
 
   if (!frostedGlassEnabled) {
     weatherEffectsEnabled.checked = false;
@@ -171,11 +181,11 @@ function syncWeatherEffectsAvailability(options = {}) {
 
   if (warning) {
     warning.classList.toggle('hidden', frostedGlassEnabled);
-    warning.textContent = WEATHER_EFFECTS_GLASS_WARNING;
+    warning.textContent = getWeatherEffectsGlassWarning();
   }
 
   if (!frostedGlassEnabled && showWarning && wasChecked) {
-    showToast(WEATHER_EFFECTS_GLASS_WARNING, 'warning', 3500);
+    showToast(getWeatherEffectsGlassWarning(), 'warning', 3500);
   }
 
   return frostedGlassEnabled;
@@ -297,6 +307,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 // Replace this with your hosted docs URL when your help site is live.
 const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in';
+const PROFILE_SYNC_ISSUES_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/issues';
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
 // GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
 const GITHUB_SPONSORS_MAX_AMOUNT = 12000;
@@ -521,7 +532,9 @@ function normalizeCustomColorList(customColors) {
     const updatedAt =
       typeof entry.updatedAt === 'string' && entry.updatedAt.trim() ? entry.updatedAt : createdAt;
     const name =
-      typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `Custom ${color}`;
+      typeof entry.name === 'string' && entry.name.trim()
+        ? entry.name.trim()
+        : t('Custom {{color}}', { color });
 
     seenIds.add(id);
     seenColors.add(color);
@@ -930,8 +943,14 @@ function persistCustomColorsImmediately() {
     })
     .catch((error) => {
       log.error('Failed to persist custom colors:', error);
-      showToast('Could not persist custom colors. Try Save in settings.', 'warning', 3000);
+      showToast(t('Could not persist custom colors. Try Save in settings.'), 'warning', 3000);
     });
+}
+
+// Built-in theme names are English keys in ui-utils; custom color names are the user's own text.
+function getThemeDisplayName(theme) {
+  if (!theme) return '';
+  return theme.isCustom ? theme.name || '' : t(theme.name || '');
 }
 
 function getThemeById(themeId) {
@@ -1085,7 +1104,7 @@ function selectThemeForActiveTarget(themeId) {
 function saveCustomColorFromEditor() {
   const color = getCustomColorHexFromEditor();
   if (!color) {
-    showToast('Enter a valid color before saving.', 'warning', 2500);
+    showToast(t('Enter a valid color before saving.'), 'warning', 2500);
     return false;
   }
 
@@ -1093,14 +1112,14 @@ function saveCustomColorFromEditor() {
   if (existing) {
     selectThemeForActiveTarget(existing.id);
     renderColorThemeOptions();
-    showToast('Color already saved. Selected existing custom color.', 'info', 2200);
+    showToast(t('Color already saved. Selected existing custom color.'), 'info', 2200);
     return true;
   }
 
   const timestamp = new Date().toISOString();
   const customColor = {
     id: buildCustomColorId(color.slice(1)),
-    name: `Custom ${color}`,
+    name: t('Custom {{color}}', { color }),
     color,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -1111,7 +1130,7 @@ function saveCustomColorFromEditor() {
   persistCustomColorsImmediately();
   selectThemeForActiveTarget(customColor.id);
   renderColorThemeOptions();
-  showToast('Custom color saved.', 'success', 2000);
+  showToast(t('Custom color saved.'), 'success', 2000);
   return true;
 }
 
@@ -1140,7 +1159,7 @@ function renameSelectedCustomColor() {
   setCustomThemes(pendingCustomColors);
   persistCustomColorsImmediately();
   renderColorThemeOptions();
-  showToast('Custom color renamed.', 'success', 1800);
+  showToast(t('Custom color renamed.'), 'success', 1800);
 }
 
 function removeSelectedCustomColor() {
@@ -1161,7 +1180,7 @@ function removeSelectedCustomColor() {
   }
 
   renderColorThemeOptions();
-  showToast('Custom color removed.', 'success', 1800);
+  showToast(t('Custom color removed.'), 'success', 1800);
 }
 
 function initCustomColorEditor() {
@@ -1301,11 +1320,11 @@ async function handlePendingCustomEditorChangesBeforeSave() {
   if (!hasPendingColorDraft && !hasNameDraft) return true;
 
   const shouldSavePendingChanges = await showConfirm(
-    'Unsaved Custom Color Changes',
-    'You have unsaved custom color edits. Save them before applying settings?',
+    t('Unsaved Custom Color Changes'),
+    t('You have unsaved custom color edits. Save them before applying settings?'),
     {
-      confirmText: 'Save and Continue',
-      cancelText: 'Continue Without Saving',
+      confirmText: t('Save and Continue'),
+      cancelText: t('Continue Without Saving'),
       confirmClass: 'btn-primary',
     }
   );
@@ -1467,8 +1486,10 @@ function updateColorTargetUI() {
 function updateThemeOptionsLabel() {
   const label = document.getElementById('theme-options-label');
   if (!label) return;
-  const labelTarget = activeColorTarget === COLOR_TARGETS.background ? 'Background' : 'Accent';
-  label.textContent = `Color Options (${labelTarget})`;
+  label.textContent =
+    activeColorTarget === COLOR_TARGETS.background
+      ? t('Color Options (Background)')
+      : t('Color Options (Accent)');
 }
 
 /**
@@ -1482,12 +1503,14 @@ function updateThemeSummary() {
   const summary = document.getElementById('theme-current-selection');
   if (!summary) return;
   const themes = getAccentThemes();
-  const accentName =
-    themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.accent))?.name || 'Custom';
-  const backgroundName =
-    themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.background))?.name ||
-    'Custom';
-  summary.textContent = `Accent: ${accentName} • Background: ${backgroundName}`;
+  const accentTheme = themes.find((theme) => theme.id === getPendingTheme(COLOR_TARGETS.accent));
+  const backgroundTheme = themes.find(
+    (theme) => theme.id === getPendingTheme(COLOR_TARGETS.background)
+  );
+  summary.textContent = t('Accent: {{accent}} • Background: {{background}}', {
+    accent: accentTheme ? getThemeDisplayName(accentTheme) : t('Custom'),
+    background: backgroundTheme ? getThemeDisplayName(backgroundTheme) : t('Custom'),
+  });
 }
 
 /**
@@ -1638,12 +1661,16 @@ function renderColorThemeOptions() {
     option.dataset.customTheme = theme.isCustom ? 'true' : 'false';
     const isOriginalTheme = theme.id === 'original';
     const isBackgroundTarget = activeColorTarget === COLOR_TARGETS.background;
-    const tooltipName = theme.name;
+    const tooltipName = getThemeDisplayName(theme);
     const tooltipDescription = isOriginalTheme
       ? isBackgroundTarget
-        ? 'Original dark base (no tint)'
-        : 'Original accent blue'
-      : theme.description || (theme.isCustom ? 'Saved custom color' : 'Theme color');
+        ? t('Original dark base (no tint)')
+        : t('Original accent blue')
+      : theme.isCustom
+        ? t('Saved custom color')
+        : theme.description
+          ? t(theme.description)
+          : t('Theme color');
     option.setAttribute('role', 'radio');
     option.setAttribute('aria-label', `${tooltipName}. ${tooltipDescription}`);
     option.setAttribute('aria-checked', theme.id === selectedTheme ? 'true' : 'false');
@@ -1748,8 +1775,6 @@ function hydratePersonalizationSectionIfNeeded(section) {
 
   if (section.id === 'primary-cards-section') {
     renderPrimaryCardsEntityList();
-  } else if (section.id === 'desktop-pins-section') {
-    renderDesktopPinsList();
   } else if (section.id === 'custom-entity-icons-section') {
     // Prime the icon catalog the first time the section opens.
     void ensureCustomEntityIconChoicesLoaded().catch((error) => {
@@ -1919,12 +1944,12 @@ function getPrimaryCardEntityOptions(filter = '') {
 }
 
 function getPrimaryCardDisplay(selection) {
-  if (selection === PRIMARY_CARD_NONE) return 'Hidden';
-  if (selection === 'weather') return 'Weather (default)';
-  if (selection === 'time') return 'Time (default)';
+  if (selection === PRIMARY_CARD_NONE) return t('Hidden');
+  if (selection === 'weather') return t('Weather (default)');
+  if (selection === 'time') return t('Time (default)');
   const entity = state.STATES?.[selection];
   if (entity) return `${utils.getEntityDisplayName(entity)} (${selection})`;
-  return `Unavailable: ${selection}`;
+  return t('Unavailable: {{entityId}}', { entityId: selection });
 }
 
 function updatePrimaryCardSummary() {
@@ -1983,7 +2008,7 @@ function renderPrimaryCardsEntityRows() {
   list.innerHTML = '';
 
   if (!scoredEntities.length) {
-    list.innerHTML = '<div class="no-entities-message">No matching entities found.</div>';
+    list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(t('No matching entities found.'))}</div>`;
     return;
   }
 
@@ -2003,8 +2028,12 @@ function renderPrimaryCardsEntityRows() {
       const isCardOne = selections[0] === entity.entity_id;
       const isCardTwo = selections[1] === entity.entity_id;
 
-      const cardOneLabel = isCardOne ? 'Card 1 ✓' : 'Set Card 1';
-      const cardTwoLabel = isCardTwo ? 'Card 2 ✓' : 'Set Card 2';
+      const cardOneLabel = utils.escapeHtml(
+        isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
+      );
+      const cardTwoLabel = utils.escapeHtml(
+        isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
+      );
       const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
       const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
       const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
@@ -2032,7 +2061,10 @@ function renderPrimaryCardsEntityRows() {
     navigation.className = 'primary-cards-list-actions primary-cards-pagination';
     const status = document.createElement('span');
     status.setAttribute('role', 'status');
-    status.textContent = `${t('Page')} ${primaryCardPage + 1} / ${pageCount}`;
+    status.textContent = t('Page {{page}} / {{count}}', {
+      page: primaryCardPage + 1,
+      count: pageCount,
+    });
     navigation.appendChild(status);
     for (const [key, label, delta] of [
       ['previous', t('Previous'), -1],
@@ -2049,6 +2081,8 @@ function renderPrimaryCardsEntityRows() {
         if (unavailable) return;
         primaryCardPage += delta;
         renderPrimaryCardsEntityList();
+        // A new page starts at its first row; focus stays on this pager button.
+        list.scrollTop = 0;
       });
       navigation.appendChild(button);
     }
@@ -2114,182 +2148,6 @@ function initPrimaryCardsUI() {
   section.dataset.initialized = 'true';
 }
 
-function normalizeDesktopPinMap(desktopPins, options = {}) {
-  if (!desktopPins || typeof desktopPins !== 'object' || Array.isArray(desktopPins)) {
-    return {};
-  }
-
-  const requireFavorite = !!options.requireFavorite;
-  const favorites = new Set(
-    (state.CONFIG?.favoriteEntities || []).filter(
-      (entityId) => typeof entityId === 'string' && entityId.trim()
-    )
-  );
-  return Object.entries(desktopPins).reduce((acc, [entityId, bounds]) => {
-    if (typeof entityId !== 'string') return acc;
-    const trimmedEntityId = entityId.trim();
-    if (
-      !trimmedEntityId ||
-      (requireFavorite && !favorites.has(trimmedEntityId)) ||
-      !bounds ||
-      typeof bounds !== 'object'
-    ) {
-      return acc;
-    }
-    acc[trimmedEntityId] = { ...bounds };
-    return acc;
-  }, {});
-}
-
-function getSavedDesktopPins() {
-  return normalizeDesktopPinMap(state.CONFIG?.desktopPins);
-}
-
-function setPendingDesktopPins(desktopPins) {
-  pendingDesktopPins = normalizeDesktopPinMap(desktopPins);
-}
-
-function getPendingDesktopPinsForSave() {
-  const liveDesktopPins = normalizeDesktopPinMap(state.CONFIG?.desktopPins);
-  return Object.keys(pendingDesktopPins).reduce((acc, entityId) => {
-    acc[entityId] = liveDesktopPins[entityId] ? { ...liveDesktopPins[entityId] } : {};
-    return acc;
-  }, {});
-}
-
-function getDesktopPinEntityOptions(filter = '') {
-  const normalizedFilter = filter.toLowerCase();
-  return (state.CONFIG?.favoriteEntities || [])
-    .map((favoriteId) => {
-      const resolvedEntityId = utils.resolveEntityId(favoriteId, state.STATES) || favoriteId;
-      const entity = state.STATES?.[resolvedEntityId] || null;
-      const displayName = entity ? utils.getEntityDisplayName(entity) : favoriteId;
-      const haystackId = entity?.entity_id || favoriteId;
-      const score = normalizedFilter
-        ? utils.getSearchScore(displayName, normalizedFilter) +
-          utils.getSearchScore(haystackId, normalizedFilter)
-        : 1;
-      return {
-        entityId: favoriteId,
-        entity,
-        displayName,
-        score,
-      };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.displayName.localeCompare(b.displayName);
-    });
-}
-
-function updateDesktopPinsSummary() {
-  const currentEl = document.getElementById('desktop-pins-current');
-  const summaryEl = document.getElementById('desktop-pins-summary');
-  const count = Object.keys(pendingDesktopPins).length;
-  if (currentEl) {
-    currentEl.textContent = count === 0 ? 'None' : `${count} pinned tile${count === 1 ? '' : 's'}`;
-  }
-  if (summaryEl) {
-    summaryEl.textContent =
-      count === 0
-        ? 'Pin any Quick Access tile to create a small desktop mini-widget.'
-        : `${count} tile${count === 1 ? '' : 's'} will be persisted when you save settings.`;
-  }
-}
-
-function renderDesktopPinsList() {
-  const list = document.getElementById('desktop-pins-list');
-  if (list) preserveListFocus(list, renderDesktopPinRows);
-}
-
-function renderDesktopPinRows() {
-  const list = document.getElementById('desktop-pins-list');
-  const searchInput = document.getElementById('desktop-pins-search');
-  if (!list || !searchInput) return;
-
-  const filter = searchInput.value || '';
-  const options = getDesktopPinEntityOptions(filter);
-  list.innerHTML = '';
-
-  if (!options.length) {
-    list.innerHTML =
-      '<div class="no-entities-message">Add entities to Quick Access to pin them to the desktop.</div>';
-    updateDesktopPinsSummary();
-    syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
-    return;
-  }
-
-  options.forEach(({ entityId, entity, displayName }) => {
-    const isPinned = !!pendingDesktopPins[entityId];
-    const isSavedPinned = !!state.CONFIG?.desktopPins?.[entityId];
-    const iconValue = entity ? utils.getEntityIcon(entity) : '•';
-    const currentEntityId = entity?.entity_id || entityId;
-
-    const item = document.createElement('div');
-    item.className = 'entity-item';
-    item.innerHTML = `
-      <div class="entity-item-main">
-        <span class="entity-icon">${utils.escapeHtml(iconValue)}</span>
-        <div class="entity-item-info">
-          <span class="entity-name">${utils.escapeHtml(displayName)}</span>
-          <span class="entity-id" title="${utils.escapeHtmlAttribute(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
-          ${isPinned ? '<span class="desktop-pin-status-badge">Pinned</span>' : ''}
-        </div>
-      </div>
-      <div class="desktop-pins-list-actions">
-        ${isSavedPinned ? `<button class="btn btn-secondary btn-sm" type="button" data-desktop-pin-focus="${utils.escapeHtmlAttribute(entityId)}">Focus</button>` : ''}
-        <button class="btn ${isPinned ? 'btn-primary' : 'btn-secondary'} btn-sm" type="button" data-desktop-pin-toggle="${utils.escapeHtmlAttribute(entityId)}">${isPinned ? 'Unpin' : 'Pin'}</button>
-      </div>
-    `;
-
-    list.appendChild(item);
-  });
-
-  updateDesktopPinsSummary();
-  syncPersonalizationSectionHeight(document.getElementById('desktop-pins-section'));
-}
-
-function initDesktopPinsUI() {
-  const section = document.getElementById('desktop-pins-section');
-  if (!section || section.dataset.initialized) return;
-
-  section.addEventListener('click', async (event) => {
-    const toggleBtn = event.target.closest('[data-desktop-pin-toggle]');
-    if (toggleBtn) {
-      const entityId = toggleBtn.dataset.desktopPinToggle;
-      if (!entityId) return;
-      if (pendingDesktopPins[entityId]) {
-        delete pendingDesktopPins[entityId];
-      } else {
-        pendingDesktopPins[entityId] = {};
-      }
-      renderDesktopPinsList();
-      hydratedPersonalizationSections.add('desktop-pins-section');
-      return;
-    }
-
-    const focusBtn = event.target.closest('[data-desktop-pin-focus]');
-    if (focusBtn) {
-      const entityId = focusBtn.dataset.desktopPinFocus;
-      if (!entityId) return;
-      try {
-        await window.electronAPI.focusDesktopPin(entityId);
-      } catch (error) {
-        log.error('Failed to focus desktop pin window:', error);
-        showToast('Could not focus the pinned tile.', 'error', 2500);
-      }
-    }
-  });
-
-  const searchInput = document.getElementById('desktop-pins-search');
-  if (searchInput) {
-    searchInput.addEventListener('input', renderDesktopPinsList);
-  }
-
-  section.dataset.initialized = 'true';
-}
-
 function getPendingCustomIcon(entityId) {
   if (!entityId) return null;
   return pendingCustomEntityIcons[entityId] || null;
@@ -2300,10 +2158,13 @@ function updateCustomEntityIconSummary() {
   if (!summaryEl) return;
   const count = Object.keys(pendingCustomEntityIcons).length;
   if (count === 0) {
-    summaryEl.textContent = 'No custom icons configured.';
+    summaryEl.textContent = t('No custom icons configured.');
     return;
   }
-  summaryEl.textContent = `${count} custom icon${count === 1 ? '' : 's'} configured.`;
+  summaryEl.textContent =
+    count === 1
+      ? t('1 custom icon configured.')
+      : t('{{count}} custom icons configured.', { count });
 }
 
 function getCustomEntityIconChoiceLabel(choice) {
@@ -2312,7 +2173,7 @@ function getCustomEntityIconChoiceLabel(choice) {
     return choice.aliases.length > 4 ? `${visibleAliases}, ...` : visibleAliases;
   }
   const codepointLabel = choice.codepointTerms.find((term) => term.startsWith('u+'));
-  return codepointLabel ? codepointLabel.toUpperCase() : 'Emoji';
+  return codepointLabel ? codepointLabel.toUpperCase() : t('Emoji');
 }
 
 function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
@@ -2323,7 +2184,7 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
     pickerEl.innerHTML = '';
     const loadingState = document.createElement('div');
     loadingState.className = 'custom-entity-icon-picker-meta';
-    loadingState.textContent = 'Loading icon catalog...';
+    loadingState.textContent = t('Loading icon catalog...');
     pickerEl.appendChild(loadingState);
     ensureCustomEntityIconChoicesLoaded()
       .then(() => {
@@ -2336,7 +2197,7 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
         pickerEl.innerHTML = '';
         const errorState = document.createElement('div');
         errorState.className = 'custom-entity-icon-picker-empty';
-        errorState.textContent = 'Failed to load icon catalog.';
+        errorState.textContent = t('Failed to load icon catalog.');
         pickerEl.appendChild(errorState);
       });
     return;
@@ -2348,16 +2209,20 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   const summary = document.createElement('div');
   summary.className = 'custom-entity-icon-picker-meta';
   if (filterValue) {
-    summary.textContent = `Showing ${filteredChoices.length} of ${choices.length} icons for "${filterValue}".`;
+    summary.textContent = t('Showing {{shown}} of {{total}} icons for "{{query}}".', {
+      shown: filteredChoices.length,
+      total: choices.length,
+      query: filterValue,
+    });
   } else {
-    summary.textContent = `Showing all ${choices.length} icons.`;
+    summary.textContent = t('Showing all {{count}} icons.', { count: choices.length });
   }
   pickerEl.appendChild(summary);
 
   if (!filteredChoices.length) {
     const emptyState = document.createElement('div');
     emptyState.className = 'custom-entity-icon-picker-empty';
-    emptyState.textContent = 'No matching icons found.';
+    emptyState.textContent = t('No matching icons found.');
     pickerEl.appendChild(emptyState);
     return;
   }
@@ -2365,7 +2230,7 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   const grid = document.createElement('div');
   grid.className = 'custom-entity-icon-picker-grid';
   grid.setAttribute('role', 'listbox');
-  grid.setAttribute('aria-label', `Choose icon for ${entityId}`);
+  grid.setAttribute('aria-label', t('Choose icon for {{entityId}}', { entityId }));
 
   filteredChoices.forEach((choice) => {
     const choiceBtn = document.createElement('button');
@@ -2397,7 +2262,7 @@ function renderCustomEntityIconsList() {
   list.innerHTML = '';
 
   if (!scoredEntities.length) {
-    list.innerHTML = '<div class="no-entities-message">No matching entities found.</div>';
+    list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(t('No matching entities found.'))}</div>`;
     updateCustomEntityIconSummary();
     syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
     return;
@@ -2442,7 +2307,7 @@ function renderCustomEntityIconsList() {
     if (hasCustomIcon) {
       const customBadge = document.createElement('span');
       customBadge.className = 'custom-entity-icon-badge';
-      customBadge.textContent = 'Custom';
+      customBadge.textContent = t('Custom');
       info.appendChild(customBadge);
     }
 
@@ -2450,7 +2315,9 @@ function renderCustomEntityIconsList() {
       const actionBadge = document.createElement('span');
       actionBadge.className = 'custom-entity-icon-action-badge';
       actionBadge.textContent =
-        lastCustomEntityIconAction.action === 'reset' ? 'Reset (unsaved)' : 'Applied (unsaved)';
+        lastCustomEntityIconAction.action === 'reset'
+          ? t('Reset (unsaved)')
+          : t('Applied (unsaved)');
       info.appendChild(actionBadge);
     }
 
@@ -2466,18 +2333,18 @@ function renderCustomEntityIconsList() {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'custom-entity-icon-input';
-    input.placeholder = 'Search icons or paste icon';
+    input.placeholder = t('Search icons or paste icon');
     input.maxLength = 64;
     input.value = pickerQuery || pendingIcon || '';
     input.autocomplete = 'off';
-    input.setAttribute('aria-label', `Custom icon for ${entityId}`);
+    input.setAttribute('aria-label', t('Custom icon for {{entityId}}', { entityId }));
     input.dataset.customIconInput = entityId;
     actions.appendChild(input);
 
     const chooseBtn = document.createElement('button');
     chooseBtn.type = 'button';
     chooseBtn.className = 'btn btn-secondary btn-sm';
-    chooseBtn.textContent = 'Search';
+    chooseBtn.textContent = t('Search');
     chooseBtn.dataset.customIconPickerToggle = entityId;
     chooseBtn.setAttribute('aria-expanded', isPickerOpen ? 'true' : 'false');
     actions.appendChild(chooseBtn);
@@ -2485,14 +2352,14 @@ function renderCustomEntityIconsList() {
     const applyBtn = document.createElement('button');
     applyBtn.type = 'button';
     applyBtn.className = 'btn btn-secondary btn-sm';
-    applyBtn.textContent = 'Apply';
+    applyBtn.textContent = t('Apply');
     applyBtn.dataset.customIconApply = entityId;
     actions.appendChild(applyBtn);
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
     resetBtn.className = 'btn btn-secondary btn-sm';
-    resetBtn.textContent = 'Reset';
+    resetBtn.textContent = t('Reset');
     resetBtn.disabled = !hasCustomIcon;
     resetBtn.dataset.customIconReset = entityId;
     actions.appendChild(resetBtn);
@@ -2522,7 +2389,7 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
   const trimmed = typeof rawIcon === 'string' ? rawIcon.trim() : '';
   const normalized = normalizeCustomEntityIcon(rawIcon);
   if (trimmed && !normalized) {
-    showToast('Custom icon must be a single emoji or glyph.', 'error', 3000);
+    showToast(t('Custom icon must be a single emoji or glyph.'), 'error', 3000);
     return;
   }
 
@@ -2530,11 +2397,11 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
   if (normalized) {
     next[entityId] = normalized;
     lastCustomEntityIconAction = { entityId, action: 'apply' };
-    showToast('Icon applied. Click Save to persist changes.', 'success', 2200);
+    showToast(t('Icon applied. Click Save to persist changes.'), 'success', 2200);
   } else {
     delete next[entityId];
     lastCustomEntityIconAction = { entityId, action: 'reset' };
-    showToast('Custom icon cleared. Click Save to persist changes.', 'info', 2200);
+    showToast(t('Custom icon cleared. Click Save to persist changes.'), 'info', 2200);
   }
   pendingCustomEntityIcons = next;
   setCustomEntityIconPickerQuery(entityId, '');
@@ -2548,7 +2415,7 @@ function resetCustomEntityIcon(entityId) {
   const next = { ...pendingCustomEntityIcons };
   delete next[entityId];
   lastCustomEntityIconAction = { entityId, action: 'reset' };
-  showToast('Custom icon reset. Click Save to persist changes.', 'info', 2200);
+  showToast(t('Custom icon reset. Click Save to persist changes.'), 'info', 2200);
   pendingCustomEntityIcons = next;
   setCustomEntityIconPickerQuery(entityId, '');
   activeCustomEntityIconPickerEntityId = null;
@@ -2560,7 +2427,7 @@ function resetAllCustomEntityIcons() {
   customEntityIconPickerQueryByEntityId = {};
   activeCustomEntityIconPickerEntityId = null;
   lastCustomEntityIconAction = null;
-  showToast('All custom icons cleared. Click Save to persist changes.', 'info', 2400);
+  showToast(t('All custom icons cleared. Click Save to persist changes.'), 'info', 2400);
   renderCustomEntityIconsList();
 }
 
@@ -2683,6 +2550,37 @@ function initCustomEntityIconsUI() {
 }
 
 /**
+ * Map a stored window opacity (0.5-1.0) to the Window Opacity slider position (1-100).
+ * @param {number} opacity - Stored opacity.
+ * @returns {number} Slider position.
+ */
+function opacityToSliderValue(opacity) {
+  const storedOpacity = Math.max(0.5, Math.min(1, opacity || 0.95));
+  return Math.round(1 + (storedOpacity - 0.5) * 198);
+}
+
+/**
+ * Map a Window Opacity slider position (1-100) back to an opacity (0.5-1.0).
+ *
+ * The slider has 100 steps, so most stored opacities (the 0.95 default included) sit between two
+ * of them. While the slider still shows the position the stored value loaded at, the stored value
+ * is kept, so saving without touching the slider does not nudge it.
+ * @param {number} sliderValue - Slider position.
+ * @param {number} [storedOpacity] - Current stored opacity.
+ * @returns {number} Opacity to preview or save.
+ */
+function sliderValueToOpacity(sliderValue, storedOpacity) {
+  if (
+    storedOpacity >= 0.5 &&
+    storedOpacity <= 1 &&
+    sliderValue === opacityToSliderValue(storedOpacity)
+  ) {
+    return storedOpacity;
+  }
+  return 0.5 + ((sliderValue - 1) * 0.5) / 99;
+}
+
+/**
  * Read preview controls from the DOM and derive window effect values.
  *
  * Reads the #opacity-slider and #frosted-glass inputs; if either is missing, returns `null`.
@@ -2695,7 +2593,7 @@ function getPreviewValuesFromInputs() {
   if (!opacitySlider || !frostedGlass) return null;
 
   const sliderValue = parseInt(opacitySlider.value, 10) || 90;
-  const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+  const opacity = sliderValueToOpacity(sliderValue, state.CONFIG?.opacity);
   const frostedGlassEnabled = !!frostedGlass.checked;
 
   const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
@@ -2813,20 +2711,34 @@ function restorePreviewWindowEffects() {
 }
 
 /**
+ * Re-apply the unsaved Settings previews after a config echo reset the window to the saved
+ * appearance (for example when a collapsed section is remembered). No-op while Settings is closed.
+ */
+function reapplySettingsPreviews() {
+  if (!previewState) return;
+  setCustomThemes(pendingCustomColors);
+  applyUiPreferences(getAppearanceFromInputs());
+  applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+  // Also re-applies the pending background.
+  previewWindowEffectsNow();
+  if (hasDraftColorPreview) applyCustomColorPreview(getCustomColorHexFromEditor());
+}
+
+/**
  * Validate Home Assistant URL format
  * @param {string} url - The URL to validate
  * @returns {object} - { valid: boolean, error: string|null, url: string }
  */
 function validateHomeAssistantUrl(url) {
   if (!url || url.trim() === '') {
-    return { valid: false, error: 'Home Assistant URL cannot be empty', url: null };
+    return { valid: false, error: t('Home Assistant URL cannot be empty'), url: null };
   }
 
   const trimmedUrl = url.trim();
 
   // Check if URL starts with http:// or https://
   if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
-    return { valid: false, error: 'URL must start with http:// or https://', url: null };
+    return { valid: false, error: t('URL must start with http:// or https://'), url: null };
   }
 
   // Try to parse as URL
@@ -2835,7 +2747,7 @@ function validateHomeAssistantUrl(url) {
 
     // Validate it has a hostname
     if (!urlObj.hostname) {
-      return { valid: false, error: 'Invalid URL: missing hostname', url: null };
+      return { valid: false, error: t('Invalid URL: missing hostname'), url: null };
     }
 
     // Remove trailing slash for consistency
@@ -2843,7 +2755,7 @@ function validateHomeAssistantUrl(url) {
 
     return { valid: true, error: null, url: normalizedUrl };
   } catch {
-    return { valid: false, error: 'Invalid URL format', url: null };
+    return { valid: false, error: t('Invalid URL format'), url: null };
   }
 }
 
@@ -2981,6 +2893,57 @@ function formatProfileSyncTimestamp(isoString) {
   return formatDateTime(value);
 }
 
+function getProfileSyncStateLabel(status = {}) {
+  if (status.inFlight) return t('Sync in progress...');
+  // The keys carry a "Profile sync: " context prefix because bare words such as "error" are too
+  // generic to translate once. English (no catalog entry) shows the plain lowercase word.
+  const withoutContext = (label) => label.replace(/^Profile sync: /, '');
+  switch (status.lastSyncStatus || 'idle') {
+    case 'idle':
+      return withoutContext(t('Profile sync: idle'));
+    case 'success':
+      return withoutContext(t('Profile sync: success'));
+    case 'error':
+      return withoutContext(t('Profile sync: error'));
+    case 'needs_resolution':
+      return withoutContext(t('Profile sync: needs resolution'));
+    default:
+      return String(status.lastSyncStatus);
+  }
+}
+
+/**
+ * Render the experimental Profile Sync warning in the active language. The sentence and its
+ * "Issues section" link text are separate catalog entries; the link wraps the matching part of
+ * the translated sentence, or follows it when a translation words the link differently.
+ */
+function renderProfileSyncWarning() {
+  const warningEl = document.querySelector('.profile-sync-warning');
+  if (!warningEl) return;
+  const sentence = t(
+    'Profile Sync is still experimental. Use it at your own risk, and please report bugs in the Issues section.'
+  );
+  const linkText = t('Issues section');
+  const link = document.createElement('a');
+  link.href = PROFILE_SYNC_ISSUES_URL;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = linkText;
+  const label = document.createElement('strong');
+  label.textContent = t('Warning:');
+  const linkIndex = linkText ? sentence.indexOf(linkText) : -1;
+  if (linkIndex >= 0) {
+    warningEl.replaceChildren(
+      label,
+      ` ${sentence.slice(0, linkIndex)}`,
+      link,
+      sentence.slice(linkIndex + linkText.length)
+    );
+  } else {
+    warningEl.replaceChildren(label, ` ${sentence} `, link);
+  }
+}
+
 function setProfileSyncSettingsVisibility() {
   const enabledCheckbox = document.getElementById('profile-sync-enabled');
   const settingsContainer = document.getElementById('profile-sync-settings');
@@ -3011,8 +2974,10 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   }
 
   if (statusEl) {
-    const stateLabel = status.inFlight ? 'Sync in progress...' : status.lastSyncStatus || 'idle';
-    statusEl.textContent = `Status: ${stateLabel} | Last sync: ${formatProfileSyncTimestamp(status.lastSyncAt)}`;
+    statusEl.textContent = t('Status: {{state}} | Last sync: {{time}}', {
+      state: getProfileSyncStateLabel(status),
+      time: formatProfileSyncTimestamp(status.lastSyncAt),
+    });
   }
 
   if (errorEl) {
@@ -3062,7 +3027,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
-        resolutionHelp.innerHTML = `<strong>${t('First-time conflict:')}</strong> ${t('Both local and remote profiles have data.')}`;
+        resolutionHelp.innerHTML = `<strong>${utils.escapeHtml(t('First-time conflict:'))}</strong> ${utils.escapeHtml(t('Both local and remote profiles have data.'))}`;
       }
       if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');
@@ -3222,9 +3187,9 @@ async function runManualProfileSync(direction) {
     const result = await window.electronAPI.runProfileSync(direction);
     if (!result?.ok) {
       if (result?.reason === 'needs_resolution') {
-        showToast('Resolve first-time sync conflict before syncing.', 'warning', 3500);
+        showToast(t('Resolve first-time sync conflict before syncing.'), 'warning', 3500);
       } else {
-        showToast(result?.error || 'Profile sync failed.', 'error', 3500);
+        showToast(result?.error || t('Profile sync failed.'), 'error', 3500);
       }
       if (result?.status) updateProfileSyncStatusUi(result.status);
       return;
@@ -3247,13 +3212,15 @@ async function runManualProfileSync(direction) {
       await refreshProfileSyncStatusUi();
     }
     showToast(
-      `Profile sync ${direction === 'push' ? 'upload' : 'download'} complete.`,
+      direction === 'push'
+        ? t('Profile sync upload complete.')
+        : t('Profile sync download complete.'),
       'success',
       2200
     );
   } catch (error) {
     log.error('Manual profile sync failed:', error);
-    showToast(error?.message || 'Profile sync failed.', 'error', 3500);
+    showToast(error?.message || t('Profile sync failed.'), 'error', 3500);
     await refreshProfileSyncStatusUi();
   }
 }
@@ -3262,7 +3229,7 @@ async function resolveProfileSyncFirstEnable(choice) {
   try {
     const result = await window.electronAPI.resolveProfileSyncFirstEnable(choice);
     if (!result?.success) {
-      showToast(result?.error || 'Failed to resolve sync conflict.', 'error', 3500);
+      showToast(result?.error || t('Failed to resolve sync conflict.'), 'error', 3500);
       if (result?.status) updateProfileSyncStatusUi(result.status);
       return;
     }
@@ -3271,10 +3238,10 @@ async function resolveProfileSyncFirstEnable(choice) {
       applyProfileSyncConfigToForm();
     }
     if (result?.status) updateProfileSyncStatusUi(result.status);
-    showToast('Profile sync conflict resolved.', 'success', 2500);
+    showToast(t('Profile sync conflict resolved.'), 'success', 2500);
   } catch (error) {
     log.error('Failed to resolve profile sync conflict:', error);
-    showToast(error?.message || 'Failed to resolve sync conflict.', 'error', 3500);
+    showToast(error?.message || t('Failed to resolve sync conflict.'), 'error', 3500);
   }
 }
 
@@ -3433,7 +3400,7 @@ function bindProfileSyncSettingsUi() {
       if (input) input.value = folderPath;
     } catch (error) {
       log.error('Failed to choose profile sync folder:', error);
-      showToast('Failed to choose sync folder.', 'error', 3000);
+      showToast(t('Failed to choose sync folder.'), 'error', 3000);
     }
   };
 
@@ -3452,7 +3419,7 @@ function bindProfileSyncSettingsUi() {
         }
       } catch (error) {
         log.error('Failed to open profile sync help link:', error);
-        showToast('Could not open help instructions.', 'error', 3000);
+        showToast(t('Could not open help instructions.'), 'error', 3000);
       }
     };
   }
@@ -3485,9 +3452,9 @@ function bindProfileSyncSettingsUi() {
   if (clearPassphrase) {
     clearPassphrase.onclick = async () => {
       const confirmed = await showConfirm(
-        'Clear Saved Passphrase',
-        'Remove the saved sync passphrase from this device?',
-        { confirmText: 'Clear', confirmClass: 'btn-danger' }
+        t('Clear Saved Passphrase'),
+        t('Remove the saved sync passphrase from this device?'),
+        { confirmText: t('Action: Clear'), confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
       try {
@@ -3495,7 +3462,9 @@ function bindProfileSyncSettingsUi() {
       } catch (error) {
         log.error('Failed to clear saved profile sync passphrase:', error);
         showToast(
-          `Failed to clear saved passphrase: ${error?.message || 'Unknown error'}`,
+          t('Failed to clear saved passphrase: {{error}}', {
+            error: error?.message || t('Unknown error'),
+          }),
           'error',
           3400
         );
@@ -3507,7 +3476,7 @@ function bindProfileSyncSettingsUi() {
       if (passphraseInput) passphraseInput.value = '';
       if (remember) remember.checked = false;
       await refreshProfileSyncStatusUi();
-      showToast('Saved passphrase cleared.', 'success', 2000);
+      showToast(t('Saved passphrase cleared.'), 'success', 2000);
     };
   }
 
@@ -3658,13 +3627,14 @@ function renderLanguagePackList() {
   localePackListCache.forEach((pack) => {
     const row = document.createElement('div');
     row.className = 'language-pack-row';
+    const language = getLanguagePackDisplayName(pack);
 
     const info = document.createElement('div');
     info.className = 'language-pack-info';
 
     const name = document.createElement('div');
     name.className = 'language-pack-name';
-    name.textContent = getLanguagePackDisplayName(pack);
+    name.textContent = language;
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
@@ -3689,6 +3659,7 @@ function renderLanguagePackList() {
       updateBtn.dataset.localeAction = 'download';
       updateBtn.dataset.locale = pack.locale;
       updateBtn.textContent = t('Update');
+      updateBtn.setAttribute('aria-label', t('Update {{language}}', { language }));
       actions.appendChild(updateBtn);
     } else if (!pack.installed) {
       const downloadBtn = document.createElement('button');
@@ -3697,6 +3668,7 @@ function renderLanguagePackList() {
       downloadBtn.dataset.localeAction = 'download';
       downloadBtn.dataset.locale = pack.locale;
       downloadBtn.textContent = t('Download');
+      downloadBtn.setAttribute('aria-label', t('Download {{language}}', { language }));
       actions.appendChild(downloadBtn);
     }
 
@@ -3707,6 +3679,7 @@ function renderLanguagePackList() {
       removeBtn.dataset.localeAction = 'remove';
       removeBtn.dataset.locale = pack.locale;
       removeBtn.textContent = t('Remove');
+      removeBtn.setAttribute('aria-label', t('Remove {{language}}', { language }));
       actions.appendChild(removeBtn);
     }
 
@@ -3779,160 +3752,72 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
-async function persistDensitySelection(nextDensity) {
-  const normalizedDensity = nextDensity === 'compact' ? 'compact' : 'comfortable';
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    density: normalizedDensity,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
+/**
+ * Read the text size, contrast, density and tile glow controls on top of `ui`.
+ *
+ * These preview live like the window effects and persist only on Save. The readable preset
+ * stands for both contrast flags, so they are left alone unless the preset was toggled.
+ */
+function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
+  const scale = document.getElementById('ui-scale-select');
+  const preset = document.getElementById('readable-preset');
+  const density = document.getElementById('density-select');
+  const activeTileGlow = document.getElementById('active-tile-glow');
+  const next = { ...ui };
+  if (scale) next.scale = Number(scale.value) || 1;
+  if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
+    next.highContrast = preset.checked;
+    next.opaquePanels = preset.checked;
   }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({
-      ui: nextUiConfig,
-    });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
+  if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
+  if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
+  return next;
 }
 
-async function persistActiveTileGlowSelection(enabled) {
-  const previousUiConfig = { ...(state.CONFIG.ui || {}) };
-  const nextUiConfig = {
-    ...previousUiConfig,
-    activeTileGlow: !!enabled,
-  };
-
-  applyUiPreferences(nextUiConfig);
-
-  if (!window?.electronAPI?.updateConfig) {
-    state.CONFIG.ui = nextUiConfig;
-    return null;
-  }
-
-  try {
-    const updatedConfig = await window.electronAPI.updateConfig({ ui: nextUiConfig });
-    if (updatedConfig) {
-      applyPersistedConfigResponse(updatedConfig);
-    }
-    return updatedConfig;
-  } catch (error) {
-    state.CONFIG.ui = previousUiConfig;
-    applyUiPreferences(previousUiConfig);
-    throw error;
-  }
-}
-
-async function persistReadabilitySelection(patch) {
-  const previousUi = { ...(state.CONFIG.ui || {}) };
-  const nextUi = { ...previousUi, ...patch };
-  applyUiPreferences(nextUi);
-  try {
-    const updated = await window.electronAPI?.updateConfig?.({ ui: nextUi });
-    if (updated) applyPersistedConfigResponse(updated);
-    else state.CONFIG.ui = nextUi;
-  } catch (error) {
-    state.CONFIG.ui = previousUi;
-    applyUiPreferences(previousUi);
-    throw error;
-  }
+function previewAppearance() {
+  applyUiPreferences(getAppearanceFromInputs());
 }
 
 function bindAppearanceSettingsUi() {
+  const ui = state.CONFIG?.ui || {};
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const refresh = () => {
-    if (scale) scale.value = String(state.CONFIG?.ui?.scale || 1);
-    if (preset)
-      preset.checked = !!state.CONFIG?.ui?.highContrast && !!state.CONFIG?.ui?.opaquePanels;
-  };
-  refresh();
-  for (const control of [scale, preset].filter(Boolean)) {
-    control.onchange = async () => {
-      // Serialize saves so a slow response cannot undo a newer appearance choice.
-      if (scale) scale.disabled = true;
-      if (preset) preset.disabled = true;
-      try {
-        await persistReadabilitySelection(
-          control === scale
-            ? { scale: Number(scale.value) }
-            : { highContrast: preset.checked, opaquePanels: preset.checked }
-        );
-      } catch (error) {
-        log.error('Failed to save readability settings:', error);
-        refresh();
-        showToast(t('Failed to save readability settings'), 'warning', 3000);
-      } finally {
-        if (scale) scale.disabled = false;
-        if (preset) preset.disabled = false;
-      }
-    };
-  }
-
   const activeTileGlow = document.getElementById('active-tile-glow');
-  if (activeTileGlow) {
-    activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-    activeTileGlow.onchange = async () => {
-      try {
-        await persistActiveTileGlowSelection(activeTileGlow.checked);
-      } catch (error) {
-        log.error('Failed to save tile glow setting:', error);
-        activeTileGlow.checked = state.CONFIG?.ui?.activeTileGlow !== false;
-        showToast(t('Failed to save tile glow setting'), 'warning', 3000);
-      }
-    };
-  }
-
   const densitySelect = document.getElementById('density-select');
-  if (!densitySelect) return;
-
-  densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-  densitySelect.onchange = async () => {
-    try {
-      await persistDensitySelection(densitySelect.value);
-    } catch (error) {
-      log.error('Failed to save layout density:', error);
-      densitySelect.value = state.CONFIG?.ui?.density === 'compact' ? 'compact' : 'comfortable';
-      showToast(t('Failed to save layout density'), 'warning', 3000);
-    }
-  };
+  if (scale) scale.value = String(ui.scale || 1);
+  if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
+  if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
+  if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
+  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+    control.onchange = previewAppearance;
+  }
 }
 
 function bindLanguageSettingsUi() {
   const languageSelect = document.getElementById('language-select');
   if (languageSelect) {
     languageSelect.value = state.CONFIG?.ui?.language || 'auto';
-    languageSelect.onchange = async () => {
-      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
-      const nextLanguage = languageSelect.value || previousLanguage;
+    // Saves run one at a time instead of disabling the select, which would drop keyboard focus
+    // while someone arrows through the languages. A choice already replaced by a newer one is
+    // skipped.
+    languageSelect.onchange = () => {
       updateLanguageSummaryText();
-
-      if (nextLanguage === previousLanguage) return;
-
-      languageSelect.disabled = true;
-      try {
-        await persistLanguageSelection(nextLanguage);
-      } catch (error) {
-        log.error('Failed to update language selection:', error);
-        languageSelect.value = previousLanguage;
-        updateLanguageSummaryText();
-        showToast(t('Failed to save language selection'), 'error', 2600);
-      } finally {
-        languageSelect.disabled = false;
-      }
+      languageSaveQueue = languageSaveQueue.then(async () => {
+        const previousLanguage = state.CONFIG?.ui?.language || 'auto';
+        const nextLanguage = languageSelect.value || previousLanguage;
+        if (nextLanguage === previousLanguage) return;
+        try {
+          await persistLanguageSelection(nextLanguage);
+        } catch (error) {
+          log.error('Failed to update language selection:', error);
+          if (languageSelect.value === nextLanguage) {
+            languageSelect.value = previousLanguage;
+            updateLanguageSummaryText();
+          }
+          showToast(t('Failed to save language selection'), 'error', 2600);
+        }
+      });
+      return languageSaveQueue;
     };
   }
 
@@ -3945,11 +3830,13 @@ function bindLanguageSettingsUi() {
       const action = button.dataset.localeAction;
       if (!locale || !action) return;
 
+      const hadFocus = button === document.activeElement;
       button.disabled = true;
       try {
         if (action === 'download') {
           const result = await window.electronAPI.downloadLocalePack(locale);
           localePackListCache = Array.isArray(result?.packs) ? result.packs : localePackListCache;
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack downloaded: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -3959,6 +3846,7 @@ function bindLanguageSettingsUi() {
           );
         } else if (action === 'remove') {
           await window.electronAPI.removeLocalePack(locale);
+          await refreshLocaleIfAffected(locale);
           showToast(
             t('Language pack removed: {{language}}', {
               language: getLanguageDisplayName(locale, locale),
@@ -3978,9 +3866,154 @@ function bindLanguageSettingsUi() {
         );
       } finally {
         await refreshLanguagePackList(true);
+        if (hadFocus) focusLanguagePackRow(locale);
       }
     };
   }
+}
+
+/**
+ * Switch the interface language right away when a download or removal changes the pack in use,
+ * rather than on the next launch. A removed active language falls back to English with the
+ * same "Using English" notice as at startup; the selection stays for a later re-download.
+ */
+async function refreshLocaleIfAffected(locale) {
+  const baseLocale = (locale || '').split('-')[0].toLowerCase();
+  const { activeLocale, requestedLocale } = getLocaleState();
+  const inUse = [activeLocale, requestedLocale].some(
+    (value) => (value || '').split('-')[0].toLowerCase() === baseLocale
+  );
+  if (!inUse || !settingsUiHooks?.refreshLocale) return;
+  try {
+    await settingsUiHooks.refreshLocale();
+    relocalizeOpenSettings();
+  } catch (error) {
+    log.error('Failed to refresh the interface language:', error);
+  }
+}
+
+// The pack list re-renders after every action; keep keyboard focus on the same language's row.
+function focusLanguagePackRow(locale) {
+  const buttons = Array.from(
+    document.querySelectorAll('#language-packs-list button[data-locale]:not(:disabled)')
+  );
+  // An offline catalog drops a removed pack's row; fall back to the language selector.
+  const target =
+    buttons.find((button) => button.dataset.locale === locale) ||
+    document.getElementById('language-select');
+  target?.focus({ preventScroll: true });
+}
+
+function isSettingsModalOpen() {
+  const modal = document.getElementById('settings-modal');
+  return !!modal && !modal.classList.contains('hidden') && modal.style.display !== 'none';
+}
+
+function renderUpdateButtonLabels() {
+  // The update buttons' labels live in spans the update UI owns, so they are translated here
+  // rather than with data-i18n.
+  const checkUpdatesText = document.getElementById('check-updates-text');
+  if (checkUpdatesText) checkUpdatesText.textContent = t('Check for Updates');
+  const installUpdateText = document.getElementById('install-update-text');
+  if (installUpdateText) installUpdateText.textContent = t('Install Update');
+}
+
+function getSettingsLocaleSignature() {
+  const { activeLocale, usingEnglishFallback, messages } = getLocaleState();
+  return `${activeLocale}|${!!usingEnglishFallback}|${Object.keys(messages || {}).length}`;
+}
+
+// A pairing in progress shows its own status line; leave it until the attempt finishes.
+function updateHomeAssistantAuthStatusText() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  if (connectButton?.getAttribute('aria-busy') === 'true') return;
+  updateHomeAssistantAuthUi();
+}
+
+let settingsLocaleSignature = '';
+let settingsLocaleObserver = null;
+
+/**
+ * Re-render the Settings text that JavaScript writes (status lines, summaries, pickers, labels)
+ * after the interface language changes while Settings is open. translateDocument() only covers
+ * data-i18n markup. Pending edits, selections and the custom color draft are left untouched.
+ */
+function relocalizeOpenSettings({ force = false } = {}) {
+  if (!isSettingsModalOpen()) return;
+  const signature = getSettingsLocaleSignature();
+  if (!force && signature === settingsLocaleSignature) return;
+  settingsLocaleSignature = signature;
+  try {
+    updateHomeAssistantAuthStatusText();
+    const weatherSelect = document.getElementById('weather-entity-select');
+    const pendingWeather = weatherSelect?.value;
+    populateWeatherEntitySelect();
+    if (
+      weatherSelect &&
+      Array.from(weatherSelect.options).some((option) => option.value === pendingWeather)
+    ) {
+      weatherSelect.value = pendingWeather;
+    }
+    const alwaysOnTop = document.getElementById('always-on-top');
+    if (alwaysOnTop) {
+      alwaysOnTop.title = alwaysOnTop.disabled
+        ? t('Desktop layer mode keeps the widget behind normal windows.')
+        : '';
+    }
+    syncLanguageSelectOptions();
+    renderLanguagePackList();
+    updateLanguageSummaryText();
+    renderProfileSyncWarning();
+    if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
+    renderUpdateButtonLabels();
+    settingsUiHooks?.relocalizeUpdateStatus?.();
+    syncWeatherEffectsAvailability();
+    if (hasDraftColorPreview || isCustomEditorActive) {
+      // Rebuilding the swatches would reset the custom color draft; relabel only.
+      updateThemeOptionsLabel();
+      updateThemeSummary();
+    } else {
+      renderColorThemeOptions();
+    }
+    updatePrimaryCardSummary();
+    if (hydratedPersonalizationSections.has('primary-cards-section')) {
+      renderPrimaryCardsEntityList();
+    }
+    if (hydratedPersonalizationSections.has('custom-entity-icons-section')) {
+      renderCustomEntityIconsList();
+    } else {
+      updateCustomEntityIconSummary();
+    }
+    const noneOption = document.querySelector(
+      '#primary-media-player-menu .custom-dropdown-option[data-value=""]'
+    );
+    if (noneOption) {
+      noneOption.textContent = t('None (Hide Media Tile)');
+      if (noneOption.classList.contains('selected')) {
+        const valueSpan = document.querySelector('.custom-dropdown-value');
+        if (valueSpan) valueSpan.textContent = noneOption.textContent;
+      }
+    }
+    if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
+    relabelAlertAdvancedOptions();
+    relocalizePopupHotkeyText();
+    void refreshDesktopIntegration().catch((error) => {
+      log.error('Failed to refresh desktop integration text:', error);
+    });
+  } catch (error) {
+    log.error('Failed to relocalize settings:', error);
+  }
+}
+
+// setLocaleBootstrap() stamps <html lang> on every locale refresh, including the one that
+// follows a language change in Settings, so watching it keeps the open dialog in one language.
+function observeSettingsLocale() {
+  if (settingsLocaleObserver || typeof MutationObserver !== 'function') return;
+  settingsLocaleObserver = new MutationObserver(() => relocalizeOpenSettings());
+  settingsLocaleObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['lang', 'dir'],
+  });
 }
 
 /**
@@ -3992,6 +4025,7 @@ function bindLanguageSettingsUi() {
  * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
  * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
  * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ * @param {Function} [uiHooks.relocalizeUpdateStatus] - Called after a language change to re-render the update status line.
  * @param {Function} [uiHooks.renderActiveTab] - Called after save to fully re-render the active UI tab when available.
  * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
@@ -3999,6 +4033,8 @@ function bindLanguageSettingsUi() {
 async function openSettings(uiHooks) {
   try {
     settingsUiHooks = uiHooks || null;
+    settingsLocaleSignature = getSettingsLocaleSignature();
+    observeSettingsLocale();
     hydratedPersonalizationSections.clear();
 
     // Exit reorganize mode if active to prevent state conflicts
@@ -4027,11 +4063,13 @@ async function openSettings(uiHooks) {
 
       // Show warning if token was reset due to decryption failure
       if (state.CONFIG.tokenResetReason) {
-        let warningMessage = 'Your access token needs to be re-entered. ';
+        let warningMessage = t('Your access token needs to be re-entered.');
         if (state.CONFIG.tokenResetReason === 'encryption_unavailable') {
-          warningMessage += 'Encryption is not available on this system.';
+          warningMessage = t(
+            'Your access token needs to be re-entered. Encryption is not available on this system.'
+          );
         } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
-          warningMessage += 'Token decryption failed.';
+          warningMessage = t('Your access token needs to be re-entered. Token decryption failed.');
         }
         uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
@@ -4047,7 +4085,7 @@ async function openSettings(uiHooks) {
         !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.alwaysOnTop !== false;
       alwaysOnTop.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
       alwaysOnTop.title = alwaysOnTop.disabled
-        ? 'Desktop layer mode keeps the widget behind normal windows.'
+        ? t('Desktop layer mode keeps the widget behind normal windows.')
         : '';
     }
     if (hideOnBlur) {
@@ -4059,6 +4097,10 @@ async function openSettings(uiHooks) {
     if (followOmarchy) {
       followOmarchy.checked = !!state.CONFIG.ui?.followOmarchy;
       followOmarchy.disabled = !state.CONFIG.desktopAppearance;
+      // Like the Hyprland panel, the option only appears where Omarchy is detected.
+      document
+        .getElementById('follow-omarchy-group')
+        ?.classList.toggle('hidden', followOmarchy.disabled);
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
     if (allowPrereleaseUpdates) {
@@ -4076,6 +4118,7 @@ async function openSettings(uiHooks) {
         log.error('Failed to get login item settings:', error);
         startWithWindows.checked = false;
       }
+      loadedStartAtLogin = startWithWindows.checked;
     }
 
     bindLanguageSettingsUi();
@@ -4085,15 +4128,14 @@ async function openSettings(uiHooks) {
     updateLanguageSummaryText();
     refreshLanguagePackListInBackground(true);
 
+    renderProfileSyncWarning();
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
 
-    // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
-    // Formula: scale = 1 + (opacity - 0.5) * 198
-    const sliderScale = Math.round(1 + (storedOpacity - 0.5) * 198);
+    const sliderScale = opacityToSliderValue(storedOpacity);
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
 
@@ -4169,6 +4211,8 @@ async function openSettings(uiHooks) {
       }
     }
 
+    renderUpdateButtonLabels();
+
     // Call UI hooks passed from renderer.js
     if (uiHooks) {
       uiHooks.initUpdateUI();
@@ -4205,21 +4249,6 @@ async function openSettings(uiHooks) {
     setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS, {
       renderList: shouldRenderPrimaryCardsList,
     });
-
-    const desktopPinsSection = document.getElementById('desktop-pins-section');
-    const desktopPinsList = document.getElementById('desktop-pins-list');
-    if (desktopPinsList) desktopPinsList.innerHTML = '';
-    const shouldRenderDesktopPinsList = !desktopPinsSection?.classList.contains('collapsed');
-    setPendingDesktopPins(getSavedDesktopPins());
-    initDesktopPinsUI();
-    const desktopPinsSearch = document.getElementById('desktop-pins-search');
-    if (desktopPinsSearch) desktopPinsSearch.value = '';
-    if (shouldRenderDesktopPinsList) {
-      renderDesktopPinsList();
-      hydratedPersonalizationSections.add('desktop-pins-section');
-    } else {
-      updateDesktopPinsSummary();
-    }
 
     const customIconsSection = document.getElementById('custom-entity-icons-section');
     const customIconsList = document.getElementById('custom-entity-icons-list');
@@ -4272,6 +4301,7 @@ function closeSettings() {
     cancelPreviewWindowEffects();
     if (previewState) {
       restorePreviewWindowEffects();
+      applyUiPreferences(state.CONFIG?.ui || {});
       previewState = null;
     }
     if (hasDraftColorPreview) {
@@ -4289,7 +4319,6 @@ function closeSettings() {
     previewBackground = null;
     pendingBackground = null;
     pendingPrimaryCards = null;
-    pendingDesktopPins = {};
     pendingCustomEntityIcons = {};
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
@@ -4375,19 +4404,52 @@ function setHomeAssistantOAuthBusy(isBusy, { cancellable = false } = {}) {
   setConnectionStatusBusy(document.getElementById('ha-oauth-status'), isBusy);
 }
 
+let renderedHomeAssistantAuthState = '';
+
+function getHomeAssistantAuthState(homeAssistant) {
+  return JSON.stringify([
+    homeAssistant.authMethod || '',
+    homeAssistant.oauthStatus || '',
+    homeAssistant.oauthLastError || '',
+    homeAssistant.oauthLastErrorCode || '',
+  ]);
+}
+
+// A new sign-in is only offered when one is needed: no authorization yet, an expired one, or a URL
+// edited to another server. While the saved authorization is good but Home Assistant cannot be
+// reached, the button retries restoring it; once connected there is nothing to do.
+function getHomeAssistantConnectAction() {
+  const homeAssistant = state.CONFIG?.homeAssistant || {};
+  if (homeAssistant.authMethod !== 'oauth') return 'connect';
+  const typedUrl = normalizeBaseUrl(document.getElementById('ha-url')?.value || '');
+  const sameServer = !typedUrl || typedUrl === normalizeBaseUrl(homeAssistant.url || '');
+  if (!sameServer || homeAssistant.oauthStatus === 'reauth_required') return 'reconnect';
+  return homeAssistant.oauthStatus === 'connected' ? 'none' : 'retry';
+}
+
+function updateHomeAssistantConnectButton() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  if (!connectButton) return;
+  const action = getHomeAssistantConnectAction();
+  connectButton.dataset.action = action;
+  connectButton.classList.toggle('hidden', action === 'none');
+  connectButton.textContent =
+    action === 'retry'
+      ? t('Retry')
+      : action === 'connect'
+        ? t('Connect with Home Assistant')
+        : t('Reconnect with Home Assistant');
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
-  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
   const legacySettings = document.getElementById('legacy-ha-token-settings');
 
-  if (connectButton) {
-    connectButton.textContent = usesOAuth
-      ? t('Reconnect with Home Assistant')
-      : t('Connect with Home Assistant');
-  }
+  updateHomeAssistantConnectButton();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -4405,13 +4467,42 @@ function updateHomeAssistantAuthUi() {
   } else if (homeAssistant.oauthStatus === 'restoring') {
     setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
   } else if (homeAssistant.oauthStatus === 'reauth_required') {
-    setHomeAssistantOAuthStatus(t('Authorization expired. Connect again to continue.'), 'error');
-  } else {
     setHomeAssistantOAuthStatus(
-      homeAssistant.oauthLastError ||
-        t('Home Assistant is offline. Authorization will retry automatically.'),
+      describeHomeAssistantOAuthReauthReason(homeAssistant) ||
+        t(
+          'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+        ),
       'error'
     );
+  } else {
+    setHomeAssistantOAuthStatus(describeHomeAssistantOAuthRefreshError(homeAssistant), 'error');
+  }
+}
+
+// Main can change the authorization state while Settings is open, for example when a refresh finds
+// the authorization revoked. Keep the status line truthful unless a pairing is showing progress.
+function refreshHomeAssistantAuthStatus() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (document.getElementById('connect-ha-oauth-btn')?.getAttribute('aria-busy') === 'true') return;
+  // Other config echoes (an autosaved toggle) must not reset the section the user is working in.
+  if (
+    getHomeAssistantAuthState(state.CONFIG?.homeAssistant || {}) === renderedHomeAssistantAuthState
+  )
+    return;
+  updateHomeAssistantAuthUi();
+}
+
+async function retryHomeAssistantOAuthFromSettings() {
+  setHomeAssistantOAuthBusy(true);
+  setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
+  try {
+    await window.electronAPI.refreshHomeAssistantOAuth();
+  } catch (error) {
+    log.warn('Retrying Home Assistant authorization failed:', error);
+  } finally {
+    setHomeAssistantOAuthBusy(false);
+    updateHomeAssistantAuthUi();
   }
 }
 
@@ -4425,7 +4516,7 @@ async function startHomeAssistantOAuthFromSettings() {
   setHomeAssistantOAuthBusy(true, { cancellable: true });
   setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
   try {
-    const result = await window.electronAPI.startHomeAssistantOAuth(validation.url);
+    const result = await startHomeAssistantPairing(window.electronAPI, validation.url);
     applyPersistedConfigResponse(result.config);
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || validation.url;
     updateHomeAssistantAuthUi();
@@ -4440,10 +4531,7 @@ async function startHomeAssistantOAuthFromSettings() {
         setHomeAssistantOAuthStatus(t('Home Assistant authorization canceled'), 'pending');
       }
     } else {
-      setHomeAssistantOAuthStatus(
-        error?.message || t('Home Assistant authorization failed'),
-        'error'
-      );
+      setHomeAssistantOAuthStatus(describeHomeAssistantOAuthFailure(error), 'error');
     }
   } finally {
     setHomeAssistantOAuthBusy(false);
@@ -4470,8 +4558,18 @@ async function disconnectHomeAssistantOAuthFromSettings() {
     const result = await window.electronAPI.disconnectHomeAssistantOAuth();
     applyPersistedConfigResponse(result.config);
     updateHomeAssistantAuthUi();
-    if (result.warning) showToast(result.warning, 'warning', 5000);
-    else showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+    // The warning is main-process English; it always means the remote revocation is unconfirmed.
+    if (result.warning) {
+      showToast(
+        t(
+          'Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.'
+        ),
+        'warning',
+        5000
+      );
+    } else {
+      showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+    }
   } catch (error) {
     setHomeAssistantOAuthStatus(error?.message || t('Could not disconnect authorization'), 'error');
   } finally {
@@ -4488,8 +4586,13 @@ function bindHomeAssistantOAuthUi() {
     cancelButton.dataset.initialized = 'true';
   }
   if (connectButton && connectButton.dataset.initialized !== 'true') {
-    connectButton.addEventListener('click', () => void startHomeAssistantOAuthFromSettings());
+    connectButton.addEventListener('click', () =>
+      getHomeAssistantConnectAction() === 'retry'
+        ? void retryHomeAssistantOAuthFromSettings()
+        : void startHomeAssistantOAuthFromSettings()
+    );
     connectButton.dataset.initialized = 'true';
+    document.getElementById('ha-url')?.addEventListener('input', updateHomeAssistantConnectButton);
   }
   if (disconnectButton && disconnectButton.dataset.initialized !== 'true') {
     disconnectButton.addEventListener(
@@ -4571,7 +4674,6 @@ async function saveSettings() {
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const languageSelect = document.getElementById('language-select');
     const weatherEntitySelect = document.getElementById('weather-entity-select');
-    const densitySelect = document.getElementById('density-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     const profileSyncEnabled = document.getElementById('profile-sync-enabled');
@@ -4600,7 +4702,7 @@ async function saveSettings() {
       }
       nextConfig.homeAssistant.url = validation.url;
     } else if (haUrl && !haUrl.value.trim()) {
-      showToast('Home Assistant URL cannot be empty', 'error', 3000);
+      showToast(t('Home Assistant URL cannot be empty'), 'error', 3000);
       return;
     }
 
@@ -4657,11 +4759,7 @@ async function saveSettings() {
       : false;
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
-    nextConfig.ui.density = densitySelect?.value === 'compact' ? 'compact' : 'comfortable';
-    const activeTileGlow = document.getElementById('active-tile-glow');
-    nextConfig.ui.activeTileGlow = activeTileGlow
-      ? !!activeTileGlow.checked
-      : nextConfig.ui.activeTileGlow !== false;
+    nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
     if (enableInteractionDebugLogs) {
       nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
     }
@@ -4687,10 +4785,9 @@ async function saveSettings() {
     // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');
 
-    // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
       const sliderValue = parseInt(opacitySlider.value) || 90;
-      nextConfig.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+      nextConfig.opacity = sliderValueToOpacity(sliderValue, currentConfig.opacity);
     }
 
     nextConfig.globalHotkeys = nextConfig.globalHotkeys || { enabled: false, hotkeys: {} };
@@ -4708,7 +4805,6 @@ async function saveSettings() {
     nextConfig.primaryMediaPlayer = selectedValue || null;
 
     nextConfig.primaryCards = getPendingPrimaryCards();
-    nextConfig.desktopPins = getPendingDesktopPinsForSave();
     nextConfig.customEntityIcons = getPendingCustomEntityIconsForSave();
 
     const nextProfileSync = ensureProfileSyncConfig(nextConfig);
@@ -4728,7 +4824,7 @@ async function saveSettings() {
     nextProfileSync.passphraseEncrypted = false;
 
     if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
-      showToast('Choose a sync folder before enabling profile sync.', 'error', 3200);
+      showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
       return;
     }
 
@@ -4741,9 +4837,13 @@ async function saveSettings() {
       previousSyncFilePath !== nextSyncFilePath;
     if (syncPathChanged) {
       const copyAndSwitch = await showConfirm(
-        'Sync Folder Changed',
-        'Copy the existing sync data file into the new folder and switch sync there?',
-        { confirmText: 'Copy & Switch', cancelText: 'Keep Current', confirmClass: 'btn-primary' }
+        t('Sync Folder Changed'),
+        t('Copy the existing sync data file into the new folder and switch sync there?'),
+        {
+          confirmText: t('Copy & Switch'),
+          cancelText: t('Keep Current'),
+          confirmClass: 'btn-primary',
+        }
       );
 
       const revertToPreviousSyncPath = () => {
@@ -4756,10 +4856,14 @@ async function saveSettings() {
 
       if (!copyAndSwitch) {
         revertToPreviousSyncPath();
-        showToast('Kept current sync folder.', 'warning', 2200);
+        showToast(t('Kept current sync folder.'), 'warning', 2200);
       } else if (!window.electronAPI?.copyProfileSyncFile) {
         revertToPreviousSyncPath();
-        showToast('Copy is unavailable on this build. Kept current sync folder.', 'warning', 3200);
+        showToast(
+          t('Copy is unavailable on this build. Kept current sync folder.'),
+          'warning',
+          3200
+        );
       } else {
         let copyResult = await window.electronAPI.copyProfileSyncFile(
           previousSyncFilePath,
@@ -4768,17 +4872,19 @@ async function saveSettings() {
         );
         if (copyResult?.status === 'destination_exists') {
           const overwrite = await showConfirm(
-            'Sync File Already Exists',
-            'A sync file already exists in the new folder. Overwrite it with your current synced data?',
+            t('Sync File Already Exists'),
+            t(
+              'A sync file already exists in the new folder. Overwrite it with your current synced data?'
+            ),
             {
-              confirmText: 'Overwrite & Switch',
-              cancelText: 'Keep Current',
+              confirmText: t('Overwrite & Switch'),
+              cancelText: t('Keep Current'),
               confirmClass: 'btn-danger',
             }
           );
           if (!overwrite) {
             revertToPreviousSyncPath();
-            showToast('Kept current sync folder.', 'warning', 2200);
+            showToast(t('Kept current sync folder.'), 'warning', 2200);
           } else {
             copyResult = await window.electronAPI.copyProfileSyncFile(
               previousSyncFilePath,
@@ -4790,17 +4896,21 @@ async function saveSettings() {
 
         if (nextProfileSync.cloudFilePath !== previousSyncFilePath) {
           if (copyResult?.status === 'source_missing') {
-            showToast('No existing sync file found. Switched to the new folder.', 'warning', 3200);
+            showToast(
+              t('No existing sync file found. Switched to the new folder.'),
+              'warning',
+              3200
+            );
           } else if (!copyResult?.ok) {
             revertToPreviousSyncPath();
             showToast(
-              copyResult?.error || 'Failed to copy sync file. Kept current sync folder.',
+              copyResult?.error || t('Failed to copy sync file. Kept current sync folder.'),
               'error',
               3400
             );
           } else if (copyResult?.copied) {
             syncFileCopiedThisSave = true;
-            showToast('Copied sync file and switched folders.', 'success', 2200);
+            showToast(t('Copied sync file and switched folders.'), 'success', 2200);
           }
         }
       }
@@ -4838,7 +4948,9 @@ async function saveSettings() {
       const canReuseSavedPassphrase = hasSavedPassphrase && !removingRememberedPassphrase;
       if (!typedPassphrase && !canReuseSavedPassphrase) {
         showToast(
-          'Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.',
+          t(
+            'Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.'
+          ),
           'error',
           3400
         );
@@ -4850,7 +4962,7 @@ async function saveSettings() {
         // but defer the actual keychain write until after the config is safely
         // persisted so a failed save can never overwrite a previously stored secret.
         if (!window.electronAPI?.setProfileSyncPassphrase) {
-          showToast('This build cannot save a sync passphrase.', 'error', 3400);
+          showToast(t('This build cannot save a sync passphrase.'), 'error', 3400);
           return;
         }
         // Predicted metadata: rememberPassphrase is already the requested value; a
@@ -4880,7 +4992,7 @@ async function saveSettings() {
           !!nextProfileSync.encryptionEnabled
         );
         if (!passphraseResult?.success) {
-          throw new Error(passphraseResult?.error || 'Failed to save sync passphrase.');
+          throw new Error(passphraseResult?.error || t('Failed to save sync passphrase.'));
         }
         if (passphraseResult.warning) {
           showToast(passphraseResult.warning, 'warning', 5000);
@@ -4940,7 +5052,12 @@ async function saveSettings() {
       }
     }
 
-    if (startWithWindows) {
+    // Only a changed, supported checkbox touches the OS; isolated profiles report it unsupported.
+    if (
+      startWithWindows &&
+      !startWithWindows.disabled &&
+      startWithWindows.checked !== loadedStartAtLogin
+    ) {
       try {
         const result = await window.electronAPI.setLoginItemSettings(startWithWindows.checked);
         if (!result.success) {
@@ -4954,7 +5071,7 @@ async function saveSettings() {
 
     if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
       showToast(
-        'Custom icons saved. Icons apply to entities already shown in your tabs/tiles.',
+        t('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.'),
         'success',
         2600
       );
@@ -4998,7 +5115,9 @@ async function saveSettings() {
     if (opacityNeedsRestart) {
       if (
         confirm(
-          'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
+          t(
+            'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
+          )
         )
       ) {
         await window.electronAPI
@@ -5016,7 +5135,7 @@ async function saveSettings() {
       const res = await window.electronAPI.setAlwaysOnTop(state.CONFIG.alwaysOnTop);
       const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
-        if (confirm('Changing "Always on top" may require a restart. Restart now?')) {
+        if (confirm(t('Changing "Always on top" may require a restart. Restart now?'))) {
           // Force window to regain focus after confirm dialog (Windows focus bug workaround)
           await window.electronAPI
             .focusWindow()
@@ -5066,13 +5185,15 @@ async function saveSettings() {
     log.error('Failed to save config:', error);
     let failureMessage;
     if (configPersisted) {
-      failureMessage =
-        'Settings were saved, but one or more changes could not be applied immediately.';
+      failureMessage = t(
+        'Settings were saved, but one or more changes could not be applied immediately.'
+      );
     } else if (syncFileCopiedThisSave) {
-      failureMessage =
-        'Settings could not be saved. No configuration changes were applied, but the sync file was already copied to the new folder.';
+      failureMessage = t(
+        'Settings could not be saved. No configuration changes were applied, but the sync file was already copied to the new folder.'
+      );
     } else {
-      failureMessage = 'Settings could not be saved. No configuration changes were applied.';
+      failureMessage = t('Settings could not be saved. No configuration changes were applied.');
     }
     showToast(failureMessage, 'error', 4000);
   }
@@ -5092,8 +5213,9 @@ function renderAlertsListInline() {
     if (Object.keys(alerts).length === 0) {
       const noAlertsMsg = document.createElement('div');
       noAlertsMsg.className = 'no-alerts-message';
-      noAlertsMsg.textContent =
-        'No alerts configured yet. Click the button below to add your first alert.';
+      noAlertsMsg.textContent = t(
+        'No alerts configured yet. Click the button below to add your first alert.'
+      );
       noAlertsMsg.style.padding = '20px';
       noAlertsMsg.style.textAlign = 'center';
       noAlertsMsg.style.color = 'var(--text-muted)';
@@ -5110,8 +5232,10 @@ function renderAlertsListInline() {
 
       const alertConfig = alerts[entityId];
       let alertType = alertConfig.onNumericThreshold
-        ? `${t(alertConfig.comparison === 'below' ? 'Below threshold' : 'Above threshold')} ${Number(alertConfig.threshold)}`
-        : t(alertConfig.onStateChange ? 'State Change' : 'Specific State');
+        ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${formatNumber(Number(alertConfig.threshold))}`
+        : alertConfig.onStateChange
+          ? t('State Change')
+          : t('Specific State');
       if (alertConfig.onSpecificState) {
         alertType += ` (${alertConfig.targetState})`;
       }
@@ -5125,8 +5249,8 @@ function renderAlertsListInline() {
           </div>
         </div>
         <div class="alert-actions">
-          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">Edit</button>
-          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">Remove</button>
+          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Edit'))}</button>
+          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Remove'))}</button>
         </div>
       `;
 
@@ -5136,7 +5260,7 @@ function renderAlertsListInline() {
     // Add "Add new alert" button
     const addButton = document.createElement('button');
     addButton.className = 'btn btn-secondary btn-block add-alert-btn';
-    addButton.textContent = '+ Add New Alert';
+    addButton.textContent = `+ ${t('Add New Alert')}`;
     addButton.onclick = () => openAlertEntityPicker();
     addButton.style.marginTop = '10px';
     alertsList.appendChild(addButton);
@@ -5192,8 +5316,9 @@ function populateAlertEntityPicker() {
     list.innerHTML = '';
 
     if (entities.length === 0) {
-      list.innerHTML =
-        '<div class="no-entities-message">No entities available. Make sure you\'re connected to Home Assistant.</div>';
+      list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
+        t("No entities available. Make sure you're connected to Home Assistant.")
+      )}</div>`;
       return;
     }
 
@@ -5216,7 +5341,7 @@ function populateAlertEntityPicker() {
           </div>
         </div>
         <button class="entity-selector-btn ${hasAlert ? 'edit' : 'add'}" data-entity-id="${utils.escapeHtmlAttribute(entityId)}">
-          ${hasAlert ? '⚙️ Edit Alert' : '+ Add Alert'}
+          ${hasAlert ? `⚙️ ${utils.escapeHtml(t('Edit Alert'))}` : `+ ${utils.escapeHtml(t('Add Alert'))}`}
         </button>
       `;
 
@@ -5225,7 +5350,7 @@ function populateAlertEntityPicker() {
         const badge = document.createElement('span');
         badge.className = 'alert-badge';
         badge.textContent = '🔔';
-        badge.title = 'Alert configured';
+        badge.title = t('Alert configured');
         badge.style.marginLeft = '8px';
         badge.style.fontSize = '14px';
         item.querySelector('.entity-item-main').appendChild(badge);
@@ -5280,6 +5405,12 @@ function populateAlertEntityPicker() {
 
 let currentAlertEntity = null;
 
+function relabelAlertAdvancedOptions(root = document) {
+  root.querySelectorAll('#alert-advanced-options [data-alert-label-key]').forEach((node) => {
+    node.textContent = t(node.dataset.alertLabelKey);
+  });
+}
+
 function openAlertConfigModal(entityId) {
   try {
     if (!entityId) {
@@ -5305,13 +5436,21 @@ function openAlertConfigModal(entityId) {
       group.className = 'alert-advanced-options form-group';
       const addField = (id, labelText, type, options = []) => {
         const label = document.createElement('label');
-        label.textContent = t(labelText);
+        // The group is built once and reused, so the English keys stay on the nodes and
+        // relabelAlertAdvancedOptions() translates them each time the dialog opens.
+        const text = document.createElement('span');
+        text.dataset.alertLabelKey = labelText;
+        label.append(text);
         if (type === 'checkbox') label.className = 'workflow-checkbox';
         const input = document.createElement(type === 'select' ? 'select' : 'input');
         input.id = id;
         if (type !== 'checkbox') input.className = 'form-control';
         if (type === 'select')
-          options.forEach(([value, text]) => input.add(new Option(t(text), value)));
+          options.forEach(([value, key]) => {
+            const option = new Option(key, value);
+            option.dataset.alertLabelKey = key;
+            input.add(option);
+          });
         else input.type = type;
         if (type === 'number') {
           input.min = '0';
@@ -5340,6 +5479,7 @@ function openAlertConfigModal(entityId) {
       addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
       modal.querySelector('.modal-body').append(group);
     }
+    relabelAlertAdvancedOptions(modal);
     modal.querySelector('.alert-type-options').parentElement.hidden = true;
     const condition = modal.querySelector('#alert-condition');
     condition.value = alertConfig?.onNumericThreshold
@@ -5372,7 +5512,9 @@ function openAlertConfigModal(entityId) {
     quietEnabled.onchange = syncQuietHours;
     const entity = state.STATES[entityId];
     if (title)
-      title.textContent = `Configure Alert - ${entity ? utils.getEntityDisplayName(entity) : entityId}`;
+      title.textContent = t('Configure Alert - {{name}}', {
+        name: entity ? utils.getEntityDisplayName(entity) : entityId,
+      });
 
     // The hidden legacy radios are kept in sync by the condition select so the save path
     // can keep reading them.
@@ -5467,11 +5609,11 @@ async function saveAlert() {
     renderAlertsListInline();
 
     // showToast already imported at top
-    showToast('Alert saved successfully', 'success', 2000);
+    showToast(t('Alert saved successfully'), 'success', 2000);
   } catch (error) {
     log.error('Error saving alert:', error);
     // showToast already imported at top
-    showToast('Error saving alert', 'error', 2000);
+    showToast(t('Error saving alert'), 'error', 2000);
   }
 }
 
@@ -5482,10 +5624,14 @@ async function removeAlert(entityId) {
     // showToast, showConfirm, utils already imported at top
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
-    const confirmed = await showConfirm('Remove Alert', `Remove alert for "${entityName}"?`, {
-      confirmText: 'Remove',
-      confirmClass: 'btn-danger',
-    });
+    const confirmed = await showConfirm(
+      t('Remove Alert'),
+      t('Remove alert for "{{name}}"?', { name: entityName }),
+      {
+        confirmText: t('Remove'),
+        confirmClass: 'btn-danger',
+      }
+    );
 
     if (!confirmed) return;
 
@@ -5496,12 +5642,12 @@ async function removeAlert(entityId) {
       applyPersistedConfigResponse(updatedConfig);
       renderAlertsListInline();
 
-      showToast('Alert removed', 'success', 2000);
+      showToast(t('Alert removed'), 'success', 2000);
     }
   } catch (error) {
     log.error('Error removing alert:', error);
     // showToast already imported at top
-    showToast('Error removing alert', 'error', 2000);
+    showToast(t('Error removing alert'), 'error', 2000);
   }
 }
 
@@ -5603,7 +5749,7 @@ function populateMediaPlayerDropdown() {
     noneOption.className = 'custom-dropdown-option';
     noneOption.setAttribute('role', 'option');
     noneOption.setAttribute('data-value', '');
-    noneOption.textContent = 'None (Hide Media Tile)';
+    noneOption.textContent = t('None (Hide Media Tile)');
     menu.appendChild(noneOption);
 
     // Get all media player entities
@@ -5643,7 +5789,7 @@ function populateMediaPlayerDropdown() {
     const selectedOption = Array.from(options).find(
       (opt) => opt.getAttribute('data-value') === currentValue
     );
-    const displayText = selectedOption ? selectedOption.textContent : 'None (Hide Media Tile)';
+    const displayText = selectedOption ? selectedOption.textContent : t('None (Hide Media Tile)');
     setCustomDropdownValue(currentValue, displayText);
 
     // Initialize dropdown behavior (only once)
@@ -5658,6 +5804,60 @@ function populateMediaPlayerDropdown() {
 
 // Popup Hotkey Management
 let isCapturingPopupHotkey = false;
+let popupHotkeyAvailable = null;
+
+// The popup hotkey card's labels depend on the platform's shortcut backend.
+function renderPopupHotkeyModeText() {
+  const usesLinuxShortcutBackend = window.electronAPI?.platform === 'linux';
+  const modeLabel = document.getElementById('popup-hotkey-mode-label');
+  const helpText = document.getElementById('popup-hotkey-help-text');
+  const platformNotice = document.getElementById('popup-hotkey-platform-notice');
+  if (usesLinuxShortcutBackend) {
+    if (modeLabel) modeLabel.textContent = t('Popup Hotkey (Press to Bring Window to Front)');
+    if (helpText) {
+      helpText.textContent = t(
+        'Configure a global hotkey that brings the window to front when pressed.'
+      );
+    }
+    if (platformNotice) {
+      platformNotice.hidden = false;
+      platformNotice.textContent = t(
+        'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.'
+      );
+    }
+  } else {
+    if (modeLabel) modeLabel.textContent = t('Popup Hotkey (Hold to Bring Window to Front)');
+    if (helpText) {
+      helpText.textContent = t(
+        'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
+      );
+    }
+    if (platformNotice) {
+      platformNotice.hidden = true;
+      platformNotice.textContent = '';
+    }
+  }
+}
+
+// Labels, placeholders and notices of the popup hotkey card in the active language, without
+// touching the recorded hotkey or an in-progress capture.
+function relocalizePopupHotkeyText() {
+  renderPopupHotkeyModeText();
+  const input = document.getElementById('popup-hotkey-input');
+  const setBtn = document.getElementById('popup-hotkey-set-btn');
+  if (setBtn) setBtn.textContent = isCapturingPopupHotkey ? t('Cancel') : t('Set Hotkey');
+  if (input) {
+    if (isCapturingPopupHotkey) {
+      input.value = t('Press keys...');
+    } else if (popupHotkeyAvailable === false) {
+      input.placeholder = t('Not available on this platform');
+    } else {
+      input.placeholder = state.CONFIG?.popupHotkey || t('Not set (click Set Hotkey)');
+    }
+  }
+  const notice = document.querySelector('#popup-hotkey-container .unavailable-notice');
+  if (notice) notice.textContent = t('Popup hotkey feature is not available on this platform.');
+}
 
 async function initializePopupHotkey() {
   try {
@@ -5669,52 +5869,30 @@ async function initializePopupHotkey() {
     const setBtn = document.getElementById('popup-hotkey-set-btn');
     const clearBtn = document.getElementById('popup-hotkey-clear-btn');
     const container = document.getElementById('popup-hotkey-container');
-    const modeLabel = document.getElementById('popup-hotkey-mode-label');
-    const helpText = document.getElementById('popup-hotkey-help-text');
-    const platformNotice = document.getElementById('popup-hotkey-platform-notice');
     await refreshDesktopIntegration();
 
     if (!input || !setBtn || !clearBtn) return;
     const currentHotkey = state.CONFIG.popupHotkey || '';
+    if (!isCapturingPopupHotkey) setBtn.textContent = t('Set Hotkey');
 
     if (isAvailable) {
       container?.querySelector('.unavailable-notice')?.remove();
       input.disabled = false;
       input.value = currentHotkey;
-      input.placeholder = currentHotkey || 'Not set (click Set Hotkey)';
+      input.placeholder = currentHotkey || t('Not set (click Set Hotkey)');
       setBtn.disabled = false;
       clearBtn.disabled = false;
       clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
     }
 
-    if (usesLinuxShortcutBackend) {
-      if (modeLabel) modeLabel.textContent = 'Popup Hotkey (Press to Bring Window to Front)';
-      if (helpText) {
-        helpText.textContent =
-          'Configure a global hotkey that brings the window to front when pressed.';
-      }
-      if (platformNotice) {
-        platformNotice.hidden = false;
-        platformNotice.textContent =
-          'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.';
-      }
-    } else {
-      if (modeLabel) modeLabel.textContent = 'Popup Hotkey (Hold to Bring Window to Front)';
-      if (helpText) {
-        helpText.textContent =
-          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.';
-      }
-      if (platformNotice) {
-        platformNotice.hidden = true;
-        platformNotice.textContent = '';
-      }
-    }
+    popupHotkeyAvailable = isAvailable;
+    renderPopupHotkeyModeText();
 
     // If not available, disable the UI and show a message
     if (!isAvailable) {
       input.disabled = true;
       input.value = '';
-      input.placeholder = 'Not available on this platform';
+      input.placeholder = t('Not available on this platform');
       setBtn.disabled = true;
       clearBtn.disabled = true;
       clearBtn.style.display = 'none';
@@ -5726,7 +5904,7 @@ async function initializePopupHotkey() {
         notice.style.color = '#888';
         notice.style.fontSize = '12px';
         notice.style.marginTop = '8px';
-        notice.textContent = 'Popup hotkey feature is not available on this platform.';
+        notice.textContent = t('Popup hotkey feature is not available on this platform.');
         container.appendChild(notice);
       }
       return;
@@ -5798,10 +5976,10 @@ async function initializePopupHotkey() {
           // showToast already imported at top
           showToast(
             requestedValue
-              ? 'Toggle mode enabled: tap to show/hide'
+              ? t('Toggle mode enabled: tap to show/hide')
               : usesLinuxShortcutBackend
-                ? 'Press mode enabled: press to bring the window to front'
-                : 'Hold mode enabled: hold to show, release to restore',
+                ? t('Press mode enabled: press to bring the window to front')
+                : t('Hold mode enabled: hold to show, release to restore'),
             'success',
             2000
           );
@@ -5860,8 +6038,8 @@ async function initializePopupHotkey() {
           // showToast already imported at top
           showToast(
             requestedValue
-              ? 'Window will hide when popup hotkey is released'
-              : 'Window will stay visible when popup hotkey is released',
+              ? t('Window will hide when popup hotkey is released')
+              : t('Window will stay visible when popup hotkey is released'),
             'success',
             2000
           );
@@ -5908,11 +6086,11 @@ async function initializePopupHotkey() {
         const result = await window.electronAPI.unregisterPopupHotkey();
         if (result.success) {
           input.value = '';
-          input.placeholder = 'Not set (click Set Hotkey)';
+          input.placeholder = t('Not set (click Set Hotkey)');
           clearBtn.style.display = 'none';
           state.CONFIG.popupHotkey = '';
           // showToast already imported at top
-          showToast('Popup hotkey cleared', 'success');
+          showToast(t('Popup hotkey cleared'), 'success');
           if (result.warning) {
             showToast(result.warning, 'warning', 4000);
           }
@@ -5920,7 +6098,7 @@ async function initializePopupHotkey() {
       } catch (error) {
         log.error('Failed to clear popup hotkey:', error);
         // showToast already imported at top
-        showToast('Failed to clear popup hotkey', 'error');
+        showToast(t('Failed to clear popup hotkey'), 'error');
       }
     };
 
@@ -5940,18 +6118,20 @@ async function initializePopupHotkey() {
             await refreshDesktopIntegration();
             showToast(
               result.binding?.requiresCompositorBinding
-                ? 'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
-                : `Popup hotkey set to ${hotkey}`,
+                ? t(
+                    'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
+                  )
+                : t('Popup hotkey set to {{hotkey}}', { hotkey }),
               'success'
             );
           } else {
             // showToast already imported at top
-            showToast(result.error || 'Failed to set popup hotkey', 'error');
+            showToast(result.error || t('Failed to set popup hotkey'), 'error');
           }
         } catch (error) {
           log.error('Failed to set preset hotkey:', error);
           // showToast already imported at top
-          showToast('Failed to set popup hotkey', 'error');
+          showToast(t('Failed to set popup hotkey'), 'error');
         }
       };
     });
@@ -5966,11 +6146,11 @@ function startCapturingPopupHotkey() {
   const setBtn = document.getElementById('popup-hotkey-set-btn');
 
   if (input) {
-    input.value = 'Press keys...';
+    input.value = t('Press keys...');
     input.focus();
   }
   if (setBtn) {
-    setBtn.textContent = 'Cancel';
+    setBtn.textContent = t('Cancel');
     setBtn.classList.add('btn-danger');
     setBtn.classList.remove('btn-secondary');
   }
@@ -6023,19 +6203,19 @@ function startCapturingPopupHotkey() {
           await refreshDesktopIntegration();
           showToast(
             result.binding?.requiresCompositorBinding
-              ? 'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
-              : `Popup hotkey set to ${hotkey}`,
+              ? t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.')
+              : t('Popup hotkey set to {{hotkey}}', { hotkey }),
             'success'
           );
         } else {
           // showToast already imported at top
-          showToast(result.error || 'Failed to set popup hotkey', 'error');
+          showToast(result.error || t('Failed to set popup hotkey'), 'error');
           if (input) input.value = state.CONFIG.popupHotkey || '';
         }
       } catch (error) {
         log.error('Failed to register popup hotkey:', error);
         // showToast already imported at top
-        showToast('Failed to register popup hotkey', 'error');
+        showToast(t('Failed to register popup hotkey'), 'error');
         if (input) input.value = state.CONFIG.popupHotkey || '';
       }
 
@@ -6055,7 +6235,7 @@ function stopCapturingPopupHotkey() {
 
   if (input) {
     input.value = state.CONFIG.popupHotkey || '';
-    input.placeholder = state.CONFIG.popupHotkey || 'Not set (click Set Hotkey)';
+    input.placeholder = state.CONFIG.popupHotkey || t('Not set (click Set Hotkey)');
     input.blur();
 
     if (input._captureHandler) {
@@ -6065,7 +6245,7 @@ function stopCapturingPopupHotkey() {
   }
 
   if (setBtn) {
-    setBtn.textContent = 'Set Hotkey';
+    setBtn.textContent = t('Set Hotkey');
     setBtn.classList.remove('btn-danger');
     setBtn.classList.add('btn-secondary');
   }
@@ -6081,6 +6261,7 @@ export {
   closeSettings,
   saveSettings,
   previewWindowEffects,
+  reapplySettingsPreviews,
   syncWeatherEffectsAvailability,
   renderAlertsListInline,
   openAlertEntityPicker,
@@ -6092,6 +6273,7 @@ export {
   refreshPersonalizationSectionHeights,
   handleProfileSyncStatusUpdate,
   waitForLanguagePackRefresh,
+  refreshHomeAssistantAuthStatus,
 };
 
 async function refreshDesktopIntegration() {
@@ -6099,8 +6281,15 @@ async function refreshDesktopIntegration() {
   if (!panel || !window.electronAPI.getDesktopIntegration) return;
   const output = document.getElementById('desktop-bindings');
   // Keep the controls usable even before Hyprland detection succeeds.
-  document.getElementById('desktop-bindings-copy').onclick = () =>
-    navigator.clipboard.writeText(output.value);
+  document.getElementById('desktop-bindings-copy').onclick = async () => {
+    if (await copyTextToClipboard(output.value)) {
+      showToast(t('Bindings copied'), 'success');
+      return;
+    }
+    output.focus();
+    output.select();
+    showToast(t('Select and copy the bindings manually.'), 'info');
+  };
   document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
   const info = await window.electronAPI.getDesktopIntegration();
   panel.hidden = !info?.hyprland;
@@ -6112,9 +6301,15 @@ async function refreshDesktopIntegration() {
   };
   renderBindings();
   if (format) format.onchange = renderBindings;
+  const activationTime = Date.parse(info.lastActivation?.at || '');
   document.getElementById('desktop-integration-status').textContent = info.lastActivation
-    ? `Last shortcut received: ${info.lastActivation.id} at ${info.lastActivation.at}`
-    : 'No shortcut received yet. Press a configured shortcut, then refresh.';
+    ? t('Last shortcut received: {{id}} at {{time}}', {
+        id: info.lastActivation.id,
+        time: Number.isNaN(activationTime)
+          ? info.lastActivation.at
+          : formatDateTime(activationTime),
+      })
+    : t('No shortcut received yet. Press a configured shortcut, then refresh.');
   // A bind still written for a retired app id keeps working, but only the
   // panel and the log say so; the replacement is the binding shown above.
   const legacy = document.getElementById('desktop-integration-legacy');

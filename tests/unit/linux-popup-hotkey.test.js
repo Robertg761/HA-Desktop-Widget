@@ -123,6 +123,24 @@ describe('Linux popup hotkeys', () => {
     expect(controller.getRegisteredAccelerator()).toBe('');
   });
 
+  test('reports registration conflicts in the app language', () => {
+    const globalShortcut = createGlobalShortcutMock();
+    globalShortcut.register.mockReturnValueOnce(false);
+    const controller = createLinuxPopupHotkeyController({
+      globalShortcut,
+      log: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+      translate: (key) =>
+        ({
+          'Hotkey is likely in use by another application':
+            'Das Tastenkürzel wird wahrscheinlich von einer anderen Anwendung verwendet',
+        })[key] || key,
+    });
+
+    expect(controller.register('Ctrl+Shift+F12').error).toBe(
+      'Das Tastenkürzel wird wahrscheinlich von einer anderen Anwendung verwendet'
+    );
+  });
+
   test('replaces an existing popup shortcut without unregistering entity shortcuts', () => {
     const { controller, globalShortcut } = createController();
     globalShortcut.callbacks.set('Ctrl+1', jest.fn());

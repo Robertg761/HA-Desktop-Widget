@@ -102,6 +102,7 @@ const mockUiUtils = {
   }),
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(true),
+  copyTextToClipboard: jest.fn().mockResolvedValue(true),
 };
 
 const mockHotkeys = {
@@ -404,17 +405,6 @@ function createSettingsModalDOM() {
             <div id="primary-cards-list"></div>
           </div>
         </div>
-        <div id="desktop-pins-section" class="personalization-section collapsed">
-          <button type="button" id="desktop-pins-toggle" class="section-toggle" aria-expanded="false">
-            Desktop Pins
-          </button>
-          <div class="section-body">
-            <div id="desktop-pins-current"></div>
-            <input type="text" id="desktop-pins-search" />
-            <div id="desktop-pins-list"></div>
-            <div id="desktop-pins-summary"></div>
-          </div>
-        </div>
         <div id="custom-entity-icons-section" class="personalization-section collapsed">
           <button type="button" id="custom-entity-icons-toggle" class="section-toggle" aria-expanded="false">
             Custom Entity Icons
@@ -532,21 +522,6 @@ describe('Settings + Config Integration', () => {
       customIconsToggle.click();
     }
   };
-  const openSettingsWithDesktopPinsExpanded = async (uiHooks = undefined) => {
-    const config = state.CONFIG;
-    config.ui = config.ui || {};
-    config.ui.personalizationSectionsCollapsed = {
-      ...(config.ui.personalizationSectionsCollapsed || {}),
-      'desktop-pins-section': false,
-    };
-    state.setConfig(config);
-
-    await settings.openSettings(uiHooks);
-    const desktopPinsToggle = document.getElementById('desktop-pins-toggle');
-    if (desktopPinsToggle && desktopPinsToggle.getAttribute('aria-expanded') !== 'true') {
-      desktopPinsToggle.click();
-    }
-  };
 
   describe('Settings Open/Close Flow', () => {
     test('opening settings populates fields from config', async () => {
@@ -622,6 +597,82 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('open Settings follows the authorization when Home Assistant revokes it', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+      await settings.openSettings();
+      const status = document.getElementById('ha-oauth-status');
+      expect(status.textContent).toBe('Connected with Home Assistant authorization.');
+      const legacySettings = document.getElementById('legacy-ha-token-settings');
+      legacySettings.open = true;
+      settings.refreshHomeAssistantAuthStatus();
+      expect(legacySettings.open).toBe(true);
+
+      state.CONFIG.homeAssistant = {
+        ...state.CONFIG.homeAssistant,
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        oauthStatus: 'reauth_required',
+      };
+      settings.refreshHomeAssistantAuthStatus();
+
+      expect(status.textContent).toBe(
+        'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+      );
+      expect(document.getElementById('connect-ha-oauth-btn').textContent).toBe(
+        'Reconnect with Home Assistant'
+      );
+    });
+
+    test('offers Retry, not a new sign-in, while Home Assistant is only offline', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'oauth',
+        oauthStatus: 'offline',
+        oauthLastError: 'connect ECONNREFUSED',
+        oauthLastErrorCode: 'OAUTH_TOKEN_NETWORK',
+      };
+      await settings.openSettings();
+      const button = document.getElementById('connect-ha-oauth-btn');
+      const status = document.getElementById('ha-oauth-status');
+      expect(button.textContent).toBe('Retry');
+      expect(status.textContent).toBe(
+        'Home Assistant is offline. Authorization will retry automatically.'
+      );
+
+      mockElectronAPI.refreshHomeAssistantOAuth.mockResolvedValueOnce({
+        success: true,
+        oauthStatus: 'offline',
+      });
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.startHomeAssistantOAuth).not.toHaveBeenCalled();
+      expect(button.textContent).toBe('Retry');
+
+      // Another server typed into the URL field needs a new authorization.
+      const url = document.getElementById('ha-url');
+      url.value = 'https://other.example.test';
+      url.dispatchEvent(new Event('input'));
+      expect(button.textContent).toBe('Reconnect with Home Assistant');
+      expect(button.classList).not.toContain('hidden');
+
+      // A working authorization for this server needs no new sign-in.
+      url.value = 'https://ha.example.test';
+      state.CONFIG.homeAssistant = {
+        ...state.CONFIG.homeAssistant,
+        token: 'short-lived-access-token',
+        oauthStatus: 'connected',
+      };
+      settings.refreshHomeAssistantAuthStatus();
+      expect(button.classList).toContain('hidden');
+    });
+
     test('connect button delegates OAuth pairing to the main process', async () => {
       await settings.openSettings();
       document.getElementById('ha-url').value = 'https://ha.example.test';
@@ -690,6 +741,111 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(false);
       expect(status.dataset.busy).toBeUndefined();
       expect(status.querySelector('.connection-progress')).toBeNull();
+      expect(status.textContent).toBe('Home Assistant authorization canceled');
+    });
+
+    test('explains an unreachable URL before any browser opens', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'http://127.0.0.1:1';
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: false,
+        code: 'OAUTH_SERVER_UNREACHABLE',
+        error: 'Could not reach Home Assistant at that URL',
+      });
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(document.getElementById('ha-oauth-status').textContent).toBe(
+        'Could not reach Home Assistant at that URL.'
+      );
+      expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(false);
+    });
+
+    test('shows a known pairing failure in its own words, not the main-process text', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'https://ha.example.test';
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: false,
+        code: 'OAUTH_STATE_MISMATCH',
+        error: 'Home Assistant returned an invalid OAuth state',
+      });
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(document.getElementById('ha-oauth-status').textContent).toBe(
+        'Home Assistant sent back an authorization that does not match this request. Try again.'
+      );
+    });
+
+    test('reports a network failure while refreshing as Home Assistant being offline', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'oauth',
+        oauthStatus: 'offline',
+        oauthLastError: 'connect ECONNREFUSED 127.0.0.1:8123',
+        oauthLastErrorCode: 'OAUTH_TOKEN_NETWORK',
+      };
+      await settings.openSettings();
+
+      expect(document.getElementById('ha-oauth-status').textContent).toBe(
+        'Home Assistant is offline. Authorization will retry automatically.'
+      );
+    });
+
+    test('explains an unconfirmed revocation after disconnecting without main-process text', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+      mockElectronAPI.disconnectHomeAssistantOAuth = jest.fn().mockResolvedValue({
+        success: true,
+        config: {
+          ...state.CONFIG,
+          homeAssistant: {
+            url: 'https://ha.example.test',
+            token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+            authMethod: 'token',
+          },
+        },
+        revokedRemotely: false,
+        warning: 'Home Assistant did not confirm token revocation',
+      });
+      await settings.openSettings();
+
+      document.getElementById('disconnect-ha-oauth-btn').click();
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.',
+        'warning',
+        5000
+      );
+    });
+
+    test('reports a pairing canceled through the preload bridge as canceled', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'https://ha.example.test';
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: false,
+        code: 'OAUTH_AUTHORIZATION_CANCELED',
+        error: 'Home Assistant authorization was canceled',
+      });
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const status = document.getElementById('ha-oauth-status');
       expect(status.textContent).toBe('Home Assistant authorization canceled');
     });
 
@@ -1010,111 +1166,78 @@ describe('Settings + Config Integration', () => {
       }
     });
 
+    test('starts each primary-card page at its top but keeps the scroll position on assignment', async () => {
+      const entities = Object.fromEntries(
+        Array.from({ length: 121 }, (_, index) => {
+          const entity_id = `sensor.test_${String(index).padStart(3, '0')}`;
+          return [entity_id, { entity_id, state: '1', attributes: {} }];
+        })
+      );
+      state.setStates(entities);
+      await settings.openSettings();
+      document.getElementById('primary-cards-toggle').click();
+      const list = document.getElementById('primary-cards-list');
+      // jsdom does not lay out, so give the list a scroll position it keeps.
+      let scrollTop = 0;
+      Object.defineProperty(list, 'scrollTop', {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value) => {
+          scrollTop = value;
+        },
+      });
+
+      try {
+        list.scrollTop = 400;
+        const assign = list.querySelector('[data-primary-assign="0"]');
+        assign.focus();
+        assign.click();
+        expect(list.scrollTop).toBe(400);
+
+        list.scrollTop = 900;
+        const next = list.querySelector('[data-primary-page="next"]');
+        next.focus();
+        next.click();
+        expect(list.querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+        expect(list.scrollTop).toBe(0);
+        expect(document.activeElement.dataset.primaryPage).toBe('next');
+
+        list.scrollTop = 900;
+        list.querySelector('[data-primary-page="previous"]').click();
+        expect(list.querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
+        expect(list.scrollTop).toBe(0);
+      } finally {
+        settings.closeSettings();
+      }
+    });
+
     test('lazy-hydrates heavy personalization lists when sections are expanded', async () => {
       await settings.openSettings();
 
       // Collapsed sections should not eagerly render heavy lists.
       expect(document.querySelector('[data-primary-assign]')).toBeNull();
-      expect(document.querySelector('[data-desktop-pin-toggle]')).toBeNull();
       expect(document.querySelector('[data-custom-icon-input]')).toBeNull();
 
       const primaryCardsToggle = document.getElementById('primary-cards-toggle');
-      const desktopPinsToggle = document.getElementById('desktop-pins-toggle');
       const customIconsToggle = document.getElementById('custom-entity-icons-toggle');
       primaryCardsToggle.click();
-      desktopPinsToggle.click();
       customIconsToggle.click();
 
       expect(document.querySelector('[data-primary-assign]')).toBeTruthy();
-      expect(document.querySelector('[data-desktop-pin-toggle]')).toBeTruthy();
       expect(document.querySelector('[data-custom-icon-input]')).toBeTruthy();
     });
   });
 
   describe('Desktop Pins', () => {
-    test('keeps keyboard focus on a toggled pin', async () => {
-      await openSettingsWithDesktopPinsExpanded();
-      const button = document.querySelector('[data-desktop-pin-toggle="light.living_room"]');
-      button.focus();
-      button.click();
-      expect(document.activeElement.dataset.desktopPinToggle).toBe('light.living_room');
-      expect(document.activeElement.textContent).toBe('Unpin');
-      document.activeElement.click();
-      expect(document.activeElement.dataset.desktopPinToggle).toBe('light.living_room');
-      expect(document.activeElement.textContent).toBe('Pin');
-    });
-
-    test('desktop pins section hydrates from saved config and allows focusing a saved pin', async () => {
+    test('save keeps the live desktop pins, including changes made while settings is open', async () => {
       state.CONFIG.desktopPins = {
         'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
+        'switch.bedroom': { x: 40, y: 60, width: 176, height: 176 },
       };
 
-      await openSettingsWithDesktopPinsExpanded();
+      await settings.openSettings();
 
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('1 pinned tile');
-      expect(document.getElementById('desktop-pins-summary').textContent).toContain(
-        'persisted when you save settings'
-      );
-      expect(
-        document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent
-      ).toBe('Unpin');
-
-      const focusButton = document.querySelector('[data-desktop-pin-focus="light.living_room"]');
-      expect(focusButton).toBeTruthy();
-
-      focusButton.click();
-      await Promise.resolve();
-
-      expect(window.electronAPI.focusDesktopPin).toHaveBeenCalledWith('light.living_room');
-    });
-
-    test('desktop pins save persists pending pin changes without dropping existing hidden pins', async () => {
-      state.CONFIG.favoriteEntities = ['light.living_room', 'switch.bedroom'];
-      state.CONFIG.desktopPins = {
-        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
-        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-      };
-
-      await openSettingsWithDesktopPinsExpanded();
-
-      expect(document.querySelector('[data-desktop-pin-toggle="sensor.temperature"]')).toBeNull();
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
-
-      document.querySelector('[data-desktop-pin-toggle="light.living_room"]').click();
-      document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').click();
-
-      expect(document.getElementById('desktop-pins-current').textContent).toBe('2 pinned tiles');
-      expect(
-        document.querySelector('[data-desktop-pin-toggle="light.living_room"]').textContent
-      ).toBe('Pin');
-      expect(document.querySelector('[data-desktop-pin-toggle="switch.bedroom"]').textContent).toBe(
-        'Unpin'
-      );
-
-      await settings.saveSettings();
-
-      expect(state.CONFIG.desktopPins).toEqual({
-        'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-        'switch.bedroom': {},
-      });
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          desktopPins: {
-            'sensor.temperature': { x: 40, y: 60, width: 176, height: 176 },
-            'switch.bedroom': {},
-          },
-        })
-      );
-    });
-
-    test('desktop pins save preserves live bounds updates that happen while settings is open', async () => {
-      state.CONFIG.favoriteEntities = ['light.living_room'];
-      state.CONFIG.desktopPins = {
-        'light.living_room': { x: 10, y: 20, width: 176, height: 176 },
-      };
-
-      await openSettingsWithDesktopPinsExpanded();
-
+      // Pins are managed from the tiles and the pin windows, not from Settings.
       state.setConfig({
         ...state.CONFIG,
         desktopPins: {
@@ -1124,9 +1247,6 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      expect(state.CONFIG.desktopPins).toEqual({
-        'light.living_room': { x: 240, y: 160, width: 188, height: 152 },
-      });
       expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           desktopPins: {
@@ -1138,6 +1258,24 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Config Save Flow', () => {
+    test('saving without moving the opacity slider keeps the stored opacity', async () => {
+      state.CONFIG.opacity = 0.95;
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      await settings.openSettings();
+      expect(consoleError).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+      expect(document.getElementById('opacity-slider').value).toBe('90');
+
+      await settings.saveSettings();
+      expect(state.CONFIG.opacity).toBe(0.95);
+      await settings.saveSettings();
+      expect(state.CONFIG.opacity).toBe(0.95);
+
+      document.getElementById('opacity-slider').value = '91';
+      await settings.saveSettings();
+      expect(state.CONFIG.opacity).toBeCloseTo(0.9545, 4);
+    });
+
     test('save valid settings updates config and IPC', async () => {
       // Open settings first
       await settings.openSettings();
@@ -1327,6 +1465,50 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.ui.language).toBe('en');
     });
 
+    test('keeps the language selector usable while saves run one after another', async () => {
+      state.CONFIG.ui.language = 'auto';
+      window.electronAPI.getLocalePacks.mockResolvedValue([
+        { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: true },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      let finishFirstSave;
+      window.electronAPI.updateConfig.mockClear();
+      window.electronAPI.updateConfig
+        .mockImplementationOnce(
+          (patch) =>
+            new Promise((resolve) => {
+              finishFirstSave = () => resolve({ ...state.CONFIG, ui: patch.ui });
+            })
+        )
+        .mockImplementationOnce(async (patch) => ({ ...state.CONFIG, ui: patch.ui }));
+
+      const languageSelect = document.getElementById('language-select');
+      languageSelect.focus();
+      languageSelect.value = 'en';
+      const firstSave = languageSelect.onchange();
+      await Promise.resolve();
+      expect(languageSelect.disabled).toBe(false);
+      expect(document.activeElement).toBe(languageSelect);
+
+      // Two more arrow presses while the first save is still running: only the last one is saved.
+      languageSelect.value = 'auto';
+      languageSelect.onchange();
+      languageSelect.value = 'fr';
+      const lastSave = languageSelect.onchange();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      finishFirstSave();
+      await firstSave;
+      await lastSave;
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ui: expect.objectContaining({ language: 'fr' }) })
+      );
+      expect(state.CONFIG.ui.language).toBe('fr');
+      expect(document.activeElement).toBe(languageSelect);
+    });
+
     test('language pack load failures surface an error while still showing installed packs', async () => {
       const installedPacks = [
         {
@@ -1357,6 +1539,25 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
       expect(document.querySelector('#language-select option[value="fr"]').disabled).toBe(false);
       expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
+    });
+
+    test('names the language on every language pack button', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: false },
+        {
+          locale: 'es',
+          displayName: 'Español',
+          version: '1.0.0',
+          latestVersion: '1.1.0',
+          installed: true,
+        },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const labels = [...document.querySelectorAll('#language-packs-list button')].map((button) =>
+        button.getAttribute('aria-label')
+      );
+      expect(labels).toEqual(['Download Français', 'Update Español', 'Remove Español']);
     });
 
     test('a failed manifest fetch is distinct from an empty catalog and recovers on reopen', async () => {
@@ -1459,6 +1660,94 @@ describe('Settings + Config Integration', () => {
       expect(document.querySelector('#language-select option[value="fr"]')).toBeNull();
     });
 
+    describe('language pack actions', () => {
+      const { setLocaleBootstrap } = require('../../src/i18n.js');
+      const frenchPack = (installed) => ({
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.0.0',
+        latestVersion: '1.0.0',
+        installed,
+        updateAvailable: false,
+      });
+      const spanishPack = { ...frenchPack(true), locale: 'es', displayName: 'Español' };
+      const openWithLocaleHooks = async () => {
+        const hooks = {
+          initUpdateUI: jest.fn(),
+          // Mirrors the renderer: reload the bootstrap, which falls back to English once the
+          // selected pack is gone.
+          refreshLocale: jest.fn(async () => {
+            setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'fr', messages: {} });
+          }),
+        };
+        await settings.openSettings(hooks);
+        await waitForLanguagePackRefresh();
+        return hooks;
+      };
+
+      afterEach(() => {
+        setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'en', messages: {} });
+      });
+
+      test('removing the language in use falls back to English immediately', async () => {
+        state.CONFIG.ui.language = 'fr';
+        setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true)]);
+        const hooks = await openWithLocaleHooks();
+
+        const list = document.getElementById('language-packs-list');
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(false)]);
+        await list.onclick({ target: list.querySelector('[data-locale-action="remove"]') });
+
+        expect(hooks.refreshLocale).toHaveBeenCalledTimes(1);
+        // Same state as a restart without the pack: English, the selection kept, and the notice.
+        expect(document.getElementById('language-select').value).toBe('fr');
+        expect(
+          document.getElementById('language-fallback-summary').classList.contains('hidden')
+        ).toBe(false);
+      });
+
+      test('removing a language that is not in use leaves the interface alone', async () => {
+        setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
+        window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true), spanishPack]);
+        const hooks = await openWithLocaleHooks();
+
+        const list = document.getElementById('language-packs-list');
+        await list.onclick({ target: list.querySelector('[data-locale="es"]') });
+
+        expect(window.electronAPI.removeLocalePack).toHaveBeenCalledWith('es');
+        expect(hooks.refreshLocale).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ['download', false, 'remove'],
+        ['remove', true, 'download'],
+      ])(
+        'keeps keyboard focus on the row after %s',
+        async (action, installedBefore, nextAction) => {
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+            spanishPack,
+            frenchPack(installedBefore),
+          ]);
+          await openWithLocaleHooks();
+          const list = document.getElementById('language-packs-list');
+          const button = list.querySelector(`[data-locale="fr"][data-locale-action="${action}"]`);
+          button.focus();
+
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+            spanishPack,
+            frenchPack(!installedBefore),
+          ]);
+          await list.onclick({ target: button });
+
+          expect(button.isConnected).toBe(false);
+          expect(document.activeElement.dataset.locale).toBe('fr');
+          expect(document.activeElement.dataset.localeAction).toBe(nextAction);
+        }
+      );
+    });
+
     test('an IPC rejection still displays a language pack error', async () => {
       window.electronAPI.getLocalePacks.mockRejectedValueOnce(new Error('IPC failed'));
       await settings.openSettings();
@@ -1468,6 +1757,57 @@ describe('Settings + Config Integration', () => {
       );
       expect(document.getElementById('language-packs-list').textContent).toBe('');
     });
+
+    test('Start at login is written only when a supported checkbox changed', async () => {
+      await settings.openSettings();
+      await settings.saveSettings();
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+
+      await settings.openSettings();
+      document.getElementById('start-with-windows').checked = true;
+      await settings.saveSettings();
+      expect(window.electronAPI.setLoginItemSettings).toHaveBeenCalledWith(true);
+    });
+
+    test('an isolated profile saves without touching or warning about Start at login', async () => {
+      // What main reports for --user-data-dir / --isolated-profile runs.
+      window.electronAPI.getLoginItemSettings.mockResolvedValueOnce({
+        openAtLogin: false,
+        supported: false,
+      });
+      await settings.openSettings();
+      expect(document.getElementById('start-with-windows').disabled).toBe(true);
+
+      await settings.saveSettings();
+
+      expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        'Failed to update Start at login setting',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    test.each([
+      [null, true],
+      [{ accent: '#ff0000' }, false],
+    ])(
+      'Follow Omarchy theme is only offered where Omarchy is detected (%p)',
+      async (desktopAppearance, hidden) => {
+        document
+          .querySelector('#settings-modal .modal-content')
+          .insertAdjacentHTML(
+            'afterbegin',
+            '<div id="follow-omarchy-group"><input id="follow-omarchy" type="checkbox" /></div>'
+          );
+        state.CONFIG.desktopAppearance = desktopAppearance;
+        await settings.openSettings();
+        expect(document.getElementById('follow-omarchy-group').classList.contains('hidden')).toBe(
+          hidden
+        );
+        expect(document.getElementById('follow-omarchy').disabled).toBe(hidden);
+      }
+    );
 
     test('saving unrelated settings preserves the placeholder token when the token field is blank', async () => {
       state.CONFIG.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
@@ -2339,98 +2679,119 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('persists readability choices and restores them when settings reopen', async () => {
+    test('previews appearance choices live and persists them only on Save', async () => {
       await settings.openSettings();
       const scale = document.getElementById('ui-scale-select');
       const preset = document.getElementById('readable-preset');
-      scale.value = '1.5';
-      await scale.onchange();
-      preset.checked = true;
-      await preset.onchange();
-      expect(state.CONFIG.ui).toEqual(
-        expect.objectContaining({
-          scale: 1.5,
-          highContrast: true,
-          opaquePanels: true,
-        })
-      );
-      await settings.openSettings();
-      expect(scale.value).toBe('1.5');
-      expect(preset.checked).toBe(true);
-      await settings.saveSettings();
-      expect(state.CONFIG.ui.scale).toBe(1.5);
-    });
-
-    test('rolls back failed readability saves and re-enables the controls', async () => {
-      state.CONFIG.ui.scale = 1;
-      await settings.openSettings();
-      const scale = document.getElementById('ui-scale-select');
-      scale.value = '1.5';
-      window.electronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
-      await scale.onchange();
-      expect(state.CONFIG.ui.scale).toBe(1);
-      expect(scale.value).toBe('1');
-      expect(scale.disabled).toBe(false);
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
-        expect.objectContaining({ scale: 1 })
-      );
-    });
-
-    test('loads, previews, and saves layout density from personalization settings', async () => {
-      state.CONFIG.ui.density = 'compact';
-      await settings.openSettings();
-
       const densitySelect = document.getElementById('density-select');
-      expect(densitySelect.value).toBe('compact');
-
-      densitySelect.value = 'comfortable';
-      densitySelect.dispatchEvent(new Event('change'));
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(state.CONFIG.ui.density).toBe('comfortable');
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ density: 'comfortable' })
-      );
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ui: expect.objectContaining({ density: 'comfortable' }),
-        })
-      );
-
-      densitySelect.value = 'compact';
-      await settings.saveSettings();
-
-      expect(state.CONFIG.ui.density).toBe('compact');
-    });
-
-    test('loads, previews, and saves the active tile glow toggle', async () => {
-      await settings.openSettings();
-
       const activeTileGlow = document.getElementById('active-tile-glow');
       // Defaults on: a config that predates the setting still gets the glow.
       expect(activeTileGlow.checked).toBe(true);
 
+      scale.value = '1.5';
+      scale.dispatchEvent(new Event('change'));
+      preset.checked = true;
+      preset.dispatchEvent(new Event('change'));
+      densitySelect.value = 'compact';
+      densitySelect.dispatchEvent(new Event('change'));
       activeTileGlow.checked = false;
       activeTileGlow.dispatchEvent(new Event('change'));
       await Promise.resolve();
-      await Promise.resolve();
 
-      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
-      expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ activeTileGlow: false })
-      );
-      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          ui: expect.objectContaining({ activeTileGlow: false }),
+          scale: 1.5,
+          highContrast: true,
+          opaquePanels: true,
+          density: 'compact',
+          activeTileGlow: false,
+        })
+      );
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({
+          highContrast: false,
+          opaquePanels: false,
+          density: 'comfortable',
         })
       );
 
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ui: expect.objectContaining({
+            scale: 1.5,
+            highContrast: true,
+            opaquePanels: true,
+            density: 'compact',
+            activeTileGlow: false,
+          }),
+        })
+      );
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({ scale: 1.5, density: 'compact', activeTileGlow: false })
+      );
+
       await settings.openSettings();
-      expect(document.getElementById('active-tile-glow').checked).toBe(false);
+      expect(scale.value).toBe('1.5');
+      expect(preset.checked).toBe(true);
+      expect(densitySelect.value).toBe('compact');
+      expect(activeTileGlow.checked).toBe(false);
+    });
+
+    test('cancel reverts previewed appearance choices without saving them', async () => {
+      state.CONFIG.ui.density = 'compact';
+      await settings.openSettings();
+      const scale = document.getElementById('ui-scale-select');
+      const densitySelect = document.getElementById('density-select');
+      scale.value = '1.3';
+      scale.dispatchEvent(new Event('change'));
+      densitySelect.value = 'comfortable';
+      densitySelect.dispatchEvent(new Event('change'));
+
+      settings.closeSettings();
+
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(state.CONFIG.ui.density).toBe('compact');
+      expect(state.CONFIG.ui.scale).toBeUndefined();
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ density: 'compact' })
+      );
+      expect(mockUiUtils.applyUiPreferences.mock.lastCall[0].scale).toBeUndefined();
+    });
+
+    test('saving unrelated settings keeps split contrast flags the preset does not represent', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = false;
+      await settings.openSettings();
+      expect(document.getElementById('readable-preset').checked).toBe(false);
 
       await settings.saveSettings();
-      expect(state.CONFIG.ui.activeTileGlow).toBe(false);
+
+      expect(state.CONFIG.ui).toEqual(
+        expect.objectContaining({ highContrast: true, opaquePanels: false })
+      );
+    });
+
+    test('a config echo keeps unsaved previews on screen while settings is open', async () => {
+      await settings.openSettings();
+      const densitySelect = document.getElementById('density-select');
+      densitySelect.value = 'compact';
+      densitySelect.dispatchEvent(new Event('change'));
+      mockUiUtils.applyUiPreferences.mockClear();
+
+      // The renderer re-applies the saved appearance for every config echo, then asks Settings
+      // to restore its previews.
+      settings.reapplySettingsPreviews();
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ density: 'compact' })
+      );
+
+      settings.closeSettings();
+      mockUiUtils.applyUiPreferences.mockClear();
+      settings.reapplySettingsPreviews();
+      expect(mockUiUtils.applyUiPreferences).not.toHaveBeenCalled();
     });
   });
 
@@ -2448,15 +2809,11 @@ describe('Settings + Config Integration', () => {
           <p id="desktop-integration-legacy" hidden></p>
         </div>`
       );
-      Object.defineProperty(navigator, 'clipboard', {
-        configurable: true,
-        value: { writeText: jest.fn().mockResolvedValue(undefined) },
-      });
+      mockUiUtils.copyTextToClipboard.mockClear();
     });
 
     afterEach(() => {
       delete window.electronAPI.getDesktopIntegration;
-      delete navigator.clipboard;
     });
 
     test.each([{ hyprland: false }, null])(
@@ -2481,7 +2838,7 @@ describe('Settings + Config Integration', () => {
         expect(typeof refresh.onclick).toBe('function');
         output.value = 'displayed bindings';
         copy.click();
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith('displayed bindings');
+        expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('displayed bindings');
 
         await refresh.onclick();
         expect(panel.hidden).toBe(false);
@@ -2495,8 +2852,8 @@ describe('Settings + Config Integration', () => {
         format.dispatchEvent(new Event('change'));
         await refresh.onclick();
         copy.click();
-        expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('legacy binding');
-        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2);
+        expect(mockUiUtils.copyTextToClipboard).toHaveBeenLastCalledWith('legacy binding');
+        expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledTimes(2);
         expect(window.electronAPI.getDesktopIntegration).toHaveBeenCalledTimes(3);
 
         window.electronAPI.getDesktopIntegration.mockResolvedValueOnce({ hyprland: false });
@@ -2524,6 +2881,32 @@ describe('Settings + Config Integration', () => {
       expect(typeof refreshHandler).toBe('function');
       expect(typeof copyHandler).toBe('function');
     });
+
+    test('confirms a copy and falls back to manual selection when copying fails', async () => {
+      window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+        hyprland: true,
+        shortcuts: [{ binding: 'lua binding' }],
+      });
+      await settings.initializePopupHotkey();
+      const copy = document.getElementById('desktop-bindings-copy');
+      const output = document.getElementById('desktop-bindings');
+
+      mockUiUtils.showToast.mockClear();
+      await copy.onclick();
+      expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('lua binding');
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith('Bindings copied', 'success');
+      expect(document.activeElement).not.toBe(output);
+
+      mockUiUtils.copyTextToClipboard.mockResolvedValueOnce(false);
+      await copy.onclick();
+      expect(document.activeElement).toBe(output);
+      expect(output.selectionStart).toBe(0);
+      expect(output.selectionEnd).toBe('lua binding'.length);
+      expect(mockUiUtils.showToast).toHaveBeenLastCalledWith(
+        'Select and copy the bindings manually.',
+        'info'
+      );
+    });
   });
 
   describe('Profile Sync Settings', () => {
@@ -2543,10 +2926,7 @@ describe('Settings + Config Integration', () => {
         hyprland: true,
         shortcuts: [{ binding: 'lua binding', legacyBinding: 'legacy binding' }],
       });
-      Object.defineProperty(navigator, 'clipboard', {
-        configurable: true,
-        value: { writeText: jest.fn().mockResolvedValue(undefined) },
-      });
+      mockUiUtils.copyTextToClipboard.mockClear();
       await settings.initializePopupHotkey();
       const format = document.getElementById('desktop-bindings-format');
       const output = document.getElementById('desktop-bindings');
@@ -2555,7 +2935,7 @@ describe('Settings + Config Integration', () => {
       format.dispatchEvent(new Event('change'));
       expect(output.value).toBe('legacy binding');
       document.getElementById('desktop-bindings-copy').click();
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('legacy binding');
+      expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('legacy binding');
       await document.getElementById('desktop-integration-refresh').onclick();
       expect(output.value).toBe('legacy binding');
       delete window.electronAPI.getDesktopIntegration;
@@ -3236,6 +3616,153 @@ describe('Settings + Config Integration', () => {
       );
       expect(document.activeElement).toBe(duration);
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Settings translations', () => {
+    const i18n = require('../../src/i18n.js');
+    const GERMAN = {
+      'Set Card {{index}}': 'Karte {{index}} setzen',
+      'Card {{index}} ✓': 'Karte {{index}} ✓',
+      'Weather (default)': 'Wetter (Standard)',
+      'Time (default)': 'Uhrzeit (Standard)',
+      'Status: {{state}} | Last sync: {{time}}': 'Status: {{state}} | Letzte Sync: {{time}}',
+      'Profile sync: success': 'erfolgreich',
+      never: 'nie',
+      '1 custom icon configured.': '1 eigenes Symbol festgelegt.',
+      '{{count}} custom icons configured.': '{{count}} eigene Symbole festgelegt.',
+      'All custom icons cleared. Click Save to persist changes.':
+        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
+      'Remove Alert': 'Warnung entfernen',
+      'Remove alert for "{{name}}"?': 'Warnung für „{{name}}“ entfernen?',
+      Remove: 'Entfernen',
+      'Profile sync upload complete.': 'Profil-Upload abgeschlossen.',
+      'Color Options (Accent)': 'Farboptionen (Akzent)',
+    };
+
+    beforeEach(() => {
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+    });
+
+    afterEach(() => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    });
+
+    test('renders the Primary Cards picker and summary in the active language', async () => {
+      await settings.openSettings();
+      const toggle = document.getElementById('primary-cards-toggle');
+      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+
+      expect(document.getElementById('primary-card-1-current').textContent).toBe(
+        'Wetter (Standard)'
+      );
+      expect(document.getElementById('primary-card-2-current').textContent).toBe(
+        'Uhrzeit (Standard)'
+      );
+      const assignButtons = [
+        ...document.querySelectorAll('#primary-cards-list [data-primary-assign]'),
+      ].map((button) => button.textContent);
+      expect(assignButtons).toContain('Karte 1 setzen');
+      expect(assignButtons).toContain('Karte 2 setzen');
+      expect(assignButtons.some((label) => label.includes('Set Card'))).toBe(false);
+
+      document.querySelector('#primary-cards-list [data-primary-assign="0"]').click();
+      const cardOneLabels = [
+        ...document.querySelectorAll('#primary-cards-list [data-primary-assign="0"]'),
+      ].map((button) => button.textContent);
+      expect(cardOneLabels).toContain('Karte 1 ✓');
+      expect(document.getElementById('theme-options-label').textContent).toBe(
+        'Farboptionen (Akzent)'
+      );
+    });
+
+    test('re-renders script-written Settings text when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡', 'light.bedroom': '🛏️' };
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'success', lastSyncAt: null })
+      );
+      await settings.openSettings();
+      const status = document.getElementById('profile-sync-status');
+      const summary = document.getElementById('custom-entity-icons-summary');
+      expect(status.textContent).toBe('Status: success | Last sync: never');
+      expect(summary.textContent).toBe('2 custom icons configured.');
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      // The locale observer runs as a microtask after <html lang> changes.
+      await Promise.resolve();
+
+      expect(status.textContent).toBe('Status: erfolgreich | Letzte Sync: nie');
+      expect(summary.textContent).toBe('2 eigene Symbole festgelegt.');
+      expect(document.getElementById('primary-card-1-current').textContent).toBe(
+        'Wetter (Standard)'
+      );
+    });
+
+    test('asks the update UI to re-render its status line after a language change', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      const relocalizeUpdateStatus = jest.fn();
+      await settings.openSettings({ initUpdateUI: jest.fn(), relocalizeUpdateStatus });
+      relocalizeUpdateStatus.mockClear();
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await Promise.resolve();
+      expect(relocalizeUpdateStatus).toHaveBeenCalled();
+    });
+
+    test('translates the profile sync status line', () => {
+      settings.handleProfileSyncStatusUpdate(
+        buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'success', lastSyncAt: null })
+      );
+      expect(document.getElementById('profile-sync-status').textContent).toBe(
+        'Status: erfolgreich | Letzte Sync: nie'
+      );
+    });
+
+    test('uses singular and plural custom icon counts', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡' };
+      await settings.openSettings();
+      const summary = document.getElementById('custom-entity-icons-summary');
+      expect(summary.textContent).toBe('1 eigenes Symbol festgelegt.');
+
+      settings.closeSettings();
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡', 'light.bedroom': '🛏️' };
+      await settings.openSettings();
+      expect(summary.textContent).toBe('2 eigene Symbole festgelegt.');
+    });
+
+    test('passes translated text to toasts and confirmations', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      document.getElementById('custom-entity-icons-reset-all').click();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
+        'info',
+        2400
+      );
+
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      state.CONFIG.entityAlerts = {
+        enabled: true,
+        alerts: { 'light.living_room': { onStateChange: true } },
+      };
+      const alertsList = document.getElementById('inline-alerts-list');
+      settings.renderAlertsListInline();
+      alertsList.querySelector('.remove-alert').click();
+      await Promise.resolve();
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        'Warnung entfernen',
+        'Warnung für „Living Room Light“ entfernen?',
+        expect.objectContaining({ confirmText: 'Entfernen' })
+      );
+      expect(alertsList.querySelector('.remove-alert').textContent).toBe('Entfernen');
+
+      mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+      document.getElementById('profile-sync-push-now').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Profil-Upload abgeschlossen.',
+        'success',
+        2200
+      );
     });
   });
 });

@@ -96,6 +96,24 @@ describe('UI Utilities', () => {
       uiUtils.__forceAnimatedModalTransitions(false);
     });
 
+    it('stacks toasts above an open dialog footer and back at the bottom once it closes', () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = '<div class="modal-content"><div class="modal-footer"></div></div>';
+      document.body.appendChild(modal);
+      const footer = modal.querySelector('.modal-footer');
+      footer.getClientRects = () => [{}];
+      footer.getBoundingClientRect = () => ({ top: window.innerHeight - 60 });
+
+      uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
+      expect(toastContainer.style.bottom).toBe('68px');
+
+      modal.classList.add('hidden');
+      uiUtils.showToast('Saved', 'success', 2000);
+      expect(toastContainer.style.bottom).toBe('');
+      modal.remove();
+    });
+
     it('should display toast with message', () => {
       uiUtils.showToast('Test message', 'success', 2000);
 
@@ -584,6 +602,85 @@ describe('UI Utilities', () => {
       document.body.removeChild(externalButton);
     });
 
+    it('wraps Tab using the controls present when Tab is pressed', () => {
+      uiUtils.trapFocus(modal);
+      const added = document.createElement('button');
+      modal.appendChild(added);
+      modal.querySelector('#last').disabled = true;
+      added.focus();
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      added.dispatchEvent(tab);
+      expect(tab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(modal.querySelector('#first'));
+    });
+
+    it('focuses the requested element, or nothing, instead of the first control', () => {
+      const middle = modal.querySelector('#middle');
+      uiUtils.trapFocus(modal, { initialFocus: middle });
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(middle);
+
+      middle.blur();
+      uiUtils.trapFocus(modal, { initialFocus: false });
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(document.body);
+      uiUtils.releaseFocusTrap(modal);
+    });
+
+    it('keeps Tab and Escape working after focus has fallen back to the page', () => {
+      const behind = document.createElement('button');
+      document.body.prepend(behind);
+      modal.classList.add('modal');
+      const onEscape = jest.fn();
+      modal.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') onEscape();
+      });
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      // The focused control was disabled or re-rendered: the browser moves focus to <body>.
+      document.activeElement.blur();
+
+      // The browser's own Tab then lands on the page behind the dialog.
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      behind.focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#first'));
+
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
+      );
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#last'));
+
+      // After a click on the dialog's text, Tab continues from there inside the dialog.
+      document.activeElement.blur();
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      modal.querySelector('#middle').focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#middle'));
+
+      document.activeElement.blur();
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(onEscape).toHaveBeenCalledTimes(1);
+      // Only the replayed event reaches page-level listeners, so nothing handles Escape twice.
+      expect(pageEscape).toHaveBeenCalledTimes(1);
+      document.removeEventListener('keydown', pageEscape);
+
+      // Once the dialog is hidden, keys on the page are left alone.
+      modal.classList.add('hidden');
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      behind.focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(behind);
+      uiUtils.releaseFocusTrap(modal);
+      behind.remove();
+    });
+
     it('should handle errors during focus trap', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
@@ -662,6 +759,38 @@ describe('UI Utilities', () => {
       document.body.removeChild(externalButton);
     });
 
+    it('leaves focus to the caller when asked not to restore it', () => {
+      const externalButton = document.createElement('button');
+      document.body.appendChild(externalButton);
+      externalButton.focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      const focusSpy = jest.spyOn(externalButton, 'focus');
+
+      modal.querySelector('#first').blur();
+      uiUtils.releaseFocusTrap(modal, { restoreFocus: false });
+      jest.advanceTimersByTime(0);
+
+      expect(focusSpy).not.toHaveBeenCalled();
+      focusSpy.mockRestore();
+      externalButton.remove();
+    });
+
+    it('leaves a Tab the dialog already handled alone', () => {
+      uiUtils.trapFocus(modal);
+      const last = modal.querySelector('#last');
+      last.focus();
+      // The dialog's own Tab order moved focus and claimed the key.
+      modal.addEventListener('keydown', (event) => event.preventDefault(), {
+        capture: true,
+        once: true,
+      });
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      last.dispatchEvent(tab);
+      expect(document.activeElement).toBe(last);
+      uiUtils.releaseFocusTrap(modal);
+    });
+
     it('does not steal focus back when another dialog has already claimed it', () => {
       const externalButton = document.createElement('button');
       externalButton.id = 'external';
@@ -686,6 +815,28 @@ describe('UI Utilities', () => {
       focusSpy.mockRestore();
       document.body.removeChild(externalButton);
       document.body.removeChild(nextDialogField);
+    });
+
+    it('returns focus to the rebuilt tile when the opener was replaced', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="quick-controls"><div class="control-item" data-entity-id="light.hall">
+          <button class="tile-primary-button">Hall</button>
+          <button class="tile-details-button">Controls</button></div></div>`
+      );
+      const grid = document.getElementById('quick-controls');
+      grid.querySelector('.tile-details-button').focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+
+      // The entity changed while the dialog was open, so the tile was rebuilt.
+      grid.replaceChildren(grid.firstElementChild.cloneNode(true));
+      modal.remove();
+      uiUtils.releaseFocusTrap(modal);
+      jest.advanceTimersByTime(0);
+
+      expect(document.activeElement).toBe(grid.querySelector('.tile-details-button'));
+      grid.remove();
     });
 
     it('should handle modal without active trap', () => {
@@ -944,6 +1095,31 @@ describe('UI Utilities', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(tooltip.classList.contains('visible')).toBe(false);
       preventDefaultSpy.mockRestore();
+    });
+
+    it('builds the tooltip text in the language that is active when it opens', () => {
+      const i18n = require('../../src/i18n.js');
+      uiUtils.setStatus(true);
+      uiUtils.initializeConnectionStatusTooltip();
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Connected to Home Assistant': 'Mit Home Assistant verbunden',
+          'Real-time updates active.': 'Echtzeit-Updates aktiv.',
+        },
+      });
+      try {
+        statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        const tooltip = document.getElementById('connection-status-tooltip');
+        expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe(
+          'Mit Home Assistant verbunden'
+        );
+        expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe(
+          'Echtzeit-Updates aktiv.'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     it('should not throw when status indicator is missing', () => {
@@ -1454,6 +1630,25 @@ describe('UI Utilities', () => {
       jest.advanceTimersByTime(0);
 
       expect(document.activeElement).toBe(opener);
+    });
+  });
+
+  describe('copyTextToClipboard', () => {
+    it('copies through the main-process bridge', async () => {
+      await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(true);
+      expect(window.electronAPI.writeClipboardText).toHaveBeenCalledWith('report');
+    });
+
+    it('reports failure instead of rejecting', async () => {
+      window.electronAPI.writeClipboardText.mockRejectedValueOnce(new Error('denied'));
+      await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(false);
+      const { writeClipboardText } = window.electronAPI;
+      delete window.electronAPI.writeClipboardText;
+      try {
+        await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(false);
+      } finally {
+        window.electronAPI.writeClipboardText = writeClipboardText;
+      }
     });
   });
 
