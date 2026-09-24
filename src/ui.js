@@ -11680,8 +11680,8 @@ function showBrightnessSlider(light) {
             <div class="brightness-icon-wrapper">
               <div class="brightness-icon" id="brightness-icon">💡</div>
             </div>
-            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : t(light.state === 'on' ? 'On' : 'Off')}</div>
-            <div class="brightness-label">${t(canSetBrightness ? 'Brightness' : 'State')}</div>
+            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : utils.escapeHtml(t(light.state === 'on' ? 'On' : 'Off'))}</div>
+            <div class="brightness-label">${utils.escapeHtml(t(canSetBrightness ? 'Brightness' : 'State'))}</div>
             ${
               canSetBrightness
                 ? `<div class="brightness-slider-wrapper">

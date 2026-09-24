@@ -2995,7 +2995,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
-        resolutionHelp.innerHTML = `<strong>${t('First-time conflict:')}</strong> ${t('Both local and remote profiles have data.')}`;
+        resolutionHelp.innerHTML = `<strong>${utils.escapeHtml(t('First-time conflict:'))}</strong> ${utils.escapeHtml(t('Both local and remote profiles have data.'))}`;
       }
       if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');

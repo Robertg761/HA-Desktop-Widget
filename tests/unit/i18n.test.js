@@ -66,6 +66,28 @@ describe('renderer i18n helpers', () => {
     expect(document.getElementById('summary').textContent).toBe('Langue choisie : French');
   });
 
+  it('keeps <code> in translated help text but renders any other markup as text', () => {
+    const key = 'Press <code>ESC</code> to clear.';
+    i18n.setLocaleBootstrap({
+      activeLocale: 'fr',
+      messages: {
+        [key]: 'Appuyez sur <code>ESC</code> <img src=x onerror="window.__packXss=1"><b>vite</b>.',
+      },
+    });
+    document.body.innerHTML = `<p id="help" data-i18n-html="${key}"></p>`;
+
+    i18n.translateDocument(document);
+
+    const help = document.getElementById('help');
+    expect(help.querySelector('img')).toBeNull();
+    expect(help.querySelector('b')).toBeNull();
+    expect(Array.from(help.querySelectorAll('code'), (code) => code.textContent)).toEqual(['ESC']);
+    expect(help.textContent).toBe(
+      'Appuyez sur ESC <img src=x onerror="window.__packXss=1"><b>vite</b>.'
+    );
+    expect(window.__packXss).toBeUndefined();
+  });
+
   it('switches document direction for RTL locales', () => {
     i18n.setLocaleBootstrap({
       activeLocale: 'ar',

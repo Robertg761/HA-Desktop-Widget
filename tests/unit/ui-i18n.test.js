@@ -213,6 +213,16 @@ describe('ui.js translations and number formatting', () => {
     expect(text('.brightness-slider-labels span')).toBe('Warm DE');
   });
 
+  it('shows language-pack markup in the light dialog labels as text', () => {
+    useGerman({ Brightness: '<b>Helligkeit</b>' });
+    const light = entity('light.desk', 'on', { brightness: 128 });
+    state.setStates({ [light.entity_id]: light });
+    ui.openEntityDetailModal(light);
+    expect(document.querySelector('.brightness-label b')).toBeNull();
+    expect(text('.brightness-label')).toBe('<b>Helligkeit</b>');
+    document.querySelector('#brightness-close').click();
+  });
+
   it('keeps colour-temperature Cool apart from the HVAC Cool mode', () => {
     const light = entity('light.desk', 'on', {
       brightness: 128,

@@ -152,6 +152,27 @@ function resolveTranslation(key, vars = {}) {
   return formatTemplate(template, vars);
 }
 
+// Language packs are downloaded, so their text never becomes markup. The only formatting these
+// strings need is <code>…</code>, which is rebuilt as real elements; anything else stays text.
+function setTextWithCodeSpans(element, text) {
+  const ownerDocument = element.ownerDocument || document;
+  const nodes = [];
+  const pattern = /<code>([\s\S]*?)<\/code>/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(text))) {
+    if (match.index > lastIndex) {
+      nodes.push(ownerDocument.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const code = ownerDocument.createElement('code');
+    code.textContent = match[1];
+    nodes.push(code);
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < text.length) nodes.push(ownerDocument.createTextNode(text.slice(lastIndex)));
+  element.replaceChildren(...nodes);
+}
+
 function translateElement(element) {
   if (!element || typeof element.getAttribute !== 'function') return;
   const vars = parseI18nVars(element);
@@ -168,7 +189,7 @@ function translateElement(element) {
   if (htmlKey) {
     const translatedHtml = resolveTranslation(htmlKey, vars);
     if (translatedHtml != null) {
-      element.innerHTML = translatedHtml;
+      setTextWithCodeSpans(element, translatedHtml);
     }
   }
 
