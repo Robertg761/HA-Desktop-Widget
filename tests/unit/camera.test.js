@@ -1589,6 +1589,20 @@ describe('Camera Module', () => {
       img.onload();
       expect(message.hidden).toBe(true);
     });
+
+    it('clears a failed-frame message when Live is started', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const img = modal.querySelector('.camera-stream');
+      const message = modal.querySelector('#camera-viewer-message');
+
+      img.onerror();
+      expect(message.hidden).toBe(false);
+
+      modal.querySelector('#live-btn').click();
+      expect(message.hidden).toBe(true);
+      expect(img.classList.contains('camera-img-failed')).toBe(false);
+    });
   });
 
   describe('openCamera - HLS Integration', () => {

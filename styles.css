@@ -463,8 +463,9 @@ body {
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
-  --accent-text: color-mix(in srgb, var(--accent) 62%, #000);
-  --accent-text-hover: color-mix(in srgb, var(--accent) 50%, #000);
+  /* ui-utils computes these per accent; the mixes are the fallback before it runs. */
+  --accent-text: var(--accent-text-light, color-mix(in srgb, var(--accent) 62%, #000));
+  --accent-text-hover: var(--accent-text-light-hover, color-mix(in srgb, var(--accent) 50%, #000));
 
   /* Tiles: white panes on the pale glass, edged just enough to separate. */
   --tile-bg: rgba(255, 255, 255, 0.5);
@@ -2734,7 +2735,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .connection-indicator:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 3px;
 }
 
@@ -2831,7 +2832,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .control-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 1px;
   opacity: 1;
 }
@@ -3138,7 +3139,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
@@ -3375,7 +3376,7 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs .tab-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -3593,7 +3594,7 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -6223,8 +6224,17 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   border-style: dashed;
 }
 
-#quick-controls .control-item[data-unavailable='true'] > :is(.control-icon, .control-info) {
+/* Dimmed by colour rather than opacity, so the name and "Unavailable" stay readable (4.5:1+). */
+#quick-controls .control-item[data-unavailable='true'] > .control-icon {
   opacity: 0.55;
+}
+
+#quick-controls .control-item[data-unavailable='true'] .control-name {
+  color: var(--text-dim);
+}
+
+#quick-controls .control-item[data-unavailable='true'] .control-state {
+  color: var(--text-faint);
 }
 
 body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
@@ -7883,7 +7893,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .close-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   box-shadow: var(--shadow-sm), var(--glow-focus);
 }
@@ -8290,7 +8300,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .section-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -8371,7 +8381,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .color-target-option:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -8462,7 +8472,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .theme-option:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -8587,7 +8597,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-editor-save-lock-hint {
-  border-left: 3px solid rgba(var(--accent-rgb), 0.6);
+  border-inline-start: 3px solid rgba(var(--accent-rgb), 0.6);
   padding-inline-start: var(--space-3);
   color: var(--accent-text);
 }
@@ -8847,7 +8857,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   box-shadow:
     var(--glow-focus),
@@ -8997,7 +9007,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .settings-details > summary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -9928,16 +9938,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   top: 8px;
   inset-inline-start: 8px;
   z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   min-width: 0;
-  padding: 4px 8px;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-full);
   background: rgba(12, 18, 32, 0.92);
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all var(--transition-base);
   backdrop-filter: blur(18px) saturate(170%);
@@ -9957,6 +9968,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     0 10px 20px rgba(0, 0, 0, 0.36),
     0 0 0 2px rgba(var(--accent-rgb), 0.16);
   outline: none;
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle[data-active='true'] .entity-line-icon {
+  fill: currentColor;
 }
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle[data-active='true'] {
@@ -10624,7 +10639,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
@@ -11181,7 +11196,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 #settings-modal .tab-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -12219,7 +12234,7 @@ select:focus-visible,
 textarea:focus-visible,
 [role='button']:focus-visible,
 [tabindex]:not([tabindex='-1']):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -12639,7 +12654,7 @@ label.disabled {
 }
 
 .donate-frequency-option input[type='radio']:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 3px;
 }
 
@@ -12707,6 +12722,10 @@ body.layer-drag-enabled.desktop-pin-edit-mode .control-item {
 
 /* Readability preferences deliberately override custom palettes and glass effects. */
 body.high-contrast {
+  /* Accent text and text on accent fills follow the high-contrast accent set below. */
+  --accent-text: var(--accent) !important;
+  --accent-text-hover: var(--accent) !important;
+  --on-accent: #0a0c10 !important;
   --text-color: #fff !important;
   --text-primary: #fff !important;
   --text-secondary: #eee !important;
@@ -12802,7 +12821,7 @@ body.high-contrast :focus-visible {
 }
 
 .tile-details-button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 1px;
 }
 
@@ -12859,7 +12878,7 @@ body.high-contrast .tile-primary-button,
 #quick-controls .tile-primary-button:focus-visible {
   outline: none;
   box-shadow:
-    inset 0 0 0 2px var(--accent),
+    inset 0 0 0 2px var(--accent-text),
     inset 0 0 0 4px rgb(var(--window-bg-rgb));
 }
 
@@ -13220,7 +13239,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .fan-slider:focus-visible,
 .cover-slider:focus-visible,
 .climate-slider:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 6px;
 }
 
@@ -13851,8 +13870,13 @@ select option {
   width: 38px;
   height: 22px;
   border-color: transparent;
-  background: var(--tile-border-hover);
+  /* An off switch still has to read as a control (3:1 against the pane), not a faint smudge. */
+  background: color-mix(in srgb, var(--text-primary) 26%, transparent);
   box-shadow: none;
+}
+
+body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked) {
+  background: color-mix(in srgb, var(--text-primary) 38%, transparent);
 }
 
 #settings-modal .form-group label:has(input[type='checkbox']) input[type='checkbox'] {
@@ -13942,7 +13966,7 @@ select option {
 
 .segmented-option:focus-visible,
 .segmented-control .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 1px;
 }
 
@@ -14662,7 +14686,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   flex-direction: column;
   gap: var(--space-3);
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 #quick-controls-modal .quick-controls-target-hint {
@@ -14743,19 +14767,206 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   animation: none;
 }
 
-.modal.entity-unavailable :is(.brightness-value-large, .fan-speed-value) {
-  color: var(--text-dim);
-  font-size: var(--font-size-2xl);
-}
-
-/* The note already says why; a "State" caption and capability notes would only repeat it. */
-.modal.entity-unavailable :is(.brightness-label, .fan-speed-label, .control-capability-note) {
+/* The note already says why; the big value, its caption, capability notes and the power
+   button (which can't do anything) would only repeat it. */
+.modal.entity-unavailable
+  :is(
+    .brightness-value-large,
+    .fan-speed-value,
+    .cover-position-value,
+    .brightness-label,
+    .fan-speed-label,
+    .control-capability-note,
+    .modal-footer .btn-primary
+  ) {
   display: none;
 }
 
 .modal.entity-unavailable :is(.modal-body, .modal-footer) :is(input, button):disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Edit mode: the pin, rename and remove buttons are one family of small glass circles. A solid
+   blue and a solid red circle on every tile read as a wall of alarms; colour now comes on hover. */
+.reorganize-mode .control-item :is(.rename-btn, .remove-btn) {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(12, 18, 32, 0.92);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.reorganize-mode .control-item .rename-btn:is(:hover, :focus-visible) {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.9);
+  color: var(--on-accent);
+  transform: scale(1.08);
+}
+
+.reorganize-mode .control-item .remove-btn:is(:hover, :focus-visible) {
+  border-color: rgba(239, 83, 80, 0.6);
+  background: rgba(211, 47, 47, 0.95);
+  color: #fff;
+  transform: scale(1.08);
+}
+
+body.theme-light .reorganize-mode .control-item :is(.rename-btn, .remove-btn),
+body.theme-light
+  .reorganize-mode
+  .control-item
+  .desktop-pin-quick-toggle:not([data-active='true']) {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text-secondary);
+  box-shadow: 0 4px 10px rgba(20, 24, 40, 0.14);
+}
+
+/* Edit mode: a sensor tile draws its icon at the top, where the pin chip and edit buttons sit.
+   The name and reading still identify it, so the icon steps aside while editing. */
+.reorganize-mode .control-item.sensor-numeric-entity .control-icon {
+  visibility: hidden;
+}
+
+/* ==========================================================================
+   PINNED DESKTOP TILES
+   Pin panels share .control-item with Quick Access tiles, so the tile rules (centred text, 8px
+   padding, 14px corners, the narrow-window media queries that always match a ~170px pin window)
+   were overriding the panel's own layout: content ran into the rounded corners and bottom
+   buttons were clipped. Restore the panel's geometry here, after every .control-item rule.
+   ========================================================================== */
+
+body.desktop-pin-mode .control-item.desktop-pin-panel-control {
+  display: grid;
+  min-height: 100%;
+  padding: var(--desktop-pin-panel-pad);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--desktop-pin-panel-radius);
+  background:
+    radial-gradient(circle at top left, rgba(var(--desktop-pin-tint-rgb), 0.15), transparent 70%),
+    linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
+  color: rgba(255, 255, 255, 0.96);
+  text-align: start;
+}
+
+body.desktop-pin-mode .control-item.desktop-pin-light-control {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--desktop-pin-tint-rgb), var(--desktop-pin-light-glow-opacity, 0.2)),
+      transparent 70%
+    ),
+    linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
+  color: rgba(255, 255, 255, 0.96);
+}
+
+/* Pins are dark glass widgets in every theme; their text is drawn for that. In the light theme
+   the text tokens would otherwise turn dark and vanish on the dark panels. */
+body.desktop-pin-mode.theme-light {
+  color-scheme: dark;
+  --window-bg-rgb: 18, 22, 30;
+  --text-color: #f0f0f0;
+  --text-primary: #f5f5f5;
+  --text-secondary: #b0b0b0;
+  --text-tertiary: #9a9aa3;
+  --accent-text: var(--accent);
+  --accent-text-hover: var(--accent-hover);
+}
+
+/* The header note is secondary to the body's value: small and quiet, never a second headline
+   squeezed into the corner. */
+body.desktop-pin-mode .desktop-pin-panel-topline .desktop-pin-panel-kpi {
+  align-self: center;
+  max-width: 7em;
+  color: rgba(255, 255, 255, 0.72);
+  font-family: var(--desktop-pin-ui-font);
+  font-size: var(--font-size-xs-plus);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+/* Default-size pins (~168x148): a little less padding and a smaller glyph, so the value in the
+   meter clears the meter's own edge. */
+body.desktop-pin-mode .control-item.desktop-pin-panel-control[data-layout='compact'] {
+  --desktop-pin-panel-pad: 10px;
+  --desktop-pin-panel-gap: 8px;
+}
+
+body.desktop-pin-mode
+  .desktop-pin-panel-control[data-layout='compact']
+  .desktop-pin-toggle-body
+  .desktop-pin-panel-meter {
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+/* A small climate pin shows its target as one row ("TARGET 22°C") and drops the header copy of
+   the same number, so the mode buttons fit above the rounded bottom edge. */
+body.desktop-pin-mode
+  .desktop-pin-panel-control[data-dense-variant='tight']
+  .desktop-pin-climate-target-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 5px 10px;
+}
+
+body.desktop-pin-mode
+  .desktop-pin-panel-control[data-dense-variant='tight']
+  .desktop-pin-climate-target-value {
+  width: auto;
+}
+
+body.desktop-pin-mode
+  .desktop-pin-panel-control[data-dense-variant='tight']
+  .desktop-pin-climate-kpi {
+  display: none;
+}
+
+/* Chips size to their label (German "Öffnen" overflowed a fixed-width chip). */
+body.desktop-pin-mode .desktop-pin-panel-chip {
+  min-width: max-content;
+}
+
+/* Unavailable, missing or waiting pins: a short kicker, the name and one sentence, sized for a
+   small window instead of a 16px headline that pushed the action off the bottom. */
+body.desktop-pin-mode .desktop-pin-empty-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--font-size-base);
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+body.desktop-pin-mode .desktop-pin-empty-copy {
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.4;
+}
+
+/* The fallback's one action is a small pill, not a square header icon button that wrapped
+   its label onto two lines. */
+body.desktop-pin-mode .desktop-pin-empty-action {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+body.desktop-pin-mode .desktop-pin-empty-action:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* ==========================================================================
@@ -14770,7 +14981,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 }
 
 /* Keep a reading and its unit in their written order ("21.4 °C", "12 km/h") inside RTL text. */
-[dir='rtl'] :is(.control-sensor-readout, .detail-value, .media-tile-time) {
+[dir='rtl'] :is(.control-sensor-readout, .detail-value, .media-tile-time, .sensor-value) {
   direction: ltr;
   unicode-bidi: isolate;
 }
@@ -14791,27 +15002,28 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
     outline-offset: -2px;
   }
 
+  /* !important: the Settings switch rules carry #settings-modal and would otherwise win. */
   .form-group input[type='checkbox'],
   .entity-toggle {
-    forced-color-adjust: none;
-    border: 1px solid CanvasText;
-    background: Canvas;
+    forced-color-adjust: none !important;
+    border: 1px solid CanvasText !important;
+    background: Canvas !important;
   }
 
   .form-group input[type='checkbox']::after,
   .entity-toggle::after {
-    background: CanvasText;
-    box-shadow: none;
+    background: CanvasText !important;
+    box-shadow: none !important;
   }
 
   .form-group input[type='checkbox']:checked,
   .entity-toggle.active {
-    background: Highlight;
+    background: Highlight !important;
   }
 
   .form-group input[type='checkbox']:checked::after,
   .entity-toggle.active::after {
-    background: HighlightText;
+    background: HighlightText !important;
   }
 
   .entity-line-icon {

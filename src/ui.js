@@ -5943,7 +5943,8 @@ function createDesktopPinMediaControlElement(entity) {
         statusText: mediaValue.playing
           ? renderProfile.statusText.playing
           : renderProfile.statusText.paused,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-media-kpi">${utils.escapeHtml(mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused)}</div>`,
+        // The status line already says Playing or Paused; a second "Live"/"On" note repeated it.
+        asideMarkup: '',
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-media-copy">
@@ -6400,7 +6401,10 @@ function createDesktopPinToggleEntityControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText,
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? t('Ready') : actionLabel)}</div>`,
+        // The button below already names the action, so only scenes get a header note.
+        asideMarkup: isSceneLike
+          ? `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Ready'))}</div>`
+          : '',
       })}
       <div class="desktop-pin-panel-body desktop-pin-toggle-body">
         <div class="desktop-pin-panel-meter">
@@ -6452,9 +6456,10 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = isSceneLike ? t('Tap to trigger') : displayState;
 
-  const kpis = root.querySelectorAll('.desktop-pin-panel-kpi');
-  if (kpis[0]) kpis[0].textContent = isSceneLike ? t('Ready') : actionLabel;
-  if (kpis[1]) kpis[1].textContent = isSceneLike ? t('Run') : displayState;
+  const headerKpi = root.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi');
+  const meterKpi = root.querySelector('.desktop-pin-panel-meter .desktop-pin-panel-kpi');
+  if (headerKpi) headerKpi.textContent = t('Ready');
+  if (meterKpi) meterKpi.textContent = isSceneLike ? t('Run') : displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
@@ -6480,7 +6485,7 @@ function createDesktopPinCameraControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityDisplayState(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Live'))}</div>`,
+        asideMarkup: '',
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter desktop-pin-camera-preview">
@@ -6536,7 +6541,7 @@ function createDesktopPinSensorControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isBinary ? entity.state : '')}</div>`,
+        asideMarkup: '',
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
@@ -6566,9 +6571,6 @@ function updateExistingDesktopPinSensorControl(root, entity) {
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
-
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = isBinary ? entity.state : '';
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
@@ -7189,7 +7191,7 @@ function createDesktopPinPresenceControlElement(entity) {
         <div class="desktop-pin-panel-actions desktop-pin-presence-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-presence-focus',
-            label: t('Focus Main'),
+            label: t('Open widget'),
             ariaLabel: t('Focus main widget for {{name}}', {
               name: utils.getEntityDisplayName(entity),
             }),
@@ -7282,7 +7284,7 @@ function createDesktopPinWeatherControlElement(entity) {
         <div class="desktop-pin-panel-actions desktop-pin-weather-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-weather-focus',
-            label: t('Focus Main'),
+            label: t('Open widget'),
             ariaLabel: t('Focus main widget for {{name}}', {
               name: utils.getEntityDisplayName(entity),
             }),
@@ -7357,7 +7359,7 @@ function getDesktopPinVacuumActionConfig(entity) {
     serviceName,
   });
   const focusAction = {
-    label: 'Focus Main',
+    label: 'Open widget',
     type: 'focus-main',
   };
 
@@ -7409,7 +7411,7 @@ function getDesktopPinVacuumActionAriaLabel(label, entity) {
 }
 
 function getDesktopPinVacuumActionButtonsMarkup(entity, actionConfig) {
-  const primaryLabel = actionConfig.primary?.label || 'Focus Main';
+  const primaryLabel = actionConfig.primary?.label || 'Open widget';
   return `
     ${createDesktopPinButtonMarkup({
       className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
@@ -7634,11 +7636,14 @@ function syncQuickAccessControlButton(control, entityId) {
     : supportProfile.supported
       ? t('Pin to desktop')
       : getDesktopPinUnsupportedReason(supportProfile);
-  button.textContent = isPinned
-    ? t('Pinned')
-    : supportProfile.supported
-      ? t('Pin')
-      : t('Unsupported');
+  // An icon rather than a word: "Pinned" in German or French ran under the edit buttons.
+  const label = isPinned ? t('Pinned') : supportProfile.supported ? t('Pin') : t('Unsupported');
+  button.setAttribute('aria-label', label);
+  const iconName = isPinned || supportProfile.supported ? 'pin' : 'pin-off';
+  if (button.dataset.icon !== iconName) {
+    button.innerHTML = lineIconMarkup(iconName);
+    button.dataset.icon = iconName;
+  }
 }
 
 async function toggleDesktopPinFromQuickAccess(entityId) {
@@ -8133,8 +8138,9 @@ function getDesktopPinFallbackDescriptor(
       state: 'unavailable',
       label,
       kicker: t('Unavailable'),
-      title: t('{{name}} is unavailable', { name: label }),
-      detail: t('Latest Home Assistant data reports this entity as unavailable right now.'),
+      // The kicker already says "Unavailable"; the name and one plain sentence fit a small pin.
+      title: label,
+      detail: t("Home Assistant can't reach it right now."),
       showFocusMain: true,
       canOpen: false,
     };
@@ -9324,7 +9330,7 @@ function showUnavailableDialogState(modal, entity) {
     <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
     <span class="dialog-unavailable-note-text">
       <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
-      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. The controls come back when it reconnects."))}</span>
+      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Close this and try again once it's back."))}</span>
     </span>`;
   body.prepend(note);
   modal
@@ -9334,9 +9340,11 @@ function showUnavailableDialogState(modal, entity) {
     .forEach((control) => {
       control.disabled = true;
     });
-  modal.querySelectorAll('#brightness-value-large, #fan-speed-value').forEach((value) => {
-    value.textContent = t('Unavailable');
-  });
+  modal
+    .querySelectorAll('#brightness-value-large, #fan-speed-value, #cover-position-value')
+    .forEach((value) => {
+      value.textContent = t('Unavailable');
+    });
 }
 
 function releaseAccessibleDialogModal(modal) {
@@ -11694,7 +11702,6 @@ function showBrightnessSlider(light) {
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'brightness-title' });
-    showUnavailableDialogState(modal, light);
 
     const slider = modal.querySelector('#brightness-slider');
     const valueLarge = modal.querySelector('#brightness-value-large');
@@ -11739,6 +11746,8 @@ function showBrightnessSlider(light) {
       }
     };
     updateTurnButton();
+    // After updateTurnButton, which would otherwise write "Off" over "Unavailable".
+    showUnavailableDialogState(modal, light);
 
     // Close handlers
     let isClosing = false;
@@ -12175,7 +12184,6 @@ function showClimateControls(climateEntity) {
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'climate-title' });
-    showUnavailableDialogState(modal, climateEntity);
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
@@ -12269,6 +12277,8 @@ function showClimateControls(climateEntity) {
     );
     const fanModeButtons = modal.querySelectorAll('.climate-fan-mode-btn');
     const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
+    // After the mode, fan-mode and preset buttons exist, so they are disabled too.
+    showUnavailableDialogState(modal, climateEntity);
     let confirmedTargetTemp = targetTemp;
     let confirmedMode = currentMode;
     let confirmedFanMode = currentFanMode;
@@ -12930,8 +12940,14 @@ function initUpdateUI() {
     // Set current version
     const currentVersionEl = document.getElementById('current-version');
     if (currentVersionEl) {
-      currentVersionEl.textContent = `v${version}`;
+      currentVersionEl.textContent = version;
     }
+
+    // The button labels are owned here (ids on the i18n guardrail's dynamic list).
+    const checkUpdatesLabel = document.getElementById('check-updates-text');
+    if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('Check for updates');
+    const installUpdateLabel = document.getElementById('install-update-text');
+    if (installUpdateLabel) installUpdateLabel.textContent = t('Install update');
 
     // Wire up check for updates button
     const checkUpdatesBtn = document.getElementById('check-updates-btn');
@@ -13073,7 +13089,7 @@ function initUpdateUI() {
             }
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
-              installUpdateBtn.textContent = t('Install Update');
+              installUpdateBtn.textContent = t('Install update');
               installUpdateBtn.classList.remove('hidden');
             }
             if (updateProgress) updateProgress.classList.add('hidden');

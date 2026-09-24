@@ -3799,7 +3799,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Pin');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin');
 
       pinButton.click();
       await Promise.resolve();
@@ -3857,7 +3857,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Pinned');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pinned');
 
       pinButton.click();
       await Promise.resolve();
@@ -3893,7 +3893,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Unsupported');
+      expect(pinButton.getAttribute('aria-label')).toBe('Unsupported');
       expect(pinButton.disabled).toBe(true);
       expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
     });
@@ -4072,11 +4072,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(emptyState?.dataset.state).toBe('unavailable');
       expect(content?.classList.contains('hidden')).toBe(true);
       expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Unavailable');
-      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe(
-        'Bedroom Light is unavailable'
-      );
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Bedroom Light');
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe(
-        'Latest Home Assistant data reports this entity as unavailable right now.'
+        "Home Assistant can't reach it right now."
       );
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
@@ -5342,7 +5340,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('on');
-          expect(control?.querySelector('.desktop-pin-panel-kpi')?.textContent).toBe('on');
+          // The value reads "Detected"; the raw "on" no longer repeats it in the header.
+          expect(
+            control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
+          ).toBeNull();
           expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Detected');
         },
       },

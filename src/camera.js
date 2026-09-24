@@ -1331,6 +1331,8 @@ async function openCamera(cameraId, options = {}) {
     const stopLive = () => {
       streamGeneration += 1;
       showLoading(false);
+      // Every new snapshot or live attempt starts from a clean frame; its own handlers decide.
+      showFrameMessage(false);
       stopHlsStream(cameraId);
 
       const video = modal.querySelector('video.camera-video');
@@ -1459,6 +1461,14 @@ async function openCamera(cameraId, options = {}) {
                 video.removeAttribute('src');
                 video.style.display = 'none';
                 img.style.display = 'block';
+                img.onload = () => {
+                  if (closed || generation !== streamGeneration) return;
+                  showFrameMessage(false);
+                };
+                img.onerror = () => {
+                  if (closed || generation !== streamGeneration) return;
+                  showFrameMessage(true);
+                };
                 img.src = getRendererHost().resolveMediaUrl({
                   kind: 'camera_stream',
                   entityId: cameraId,
@@ -1526,10 +1536,12 @@ async function openCamera(cameraId, options = {}) {
         img.onload = () => {
           if (closed || generation !== streamGeneration) return;
           showLoading(false);
+          showFrameMessage(false);
         };
         img.onerror = () => {
           if (closed || generation !== streamGeneration) return;
           showLoading(false);
+          showFrameMessage(true);
         };
       }
 

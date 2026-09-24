@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Lay pinned desktop tiles out as designed again: the Quick Access tile rules had been overriding their padding, corners and alignment, so text ran into the rounded corners, a large label spilled over the top-right corner, and bottom buttons were cut off. Pins also stay readable in the light theme, where their text had turned white on light panels.
+- Calm the Quick Access edit mode: the pin, rename and remove buttons are small glass circles that take their colour on hover, the pin chip is an icon so longer translations fit, and sensor icons no longer sit under the buttons.
+- Keep the camera's live view visible after a failed snapshot, and disable every control (including climate modes and presets) in an unavailable entity's pop-up.
+- Make off switches in Settings clearly visible in both themes.
 - Show which Quick Access tile has keyboard focus. The focus outline was clipped by the tile and never visible.
 - Say when an entity is unavailable in its pop-up and disable the controls, instead of showing "Off". A fan without speed control can now be turned on and off from its pop-up.
 - Raise muted and accent-coloured text in the light theme above 4.5:1 contrast, and 10px status text to 11px.

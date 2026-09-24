@@ -453,7 +453,7 @@ function createSettingsModalDOM() {
         <p id="popup-hotkey-help-text"></p>
         <p id="popup-hotkey-platform-notice" hidden></p>
         <input type="text" id="popup-hotkey-input" />
-        <button id="popup-hotkey-set-btn">Set Hotkey</button>
+        <button id="popup-hotkey-set-btn">Set hotkey</button>
         <button id="popup-hotkey-clear-btn" style="display: none;">Clear</button>
         <button class="preset-hotkey-btn" data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
         <label id="popup-hotkey-toggle-mode-label">

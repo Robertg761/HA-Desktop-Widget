@@ -5922,6 +5922,8 @@ async function initializePopupHotkey() {
       input.disabled = false;
       input.value = currentHotkey;
       input.placeholder = currentHotkey || t('Not set');
+      // JS owns this label (it reads Cancel while capturing), so it is set here, not by data-i18n.
+      if (!isCapturingPopupHotkey) setBtn.textContent = t('Set hotkey');
       setBtn.disabled = false;
       clearBtn.disabled = false;
       clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
@@ -6310,7 +6312,7 @@ function stopCapturingPopupHotkey() {
   }
 
   if (setBtn) {
-    setBtn.textContent = t('Set Hotkey');
+    setBtn.textContent = t('Set hotkey');
     setBtn.classList.remove('btn-danger');
     setBtn.classList.add('btn-secondary');
   }

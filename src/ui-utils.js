@@ -155,6 +155,30 @@ function getReadableTextColor(rgb) {
   return 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.0537 ? '#ffffff' : '#0a0c10';
 }
 
+/**
+ * The accent darkened just enough to read as text on the light theme's near-white panes
+ * (at least 4.8:1 against #fafafa), so pale accents like aqua or yellow still work for links and
+ * secondary buttons. Returns an rgb() string.
+ * @param {{r:number, g:number, b:number}} rgb - Accent colour.
+ * @param {number} [minContrast=4.8]
+ */
+function getAccentTextOnLight(rgb, minContrast = 4.8) {
+  const linear = (channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  const luminance = ({ r, g, b }) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  const backgroundLuminance = luminance({ r: 250, g: 250, b: 250 });
+  let amount = 0;
+  let color = rgb;
+  while (amount < 0.95) {
+    color = mixRgb(rgb, { r: 0, g: 0, b: 0 }, amount);
+    if ((backgroundLuminance + 0.05) / (luminance(color) + 0.05) >= minContrast) break;
+    amount += 0.05;
+  }
+  return `rgb(${color.r}, ${color.g}, ${color.b})`;
+}
+
 function mapWindowOpacityToBackgroundAlpha(opacity) {
   const normalized = (opacity - 0.5) / 0.5;
   const curvedOpacity = Math.pow(Math.max(0, Math.min(1, normalized)), BACKGROUND_OPACITY_CURVE);
@@ -339,6 +363,8 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
   root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
   root.style.setProperty('--on-accent', getReadableTextColor(rgb));
+  root.style.setProperty('--accent-text-light', getAccentTextOnLight(rgb));
+  root.style.setProperty('--accent-text-light-hover', getAccentTextOnLight(rgb, 6.5));
   root.style.setProperty('--primary', normalizedColor);
   root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
@@ -1360,6 +1386,7 @@ export {
   setStatus,
   showConfirm,
   hexToRgb,
+  getAccentTextOnLight,
   getReadableTextColor,
   miredsToKelvin,
   hasSupportedFeature,

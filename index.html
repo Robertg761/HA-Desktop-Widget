@@ -38,11 +38,11 @@
           <button
             id="desktop-pin-focus-btn"
             class="control-btn desktop-pin-action desktop-pin-empty-action"
-            data-i18n="Focus Main"
-            data-i18n-title="Focus Main"
-            title="Focus Main"
+            data-i18n="Open widget"
+            data-i18n-title="Open widget"
+            title="Open widget"
           >
-            Focus Main
+            Open widget
           </button>
         </div>
       </div>
@@ -568,12 +568,7 @@
                   aria-live="polite"
                 ></div>
                 <div class="connection-test-row">
-                  <button
-                    type="button"
-                    id="connect-ha-oauth-btn"
-                    class="btn btn-primary"
-                    data-i18n="Connect with Home Assistant"
-                  >
+                  <button type="button" id="connect-ha-oauth-btn" class="btn btn-primary">
                     Connect with Home Assistant
                   </button>
                   <button
@@ -593,7 +588,7 @@
                     Cancel
                   </button>
                 </div>
-                <details id="legacy-ha-token-settings" class="settings-details">
+                <details id="legacy-ha-token-settings" class="settings-details settings-disclosure">
                   <summary data-i18n="Legacy access token (advanced)">
                     Legacy access token (advanced)
                   </summary>
@@ -1322,7 +1317,7 @@
               <div class="settings-group-body">
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="time-format" data-i18n="Time Format">Time Format</label>
+                    <label for="time-format" data-i18n="Time format">Time format</label>
                   </div>
                   <select id="time-format">
                     <option value="system" data-i18n="System default">System default</option>
@@ -1332,7 +1327,7 @@
                 </div>
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="date-format" data-i18n="Date Format">Date Format</label>
+                    <label for="date-format" data-i18n="Date format">Date format</label>
                     <p
                       class="form-help"
                       data-i18n="Date and time always use your selected language and regional conventions."
@@ -1575,12 +1570,8 @@
                   <p id="popup-hotkey-platform-notice" class="form-help" hidden></p>
                   <div class="popup-hotkey-config">
                     <input type="text" id="popup-hotkey-input" readonly />
-                    <button
-                      id="popup-hotkey-set-btn"
-                      class="btn btn-secondary btn-small"
-                      data-i18n="Set Hotkey"
-                    >
-                      Set Hotkey
+                    <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">
+                      Set hotkey
                     </button>
                     <button
                       id="popup-hotkey-clear-btn"
@@ -1746,10 +1737,10 @@
                   </div>
                   <div class="update-actions">
                     <button id="check-updates-btn" class="btn btn-secondary" disabled>
-                      <span id="check-updates-text">Check for Updates</span>
+                      <span id="check-updates-text">Check for updates</span>
                     </button>
                     <button id="install-update-btn" class="btn btn-primary hidden">
-                      <span id="install-update-text">Install Update</span>
+                      <span id="install-update-text">Install update</span>
                     </button>
                   </div>
                 </div>
