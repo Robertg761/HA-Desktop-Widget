@@ -4091,6 +4091,87 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
     });
 
+    it('translates every fallback state of a desktop pin', () => {
+      const i18n = require('../../src/i18n.js');
+      const keys = [
+        'Pin setup',
+        'No entity selected',
+        'Choose an entity in the main widget and pin it again.',
+        'Connection issue',
+        'Home Assistant unavailable',
+        'Unsupported',
+        'Desktop pin not supported yet',
+        'The "{{domain}}" domain does not have a desktop-pin profile yet.',
+        'Missing entity',
+        'Pinned entity not found',
+        'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
+        'Connecting',
+        'Waiting for first live update',
+        'Waiting for live Home Assistant data...',
+        'Unavailable',
+        '{{name}} is unavailable',
+        'Latest Home Assistant data reports this entity as unavailable right now.',
+      ];
+      const text = (part) => document.getElementById(`desktop-pin-empty-${part}`)?.textContent;
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom'],
+          state: 'unavailable',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+      i18n.setLocaleBootstrap({
+        messages: Object.fromEntries(keys.map((key) => [key, `[xx] ${key}`])),
+      });
+
+      try {
+        ui.renderDesktopPinnedTile('', null);
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Pin setup',
+          '[xx] No entity selected',
+          '[xx] Choose an entity in the main widget and pin it again.',
+        ]);
+
+        ui.renderDesktopPinnedTile('light.bedroom', null, { connectionIssue: 'Offline' });
+        expect([text('kicker'), text('title')]).toEqual([
+          '[xx] Connection issue',
+          '[xx] Home Assistant unavailable',
+        ]);
+
+        ui.renderDesktopPinnedTile('calendar.work', null, { hasSnapshot: true });
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Unsupported',
+          '[xx] Desktop pin not supported yet',
+          '[xx] The "calendar" domain does not have a desktop-pin profile yet.',
+        ]);
+
+        ui.renderDesktopPinnedTile('light.missing', null, { hasSnapshot: true });
+        expect([text('kicker'), text('title')]).toEqual([
+          '[xx] Missing entity',
+          '[xx] Pinned entity not found',
+        ]);
+        expect(text('copy')).toMatch(/^\[xx\] This tile could not find its entity/);
+
+        ui.renderDesktopPinnedTile('light.missing', null);
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Connecting',
+          '[xx] Waiting for first live update',
+          '[xx] Waiting for live Home Assistant data...',
+        ]);
+
+        ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom'], {
+          hasSnapshot: true,
+        });
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Unavailable',
+          '[xx] Bedroom Light is unavailable',
+          '[xx] Latest Home Assistant data reports this entity as unavailable right now.',
+        ]);
+      } finally {
+        i18n.setLocaleBootstrap({ messages: {} });
+      }
+    });
+
     it('keeps dense tiles in compact mode when only one axis clears the old promotion threshold', () => {
       setDesktopPinViewport(260, 148);
       state.setStates({
