@@ -367,6 +367,53 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('switch desktop pin state', () => {
+    const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
+    const renderSwitchPin = (layout) =>
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-toggle-control"
+            data-layout="${layout}">
+            <div class="desktop-pin-panel-shell">
+              <div class="desktop-pin-panel-body desktop-pin-toggle-body">
+                <div class="desktop-pin-panel-meter">
+                  <div class="desktop-pin-panel-glyph"></div>
+                  <div class="desktop-pin-panel-kpi">Off</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div></div>`
+      );
+
+    // At the 156x122 minimum the middle panel is about 40px tall (measured in a real pin window).
+    it.each(['compact', 'micro'])('fits the glyph and state in a 156x122 %s pin', (layout) => {
+      renderSwitchPin(layout);
+      const options = { viewport: { width: 156, height: 122 } };
+      const meter = document.querySelector('.desktop-pin-panel-meter');
+      const glyph = toPx(
+        resolvedValue(document.querySelector('.desktop-pin-panel-glyph'), 'height', options)
+      );
+      const padding = toPx(resolvedValue(meter, 'padding', options).split(/\s+/)[0]);
+      // The state's line box: at least 14px type at line-height 0.95.
+      const state = 14 * 0.95;
+      const gap = toPx(resolvedValue(meter, 'gap', options));
+      const sideBySide = resolvedValue(meter, 'grid-auto-flow', options) === 'column';
+      const content = sideBySide ? Math.max(glyph, state) : glyph + gap + state;
+
+      expect(content + 2 * padding + 2).toBeLessThanOrEqual(40);
+    });
+
+    it('keeps the glyph above the state in the default 168x148 pin', () => {
+      renderSwitchPin('compact');
+      const meter = document.querySelector('.desktop-pin-panel-meter');
+      expect(
+        resolvedValue(meter, 'grid-auto-flow', { viewport: { width: 168, height: 148 } })
+      ).not.toBe('column');
+    });
+  });
+
   describe('desktop pin corners', () => {
     const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
 

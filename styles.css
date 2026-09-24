@@ -2255,6 +2255,23 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   grid-template-columns: 1fr;
 }
 
+/* Stacked, the glyph and the state need about 63px, more than the middle panel gets below the
+   default pin height (42px at the 156x122 minimum), which cut the state off at the bottom. Short
+   pins put them side by side. */
+@media (max-height: 142px) {
+  .desktop-pin-toggle-body .desktop-pin-panel-meter {
+    grid-auto-flow: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .desktop-pin-toggle-body .desktop-pin-panel-glyph {
+    width: 24px;
+    height: 24px;
+  }
+}
+
 .desktop-pin-climate-modes {
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
