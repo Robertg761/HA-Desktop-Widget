@@ -364,6 +364,8 @@ describe('tile and device dialog polish', () => {
       const dates = modal.querySelectorAll('.sensor-history-summary')[1];
       expect(frame.hidden).toBe(false);
       expect(dates.textContent).not.toBe('');
+      // Hours and minutes only.
+      expect(dates.textContent).not.toMatch(/\d:\d{2}:\d{2}/);
 
       const period = modal.querySelector('select');
       period.value = '1';

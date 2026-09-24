@@ -2600,12 +2600,17 @@ function parseCalendarDate(value) {
   return new Date(year, month - 1, day);
 }
 
-function formatDateTimeValue(value) {
+// Event times read in hours and minutes, following the clock's 12/24-hour setting.
+function formatEventTime(date) {
+  return formatTime(date, { hour: 'numeric', minute: '2-digit', ...getClockTimeOptions() });
+}
+
+function formatDateTimeValue(value, { timeOnly = false } = {}) {
   const dateValue = getEventDateValue(value);
   if (!dateValue) return '--';
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return `${formatDate(date)} ${formatTime(date)}`;
+  return timeOnly ? formatEventTime(date) : `${formatDate(date)} ${formatEventTime(date)}`;
 }
 
 function formatCalendarTileStart(startTime, { allDay = false } = {}) {
@@ -2615,7 +2620,7 @@ function formatCalendarTileStart(startTime, { allDay = false } = {}) {
   if (allDay || parseCalendarDate(dateValue)) return t('All day');
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return formatTime(date, { hour: 'numeric', minute: '2-digit' });
+  return formatEventTime(date);
 }
 
 function formatCalendarEventRange(event) {
@@ -2629,8 +2634,17 @@ function formatCalendarEventRange(event) {
         : formatDate(startDate);
     return `${dates} · ${t('All day')}`;
   }
-  const start = formatDateTimeValue(event?.start || event?.start_time);
-  const end = formatDateTimeValue(event?.end || event?.end_time);
+  const startValue = event?.start || event?.start_time;
+  const endValue = event?.end || event?.end_time;
+  const startAt = new Date(getEventDateValue(startValue) || NaN);
+  const endAt = new Date(getEventDateValue(endValue) || NaN);
+  // An event that ends the same day shows its date once.
+  const sameDay =
+    !Number.isNaN(startAt.getTime()) &&
+    !Number.isNaN(endAt.getTime()) &&
+    startAt.toDateString() === endAt.toDateString();
+  const start = formatDateTimeValue(startValue);
+  const end = formatDateTimeValue(endValue, { timeOnly: sameDay });
   if (!end || end === '--') return start;
   return `${start} - ${end}`;
 }
