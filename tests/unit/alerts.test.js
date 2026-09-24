@@ -386,7 +386,47 @@ describe('alerts module', () => {
         alerts.checkEntityAlerts('light.living_room', 'on');
 
         expect(showToast).toHaveBeenCalledWith(
-          expect.stringContaining('from off to on'),
+          expect.stringContaining('from Off to On'),
+          'info',
+          4000
+        );
+      });
+    });
+
+    describe('translated alert messages', () => {
+      const i18n = require('../../src/i18n.js');
+      afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
+
+      it('uses the active language for the message, entity states and numeric values', () => {
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            '{{name}} changed from {{previousState}} to {{newState}}':
+              '{{name}} wechselte von {{previousState}} zu {{newState}}',
+            '{{name}} is now {{newState}}': '{{name}} ist jetzt {{newState}}',
+            On: 'An',
+            Off: 'Aus',
+            'Home Assistant Alert': 'Home Assistant-Warnung',
+          },
+        });
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
+        mockState.CONFIG.entityAlerts.alerts['sensor.temperature'] = {
+          onNumericThreshold: true,
+          threshold: 20,
+        };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+        expect(showToast).toHaveBeenLastCalledWith(
+          'Living Room Light wechselte von An zu Aus',
+          'info',
+          4000
+        );
+        expect(global.Notification.lastNotification.title).toBe('Home Assistant-Warnung');
+
+        alerts.checkEntityAlerts('sensor.temperature', '21.5');
+        expect(showToast).toHaveBeenLastCalledWith(
+          expect.stringMatching(/ist jetzt 21,5$/),
           'info',
           4000
         );
@@ -403,7 +443,7 @@ describe('alerts module', () => {
 
         alerts.checkEntityAlerts('light.living_room', 'on');
 
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('is now on'), 'info', 4000);
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('is now On'), 'info', 4000);
         expect(global.Notification.lastNotification).toBeTruthy();
       });
 

@@ -2,8 +2,18 @@ import state from './state.js';
 import { createAlertEvaluator } from './alert-rules.js';
 import { showToast } from './ui-utils.js';
 import { getEntityDisplayName, getEntityIcon } from './utils.js';
-import { t } from './i18n.js';
+import { formatNumericState, t } from './i18n.js';
 import { getConnectionIdentity } from './connection.js';
+import trayEntitySupport from './tray-entities.cjs';
+
+// Raw Home Assistant states ("on", "not_home") shown with the same translated names as the
+// tiles and tray; numeric states keep their decimals in the active locale's format.
+function formatAlertState(value) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!key) return t('Unknown');
+  const name = trayEntitySupport.STATE_NAMES[key];
+  return name ? t(name) : formatNumericState(key);
+}
 
 const evaluator = createAlertEvaluator({
   getConfig: () => state.CONFIG?.entityAlerts,
@@ -12,10 +22,10 @@ const evaluator = createAlertEvaluator({
     const message = rule.onStateChange
       ? t('{{name}} changed from {{previousState}} to {{newState}}', {
           name,
-          previousState,
-          newState,
+          previousState: formatAlertState(previousState),
+          newState: formatAlertState(newState),
         })
-      : t('{{name}} is now {{newState}}', { name, newState });
+      : t('{{name}} is now {{newState}}', { name, newState: formatAlertState(newState) });
     showEntityAlert(message, entityId);
   },
 });
