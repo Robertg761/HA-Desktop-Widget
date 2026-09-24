@@ -372,3 +372,34 @@ describe('sensor history summary in the active language', () => {
     modal.remove();
   });
 });
+
+describe('left-to-right values in right-to-left languages', () => {
+  it('isolates a value only while a right-to-left language is active', () => {
+    expect(i18n.isolateLtr('23°C')).toBe('23°C');
+    useGerman();
+    expect(i18n.isolateLtr('23°C')).toBe('23°C');
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    expect(i18n.isolateLtr('23°C')).toBe('\u206623°C\u2069');
+    expect(i18n.isolateLtr('')).toBe('');
+  });
+
+  it('keeps the unit after the sensor history average in Arabic', async () => {
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    const modal = document.createElement('div');
+    const body = document.createElement('div');
+    modal.appendChild(body);
+    document.body.appendChild(modal);
+    const now = Date.now();
+    mountSensorHistoryDetail({
+      body,
+      modal,
+      entity: { entity_id: 'sensor.outside', attributes: { unit_of_measurement: '°C' } },
+      websocket: { request: jest.fn(async () => ({ success: true, result: {} })) },
+      normalize: () => [{ timestamp: now - 3600000, value: 1.5 }],
+      render: jest.fn(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(body.querySelector('.sensor-history-summary').textContent).toMatch(/\u2066°C\u2069$/);
+    modal.remove();
+  });
+});

@@ -1106,7 +1106,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   isolation: isolate;
   padding: 0;
-  text-align: left;
+  text-align: start;
   background:
     radial-gradient(
       circle at top left,
@@ -1653,7 +1653,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   isolation: isolate;
   padding: var(--desktop-pin-panel-pad);
-  text-align: left;
+  text-align: start;
   background:
     radial-gradient(circle at top left, rgba(var(--desktop-pin-tint-rgb), 0.15), transparent 70%),
     linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
@@ -2867,7 +2867,7 @@ body.theme-light:not(.high-contrast)
   background: var(--danger);
   transition: background-color var(--transition-slow);
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-inline-start: 8px;
   box-shadow: 0 0 4px var(--danger);
   -webkit-app-region: no-drag;
   cursor: help;
@@ -3579,7 +3579,7 @@ body.first-run-active .widget-content > * {
 
 .quick-access-header .section-buttons {
   flex: 0 0 auto;
-  margin-left: auto; /* keep the reorganize/manage buttons pinned to the right */
+  margin-inline-start: auto; /* keep the reorganize/manage buttons pinned to the end */
 }
 
 .quick-access-header .quick-access-tabs {
@@ -3618,7 +3618,7 @@ body.first-run-active .widget-content > * {
     transparent 100%
   );
   box-shadow: none;
-  padding-right: 2px;
+  padding-inline-end: 2px;
 }
 
 /* In reorganize mode the wrapper owns the active highlight. */
@@ -4093,7 +4093,7 @@ body.first-run-active .widget-content > * {
 
 .entity-item.selected {
   background: var(--primary-alpha);
-  border-left: 3px solid var(--primary-color);
+  border-inline-start: 3px solid var(--primary-color);
 }
 
 .selected-badge {
@@ -5054,7 +5054,7 @@ body.first-run-active .widget-content > * {
 }
 
 .primary-cards-pagination [role='status'] {
-  margin-right: auto;
+  margin-inline-end: auto;
   color: var(--muted-text);
 }
 
@@ -5138,7 +5138,7 @@ body.first-run-active .widget-content > * {
   width: 170px;
   min-height: 30px;
   padding: 6px 8px;
-  text-align: left;
+  text-align: start;
   font-size: var(--font-size-base);
   line-height: 1.2;
 }
@@ -5178,7 +5178,7 @@ body.first-run-active .widget-content > * {
   gap: 8px;
   max-height: min(52vh, 380px);
   overflow-y: auto;
-  padding-right: 2px;
+  padding-inline-end: 2px;
 }
 
 .custom-entity-icon-choice {
@@ -5259,11 +5259,11 @@ body.first-run-active .widget-content > * {
 .sensor-value .unit {
   font-size: var(--font-size-lg);
   color: var(--text-secondary);
-  margin-left: 8px;
+  margin-inline-start: 8px;
 }
 
 .sensor-info {
-  text-align: left;
+  text-align: start;
   background: var(--surface-1);
   padding: 16px;
   border-radius: var(--radius-md);
@@ -6645,7 +6645,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   z-index: 2;
   min-width: 0;
   padding: 28px 10px 9px;
-  text-align: left;
+  text-align: start;
   pointer-events: none;
 }
 
@@ -6667,7 +6667,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   font-size: var(--font-size-xs);
   font-weight: 500;
   line-height: 1.2;
-  text-align: left;
+  text-align: start;
   text-overflow: ellipsis;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
@@ -6676,7 +6676,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 .camera-tile-preview-badge {
   position: absolute;
   top: 7px;
-  right: 7px;
+  inset-inline-end: 7px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -6803,7 +6803,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-header {
   min-height: 58px;
   gap: 14px;
-  padding: 10px 12px 10px 16px;
+  padding: 10px 12px;
+  padding-inline-start: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -7037,7 +7038,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
   .camera-expanded-preview-header {
     min-height: 52px;
-    padding: 8px 9px 8px 12px;
+    padding: 8px 9px;
+    padding-inline-start: 12px;
   }
 
   .camera-expanded-preview-heading h2 {
@@ -7993,7 +7995,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   overflow-x: hidden;
   overflow-y: auto;
   padding: var(--space-3) var(--space-2);
-  border-right: 1px solid var(--border-color);
+  border-inline-end: 1px solid var(--border-color);
   border-bottom: none;
   background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
   backdrop-filter: blur(28px) saturate(160%) !important;
@@ -8408,7 +8410,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border: 1px solid var(--border-color);
   position: relative;
   transition: var(--transition-base);
-  margin-right: var(--space-3);
+  margin-inline-end: var(--space-3);
   outline: none;
   cursor: pointer;
   flex-shrink: 0;
@@ -8419,7 +8421,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   content: '';
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -8642,7 +8644,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   -webkit-appearance: none;
   transition: var(--transition-base);
   box-shadow: var(--shadow-sm);
-  text-align: left;
+  text-align: start;
   justify-content: center;
   aspect-ratio: 1 / 1;
   position: relative;
@@ -8781,8 +8783,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-editor-save-lock-hint {
-  border-left: 3px solid rgba(var(--accent-rgb), 0.6);
-  padding-left: var(--space-3);
+  border-inline-start: 3px solid rgba(var(--accent-rgb), 0.6);
+  padding-inline-start: var(--space-3);
   color: var(--accent);
 }
 
@@ -8874,7 +8876,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -8946,17 +8948,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-base);
   cursor: pointer;
   transition: var(--transition-base);
-  border-left: 3px solid transparent;
+  border-inline-start: 3px solid transparent;
 }
 
 .custom-dropdown-option:hover {
   background: rgba(255, 255, 255, 0.05);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
 }
 
 .custom-dropdown-option.selected {
   background: var(--accent-bg);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
   color: var(--accent);
 }
 
@@ -9155,7 +9157,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   gap: var(--space-2);
   width: fit-content;
   padding: var(--space-2) var(--space-3);
-  margin-left: calc(var(--space-3) * -1);
+  margin-inline-start: calc(var(--space-3) * -1);
   border-radius: var(--radius-md);
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
@@ -9199,7 +9201,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
    than continuing the card above it. */
 .settings-details-body {
   margin-top: var(--space-4);
-  padding-left: var(--space-3);
+  padding-inline-start: var(--space-3);
 }
 
 .settings-details-body > .form-group:first-child {
@@ -9378,7 +9380,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .first-run-actions .btn:first-child {
-  margin-right: auto;
+  margin-inline-end: auto;
 }
 
 .widget-state-panel {
@@ -9757,7 +9759,7 @@ body.widget-state-active #quick-controls .status-message {
   padding: var(--space-4) var(--space-5);
   min-width: 200px;
   max-width: min(420px, 90vw);
-  text-align: left;
+  text-align: start;
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(var(--bg-blur));
   -webkit-backdrop-filter: blur(var(--bg-blur));
@@ -11023,7 +11025,7 @@ body.widget-state-active #quick-controls .status-message {
 
 .brightness-value {
   min-width: 50px;
-  text-align: right;
+  text-align: end;
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--accent);
@@ -11120,7 +11122,7 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 .media-volume-value {
-  text-align: right;
+  text-align: end;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
@@ -11407,7 +11409,7 @@ body.widget-state-active #quick-controls .status-message {
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  text-align: left;
+  text-align: start;
   transition: var(--transition-base);
 }
 
@@ -11419,7 +11421,7 @@ body.widget-state-active #quick-controls .status-message {
 
 #settings-modal .tab-link.active {
   border-color: rgba(var(--accent-rgb), 0.36);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
   background: var(--accent-bg);
   color: var(--text-primary);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -11454,7 +11456,7 @@ body.widget-state-active #quick-controls .status-message {
     overflow-x: auto;
     overflow-y: hidden;
     padding: var(--space-2) var(--space-3);
-    border-right: none;
+    border-inline-end: none;
     border-bottom: 1px solid var(--border-color);
   }
 
@@ -11467,7 +11469,7 @@ body.widget-state-active #quick-controls .status-message {
   }
 
   #settings-modal .tab-link.active {
-    border-left-color: rgba(var(--accent-rgb), 0.36);
+    border-inline-start-color: rgba(var(--accent-rgb), 0.36);
     box-shadow: inset 0 -2px 0 var(--accent);
   }
 
@@ -11523,7 +11525,8 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 .preset-hotkey-btn {
-  margin: 4px 4px 4px 0;
+  margin: 4px 0;
+  margin-inline-end: 4px;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
 }
@@ -11589,7 +11592,7 @@ body.widget-state-active #quick-controls .status-message {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .hotkey-input-container:has(.hotkey-action-dropdown.open) {
@@ -11856,7 +11859,7 @@ body.widget-state-active #quick-controls .status-message {
 .alert-badge {
   display: inline-block;
   font-size: var(--font-size-base);
-  margin-left: 8px;
+  margin-inline-start: 8px;
   opacity: 0.8;
   transition: opacity var(--transition-base);
 }
@@ -12722,7 +12725,7 @@ label.disabled {
   padding: 8px 12px;
   background: transparent;
   color: var(--text-primary);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -13124,4 +13127,71 @@ body.high-contrast .tile-primary-button,
 
 body.high-contrast .tile-primary-button:focus-visible {
   outline-offset: -3px !important;
+}
+
+/* Right-to-left languages.
+   Numbers with units ("-24°C", "8 km/h", "21–24°C") and Home Assistant names are usually
+   left-to-right text. In a right-to-left page the bidi algorithm would move the minus sign and the
+   unit to the wrong side, so these elements take their direction from their own text instead:
+   "15,6 °C" reads left to right, a translated "مفتوح 50%" still reads right to left, and a long
+   English name is cut at its end. */
+[dir='rtl']
+  :is(
+    .weather-temp,
+    .detail-value,
+    .control-name,
+    .control-state,
+    .brightness-value-large,
+    .brightness-preset-btn,
+    .climate-temp-value,
+    .climate-temp-value-large,
+    .cover-position-value,
+    .fan-speed-value,
+    .media-volume-value,
+    .media-title,
+    .media-detail-title,
+    .media-detail-artist,
+    .sensor-detail-value,
+    .desktop-pin-panel-name,
+    .desktop-pin-panel-kpi,
+    .desktop-pin-panel-value,
+    .desktop-pin-media-title,
+    .desktop-pin-climate-target-value
+  ) {
+  unicode-bidi: plaintext;
+}
+
+/* A value and its unit in separate spans keep their left-to-right order. */
+[dir='rtl'] :is(.control-sensor-readout, .sensor-detail-readout) {
+  direction: ltr;
+}
+
+/* Media timelines and transport controls are not mirrored: rewind stays on the left of forward,
+   and "-10" and "+10" keep their signs in front. */
+[dir='rtl']
+  :is(
+    .media-progress,
+    .media-detail-controls,
+    .media-tile-seek,
+    .media-tile-controls,
+    .desktop-pin-media-control .desktop-pin-panel-actions,
+    .desktop-pin-media-control .desktop-pin-panel-progress
+  ) {
+  direction: ltr;
+}
+
+/* Names in the command palette keep the row's alignment while cutting at their own end. */
+[dir='rtl'] .command-palette-result-name {
+  unicode-bidi: plaintext;
+  text-align: match-parent;
+}
+
+/* Switches start on the right and slide left when turned on. */
+[dir='rtl'] .form-group input[type='checkbox']:checked::after {
+  transform: translateX(-18px);
+}
+
+/* A closed disclosure points towards the text, which runs leftwards. */
+[dir='rtl'] .settings-details:not([open]) > summary::before {
+  transform: rotate(135deg);
 }

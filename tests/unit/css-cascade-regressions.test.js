@@ -633,4 +633,61 @@ describe('stylesheet cascade regressions', () => {
       ).toBe('nowrap');
     });
   });
+
+  describe('right-to-left languages', () => {
+    beforeEach(() => {
+      document.documentElement.dir = 'rtl';
+    });
+    afterEach(() => {
+      document.documentElement.removeAttribute('dir');
+    });
+
+    it('lets numbers with units and entity names keep their own direction', () => {
+      render(
+        '',
+        `<div class="weather-temp">-24°C</div><span class="detail-value">8 km/h</span>
+        <div class="control-name">Outlet 1</div><div class="control-state">مفتوح 50%</div>
+        <div class="climate-temp-value-large">21–24°C</div>
+        <div class="desktop-pin-panel-kpi">21–24°C</div>
+        <div class="control-state control-sensor-readout"><span>15,6</span><span>°C</span></div>`
+      );
+      for (const selector of [
+        '.weather-temp',
+        '.detail-value',
+        '.control-name',
+        '.control-state',
+        '.climate-temp-value-large',
+        '.desktop-pin-panel-kpi',
+      ]) {
+        expect(resolvedValue(document.querySelector(selector), 'unicode-bidi')).toBe('plaintext');
+      }
+      expect(resolvedValue(document.querySelector('.control-sensor-readout'), 'direction')).toBe(
+        'ltr'
+      );
+    });
+
+    it('does not mirror media transport controls', () => {
+      render(
+        '',
+        `<div class="media-detail-controls"><button class="btn media-detail-seek-btn">-10</button></div>
+        <div class="media-tile-controls"></div>`
+      );
+      expect(resolvedValue(document.querySelector('.media-detail-controls'), 'direction')).toBe(
+        'ltr'
+      );
+      expect(resolvedValue(document.querySelector('.media-tile-controls'), 'direction')).toBe(
+        'ltr'
+      );
+    });
+
+    it('puts the switch gap on the label side', () => {
+      render(
+        '',
+        `<div class="form-group"><label><input type="checkbox" checked><span>Label</span></label></div>`
+      );
+      const toggle = document.querySelector('input');
+      expect(resolvedValue(toggle, 'margin-inline-end')).toMatch(/^[\d.]+(rem|px)$/);
+      expect(resolvedValue(toggle, 'margin-right')).toBeFalsy();
+    });
+  });
 });

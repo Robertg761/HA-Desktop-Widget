@@ -11,7 +11,7 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatNumber, formatTime, getLocaleState, t } from './i18n.js';
+import { formatDate, formatNumber, formatTime, getLocaleState, isolateLtr, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon, WEATHER_LABELS } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
@@ -5227,7 +5227,9 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
     compactCurrent.textContent =
       currentTemp == null
         ? t('No live room temperature')
-        : t('Now {{temperature}}', { temperature: formatTemperatureDisplay(currentTemp, unit) });
+        : t('Now {{temperature}}', {
+            temperature: isolateLtr(formatTemperatureDisplay(currentTemp, unit)),
+          });
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
@@ -5273,7 +5275,9 @@ function createDesktopPinClimateControlElement(entity) {
     climateValue.currentTemp == null
       ? t('No live room temperature')
       : t('Now {{temperature}}', {
-          temperature: formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit),
+          temperature: isolateLtr(
+            formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
+          ),
         })
   );
   const currentTempText = utils.escapeHtml(

@@ -438,6 +438,33 @@ describe('ui.js translations and number formatting', () => {
     ).toBe('Öffnen');
   });
 
+  it('keeps the current temperature readable inside an Arabic climate pin sentence', () => {
+    i18n.setLocaleBootstrap({
+      activeLocale: 'ar',
+      messages: { 'Now {{temperature}}': 'الآن {{temperature}}' },
+    });
+    const climate = entity('climate.hall', 'heat', {
+      current_temperature: 23,
+      temperature: 21,
+      hvac_modes: ['heat', 'off'],
+      supported_features: 1,
+    });
+    state.setStates({ [climate.entity_id]: climate });
+    const { innerWidth, innerHeight } = window;
+    // The smallest pin shows the current temperature as a sentence.
+    window.innerWidth = 168;
+    window.innerHeight = 148;
+    try {
+      ui.renderDesktopPinnedTile(climate.entity_id, climate);
+    } finally {
+      window.innerWidth = innerWidth;
+      window.innerHeight = innerHeight;
+    }
+    expect(
+      document.querySelector('#desktop-pin-content .desktop-pin-climate-inline-copy').textContent
+    ).toBe('الآن \u206623°C\u2069');
+  });
+
   it('names the weather condition on a weather desktop pin', () => {
     useGerman({ Rainy: 'Regnerisch' });
     const weather = entity('weather.home', 'rainy', { temperature: 12.5, humidity: 80 });
