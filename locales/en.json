@@ -1250,6 +1250,7 @@
   "Supported modifiers: Ctrl, Alt, Shift, Command, Super.": "Supported modifiers: Ctrl, Alt, Shift, Command, Super.",
   "Example:": "Example:",
   "Enable Entity Alerts": "Enable Entity Alerts",
+  "Entity alert changes take effect immediately.": "Entity alert changes take effect immediately.",
   "Configure which entities should trigger desktop notifications.": "Configure which entities should trigger desktop notifications.",
   "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.",
   "Available Entities for Quick Access:": "Available Entities for Quick Access:",

@@ -1257,6 +1257,7 @@
     "Supported modifiers: Ctrl, Alt, Shift, Command, Super.": "支持的修饰键：Ctrl、Alt、Shift、Command、Super。",
     "Example:": "示例：",
     "Enable Entity Alerts": "启用实体警报",
+    "Entity alert changes take effect immediately.": "实体警报的更改会立即生效。",
     "Configure which entities should trigger desktop notifications.": "配置哪些实体应触发桌面通知。",
     "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": "提示：在任意位置按 Ctrl+K 可搜索实体、运行命令和切换页面。",
     "Available Entities for Quick Access:": "快捷访问可用实体：",

@@ -1250,6 +1250,7 @@
   "Supported modifiers: Ctrl, Alt, Shift, Command, Super.": "Unterstützte Modifikatortasten: Ctrl, Alt, Shift, Command, Super.",
   "Example:": "Beispiel:",
   "Enable Entity Alerts": "Entitätswarnungen aktivieren",
+  "Entity alert changes take effect immediately.": "Änderungen an Entitätswarnungen werden sofort wirksam.",
   "Configure which entities should trigger desktop notifications.": "Lege fest, welche Entitäten Desktop-Benachrichtigungen auslösen sollen.",
   "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": "Tipp: Drücke überall Ctrl+K, um Entitäten zu suchen, Befehle auszuführen und Seiten zu wechseln.",
   "Available Entities for Quick Access:": "Verfügbare Entitäten für den Schnellzugriff:",

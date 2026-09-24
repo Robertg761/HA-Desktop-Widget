@@ -1257,6 +1257,7 @@
     "Supported modifiers: Ctrl, Alt, Shift, Command, Super.": "समर्थित मॉडिफ़ायर: Ctrl, Alt, Shift, Command, Super.",
     "Example:": "उदाहरण:",
     "Enable Entity Alerts": "एंटिटी अलर्ट सक्षम करें",
+    "Entity alert changes take effect immediately.": "एंटिटी अलर्ट में बदलाव तुरंत लागू होते हैं।",
     "Configure which entities should trigger desktop notifications.": "कॉन्फ़िगर करें कि कौन-सी एंटिटी डेस्कटॉप सूचनाएं ट्रिगर करें।",
     "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": "सुझाव: एंटिटी खोजने, कमांड चलाने और पेज बदलने के लिए कहीं भी Ctrl+K दबाएं।",
     "Available Entities for Quick Access:": "क्विक एक्सेस के लिए उपलब्ध एंटिटी:",

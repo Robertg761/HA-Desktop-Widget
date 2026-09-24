@@ -1257,6 +1257,7 @@
     "Supported modifiers: Ctrl, Alt, Shift, Command, Super.": "مفاتيح التعديل المدعومة: Ctrl وAlt وShift وCommand وSuper.",
     "Example:": "مثال:",
     "Enable Entity Alerts": "تفعيل تنبيهات الكيانات",
+    "Entity alert changes take effect immediately.": "تسري تغييرات تنبيهات الكيانات فورًا.",
     "Configure which entities should trigger desktop notifications.": "حدّد الكيانات التي يجب أن تُطلق إشعارات سطح المكتب.",
     "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": "تلميح: اضغط Ctrl+K في أي مكان للبحث عن الكيانات وتنفيذ الأوامر والتبديل بين الصفحات.",
     "Available Entities for Quick Access:": "الكيانات المتاحة للوصول السريع:",
