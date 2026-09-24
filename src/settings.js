@@ -1708,6 +1708,20 @@ function renderColorThemeOptions() {
   syncPersonalizationSectionHeight(document.getElementById('color-themes-section'));
 }
 
+/**
+ * Slide each segmented control's highlight under its selected option. Controls on a hidden page
+ * have no layout yet and are placed when their page opens.
+ * @param {ParentNode} [root=document] - Where to look for segmented controls.
+ */
+function syncSegmentedIndicators(root = document) {
+  root?.querySelectorAll?.('.segmented-control').forEach((control) => {
+    syncSlidingIndicator(
+      control,
+      control.querySelector('.segmented-option.active, .btn.btn-primary') || null
+    );
+  });
+}
+
 function normalizeThemeMode(mode) {
   return THEME_MODES.includes(mode) ? mode : 'auto';
 }
@@ -1735,6 +1749,7 @@ function updateThemeModeControl() {
     option.tabIndex = selected ? 0 : -1;
     option.disabled = locked;
   });
+  syncSlidingIndicator(control, control.querySelector('.segmented-option.active'));
 }
 
 /**
@@ -2034,6 +2049,7 @@ function updatePrimaryCardActionButtons() {
     btn.classList.toggle('btn-primary', isActive);
     btn.classList.toggle('btn-secondary', !isActive);
   });
+  syncSegmentedIndicators(document.getElementById('settings-modal') || document);
 }
 
 const PRIMARY_CARD_PAGE_SIZE = 50;
@@ -2170,7 +2186,10 @@ function initPrimaryCardsUI() {
     });
   }
 
-  section.addEventListener('click', (event) => {
+  // The Card 1 / Card 2 choices sit beside the collapsible entity picker rather than inside it,
+  // so listen on the group that holds both.
+  const clickRoot = section.closest('.settings-group') || section;
+  clickRoot.addEventListener('click', (event) => {
     const actionBtn = event.target.closest('[data-primary-card][data-primary-value]');
     if (actionBtn) {
       const cardIndex = Number(actionBtn.dataset.primaryCard);
@@ -4342,6 +4361,7 @@ async function openSettings(uiHooks) {
       refreshPersonalizationSectionHeights();
       const tabList = modal.querySelector('.modal-tabs');
       syncSlidingIndicator(tabList, tabList?.querySelector('.tab-link.active') || null);
+      syncSegmentedIndicators(modal.querySelector('.tab-content.active'));
       requestAnimationFrame(() => {
         refreshPersonalizationSectionHeights();
       });
@@ -6170,6 +6190,7 @@ function handleProfileSyncStatusUpdate(status) {
 }
 
 export {
+  syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
   openSettings,
   closeSettings,

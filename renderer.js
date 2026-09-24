@@ -2547,6 +2547,7 @@ function wireUI() {
         if (settingsBody) settingsBody.scrollTop = 0;
         syncSlidingIndicator(button.closest('.modal-tabs'), button);
         animateEnter(activeContent.children, { direction: 0, maxStagger: 5 });
+        settings.syncSegmentedIndicators(activeContent);
         if (tab === 'personalization' || tab === 'dashboard') {
           requestAnimationFrame(() => {
             settings.refreshPersonalizationSectionHeights();

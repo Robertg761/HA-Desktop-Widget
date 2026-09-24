@@ -14339,3 +14339,35 @@ select option {
     transform: translateY(-4px);
   }
 }
+
+/* Experiment: the same sliding pill inside segmented controls, the rail and the
+   Quick Access segmented bar, each in its own shape. */
+.segmented-control {
+  position: relative;
+}
+
+.segmented-control > .sliding-indicator {
+  border-radius: calc(var(--radius-md) - 2px);
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.segmented-control.has-sliding-indicator :is(.segmented-option, .btn) {
+  position: relative;
+  z-index: 1;
+}
+
+.segmented-control.has-sliding-indicator :is(.segmented-option.active, .btn.btn-primary) {
+  border-color: transparent;
+  background: transparent;
+}
+
+#settings-modal .modal-tabs > .sliding-indicator {
+  border-radius: var(--radius-lg);
+}
+
+.quick-access-tabs:not(.reorganize) > .sliding-indicator {
+  border-radius: var(--radius-full);
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: none;
+}

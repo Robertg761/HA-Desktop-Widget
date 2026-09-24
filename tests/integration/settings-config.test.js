@@ -386,29 +386,36 @@ function createSettingsModalDOM() {
             </div>
           </div>
         </div>
-        <div id="primary-cards-section" class="personalization-section collapsed">
-          <button type="button" id="primary-cards-toggle" class="section-toggle" aria-expanded="false">
-            Primary Cards
-          </button>
-          <div class="section-body">
-            <div id="primary-card-1-current"></div>
-            <div id="primary-card-2-current"></div>
-            <button type="button" id="primary-cards-reset">Reset</button>
-            <select id="time-format">
-              <option value="system">System default</option>
-              <option value="12-hour">12-hour</option>
-              <option value="24-hour">24-hour</option>
-            </select>
-            <select id="date-format">
-              <option value="system">System default</option>
-              <option value="weekday-short">Weekday, short date</option>
-              <option value="long">Long date</option>
-              <option value="numeric">Numeric date</option>
-            </select>
-            <input type="text" id="primary-cards-search" />
-            <div id="primary-cards-list"></div>
+        <section class="settings-group">
+          <div class="primary-card-actions" data-primary-card="0">
+            <button type="button" data-primary-card="0" data-primary-value="weather">Weather</button>
+            <button type="button" data-primary-card="0" data-primary-value="time">Time</button>
+            <button type="button" data-primary-card="0" data-primary-value="none">Hide</button>
           </div>
-        </div>
+          <div id="primary-cards-section" class="personalization-section collapsed">
+            <button type="button" id="primary-cards-toggle" class="section-toggle" aria-expanded="false">
+              Primary Cards
+            </button>
+            <div class="section-body">
+              <div id="primary-card-1-current"></div>
+              <div id="primary-card-2-current"></div>
+              <button type="button" id="primary-cards-reset">Reset</button>
+              <select id="time-format">
+                <option value="system">System default</option>
+                <option value="12-hour">12-hour</option>
+                <option value="24-hour">24-hour</option>
+              </select>
+              <select id="date-format">
+                <option value="system">System default</option>
+                <option value="weekday-short">Weekday, short date</option>
+                <option value="long">Long date</option>
+                <option value="numeric">Numeric date</option>
+              </select>
+              <input type="text" id="primary-cards-search" />
+              <div id="primary-cards-list"></div>
+            </div>
+          </div>
+        </section>
         <div id="desktop-pins-section" class="personalization-section collapsed">
           <button type="button" id="desktop-pins-toggle" class="section-toggle" aria-expanded="false">
             Desktop Pins
@@ -1139,6 +1146,15 @@ describe('Settings + Config Integration', () => {
           },
         })
       );
+    });
+  });
+
+  describe('Primary card choices', () => {
+    test('a Card 1 choice outside the collapsible picker still applies and saves', async () => {
+      await settings.openSettings();
+      document.querySelector('[data-primary-card="0"][data-primary-value="time"]').click();
+      await settings.saveSettings();
+      expect(state.CONFIG.primaryCards[0]).toBe('time');
     });
   });
 
