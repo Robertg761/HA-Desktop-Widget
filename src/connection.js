@@ -71,6 +71,23 @@ async function startHomeAssistantPairing(api, url) {
   return result;
 }
 
+// Pairing failures that are ordinary outcomes (declined, canceled, an old browser tab, a mistyped
+// or unreachable server) rather than faults; callers log them as warnings.
+const EXPECTED_PAIRING_FAILURE_CODES = new Set([
+  'OAUTH_AUTHORIZATION_CANCELED',
+  'OAUTH_AUTHORIZATION_DECLINED',
+  'OAUTH_AUTHORIZATION_TIMEOUT',
+  'OAUTH_INVALID_URL',
+  'OAUTH_SERVER_UNREACHABLE',
+  'OAUTH_STATE_MISMATCH',
+  'OAUTH_TOKEN_NETWORK',
+  'OAUTH_TOKEN_TIMEOUT',
+]);
+
+function isExpectedPairingFailure(error) {
+  return EXPECTED_PAIRING_FAILURE_CODES.has(error?.result?.code);
+}
+
 function buildHomeAssistantPathUrl(baseUrl, path) {
   const normalizedBase = normalizeBaseUrl(baseUrl);
   if (!normalizedBase) return null;
@@ -106,6 +123,7 @@ export {
   isPlaceholderOrEmptyToken,
   getConnectionIdentity,
   startHomeAssistantPairing,
+  isExpectedPairingFailure,
   buildHomeAssistantPathUrl,
   classifyConnectionError,
 };

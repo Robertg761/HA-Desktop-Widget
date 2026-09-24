@@ -328,20 +328,18 @@ function scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState) 
 
 // Socket-level failures reach here as transport jargon ("WebSocket not connected"); say what they
 // mean for the user instead. Home Assistant's own service errors are already readable.
+const CONNECTION_SERVICE_ERRORS = new Set([
+  'WebSocket not connected',
+  'WebSocket not authenticated',
+  'WebSocket connection closed',
+  'WebSocket connection replaced',
+  'Home Assistant connection lost',
+]);
+
 function describeServiceErrorMessage(error) {
   const message = error?.message || '';
   if (message === 'WebSocket request timeout') return t('Home Assistant did not respond');
-  if (
-    [
-      'WebSocket not connected',
-      'WebSocket not authenticated',
-      'WebSocket connection closed',
-      'WebSocket connection replaced',
-      'Home Assistant connection lost',
-    ].includes(message)
-  ) {
-    return t('Not connected to Home Assistant');
-  }
+  if (CONNECTION_SERVICE_ERRORS.has(message)) return t('Not connected to Home Assistant');
   return message || t('Unknown error');
 }
 
@@ -356,7 +354,10 @@ function handleServiceError(error, entityName = null) {
     ? t('Failed to control {{entityName}}: {{errorMessage}}', { entityName, errorMessage })
     : t('Service call failed: {{errorMessage}}', { errorMessage });
 
-  console.error('WebSocket service call failed:', error);
+  // A control used during an outage is an expected outcome, not a fault in the widget.
+  const outage =
+    CONNECTION_SERVICE_ERRORS.has(error?.message) || error?.message === 'WebSocket request timeout';
+  console[outage ? 'warn' : 'error']('WebSocket service call failed:', error);
   emitUiDebug('service.error', {
     entityName: entityName || null,
     message: error?.message || 'Unknown error',

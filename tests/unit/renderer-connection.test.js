@@ -394,6 +394,29 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(panelText()).toContain('Could not reach Home Assistant at that URL.');
       expect(findButton('Reconnect with Home Assistant')).toBeTruthy();
+      // An unreachable server is an outcome to report, not a fault in the widget.
+      const logged = (spy) =>
+        spy.mock.calls.some(
+          ([label]) => label === 'Failed to reconnect Home Assistant authorization:'
+        );
+      expect(logged(mockLog.warn)).toBe(true);
+      expect(logged(mockLog.error)).toBe(false);
+    });
+
+    it('records an authorization that could not be restored at launch in diagnostics', async () => {
+      await loadRenderer({
+        config: oauthConfig({
+          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+          oauthStatus: 'offline',
+          oauthAuthorizationId: undefined,
+          oauthLastErrorCode: 'OAUTH_TOKEN_NETWORK',
+          oauthLastError: 'connect ECONNREFUSED',
+        }),
+      });
+      const { diagnosticsReport } = require('../../src/dashboard-tools.js');
+      expect(diagnosticsReport().recentIssues).toEqual([
+        expect.objectContaining({ reason: 'authorization_unavailable', recoveredAt: null }),
+      ]);
     });
 
     it('shows a configured but unreachable server as disconnected, not as setup', async () => {

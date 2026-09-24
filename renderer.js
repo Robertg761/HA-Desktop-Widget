@@ -2,7 +2,11 @@ import { applyDesktopAppearance } from './src/desktop-appearance.js';
 import { installLayerDrag } from './src/layer-drag.js';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
-import { initializeDashboardTools, refreshDashboardUndoState } from './src/dashboard-tools.js';
+import {
+  initializeDashboardTools,
+  recordConnectionIssue,
+  refreshDashboardUndoState,
+} from './src/dashboard-tools.js';
 import state from './src/state.js';
 import websocket from './src/websocket.js';
 import * as hotkeys from './src/hotkeys.js';
@@ -42,6 +46,7 @@ import {
 import {
   getConnectionIdentity,
   isConfigured,
+  isExpectedPairingFailure,
   normalizeBaseUrl,
   startHomeAssistantPairing,
 } from './src/connection.js';
@@ -334,12 +339,15 @@ function getOAuthReauthRequiredStatus() {
 function setOAuthRestoreStatus() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   if (homeAssistant.oauthStatus === 'reauth_required') {
+    recordConnectionIssue('authorization_failed');
     if (mainConnectionState !== 'auth-failed') updateMainConnectionState('auth-failed');
     setDisconnectedStatus(
       describeHomeAssistantOAuthReauthReason(homeAssistant) || getOAuthReauthRequiredStatus()
     );
     return;
   }
+  // Without an access token there is no socket to report the outage, so record it here.
+  if (homeAssistant.oauthStatus !== 'restoring') recordConnectionIssue('authorization_unavailable');
   setDisconnectedStatus(
     homeAssistant.oauthStatus === 'restoring'
       ? t('Restoring Home Assistant authorization...')
@@ -673,7 +681,10 @@ async function reauthorizeHomeAssistant() {
     }
   } catch (error) {
     if (error?.result?.code !== 'OAUTH_AUTHORIZATION_CANCELED') {
-      log.error('Failed to reconnect Home Assistant authorization:', error);
+      log[isExpectedPairingFailure(error) ? 'warn' : 'error'](
+        'Failed to reconnect Home Assistant authorization:',
+        error
+      );
       oauthReauthorization.error = describeHomeAssistantOAuthFailure(error);
     }
   } finally {
@@ -1117,7 +1128,10 @@ async function finishFirstRunWizard() {
       setWizardStatus('', '');
     } else {
       const message = describeHomeAssistantOAuthFailure(error);
-      log.error('Failed to finish first-run setup:', error);
+      log[isExpectedPairingFailure(error) ? 'warn' : 'error'](
+        'Failed to finish first-run setup:',
+        error
+      );
       setWizardStatus(message, 'error');
       uiUtils.showToast(message, 'error', 6000);
     }

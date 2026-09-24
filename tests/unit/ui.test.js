@@ -1272,6 +1272,35 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it.each([
+      ['WebSocket not connected', 'warn'],
+      ['WebSocket request timeout', 'warn'],
+      ['Entity is read-only', 'error'],
+    ])('logs a failed control (%s) at %s level', async (rawMessage, level) => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+      ui.renderActiveTab();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        mockCallService.mockRejectedValueOnce(new Error(rawMessage));
+        ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+        await flushAsync();
+        await flushAsync();
+        const logged = (spy) =>
+          spy.mock.calls.some(([label]) => label === 'WebSocket service call failed:');
+        expect(logged(warn)).toBe(level === 'warn');
+        expect(logged(error)).toBe(level === 'error');
+      } finally {
+        warn.mockRestore();
+        error.mockRestore();
+      }
+    });
+
+    it.each([
       ['WebSocket not connected', 'Not connected to Home Assistant'],
       ['WebSocket request timeout', 'Home Assistant did not respond'],
       ['Entity is read-only', 'Entity is read-only'],

@@ -357,6 +357,9 @@ function initializeDashboardTools() {
 
 export {
   initializeDashboardTools,
+  // For failures seen without a socket event, such as an OAuth authorization that could not be
+  // restored because Home Assistant was down at launch.
+  recordIssue as recordConnectionIssue,
   refreshDashboardUndoState,
   showDashboardHistory,
   diagnosticsReport,

@@ -2,6 +2,7 @@ const {
   classifyConnectionError,
   getConnectionIdentity,
   isConfigured,
+  isExpectedPairingFailure,
   normalizeBaseUrl,
   startHomeAssistantPairing,
 } = require('../../src/connection');
@@ -51,6 +52,21 @@ describe('connection helpers', () => {
       } finally {
         global.URL = RealURL;
       }
+    });
+  });
+
+  describe('isExpectedPairingFailure', () => {
+    test('treats declined, stale, mistyped and unreachable pairings as outcomes', () => {
+      for (const code of [
+        'OAUTH_AUTHORIZATION_DECLINED',
+        'OAUTH_STATE_MISMATCH',
+        'OAUTH_INVALID_URL',
+        'OAUTH_SERVER_UNREACHABLE',
+      ]) {
+        expect(isExpectedPairingFailure({ result: { code } })).toBe(true);
+      }
+      expect(isExpectedPairingFailure({ result: { code: 'OAUTH_STORE_WRITE' } })).toBe(false);
+      expect(isExpectedPairingFailure(new Error('boom'))).toBe(false);
     });
   });
 
