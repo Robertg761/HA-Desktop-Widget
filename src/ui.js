@@ -523,7 +523,7 @@ function renderQuickAccessConfigState() {
   renderQuickControls();
   // The manage list holds a row for every entity in the install, so rebuilding it on each page
   // switch is the most expensive part of the render. It is rebuilt again when the dialog opens.
-  if (isQuickAccessManageModalOpen()) populateQuickControlsList();
+  if (isQuickAccessManageModalOpen()) populateQuickControlsList({ resetSearch: false });
 }
 
 function buildQuickAccessConfigPatch(config) {
@@ -13064,7 +13064,9 @@ function showCoverControls(coverEntity) {
   }
 }
 
-function populateQuickControlsList() {
+// Opening the dialog starts a fresh search; a rebuild after Add or Remove keeps the search, and
+// focus on the same row's button.
+function populateQuickControlsList({ resetSearch = true } = {}) {
   try {
     const list = document.getElementById('quick-controls-list');
     const searchInput = document.getElementById('quick-controls-search');
@@ -13160,12 +13162,20 @@ function populateQuickControlsList() {
       });
     };
 
-    // Initial render
+    if (searchInput && resetSearch) searchInput.value = '';
+    const focusedEntityId = list.contains(document.activeElement)
+      ? document.activeElement.dataset.entityId
+      : null;
     renderList();
+    if (focusedEntityId) {
+      const button = [...list.querySelectorAll('.entity-selector-btn')].find(
+        (candidate) => candidate.dataset.entityId === focusedEntityId
+      );
+      (button || searchInput)?.focus();
+    }
 
     // Set up search with proper scoring
     if (searchInput) {
-      searchInput.value = '';
       searchInput.oninput = () => renderList();
       // Note: Focus is managed by trapFocus() in renderer.js when modal opens
     }

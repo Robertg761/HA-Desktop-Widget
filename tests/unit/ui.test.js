@@ -6673,6 +6673,49 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.quick-access-entity-view-select')).toBeNull();
     });
 
+    it('keeps the search and focus on the same row after Add and Remove', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `
+        <div id="quick-controls-modal" class="modal" style="display: flex">
+          <input id="quick-controls-search" />
+          <div id="quick-controls-target-hint"></div>
+          <div id="quick-controls-list"></div>
+        </div>
+      `
+      );
+      state.setStates({
+        'light.bedroom': sampleStates['light.bedroom'],
+        'switch.coffee': { entity_id: 'switch.coffee', state: 'off', attributes: {} },
+      });
+      setPages([{ id: 'default', name: 'All', entityIds: [] }], 'default');
+      const search = document.getElementById('quick-controls-search');
+      search.value = 'stale';
+      ui.populateQuickControlsList();
+      // Opening starts a fresh search, before the list is drawn.
+      expect(search.value).toBe('');
+      expect(document.querySelectorAll('#quick-controls-list .entity-item').length).toBe(2);
+
+      search.value = 'coffee';
+      search.dispatchEvent(new Event('input'));
+      const rowButton = () =>
+        document.querySelector('#quick-controls-list [data-entity-id="switch.coffee"]');
+      rowButton().focus();
+      rowButton().click();
+
+      expect(state.CONFIG.customTabs[0].entityIds).toEqual(['switch.coffee']);
+      expect(search.value).toBe('coffee');
+      expect(document.querySelectorAll('#quick-controls-list .entity-item').length).toBe(1);
+      expect(document.activeElement).toBe(rowButton());
+      expect(rowButton().textContent).toBe('Remove');
+
+      rowButton().click();
+      expect(search.value).toBe('coffee');
+      expect(document.activeElement).toBe(rowButton());
+      expect(rowButton().textContent).toBe('Add');
+      document.getElementById('quick-controls-modal').remove();
+    });
+
     it('leaves the manage list alone while its dialog is closed', async () => {
       document.body.insertAdjacentHTML(
         'beforeend',
