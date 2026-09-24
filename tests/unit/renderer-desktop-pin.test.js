@@ -364,6 +364,32 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['offline', 'disconnected', /^Disconnected from Home Assistant/],
+    ['reauth_required', 'disconnected', /authorization expired\. Reconnect with Home Assistant/],
+    ['connected', 'auth-failed', /rejected the authorization for this app/],
+  ])(
+    'never asks a Home Assistant authorization user for a token (%s, %s)',
+    async (oauthStatus, runtimeState, expected) => {
+      await loadRenderer({
+        bootstrapOverrides: {
+          connection: {
+            hasUrl: true,
+            hasToken: oauthStatus === 'connected',
+            secureStoragePending: false,
+            runtimeState,
+            authMethod: 'oauth',
+            oauthStatus,
+          },
+        },
+      });
+
+      const { connectionIssue } = mockUi.renderDesktopPinnedTile.mock.calls.at(-1)[2];
+      expect(connectionIssue).toMatch(expected);
+      expect(connectionIssue).not.toMatch(/token/i);
+    }
+  );
+
   it('clears the connection warning when main reports that credentials are ready', async () => {
     await loadRenderer({
       bootstrapOverrides: {

@@ -3,6 +3,7 @@ import { createAlertEvaluator } from './alert-rules.js';
 import { showToast } from './ui-utils.js';
 import { getEntityDisplayName, getEntityIcon } from './utils.js';
 import { t } from './i18n.js';
+import { getConnectionIdentity } from './connection.js';
 
 const evaluator = createAlertEvaluator({
   getConfig: () => state.CONFIG?.entityAlerts,
@@ -21,10 +22,9 @@ const evaluator = createAlertEvaluator({
 
 let alertConnection = null;
 function initializeEntityAlerts() {
-  const connection = JSON.stringify([
-    state.CONFIG?.homeAssistant?.url,
-    state.CONFIG?.homeAssistant?.token,
-  ]);
+  // Keyed on the connection identity rather than the raw token: a routine OAuth token refresh
+  // must not cancel pending duration alerts or forget cooldowns.
+  const connection = getConnectionIdentity(state.CONFIG);
   if (connection !== alertConnection) {
     evaluator.reset(state.STATES || {});
     alertConnection = connection;

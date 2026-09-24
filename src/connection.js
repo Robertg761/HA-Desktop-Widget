@@ -41,6 +41,30 @@ function isConfigured(config) {
   return !!normalizeBaseUrl(homeAssistant.url) && !isPlaceholderOrEmptyToken(homeAssistant.token);
 }
 
+// Which server and which sign-in the widget talks to. An OAuth access token is replaced every
+// half hour under the same authorization, so it is not part of the identity; a legacy token is
+// the sign-in itself. Only an identity change means a different connection.
+function getConnectionIdentity(config) {
+  const homeAssistant = config?.homeAssistant || {};
+  const auth =
+    homeAssistant.authMethod === 'oauth'
+      ? ['oauth', homeAssistant.oauthAuthorizationId || '']
+      : ['token', homeAssistant.token || ''];
+  return JSON.stringify([homeAssistant.url || '', ...auth]);
+}
+
+// Starts browser authorization and throws its failure with the main-process result attached
+// (error.result.code), which the preload bridge cannot carry on a thrown error.
+async function startHomeAssistantPairing(api, url) {
+  const result = await api.startHomeAssistantOAuth(url);
+  if (result?.success === false) {
+    const error = new Error(result.error || 'Home Assistant authorization failed');
+    error.result = result;
+    throw error;
+  }
+  return result;
+}
+
 function buildHomeAssistantPathUrl(baseUrl, path) {
   const normalizedBase = normalizeBaseUrl(baseUrl);
   if (!normalizedBase) return null;
@@ -74,6 +98,8 @@ export {
   normalizeBaseUrl,
   isConfigured,
   isPlaceholderOrEmptyToken,
+  getConnectionIdentity,
+  startHomeAssistantPairing,
   buildHomeAssistantPathUrl,
   classifyConnectionError,
 };

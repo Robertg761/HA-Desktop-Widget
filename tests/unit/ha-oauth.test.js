@@ -15,6 +15,7 @@ const {
   isLoopbackOAuthClient,
   normalizeHomeAssistantBaseUrl,
   parseTokenResponse,
+  probeHomeAssistantWithElectronNet,
 } = require('../../src/ha-oauth.cjs');
 
 function createTemporaryDirectory() {
@@ -191,6 +192,122 @@ describe('Home Assistant OAuth', () => {
     expect(client.cancelPairing()).toBe(false);
   });
 
+  test('pairing with another URL replaces the waiting pairing instead of joining it', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    const openedUrls = [];
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: jest.fn(async (url) => {
+        openedUrls.push(new URL(url).origin);
+      }),
+      postForm: jest.fn(),
+      isSecureStorageAvailable: () => true,
+    });
+    const waitForBrowser = async (count) => {
+      for (let attempt = 0; attempt < 50 && openedUrls.length < count; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+
+    const first = client.pair('http://old.local:8123');
+    first.catch(() => {});
+    await waitForBrowser(1);
+    const joined = client.pair('old.local:8123');
+    joined.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(openedUrls).toEqual(['http://old.local:8123']);
+
+    const second = client.pair('http://new.local:8123');
+    second.catch(() => {});
+    await expect(first).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    await expect(joined).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    await waitForBrowser(2);
+    expect(openedUrls).toEqual(['http://old.local:8123', 'http://new.local:8123']);
+    expect(client.pairingBaseUrl).toBe('http://new.local:8123');
+
+    expect(client.cancelPairing()).toBe(true);
+    await expect(second).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    expect(client.pairingPromise).toBeNull();
+  });
+
+  test('does not open a browser for a server that cannot be reached', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    const openExternal = jest.fn();
+    const probeServer = jest.fn(async () => {
+      const error = new Error('Could not reach Home Assistant at that URL');
+      error.code = 'OAUTH_SERVER_UNREACHABLE';
+      throw error;
+    });
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal,
+      postForm: jest.fn(),
+      probeServer,
+      isSecureStorageAvailable: () => true,
+    });
+
+    await expect(client.pair('127.0.0.1:1')).rejects.toMatchObject({
+      code: 'OAUTH_SERVER_UNREACHABLE',
+    });
+    expect(probeServer).toHaveBeenCalledWith('http://127.0.0.1:1', expect.any(AbortSignal));
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  describe('server probe', () => {
+    const createNet = (behaviour) => {
+      const request = new (require('events').EventEmitter)();
+      request.setHeader = jest.fn();
+      request.abort = jest.fn();
+      request.end = jest.fn(() => behaviour(request));
+      return { net: { request: jest.fn(() => request) }, request };
+    };
+
+    test('accepts any HTTP answer from the server', async () => {
+      const { net, request } = createNet((req) => req.emit('response', { statusCode: 404 }));
+      await expect(
+        probeHomeAssistantWithElectronNet(net, 'http://ha.local:8123')
+      ).resolves.toBeUndefined();
+      expect(net.request).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'GET', url: 'http://ha.local:8123/auth/providers' })
+      );
+      expect(request.abort).toHaveBeenCalled();
+    });
+
+    test('reports a connection failure as an unreachable server', async () => {
+      const { net } = createNet((req) =>
+        req.emit('error', new Error('net::ERR_NAME_NOT_RESOLVED'))
+      );
+      await expect(
+        probeHomeAssistantWithElectronNet(net, 'http://homeassistant.invalid:8123')
+      ).rejects.toMatchObject({ code: 'OAUTH_SERVER_UNREACHABLE' });
+    });
+
+    test('gives up on a server that never answers', async () => {
+      const { net, request } = createNet(() => {});
+      await expect(
+        probeHomeAssistantWithElectronNet(net, 'http://10.255.255.1:8123', { timeoutMs: 10 })
+      ).rejects.toMatchObject({ code: 'OAUTH_SERVER_UNREACHABLE' });
+      expect(request.abort).toHaveBeenCalled();
+    });
+
+    test('stops when the pairing is canceled', async () => {
+      const { net, request } = createNet(() => {});
+      const controller = new AbortController();
+      const probe = probeHomeAssistantWithElectronNet(net, 'http://ha.local:8123', {
+        signal: controller.signal,
+      });
+      controller.abort();
+      await expect(probe).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+      expect(request.abort).toHaveBeenCalled();
+    });
+  });
+
   test('validates successful and rejected token responses', () => {
     expect(
       parseTokenResponse(
@@ -252,16 +369,52 @@ describe('Home Assistant OAuth', () => {
       expect(fs.statSync(path.join(userDataPath, OAUTH_CREDENTIALS_FILE)).mode & 0o777).toBe(0o600);
     }
 
-    await expect(client.restore()).resolves.toEqual({
+    const restored = await client.restore();
+    expect(restored).toEqual({
       baseUrl: 'https://ha.example.test',
       accessToken: 'access-for-refresh-secret',
       expiresAt: 1801000,
+      authorizationId: expect.stringMatching(/^[0-9a-f]{16}$/),
     });
+    expect(restored.authorizationId).not.toContain('refresh-secret');
     expect(postForm).toHaveBeenCalledWith('https://ha.example.test/auth/token', {
       grant_type: 'refresh_token',
       refresh_token: 'refresh-secret',
       client_id: 'http://127.0.0.1:40123/',
     });
+  });
+
+  test('keeps one authorization id while the access token rotates', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    let issued = 0;
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: jest.fn(),
+      postForm: jest.fn(async () => ({
+        status: 200,
+        body: JSON.stringify({ access_token: `access-${(issued += 1)}`, expires_in: 1800 }),
+      })),
+      isSecureStorageAvailable: () => true,
+    });
+    const credentials = {
+      baseUrl: 'https://ha.example.test',
+      clientId: 'http://127.0.0.1:40123/',
+      redirectUri: 'http://127.0.0.1:40123/oauth/callback',
+      refreshToken: 'refresh-one',
+    };
+    client.writeCredentials(credentials);
+
+    const first = await client.restore();
+    const second = await client.refresh();
+    expect(second.accessToken).not.toBe(first.accessToken);
+    expect(second.authorizationId).toBe(first.authorizationId);
+
+    client.writeCredentials({ ...credentials, refreshToken: 'refresh-two' });
+    const reauthorized = await client.refresh();
+    expect(reauthorized.authorizationId).not.toBe(first.authorizationId);
   });
 
   test('refuses to read or write OAuth credentials without secure storage', () => {

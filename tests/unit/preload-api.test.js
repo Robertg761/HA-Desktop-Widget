@@ -142,6 +142,7 @@ describe('preload Electron API', () => {
         ['https://ha.test'],
       ],
       ['cancelHomeAssistantOAuth', [], 'cancel-home-assistant-oauth', []],
+      ['refreshHomeAssistantOAuth', [], 'refresh-home-assistant-oauth', []],
       ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth', []],
       ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration', []],
       ['getDesktopCompanionState', [], 'get-desktop-companion-state', []],
@@ -319,6 +320,16 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledWith({ theme: 'dark', configRevision: 6 });
   });
 
+  it('resolves a failed Home Assistant pairing with its code instead of throwing it', async () => {
+    // A thrown error crosses the context bridge with its message only, losing the code.
+    const ipcRenderer = createIpcRenderer();
+    const failure = { success: false, code: 'OAUTH_SERVER_UNREACHABLE', error: 'unreachable' };
+    ipcRenderer.invoke.mockResolvedValue(failure);
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+
+    await expect(api.startHomeAssistantOAuth('https://ha.test')).resolves.toEqual(failure);
+  });
+
   it('uses an IPC channel fallback when a checked failure has no message', async () => {
     const ipcRenderer = createIpcRenderer();
     ipcRenderer.invoke.mockResolvedValue({ success: false });
@@ -336,7 +347,6 @@ describe('preload Electron API', () => {
     ['clearTokenResetReason', [], 'clear-token-reset-reason'],
     ['saveConfig', [{ theme: 'dark' }], 'save-config'],
     ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase'],
-    ['startHomeAssistantOAuth', ['https://ha.test'], 'start-home-assistant-oauth'],
     ['cancelHomeAssistantOAuth', [], 'cancel-home-assistant-oauth'],
     ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth'],
     ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration'],

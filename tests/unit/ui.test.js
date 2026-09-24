@@ -1225,6 +1225,29 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         4000
       );
     });
+
+    it.each([
+      ['WebSocket not connected', 'Not connected to Home Assistant'],
+      ['WebSocket request timeout', 'Home Assistant did not respond'],
+      ['Entity is read-only', 'Entity is read-only'],
+    ])('explains a failed control (%s) in user terms', async (rawMessage, shownMessage) => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+      ui.renderActiveTab();
+      mockCallService.mockRejectedValueOnce(new Error(rawMessage));
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      await flushAsync();
+      await flushAsync();
+
+      const [message] = uiUtils.showToast.mock.calls.at(-1);
+      expect(message).toMatch(new RegExp(`^Failed to control .+: ${shownMessage}$`));
+      expect(message).not.toContain('WebSocket');
+    });
   });
 
   describe('Quick Access keyboard and filter polish', () => {

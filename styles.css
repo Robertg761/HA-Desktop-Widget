@@ -9353,6 +9353,25 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   flex-wrap: wrap;
 }
 
+/* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled. */
+.widget-state-actions .btn-secondary {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.widget-state-actions .btn-secondary:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* The connection panel is the one explanation of a missing connection; the legacy placeholder
+   in the tile area would contradict it (for example "Connecting..." beside "Authentication
+   failed"). */
+body.widget-state-active #quick-controls .status-message {
+  display: none;
+}
+
 .language-section {
   border-top: 1px solid var(--border-color);
   padding-top: 16px;

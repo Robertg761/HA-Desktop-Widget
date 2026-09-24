@@ -377,6 +377,7 @@ const {
 const {
   HomeAssistantOAuthClient,
   normalizeHomeAssistantBaseUrl,
+  probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
 
@@ -3985,6 +3986,7 @@ function loadConfig(options = {}) {
         config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
         config.homeAssistant.tokenEncrypted = false;
         config.homeAssistant.oauthStatus = 'restoring';
+        delete config.homeAssistant.oauthAuthorizationId;
         delete config.tokenResetReason;
       } else if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
         if (deferSecureStorage) {
@@ -4427,6 +4429,7 @@ function buildConfigSnapshotForSave() {
     delete configToSave.homeAssistant.tokenEncrypted;
     delete configToSave.homeAssistant.oauthExpiresAt;
     delete configToSave.homeAssistant.oauthLastError;
+    delete configToSave.homeAssistant.oauthAuthorizationId;
     delete configToSave.tokenResetReason;
   }
 
@@ -5171,13 +5174,44 @@ function setupProfileSyncWakeTriggers() {
     powerMonitor.on('resume', () => {
       requestOpportunisticProfileSync('resume');
       invalidateHaConnectionState('connecting');
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
+      const requestReconnect = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
+        }
+      };
+      if (!isHomeAssistantOAuthSessionStale()) {
+        // An expired authorization waits for the user to reconnect; there is nothing to refresh.
+        if (
+          config?.homeAssistant?.authMethod === 'oauth' &&
+          config.homeAssistant.oauthStatus !== 'reauth_required' &&
+          config.homeAssistant.oauthExpiresAt
+        ) {
+          scheduleHomeAssistantOAuthRefresh(config.homeAssistant.oauthExpiresAt);
+        }
+        requestReconnect();
+        return;
       }
+      // Reconnecting with the expired token would only be rejected; refresh first.
+      void runSerializedConfigMutation(() => refreshHomeAssistantOAuthSession())
+        .catch((error) => {
+          log.warn('Home Assistant OAuth refresh after resume failed:', error?.message || error);
+        })
+        .finally(requestReconnect);
     });
   } catch (error) {
     log.warn('Could not subscribe to power resume events:', error?.message || error);
   }
+}
+
+// Timers do not run while the machine sleeps, so after a long suspend the access token can have
+// expired while its refresh is still scheduled for later.
+function isHomeAssistantOAuthSessionStale(now = Date.now()) {
+  const homeAssistant = config?.homeAssistant;
+  if (homeAssistant?.authMethod !== 'oauth' || homeAssistant.oauthStatus === 'reauth_required') {
+    return false;
+  }
+  const expiresAt = Number(homeAssistant.oauthExpiresAt || 0);
+  return !expiresAt || expiresAt - now <= HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS;
 }
 
 async function initializeProfileSyncOnStartupInternal() {
@@ -6426,6 +6460,7 @@ function getHomeAssistantOAuthClient() {
       userDataPath: app.getPath('userData'),
       openExternal: (url) => shell.openExternal(url),
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
+      probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,
     });
@@ -6472,6 +6507,7 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
       authMethod: 'oauth',
       oauthStatus: 'connected',
       oauthExpiresAt: session.expiresAt,
+      oauthAuthorizationId: session.authorizationId,
     },
     desktopCompanion: { ...(config?.desktopCompanion || {}) },
   };
@@ -6499,7 +6535,13 @@ async function refreshHomeAssistantOAuthSession() {
   if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
     const session = await getHomeAssistantOAuthClient().refresh();
-    if (!session) throw new Error('Saved Home Assistant authorization was not found');
+    if (!session) {
+      // No saved refresh token (already cleared by an invalid grant): retrying cannot help, the
+      // user has to authorize again.
+      const missing = new Error('Saved Home Assistant authorization was not found');
+      missing.code = 'OAUTH_INVALID_GRANT';
+      throw missing;
+    }
     return applyHomeAssistantOAuthSession(session);
   } catch (error) {
     config.homeAssistant = config.homeAssistant || {};
@@ -6508,11 +6550,14 @@ async function refreshHomeAssistantOAuthSession() {
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
     if (error?.code === 'OAUTH_INVALID_GRANT') {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+      delete config.homeAssistant.oauthAuthorizationId;
+      delete config.homeAssistant.oauthExpiresAt;
       clearHomeAssistantOAuthRefreshTimer();
     } else {
       scheduleHomeAssistantOAuthRefresh(null, HOME_ASSISTANT_OAUTH_RETRY_MS);
     }
     pushConfigToRenderer();
+    broadcastDesktopPinConfigUpdate();
     return null;
   }
 }
@@ -6540,6 +6585,21 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
       error: error?.message || 'Home Assistant authorization failed',
     };
   }
+});
+
+// Home Assistant rejected the current access token (revoked authorization, or a token that
+// expired while the machine slept). Refresh now instead of waiting for the scheduled refresh; an
+// invalid grant turns into reauth_required, which the renderer explains to the user.
+ipcMain.handle('refresh-home-assistant-oauth', async (event) => {
+  const sender = authorizeIpcSender(event, 'refresh-home-assistant-oauth');
+  if (!sender) return rejectUnauthorizedIpc('refresh-home-assistant-oauth');
+  if (config?.homeAssistant?.authMethod !== 'oauth') {
+    return { success: false, error: 'Home Assistant authorization is not in use' };
+  }
+  if (config.homeAssistant.oauthStatus !== 'reauth_required') {
+    await runSerializedConfigMutation(() => refreshHomeAssistantOAuthSession());
+  }
+  return { success: true, oauthStatus: config?.homeAssistant?.oauthStatus || null };
 });
 
 ipcMain.handle('cancel-home-assistant-oauth', async (event) => {
