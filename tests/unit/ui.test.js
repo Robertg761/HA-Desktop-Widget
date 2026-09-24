@@ -11,6 +11,7 @@ const {
   getMockConfig,
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
 global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
 global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 const { getRendererHost, setRendererHost } = require('@hadw/renderer/host.js');
@@ -341,6 +342,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       search.value = 'desk';
       search.dispatchEvent(new Event('input'));
       expect(sensor.parentElement.hidden).toBe(true);
+      // The pick list styles its rows as flex; the hidden attribute must still win.
+      document.head.innerHTML = '';
+      loadAppStylesheets(document);
+      expect(resolvedValue(sensor.parentElement, 'display')).toBe('none');
+      expect(
+        resolvedValue(document.querySelector('input[value="light.desk"]').parentElement, 'display')
+      ).toBe('flex');
       document.querySelector('#add-page-save-btn').click();
       await flush();
       expect(state.CONFIG.customTabs.find((page) => page.id === 'existing').entityIds).toEqual([
@@ -4111,6 +4119,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'Pinned entity not found'
       );
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe(
+        'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+      );
+      // Small pins clamp the copy, so the full text stays available on hover.
+      expect(document.getElementById('desktop-pin-empty-copy')?.title).toBe(
         'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
       );
       expect(focusActions?.classList.contains('hidden')).toBe(false);

@@ -985,6 +985,51 @@ describe('Settings + Config Integration', () => {
       }
     });
 
+    test('starts each primary-card page at its top but keeps the scroll position on assignment', async () => {
+      const entities = Object.fromEntries(
+        Array.from({ length: 121 }, (_, index) => {
+          const entity_id = `sensor.test_${String(index).padStart(3, '0')}`;
+          return [entity_id, { entity_id, state: '1', attributes: {} }];
+        })
+      );
+      state.setStates(entities);
+      await settings.openSettings();
+      document.getElementById('primary-cards-toggle').click();
+      const list = document.getElementById('primary-cards-list');
+      // jsdom does not lay out, so give the list a scroll position it keeps.
+      let scrollTop = 0;
+      Object.defineProperty(list, 'scrollTop', {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value) => {
+          scrollTop = value;
+        },
+      });
+
+      try {
+        list.scrollTop = 400;
+        const assign = list.querySelector('[data-primary-assign="0"]');
+        assign.focus();
+        assign.click();
+        expect(list.scrollTop).toBe(400);
+
+        list.scrollTop = 900;
+        const next = list.querySelector('[data-primary-page="next"]');
+        next.focus();
+        next.click();
+        expect(list.querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+        expect(list.scrollTop).toBe(0);
+        expect(document.activeElement.dataset.primaryPage).toBe('next');
+
+        list.scrollTop = 900;
+        list.querySelector('[data-primary-page="previous"]').click();
+        expect(list.querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
+        expect(list.scrollTop).toBe(0);
+      } finally {
+        settings.closeSettings();
+      }
+    });
+
     test('lazy-hydrates heavy personalization lists when sections are expanded', async () => {
       await settings.openSettings();
 
