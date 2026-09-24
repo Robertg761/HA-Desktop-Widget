@@ -198,6 +198,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       applyBackgroundTheme: jest.fn(),
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
+      dismissToast: jest.fn(),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -469,6 +470,65 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
       expect(document.getElementById('ha-url').value).toBe('http://ha.local:8123');
       expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('an outage', () => {
+    const failAttempt = () => {
+      mockWebsocket.emit('error', new Error('Could not establish WebSocket connection'));
+      mockWebsocket.emit('close', { intentional: false });
+    };
+    const unreachableToasts = () =>
+      mockUiUtils.showToast.mock.calls.filter(([message]) =>
+        message.startsWith('Unable to reach Home Assistant')
+      );
+
+    it('toasts and logs the failure once, however many retries it takes', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      // A retry roughly every minute for seven minutes.
+      const now = jest.spyOn(Date, 'now');
+      for (let attempt = 0; attempt < 7; attempt += 1) {
+        now.mockReturnValue(1_000_000 + attempt * 61_000);
+        failAttempt();
+      }
+      now.mockRestore();
+
+      expect(unreachableToasts()).toHaveLength(1);
+      expect(
+        mockLog.error.mock.calls.filter(([label]) => label === 'WebSocket error:')
+      ).toHaveLength(1);
+      expect(mockLog.debug).toHaveBeenCalledWith(
+        'WebSocket error (still retrying):',
+        'Could not establish WebSocket connection'
+      );
+
+      connectSuccessfully();
+      failAttempt();
+      expect(unreachableToasts()).toHaveLength(2);
+    });
+
+    it('clears its toast when Settings opens so the Save button is reachable', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      const toast = mockUiUtils.showToast.mock.results.at(-1).value;
+
+      findButton('Open Settings').click();
+
+      expect(mockUiUtils.dismissToast).toHaveBeenCalledWith(toast);
+      expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
+    });
+
+    it('shows one connection state instead of a placeholder beside the panel', async () => {
+      const styles = require('fs').readFileSync(
+        require('path').resolve(__dirname, '../../styles.css'),
+        'utf8'
+      );
+      expect(styles).toMatch(
+        /body\.widget-state-active #quick-controls \.status-message \{\s*display: none;/
+      );
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      expect(document.body.classList).toContain('widget-state-active');
     });
   });
 

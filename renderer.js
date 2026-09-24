@@ -47,7 +47,6 @@ if (window.electronAPI) {
   setRendererHost(createElectronHost(window.electronAPI));
 }
 
-const CONNECTION_ERROR_TOAST_COOLDOWN_MS = 60000;
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
 const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
@@ -192,7 +191,10 @@ let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
 let uiTickNudgeTimerId = null;
 let offlineConnectionToastShown = false;
-let lastConnectionToast = { key: null, shownAt: 0 };
+// Kinds of connection failure already reported in this outage, and the toasts showing them.
+const shownConnectionToastKeys = new Set();
+const connectionToasts = new Set();
+let connectionErrorLoggedThisOutage = false;
 let browserReportedOffline = false;
 let lastDisconnectReason = '';
 let mainConnectionState = 'idle';
@@ -542,6 +544,7 @@ function getSettingsUiHooks() {
 }
 
 function openSettingsModal() {
+  dismissConnectionToasts();
   settings.openSettings(getSettingsUiHooks());
 }
 
@@ -1594,6 +1597,8 @@ function classifyConnectionError(error) {
   };
 }
 
+// Each kind of failure is toasted once per outage. The status indicator and the connection panel
+// already show that the widget keeps retrying, so repeating the toast every retry is only noise.
 function shouldShowConnectionToast(toastInfo) {
   if (!toastInfo) return false;
 
@@ -1601,17 +1606,8 @@ function shouldShowConnectionToast(toastInfo) {
     return false;
   }
 
-  const now = Date.now();
-  const recentlyShown =
-    lastConnectionToast.key === toastInfo.key &&
-    now - lastConnectionToast.shownAt < CONNECTION_ERROR_TOAST_COOLDOWN_MS;
-
-  if (recentlyShown) return false;
-
-  lastConnectionToast = {
-    key: toastInfo.key,
-    shownAt: now,
-  };
+  if (shownConnectionToastKeys.has(toastInfo.key)) return false;
+  shownConnectionToastKeys.add(toastInfo.key);
 
   if (toastInfo.persistUntilOnline) {
     offlineConnectionToastShown = true;
@@ -1622,13 +1618,26 @@ function shouldShowConnectionToast(toastInfo) {
 
 function resetConnectionToastTracking() {
   offlineConnectionToastShown = false;
-  lastConnectionToast = { key: null, shownAt: 0 };
+  shownConnectionToastKeys.clear();
+  connectionErrorLoggedThisOutage = false;
+}
+
+function showConnectionToast(message, timeout) {
+  const toast = uiUtils.showToast(message, 'error', timeout);
+  if (toast) connectionToasts.add(toast);
+}
+
+// Connection toasts point the user at Settings. Once Settings is open they have done their job,
+// and left up they cover its footer, Save button included.
+function dismissConnectionToasts() {
+  connectionToasts.forEach((toast) => uiUtils.dismissToast?.(toast));
+  connectionToasts.clear();
 }
 
 function showClassifiedConnectionToast(error) {
   const toastInfo = classifyConnectionError(error);
   if (shouldShowConnectionToast(toastInfo)) {
-    uiUtils.showToast(toastInfo.message, 'error', 15000);
+    showConnectionToast(toastInfo.message, 15000);
   }
   return toastInfo;
 }
@@ -1914,7 +1923,7 @@ websocket.on('message', (msg) => {
       setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
       // Show clear error message to user
-      uiUtils.showToast(authFailureMessage, 'error', 15000);
+      showConnectionToast(authFailureMessage, 15000);
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
@@ -2090,7 +2099,13 @@ websocket.on('close', (closeInfo = {}) => {
 
 websocket.on('error', (error) => {
   try {
-    log.error('WebSocket error:', error);
+    // The first failure of an outage is logged in full; the retries after it would only repeat it.
+    if (connectionErrorLoggedThisOutage) {
+      log.debug('WebSocket error (still retrying):', error?.message || error);
+    } else {
+      connectionErrorLoggedThisOutage = true;
+      log.error('WebSocket error:', error);
+    }
     updateMainConnectionState('disconnected');
     const classifiedIssue = classifyConnectionError(error);
     let desktopPinIssueMessage = classifiedIssue.message;
@@ -2104,11 +2119,11 @@ websocket.on('error', (error) => {
         'Please configure your Home Assistant token in Settings (gear icon).'
       );
       setDisconnectedStatus(desktopPinIssueMessage);
-      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
+      showConnectionToast(desktopPinIssueMessage, 20000);
     } else if (errorMessage.includes('Invalid configuration')) {
       desktopPinIssueMessage = t('Please configure connection settings (gear icon).');
       setDisconnectedStatus(desktopPinIssueMessage);
-      uiUtils.showToast(desktopPinIssueMessage, 'error', 20000);
+      showConnectionToast(desktopPinIssueMessage, 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
       const toastInfo = showClassifiedConnectionToast(error);

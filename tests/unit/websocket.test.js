@@ -406,6 +406,19 @@ describe('WebSocket Manager', () => {
       );
     });
 
+    test('leaves reporting a socket error to the listener instead of logging it again', async () => {
+      state.setConfig(sampleConfig);
+      wsManager.on('error', () => {});
+      mockLogger.error.mockClear();
+
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      wsManager.ws.simulateError(new Error('Connection failed'));
+
+      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith('WebSocket error:', 'Connection failed');
+    });
+
     test('should emit friendly error when browser does not provide details', async () => {
       state.setConfig(sampleConfig);
 

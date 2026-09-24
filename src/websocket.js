@@ -195,7 +195,9 @@ class WebSocketManager extends EventEmitter {
       ws.onerror = (event) => {
         if (this.ws !== ws || ws.__intentionalClose) return;
         const message = getWebSocketErrorMessage(event);
-        log.error('WebSocket error:', message);
+        // The renderer's error listener reports it once per outage; logging every retry here
+        // doubled each one in main.log.
+        log.debug('WebSocket error:', message);
         this.emit('error', new Error(message));
       };
 

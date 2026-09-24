@@ -9199,6 +9199,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   flex-wrap: wrap;
 }
 
+/* The connection panel is the one explanation of a missing connection; the legacy placeholder
+   in the tile area would contradict it (for example "Connecting..." beside "Authentication
+   failed"). */
+body.widget-state-active #quick-controls .status-message {
+  display: none;
+}
+
 .language-section {
   border-top: 1px solid var(--border-color);
   padding-top: 16px;
