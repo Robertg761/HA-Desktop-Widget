@@ -21,6 +21,7 @@ import {
   renderEntityIcon,
   setLineIconContent,
 } from './entity-icons.js';
+import { animateEnter, pulse, syncSlidingIndicator } from './motion.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import {
@@ -619,14 +620,22 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   const tabs = config.customTabs || [];
   const reorganizing = isReorganizeMode;
 
-  tabBar.innerHTML = '';
+  // Clear everything but the sliding pill: the bar is rebuilt on every switch (often twice, once
+  // for the optimistic update and once for the saved config), and replacing the pill would cut
+  // its slide short.
+  [...tabBar.children].forEach((child) => {
+    if (!child.classList.contains('sliding-indicator')) child.remove();
+  });
   tabBar.classList.toggle('reorganize', reorganizing);
 
   // In normal mode, only surface tabs once there is more than one page.
   // In reorganize mode, always show the bar so pages can be created/renamed.
   const shouldShow = reorganizing || tabs.length > 1;
   tabBar.classList.toggle('hidden', !shouldShow);
-  if (!shouldShow) return;
+  if (!shouldShow) {
+    syncSlidingIndicator(tabBar, null);
+    return;
+  }
 
   tabs.forEach((tab) => {
     const isActive = tab.id === config.activeTabId;
@@ -707,6 +716,12 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     });
     tabBar.appendChild(addBtn);
   }
+
+  // A pill slides between pages; reorganize mode keeps its own editing highlight.
+  syncSlidingIndicator(
+    tabBar,
+    reorganizing ? null : tabBar.querySelector('.quick-access-tab-link.active')
+  );
 }
 
 function beginInlineTabRename(tabId, buttonEl) {
@@ -2300,7 +2315,11 @@ function updateEntityInUI(entity, options = {}) {
             '.tile-primary-button',
           ].find((selector) => focused.matches(selector))
         : null;
+      const wasActive = item.dataset.active === 'true';
       item.replaceWith(newControl);
+      if (isQuickAccessTile && !wasActive && newControl.dataset.active === 'true') {
+        pulse(newControl.querySelector('.control-icon'));
+      }
 
       // If in reorganize mode, add buttons to the newly created element
       // Note: SortableJS automatically handles drag behavior for all children
@@ -2440,11 +2459,14 @@ function setQuickAccessTileStateLine(div, text) {
 
 function applyQuickAccessTileActiveState(element, entity) {
   if (!element) return;
+  const wasActive = element.dataset.active === 'true';
   // An entity Home Assistant reports as unavailable keeps its tile, drawn dimmed.
   if (entity?.state === 'unavailable') element.dataset.unavailable = 'true';
   else delete element.dataset.unavailable;
   if (isQuickAccessTileActive(entity)) {
     element.dataset.active = 'true';
+    // Only a tile already on screen that just turned on; new tiles arrive as they are.
+    if (!wasActive && element.isConnected) pulse(element.querySelector('.control-icon'));
     return;
   }
   delete element.dataset.active;
@@ -7703,6 +7725,29 @@ function prefetchQuickAccessSensorHistory(entityIds) {
   }
 }
 
+// The page the grid last showed, so a page switch can slide the tiles in from the side of the
+// tab that was picked, and whether the one-time entrance has played.
+let lastRenderedQuickAccessPage = null;
+let quickAccessEntrancePlayed = false;
+
+function playQuickAccessPageMotion(container, config) {
+  const tabs = config.customTabs || [];
+  const index = tabs.findIndex((tab) => tab.id === config.activeTabId);
+  const previous = lastRenderedQuickAccessPage;
+  lastRenderedQuickAccessPage = { id: config.activeTabId, index };
+  if (isReorganizeMode || !container.children.length) return;
+
+  if (previous && previous.id !== config.activeTabId) {
+    animateEnter(container.children, { direction: index >= previous.index ? 1 : -1 });
+    return;
+  }
+  // The first time real tiles appear, let them rise in once.
+  if (!quickAccessEntrancePlayed && Object.keys(state.STATES || {}).length > 0) {
+    quickAccessEntrancePlayed = true;
+    animateEnter(container.children, { direction: 0 });
+  }
+}
+
 function renderQuickControls() {
   try {
     const container = document.getElementById('quick-controls');
@@ -7809,6 +7854,7 @@ function renderQuickControls() {
     }
     // After insertion, so the grid's real column count is known.
     applyComparisonGraphSpans(container);
+    playQuickAccessPageMotion(container, config);
     setupQuickAccessGridKeyboardNavigation();
     syncQuickAccessRovingTabIndex();
     refreshVisibleEntityCache();

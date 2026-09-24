@@ -16,6 +16,7 @@ import * as utils from './src/utils.js';
 import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { setLineIconContent } from './src/entity-icons.js';
+import { animateEnter, syncSlidingIndicator } from './src/motion.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
@@ -2539,10 +2540,13 @@ function wireUI() {
         document
           .querySelectorAll('.modal-body .tab-content')
           .forEach((content) => content.classList.remove('active'));
-        document.getElementById(`${tab}-tab`).classList.add('active');
+        const activeContent = document.getElementById(`${tab}-tab`);
+        activeContent.classList.add('active');
         // Each page opens at its top rather than at the previous page's scroll position.
         const settingsBody = button.closest('.modal-content')?.querySelector('.modal-body');
         if (settingsBody) settingsBody.scrollTop = 0;
+        syncSlidingIndicator(button.closest('.modal-tabs'), button);
+        animateEnter(activeContent.children, { direction: 0, maxStagger: 5 });
         if (tab === 'personalization' || tab === 'dashboard') {
           requestAnimationFrame(() => {
             settings.refreshPersonalizationSectionHeights();

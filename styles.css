@@ -14290,3 +14290,52 @@ select option {
   background: rgba(var(--accent-rgb), 0.18);
   box-shadow: none;
 }
+
+/* ============================================
+   MOTION
+   Small, quiet movement that makes state changes easy to follow. The moving
+   parts are driven from src/motion.js (Web Animations, skipped under reduced
+   motion); these rules give them their look.
+   ============================================ */
+
+/* A highlight pill that slides between tabs: the Quick Access pages and the
+   settings sections. While it is present, the active tab drops its own fill. */
+.quick-access-tabs,
+#settings-modal .modal-tabs {
+  position: relative;
+}
+
+.sliding-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: var(--radius-md);
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
+  pointer-events: none;
+}
+
+.has-sliding-indicator .tab-link {
+  position: relative;
+  z-index: 1;
+}
+
+.quick-access-tabs.has-sliding-indicator .tab-link.active,
+#settings-modal .modal-tabs.has-sliding-indicator .tab-link.active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Disclosures ease their content in rather than snapping open. */
+.settings-details[open] > .settings-details-body {
+  animation: disclosureReveal var(--duration-base) var(--ease-emphasized);
+}
+
+@keyframes disclosureReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

@@ -19,6 +19,7 @@ import {
   showConfirm,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import { syncSlidingIndicator } from './motion.js';
 import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
 import * as utils from './utils.js';
 import {
@@ -4339,6 +4340,8 @@ async function openSettings(uiHooks) {
     openModal(modal);
     requestAnimationFrame(() => {
       refreshPersonalizationSectionHeights();
+      const tabList = modal.querySelector('.modal-tabs');
+      syncSlidingIndicator(tabList, tabList?.querySelector('.tab-link.active') || null);
       requestAnimationFrame(() => {
         refreshPersonalizationSectionHeights();
       });
