@@ -14,6 +14,7 @@ function collectTranslateKeys() {
     'src/alerts.js',
     'src/hotkeys.js',
     'src/camera.js',
+    'src/connection-status.js',
     'main.js',
   ];
   const keyPattern = /\b(?:t|mainT)\(\s*'([^']+)'/g;
