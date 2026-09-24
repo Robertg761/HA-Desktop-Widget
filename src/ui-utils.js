@@ -1027,7 +1027,8 @@ function trapFocus(modal, { initialFocus } = {}) {
     focusTrapPreviousFocus.set(modal, document.activeElement);
     focusTrapPreviousTile.set(modal, describeTileFocusTarget(document.activeElement));
     const handler = (e) => {
-      if (e.key !== 'Tab') return;
+      // Overlays with their own Tab order (camera preview, command palette) already moved focus.
+      if (e.key !== 'Tab' || e.defaultPrevented) return;
       const focusable = getFocusableElements(modal);
       if (focusable.length === 0) return;
       const first = focusable[0];
@@ -1081,7 +1082,13 @@ function canRestorePreviousFocus(modal) {
   }
 }
 
-function releaseFocusTrap(modal) {
+/**
+ * Release a focus trap started by {@link trapFocus} and hand focus back to where it was.
+ * @param {HTMLElement} [modal] - The modal to release; the top trapped modal when omitted.
+ * @param {Object} [options] - Release behaviour.
+ * @param {boolean} [options.restoreFocus=true] - False when the caller moves focus itself.
+ */
+function releaseFocusTrap(modal, { restoreFocus = true } = {}) {
   try {
     let targetModal = modal;
     if (!targetModal) {
@@ -1107,7 +1114,7 @@ function releaseFocusTrap(modal) {
     const previousTile = focusTrapPreviousTile.get(targetModal);
     focusTrapPreviousFocus.delete(targetModal);
     focusTrapPreviousTile.delete(targetModal);
-    if (previousFocus?.focus && (previousFocus.isConnected || previousTile)) {
+    if (restoreFocus && previousFocus?.focus && (previousFocus.isConnected || previousTile)) {
       setTimeout(() => {
         const target = previousFocus.isConnected
           ? previousFocus

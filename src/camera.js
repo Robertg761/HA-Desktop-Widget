@@ -7,7 +7,12 @@ import {
   getLocalizedStateName,
 } from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
-import { closeModal as closeModalAnimated, showToast } from './ui-utils.js';
+import {
+  closeModal as closeModalAnimated,
+  releaseFocusTrap,
+  showToast,
+  trapFocus,
+} from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
@@ -1076,6 +1081,7 @@ function openExpandedCameraPreview(record, camera) {
     record.expandedPreview = null;
     if (activeExpandedCameraPreview === expandedPreview) activeExpandedCameraPreview = null;
     document.removeEventListener('keydown', handleKeydown, true);
+    releaseFocusTrap(overlay, { restoreFocus: false });
 
     if (wasVisualHidden) visual.setAttribute('aria-hidden', 'true');
     getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', ''));
@@ -1134,6 +1140,9 @@ function openExpandedCameraPreview(record, camera) {
     if (event.target === overlay) close();
   };
   document.addEventListener('keydown', handleKeydown, true);
+  // Registered as the top dialog so Escape pressed with focus on <body> closes this preview, not
+  // a dialog open underneath it. The preview returns focus itself.
+  trapFocus(overlay, { initialFocus: false });
 
   const transition = runCameraPreviewViewTransition(() => {
     if (expandedPreview.closed) return;

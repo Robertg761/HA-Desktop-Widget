@@ -35,6 +35,10 @@ jest.mock('hls.js', () => mockHls, { virtual: true });
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
+  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
+  releaseFocusTrap: jest.fn((...args) =>
+    jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
+  ),
   // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
   closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
     if (modal) {
@@ -1124,6 +1128,53 @@ describe('Camera Module', () => {
       expect(image.parentNode).toBe(visual);
       expect(image.hasAttribute('src')).toBe(true);
       expect(image.getAttribute('alt')).toBe('');
+    });
+
+    it('closes the expanded view, not the dialog under it, on Escape with focus on the page', async () => {
+      const uiUtils = jest.requireActual('../../src/ui-utils.js');
+      const settings = document.createElement('div');
+      settings.className = 'modal';
+      settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
+      document.body.appendChild(settings);
+      const settingsEscape = jest.fn();
+      settings.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') settingsEscape();
+      });
+      uiUtils.trapFocus(settings, { initialFocus: false });
+
+      const tile = createPreviewTile();
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = {
+        'camera.front_door': sampleStates['camera.front_door'],
+      };
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      pendingImage(tile).onload();
+      await camera.openCamera('camera.front_door', { sourceTile: tile });
+      const preview = document.querySelector('.camera-expanded-preview');
+      expect(preview).toBeTruthy();
+
+      // Tab with focus on the page comes back into the preview rather than Settings.
+      document.activeElement.blur();
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      jest.advanceTimersByTime(0);
+      expect(preview.contains(document.activeElement)).toBe(true);
+
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(document.querySelector('.camera-expanded-preview')).toBeNull();
+      expect(settingsEscape).not.toHaveBeenCalled();
+
+      // Focus went back to the tile; from the page, the next Escape is for Settings.
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(settingsEscape).toHaveBeenCalledTimes(1);
+      uiUtils.releaseFocusTrap(settings);
+      settings.remove();
     });
 
     it('removes an expanded preview and its pending request when the tile is disposed', async () => {

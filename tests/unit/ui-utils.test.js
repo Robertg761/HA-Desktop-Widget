@@ -741,6 +741,38 @@ describe('UI Utilities', () => {
       document.body.removeChild(externalButton);
     });
 
+    it('leaves focus to the caller when asked not to restore it', () => {
+      const externalButton = document.createElement('button');
+      document.body.appendChild(externalButton);
+      externalButton.focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      const focusSpy = jest.spyOn(externalButton, 'focus');
+
+      modal.querySelector('#first').blur();
+      uiUtils.releaseFocusTrap(modal, { restoreFocus: false });
+      jest.advanceTimersByTime(0);
+
+      expect(focusSpy).not.toHaveBeenCalled();
+      focusSpy.mockRestore();
+      externalButton.remove();
+    });
+
+    it('leaves a Tab the dialog already handled alone', () => {
+      uiUtils.trapFocus(modal);
+      const last = modal.querySelector('#last');
+      last.focus();
+      // The dialog's own Tab order moved focus and claimed the key.
+      modal.addEventListener('keydown', (event) => event.preventDefault(), {
+        capture: true,
+        once: true,
+      });
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      last.dispatchEvent(tab);
+      expect(document.activeElement).toBe(last);
+      uiUtils.releaseFocusTrap(modal);
+    });
+
     it('does not steal focus back when another dialog has already claimed it', () => {
       const externalButton = document.createElement('button');
       externalButton.id = 'external';

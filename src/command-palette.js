@@ -2,7 +2,7 @@ import state from './state.js';
 import * as utils from './utils.js';
 import { openEntityDetailModal, getEntityDomain, switchQuickAccessPage } from './ui.js';
 import websocket from './websocket.js';
-import { showToast } from './ui-utils.js';
+import { releaseFocusTrap, showToast, trapFocus } from './ui-utils.js';
 import { t } from './i18n.js';
 import { getActiveQuickAccessTab } from './quick-access-tabs.js';
 
@@ -398,6 +398,9 @@ function openCommandPalette() {
   if (!isPaletteOpen() && document.activeElement && document.activeElement !== document.body) {
     previouslyFocusedElement = document.activeElement;
   }
+  // Registered as the top dialog so Escape pressed with focus on <body> closes the palette, not
+  // a dialog open underneath it. The palette returns focus itself.
+  if (!isPaletteOpen()) trapFocus(overlay, { initialFocus: false });
   overlay.classList.remove('hidden');
   overlay.setAttribute('aria-hidden', 'false');
   input.setAttribute('aria-expanded', 'true');
@@ -412,6 +415,7 @@ function openCommandPalette() {
 
 function closeCommandPalette({ restoreFocus = true } = {}) {
   if (!overlay) return;
+  releaseFocusTrap(overlay, { restoreFocus: false });
   overlay.classList.add('hidden');
   overlay.setAttribute('aria-hidden', 'true');
   paletteCommands = null;

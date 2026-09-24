@@ -163,6 +163,53 @@ describe('command palette fuzzy scoring', () => {
   });
 });
 
+describe('command palette over another dialog', () => {
+  it('closes itself, not the dialog under it, on Escape with focus on the page', () => {
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    global.requestAnimationFrame = (callback) => callback();
+    let palette;
+    let uiUtils;
+    jest.isolateModules(() => {
+      palette = require('../../src/command-palette.js');
+      uiUtils = require('../../src/ui-utils.js');
+    });
+    const settings = document.createElement('div');
+    settings.className = 'modal';
+    settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
+    document.body.appendChild(settings);
+    const settingsEscape = jest.fn();
+    settings.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') settingsEscape();
+    });
+
+    try {
+      document.activeElement?.blur();
+      uiUtils.trapFocus(settings, { initialFocus: false });
+      palette.openCommandPalette();
+      const overlay = document.querySelector('.command-palette-overlay:not(.hidden)');
+      expect(overlay).toBeTruthy();
+      // A click on the palette's empty space leaves focus on <body>.
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+
+      expect(overlay.classList).toContain('hidden');
+      expect(settingsEscape).not.toHaveBeenCalled();
+
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(settingsEscape).toHaveBeenCalledTimes(1);
+    } finally {
+      global.requestAnimationFrame = originalRequestAnimationFrame;
+      uiUtils.releaseFocusTrap(settings);
+      document.querySelectorAll('.command-palette-overlay').forEach((node) => node.remove());
+      settings.remove();
+    }
+  });
+});
+
 describe('command palette recents', () => {
   const originalRequestAnimationFrame = global.requestAnimationFrame;
   const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
