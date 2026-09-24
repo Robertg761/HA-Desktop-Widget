@@ -32,3 +32,26 @@ describe('Settings that take effect immediately', () => {
     expect(noteNear(controlId)).toBe(note);
   });
 });
+
+describe('Language selector', () => {
+  it('names English in English, like every other language is named in its own', () => {
+    document.documentElement.innerHTML = fs.readFileSync(
+      path.resolve(__dirname, '../../index.html'),
+      'utf8'
+    );
+    const i18n = require('../../src/i18n.js');
+    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { English: 'Englisch' } });
+    i18n.translateDocument(document);
+    const names = [...document.querySelectorAll('#language-select option')].map((option) => [
+      option.value,
+      option.textContent.trim(),
+    ]);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        ['en', 'English'],
+        ['de', 'Deutsch'],
+      ])
+    );
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+  });
+});

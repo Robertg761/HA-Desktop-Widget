@@ -3595,13 +3595,14 @@ function renderLanguagePackList() {
   localePackListCache.forEach((pack) => {
     const row = document.createElement('div');
     row.className = 'language-pack-row';
+    const language = getLanguagePackDisplayName(pack);
 
     const info = document.createElement('div');
     info.className = 'language-pack-info';
 
     const name = document.createElement('div');
     name.className = 'language-pack-name';
-    name.textContent = getLanguagePackDisplayName(pack);
+    name.textContent = language;
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
@@ -3626,6 +3627,7 @@ function renderLanguagePackList() {
       updateBtn.dataset.localeAction = 'download';
       updateBtn.dataset.locale = pack.locale;
       updateBtn.textContent = t('Update');
+      updateBtn.setAttribute('aria-label', t('Update {{language}}', { language }));
       actions.appendChild(updateBtn);
     } else if (!pack.installed) {
       const downloadBtn = document.createElement('button');
@@ -3634,6 +3636,7 @@ function renderLanguagePackList() {
       downloadBtn.dataset.localeAction = 'download';
       downloadBtn.dataset.locale = pack.locale;
       downloadBtn.textContent = t('Download');
+      downloadBtn.setAttribute('aria-label', t('Download {{language}}', { language }));
       actions.appendChild(downloadBtn);
     }
 
@@ -3644,6 +3647,7 @@ function renderLanguagePackList() {
       removeBtn.dataset.localeAction = 'remove';
       removeBtn.dataset.locale = pack.locale;
       removeBtn.textContent = t('Remove');
+      removeBtn.setAttribute('aria-label', t('Remove {{language}}', { language }));
       actions.appendChild(removeBtn);
     }
 

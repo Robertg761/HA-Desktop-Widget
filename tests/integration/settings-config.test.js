@@ -1477,6 +1477,25 @@ describe('Settings + Config Integration', () => {
       expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
     });
 
+    test('names the language on every language pack button', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: false },
+        {
+          locale: 'es',
+          displayName: 'Español',
+          version: '1.0.0',
+          latestVersion: '1.1.0',
+          installed: true,
+        },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const labels = [...document.querySelectorAll('#language-packs-list button')].map((button) =>
+        button.getAttribute('aria-label')
+      );
+      expect(labels).toEqual(['Download Français', 'Update Español', 'Remove Español']);
+    });
+
     test('a failed manifest fetch is distinct from an empty catalog and recovers on reopen', async () => {
       window.electronAPI.getLocalePacks.mockResolvedValueOnce({
         error: 'manifest_unavailable',
