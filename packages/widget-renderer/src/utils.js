@@ -886,6 +886,8 @@ export {
   getEntityDisplayName,
   getEntityTypeDescription,
   getEntityIcon,
+  getHomeAssistantMdiGlyph,
+  normalizeEntityIconGlyph,
   normalizeHomeAssistantMdiIcon,
   decodeCssContent,
   formatDuration,

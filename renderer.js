@@ -15,6 +15,8 @@ import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
 import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
+import { setLineIconContent } from './src/entity-icons.js';
+import { animateEnter, syncSlidingIndicator } from './src/motion.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
@@ -2000,21 +2002,15 @@ function replaceEmojiIcons() {
   try {
     log.info('Applying SVG icons to runtime controls');
 
-    const humidityIcon = document.querySelector('.detail-icon-humidity');
-    if (humidityIcon) setIconContent(humidityIcon, 'waterDrop', { size: 13 });
-
-    const windIcon = document.querySelector('.detail-icon-wind');
-    if (windIcon) setIconContent(windIcon, 'wind', { size: 14 });
-
     // Quick Access Controls
     const reorganizeBtn = document.getElementById('reorganize-quick-controls-btn');
-    if (reorganizeBtn) setIconContent(reorganizeBtn, 'dragHandle', { size: 18 });
+    if (reorganizeBtn) setLineIconContent(reorganizeBtn, 'grip-vertical');
 
     const manageBtn = document.getElementById('manage-quick-controls-btn');
-    if (manageBtn) setIconContent(manageBtn, 'add', { size: 18 });
+    if (manageBtn) setLineIconContent(manageBtn, 'plus');
 
     const undoBtn = document.getElementById('undo-dashboard-btn');
-    if (undoBtn) setIconContent(undoBtn, 'undo', { size: 18 });
+    if (undoBtn) setLineIconContent(undoBtn, 'undo-2');
 
     // Media Player Controls
     const mediaPrevBtn = document.getElementById('media-tile-prev');
@@ -2544,8 +2540,15 @@ function wireUI() {
         document
           .querySelectorAll('.modal-body .tab-content')
           .forEach((content) => content.classList.remove('active'));
-        document.getElementById(`${tab}-tab`).classList.add('active');
-        if (tab === 'personalization') {
+        const activeContent = document.getElementById(`${tab}-tab`);
+        activeContent.classList.add('active');
+        // Each page opens at its top rather than at the previous page's scroll position.
+        const settingsBody = button.closest('.modal-content')?.querySelector('.modal-body');
+        if (settingsBody) settingsBody.scrollTop = 0;
+        syncSlidingIndicator(button.closest('.modal-tabs'), button);
+        animateEnter(activeContent.children, { direction: 0, maxStagger: 5 });
+        settings.syncSegmentedIndicators(activeContent);
+        if (tab === 'personalization' || tab === 'dashboard') {
           requestAnimationFrame(() => {
             settings.refreshPersonalizationSectionHeights();
           });

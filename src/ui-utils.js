@@ -49,21 +49,23 @@ let connectionStatusDocumentHandlersBound = false;
 let connectionStatusBoundElement = null;
 
 const BACKGROUND_BASES = {
+  // A cool slate rather than neutral grey, so the window reads as tinted glass. Kept in step with
+  // the :root defaults in styles.css.
   dark: {
-    bgColor: { r: 40, g: 40, b: 45, a: 0.8 },
-    bgElevated: { r: 30, g: 30, b: 35, a: 0.9 },
-    bgPrimary: { r: 20, g: 20, b: 25, a: 0.95 },
-    bgSecondary: { r: 30, g: 30, b: 35, a: 0.9 },
-    bgTertiary: { r: 40, g: 40, b: 45, a: 0.85 },
-    surface1: { r: 25, g: 25, b: 30, a: 0.8 },
-    surface2: { r: 35, g: 35, b: 40, a: 0.85 },
-    surface3: { r: 45, g: 45, b: 50, a: 0.9 },
-    surfaceHover: { r: 50, g: 50, b: 55, a: 0.95 },
-    cardBg: { r: 30, g: 30, b: 35, a: 0.7 },
-    glassSurface: { r: 30, g: 30, b: 35, a: 0.7 },
-    glassElevated: { r: 40, g: 40, b: 45, a: 0.8 },
-    glassOverlay: { r: 20, g: 20, b: 25, a: 0.85 },
-    loadingOverlay: { r: 20, g: 20, b: 25, a: 0.7 },
+    bgColor: { r: 18, g: 22, b: 30, a: 0.8 },
+    bgElevated: { r: 24, g: 28, b: 37, a: 0.9 },
+    bgPrimary: { r: 13, g: 16, b: 22, a: 0.95 },
+    bgSecondary: { r: 24, g: 28, b: 37, a: 0.9 },
+    bgTertiary: { r: 30, g: 35, b: 45, a: 0.85 },
+    surface1: { r: 20, g: 24, b: 32, a: 0.8 },
+    surface2: { r: 28, g: 33, b: 42, a: 0.85 },
+    surface3: { r: 36, g: 41, b: 51, a: 0.9 },
+    surfaceHover: { r: 42, g: 47, b: 58, a: 0.95 },
+    cardBg: { r: 24, g: 28, b: 37, a: 0.7 },
+    glassSurface: { r: 24, g: 28, b: 37, a: 0.7 },
+    glassElevated: { r: 30, g: 35, b: 45, a: 0.8 },
+    glassOverlay: { r: 13, g: 16, b: 22, a: 0.85 },
+    loadingOverlay: { r: 13, g: 16, b: 22, a: 0.7 },
   },
   light: {
     bgColor: { r: 250, g: 250, b: 250, a: 0.8 },

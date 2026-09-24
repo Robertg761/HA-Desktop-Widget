@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.22",
+  "version": "1.2.23",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -656,6 +656,24 @@
     "Rooms are unavailable. Choose from your devices instead.": "Les pièces ne sont pas disponibles. Choisissez parmi vos appareils.",
     "Search devices": "Rechercher des appareils",
     "Skip for now": "Ignorer pour le moment",
-    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Votre connexion est enregistrée. Prévisualisez une pièce ou choisissez des appareils pour créer votre première page. Vous pourrez aussi le faire plus tard depuis le tableau de bord vide."
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Votre connexion est enregistrée. Prévisualisez une pièce ou choisissez des appareils pour créer votre première page. Vous pourrez aussi le faire plus tard depuis le tableau de bord vide.",
+    "Mode": "Mode",
+    "Appearance": "Apparence",
+    "Dashboard": "Tableau de bord",
+    "Theme": "Thème",
+    "Colors": "Couleurs",
+    "Readability": "Lisibilité",
+    "Date & time": "Date et heure",
+    "Home Assistant": "Home Assistant",
+    "Window Effects": "Effets de fenêtre",
+    "Primary Cards": "Cartes principales",
+    "Media Tile": "Tuile multimédia",
+    "Custom Entity Icons": "Icônes d'entité personnalisées",
+    "Connection, window behaviour and language.": "Connexion, comportement de la fenêtre et langue.",
+    "Theme, colours, glass and readability.": "Thème, couleurs, verre et lisibilité.",
+    "What the main window shows.": "Ce qu'affiche la fenêtre principale.",
+    "Keyboard shortcuts for the widget and your entities.": "Raccourcis clavier pour le widget et vos entités.",
+    "Desktop notifications when entities change.": "Notifications de bureau quand des entités changent.",
+    "Updates, sync, diagnostics and support.": "Mises à jour, synchronisation, diagnostic et soutien."
   }
 }

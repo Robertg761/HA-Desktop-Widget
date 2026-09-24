@@ -10,8 +10,8 @@
    with a Chrome UA (that is what returns woff2), then save each subset under
    fonts/ using the <family>-<subset>.woff2 naming below.
    No italic faces are shipped: 'Plus Jakarta Sans' is only ever bound to
-   --desktop-pin-display-font and nothing in that scope sets font-style: italic,
-   so the italic subsets were dead weight. The declared Inter range is the
+   --font-display and --desktop-pin-display-font, and nothing in those scopes
+   sets font-style: italic, so the italic subsets were dead weight. The declared Inter range is the
    variable font's real wght axis (100..900), not the 300..700 the css2 request
    asks for — narrowing it here would clamp the 750/800 weights this sheet uses.
    ============================================ */
@@ -158,21 +158,24 @@ html {
      COLOR SYSTEM
      ============================================ */
 
-  /* Base Colors */
-  --bg-color: rgba(40, 40, 45, 0.8);
-  --window-bg-rgb: 40, 40, 45;
+  /* Base Colors. A cool, deep slate rather than neutral grey: the glass reads as
+     tinted glass over the wallpaper instead of a flat grey panel. Mirrors
+     BACKGROUND_BASES.dark in src/ui-utils.js, which re-applies these at runtime. */
+  --bg-color: rgba(18, 22, 30, 0.8);
+  --window-bg-rgb: 18, 22, 30;
   --window-bg-alpha: 1;
-  --bg-elevated: rgba(30, 30, 35, 0.9);
-  --bg-primary: rgba(20, 20, 25, 0.95);
-  --bg-secondary: rgba(30, 30, 35, 0.9);
-  --bg-tertiary: rgba(40, 40, 45, 0.85);
+  --bg-elevated: rgba(24, 28, 37, 0.9);
+  --bg-primary: rgba(13, 16, 22, 0.95);
+  --bg-secondary: rgba(24, 28, 37, 0.9);
+  --bg-tertiary: rgba(30, 35, 45, 0.85);
 
   /* Text Colors */
   --text-color: #f0f0f0;
   --text-primary: #f5f5f5;
   --text-secondary: #b0b0b0;
-  /* 5.2:1 against the dark window background (#28282d). The previous #808080
-     sat at ~3.7:1, under the 4.5:1 WCAG AA floor for body text. */
+  /* 5.2:1 against the old, lighter dark window background (#28282d), and higher
+     against the current slate. The previous #808080 sat at ~3.7:1, under the
+     4.5:1 WCAG AA floor for body text. */
   --text-tertiary: #9a9aa3;
   --muted-text: #a0a0a0;
 
@@ -207,11 +210,19 @@ html {
   --error-hover: #e57373;
 
   /* Surfaces */
-  --surface-1: rgba(25, 25, 30, 0.8);
-  --surface-2: rgba(35, 35, 40, 0.85);
-  --surface-3: rgba(45, 45, 50, 0.9);
-  --surface-hover: rgba(50, 50, 55, 0.95);
-  --card-bg: rgba(30, 30, 35, 0.7);
+  --surface-1: rgba(20, 24, 32, 0.8);
+  --surface-2: rgba(28, 33, 42, 0.85);
+  --surface-3: rgba(36, 41, 51, 0.9);
+  --surface-hover: rgba(42, 47, 58, 0.95);
+  --card-bg: rgba(24, 28, 37, 0.7);
+
+  /* Tiles and cards on the main view: a faint wash over the window glass, so
+     they read as lifted panes of the same glass rather than separate slabs. */
+  --tile-bg: rgba(255, 255, 255, 0.045);
+  --tile-bg-hover: rgba(255, 255, 255, 0.075);
+  --tile-border: rgba(255, 255, 255, 0.06);
+  --tile-border-hover: rgba(255, 255, 255, 0.12);
+  --window-highlight: rgba(255, 255, 255, 0.1);
 
   /* Borders */
   --border-color: rgba(255, 255, 255, 0.1);
@@ -236,17 +247,17 @@ html {
   --glass-opacity-dark: 0.9;
 
   /* Glass Effects (backdrop-filter compatible) */
-  --glass-surface: rgba(30, 30, 35, 0.7);
-  --glass-elevated: rgba(40, 40, 45, 0.8);
-  --glass-overlay: rgba(20, 20, 25, 0.85);
+  --glass-surface: rgba(24, 28, 37, 0.7);
+  --glass-elevated: rgba(30, 35, 45, 0.8);
+  --glass-overlay: rgba(13, 16, 22, 0.85);
   /* Base color of the layer painted beneath modal glass tints (see
      .modal-content, where its alpha is computed) so dialog text stays
      readable even where backdrop-filter silently fails (e.g. transparent
      Electron windows on Linux/Windows). */
-  --modal-backstop-rgb: 26, 26, 31;
-  --settings-modal-bg-rgb: 24, 24, 29;
+  --modal-backstop-rgb: 20, 24, 32;
+  --settings-modal-bg-rgb: 17, 21, 28;
   --settings-modal-bg-alpha: 0.82;
-  --settings-modal-panel-rgb: 31, 31, 37;
+  --settings-modal-panel-rgb: 24, 28, 37;
   --settings-modal-panel-alpha: 0.88;
 
   /* ============================================
@@ -279,6 +290,8 @@ html {
      @font-face block at the top of this file); everything after them is the
      platform fallback used until the woff2 subsets have decoded. */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Display face for the big numbers: clock, temperature, sensor readouts. */
+  --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, 'Segoe UI', sans-serif;
   --font-mono:
     ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Consolas', 'Liberation Mono', Menlo, monospace;
 
@@ -288,11 +301,13 @@ html {
   --font-size-3xs: 0.4375rem; /* 7px  — desktop-pin micro captions/badges */
   --font-size-2xs: 0.5rem; /* 8px */
   --font-size-xs: 0.625rem; /* 10px */
+  --font-size-xs-plus: 0.6875rem; /* 11px — section labels, tile state lines */
   --font-size-sm: 0.75rem; /* 12px */
   --font-size-base: 0.875rem; /* 14px */
   --font-size-md: 1rem; /* 16px */
   --font-size-lg: 1.125rem; /* 18px */
   --font-size-xl: 1.25rem; /* 20px */
+  --font-size-icon: 1.375rem; /* 22px — Quick Access tile icons */
   --font-size-2xl: 1.5rem; /* 24px */
   --font-size-2xl-plus: 1.75rem; /* 28px — half step: the sensor tile's
      "Extra Large" value size needs a rung above 2xl that is not the 30px 3xl
@@ -338,6 +353,7 @@ html {
   --radius-sm: 0.25rem; /* 4px */
   --radius-md: 0.5rem; /* 8px */
   --radius-lg: 0.75rem; /* 12px */
+  --radius-tile: 0.875rem; /* 14px — main-view cards and tiles */
   --radius-xl: 1rem; /* 16px */
   --radius-2xl: 1.5rem; /* 24px */
   --radius-full: 9999px;
@@ -432,6 +448,13 @@ html {
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
+
+  /* Tiles: white panes on the pale glass, edged just enough to separate. */
+  --tile-bg: rgba(255, 255, 255, 0.5);
+  --tile-bg-hover: rgba(255, 255, 255, 0.72);
+  --tile-border: rgba(0, 0, 0, 0.07);
+  --tile-border-hover: rgba(0, 0, 0, 0.13);
+  --window-highlight: rgba(255, 255, 255, 0.55);
 
   /* Glass Effects */
   --glass-surface: rgba(255, 255, 255, 0.7);
@@ -554,26 +577,23 @@ body.native-glass.frosted-glass {
   --bg-blur: calc(var(--frosted-blur, 32px) * 0.5);
 }
 
+/* The window is one pane of glass: the body carries the tint, and the header and
+   content sit on it clear (see below) instead of stacking tints of their own. */
+body.native-glass.frosted-glass:not(.desktop-pin-mode) {
+  background: rgba(
+    var(--frosted-glass-elevated-rgb, 30, 35, 45),
+    var(--frosted-glass-elevated-alpha, 0.5)
+  ) !important;
+}
+
+/* Software acrylic: one soft sheen over the tint. The scanline texture it used to
+   carry read as a screen-door pattern rather than glass, so it is gone. */
 body.software-glass.frosted-glass {
   background:
     linear-gradient(
-      135deg,
+      160deg,
       rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
-      rgba(255, 255, 255, 0) 42%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 0,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 1px,
-      transparent 1px,
-      transparent 4px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(0, 0, 0, var(--software-acrylic-shadow-alpha, 0.08)) 0,
-      rgba(0, 0, 0, var(--software-acrylic-shadow-alpha, 0.08)) 1px,
-      transparent 1px,
-      transparent 5px
+      rgba(255, 255, 255, 0) 38%
     ),
     rgba(var(--window-bg-rgb), var(--software-acrylic-bg-alpha, 0.55)) !important;
   backdrop-filter: blur(var(--bg-blur)) saturate(170%) contrast(108%);
@@ -584,22 +604,13 @@ body.software-glass.frosted-glass {
  * Frosted Glass Header & Content
  * When frosted glass is enabled, these elements need proper glass styling
  */
-body.frosted-glass .widget-header {
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
+body.frosted-glass .widget-header,
 body.frosted-glass .widget-content {
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-body.software-glass.frosted-glass .widget-header,
-body.software-glass.frosted-glass .widget-content,
 body.software-glass.frosted-glass .modal-content {
   background:
     linear-gradient(
@@ -646,33 +657,9 @@ body.linux-performance-mode {
   --glass-blur-light: 0px;
 }
 
-/* Status cards in frosted glass mode */
-body.frosted-glass .status-card {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-light)) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* Media tile in frosted glass mode */
-body.frosted-glass .media-tile {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-}
-
-/* Control items in frosted glass mode */
-body.frosted-glass .control-item {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-medium)) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-body.frosted-glass .control-item:hover {
-  background: var(--glass-elevated);
-  border-color: rgba(255, 255, 255, 0.12);
-}
+/* Cards and tiles are washes over the window's single pane of glass, frosted or
+   not (see .status-card and .control-item); a second backdrop blur per tile would
+   only cost frames. */
 
 /* Section headers in frosted glass mode */
 body.frosted-glass .section-title {
@@ -749,14 +736,13 @@ html.desktop-pin-mode body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 14px;
   background: var(--glass-elevated);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--tile-border);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  /* The glass's top edge catching the light. */
+  box-shadow: inset 0 1px 0 var(--window-highlight);
 }
 
 .desktop-pin-shell {
@@ -807,7 +793,9 @@ body.desktop-pin-mode .desktop-pin-shell {
   border-radius: var(--radius-2xl);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 var(--window-highlight),
+    inset 0 0 0 1px var(--tile-border);
   isolation: isolate;
   clip-path: inset(0 round 24px);
 }
@@ -815,16 +803,9 @@ body.desktop-pin-mode .desktop-pin-shell {
 body.desktop-pin-mode.software-glass .desktop-pin-shell {
   background:
     linear-gradient(
-      135deg,
+      160deg,
       rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
-      rgba(255, 255, 255, 0) 42%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 0,
-      rgba(255, 255, 255, var(--software-acrylic-noise-alpha, 0.055)) 1px,
-      transparent 1px,
-      transparent 4px
+      rgba(255, 255, 255, 0) 38%
     ),
     rgba(var(--window-bg-rgb), var(--software-acrylic-bg-alpha, 0.55));
 }
@@ -1130,10 +1111,19 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
 }
 
+/* The pin is also a .control-item, whose centred column layout would shrink the shell to its
+   content and centre it; the pin fills its window edge to edge instead. */
+.control-item.desktop-pin-light-control {
+  align-items: stretch;
+  justify-content: stretch;
+  text-align: left;
+}
+
 .desktop-pin-light-shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 10px;
+  width: 100%;
   min-height: 100%;
   position: relative;
   z-index: 1;
@@ -1141,9 +1131,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   border-radius: inherit;
 }
 
+/* Icon, name and status, then the power pill on the right. */
 .desktop-pin-light-topline {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 0;
@@ -1155,7 +1146,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-name {
   font-family: var(--desktop-pin-ui-font);
-  font-size: clamp(10px, 1.9vw, 12px);
+  font-size: clamp(12px, 4.5vw, 14px);
   font-weight: 700;
   line-height: 1.1;
   color: rgba(255, 255, 255, 0.96);
@@ -1277,11 +1268,15 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-variant-numeric: tabular-nums;
 }
 
+/* The input is as tall as its thumb, centred on the thinner track, so the round thumb is not
+   clipped to the track's height. */
 .desktop-pin-light-slider {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: var(--desktop-pin-light-slider-thumb-size);
+  transform: translateY(-50%);
   margin: 0;
   background: transparent;
   appearance: none;
@@ -1356,9 +1351,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: scale(1.1);
 }
 
-.desktop-pin-light-brightness-track {
+/* Doubled class: .desktop-pin-panel-progress, declared later, clips its overflow, which would
+   cut the slider's round thumb down to the track's height. */
+.desktop-pin-light-brightness-track.desktop-pin-panel-progress {
   height: var(--desktop-pin-light-slider-track-size);
-  margin: 10px 10px;
+  margin: 8px 0;
   border-radius: var(--radius-full);
   overflow: visible;
   position: relative;
@@ -1802,6 +1799,21 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-fan-glyph[data-active='true'] {
   animation: desktop-pin-fan-spin 1.6s linear infinite;
+}
+
+/* Line icons on pinned tiles take the tile's own tint, like an active Quick Access icon. */
+.desktop-pin-light-glyph .entity-line-icon,
+.desktop-pin-panel-glyph .entity-line-icon,
+.desktop-pin-fan-glyph .entity-line-icon,
+.desktop-pin-scene-emoji .entity-line-icon {
+  color: rgb(var(--desktop-pin-tint-rgb, var(--accent-rgb)));
+  filter: drop-shadow(0 0 6px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
+}
+
+/* At hero size the stroke is scaled down so the icon stays a line drawing. */
+.desktop-pin-scene-emoji .entity-line-icon {
+  stroke-width: 1.25;
+  filter: drop-shadow(0 0 14px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
 }
 
 @keyframes desktop-pin-fan-spin {
@@ -2662,56 +2674,46 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .widget-title {
   font-size: var(--font-size-base);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
+/* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
+  --indicator-color: var(--danger);
+  order: -1;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--danger);
+  background: var(--indicator-color);
   transition: background-color var(--transition-slow);
   flex-shrink: 0;
-  margin-left: 8px;
-  box-shadow: 0 0 4px var(--danger);
+  margin: 0 2px 0 1px;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--indicator-color) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--indicator-color) 50%, transparent);
   -webkit-app-region: no-drag;
   cursor: help;
-  animation: pulseDisconnected 2s ease-in-out 2;
+  animation: pulseIndicator 2s ease-in-out 2;
 }
 
-@keyframes pulseDisconnected {
+@keyframes pulseIndicator {
   0%,
   100% {
-    box-shadow: 0 0 2px var(--danger);
     opacity: 0.8;
   }
   50% {
-    box-shadow: 0 0 8px var(--danger);
     opacity: 1;
   }
 }
 
 .connection-indicator.connected {
-  background: var(--success);
-  box-shadow: 0 0 6px var(--success);
-  animation: pulseConnected 3s ease-in-out 2;
-}
-
-@keyframes pulseConnected {
-  0%,
-  100% {
-    box-shadow: 0 0 3px var(--success);
-    opacity: 0.85;
-  }
-  50% {
-    box-shadow: 0 0 10px var(--success);
-    opacity: 1;
-  }
+  --indicator-color: #4ade80;
+  animation: pulseIndicator 3s ease-in-out 2;
 }
 
 .connection-indicator:focus-visible {
@@ -2787,25 +2789,34 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .control-btn {
-  width: 24px;
+  width: 26px;
   height: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted-text);
-  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--font-size-sm);
-  opacity: 0.65;
-  transition: all var(--transition-base);
+  opacity: 0.8;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
 }
 
 .control-btn:hover {
   opacity: 1;
-  transform: scale(1.15);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  background: var(--tile-bg-hover);
+}
+
+.control-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  opacity: 1;
 }
 
 .notification-bell-btn {
@@ -2822,9 +2833,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .notification-bell-btn:hover {
   background: var(--accent-bg);
-  border-color: rgba(var(--accent-rgb), 0.45);
   color: var(--accent-hover);
-  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.35);
 }
 
 .notification-bell-icon {
@@ -2853,38 +2862,31 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 #settings-btn:hover {
-  background: var(--accent-bg);
-  border-color: rgba(var(--accent-rgb), 0.45);
   color: var(--accent);
-  transform: scale(1.15) rotate(90deg);
-  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.35);
 }
 
-#minimize-btn:hover {
-  background: rgba(255, 183, 77, 0.2);
-  border-color: rgba(255, 183, 77, 0.5);
-  color: var(--warning);
-  box-shadow: 0 0 10px rgba(255, 183, 77, 0.35);
+#settings-btn svg {
+  transition: transform var(--duration-slow) var(--ease-emphasized);
+}
+
+#settings-btn:hover svg {
+  transform: rotate(60deg);
 }
 
 #close-btn:hover {
-  background: rgba(239, 83, 80, 0.2);
-  border-color: rgba(239, 83, 80, 0.5);
+  background: rgba(239, 83, 80, 0.18);
   color: var(--error);
-  box-shadow: 0 0 10px rgba(239, 83, 80, 0.35);
 }
 
 /* Main content */
 .widget-content {
-  padding: 12px;
+  padding: 12px 14px 14px;
   height: calc(100vh - 40px);
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--glass-elevated);
-  border-top: 1px solid var(--border-color);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   position: relative;
 }
 
@@ -2940,57 +2942,35 @@ body.first-run-active .widget-content > * {
 /* Media Player Tile */
 .media-tile {
   grid-column: 1 / -1; /* Span full width */
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: var(--space-3);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  padding: 10px;
   display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: var(--space-3);
+  grid-template-columns: 52px 1fr;
+  gap: var(--space-4);
   align-items: center;
-  backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    border-color var(--transition-base);
   min-height: 64px;
   overflow: hidden;
   position: relative;
   margin-bottom: 8px;
 }
 
-.media-tile::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  opacity: 0.5;
-}
-
 .media-tile:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-3px) scale(1.01);
-  box-shadow:
-    var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    var(--glow-accent);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
 }
 
 .media-tile-artwork {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg);
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
-  border: 1px solid var(--border-color);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3010,8 +2990,10 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-artwork-placeholder {
-  font-size: var(--font-size-2xl);
-  opacity: 0.3;
+  display: flex;
+  font-size: var(--font-size-icon);
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 .media-tile-content {
@@ -3032,17 +3014,18 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-color);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .media-tile-artist {
-  font-size: var(--font-size-xs);
-  color: var(--muted-text);
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3069,7 +3052,7 @@ body.first-run-active .widget-content > * {
 .media-tile-seek-bar {
   flex: 1;
   height: 3px;
-  background: var(--surface-3);
+  background: var(--tile-border-hover);
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
@@ -3085,7 +3068,7 @@ body.first-run-active .widget-content > * {
   background: var(--accent);
   transition: width var(--duration-slower) linear;
   border-radius: var(--radius-full);
-  box-shadow: 0 0 6px var(--accent);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
   position: relative;
 }
 
@@ -3145,12 +3128,11 @@ body.first-run-active .widget-content > * {
 
 .media-tile-btn:hover {
   color: var(--accent-hover);
-  transform: scale(1.2);
-  filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.45));
 }
 
 .media-tile-btn:active {
-  transform: scale(1);
+  transform: scale(0.92);
 }
 
 .media-tile-btn-play {
@@ -3167,18 +3149,17 @@ body.first-run-active .widget-content > * {
 
 .media-tile-btn-play:hover {
   color: var(--accent-hover);
-  transform: scale(1.25);
-  filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.6));
 }
 
 .media-tile-btn-play:active {
-  transform: scale(1.1);
+  transform: scale(0.92);
 }
 
-/* Add subtle glow when playing */
+/* Playing: the same steady glow an active tile's icon gets. */
 .media-tile-btn-play.playing {
   color: var(--accent);
-  animation: iconGlow 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
 .media-tile-btn-play.playing svg {
@@ -3202,51 +3183,27 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card {
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  padding: var(--space-4);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  padding: var(--space-5);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  gap: var(--space-4);
   transition:
-    transform var(--transition-slow),
-    border-color var(--transition-slow),
-    background-color var(--transition-slow),
-    box-shadow var(--transition-slow);
+    border-color var(--transition-base),
+    background-color var(--transition-base);
   position: relative;
   overflow: hidden;
-  will-change: transform, box-shadow;
 }
 
 .primary-card-hidden {
   display: none;
 }
 
-.status-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-  opacity: 0.7;
-}
-
 .status-card:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-3px) scale(1.015);
-  box-shadow:
-    var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    var(--glow-accent);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
 }
 
 .card-content {
@@ -3288,12 +3245,14 @@ body.first-run-active .widget-content > * {
 .section-btn {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
   cursor: pointer;
   padding: 4px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-base);
-  font-size: var(--font-size-sm);
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3306,8 +3265,31 @@ body.first-run-active .widget-content > * {
 }
 
 .section-btn:hover {
-  background: var(--surface-hover);
+  background: var(--tile-bg-hover);
   color: var(--text-primary);
+}
+
+.section-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+}
+
+/* Section labels: small, tracked capitals, well below the content in weight. */
+.section-label {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* With a single view there are no tabs to name the grid, so the label does. */
+.quick-access-tabs:not(.hidden) ~ .quick-access-label {
+  display: none;
 }
 
 /* Reorganize button active state */
@@ -3340,39 +3322,39 @@ body.first-run-active .widget-content > * {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Views read as section labels; the active one is lit and carries the accent. */
 .quick-access-tabs .tab-link {
   width: auto;
-  min-height: 30px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   text-align: center;
-  transition: var(--transition-base);
+  white-space: nowrap;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .quick-access-tabs .tab-link:hover {
-  border-color: var(--border-hover);
-  background: var(--glass-surface);
+  border-color: transparent;
+  background: var(--tile-bg);
   color: var(--text-primary);
 }
 
 .quick-access-tabs .tab-link.active {
   color: var(--text-primary);
   border-color: transparent;
-  /* Subtle accent wash fading top-to-bottom (no hard fill, border, or underline). */
-  background: linear-gradient(
-    180deg,
-    rgba(var(--accent-rgb), 0.14) 0%,
-    rgba(var(--accent-rgb), 0.04) 55%,
-    transparent 100%
-  );
-  box-shadow: none;
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
 .quick-access-tabs .tab-link:focus-visible {
@@ -3420,14 +3402,10 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs.reorganize .quick-access-tab.active {
-  /* Same subtle accent wash as the normal-mode active tab. */
-  background: linear-gradient(
-    180deg,
-    rgba(var(--accent-rgb), 0.14) 0%,
-    rgba(var(--accent-rgb), 0.04) 55%,
-    transparent 100%
-  );
-  box-shadow: none;
+  /* Same accent wash as the normal-mode active tab. */
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
+  border-radius: var(--radius-md);
   padding-right: 2px;
 }
 
@@ -3546,21 +3524,22 @@ body.first-run-active .widget-content > * {
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 6px;
+  gap: 8px;
   align-items: stretch;
   grid-auto-flow: dense; /* tighter packing */
 }
 
 .control-item {
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
   padding: var(--space-3);
   text-align: center;
   cursor: pointer;
-  transition: var(--transition-base);
-  backdrop-filter: blur(var(--blur-lg)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(180%);
+  transition:
+    background-color var(--transition-base),
+    border-color var(--transition-base),
+    transform var(--duration-fast) var(--ease-emphasized);
   min-height: 64px;
   display: flex;
   flex-direction: column;
@@ -3568,30 +3547,12 @@ body.first-run-active .widget-content > * {
   align-items: stretch;
   box-sizing: border-box;
   height: auto;
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
 }
 
 .control-item[data-desktop-pinned='true'] {
-  border-color: rgba(var(--accent-rgb), 0.36);
-  box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1px rgba(var(--accent-rgb), 0.12);
-}
-
-.control-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-  opacity: 0.7;
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 /* Ensure child content can actually use the full width */
@@ -3606,23 +3567,18 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-  transform: translateY(-3px) scale(1.02);
-  box-shadow:
-    var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    var(--glow-accent);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
 }
 
 .control-item:active {
-  transform: translateY(-1px) scale(0.97);
+  transform: scale(0.96);
 }
 
 .control-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  box-shadow: var(--shadow-sm), var(--glow-focus);
+  box-shadow: var(--glow-focus);
 }
 
 .control-item.active {
@@ -3745,11 +3701,12 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Unavailable entity styling */
+/* Unavailable entity styling: the same pane, dashed and dimmed. */
 .control-item.unavailable-entity {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.08), rgba(97, 97, 97, 0.04));
-  border-color: rgba(158, 158, 158, 0.25);
-  opacity: 0.7;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--tile-border-hover);
+  opacity: 0.75;
   cursor: not-allowed;
 }
 
@@ -3760,9 +3717,8 @@ body.first-run-active .widget-content > * {
 
 .control-item.unavailable-entity:hover {
   transform: none;
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.12), rgba(97, 97, 97, 0.06));
-  border-color: rgba(158, 158, 158, 0.35);
-  box-shadow: var(--shadow-sm);
+  background: var(--tile-bg);
+  border-color: var(--tile-border-hover);
 }
 
 .desktop-pin-panel-control[data-state],
@@ -3772,8 +3728,8 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item.unavailable-entity .unavailable-icon {
-  opacity: 0.6;
-  filter: grayscale(0.3);
+  color: var(--warning);
+  opacity: 0.85;
 }
 
 .control-item.unavailable-entity .control-name {
@@ -3795,14 +3751,16 @@ body.first-run-active .widget-content > * {
   justify-content: center;
   min-height: 18px;
   line-height: 1;
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
   transition:
-    transform var(--duration-base) var(--ease-back),
     filter var(--transition-base),
     color var(--transition-base);
 }
 
-.control-item:hover .control-icon {
-  transform: scale(1.18);
+/* Line icons are drawn at 1em; block display drops the inline baseline gap. */
+.entity-line-icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 .control-item.active .control-icon,
@@ -3836,16 +3794,15 @@ body.first-run-active .widget-content > * {
 }
 
 .control-name {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.005em;
   width: 100%;
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
-  line-height: 1.3;
-  padding: 2px 0;
+  line-height: 1.25;
+  padding: 1px 0;
 }
 
 /* Entity Selector List */
@@ -4180,7 +4137,7 @@ body.first-run-active .widget-content > * {
 
 /* Enhanced Weather Card Styles */
 .weather-card {
-  min-height: 120px;
+  min-height: 104px;
 }
 
 .status-card.weather-card {
@@ -4543,15 +4500,18 @@ body.first-run-active .widget-content > * {
 }
 
 .weather-temp {
-  font-size: var(--font-size-2xl);
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: var(--font-size-2xl-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   line-height: 1;
 }
 
 .weather-condition {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
   text-transform: capitalize;
   line-height: 1.2;
   word-wrap: break-word;
@@ -4560,57 +4520,34 @@ body.first-run-active .widget-content > * {
 
 .weather-details {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 6px;
 }
 
+/* Humidity and wind as quiet inline readouts, not chips. */
 .weather-detail {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    var(--shadow-sm);
-  transition: all var(--transition-base);
-}
-
-.weather-detail:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-  border-color: rgba(var(--accent-rgb), 0.35);
-  color: var(--text-primary);
-  transform: translateY(-1px) scale(1.05);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.15),
-    0 0 10px rgba(var(--accent-rgb), 0.15);
-}
-
-.theme-light .weather-detail {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  font-size: var(--font-size-xs-plus);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-icon {
+  display: flex;
   font-size: var(--font-size-sm);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .detail-value {
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
 /* Enhanced Time Card Styles */
 .status-card.time-card {
-  min-height: 120px;
+  min-height: 104px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4619,7 +4556,7 @@ body.first-run-active .widget-content > * {
 .status-card.time-card .time-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   height: 100%;
   align-items: center;
   justify-content: center;
@@ -4635,13 +4572,13 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card.time-card .time-display {
-  font-size: var(--font-size-4xl);
-  font-weight: 800;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   line-height: 1;
-  font-family: var(--desktop-pin-display-font), sans-serif;
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.03em;
   text-align: center;
   width: 100%;
   word-wrap: break-word;
@@ -4655,16 +4592,18 @@ body.first-run-active .widget-content > * {
   padding: 0 4px;
 }
 
+body.theme-light .status-card.time-card .date-display {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
 .status-card.time-card .date-display {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs-plus);
   color: var(--accent);
   text-align: center;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 1px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(var(--accent-rgb), 0.2);
-  text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.25);
+  letter-spacing: 0.08em;
+  transition: color var(--transition-slow);
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
@@ -4709,8 +4648,10 @@ body.first-run-active .widget-content > * {
   );
 }
 
-.status-card.primary-entity-card::before {
-  display: block;
+/* A lit primary light card warms its icon to match the glow behind it. */
+.status-card.primary-entity-card.primary-light-card[data-state='on'] .control-icon {
+  color: #ffd08a;
+  filter: drop-shadow(0 0 10px rgba(255, 196, 110, 0.55));
 }
 
 .status-card.primary-entity-card .control-item {
@@ -4744,8 +4685,8 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card.primary-entity-card .control-name {
-  font-size: var(--font-size-sm);
-  letter-spacing: 0.4px;
+  font-size: var(--font-size-base);
+  letter-spacing: -0.01em;
 }
 
 .status-card.primary-entity-card .control-state {
@@ -6215,49 +6156,63 @@ body.first-run-active .widget-content > * {
 .control-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 6px;
+  padding: 12px 8px;
   position: relative;
   overflow: hidden;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-base);
   min-height: 60px;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
+/* Quick Access tiles share one height, so the grid reads as an even field of panes. */
+#quick-controls .control-item {
+  min-height: 96px;
+}
+
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
    marks a Quick Access tile whose entity is currently on (Personalization > Window
-   Effects). Read-only tiles never carry data-active, so they never glow. */
+   Effects): an accent-tinted pane, an accent icon with a soft halo, and a brighter
+   state line. Read-only tiles never carry data-active, so they never glow. */
 body.active-tile-glow #quick-controls .control-item[data-active='true'] {
-  border-color: rgba(var(--accent-rgb), 0.34);
-  background-image: radial-gradient(
-    circle at 50% 116%,
-    rgba(var(--accent-rgb), 0.24),
-    rgba(var(--accent-rgb), 0.07) 52%,
-    transparent 76%
-  );
-  box-shadow:
-    inset 0 0 0 1px rgba(var(--accent-rgb), 0.07),
-    0 4px 18px rgba(var(--accent-rgb), 0.14);
+  background-color: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.42);
 }
 
 body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
-  border-color: rgba(var(--accent-rgb), 0.46);
+  background-color: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
+}
+
+body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-state {
+  color: color-mix(in srgb, var(--text-primary) 82%, transparent);
+}
+
+/* Light theme: the accent is darkened for the icon so it holds contrast on pale glass. */
+body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
+}
+
+#quick-controls .control-item[data-unavailable='true'] {
+  background: transparent;
+  border-style: dashed;
+}
+
+#quick-controls .control-item[data-unavailable='true'] > :is(.control-icon, .control-info) {
+  opacity: 0.55;
 }
 
 body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
-  border-color: rgba(var(--accent-rgb), 0.7);
-  background-image: radial-gradient(
-    circle at 50% 116%,
-    rgba(var(--accent-rgb), 0.34),
-    rgba(var(--accent-rgb), 0.12) 52%,
-    transparent 76%
-  );
+  background-color: rgba(var(--accent-rgb), 0.26);
+  border-color: rgba(var(--accent-rgb), 0.8);
 }
 
 .control-icon {
@@ -6265,6 +6220,12 @@ body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='t
   width: 32px;
   text-align: center;
   flex-shrink: 0;
+}
+
+#quick-controls .control-icon {
+  font-size: var(--font-size-icon);
+  min-height: var(--font-size-icon);
+  margin-bottom: 2px;
 }
 
 .control-info {
@@ -6279,27 +6240,28 @@ body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='t
 
 body.density-compact .controls-grid {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 4px;
+  gap: 6px;
 }
 
 body.density-compact #quick-controls .control-item {
-  min-height: 52px;
-  padding: 8px;
-  gap: 8px;
+  min-height: 72px;
+  padding: 8px 6px;
+  gap: 4px;
 }
 
 body.density-compact #quick-controls .control-icon {
   width: 26px;
   font-size: var(--font-size-xl);
+  min-height: var(--font-size-xl);
 }
 
 body.density-compact #quick-controls .control-name {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   line-height: 1.15;
 }
 
 body.density-compact #quick-controls .control-state {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs-plus);
   line-height: 1.15;
 }
 
@@ -6532,6 +6494,88 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* Until a camera has sent a frame, its tile is a plain pane like its neighbours rather than a
+   black video slab: the dark stage and the bottom scrim only exist to seat a picture and the
+   caption over it. */
+#quick-controls .control-item.camera-preview-tile:not([data-camera-preview-has-frame='true']) {
+  background: var(--tile-bg);
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-visual {
+  background: radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb), 0.1), transparent 60%);
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-scrim {
+  display: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-fallback
+  .control-icon {
+  border-color: var(--tile-border);
+  background: var(--tile-bg);
+  box-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-copy
+  .control-name {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-preview-badge {
+  border-color: var(--tile-border-hover);
+  background: var(--tile-bg);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  box-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true']):is(
+    [data-camera-preview-state='loading'],
+    [data-camera-preview-state='unavailable']
+  )
+  .camera-tile-preview-status {
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  text-shadow: none;
+}
+
+/* Offline with nothing to show: the same dashed, dimmed pane as any other unavailable tile, in
+   quiet greys instead of warning orange. */
+#quick-controls
+  .control-item.camera-preview-tile[data-camera-preview-state='unavailable']:not(
+    [data-camera-preview-has-frame='true']
+  ) {
+  background: transparent;
+  border-style: dashed;
+}
+
+#quick-controls
+  .camera-preview-tile[data-camera-preview-state='unavailable']:not(
+    [data-camera-preview-has-frame='true']
+  )
+  > :is(.camera-tile-visual, .camera-tile-copy, .camera-tile-preview-badge) {
+  opacity: 0.55;
+}
+
+#quick-controls
+  .camera-preview-tile[data-camera-preview-state='unavailable']:not(
+    [data-camera-preview-has-frame='true']
+  )
+  .camera-tile-preview-dot {
+  background: var(--text-tertiary);
+  box-shadow: none;
 }
 
 body.density-compact #quick-controls .control-item.camera-preview-tile {
@@ -6835,8 +6879,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .control-name {
-  font-weight: 600;
-  color: var(--text-color);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
   margin-bottom: 2px;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -6846,15 +6890,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .control-state {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  font-weight: 500;
+  font-size: var(--font-size-xs-plus);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
   text-align: center;
   line-height: 1.2;
-  min-height: 14px;
+  min-height: 13px;
   word-wrap: break-word;
   overflow-wrap: break-word;
   width: 100%;
+  transition: color var(--transition-base);
 }
 
 #quick-controls .control-item.sensor-numeric-entity {
@@ -6873,11 +6919,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
-  font-size: var(--font-size-xs);
   line-height: 1.15;
   margin-bottom: 4px;
-  color: var(--text-secondary);
-  letter-spacing: 0.2px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-readout {
@@ -6897,17 +6940,19 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-display);
   font-size: var(--font-size-2xl);
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.03em;
   line-height: 1;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-unit {
   flex-shrink: 0;
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   line-height: 1;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
@@ -7606,42 +7651,20 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 /* Settings Visual Cards Grouping */
+/* Settings cards are the same panes as the main view's tiles. */
 .settings-card {
-  background: rgba(var(--settings-modal-panel-rgb), 0.25);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
   padding: var(--space-5);
-  margin-bottom: var(--space-5);
-  transition:
-    border-color var(--transition-base),
-    box-shadow var(--transition-base),
-    transform var(--transition-base);
-  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-4);
+  transition: border-color var(--transition-base);
   position: relative;
   overflow: hidden;
 }
 
-.settings-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-  opacity: 0.7;
-}
-
-.theme-light .settings-card {
-  background: rgba(255, 255, 255, 0.45);
-}
-
 .settings-card:hover {
-  border-color: rgba(var(--accent-rgb), 0.35);
-  box-shadow:
-    var(--shadow-md),
-    0 4px 20px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px) scale(1.005);
+  border-color: var(--tile-border-hover);
 }
 
 .settings-card-header {
@@ -7649,12 +7672,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: var(--space-2);
-}
-
-.theme-light .settings-card-header {
-  border-bottom-color: rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--tile-border);
+  padding-bottom: var(--space-3);
 }
 
 .settings-card-header .settings-card-icon {
@@ -7694,7 +7713,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #settings-modal input[type='password']:hover,
 #settings-modal select:hover {
   border-color: var(--border-hover);
-  background-color: var(--surface-hover);
+  background-color: var(--tile-bg-hover);
 }
 
 #settings-modal input[type='text']:focus-visible,
@@ -8137,14 +8156,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
+  background: var(--tile-bg);
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
   transition: var(--transition-base);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .form-group input::placeholder,
@@ -8156,7 +8172,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group select:hover,
 .form-group textarea:hover {
   border-color: var(--border-hover);
-  background: var(--glass-elevated);
+  background: var(--tile-bg-hover);
 }
 
 .form-group input:focus,
@@ -8164,10 +8180,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group textarea:focus {
   outline: none;
   border-color: var(--accent);
-  background: var(--glass-elevated);
-  box-shadow:
-    var(--glow-focus),
-    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: var(--tile-bg-hover);
+  box-shadow: var(--glow-focus);
 }
 
 /* Premium Custom Toggle Switch Checkboxes */
@@ -10372,10 +10386,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   }
 }
 
-/* Timer entity styles */
+/* Timer entity styles: the plain pane, with a green (running) or amber (paused)
+   tint and matching icon. */
 .timer-entity {
-  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(33, 150, 243, 0.05));
-  border: 1px solid rgba(33, 150, 243, 0.3);
+  --timer-rgb: 129, 199, 132;
 }
 
 .timer-entity .timer-layout {
@@ -10398,45 +10412,52 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .timer-entity .timer-countdown {
+  font-family: var(--font-display);
   font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
 
 /* Timer states */
-.timer-entity[data-state='active'] {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.08));
-  border-color: rgba(76, 175, 80, 0.4);
-  animation: timerPulse 2s ease-in-out infinite;
+.timer-entity[data-state='active'],
+.timer-entity[data-state='paused'] {
+  background-color: rgba(var(--timer-rgb), 0.12);
+  border-color: rgba(var(--timer-rgb), 0.38);
 }
 
 .timer-entity[data-state='paused'] {
-  background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 152, 0, 0.08));
-  border-color: rgba(255, 152, 0, 0.4);
+  --timer-rgb: 255, 183, 77;
 }
 
-.timer-entity[data-state='idle'] {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
-  border-color: rgba(158, 158, 158, 0.3);
+.timer-entity[data-state='active'] .control-icon,
+.timer-entity[data-state='paused'] .control-icon {
+  color: rgb(var(--timer-rgb));
+  filter: drop-shadow(0 0 8px rgba(var(--timer-rgb), 0.5));
+}
+
+.timer-entity[data-state='active'] .control-icon {
+  animation: timerPulse 2s ease-in-out infinite;
+}
+
+body.theme-light .timer-entity[data-state='active'] .control-icon,
+body.theme-light .timer-entity[data-state='paused'] .control-icon {
+  color: color-mix(in srgb, rgb(var(--timer-rgb)) 62%, #000);
 }
 
 @keyframes timerPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+    opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
+    opacity: 0.6;
   }
 }
 
 /* Timer sensor specific states */
-.timer-entity[data-state='unknown'] {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
-  border-color: rgba(158, 158, 158, 0.3);
-}
-
 .timer-entity[data-state='unavailable'] {
-  background: linear-gradient(135deg, rgba(244, 67, 54, 0.1), rgba(244, 67, 54, 0.05));
-  border-color: rgba(244, 67, 54, 0.3);
+  border-style: dashed;
 }
 
 /* Enhanced timer countdown styling for sensors */
@@ -11151,26 +11172,28 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   align-items: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   text-align: left;
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 #settings-modal .tab-link:hover {
-  border-color: var(--border-hover);
-  background: var(--glass-surface);
+  border-color: transparent;
+  background: var(--tile-bg-hover);
   color: var(--text-primary);
 }
 
+/* Same accent-tinted pane as an active Quick Access view. */
 #settings-modal .tab-link.active {
-  border-color: rgba(var(--accent-rgb), 0.36);
-  border-left-color: var(--accent);
-  background: var(--accent-bg);
+  border-color: transparent;
+  background: rgba(var(--accent-rgb), 0.14);
   color: var(--text-primary);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
 #settings-modal .tab-link:focus-visible {
@@ -11212,11 +11235,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     min-height: 28px;
     padding: var(--space-1) var(--space-3);
     justify-content: center;
-  }
-
-  #settings-modal .tab-link.active {
-    border-left-color: rgba(var(--accent-rgb), 0.36);
-    box-shadow: inset 0 -2px 0 var(--accent);
   }
 
   #settings-modal .modal-body {
@@ -12722,6 +12740,10 @@ body.high-contrast {
   --surface-hover: #333 !important;
   --border-color: #aaa !important;
   --border-hover: #fff !important;
+  --tile-bg: #202020 !important;
+  --tile-bg-hover: #333 !important;
+  --tile-border: #aaa !important;
+  --tile-border-hover: #fff !important;
   --accent: #8ed1ff !important;
   --accent-rgb: 142, 209, 255 !important;
   --window-bg-rgb: 20, 20, 20 !important;
@@ -12756,20 +12778,46 @@ body.high-contrast :focus-visible {
   outline-offset: 2px;
 }
 
+/* The always-visible Controls action: a small sliders button tucked into the tile's
+   corner, so it stays discoverable without adding a row to every tile. */
 .tile-details-button {
-  position: relative;
+  position: absolute;
+  top: 5px;
+  right: 5px;
   z-index: 2;
-  flex-shrink: 0;
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--font-size-xs);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  font-size: var(--font-size-sm);
   cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
   -webkit-app-region: no-drag;
+}
+
+.tile-details-button:hover,
+.tile-details-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
+}
+
+.tile-details-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+body.large-interface .tile-details-button {
+  width: 28px;
+  height: 28px;
 }
 
 body.large-interface .modal-content,
@@ -12824,6 +12872,1502 @@ body.high-contrast .tile-primary-button,
   pointer-events: none;
 }
 
+/* The editing buttons take the corners the Controls button normally sits in. */
+.control-item.reorganize-mode .tile-details-button,
+.reorganize-mode .control-item .tile-details-button {
+  visibility: hidden;
+}
+
 body.high-contrast .tile-primary-button:focus-visible {
   outline-offset: -3px !important;
+}
+
+/* ============================================
+   DIALOGS, POP-UPS AND TOASTS
+   One recipe for every dialog, control pop-up, list, toast and the command
+   palette, matching the main view: a solid-enough glass panel over a dimmed,
+   lightly blurred window, tile-style chips and rows, line icons, and big
+   numbers in the display face. It sits last so it wins over the older
+   per-dialog rules above without !important; the readability overrides
+   (high contrast, opaque panels) still win because they use !important.
+   The panel colour is mixed from the window base, so background themes,
+   the light theme and desktop palettes carry into dialogs.
+   ============================================ */
+
+body {
+  /* Chromium draws <select> popups, scrollbars and form controls on Windows
+     and Linux; color-scheme makes those follow the app theme. macOS draws
+     select popups natively, which follow nativeTheme (set in main.js). */
+  color-scheme: dark;
+  /* macOS renders light-on-dark text heavier with subpixel smoothing; the demo
+     and the app use grayscale antialiasing. No effect on Windows or Linux. */
+  -webkit-font-smoothing: antialiased;
+  /* 96% opaque: Linux performance mode strips backdrop blur from everything but
+     modals (toasts, the palette and tooltips included), so the panel itself has
+     to carry legibility there. Windows and macOS add blur on top. */
+  --dialog-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%) 96%,
+    transparent
+  );
+  --dialog-border: rgba(255, 255, 255, 0.1);
+  --dialog-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.25);
+  --dialog-scrim: rgba(8, 10, 14, 0.55);
+}
+
+body.theme-light {
+  color-scheme: light;
+  --dialog-border: rgba(0, 0, 0, 0.1);
+  --dialog-shadow: 0 24px 60px -16px rgba(20, 24, 40, 0.35), 0 2px 6px rgba(20, 24, 40, 0.12);
+  --dialog-scrim: rgba(240, 242, 246, 0.5);
+}
+
+/* --- Backdrop and panel --- */
+
+.modal,
+.rename-modal,
+.hotkey-capture-modal {
+  background: var(--dialog-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.modal-content,
+.brightness-modal-content,
+.climate-modal-content,
+.fan-modal-content,
+.cover-modal-content,
+.rename-modal .modal-content,
+body.frosted-glass .modal-content,
+body.software-glass.frosted-glass .modal-content {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    var(--dialog-shadow),
+    inset 0 1px 0 var(--window-highlight);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+
+.modal-content::before {
+  content: none;
+}
+
+.modal-header {
+  padding: 14px 16px;
+  background: transparent;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+.modal-header h2 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--tile-border);
+  background: transparent;
+}
+
+.close-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid transparent;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.close-btn:hover {
+  background: var(--tile-bg-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+  transform: none;
+  box-shadow: none;
+}
+
+.close-btn:active {
+  transform: scale(0.94);
+}
+
+/* --- Buttons --- */
+
+.btn,
+.rename-modal .btn-secondary,
+.confirm-modal-content .btn-secondary {
+  min-height: 34px;
+  border: 1px solid var(--tile-border-hover);
+  background: var(--tile-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--duration-fast) var(--ease-emphasized);
+}
+
+.btn:hover,
+.rename-modal .btn-secondary:hover,
+.confirm-modal-content .btn-secondary:hover {
+  background: var(--tile-bg-hover);
+  border-color: var(--border-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+.btn:active {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+
+.btn-primary,
+.rename-modal .btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #0a0c10;
+  font-weight: var(--font-weight-semibold);
+}
+
+.btn-primary:hover,
+.rename-modal .btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: transparent;
+}
+
+.btn-secondary {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+}
+
+.btn-secondary:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  color: var(--accent-hover);
+}
+
+.btn-secondary[id*='cancel'],
+.btn-secondary[id*='close'],
+.btn-secondary[id*='reset'] {
+  background: transparent;
+  border-color: var(--tile-border-hover);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.btn-secondary[id*='cancel']:hover,
+.btn-secondary[id*='close']:hover,
+.btn-secondary[id*='reset']:hover {
+  background: var(--tile-bg-hover);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
+/* --- Control pop-ups: brightness, climate, fan, cover, sensor --- */
+
+.brightness-icon-wrapper,
+.fan-icon-wrapper {
+  width: 60px;
+  height: 60px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.brightness-icon,
+.fan-icon {
+  display: flex;
+  font-size: var(--font-size-3xl);
+  line-height: 1;
+}
+
+.fan-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.55));
+}
+
+/* The bulb glows warmer and brighter as the level rises. */
+.brightness-icon {
+  color: #ffd08a;
+  animation: none;
+}
+
+.brightness-icon.brightness-off {
+  color: var(--text-tertiary);
+  opacity: 1;
+  filter: none;
+}
+
+.brightness-icon.brightness-low {
+  opacity: 0.7;
+  filter: drop-shadow(0 0 4px rgba(255, 196, 110, 0.35));
+}
+
+.brightness-icon.brightness-mid {
+  opacity: 0.85;
+  filter: drop-shadow(0 0 7px rgba(255, 196, 110, 0.45));
+}
+
+.brightness-icon.brightness-high {
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(255, 196, 110, 0.55));
+}
+
+.brightness-icon.brightness-max {
+  opacity: 1;
+  filter: drop-shadow(0 0 14px rgba(255, 196, 110, 0.7));
+  animation: none;
+}
+
+body.theme-light .brightness-icon:not(.brightness-off) {
+  color: #d98a1c;
+}
+
+.brightness-value-large,
+.fan-speed-value,
+.cover-position-value,
+.climate-temp-value-large,
+.sensor-detail-value {
+  font-family: var(--font-display);
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text-primary);
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.climate-temp-value {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+.brightness-label,
+.fan-speed-label,
+.cover-position-label,
+.climate-temp-label,
+.climate-modes-label {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+
+.brightness-content {
+  gap: var(--space-3);
+}
+
+.climate-temp-display,
+.climate-extra-stats,
+.cover-icon-container {
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+}
+
+.cover-icon {
+  display: flex;
+  font-size: var(--font-size-6xl);
+  color: color-mix(in srgb, var(--text-primary) 80%, transparent);
+}
+
+.sensor-detail-icon {
+  display: flex;
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.5));
+}
+
+/* Sliders: a slim rounded track and a white thumb, as on the pinned tiles. */
+.brightness-slider,
+.fan-slider,
+.cover-slider,
+.climate-slider {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--tile-border-hover), var(--accent));
+  box-shadow: none;
+}
+
+.brightness-slider {
+  background: linear-gradient(90deg, rgba(255, 208, 138, 0.18), #ffd08a);
+}
+
+.brightness-slider:hover,
+.brightness-slider:focus,
+.fan-slider:hover,
+.cover-slider:hover,
+.climate-slider:hover {
+  box-shadow: none;
+}
+
+.brightness-slider:focus-visible,
+.fan-slider:focus-visible,
+.cover-slider:focus-visible,
+.climate-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+}
+
+.brightness-slider::-webkit-slider-thumb,
+.fan-slider::-webkit-slider-thumb,
+.cover-slider::-webkit-slider-thumb,
+.climate-slider::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+  transition: transform var(--transition-fast);
+}
+
+.brightness-slider::-webkit-slider-thumb:hover,
+.fan-slider::-webkit-slider-thumb:hover,
+.cover-slider::-webkit-slider-thumb:hover,
+.climate-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 5px rgba(var(--accent-rgb), 0.18);
+}
+
+.brightness-slider::-webkit-slider-thumb:active,
+.fan-slider::-webkit-slider-thumb:active,
+.cover-slider::-webkit-slider-thumb:active,
+.climate-slider::-webkit-slider-thumb:active {
+  transform: scale(1.05);
+}
+
+/* Chips: presets, HVAC modes and cover actions share the tile recipe. */
+.brightness-preset-btn,
+.fan-preset-btn,
+.climate-mode-btn,
+.climate-fan-mode-btn,
+.climate-preset-mode-btn,
+.cover-action-btn {
+  border: 1px solid var(--tile-border);
+  background: var(--tile-bg);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  box-shadow: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--duration-fast) var(--ease-emphasized);
+}
+
+.brightness-preset-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.brightness-preset-btn::before {
+  content: none;
+}
+
+.brightness-preset-btn:hover,
+.fan-preset-btn:hover,
+.climate-mode-btn:hover,
+.climate-fan-mode-btn:hover,
+.climate-preset-mode-btn:hover,
+.cover-action-btn:hover {
+  background: var(--tile-bg-hover);
+  border-color: var(--tile-border-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+.brightness-preset-btn:active,
+.fan-preset-btn:active,
+.climate-mode-btn:active,
+.climate-fan-mode-btn:active,
+.climate-preset-mode-btn:active,
+.cover-action-btn:active {
+  transform: scale(0.96);
+  box-shadow: none;
+}
+
+.climate-mode-btn.active,
+.climate-fan-mode-btn.active,
+.climate-preset-mode-btn.active,
+.fan-preset-btn.active {
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.42);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.climate-mode-btn.active:hover,
+.climate-fan-mode-btn.active:hover,
+.climate-preset-mode-btn.active:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+.climate-mode-icon,
+.cover-action-icon {
+  display: flex;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+.climate-mode-btn.active .climate-mode-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
+}
+
+.climate-mode-btn.active .climate-mode-label {
+  color: var(--text-primary);
+}
+
+/* --- Entity lists (Manage Quick Access, alerts, pickers) --- */
+
+.entity-selector-list {
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+}
+
+.entity-item {
+  border-bottom-color: var(--tile-border);
+  min-height: 52px;
+  padding: 10px 12px;
+}
+
+.entity-item:hover {
+  background: var(--tile-bg-hover);
+}
+
+.entity-icon,
+.alert-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  font-size: var(--font-size-lg);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+.entity-name {
+  font-weight: var(--font-weight-semibold);
+}
+
+.entity-selector-btn {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.entity-selector-btn.add,
+.entity-selector-btn.edit {
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+}
+
+.entity-selector-btn.add:hover,
+.entity-selector-btn.edit:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+}
+
+.entity-selector-btn.remove {
+  background: transparent;
+  border-color: rgba(239, 83, 80, 0.4);
+  color: #ff8a80;
+}
+
+.entity-selector-btn.remove:hover {
+  background: rgba(239, 83, 80, 0.14);
+}
+
+body.theme-light .entity-selector-btn.add,
+body.theme-light .entity-selector-btn.edit {
+  color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
+body.theme-light .entity-selector-btn.remove {
+  color: #c62828;
+}
+
+.alert-badge {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+/* --- Home Assistant notifications --- */
+
+.persistent-notification-item {
+  border-color: var(--tile-border);
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  box-shadow: none;
+}
+
+/* --- Toasts --- */
+
+.toast {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 var(--window-highlight);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  color: var(--text-primary);
+}
+
+/* --- Command palette --- */
+
+.command-palette-overlay {
+  background: var(--dialog-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.command-palette-panel {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  box-shadow:
+    var(--dialog-shadow),
+    inset 0 1px 0 var(--window-highlight);
+}
+
+.command-palette-search {
+  border-bottom-color: var(--tile-border);
+}
+
+.command-palette-result-icon {
+  background: var(--tile-bg);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+/* --- Menus and tooltips drawn by the app --- */
+
+.custom-dropdown-menu,
+.connection-status-tooltip {
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 var(--window-highlight);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.connection-status-tooltip::after {
+  border-top-color: var(--dialog-border);
+}
+
+/* Windows and Linux draw <select> popups in-page; give options the dialog
+   colours instead of the OS default white. */
+select option {
+  background-color: rgb(var(--window-bg-rgb));
+  color: var(--text-primary);
+}
+
+/* ============================================
+   EXPERIMENT: LAYOUT REDESIGN
+   Exploratory layout pass (branch experiment/layout-redesign).
+
+   Settings are reorganised into six pages on an icon rail: General,
+   Appearance, Dashboard, Hotkeys, Alerts and Advanced. Each page opens with
+   a title and one-line summary, then grouped lists in the style of system
+   settings apps: a small caption, then a pane of rows with the label and help
+   on the left and the control (switch, compact select, segmented control)
+   on the right. Long or rarely used content (custom colors, language packs,
+   entity pickers, icon editor) sits behind disclosure rows.
+
+   On the main view, the two primary cards share one pane and the Quick
+   Access views are a segmented control.
+   ============================================ */
+
+/* --- Settings shell: header / rail + page / footer --- */
+
+#settings-modal .modal-content {
+  grid-template:
+    'header header' auto
+    'nav body' minmax(0, 1fr)
+    'footer footer' auto
+    / 92px minmax(0, 1fr);
+}
+
+#settings-modal .modal-header {
+  padding: 12px 14px 12px 18px;
+  background: transparent;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .modal-header h2 {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+#settings-modal .modal-tabs {
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 10px 4px;
+  border-right: 1px solid var(--tile-border);
+  border-bottom: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#settings-modal .tab-link {
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 2px;
+  border-radius: var(--radius-lg);
+  text-align: center;
+  white-space: normal;
+  overflow: visible;
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .tab-link-icon {
+  display: block;
+  font-size: var(--font-size-xl);
+  flex-shrink: 0;
+  transition:
+    color var(--transition-fast),
+    filter var(--transition-fast);
+}
+
+#settings-modal .tab-link-label {
+  max-width: 100%;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#settings-modal .tab-link.active {
+  color: var(--text-primary);
+}
+
+#settings-modal .tab-link.active .tab-link-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
+}
+
+#settings-modal .modal-body {
+  padding: 18px 18px 28px;
+}
+
+#settings-modal .modal-footer {
+  padding: 10px 14px;
+  background: transparent;
+  border-top: 1px solid var(--tile-border);
+}
+
+/* Narrow windows keep the rail but drop its labels. */
+@media (width <= 400px) {
+  #settings-modal .modal-content {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  #settings-modal .tab-link {
+    min-height: 44px;
+  }
+
+  #settings-modal .tab-link-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* --- Page header --- */
+
+.settings-page-header {
+  margin: 0 2px 18px;
+}
+
+.settings-page-title {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.settings-page-description {
+  margin-top: 2px;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+/* --- Groups: caption, then a pane of rows --- */
+
+.settings-group {
+  margin-bottom: 22px;
+}
+
+.settings-group-caption,
+.settings-group-caption-row {
+  margin: 0 4px 7px;
+}
+
+.settings-group-caption {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+}
+
+.settings-group-caption-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-group-caption-row .settings-group-caption {
+  margin: 0;
+}
+
+.settings-group-body {
+  padding: 0 14px;
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+/* Every direct child of a pane is a row, separated by hairlines. */
+#settings-modal .settings-group-body > * {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .settings-group-body > *:last-child {
+  border-bottom: none;
+}
+
+#settings-modal .settings-group-body > :empty,
+#settings-modal .settings-group-body > .hidden,
+#settings-modal .settings-group-body > [hidden] {
+  display: none;
+}
+
+/* Legacy cards that are still whole blocks (Hotkeys, Alerts) take the same pane. */
+#settings-modal .settings-card {
+  padding: 4px 14px;
+  margin-bottom: 22px;
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  box-shadow: none;
+}
+
+#settings-modal .settings-card-header {
+  margin: 10px 0 2px;
+  padding: 0 0 8px;
+  gap: 8px;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .settings-card-title {
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .settings-card-header .settings-card-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+
+#settings-modal .settings-card > .form-group {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tile-border);
+}
+
+#settings-modal .settings-card > .form-group:last-child {
+  border-bottom: none;
+}
+
+/* --- Rows --- */
+
+#settings-modal .form-group {
+  margin-bottom: 0;
+}
+
+#settings-modal .form-group > label:not(:has(input[type='checkbox'])),
+#settings-modal .setting-text > label,
+#settings-modal .setting-label {
+  display: block;
+  margin-bottom: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+
+/* A label above a full-width field (URL, search, the media picker) keeps a gap. */
+#settings-modal .form-group > label + input,
+#settings-modal .form-group > label + select,
+#settings-modal .form-group > label + .custom-dropdown,
+#settings-modal .form-group > label + textarea {
+  margin-top: 8px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#settings-modal .setting-row > select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 120px;
+  max-width: 62%;
+  padding: 7px 10px;
+  font-size: var(--font-size-sm);
+}
+
+.setting-row > .btn {
+  flex-shrink: 0;
+}
+
+.setting-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.setting-row-action {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setting-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#settings-modal .setting-slider input[type='range'] {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
+.setting-slider-value {
+  min-width: 30px;
+  text-align: right;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#settings-modal .form-help,
+#settings-modal .help-text {
+  margin-top: 3px;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+}
+
+#settings-modal .setting-text > .form-help:first-of-type {
+  margin-top: 2px;
+}
+
+/* On non-Omarchy desktops the Follow Omarchy switch can never turn on; hide it. */
+#follow-omarchy-row:has(#follow-omarchy:disabled) {
+  display: none;
+}
+
+/* --- Switches --- */
+
+#settings-modal .form-group input[type='checkbox'] {
+  flex-shrink: 0;
+  margin-right: 0;
+  width: 38px;
+  height: 22px;
+  border-color: transparent;
+  background: var(--tile-border-hover);
+  box-shadow: none;
+}
+
+#settings-modal .form-group label:has(input[type='checkbox']) input[type='checkbox'] {
+  margin-right: 10px;
+}
+
+#settings-modal .form-group input[type='checkbox']::after {
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+#settings-modal .form-group input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+#settings-modal .form-group input[type='checkbox']:checked::after {
+  transform: translateX(16px);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Switches still wrapped in their label (Hotkeys, Alerts, Updates, Sync) read as rows too. */
+#settings-modal .form-group > label:has(> input[type='checkbox']) {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+#settings-modal .form-group > label:has(> input[type='checkbox']) input[type='checkbox'] {
+  margin-right: 0;
+}
+
+/* --- Segmented controls (theme mode, primary cards) --- */
+
+.segmented-control {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.segmented-control.is-disabled {
+  opacity: 0.45;
+}
+
+.segmented-option,
+.segmented-control .btn {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.segmented-option:hover,
+.segmented-control .btn:hover {
+  color: var(--text-primary);
+  background: var(--tile-bg-hover);
+  border-color: transparent;
+}
+
+.segmented-option.active,
+.segmented-control .btn.btn-primary {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--text-primary);
+}
+
+.segmented-option:focus-visible,
+.segmented-control .btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.segmented-option:disabled {
+  cursor: default;
+}
+
+.primary-card-row .segmented-control {
+  gap: 2px;
+}
+
+/* --- Disclosure rows: <details> and the lazy-loaded list sections --- */
+
+#settings-modal .settings-disclosure > summary,
+#settings-modal .settings-disclosure-section > .section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  padding: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  list-style: none;
+  cursor: pointer;
+}
+
+#settings-modal .settings-disclosure > summary::before {
+  content: none;
+}
+
+#settings-modal .settings-disclosure > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  opacity: 0.6;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-base);
+}
+
+#settings-modal .settings-disclosure[open] > summary::after {
+  transform: rotate(45deg);
+}
+
+#settings-modal .settings-disclosure > .settings-details-body {
+  margin-top: 12px;
+  padding: 0;
+  border: none;
+}
+
+#settings-modal .settings-disclosure-section {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  margin-bottom: 0;
+}
+
+#settings-modal .settings-disclosure-section .section-toggle-icon {
+  opacity: 0.6;
+  transform: rotate(90deg);
+}
+
+#settings-modal .settings-disclosure-section.collapsed .section-toggle-icon {
+  transform: none;
+}
+
+#settings-modal .settings-disclosure-section .section-body {
+  margin-top: 12px;
+}
+
+#settings-modal .settings-disclosure-section.collapsed .section-body {
+  margin-top: 0;
+}
+
+/* The legacy token disclosure keeps its own style but sits in a row now. */
+#settings-modal #legacy-ha-token-settings > summary {
+  font-size: var(--font-size-sm);
+}
+
+/* --- Specific blocks tidied into the grid --- */
+
+#settings-modal .connection-test-row {
+  margin-top: 0;
+}
+
+#settings-modal .settings-group-body > .connection-test-row {
+  padding-top: 0;
+  border-bottom: none;
+}
+
+#settings-modal .weather-entity-setting select,
+#settings-modal .language-section select {
+  width: 100%;
+}
+
+#settings-modal .language-section p.help-text + p.help-text {
+  margin-top: 1px;
+}
+
+#settings-modal .color-target-control {
+  margin-top: 8px;
+}
+
+/* The native select only mirrors the radio group for form state; keep it out of the layout. */
+#settings-modal .color-target-select-native {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+}
+
+#settings-modal .settings-group-body {
+  position: relative;
+}
+
+/* The summary rows line up with the other row labels. */
+#settings-modal .settings-disclosure > summary {
+  width: 100%;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-modal .accent-theme-grid {
+  margin-top: 10px;
+}
+
+#settings-modal .form-group.custom-color-editor > label:first-child {
+  display: none;
+}
+
+/* Custom color editor: swatch and hex on one line, then R G B, then Save. */
+#settings-modal .custom-color-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(5) {
+  grid-column: 2 / span 2;
+  grid-row: 1;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(6) {
+  grid-column: 1 / -1;
+}
+
+#settings-modal .custom-color-editor-grid > :nth-child(1) .custom-color-field-label,
+#settings-modal .custom-color-editor-grid > :nth-child(6) .custom-color-field-label {
+  display: none;
+}
+
+#settings-modal .custom-color-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .custom-color-field input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+#settings-modal #custom-color-picker {
+  padding: 3px;
+  cursor: pointer;
+}
+
+#settings-modal .primary-card-value {
+  display: block;
+}
+
+/* Inside the picker disclosures the search box and list speak for themselves. */
+#settings-modal #primary-cards-body .form-group > label,
+#settings-modal #custom-entity-icons-body .form-group > label {
+  display: none;
+}
+
+#settings-modal #primary-cards-body > .form-group + .form-group,
+#settings-modal #custom-entity-icons-body > .form-group {
+  margin-top: 10px;
+}
+
+#settings-modal #primary-cards-body > .form-help,
+#settings-modal #custom-entity-icons-body > .form-help {
+  margin-top: 8px;
+}
+
+#settings-modal .preset-hotkey-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+#settings-modal .preset-hotkey-btn {
+  min-height: 28px;
+  padding: 3px 10px;
+  border-color: var(--tile-border-hover);
+  background: var(--tile-bg);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs-plus);
+}
+
+#settings-modal .preset-hotkey-btn:hover {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+#settings-modal .popup-hotkey-config {
+  margin-top: 10px;
+}
+
+#settings-modal .preset-hotkey-row .setting-label {
+  width: 100%;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+#settings-modal .btn-link {
+  min-height: 0;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+#settings-modal .btn-link:hover {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+/* Profile sync reveals its options inside one row; flatten the old nested boxes
+   into the row rhythm. */
+#settings-modal .profile-sync-settings,
+#settings-modal .profile-sync-scope-group {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-modal .profile-sync-settings > .form-group,
+#settings-modal .profile-sync-settings > .help-text {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--tile-border);
+}
+
+#settings-modal .profile-sync-file-row input {
+  min-width: 0;
+}
+
+/* Update status reads as the version row's second line, not a boxed field. */
+#settings-modal .update-status {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-modal .update-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#settings-modal hr {
+  border: none;
+  border-top: 1px solid var(--tile-border);
+  margin: 4px 0;
+}
+
+/* --- Main view: one hero pane for the primary cards --- */
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) {
+  gap: 0;
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  overflow: hidden;
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+  box-shadow: inset 1px 0 0 var(--tile-border);
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card:hover {
+  background: var(--tile-bg);
+}
+
+/* Stacked in narrow windows, the hairline moves to the top edge. */
+@media (max-width: 420px) {
+  .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+    box-shadow: inset 0 1px 0 var(--tile-border);
+  }
+}
+
+/* --- Quick Access views as a segmented control --- */
+
+.quick-access-tabs:not(.hidden):not(.reorganize) {
+  flex: 0 1 auto;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.quick-access-tabs:not(.reorganize) .tab-link {
+  min-height: 24px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+}
+
+.quick-access-tabs:not(.reorganize) .tab-link.active {
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: none;
+}
+
+/* ============================================
+   MOTION
+   Small, quiet movement that makes state changes easy to follow. The moving
+   parts are driven from src/motion.js (Web Animations, skipped under reduced
+   motion); these rules give them their look.
+   ============================================ */
+
+/* A highlight pill that slides between tabs: the Quick Access pages and the
+   settings sections. While it is present, the active tab drops its own fill. */
+.quick-access-tabs,
+#settings-modal .modal-tabs {
+  position: relative;
+}
+
+.sliding-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: var(--radius-md);
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
+  pointer-events: none;
+}
+
+.has-sliding-indicator .tab-link {
+  position: relative;
+  z-index: 1;
+}
+
+.quick-access-tabs.has-sliding-indicator .tab-link.active,
+#settings-modal .modal-tabs.has-sliding-indicator .tab-link.active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Disclosures ease their content in rather than snapping open. */
+.settings-details[open] > .settings-details-body {
+  animation: disclosureReveal var(--duration-base) var(--ease-emphasized);
+}
+
+@keyframes disclosureReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Experiment: the same sliding pill inside segmented controls, the rail and the
+   Quick Access segmented bar, each in its own shape. */
+.segmented-control {
+  position: relative;
+}
+
+.segmented-control > .sliding-indicator {
+  border-radius: calc(var(--radius-md) - 2px);
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.segmented-control.has-sliding-indicator :is(.segmented-option, .btn) {
+  position: relative;
+  z-index: 1;
+}
+
+.segmented-control.has-sliding-indicator :is(.segmented-option.active, .btn.btn-primary) {
+  border-color: transparent;
+  background: transparent;
+}
+
+#settings-modal .modal-tabs > .sliding-indicator {
+  border-radius: var(--radius-lg);
+}
+
+.quick-access-tabs:not(.reorganize) > .sliding-indicator {
+  border-radius: var(--radius-full);
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: none;
 }

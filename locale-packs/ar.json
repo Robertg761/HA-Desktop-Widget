@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.22",
+  "version": "1.2.23",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -656,6 +656,24 @@
     "Rooms are unavailable. Choose from your devices instead.": "الغرف غير متاحة. اختر من أجهزتك بدلاً من ذلك.",
     "Search devices": "البحث عن أجهزة",
     "Skip for now": "التخطي الآن",
-    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "تم حفظ اتصالك. عاين غرفة أو اختر أجهزة لإنشاء صفحتك الأولى. يمكنك أيضاً القيام بذلك لاحقاً من لوحة التحكم الفارغة."
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "تم حفظ اتصالك. عاين غرفة أو اختر أجهزة لإنشاء صفحتك الأولى. يمكنك أيضاً القيام بذلك لاحقاً من لوحة التحكم الفارغة.",
+    "Mode": "الوضع",
+    "Appearance": "المظهر",
+    "Dashboard": "لوحة المعلومات",
+    "Theme": "السمة",
+    "Colors": "الألوان",
+    "Readability": "سهولة القراءة",
+    "Date & time": "التاريخ والوقت",
+    "Home Assistant": "Home Assistant",
+    "Window Effects": "تأثيرات النافذة",
+    "Primary Cards": "البطاقات الرئيسية",
+    "Media Tile": "بلاطة الوسائط",
+    "Custom Entity Icons": "أيقونات الكيانات المخصصة",
+    "Connection, window behaviour and language.": "الاتصال وسلوك النافذة واللغة.",
+    "Theme, colours, glass and readability.": "السمة والألوان والزجاج وسهولة القراءة.",
+    "What the main window shows.": "ما تعرضه النافذة الرئيسية.",
+    "Keyboard shortcuts for the widget and your entities.": "اختصارات لوحة المفاتيح للأداة وكياناتك.",
+    "Desktop notifications when entities change.": "إشعارات سطح المكتب عند تغيّر الكيانات.",
+    "Updates, sync, diagnostics and support.": "التحديثات والمزامنة والتشخيص والدعم."
   }
 }

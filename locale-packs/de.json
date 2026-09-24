@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.22",
+  "version": "1.2.23",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -656,6 +656,24 @@
     "Rooms are unavailable. Choose from your devices instead.": "Räume sind nicht verfügbar. Wähle stattdessen aus deinen Geräten aus.",
     "Search devices": "Geräte suchen",
     "Skip for now": "Vorerst überspringen",
-    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Deine Verbindung ist gespeichert. Sieh dir die Vorschau eines Raums an oder wähle Geräte aus, um deine erste Seite zu erstellen. Du kannst dies auch später über das leere Dashboard tun."
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Deine Verbindung ist gespeichert. Sieh dir die Vorschau eines Raums an oder wähle Geräte aus, um deine erste Seite zu erstellen. Du kannst dies auch später über das leere Dashboard tun.",
+    "Mode": "Modus",
+    "Appearance": "Darstellung",
+    "Dashboard": "Dashboard",
+    "Theme": "Design",
+    "Colors": "Farben",
+    "Readability": "Lesbarkeit",
+    "Date & time": "Datum & Uhrzeit",
+    "Home Assistant": "Home Assistant",
+    "Window Effects": "Fenstereffekte",
+    "Primary Cards": "Hauptkarten",
+    "Media Tile": "Medienkachel",
+    "Custom Entity Icons": "Eigene Entitätssymbole",
+    "Connection, window behaviour and language.": "Verbindung, Fensterverhalten und Sprache.",
+    "Theme, colours, glass and readability.": "Design, Farben, Glas und Lesbarkeit.",
+    "What the main window shows.": "Was das Hauptfenster anzeigt.",
+    "Keyboard shortcuts for the widget and your entities.": "Tastenkürzel für das Widget und deine Entitäten.",
+    "Desktop notifications when entities change.": "Desktop-Benachrichtigungen, wenn sich Entitäten ändern.",
+    "Updates, sync, diagnostics and support.": "Updates, Synchronisierung, Diagnose und Unterstützung."
   }
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.22",
+  "version": "1.2.23",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -656,6 +656,24 @@
     "Rooms are unavailable. Choose from your devices instead.": "कमरे उपलब्ध नहीं हैं। इसके बजाय अपने डिवाइस में से चुनें।",
     "Search devices": "डिवाइस खोजें",
     "Skip for now": "अभी छोड़ें",
-    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "आपका कनेक्शन सहेज लिया गया है। अपना पहला पेज बनाने के लिए किसी कमरे का पूर्वावलोकन देखें या डिवाइस चुनें। आप यह बाद में खाली डैशबोर्ड से भी कर सकते हैं।"
+    "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "आपका कनेक्शन सहेज लिया गया है। अपना पहला पेज बनाने के लिए किसी कमरे का पूर्वावलोकन देखें या डिवाइस चुनें। आप यह बाद में खाली डैशबोर्ड से भी कर सकते हैं।",
+    "Mode": "मोड",
+    "Appearance": "दिखावट",
+    "Dashboard": "डैशबोर्ड",
+    "Theme": "थीम",
+    "Colors": "रंग",
+    "Readability": "पठनीयता",
+    "Date & time": "दिनांक और समय",
+    "Home Assistant": "Home Assistant",
+    "Window Effects": "विंडो इफ़ेक्ट",
+    "Primary Cards": "मुख्य कार्ड",
+    "Media Tile": "मीडिया टाइल",
+    "Custom Entity Icons": "कस्टम एंटिटी आइकन",
+    "Connection, window behaviour and language.": "कनेक्शन, विंडो व्यवहार और भाषा।",
+    "Theme, colours, glass and readability.": "थीम, रंग, ग्लास और पठनीयता।",
+    "What the main window shows.": "मुख्य विंडो में क्या दिखता है।",
+    "Keyboard shortcuts for the widget and your entities.": "विजेट और आपकी एंटिटी के लिए कीबोर्ड शॉर्टकट।",
+    "Desktop notifications when entities change.": "एंटिटी बदलने पर डेस्कटॉप सूचनाएँ।",
+    "Updates, sync, diagnostics and support.": "अपडेट, सिंक, निदान और सहायता।"
   }
 }

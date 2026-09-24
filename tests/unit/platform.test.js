@@ -2,6 +2,7 @@ const path = require('path');
 const {
   getAppIconPath,
   getMainWindowVisualOptions,
+  resolveNativeThemeSource,
   hasGlobalShortcutFallback,
   isLinuxAppImage,
   resolveLinuxPasswordStoreBackend,
@@ -423,12 +424,34 @@ describe('platform helpers', () => {
       getMainWindowVisualOptions({
         platform: 'linux',
         frostedGlass: true,
-        transparencyOptions: { transparent: false, backgroundColor: '#28282d' },
+        transparencyOptions: { transparent: false, backgroundColor: '#12161e' },
       })
     ).toEqual({
       transparent: false,
-      backgroundColor: '#28282d',
+      backgroundColor: '#12161e',
       roundedCorners: false,
     });
+  });
+});
+
+describe('resolveNativeThemeSource', () => {
+  test('pins native surfaces to an explicit theme', () => {
+    expect(resolveNativeThemeSource({ ui: { theme: 'dark' } })).toBe('dark');
+    expect(resolveNativeThemeSource({ ui: { theme: 'light' } })).toBe('light');
+  });
+
+  test('leaves Auto (and anything unknown) on the system theme', () => {
+    expect(resolveNativeThemeSource({ ui: { theme: 'auto' } })).toBe('system');
+    expect(resolveNativeThemeSource({ ui: {} })).toBe('system');
+    expect(resolveNativeThemeSource(null)).toBe('system');
+  });
+
+  test('uses the Omarchy palette mode only while following it', () => {
+    const palette = { mode: 'light' };
+    expect(resolveNativeThemeSource({ ui: { theme: 'dark', followOmarchy: true } }, palette)).toBe(
+      'light'
+    );
+    expect(resolveNativeThemeSource({ ui: { theme: 'dark' } }, palette)).toBe('dark');
+    expect(resolveNativeThemeSource({ ui: { followOmarchy: true } }, null)).toBe('system');
   });
 });

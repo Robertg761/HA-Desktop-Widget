@@ -19,8 +19,15 @@ import {
   showConfirm,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import { syncSlidingIndicator } from './motion.js';
 import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
 import * as utils from './utils.js';
+import {
+  entityIconMarkup,
+  lineIconMarkup,
+  renderEntityIcon,
+  setLineIconContent,
+} from './entity-icons.js';
 import {
   PRIMARY_CARD_DEFAULTS,
   PRIMARY_CARD_NONE,
@@ -41,6 +48,9 @@ let previewAccent = null;
 let pendingAccent = null;
 let previewBackground = null;
 let pendingBackground = null;
+// Theme mode picked in Settings but not saved yet (null = unchanged).
+let pendingThemeMode = null;
+const THEME_MODES = ['auto', 'dark', 'light'];
 const COLOR_TARGETS = {
   accent: 'accent',
   background: 'background',
@@ -1653,8 +1663,8 @@ function renderColorThemeOptions() {
 
     if (isOriginalTheme && isBackgroundTarget) {
       const isLightTheme = document.body?.classList.contains('theme-light');
-      const swatchRgb = isLightTheme ? '250, 250, 250' : '40, 40, 45';
-      const swatchHex = isLightTheme ? '#fafafa' : '#28282d';
+      const swatchRgb = isLightTheme ? '250, 250, 250' : '18, 22, 30';
+      const swatchHex = isLightTheme ? '#fafafa' : '#12161e';
       option.style.setProperty('--swatch', swatchHex);
       option.style.setProperty('--swatch-rgb', swatchRgb);
     } else {
@@ -1696,6 +1706,101 @@ function renderColorThemeOptions() {
   updateThemeSummary();
   syncCustomColorEditorFromSelectedTheme();
   syncPersonalizationSectionHeight(document.getElementById('color-themes-section'));
+}
+
+/**
+ * Slide each segmented control's highlight under its selected option. Controls on a hidden page
+ * have no layout yet and are placed when their page opens.
+ * @param {ParentNode} [root=document] - Where to look for segmented controls.
+ */
+function syncSegmentedIndicators(root = document) {
+  root?.querySelectorAll?.('.segmented-control').forEach((control) => {
+    syncSlidingIndicator(
+      control,
+      control.querySelector('.segmented-option.active, .btn.btn-primary') || null
+    );
+  });
+}
+
+function normalizeThemeMode(mode) {
+  return THEME_MODES.includes(mode) ? mode : 'auto';
+}
+
+function getSavedThemeMode() {
+  return normalizeThemeMode(state.CONFIG?.ui?.theme);
+}
+
+function isFollowingDesktopPalette() {
+  const followOmarchy = document.getElementById('follow-omarchy');
+  return !!followOmarchy && !followOmarchy.disabled && followOmarchy.checked;
+}
+
+function updateThemeModeControl() {
+  const control = document.getElementById('theme-mode-control');
+  if (!control) return;
+  const mode = pendingThemeMode || getSavedThemeMode();
+  // A followed desktop palette decides light or dark itself.
+  const locked = isFollowingDesktopPalette();
+  control.classList.toggle('is-disabled', locked);
+  control.querySelectorAll('[data-theme-mode]').forEach((option) => {
+    const selected = option.dataset.themeMode === mode;
+    option.classList.toggle('active', selected);
+    option.setAttribute('aria-checked', selected ? 'true' : 'false');
+    option.tabIndex = selected ? 0 : -1;
+    option.disabled = locked;
+  });
+  syncSlidingIndicator(control, control.querySelector('.segmented-option.active'));
+}
+
+/**
+ * Preview a theme mode live. Accent, background and glass tints are derived per mode, so they
+ * are re-applied too; nothing is saved until Save.
+ * @param {string} mode - 'auto', 'dark' or 'light'.
+ */
+function previewThemeMode(mode) {
+  pendingThemeMode = normalizeThemeMode(mode);
+  applyTheme(pendingThemeMode);
+  applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+  refreshBackgroundTheme();
+  const values = getPreviewValuesFromInputs();
+  applyWindowEffects(values || state.CONFIG || {});
+  updateThemeModeControl();
+}
+
+function restoreSavedThemeMode() {
+  if (!pendingThemeMode) return;
+  const changed = pendingThemeMode !== getSavedThemeMode();
+  pendingThemeMode = null;
+  if (!changed) return;
+  applyTheme(getSavedThemeMode());
+  applyAccentTheme(state.CONFIG?.ui?.accent || getCurrentAccentTheme());
+  applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
+  applyWindowEffects(state.CONFIG || {});
+  applyDesktopAppearance(state.CONFIG || {});
+}
+
+function initThemeModeControl() {
+  const control = document.getElementById('theme-mode-control');
+  if (!control) return;
+  pendingThemeMode = null;
+  const options = [...control.querySelectorAll('[data-theme-mode]')];
+  options.forEach((option, index) => {
+    option.onclick = () => previewThemeMode(option.dataset.themeMode);
+    option.onkeydown = (event) => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!step) return;
+      event.preventDefault();
+      const next = options[(index + step + options.length) % options.length];
+      previewThemeMode(next.dataset.themeMode);
+      next.focus();
+    };
+  });
+  const followOmarchy = document.getElementById('follow-omarchy');
+  if (followOmarchy && !followOmarchy.dataset.themeModeBound) {
+    followOmarchy.dataset.themeModeBound = 'true';
+    followOmarchy.addEventListener('change', updateThemeModeControl);
+  }
+  updateThemeModeControl();
 }
 
 /**
@@ -1944,6 +2049,7 @@ function updatePrimaryCardActionButtons() {
     btn.classList.toggle('btn-primary', isActive);
     btn.classList.toggle('btn-secondary', !isActive);
   });
+  syncSegmentedIndicators(document.getElementById('settings-modal') || document);
 }
 
 const PRIMARY_CARD_PAGE_SIZE = 50;
@@ -1995,7 +2101,7 @@ function renderPrimaryCardsEntityRows() {
       const item = document.createElement('div');
       item.className = 'entity-item';
 
-      const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+      const icon = entityIconMarkup(entity);
       const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
       const entityId = utils.escapeHtml(entity.entity_id);
       const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
@@ -2080,7 +2186,10 @@ function initPrimaryCardsUI() {
     });
   }
 
-  section.addEventListener('click', (event) => {
+  // The Card 1 / Card 2 choices sit beside the collapsible entity picker rather than inside it,
+  // so listen on the group that holds both.
+  const clickRoot = section.closest('.settings-group') || section;
+  clickRoot.addEventListener('click', (event) => {
     const actionBtn = event.target.closest('[data-primary-card][data-primary-value]');
     if (actionBtn) {
       const cardIndex = Number(actionBtn.dataset.primaryCard);
@@ -2223,14 +2332,14 @@ function renderDesktopPinRows() {
   options.forEach(({ entityId, entity, displayName }) => {
     const isPinned = !!pendingDesktopPins[entityId];
     const isSavedPinned = !!state.CONFIG?.desktopPins?.[entityId];
-    const iconValue = entity ? utils.getEntityIcon(entity) : '•';
+    const iconMarkup = entity ? entityIconMarkup(entity) : lineIconMarkup('box');
     const currentEntityId = entity?.entity_id || entityId;
 
     const item = document.createElement('div');
     item.className = 'entity-item';
     item.innerHTML = `
       <div class="entity-item-main">
-        <span class="entity-icon">${utils.escapeHtml(iconValue)}</span>
+        <span class="entity-icon">${iconMarkup}</span>
         <div class="entity-item-info">
           <span class="entity-name">${utils.escapeHtml(displayName)}</span>
           <span class="entity-id" title="${utils.escapeHtmlAttribute(currentEntityId)}">${utils.escapeHtml(currentEntityId)}</span>
@@ -2407,8 +2516,6 @@ function renderCustomEntityIconsList() {
     const entityId = entity.entity_id;
     const pendingIcon = getPendingCustomIcon(entityId);
     const pickerQuery = getCustomEntityIconPickerQuery(entityId);
-    const fallbackIcon = utils.getEntityIcon(entity, { ignoreCustomIcon: true });
-    const previewIcon = pendingIcon || fallbackIcon;
     const hasCustomIcon = !!pendingIcon;
     const isPickerOpen = activeCustomEntityIconPickerEntityId === entityId;
     const showAppliedIndicator =
@@ -2422,7 +2529,9 @@ function renderCustomEntityIconsList() {
 
     const icon = document.createElement('span');
     icon.className = 'entity-icon custom-entity-icon-preview';
-    icon.textContent = previewIcon;
+    // Without a custom icon the preview shows what the tile draws: the default line icon.
+    if (pendingIcon) icon.textContent = pendingIcon;
+    else renderEntityIcon(icon, entity, { ignoreCustomIcon: true });
     itemMain.appendChild(icon);
 
     const info = document.createElement('div');
@@ -4139,6 +4248,7 @@ async function openSettings(uiHooks) {
     activeColorTarget = COLOR_TARGETS.accent;
     renderColorThemeOptions();
     initColorTargetSelect();
+    initThemeModeControl();
     setMainSettingsSaveLocked(false);
     initCustomColorEditor();
     initColorThemeSectionToggle();
@@ -4249,6 +4359,9 @@ async function openSettings(uiHooks) {
     openModal(modal);
     requestAnimationFrame(() => {
       refreshPersonalizationSectionHeights();
+      const tabList = modal.querySelector('.modal-tabs');
+      syncSlidingIndicator(tabList, tabList?.querySelector('.tab-link.active') || null);
+      syncSegmentedIndicators(modal.querySelector('.tab-content.active'));
       requestAnimationFrame(() => {
         refreshPersonalizationSectionHeights();
       });
@@ -4288,6 +4401,7 @@ function closeSettings() {
     }
     previewBackground = null;
     pendingBackground = null;
+    restoreSavedThemeMode();
     pendingPrimaryCards = null;
     pendingDesktopPins = {};
     pendingCustomEntityIcons = {};
@@ -4669,6 +4783,7 @@ async function saveSettings() {
     if (allowPrereleaseUpdates) {
       nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
     }
+    nextConfig.ui.theme = pendingThemeMode || normalizeThemeMode(nextConfig.ui.theme);
     nextConfig.ui.accent = pendingAccent || getCurrentAccentTheme();
     nextConfig.ui.background = pendingBackground || getCurrentBackgroundTheme();
     nextConfig.ui.customColors = getCustomColorsForSave();
@@ -5118,7 +5233,7 @@ function renderAlertsListInline() {
 
       alertItem.innerHTML = `
         <div class="alert-item-info">
-          <span class="alert-icon">${utils.escapeHtml(utils.getEntityIcon(entity))}</span>
+          <span class="alert-icon">${entityIconMarkup(entity)}</span>
           <div class="alert-details">
             <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
             <span class="alert-type">${utils.escapeHtml(alertType)}</span>
@@ -5204,12 +5319,11 @@ function populateAlertEntityPicker() {
       const item = document.createElement('div');
       item.className = 'entity-item';
 
-      const icon = utils.getEntityIcon(entity);
       const displayName = utils.getEntityDisplayName(entity);
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <span class="entity-icon">${entityIconMarkup(entity)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
@@ -5224,7 +5338,7 @@ function populateAlertEntityPicker() {
       if (hasAlert) {
         const badge = document.createElement('span');
         badge.className = 'alert-badge';
-        badge.textContent = '🔔';
+        setLineIconContent(badge, 'bell');
         badge.title = 'Alert configured';
         badge.style.marginLeft = '8px';
         badge.style.fontSize = '14px';
@@ -6076,6 +6190,7 @@ function handleProfileSyncStatusUpdate(status) {
 }
 
 export {
+  syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
   openSettings,
   closeSettings,
