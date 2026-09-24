@@ -696,5 +696,62 @@ describe('tile and device dialog polish', () => {
       expect(low.value).toBe('24');
       expect(high.value).toBe('24');
     });
+
+    describe('heat/cool targets during live updates', () => {
+      const range = (low, high) =>
+        climate(
+          {
+            temperature: null,
+            target_temp_low: low,
+            target_temp_high: high,
+            supported_features: 2,
+            hvac_modes: ['heat_cool', 'off'],
+          },
+          'heat_cool'
+        );
+      const open = () => {
+        state.setStates({ 'climate.hvac': range(21, 24) });
+        ui.openEntityDetailModal(range(21, 24));
+        return {
+          low: document.querySelector('[data-climate-range="low"]'),
+          high: document.querySelector('[data-climate-range="high"]'),
+        };
+      };
+
+      it('leaves the focused target alone and catches it up on blur', () => {
+        const { low, high } = open();
+        low.focus();
+        liveUpdate(range(19, 26));
+        expect(low.value).toBe('21');
+        expect(high.value).toBe('26');
+
+        low.blur();
+        expect(low.value).toBe('19');
+      });
+
+      it('leaves the dragged target alone and catches it up when released', () => {
+        const { low, high } = open();
+        high.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        liveUpdate(range(20, 27));
+        expect(high.value).toBe('24');
+        expect(low.value).toBe('20');
+
+        high.dispatchEvent(new Event('pointerup', { bubbles: true }));
+        expect(high.value).toBe('27');
+      });
+
+      it('keeps a keyboard change and follows Home Assistant once the user moves on', async () => {
+        const { low } = open();
+        low.focus();
+        inputValue('[data-climate-range="low"]', 22);
+        await jest.advanceTimersByTimeAsync(300);
+        liveUpdate(range(22, 24));
+        // Another client changes it while the user is still on the slider.
+        liveUpdate(range(18, 24));
+        expect(low.value).toBe('22');
+        low.blur();
+        expect(low.value).toBe('18');
+      });
+    });
   });
 });

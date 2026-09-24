@@ -12113,18 +12113,28 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   let timer;
   let pending = false;
   let displayedRange = confirmed;
+  let draggedInput = null;
   const apply = (range) => {
     displayedRange = range;
     low.value = String(range.low);
     high.value = String(range.high);
     onChange(range);
   };
+  // A thumb the user is dragging or has focused keeps its value when Home Assistant reports a
+  // change; it catches up once released or left.
+  const isHeld = (input) => input === draggedInput || document.activeElement === input;
+  const applyAroundHeld = (range) => {
+    apply({
+      low: isHeld(low) ? Number(low.value) : range.low,
+      high: isHeld(high) ? Number(high.value) : range.high,
+    });
+  };
   const controller = {
     sync(range) {
       if (pending) onChange(displayedRange);
       else {
         confirmed = range;
-        apply(range);
+        applyAroundHeld(range);
       }
     },
     cancel() {
@@ -12134,6 +12144,16 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
     },
   };
   [low, high].forEach((input) => {
+    const release = () => {
+      if (draggedInput === input) draggedInput = null;
+      if (!pending) applyAroundHeld(confirmed);
+    };
+    input.addEventListener('pointerdown', () => {
+      draggedInput = input;
+    });
+    input.addEventListener('pointerup', release);
+    input.addEventListener('pointercancel', release);
+    input.addEventListener('blur', release);
     input.addEventListener('input', (event) => {
       event.stopPropagation();
       // The bounds cannot cross: the dragged thumb stops at the other one.
