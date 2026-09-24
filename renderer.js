@@ -45,7 +45,12 @@ import {
   normalizeBaseUrl,
   startHomeAssistantPairing,
 } from './src/connection.js';
-import { renderConnectionStatus, setConnectionStatusBusy } from './src/connection-status.js';
+import {
+  describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
+  setConnectionStatusBusy,
+} from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
 if (window.electronAPI) {
@@ -327,18 +332,8 @@ function setOAuthRestoreStatus() {
   setDisconnectedStatus(
     homeAssistant.oauthStatus === 'restoring'
       ? t('Restoring Home Assistant authorization...')
-      : homeAssistant.oauthLastError ||
-          t('Home Assistant is offline. Authorization will retry automatically.')
+      : describeHomeAssistantOAuthRefreshError(homeAssistant)
   );
-}
-
-function describeOAuthPairingError(error) {
-  if (error?.result?.code === 'OAUTH_SERVER_UNREACHABLE') {
-    return t('Could not reach Home Assistant at that URL.');
-  }
-  return t('Could not connect to Home Assistant. {{error}}', {
-    error: error?.message || t('Unknown error'),
-  });
 }
 
 function hasDesktopPinsConfigured() {
@@ -668,7 +663,7 @@ async function reauthorizeHomeAssistant() {
   } catch (error) {
     if (error?.result?.code !== 'OAUTH_AUTHORIZATION_CANCELED') {
       log.error('Failed to reconnect Home Assistant authorization:', error);
-      oauthReauthorization.error = describeOAuthPairingError(error);
+      oauthReauthorization.error = describeHomeAssistantOAuthFailure(error);
     }
   } finally {
     oauthReauthorization.pending = false;
@@ -1109,7 +1104,7 @@ async function finishFirstRunWizard() {
     if (firstRunWizard?.cancelRequested) {
       setWizardStatus('', '');
     } else {
-      const message = describeOAuthPairingError(error);
+      const message = describeHomeAssistantOAuthFailure(error);
       log.error('Failed to finish first-run setup:', error);
       setWizardStatus(message, 'error');
       uiUtils.showToast(message, 'error', 6000);

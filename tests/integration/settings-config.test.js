@@ -718,6 +718,73 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(false);
     });
 
+    test('shows a known pairing failure in its own words, not the main-process text', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'https://ha.example.test';
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: false,
+        code: 'OAUTH_STATE_MISMATCH',
+        error: 'Home Assistant returned an invalid OAuth state',
+      });
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(document.getElementById('ha-oauth-status').textContent).toBe(
+        'Home Assistant sent back an authorization that does not match this request. Try again.'
+      );
+    });
+
+    test('reports a network failure while refreshing as Home Assistant being offline', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'oauth',
+        oauthStatus: 'offline',
+        oauthLastError: 'connect ECONNREFUSED 127.0.0.1:8123',
+        oauthLastErrorCode: 'OAUTH_TOKEN_NETWORK',
+      };
+      await settings.openSettings();
+
+      expect(document.getElementById('ha-oauth-status').textContent).toBe(
+        'Home Assistant is offline. Authorization will retry automatically.'
+      );
+    });
+
+    test('explains an unconfirmed revocation after disconnecting without main-process text', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+      mockElectronAPI.disconnectHomeAssistantOAuth = jest.fn().mockResolvedValue({
+        success: true,
+        config: {
+          ...state.CONFIG,
+          homeAssistant: {
+            url: 'https://ha.example.test',
+            token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+            authMethod: 'token',
+          },
+        },
+        revokedRemotely: false,
+        warning: 'Home Assistant did not confirm token revocation',
+      });
+      await settings.openSettings();
+
+      document.getElementById('disconnect-ha-oauth-btn').click();
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.',
+        'warning',
+        5000
+      );
+    });
+
     test('reports a pairing canceled through the preload bridge as canceled', async () => {
       await settings.openSettings();
       document.getElementById('ha-url').value = 'https://ha.example.test';
