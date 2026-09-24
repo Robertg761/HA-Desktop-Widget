@@ -263,6 +263,44 @@ describe('Home Assistant OAuth', () => {
     expect(client.cancelPairing()).toBe(false);
   });
 
+  test('pairing again right after a cancel starts a new pairing instead of joining the canceled one', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    const openedUrls = [];
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: jest.fn(async (url) => {
+        openedUrls.push(new URL(url).origin);
+      }),
+      postForm: jest.fn(),
+      isSecureStorageAvailable: () => true,
+    });
+    const waitForBrowser = async (count) => {
+      for (let attempt = 0; attempt < 50 && openedUrls.length < count; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+
+    const first = client.pair('http://ha.local:8123');
+    first.catch(() => {});
+    await waitForBrowser(1);
+    expect(client.cancelPairing()).toBe(true);
+    // Before the canceled pairing has settled.
+    const retry = client.pair('http://ha.local:8123');
+    retry.catch(() => {});
+
+    await expect(first).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    await waitForBrowser(2);
+    expect(openedUrls).toEqual(['http://ha.local:8123', 'http://ha.local:8123']);
+    expect(client.pairingPromise).not.toBeNull();
+
+    expect(client.cancelPairing()).toBe(true);
+    await expect(retry).rejects.toMatchObject({ code: 'OAUTH_AUTHORIZATION_CANCELED' });
+    expect(client.pairingPromise).toBeNull();
+  });
+
   test('pairing with another URL replaces the waiting pairing instead of joining it', async () => {
     const userDataPath = createTemporaryDirectory();
     temporaryDirectories.push(userDataPath);
@@ -509,6 +547,42 @@ describe('Home Assistant OAuth', () => {
         refreshToken: 'secret',
       })
     ).toThrow(expect.objectContaining({ code: 'OAUTH_SECURE_STORAGE_UNAVAILABLE' }));
+  });
+
+  test('keeps a new authorization saved while the refresh of the old one is rejected', async () => {
+    const userDataPath = createTemporaryDirectory();
+    temporaryDirectories.push(userDataPath);
+    let rejectRefresh;
+    const client = new HomeAssistantOAuthClient({
+      safeStorage: createSafeStorage(),
+      platform: 'linux',
+      userDataPath,
+      openExternal: jest.fn(),
+      postForm: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            rejectRefresh = () =>
+              resolve({ status: 400, body: JSON.stringify({ error: 'invalid_grant' }) });
+          })
+      ),
+      isSecureStorageAvailable: () => true,
+    });
+    const credentials = (refreshToken) => ({
+      baseUrl: 'https://ha.example.test',
+      clientId: 'http://127.0.0.1:40123/',
+      redirectUri: 'http://127.0.0.1:40123/oauth/callback',
+      refreshToken,
+    });
+    client.writeCredentials(credentials('old-refresh'));
+
+    const refresh = client.refresh();
+    refresh.catch(() => {});
+    // A re-pairing finishes while the old token's refresh is still waiting on Home Assistant.
+    client.writeCredentials(credentials('new-refresh'));
+    rejectRefresh();
+
+    await expect(refresh).rejects.toMatchObject({ code: 'OAUTH_INVALID_GRANT' });
+    expect(client.readCredentials()).toMatchObject({ refreshToken: 'new-refresh' });
   });
 
   test('clears an invalid refresh grant and revokes locally even when Home Assistant is offline', async () => {

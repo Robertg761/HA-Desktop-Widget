@@ -603,7 +603,10 @@ class HomeAssistantOAuthClient {
     if (this.pairingPromise) {
       // A second request for the same server joins the pairing already waiting in the browser.
       // One for another server must not: it would silently wait on the old server's approval.
-      if (this.pairingBaseUrl === normalizedBaseUrl) return this.pairingPromise;
+      // A canceled pairing is only waiting to settle as canceled; a new request starts afresh.
+      if (this.pairingBaseUrl === normalizedBaseUrl && !this.pairingController?.signal.aborted) {
+        return this.pairingPromise;
+      }
       this.cancelPairing();
     }
     this.assertSecureStorage();
@@ -657,6 +660,16 @@ class HomeAssistantOAuthClient {
     return true;
   }
 
+  // A pairing that finished while a refresh was in flight has replaced the saved authorization;
+  // the old refresh token being rejected says nothing about the new one.
+  isStoredRefreshToken(credentials) {
+    try {
+      return this.readCredentials()?.refreshToken === credentials.refreshToken;
+    } catch {
+      return false;
+    }
+  }
+
   async restore() {
     const credentials = this.readCredentials();
     if (!credentials) return null;
@@ -677,7 +690,10 @@ class HomeAssistantOAuthClient {
         const tokens = parseTokenResponse(response);
         return this.createSession(resolvedCredentials, tokens);
       } catch (error) {
-        if (error?.code === 'OAUTH_INVALID_GRANT') {
+        if (
+          error?.code === 'OAUTH_INVALID_GRANT' &&
+          this.isStoredRefreshToken(resolvedCredentials)
+        ) {
           this.clearCredentials();
         }
         throw error;
