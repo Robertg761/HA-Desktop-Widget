@@ -906,6 +906,21 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
   });
 
+  it('names the first page only after the interface language has loaded', async () => {
+    await loadRenderer();
+    const i18n = require('../../src/i18n.js');
+    const saveIndex = mockElectronAPI.updateConfig.mock.calls.findIndex(([patch]) =>
+      Array.isArray(patch?.customTabs)
+    );
+    expect(saveIndex).toBeGreaterThanOrEqual(0);
+    expect(mockElectronAPI.updateConfig.mock.calls[saveIndex][0].customTabs[0].name).toBe('All');
+    // The fresh profile's default page gets its name from t('All'), so the catalog must be in
+    // place first or a German profile would be saved with an English "All".
+    expect(i18n.setLocaleBootstrap.mock.invocationCallOrder[0]).toBeLessThan(
+      mockElectronAPI.updateConfig.mock.invocationCallOrder[saveIndex]
+    );
+  });
+
   it('reverts hotkey and alert controls when their main-process mutations fail', async () => {
     await loadRenderer({
       bodyHtml: `
