@@ -852,7 +852,7 @@ function showAddPageModal({ starter = false } = {}) {
 
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
     (preset) => `
-              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}">${utils.escapeHtml(t(preset))}</button>`
+              <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}" data-preset="${escapeHtmlAttribute(preset)}">${utils.escapeHtml(t(preset))}</button>`
   ).join('');
 
   const modal = document.createElement('div');
@@ -1130,13 +1130,22 @@ function showAddPageModal({ starter = false } = {}) {
     chip.addEventListener('click', () => {
       if (!input) return;
       input.value = chip.dataset.name || chip.textContent || '';
-      // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room.
-      const name = input.value.trim().toLocaleLowerCase();
-      const area = registry?.areas.find((entry) => entry.name.trim().toLocaleLowerCase() === name);
+      // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room,
+      // whether the room is named in English or in the interface language ("Küche", "kuche").
+      const names = [input.value, chip.dataset.preset].filter(Boolean).map((name) => name.trim());
+      const area = registry?.areas.find((entry) =>
+        names.some(
+          (name) => entry.name.trim().localeCompare(name, undefined, { sensitivity: 'base' }) === 0
+        )
+      );
       if (area && roomSelect.value !== area.area_id) {
-        autoFilledName = input.value;
+        const chipName = input.value;
+        autoFilledName = chipName;
         roomSelect.value = area.area_id;
         roomSelect.onchange();
+        // The page keeps the chip's name ("Küche") when the room is named "Kitchen".
+        input.value = chipName;
+        autoFilledName = chipName;
       }
       input.focus();
     });

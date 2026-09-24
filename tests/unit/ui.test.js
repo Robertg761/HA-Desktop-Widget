@@ -415,6 +415,32 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ).toEqual(['button.restart', 'light.desk', 'sensor.temperature']);
     });
 
+    it('matches a translated quick pick to a room named in English or the interface language', async () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { Kitchen: 'Küche', Office: 'Büro' },
+      });
+      try {
+        registryResponses({
+          'config/area_registry/list': [
+            { area_id: 'office', name: 'buro' },
+            { area_id: 'kitchen', name: 'Kitchen' },
+          ],
+        });
+        ui.showAddPageModal();
+        await flush();
+        const room = document.querySelector('#add-page-room');
+        document.querySelector('.qa-add-chip[data-name="Küche"]').click();
+        expect(room.value).toBe('kitchen');
+        expect(document.querySelector('#add-page-name').value).toBe('Küche');
+        document.querySelector('.qa-add-chip[data-name="Büro"]').click();
+        expect(room.value).toBe('office');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('preselects the same controllable devices when adding an ordinary page', async () => {
       registryResponses();
       state.setStates(
