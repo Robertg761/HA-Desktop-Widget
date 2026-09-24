@@ -25,6 +25,33 @@ describe('connection helpers', () => {
       expect(normalizeBaseUrl('file:///tmp/home-assistant')).toBeNull();
       expect(normalizeBaseUrl('YOUR_HOME_ASSISTANT_URL')).toBeNull();
     });
+
+    test('keeps IP addresses, IPv6 and underscore host names', () => {
+      expect(normalizeBaseUrl('192.168.1.20:8123')).toBe('http://192.168.1.20:8123');
+      expect(normalizeBaseUrl('http://[fd00::20]:8123')).toBe('http://[fd00::20]:8123');
+      expect(normalizeBaseUrl('http://home_assistant:8123')).toBe('http://home_assistant:8123');
+    });
+
+    // The renderer's Chromium URL parser accepts these by percent-encoding the host.
+    test.each([
+      ['garbage not a url', 'garbage%20not%20a%20url'],
+      ['http://ha local:8123', 'ha%20local'],
+      ['http://ha<x>:8123', 'ha%3Cx%3E'],
+    ])('rejects %p even when the URL parser encodes its host', (input, encodedHost) => {
+      const RealURL = global.URL;
+      global.URL = class ChromiumLikeURL {
+        constructor() {
+          this.protocol = 'http:';
+          this.hostname = encodedHost;
+          this.origin = `http://${encodedHost}:8123`;
+        }
+      };
+      try {
+        expect(normalizeBaseUrl(input)).toBeNull();
+      } finally {
+        global.URL = RealURL;
+      }
+    });
   });
 
   describe('isConfigured', () => {

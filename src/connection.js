@@ -34,7 +34,11 @@ function normalizeBaseUrl(rawUrl) {
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-  if (!parsed.hostname) return null;
+  // Chromium's URL parser percent-encodes spaces and other characters no host name can contain
+  // ("ha local" becomes "ha%20local") instead of rejecting them. Accept only real host names
+  // (letters, digits, dots, hyphens, underscores; international names arrive as punycode) and
+  // bracketed IPv6 addresses.
+  if (!/^(?:[a-z0-9_.-]+|\[[0-9a-f:.]+\])$/i.test(parsed.hostname)) return null;
   return parsed.origin.replace(/\/+$/, '');
 }
 
