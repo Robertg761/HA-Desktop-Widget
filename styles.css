@@ -6496,6 +6496,88 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   }
 }
 
+/* Until a camera has sent a frame, its tile is a plain pane like its neighbours rather than a
+   black video slab: the dark stage and the bottom scrim only exist to seat a picture and the
+   caption over it. */
+#quick-controls .control-item.camera-preview-tile:not([data-camera-preview-has-frame='true']) {
+  background: var(--tile-bg);
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-visual {
+  background: radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb), 0.1), transparent 60%);
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-scrim {
+  display: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-fallback
+  .control-icon {
+  border-color: var(--tile-border);
+  background: var(--tile-bg);
+  box-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-copy
+  .control-name {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-preview-badge {
+  border-color: var(--tile-border-hover);
+  background: var(--tile-bg);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  box-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true']):is(
+    [data-camera-preview-state='loading'],
+    [data-camera-preview-state='unavailable']
+  )
+  .camera-tile-preview-status {
+  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  text-shadow: none;
+}
+
+/* Offline with nothing to show: the same dashed, dimmed pane as any other unavailable tile, in
+   quiet greys instead of warning orange. */
+#quick-controls
+  .control-item.camera-preview-tile[data-camera-preview-state='unavailable']:not(
+    [data-camera-preview-has-frame='true']
+  ) {
+  background: transparent;
+  border-style: dashed;
+}
+
+#quick-controls
+  .camera-preview-tile[data-camera-preview-state='unavailable']:not(
+    [data-camera-preview-has-frame='true']
+  )
+  > :is(.camera-tile-visual, .camera-tile-copy, .camera-tile-preview-badge) {
+  opacity: 0.55;
+}
+
+#quick-controls
+  .camera-preview-tile[data-camera-preview-state='unavailable']:not(
+    [data-camera-preview-has-frame='true']
+  )
+  .camera-tile-preview-dot {
+  background: var(--text-tertiary);
+  box-shadow: none;
+}
+
 body.density-compact #quick-controls .control-item.camera-preview-tile {
   min-height: 78px;
   padding: 0;
