@@ -121,8 +121,19 @@ const SCENES = [
     teardown: `document.querySelector('#climate-cancel')?.click();`,
   },
   {
+    name: 'edit-mode',
+    setup: `document.querySelector('#reorganize-quick-controls-btn')?.click();`,
+    teardown: `document.querySelector('#reorganize-quick-controls-btn')?.click();`,
+  },
+  {
     name: 'settings',
     setup: `document.querySelector('#settings-btn')?.click();`,
+    teardown: `document.querySelector('#close-settings')?.click();`,
+  },
+  {
+    name: 'settings-appearance',
+    setup: `document.querySelector('#settings-btn')?.click();
+      setTimeout(() => document.querySelector('#settings-modal .tab-link[data-tab="personalization"]')?.click(), 300);`,
     teardown: `document.querySelector('#close-settings')?.click();`,
   },
   {

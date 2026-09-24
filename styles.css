@@ -13502,10 +13502,9 @@ select option {
 }
 
 /* ============================================
-   EXPERIMENT: LAYOUT REDESIGN
-   Exploratory layout pass (branch experiment/layout-redesign).
+   SETTINGS LAYOUT
 
-   Settings are reorganised into six pages on an icon rail: General,
+   Settings are organised into six pages on an icon rail: General,
    Appearance, Dashboard, Hotkeys, Alerts and Advanced. Each page opens with
    a title and one-line summary, then grouped lists in the style of system
    settings apps: a small caption, then a pane of rows with the label and help
@@ -14340,7 +14339,7 @@ select option {
   }
 }
 
-/* Experiment: the same sliding pill inside segmented controls, the rail and the
+/* The same sliding pill inside segmented controls, the rail and the
    Quick Access segmented bar, each in its own shape. */
 .segmented-control {
   position: relative;

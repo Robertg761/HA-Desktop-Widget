@@ -11,17 +11,17 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Support_the_project-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/Robertg761)
 
-![Main View](images/Main_View.png?v=20260601) ![Edit View](images/Edit_View.png?v=20260601) ![Light Adjust](images/Light_Adjust.png?v=20260601)
+![Main View](images/Main_View.png?v=20260923) ![Edit View](images/Edit_View.png?v=20260923) ![Light Adjust](images/Light_Adjust.png?v=20260923)
 
-## Settings: Personalization
+## Settings
 
-![Personalization Tab](images/Personalization_Tab.png?v=20260601)
+![Appearance settings](images/Settings_Appearance.png?v=20260923)
 
-The Settings modal is organized into General, Personalization, Hotkeys, Alerts, and Advanced. Personalization covers color themes, window effects, weather animations, primary cards, custom entity icons, and media tile selection. General includes Home Assistant connection, window behavior, language packs, profile sync, and update checks.
+Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior, language), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, profile sync, diagnostics).
 
-In **Personalization → Window Effects**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
+In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
 
-Light, climate, fan, cover, and media tiles include a visible **Controls** button to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
+Light, climate, fan, cover, and media tiles include a **Controls** button (the sliders icon in the tile corner) to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
 
 ## Omarchy and Arch Linux
 
@@ -76,7 +76,8 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 - **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
 - **Performance**: Optimized rendering and memory management
 - **Cross-Platform**: Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64 support with transparency effects where available
-- **Personalization**: Accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
+- **Appearance**: Auto, dark or light theme, accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
+- **Line icons**: Entities are drawn with crisp line icons that take the accent color when on; your own emoji and Home Assistant icons still win
 - **Localization**: Auto/system language mode with downloadable offline language packs
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
 - **Alerts**: Desktop notifications for entity state changes

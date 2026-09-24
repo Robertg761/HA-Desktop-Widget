@@ -106,6 +106,11 @@ function buildConfig(haUrl) {
           'climate.living_room',
         ],
       },
+      {
+        id: 'bedroom',
+        name: 'Bedroom',
+        entityIds: ['light.shelf_leds', 'fan.bedroom', 'binary_sensor.front_door'],
+      },
     ],
     activeTabId: 'default',
     globalHotkeys: { enabled: false, hotkeys: {} },

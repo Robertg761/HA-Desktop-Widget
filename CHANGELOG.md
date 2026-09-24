@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
+- Draw entities with line icons that take the accent color and a soft glow when on. Custom emoji and icons set in Home Assistant still take priority. Dialogs, entity lists, the command palette, and the window controls use the same icon set.
+- Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.
+- Add subtle motion: a highlight slides between Quick Access pages and settings sections, tiles slide in from the side of the page you pick, a tile's icon swells briefly when it turns on, and settings pages and disclosures ease in. All of it is off when the system asks for reduced motion.
+- Add a visual snapshot workflow that screenshots the real app on Windows, macOS, and Linux against a mock Home Assistant, and `npm run snapshots` to run it locally.
+
 - Explain Hyprland desktop-layer visibility during first-run setup and provide a popup shortcut check.
 
 - Follow the active Omarchy palette, including live theme changes.
@@ -27,10 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Redesign the main window after the project website: one pane of frosted glass in a cool slate, lighter tiles and cards with 14px corners, normal-case tile names, and Plus Jakarta Sans for the clock, temperature, and sensor values. The two primary cards share one pane and Quick Access pages are a segmented control.
+- Reorganize Settings into six pages on an icon rail (General, Appearance, Dashboard, Hotkeys, Alerts, Advanced) with grouped rows: labels and help on the left, controls on the right. Weather source moves to Dashboard, connection diagnostics to General, and updates to Advanced. Custom colors, language packs, the primary-card entity picker, and the icon editor sit behind disclosures.
+- Restyle dialogs, control pop-ups, toasts, and the command palette to match, with slimmer sliders, chip-style presets, and quieter buttons.
+- Show each tile's Controls action as a small sliders button in the tile corner. It stays visible and keyboard accessible.
+- Match native context menus and macOS pop-up menus to the app's theme, and draw Windows and Linux dropdown lists and scrollbars in dark mode when the app is dark.
+- Hide the Follow Omarchy theme switch on desktops where it cannot turn on.
+
 - Show the Primary Cards entity picker 50 entities per page and wait for a pause in typing before filtering. Keyboard focus and scroll position stay put when a card is assigned or a desktop pin is toggled.
 - Update the media player details dialog when the player's state changes instead of polling twice a second. The track title and artist now follow the current song, and the progress timer only runs while media is playing and the window is visible.
 
 ### Fixed
+
+- Keep the humidity and wind icons on the weather card after the primary cards are re-rendered.
+- Show an unavailable camera preview tile as a dimmed tile instead of a black block with orange text, and keep camera names readable in the light theme before the first frame arrives.
+- Lay out the pinned light tile across the whole pin window, with its power button beside the name and an unclipped brightness slider.
+- Keep an on light without a brightness value from reading "Off" after the first live update.
 
 - Keep entities from Home Assistant 2026.9 child devices in their room. A child device with no area of its own now uses its parent device's area.
 - Repair generated AppImage launchers using the current app id or unquoted executable paths. Continue other launcher and login-startup repairs if an individual operation fails.
