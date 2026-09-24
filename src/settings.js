@@ -2548,6 +2548,37 @@ function initCustomEntityIconsUI() {
 }
 
 /**
+ * Map a stored window opacity (0.5-1.0) to the Window Opacity slider position (1-100).
+ * @param {number} opacity - Stored opacity.
+ * @returns {number} Slider position.
+ */
+function opacityToSliderValue(opacity) {
+  const storedOpacity = Math.max(0.5, Math.min(1, opacity || 0.95));
+  return Math.round(1 + (storedOpacity - 0.5) * 198);
+}
+
+/**
+ * Map a Window Opacity slider position (1-100) back to an opacity (0.5-1.0).
+ *
+ * The slider has 100 steps, so most stored opacities (the 0.95 default included) sit between two
+ * of them. While the slider still shows the position the stored value loaded at, the stored value
+ * is kept, so saving without touching the slider does not nudge it.
+ * @param {number} sliderValue - Slider position.
+ * @param {number} [storedOpacity] - Current stored opacity.
+ * @returns {number} Opacity to preview or save.
+ */
+function sliderValueToOpacity(sliderValue, storedOpacity) {
+  if (
+    storedOpacity >= 0.5 &&
+    storedOpacity <= 1 &&
+    sliderValue === opacityToSliderValue(storedOpacity)
+  ) {
+    return storedOpacity;
+  }
+  return 0.5 + ((sliderValue - 1) * 0.5) / 99;
+}
+
+/**
  * Read preview controls from the DOM and derive window effect values.
  *
  * Reads the #opacity-slider and #frosted-glass inputs; if either is missing, returns `null`.
@@ -2560,7 +2591,7 @@ function getPreviewValuesFromInputs() {
   if (!opacitySlider || !frostedGlass) return null;
 
   const sliderValue = parseInt(opacitySlider.value, 10) || 90;
-  const opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+  const opacity = sliderValueToOpacity(sliderValue, state.CONFIG?.opacity);
   const frostedGlassEnabled = !!frostedGlass.checked;
 
   const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
@@ -4092,10 +4123,8 @@ async function openSettings(uiHooks) {
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
 
-    // Convert stored opacity (0.5-1.0) to slider scale (1-100)
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
-    // Formula: scale = 1 + (opacity - 0.5) * 198
-    const sliderScale = Math.round(1 + (storedOpacity - 0.5) * 198);
+    const sliderScale = opacityToSliderValue(storedOpacity);
     if (opacitySlider) opacitySlider.value = sliderScale;
     if (opacityValue) opacityValue.textContent = `${sliderScale}`;
 
@@ -4705,10 +4734,9 @@ async function saveSettings() {
     // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');
 
-    // Convert slider scale (1-100) to opacity (0.5-1.0)
     if (opacitySlider) {
       const sliderValue = parseInt(opacitySlider.value) || 90;
-      nextConfig.opacity = 0.5 + ((sliderValue - 1) * 0.5) / 99;
+      nextConfig.opacity = sliderValueToOpacity(sliderValue, currentConfig.opacity);
     }
 
     nextConfig.globalHotkeys = nextConfig.globalHotkeys || { enabled: false, hotkeys: {} };

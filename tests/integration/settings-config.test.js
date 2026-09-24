@@ -1212,6 +1212,24 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Config Save Flow', () => {
+    test('saving without moving the opacity slider keeps the stored opacity', async () => {
+      state.CONFIG.opacity = 0.95;
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      await settings.openSettings();
+      expect(consoleError).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+      expect(document.getElementById('opacity-slider').value).toBe('90');
+
+      await settings.saveSettings();
+      expect(state.CONFIG.opacity).toBe(0.95);
+      await settings.saveSettings();
+      expect(state.CONFIG.opacity).toBe(0.95);
+
+      document.getElementById('opacity-slider').value = '91';
+      await settings.saveSettings();
+      expect(state.CONFIG.opacity).toBeCloseTo(0.9545, 4);
+    });
+
     test('save valid settings updates config and IPC', async () => {
       // Open settings first
       await settings.openSettings();

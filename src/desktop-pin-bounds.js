@@ -7,7 +7,23 @@ const DESKTOP_PIN_SMALL_ACTION_MIN_BOUNDS = { width: 156, height: 122 };
 const DESKTOP_PIN_DENSE_MIN_BOUNDS = { width: 168, height: 148 };
 const DESKTOP_PIN_MEDIA_MIN_BOUNDS = { width: 260, height: 148 };
 const DESKTOP_PIN_SCENE_MIN_BOUNDS = { width: 97, height: 83 };
+// The "Text and control size" steps; pin content zooms by the same factor as the main window.
+const DESKTOP_PIN_UI_SCALES = [1, 1.15, 1.3, 1.5];
 const { resolveDesktopPinProfile } = require('./desktop-pin-support.cjs');
+
+function normalizeDesktopPinScale(scale) {
+  const number = Number(scale);
+  return DESKTOP_PIN_UI_SCALES.includes(number) ? number : 1;
+}
+
+// Rounds up so zoomed content still fits; the epsilon absorbs float noise such as 120 * 1.15.
+function scaleDesktopPinSize(size, scale = 1) {
+  const factor = normalizeDesktopPinScale(scale);
+  return {
+    width: Math.ceil(size.width * factor - 1e-6),
+    height: Math.ceil(size.height * factor - 1e-6),
+  };
+}
 
 function normalizeEntityId(entityId) {
   if (typeof entityId !== 'string') return '';
@@ -21,13 +37,20 @@ function getDesktopPinDomain(entityId = '') {
   return domain;
 }
 
-function getDesktopPinBaseBounds(entityId = '') {
-  return getDesktopPinDomain(entityId) === 'media_player'
-    ? { ...DESKTOP_PIN_WIDE_BOUNDS }
-    : { ...DESKTOP_PIN_DEFAULT_BOUNDS };
+function getDesktopPinBaseBounds(entityId = '', scale = 1) {
+  return scaleDesktopPinSize(
+    getDesktopPinDomain(entityId) === 'media_player'
+      ? DESKTOP_PIN_WIDE_BOUNDS
+      : DESKTOP_PIN_DEFAULT_BOUNDS,
+    scale
+  );
 }
 
-function getDesktopPinMinBounds(entityId = '') {
+function getDesktopPinMinBounds(entityId = '', scale = 1) {
+  return scaleDesktopPinSize(getUnscaledDesktopPinMinBounds(entityId), scale);
+}
+
+function getUnscaledDesktopPinMinBounds(entityId = '') {
   const domain = getDesktopPinDomain(entityId);
   if (domain === 'scene') {
     return { ...DESKTOP_PIN_SCENE_MIN_BOUNDS };
@@ -78,12 +101,14 @@ function normalizeDesktopPinContentMinBounds(bounds = null) {
   return { width, height };
 }
 
-function resolveDesktopPinMinBounds(entityId = '', contentMinBounds = null) {
-  const baseMinBounds = getDesktopPinMinBounds(entityId);
-  const normalizedContentMinBounds = normalizeDesktopPinContentMinBounds(contentMinBounds);
+// Content minimums are CSS pixels at 100%, like the domain minimums they extend.
+function resolveDesktopPinMinBounds(entityId = '', contentMinBounds = null, scale = 1) {
+  const baseMinBounds = getDesktopPinMinBounds(entityId, scale);
+  let normalizedContentMinBounds = normalizeDesktopPinContentMinBounds(contentMinBounds);
   if (!normalizedContentMinBounds) {
     return { ...baseMinBounds };
   }
+  normalizedContentMinBounds = scaleDesktopPinSize(normalizedContentMinBounds, scale);
 
   return {
     width: Math.max(baseMinBounds.width, normalizedContentMinBounds.width),
@@ -127,10 +152,11 @@ function clampDesktopPinBounds(
     fallbackOrigin = { x: 0, y: 0 },
     workArea = { x: 0, y: 0, width: 1280, height: 720 },
     previousBounds = null,
+    scale = 1,
   } = {}
 ) {
-  const baseBounds = getDesktopPinBaseBounds(entityId);
-  const minBounds = resolveDesktopPinMinBounds(entityId, contentMinBounds);
+  const baseBounds = getDesktopPinBaseBounds(entityId, scale);
+  const minBounds = resolveDesktopPinMinBounds(entityId, contentMinBounds, scale);
   const safeWorkArea = {
     x: roundFinite(workArea?.x, 0),
     y: roundFinite(workArea?.y, 0),
@@ -166,6 +192,27 @@ function clampDesktopPinBounds(
   return { x, y, width, height };
 }
 
+/**
+ * Native window bounds for saved pin bounds at a given interface scale.
+ *
+ * Saved bounds keep the pin's size at 100% and its screen position, so changing the scale never
+ * rewrites them: the window grows or shrinks from the saved top-left corner and is only nudged
+ * back inside the work area for display, and returning to 100% restores the saved window exactly.
+ */
+function getDesktopPinWindowBounds(bounds = {}, options = {}) {
+  const scale = normalizeDesktopPinScale(options.scale);
+  const width = Number(bounds?.width);
+  const height = Number(bounds?.height);
+  const scaledSize =
+    Number.isFinite(width) && Number.isFinite(height)
+      ? scaleDesktopPinSize({ width, height }, scale)
+      : {};
+  return clampDesktopPinBounds(
+    { x: bounds?.x, y: bounds?.y, ...scaledSize },
+    { ...options, previousBounds: null, scale }
+  );
+}
+
 module.exports = {
   DESKTOP_PIN_DEFAULT_BOUNDS,
   DESKTOP_PIN_WIDE_BOUNDS,
@@ -174,11 +221,14 @@ module.exports = {
   DESKTOP_PIN_DENSE_MIN_BOUNDS,
   DESKTOP_PIN_MEDIA_MIN_BOUNDS,
   DESKTOP_PIN_SCENE_MIN_BOUNDS,
+  DESKTOP_PIN_UI_SCALES,
   normalizeEntityId,
+  normalizeDesktopPinScale,
   getDesktopPinDomain,
   getDesktopPinBaseBounds,
   getDesktopPinMinBounds,
   normalizeDesktopPinContentMinBounds,
   resolveDesktopPinMinBounds,
   clampDesktopPinBounds,
+  getDesktopPinWindowBounds,
 };

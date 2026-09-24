@@ -292,6 +292,7 @@ const {
   getDesktopPinDomain,
   normalizeDesktopPinContentMinBounds,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
+  getDesktopPinWindowBounds: getDesktopPinWindowBoundsInWorkArea,
 } = require('./src/desktop-pin-bounds.js');
 const {
   resolveDesktopPinProfile,
@@ -344,6 +345,7 @@ const {
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
+const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
   createLinuxPopupHotkeyController,
@@ -1875,14 +1877,11 @@ function clampDesktopPinBounds(
   const x = Number.isFinite(Number(bounds.x)) ? Math.round(Number(bounds.x)) : cascadeOrigin.x;
   const y = Number.isFinite(Number(bounds.y)) ? Math.round(Number(bounds.y)) : cascadeOrigin.y;
 
-  const display = electronScreen.getDisplayMatching({ x, y, width, height });
-  const workArea = display?.workArea ||
-    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
   const clampedBounds = clampDesktopPinBoundsWithWorkArea(bounds, {
     entityId,
     contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
     fallbackOrigin: cascadeOrigin,
-    workArea,
+    workArea: getDesktopPinWorkArea({ x, y, width, height }),
     previousBounds,
   });
   if (usesCompositorOwnedPlacement) {
@@ -1899,16 +1898,51 @@ function clampDesktopPinBounds(
   return clampedBounds;
 }
 
+function getDesktopPinWorkArea(bounds) {
+  const display = electronScreen.getDisplayMatching(bounds);
+  return (
+    display?.workArea ||
+    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 }
+  );
+}
+
+/**
+ * Native window bounds for a pin's saved bounds. Saved sizes are at 100% "Text and control
+ * size"; the window is scaled by the current setting so the zoomed content still fits.
+ */
+function getDesktopPinWindowBounds(entityId, pinBounds) {
+  const scale = config?.ui?.scale;
+  const windowBounds = getDesktopPinWindowBoundsInWorkArea(pinBounds, {
+    entityId,
+    contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
+    fallbackOrigin: getDesktopPinCascadeOrigin(0),
+    workArea: getDesktopPinWorkArea(pinBounds),
+    scale,
+  });
+  if (usesCompositorOwnedPlacement) {
+    windowBounds.x = pinBounds.x;
+    windowBounds.y = pinBounds.y;
+  }
+  return windowBounds;
+}
+
+// Moving a pin only changes its position; its saved size stays the 100% size.
+function getDesktopPinBoundsFromWindow(entityId, pinWindow) {
+  const { x, y } = pinWindow.getBounds();
+  return getDesktopPinBounds(entityId, { ...config?.desktopPins?.[entityId], x, y });
+}
+
 function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
   if (!targetWindow || targetWindow.isDestroyed() || !nextBounds) return;
   try {
     targetWindow.__desktopPinApplyingBounds = true;
+    const windowBounds = getDesktopPinWindowBounds(targetWindow.__desktopPinEntityId, nextBounds);
     if (usesCompositorOwnedPlacement) {
-      targetWindow.setSize(nextBounds.width, nextBounds.height);
+      targetWindow.setSize(windowBounds.width, windowBounds.height);
     } else {
-      targetWindow.setBounds(nextBounds);
+      targetWindow.setBounds(windowBounds);
     }
-    applyDesktopPinWindowShape(targetWindow, nextBounds);
+    applyDesktopPinWindowShape(targetWindow, windowBounds);
     if (isLayerShellChildProcess) placeLayerWindow(targetWindow);
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
@@ -2494,14 +2528,17 @@ function createDesktopPinWindow(entityId, options = {}) {
   );
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = pinBounds;
+  const windowBounds = getDesktopPinWindowBounds(normalizedEntityId, pinBounds);
 
   const iconPath = getAppIconPath(__dirname);
   const transparencyOptions = getWindowTransparencyOptions(config);
-  const pinPositionOptions = usesCompositorOwnedPlacement ? {} : { x: pinBounds.x, y: pinBounds.y };
+  const pinPositionOptions = usesCompositorOwnedPlacement
+    ? {}
+    : { x: windowBounds.x, y: windowBounds.y };
   const windowOptions = {
     ...pinPositionOptions,
-    width: pinBounds.width,
-    height: pinBounds.height,
+    width: windowBounds.width,
+    height: windowBounds.height,
     transparent: transparencyOptions.transparent,
     backgroundColor: transparencyOptions.backgroundColor,
     frame: false,
@@ -2562,7 +2599,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   } catch (error) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
-  applyDesktopPinWindowShape(pinWindow, pinBounds);
+  applyDesktopPinWindowShape(pinWindow, windowBounds);
   applyDesktopPinWindowEffects(pinWindow, config);
   wireWindowEffectsRefresh(pinWindow, () => config, false);
   applyDesktopPinEditModeToWindow(pinWindow);
@@ -2570,6 +2607,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   const persistBounds = () => {
     if (
       usesCompositorOwnedPlacement ||
+      isLayerShellChildProcess ||
       !desktopPinEditMode ||
       pinWindow.__desktopPinApplyingBounds
     ) {
@@ -2578,9 +2616,26 @@ function createDesktopPinWindow(entityId, options = {}) {
     if (pinWindow.__desktopPinSaveTimer) {
       clearTimeout(pinWindow.__desktopPinSaveTimer);
     }
-    pinWindow.__desktopPinPendingBounds = getDesktopPinBounds(
+    // Linux also reports moves the app made (creation, a scale change, keeping the pin on
+    // screen). A pin that sits where its saved bounds put it has not been moved.
+    const { x, y, width, height } = pinWindow.getBounds();
+    const placedBounds = getDesktopPinWindowBounds(
       normalizedEntityId,
-      pinWindow.getBounds()
+      config?.desktopPins?.[normalizedEntityId] || {}
+    );
+    if (
+      x === placedBounds.x &&
+      y === placedBounds.y &&
+      width === placedBounds.width &&
+      height === placedBounds.height
+    ) {
+      pinWindow.__desktopPinSaveTimer = null;
+      pinWindow.__desktopPinPendingBounds = null;
+      return;
+    }
+    pinWindow.__desktopPinPendingBounds = getDesktopPinBoundsFromWindow(
+      normalizedEntityId,
+      pinWindow
     );
     pinWindow.__desktopPinSaveTimer = setTimeout(() => {
       pinWindow.__desktopPinSaveTimer = null;
@@ -2588,7 +2643,7 @@ function createDesktopPinWindow(entityId, options = {}) {
       if (!desktopPinEditMode) return;
       const nextBounds =
         pinWindow.__desktopPinPendingBounds ||
-        getDesktopPinBounds(normalizedEntityId, pinWindow.getBounds());
+        getDesktopPinBoundsFromWindow(normalizedEntityId, pinWindow);
       pinWindow.__desktopPinPendingBounds = null;
       runBackgroundConfigMutation(() => {
         config.desktopPins = config.desktopPins || {};
@@ -2600,7 +2655,7 @@ function createDesktopPinWindow(entityId, options = {}) {
     }, 180);
   };
 
-  pinWindow.on('moved', persistBounds);
+  onWindowBoundsChanged(pinWindow, { platform: process.platform, onMove: persistBounds });
 
   pinWindow.on('close', (event) => {
     if (isQuitting || pinWindow.__desktopPinProgrammaticClose) return;
@@ -2668,12 +2723,15 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
       return;
     }
 
+    // A "Text and control size" change arrives here too: the saved bounds stay the same and the
+    // window is resized to the new scale.
     const currentBounds = window.getBounds();
+    const windowBounds = getDesktopPinWindowBounds(entityId, bounds);
     const boundsChanged =
-      currentBounds.x !== bounds.x ||
-      currentBounds.y !== bounds.y ||
-      currentBounds.width !== bounds.width ||
-      currentBounds.height !== bounds.height;
+      currentBounds.x !== windowBounds.x ||
+      currentBounds.y !== windowBounds.y ||
+      currentBounds.width !== windowBounds.width ||
+      currentBounds.height !== windowBounds.height;
 
     if (boundsChanged) {
       applyDesktopPinBoundsToWindow(window, bounds);
@@ -5342,6 +5400,65 @@ function applyFrostedGlass(override) {
  * such as always-on-top, resizability, and the configured icon. This function updates in-memory
  * configuration (e.g., clamped opacity) and calls saveConfig() when position/size changes.
  */
+function mainWindowMatchesSavedBounds(bounds) {
+  const positionMatches =
+    usesCompositorOwnedPlacement ||
+    (config.windowPosition?.x === bounds.x && config.windowPosition?.y === bounds.y);
+  return (
+    positionMatches &&
+    config.windowSize?.width === bounds.width &&
+    config.windowSize?.height === bounds.height
+  );
+}
+
+/** Save the main window's position and size after the user moves or resizes it. */
+function watchMainWindowBounds(targetWindow) {
+  const changeWin = () => {
+    const bounds = targetWindow.getBounds();
+    // Linux reports programmatic moves too (restoring the saved position after a show,
+    // resetting it, restoring the saved size). Landing on the saved bounds leaves nothing to
+    // save, and drops any position still queued from a drag that ended back there.
+    if (mainWindowMatchesSavedBounds(bounds)) {
+      if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+      pendingWindowBounds = null;
+      return;
+    }
+    pendingWindowBounds = bounds;
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+    }
+    windowStateSaveTimer = setTimeout(() => {
+      windowStateSaveTimer = null;
+      const boundsToPersist = pendingWindowBounds;
+      pendingWindowBounds = null;
+      if (!boundsToPersist) return;
+      runBackgroundConfigMutation(() => {
+        // Native Wayland compositors own placement and report coordinates that are not
+        // stable app-controlled positions. Persisting those values during a resize makes
+        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
+        if (!usesCompositorOwnedPlacement) {
+          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
+        }
+        config.windowSize = {
+          width: boundsToPersist.width,
+          height: boundsToPersist.height,
+        };
+        saveConfig();
+      }, 'window bounds save');
+    }, 400);
+  };
+
+  // A layer surface is placed by the app and moved through its own drag path, which saves
+  // layerPositions when the drag ends; its bounds events are never user moves.
+  if (isLayerShellChildProcess) return;
+  onWindowBoundsChanged(targetWindow, {
+    platform: process.platform,
+    onMove: changeWin,
+    onResize: changeWin,
+  });
+}
+
 function createWindow() {
   log.info('Creating main window');
   appliedHideOnBlur = config?.hideOnBlur === true;
@@ -5474,41 +5591,7 @@ function createWindow() {
     });
   }
 
-  const changeWin = () => {
-    const bounds = mainWindow.getBounds();
-    pendingWindowBounds = bounds;
-    if (windowStateSaveTimer) {
-      clearTimeout(windowStateSaveTimer);
-    }
-    windowStateSaveTimer = setTimeout(() => {
-      windowStateSaveTimer = null;
-      const boundsToPersist = pendingWindowBounds;
-      pendingWindowBounds = null;
-      if (!boundsToPersist) return;
-      runBackgroundConfigMutation(() => {
-        // Native Wayland compositors own placement and report coordinates that are not
-        // stable app-controlled positions. Persisting those values during a resize makes
-        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
-        if (!usesCompositorOwnedPlacement) {
-          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
-        }
-        config.windowSize = {
-          width: boundsToPersist.width,
-          height: boundsToPersist.height,
-        };
-        saveConfig();
-      }, 'window bounds save');
-    }, 400);
-  };
-
-  // Save position when window is moved
-  mainWindow.on('moved', changeWin);
-
-  // Save size when window is resized
-  mainWindow.on('resized', () => {
-    changeWin();
-    if (isLayerShellChildProcess) placeLayerWindow(mainWindow);
-  });
+  watchMainWindowBounds(mainWindow);
 
   // Hide to tray when minimizing
   mainWindow.on('minimize', (event) => {
@@ -10227,7 +10310,7 @@ function capturePendingWindowBoundsForShutdown() {
     if (!pinWindow.__desktopPinSaveTimer && !pinWindow.__desktopPinPendingBounds) return;
     if (!usesCompositorOwnedPlacement) {
       const bounds =
-        pinWindow.__desktopPinPendingBounds || getDesktopPinBounds(entityId, pinWindow.getBounds());
+        pinWindow.__desktopPinPendingBounds || getDesktopPinBoundsFromWindow(entityId, pinWindow);
       config.desktopPins = config.desktopPins || {};
       config.desktopPins[entityId] = bounds;
       changed = true;

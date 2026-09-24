@@ -6203,13 +6203,10 @@ function scheduleDesktopPinSceneMinBoundsSync(root, entity) {
     }
 
     try {
-      // DOM measurements are CSS pixels; native window bounds are independent of page zoom.
-      const scale = [1, 1.15, 1.3, 1.5].includes(Number(state.CONFIG?.ui?.scale))
-        ? Number(state.CONFIG.ui.scale)
-        : 1;
+      // DOM measurements are CSS pixels, which is the 100% size main scales pin windows from.
       const result = await window.electronAPI.syncDesktopPinContentMinBounds(entityId, {
-        width: Math.ceil(minBounds.width * scale),
-        height: Math.ceil(minBounds.height * scale),
+        width: Math.ceil(minBounds.width),
+        height: Math.ceil(minBounds.height),
       });
       desktopPinSceneMinSyncState.set(entityId, {
         ...latest,
