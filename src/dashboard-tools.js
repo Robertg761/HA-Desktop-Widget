@@ -270,7 +270,8 @@ function initializeDashboardTools() {
   });
   websocket.on('close', (event) => {
     // Closing a socket to reconnect with new settings is not a connection problem.
-    if (!event?.intentional) recordIssue('connection_closed');
+    if (event?.intentional) return;
+    recordIssue(event?.reason === 'timeout' ? 'connection_timeout' : 'connection_closed');
   });
   websocket.on('error', (error) => {
     recordIssue(

@@ -1040,22 +1040,33 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.getElementById('widget-state-panel').textContent).toContain('Open Settings');
   });
 
-  it.each(['rejected', 'invalid'])('recovers when the initial snapshot is %s', async (failure) => {
+  it.each([
+    ['rejected', ''],
+    ['invalid', ''],
+    ['timed out', 'timeout'],
+  ])('recovers when the initial snapshot is %s', async (failure, reason) => {
     await loadRenderer({ config: oauthConfig() });
     const socket = {};
     mockWebsocket.ws = socket;
     mockWebsocket.failConnection = jest.fn();
     let failSnapshot;
     const snapshot = new Promise((resolve, reject) => {
-      failSnapshot = () =>
-        failure === 'rejected' ? reject(new Error('timeout')) : resolve({ success: false });
+      failSnapshot = () => {
+        if (failure === 'invalid') resolve({ success: false });
+        else if (failure === 'rejected') reject(new Error('Home Assistant connection lost'));
+        else reject(Object.assign(new Error('WebSocket request timeout'), { code: 'timeout' }));
+      };
     });
     snapshot.id = 10;
     mockWebsocket.request.mockReturnValueOnce(snapshot);
     mockWebsocket.emit('message', { type: 'auth_ok' });
     failSnapshot();
     await flushAsync();
-    expect(mockWebsocket.failConnection).toHaveBeenCalledWith(socket);
+    expect(mockWebsocket.failConnection).toHaveBeenCalledTimes(1);
+    const [failedSocket, failedReason = ''] = mockWebsocket.failConnection.mock.calls[0];
+    expect(failedSocket).toBe(socket);
+    // Diagnostics record a snapshot request that timed out as a timeout, not a closed socket.
+    expect(failedReason).toBe(reason);
   });
 
   it('closes the WebSocket through its lifecycle manager when the browser goes offline', async () => {

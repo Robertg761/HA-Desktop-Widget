@@ -46,6 +46,27 @@ test('diagnostics record lifecycle events without copying sensitive server or er
   delete window.electronAPI;
 });
 
+test('diagnostics tell a timed-out connection from a closed one', () => {
+  jest.resetModules();
+  const {
+    initializeDashboardTools: initialize,
+    diagnosticsReport: report,
+  } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  initialize();
+
+  currentSocket.emit('close', { intentional: false, reason: 'timeout' });
+  expect(report().recentIssues.map((issue) => issue.reason)).toEqual(['connection_timeout']);
+
+  currentSocket.emit('message', { type: 'auth_ok' });
+  currentSocket.emit('close', { intentional: false });
+  expect(report().recentIssues.map((issue) => issue.reason)).toEqual([
+    'connection_closed',
+    'connection_timeout',
+  ]);
+  currentSocket.removeAllListeners();
+});
+
 test('the open report refreshes when the reconnect state snapshot arrives', () => {
   jest.resetModules();
   jest.useFakeTimers({ now: new Date('2026-09-23T10:00:00Z') });

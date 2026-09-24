@@ -1923,7 +1923,9 @@ websocket.on('message', (msg) => {
             websocket.failConnection(snapshotSocket);
           }
         })
-        .catch(() => websocket.failConnection(snapshotSocket));
+        .catch((error) =>
+          websocket.failConnection(snapshotSocket, error?.code === 'timeout' ? 'timeout' : '')
+        );
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
       configReq.catch((err) => {
