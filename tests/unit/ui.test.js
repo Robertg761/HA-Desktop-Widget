@@ -117,6 +117,8 @@ jest.mock('../../src/icons.js', () => ({
 }));
 
 jest.mock('../../src/weather-icons.js', () => ({
+  getWeatherConditionLabel: jest.requireActual('../../src/weather-icons.js')
+    .getWeatherConditionLabel,
   normalizeWeatherCondition: jest.requireActual('../../src/weather-icons.js')
     .normalizeWeatherCondition,
   WEATHER_LABELS: jest.requireActual('../../src/weather-icons.js').WEATHER_LABELS,
@@ -2635,6 +2637,105 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(timerIcon.textContent).toContain('🔥');
     });
 
+    it('draws default tile icons as line icons and keeps custom emoji', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.kettle', 'switch.fan_plug'];
+      config.customEntityIcons = { 'switch.fan_plug': '🌀' };
+      state.setConfig(config);
+      state.setStates({
+        'switch.kettle': {
+          entity_id: 'switch.kettle',
+          state: 'off',
+          attributes: { friendly_name: 'Kettle' },
+        },
+        'switch.fan_plug': {
+          entity_id: 'switch.fan_plug',
+          state: 'off',
+          attributes: { friendly_name: 'Fan plug' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const kettleIcon = document.querySelector(
+        '.control-item[data-entity-id="switch.kettle"] .control-icon'
+      );
+      expect(kettleIcon.querySelector('svg.entity-line-icon').dataset.icon).toBe('plug');
+      expect(kettleIcon.dataset.iconKind).toBe('line');
+      const fanIcon = document.querySelector(
+        '.control-item[data-entity-id="switch.fan_plug"] .control-icon'
+      );
+      expect(fanIcon.querySelector('svg')).toBeNull();
+      expect(fanIcon.textContent).toBe('🌀');
+    });
+
+    it('gives plain tiles a state line that follows live updates', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.kettle', 'binary_sensor.front_door', 'scene.movie'];
+      config.customEntityIcons = {};
+      state.setConfig(config);
+      const kettleOff = {
+        entity_id: 'switch.kettle',
+        state: 'off',
+        attributes: { friendly_name: 'Kettle' },
+      };
+      state.setStates({
+        'switch.kettle': kettleOff,
+        'binary_sensor.front_door': {
+          entity_id: 'binary_sensor.front_door',
+          state: 'on',
+          attributes: { friendly_name: 'Front door', device_class: 'door' },
+        },
+        'scene.movie': {
+          entity_id: 'scene.movie',
+          state: '2026-09-01T20:00:00+00:00',
+          attributes: { friendly_name: 'Movie' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const stateOf = (entityId) =>
+        document.querySelector(`.control-item[data-entity-id="${entityId}"] .control-state`);
+      expect(stateOf('switch.kettle').textContent).toBe('Off');
+      expect(stateOf('binary_sensor.front_door').textContent).toBe('Open');
+      expect(stateOf('scene.movie')).toBeNull();
+
+      const kettleOn = { ...kettleOff, state: 'on' };
+      state.setEntityState(kettleOn);
+      ui.updateEntityInUI(kettleOn);
+      expect(stateOf('switch.kettle').textContent).toBe('On');
+      expect(
+        document.querySelector('.control-item[data-entity-id="switch.kettle"]').dataset.active
+      ).toBe('true');
+
+      const kettleGone = { ...kettleOff, state: 'unavailable' };
+      state.setEntityState(kettleGone);
+      ui.updateEntityInUI(kettleGone);
+      const kettleTile = document.querySelector('.control-item[data-entity-id="switch.kettle"]');
+      expect(stateOf('switch.kettle').textContent).toBe('Unavailable');
+      expect(kettleTile.dataset.unavailable).toBe('true');
+      expect(kettleTile.dataset.active).toBeUndefined();
+    });
+
+    it('shows the Controls action as a labelled icon button', () => {
+      state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light', brightness: 128 },
+        },
+      });
+      ui.renderActiveTab();
+      const details = document.querySelector(
+        '[data-entity-id="light.bedroom"] .tile-details-button'
+      );
+      expect(details.title).toBe('Controls');
+      expect(details.getAttribute('aria-label')).toContain('Controls for');
+      expect(details.querySelector('svg.entity-line-icon').dataset.icon).toBe('sliders-horizontal');
+    });
+
     it('pauses an active timer and starts an idle timer on quick-access click', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['timer.kitchen'];
@@ -4000,7 +4101,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Pin');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin');
 
       pinButton.click();
       await Promise.resolve();
@@ -4058,7 +4159,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Pinned');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pinned');
 
       pinButton.click();
       await Promise.resolve();
@@ -4102,7 +4203,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(pinButton.isConnected).toBe(false);
       expect(document.activeElement.dataset.desktopPinQuickToggle).toBe('light.bedroom');
-      expect(document.activeElement.textContent).toBe(label);
+      // The button shows a pin icon; its state is carried by the accessible name.
+      expect(document.activeElement.getAttribute('aria-label')).toBe(label);
 
       ui.toggleReorganizeMode();
     });
@@ -4130,7 +4232,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Unsupported');
+      expect(pinButton.getAttribute('aria-label')).toBe('Unsupported');
       expect(pinButton.disabled).toBe(true);
       expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
     });
@@ -4313,11 +4415,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(emptyState?.dataset.state).toBe('unavailable');
       expect(content?.classList.contains('hidden')).toBe(true);
       expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Unavailable');
-      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe(
-        'Bedroom Light is unavailable'
-      );
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Bedroom Light');
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe(
-        'Latest Home Assistant data reports this entity as unavailable right now.'
+        "Home Assistant can't reach it right now."
       );
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
@@ -4439,8 +4539,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'Waiting for first live update',
         'Waiting for live Home Assistant data...',
         'Unavailable',
-        '{{name}} is unavailable',
-        'Latest Home Assistant data reports this entity as unavailable right now.',
+        "Home Assistant can't reach it right now.",
       ];
       const text = (part) => document.getElementById(`desktop-pin-empty-${part}`)?.textContent;
       state.setStates({
@@ -4494,8 +4593,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         });
         expect([text('kicker'), text('title'), text('copy')]).toEqual([
           '[xx] Unavailable',
-          '[xx] Bedroom Light is unavailable',
-          '[xx] Latest Home Assistant data reports this entity as unavailable right now.',
+          // The kicker already says "Unavailable", so the title is just the entity's name.
+          'Bedroom Light',
+          "[xx] Home Assistant can't reach it right now.",
         ]);
       } finally {
         i18n.setLocaleBootstrap({ messages: {} });
@@ -4919,6 +5019,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
       expect(control).toBeTruthy();
       expect(control.querySelector('.desktop-pin-climate-slider')).toBeTruthy();
+
+      // The current mode stays highlighted after the pin's first live-state pass.
+      const currentMode = state.STATES['climate.thermostat'].state;
+      const activeModes = [
+        ...control.querySelectorAll('.desktop-pin-climate-mode[data-active="true"]'),
+      ].map((button) => button.dataset.action);
+      expect(activeModes).toEqual([currentMode]);
 
       control.querySelector('.desktop-pin-climate-mode[data-action="cool"]').click();
 
@@ -5664,7 +5771,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('on');
-          expect(control?.querySelector('.desktop-pin-panel-kpi')?.textContent).toBe('On');
+          // The value reads "Detected"; the raw "on" no longer repeats it in the header.
+          expect(
+            control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
+          ).toBeNull();
           expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Detected');
         },
       },

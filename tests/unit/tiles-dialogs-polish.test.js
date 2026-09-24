@@ -269,7 +269,7 @@ describe('tile and device dialog polish', () => {
       [
         ...document.querySelectorAll('#quick-controls .tile-details-button'),
         document.querySelector('#weather-card .tile-details-button'),
-      ].map((button) => button?.textContent);
+      ].map((button) => button?.title);
     i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { Controls: 'Steuerung' } });
     state.setConfig({ ...state.CONFIG, primaryCards: ['light.desk', 'none'] });
     renderTiles([entity('light.desk', 'off'), entity('media_player.den', 'off')]);

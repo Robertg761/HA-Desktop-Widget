@@ -14,7 +14,7 @@ function runtime(platform = 'darwin', opaquePanels = false) {
   const context = {
     process: { platform, env: {} },
     shouldUseTransparentWindow: () => false,
-    OPAQUE_WINDOW_BACKGROUND_COLOR: '#28282d',
+    OPAQUE_WINDOW_BACKGROUND_COLOR: '#12161e',
     config: { opacity: 0.5, ui: { opaquePanels } },
     mainWindow,
     desktopPinWindows: new Map([['light.test', pin]]),

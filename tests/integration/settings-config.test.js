@@ -340,6 +340,11 @@ function createSettingsModalDOM() {
       </div>
 
       <div id="personalization-tab" class="tab-content">
+        <div id="theme-mode-control" role="radiogroup">
+          <button type="button" data-theme-mode="auto">Auto</button>
+          <button type="button" data-theme-mode="dark">Dark</button>
+          <button type="button" data-theme-mode="light">Light</button>
+        </div>
         <div id="color-themes-section" class="personalization-section collapsed">
           <button type="button" id="color-themes-toggle" class="section-toggle" aria-expanded="false">
             Color Themes
@@ -349,7 +354,7 @@ function createSettingsModalDOM() {
               <option value="accent">Accent Color</option>
               <option value="background">Background Color</option>
             </select>
-            <label id="theme-options-label">Color Options</label>
+            <label id="theme-options-label">Accent colors</label>
             <div id="theme-options"></div>
             <div id="theme-current-selection"></div>
             <input id="custom-color-picker" type="color" value="#64B5F6" />
@@ -382,29 +387,36 @@ function createSettingsModalDOM() {
             </div>
           </div>
         </div>
-        <div id="primary-cards-section" class="personalization-section collapsed">
-          <button type="button" id="primary-cards-toggle" class="section-toggle" aria-expanded="false">
-            Primary Cards
-          </button>
-          <div class="section-body">
-            <div id="primary-card-1-current"></div>
-            <div id="primary-card-2-current"></div>
-            <button type="button" id="primary-cards-reset">Reset</button>
-            <select id="time-format">
-              <option value="system">System default</option>
-              <option value="12-hour">12-hour</option>
-              <option value="24-hour">24-hour</option>
-            </select>
-            <select id="date-format">
-              <option value="system">System default</option>
-              <option value="weekday-short">Weekday, short date</option>
-              <option value="long">Long date</option>
-              <option value="numeric">Numeric date</option>
-            </select>
-            <input type="text" id="primary-cards-search" />
-            <div id="primary-cards-list"></div>
+        <section class="settings-group">
+          <div class="primary-card-actions" data-primary-card="0">
+            <button type="button" data-primary-card="0" data-primary-value="weather">Weather</button>
+            <button type="button" data-primary-card="0" data-primary-value="time">Time</button>
+            <button type="button" data-primary-card="0" data-primary-value="none">Hide</button>
           </div>
-        </div>
+          <div id="primary-cards-section" class="personalization-section collapsed">
+            <button type="button" id="primary-cards-toggle" class="section-toggle" aria-expanded="false">
+              Primary Cards
+            </button>
+            <div class="section-body">
+              <div id="primary-card-1-current"></div>
+              <div id="primary-card-2-current"></div>
+              <button type="button" id="primary-cards-reset">Reset</button>
+              <select id="time-format">
+                <option value="system">System default</option>
+                <option value="12-hour">12-hour</option>
+                <option value="24-hour">24-hour</option>
+              </select>
+              <select id="date-format">
+                <option value="system">System default</option>
+                <option value="weekday-short">Weekday, short date</option>
+                <option value="long">Long date</option>
+                <option value="numeric">Numeric date</option>
+              </select>
+              <input type="text" id="primary-cards-search" />
+              <div id="primary-cards-list"></div>
+            </div>
+          </div>
+        </section>
         <div id="custom-entity-icons-section" class="personalization-section collapsed">
           <button type="button" id="custom-entity-icons-toggle" class="section-toggle" aria-expanded="false">
             Custom Entity Icons
@@ -427,11 +439,11 @@ function createSettingsModalDOM() {
       </div>
 
       <div id="popup-hotkey-container">
-        <label id="popup-hotkey-mode-label">Popup Hotkey (Hold to Bring Window to Front)</label>
+        <label id="popup-hotkey-mode-label">Popup hotkey</label>
         <p id="popup-hotkey-help-text"></p>
         <p id="popup-hotkey-platform-notice" hidden></p>
         <input type="text" id="popup-hotkey-input" />
-        <button id="popup-hotkey-set-btn">Set Hotkey</button>
+        <button id="popup-hotkey-set-btn">Set hotkey</button>
         <button id="popup-hotkey-clear-btn" style="display: none;">Clear</button>
         <button class="preset-hotkey-btn" data-hotkey="Ctrl+Shift+F12">Ctrl+Shift+F12</button>
         <label id="popup-hotkey-toggle-mode-label">
@@ -962,9 +974,7 @@ describe('Settings + Config Integration', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe(
-        'Popup Hotkey (Press to Bring Window to Front)'
-      );
+      expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe('Popup hotkey');
       expect(document.getElementById('popup-hotkey-platform-notice').hidden).toBe(false);
       expect(document.getElementById('popup-hotkey-platform-notice').textContent).toContain(
         'Linux uses the desktop shortcut service'
@@ -1254,6 +1264,68 @@ describe('Settings + Config Integration', () => {
           },
         })
       );
+    });
+  });
+
+  describe('Primary card choices', () => {
+    test('a Card 1 choice outside the collapsible picker still applies and saves', async () => {
+      await settings.openSettings();
+      document.querySelector('[data-primary-card="0"][data-primary-value="time"]').click();
+      await settings.saveSettings();
+      expect(state.CONFIG.primaryCards[0]).toBe('time');
+    });
+  });
+
+  describe('Theme mode control', () => {
+    const checkedMode = () =>
+      document.querySelector('#theme-mode-control [aria-checked="true"]')?.dataset.themeMode;
+
+    test('reflects the saved theme when settings open', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'light' };
+      await settings.openSettings();
+      expect(checkedMode()).toBe('light');
+      settings.closeSettings();
+    });
+
+    test('treats a missing or unknown theme as Auto', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'sepia' };
+      await settings.openSettings();
+      expect(checkedMode()).toBe('auto');
+      settings.closeSettings();
+    });
+
+    test('previews a mode live and saves it', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'dark' };
+      await settings.openSettings();
+      mockUiUtils.applyTheme.mockClear();
+
+      document.querySelector('#theme-mode-control [data-theme-mode="light"]').click();
+      expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('light');
+      expect(checkedMode()).toBe('light');
+
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.theme).toBe('light');
+    });
+
+    test('closing without saving restores the saved mode', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'dark' };
+      await settings.openSettings();
+      document.querySelector('#theme-mode-control [data-theme-mode="light"]').click();
+      mockUiUtils.applyTheme.mockClear();
+
+      settings.closeSettings();
+      expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('dark');
+      expect(state.CONFIG.ui.theme).toBe('dark');
+    });
+
+    test('arrow keys move the selection', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'auto' };
+      await settings.openSettings();
+      document
+        .querySelector('#theme-mode-control [data-theme-mode="auto"]')
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      expect(checkedMode()).toBe('dark');
+      settings.closeSettings();
     });
   });
 
@@ -2248,7 +2320,9 @@ describe('Settings + Config Integration', () => {
       );
       const row = refreshedApplyBtn.closest('.custom-entity-icon-item');
       const preview = row.querySelector('.custom-entity-icon-preview');
-      expect(preview.textContent).toBe('💡');
+      // No custom icon was applied, so the preview shows the tile's default line icon.
+      expect(preview.textContent).toBe('');
+      expect(preview.querySelector('svg.entity-line-icon').dataset.icon).toBe('lightbulb');
     });
 
     test('saving Settings preserves icons restored from dashboard history', async () => {
@@ -3637,7 +3711,7 @@ describe('Settings + Config Integration', () => {
       'Remove alert for "{{name}}"?': 'Warnung für „{{name}}“ entfernen?',
       Remove: 'Entfernen',
       'Profile sync upload complete.': 'Profil-Upload abgeschlossen.',
-      'Color Options (Accent)': 'Farboptionen (Akzent)',
+      'Accent colors': 'Akzentfarben',
     };
 
     beforeEach(() => {
@@ -3671,9 +3745,7 @@ describe('Settings + Config Integration', () => {
         ...document.querySelectorAll('#primary-cards-list [data-primary-assign="0"]'),
       ].map((button) => button.textContent);
       expect(cardOneLabels).toContain('Karte 1 ✓');
-      expect(document.getElementById('theme-options-label').textContent).toBe(
-        'Farboptionen (Akzent)'
-      );
+      expect(document.getElementById('theme-options-label').textContent).toBe('Akzentfarben');
     });
 
     test('re-renders script-written Settings text when the language changes while open', async () => {

@@ -1119,7 +1119,7 @@ describe('Camera Module', () => {
       await camera.openCamera('camera.front_door', { sourceTile: tile });
 
       expect(visual.getAttribute('aria-hidden')).toBeNull();
-      expect(image.getAttribute('alt')).toBe('Front Door Camera Preview');
+      expect(image.getAttribute('alt')).toBe('Front Door Camera preview');
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
@@ -1530,14 +1530,14 @@ describe('Camera Module', () => {
     });
 
     it('reports a failed snapshot instead of leaving a broken image', async () => {
-      const { showToast } = require('../../src/ui-utils.js');
       await camera.openCamera('camera.front_door');
       const img = document.querySelector('.camera-modal .camera-stream');
 
       expect(img.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
       img.onerror();
 
-      expect(showToast).toHaveBeenCalledWith('Could not load camera snapshot', 'error', 2500);
+      // Said in the viewer itself; a toast would outlive the dialog it describes.
+      expect(document.getElementById('camera-viewer-message').hidden).toBe(false);
       expect(document.getElementById('camera-loading').classList.contains('show')).toBe(false);
     });
 
@@ -1651,8 +1651,38 @@ describe('Camera Module', () => {
       const modal = document.querySelector('.camera-modal');
       const cameraInfo = modal.querySelector('.camera-info');
 
-      expect(cameraInfo.textContent).toContain('Status:');
-      expect(cameraInfo.textContent).toContain('Last Updated:');
+      // A readable state label and when the frame was last updated, not the raw "idle".
+      expect(cameraInfo.querySelector('.camera-info-state').textContent).toMatch(/^[A-Z]/);
+      expect(cameraInfo.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
+    });
+
+    it('shows a message in the viewer instead of a broken image when a frame fails', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const img = modal.querySelector('.camera-stream');
+      const message = modal.querySelector('#camera-viewer-message');
+      expect(message.hidden).toBe(true);
+
+      img.onerror();
+      expect(message.hidden).toBe(false);
+      expect(img.classList.contains('camera-img-failed')).toBe(true);
+
+      img.onload();
+      expect(message.hidden).toBe(true);
+    });
+
+    it('clears a failed-frame message when Live is started', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const img = modal.querySelector('.camera-stream');
+      const message = modal.querySelector('#camera-viewer-message');
+
+      img.onerror();
+      expect(message.hidden).toBe(false);
+
+      modal.querySelector('#live-btn').click();
+      expect(message.hidden).toBe(true);
+      expect(img.classList.contains('camera-img-failed')).toBe(false);
     });
 
     it('names the streaming camera state in the active language', () => {

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
+- Draw entities with line icons that take the accent color and a soft glow when on. Custom emoji and icons set in Home Assistant still take priority. Dialogs, entity lists, the command palette, and the window controls use the same icon set.
+- Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.
+- Add subtle motion: a highlight slides between Quick Access pages and settings sections, tiles slide in from the side of the page you pick, a tile's icon swells briefly when it turns on, and settings pages and disclosures ease in. All of it is off when the system asks for reduced motion.
+- Add a visual snapshot workflow that screenshots the real app on Windows, macOS, and Linux against a mock Home Assistant, and `npm run snapshots` to run it locally.
+
+### Changed
+
+- Redesign the main window after the project website: one pane of frosted glass in a cool slate, lighter tiles and cards with 14px corners, normal-case tile names, and Plus Jakarta Sans for the clock, temperature, and sensor values. The two primary cards share one pane and Quick Access pages are a segmented control.
+- Reorganize Settings into six pages on an icon rail (General, Appearance, Dashboard, Hotkeys, Alerts, Advanced) with grouped rows: labels and help on the left, controls on the right. Weather source moves to Dashboard, connection diagnostics to General, and updates to Advanced. Custom colors, language packs, the primary-card entity picker, and the icon editor sit behind disclosures.
+- Restyle dialogs, control pop-ups, toasts, and the command palette to match, with slimmer sliders, chip-style presets, and quieter buttons.
+- Show each tile's Controls action as a small sliders button in the tile corner. It stays visible and keyboard accessible.
+- Match native context menus and macOS pop-up menus to the app's theme, and draw Windows and Linux dropdown lists and scrollbars in dark mode when the app is dark.
+- Hide the Follow Omarchy theme switch on desktops where it cannot turn on.
+- Translate everything the refresh adds, including the unavailable and empty states, the camera viewer, and pinned tile labels, and use sentence case for Settings labels.
+- Give Manage Quick Access one scrolling list under the search box, quiet Remove buttons, a no-matches message, and the comparison graph action in the footer. The comparison graph editor gets a Done button.
+- Show a proper empty state with an Open Settings button when Quick Access has no connection yet.
+- Keep the camera viewer a fixed 16:9 frame, with a "Preview unavailable" message instead of a broken image, and a readable state and update time.
+- Pick black or white text on accent-coloured buttons per accent, so dark custom accents stay readable.
+
+### Fixed
+
+- Lay pinned desktop tiles out as designed again: the Quick Access tile rules had been overriding their padding, corners and alignment, so text ran into the rounded corners, a large label spilled over the top-right corner, and bottom buttons were cut off. Pins also stay readable in the light theme, where their text had turned white on light panels.
+- Calm the Quick Access edit mode: the pin, rename and remove buttons are small glass circles that take their colour on hover, the pin chip is an icon so longer translations fit, and sensor icons no longer sit under the buttons.
+- Keep the camera's live view visible after a failed snapshot, and disable every control (including climate modes and presets) in an unavailable entity's pop-up.
+- Make off switches in Settings clearly visible in both themes.
+- Show which Quick Access tile has keyboard focus. The focus outline was clipped by the tile and never visible.
+- Say when an entity is unavailable in its pop-up and disable the controls, instead of showing "Off". A fan without speed control can now be turned on and off from its pop-up.
+- Raise muted and accent-coloured text in the light theme above 4.5:1 contrast, and 10px status text to 11px.
+- Mirror switches, corner buttons, margins, and text alignment in Arabic, and keep readings like "21.4 °C" in order.
+- Keep "on" tiles, selected tabs, and switches visible in Windows High Contrast mode.
+- Keep the humidity and wind icons on the weather card after the primary cards are re-rendered.
+- Show an unavailable camera preview tile as a dimmed tile instead of a black block with orange text, and keep camera names readable in the light theme before the first frame arrives.
+- Lay out the pinned light tile across the whole pin window, with its power button beside the name and an unclipped brightness slider.
+- Keep an on light without a brightness value from reading "Off" after the first live update.
+
 ### Beta features
 
 - Live tray values remain available only in numbered beta builds. They include per-entity short

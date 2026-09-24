@@ -1671,4 +1671,37 @@ describe('UI Utilities', () => {
       expect(typeof uiUtils.showConfirm).toBe('function');
     });
   });
+
+  describe('accent text colours', () => {
+    const luminance = (r, g, b) => {
+      const linear = (c) => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    };
+    const contrastOnLight = (rgbString) => {
+      const [r, g, b] = rgbString.match(/\d+/g).map(Number);
+      return (luminance(250, 250, 250) + 0.05) / (luminance(r, g, b) + 0.05);
+    };
+
+    it('puts dark text on light accents and white text on dark ones', () => {
+      expect(uiUtils.getReadableTextColor({ r: 100, g: 181, b: 246 })).toBe('#0a0c10');
+      expect(uiUtils.getReadableTextColor({ r: 250, g: 204, b: 21 })).toBe('#0a0c10');
+      expect(uiUtils.getReadableTextColor({ r: 30, g: 41, b: 120 })).toBe('#ffffff');
+    });
+
+    it('darkens any accent enough to read as text on the light theme', () => {
+      [
+        { r: 100, g: 181, b: 246 },
+        { r: 34, g: 211, b: 238 },
+        { r: 255, g: 235, b: 59 },
+        { r: 148, g: 163, b: 184 },
+      ].forEach((accent) => {
+        expect(contrastOnLight(uiUtils.getAccentTextOnLight(accent))).toBeGreaterThanOrEqual(4.8);
+      });
+      // An accent that already reads well is left alone.
+      expect(uiUtils.getAccentTextOnLight({ r: 30, g: 41, b: 120 })).toBe('rgb(30, 41, 120)');
+    });
+  });
 });

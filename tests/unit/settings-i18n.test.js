@@ -20,14 +20,14 @@ describe('index.html static Settings text', () => {
     i18n.setLocaleBootstrap({
       activeLocale: 'de',
       messages: {
-        'Color Themes': 'Farbthemen',
-        'Enable Profile Sync (Opt-in)': 'Profilsynchronisierung aktivieren (optional)',
+        'Show an entity on a card': 'Entität auf einer Karte anzeigen',
+        'Profile sync': 'Profilsynchronisierung',
         'Search entities...': 'Entitäten suchen...',
         'Theme colors': 'Themenfarben',
         'Card {{index}}': 'Karte {{index}}',
-        'Hex format uses <code>#RRGGBB</code> (example: <code>#34A1FF</code>).':
-          'Hex-Format: <code>#RRGGBB</code> (Beispiel: <code>#34A1FF</code>).',
-        'View Logs': 'Protokolle anzeigen',
+        'Click the button and press your desired key combination. Press <code>ESC</code> to clear.':
+          'Klicke auf die Schaltfläche und drücke die Tastenkombination. <code>ESC</code> löscht sie.',
+        'View logs': 'Protokolle anzeigen',
         'Opens the log file location in your file explorer':
           'Öffnet den Speicherort der Protokolldatei im Dateimanager',
       },
@@ -41,16 +41,16 @@ describe('index.html static Settings text', () => {
   });
 
   test('translates section headings without dropping their toggle icons', () => {
-    const toggle = document.getElementById('color-themes-toggle');
-    expect(toggle.querySelector('[data-i18n]').textContent).toBe('Farbthemen');
-    expect(toggle.querySelector('.section-toggle-icon svg')).not.toBeNull();
+    const toggle = document.getElementById('primary-cards-toggle');
+    expect(toggle.querySelector('[data-i18n]').textContent).toBe(
+      'Entität auf einer Karte anzeigen'
+    );
+    expect(toggle.querySelector('svg.section-toggle-icon')).not.toBeNull();
   });
 
   test('keeps checkboxes inside labels whose text is translated', () => {
     const checkbox = document.getElementById('profile-sync-enabled');
-    expect(checkbox.parentElement.textContent).toContain(
-      'Profilsynchronisierung aktivieren (optional)'
-    );
+    expect(checkbox.parentElement.textContent).toContain('Profilsynchronisierung');
     expect(checkbox.closest('label')).not.toBeNull();
   });
 
@@ -66,13 +66,17 @@ describe('index.html static Settings text', () => {
     expect(viewLogs.title).toBe('Öffnet den Speicherort der Protokolldatei im Dateimanager');
     expect(viewLogs.textContent).toContain('Protokolle anzeigen');
     expect(
-      [...document.querySelectorAll('.primary-card-label')].map((label) => label.textContent)
+      [...document.querySelectorAll('.primary-card-row .setting-label')].map(
+        (label) => label.textContent
+      )
     ).toEqual(['Karte 1', 'Karte 2']);
   });
 
   test('keeps code formatting in translated help text', () => {
-    const help = document.querySelector('[data-i18n-html^="Hex format uses"]');
-    expect(help.textContent).toBe('Hex-Format: #RRGGBB (Beispiel: #34A1FF).');
-    expect(help.querySelectorAll('code')).toHaveLength(2);
+    const help = document.querySelector('[data-i18n-html^="Click the button and press"]');
+    expect(help.textContent).toBe(
+      'Klicke auf die Schaltfläche und drücke die Tastenkombination. ESC löscht sie.'
+    );
+    expect(help.querySelectorAll('code')).toHaveLength(1);
   });
 });

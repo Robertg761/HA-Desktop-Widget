@@ -63,7 +63,7 @@ async function waitForRoomConnection(websocket, isActive, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   while (isActive()) {
     if (websocket.isConnected()) return true;
-    if (Date.now() >= deadline) throw new Error('Connection is not ready');
+    if (Date.now() >= deadline) throw new Error(t('Connection is not ready'));
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return false;

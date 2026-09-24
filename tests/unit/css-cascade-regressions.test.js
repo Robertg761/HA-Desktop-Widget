@@ -625,16 +625,16 @@ describe('stylesheet cascade regressions', () => {
       render(
         '',
         `<div id="quick-controls" class="reorganize-mode"><div class="control-item">
-          <button class="desktop-pin-quick-toggle">Nicht unterstützt</button>
+          <button class="desktop-pin-quick-toggle" aria-label="Nicht unterstützt"></button>
           <button class="rename-btn"></button><button class="remove-btn"></button>
         </div></div>`
       );
       const badge = document.querySelector('.desktop-pin-quick-toggle');
-      // Remove (24px at 8px) and rename (24px at 38px) take the last 62px of the tile.
-      expect(resolvedValue(badge, 'max-width')).toBe('calc(100% - 74px)');
-      expect(resolvedValue(badge, 'white-space')).toBe('nowrap');
-      expect(resolvedValue(badge, 'text-overflow')).toBe('ellipsis');
-      expect(resolvedValue(badge, 'text-transform')).toBeFalsy();
+      // The badge is a 24px pin icon, so no translation can grow it into the rename (24px at
+      // 38px from the end) and remove (24px at 8px) buttons.
+      expect(resolvedValue(badge, 'width')).toBe('24px');
+      expect(resolvedValue(badge, 'height')).toBe('24px');
+      expect(resolvedValue(badge, 'padding')).toBe('0');
     });
 
     it('gives the popup hotkey field a row of its own and the command palette pill one line', () => {

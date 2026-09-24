@@ -26,7 +26,7 @@ A launcher binding can also use `ha-desktop-widget --toggle`. `--show` and `--hi
 
 ## Appearance and startup
 
-Enable Follow Omarchy theme under Personalization to follow the active palette. Disabling it restores your own color choices. Theme changes apply without restarting.
+Enable Follow Omarchy theme under Settings → Appearance to follow the active palette. Disabling it restores your own color choices. Theme changes apply without restarting.
 
 Start at login is optional. The application preserves a working startup target when a different package or beta is launched. A custom `--user-data-dir` disables startup changes for that profile.
 

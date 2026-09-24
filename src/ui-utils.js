@@ -50,21 +50,23 @@ let connectionStatusDocumentHandlersBound = false;
 let connectionStatusBoundElement = null;
 
 const BACKGROUND_BASES = {
+  // A cool slate rather than neutral grey, so the window reads as tinted glass. Kept in step with
+  // the :root defaults in styles.css.
   dark: {
-    bgColor: { r: 40, g: 40, b: 45, a: 0.8 },
-    bgElevated: { r: 30, g: 30, b: 35, a: 0.9 },
-    bgPrimary: { r: 20, g: 20, b: 25, a: 0.95 },
-    bgSecondary: { r: 30, g: 30, b: 35, a: 0.9 },
-    bgTertiary: { r: 40, g: 40, b: 45, a: 0.85 },
-    surface1: { r: 25, g: 25, b: 30, a: 0.8 },
-    surface2: { r: 35, g: 35, b: 40, a: 0.85 },
-    surface3: { r: 45, g: 45, b: 50, a: 0.9 },
-    surfaceHover: { r: 50, g: 50, b: 55, a: 0.95 },
-    cardBg: { r: 30, g: 30, b: 35, a: 0.7 },
-    glassSurface: { r: 30, g: 30, b: 35, a: 0.7 },
-    glassElevated: { r: 40, g: 40, b: 45, a: 0.8 },
-    glassOverlay: { r: 20, g: 20, b: 25, a: 0.85 },
-    loadingOverlay: { r: 20, g: 20, b: 25, a: 0.7 },
+    bgColor: { r: 18, g: 22, b: 30, a: 0.8 },
+    bgElevated: { r: 24, g: 28, b: 37, a: 0.9 },
+    bgPrimary: { r: 13, g: 16, b: 22, a: 0.95 },
+    bgSecondary: { r: 24, g: 28, b: 37, a: 0.9 },
+    bgTertiary: { r: 30, g: 35, b: 45, a: 0.85 },
+    surface1: { r: 20, g: 24, b: 32, a: 0.8 },
+    surface2: { r: 28, g: 33, b: 42, a: 0.85 },
+    surface3: { r: 36, g: 41, b: 51, a: 0.9 },
+    surfaceHover: { r: 42, g: 47, b: 58, a: 0.95 },
+    cardBg: { r: 24, g: 28, b: 37, a: 0.7 },
+    glassSurface: { r: 24, g: 28, b: 37, a: 0.7 },
+    glassElevated: { r: 30, g: 35, b: 45, a: 0.8 },
+    glassOverlay: { r: 13, g: 16, b: 22, a: 0.85 },
+    loadingOverlay: { r: 13, g: 16, b: 22, a: 0.7 },
   },
   light: {
     bgColor: { r: 250, g: 250, b: 250, a: 0.8 },
@@ -136,6 +138,46 @@ function mixRgb(base, mixin, amount) {
     g: mix('g'),
     b: mix('b'),
   };
+}
+
+/**
+ * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
+ * more (WCAG relative luminance), so a dark custom accent still gets readable button labels.
+ * @param {{r:number, g:number, b:number}} rgb - Background colour.
+ * @returns {string} '#0a0c10' or '#ffffff'.
+ */
+function getReadableTextColor(rgb) {
+  const linear = (channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  const luminance = 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+  // Contrast with white is 1.05 / (L + 0.05); with #0a0c10 (L ≈ 0.0037) it is (L + 0.05) / 0.0537.
+  return 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.0537 ? '#ffffff' : '#0a0c10';
+}
+
+/**
+ * The accent darkened just enough to read as text on the light theme's near-white panes
+ * (at least 4.8:1 against #fafafa), so pale accents like aqua or yellow still work for links and
+ * secondary buttons. Returns an rgb() string.
+ * @param {{r:number, g:number, b:number}} rgb - Accent colour.
+ * @param {number} [minContrast=4.8]
+ */
+function getAccentTextOnLight(rgb, minContrast = 4.8) {
+  const linear = (channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  const luminance = ({ r, g, b }) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  const backgroundLuminance = luminance({ r: 250, g: 250, b: 250 });
+  let amount = 0;
+  let color = rgb;
+  while (amount < 0.95) {
+    color = mixRgb(rgb, { r: 0, g: 0, b: 0 }, amount);
+    if ((backgroundLuminance + 0.05) / (luminance(color) + 0.05) >= minContrast) break;
+    amount += 0.05;
+  }
+  return `rgb(${color.r}, ${color.g}, ${color.b})`;
 }
 
 function mapWindowOpacityToBackgroundAlpha(opacity) {
@@ -335,6 +377,9 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--accent', normalizedColor);
   root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
   root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+  root.style.setProperty('--on-accent', getReadableTextColor(rgb));
+  root.style.setProperty('--accent-text-light', getAccentTextOnLight(rgb));
+  root.style.setProperty('--accent-text-light-hover', getAccentTextOnLight(rgb, 6.5));
   root.style.setProperty('--primary', normalizedColor);
   root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
@@ -1508,6 +1553,8 @@ export {
   setStatus,
   showConfirm,
   hexToRgb,
+  getAccentTextOnLight,
+  getReadableTextColor,
   miredsToKelvin,
   hasSupportedFeature,
   __forceAnimatedModalTransitions,

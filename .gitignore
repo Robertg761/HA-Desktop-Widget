@@ -75,3 +75,6 @@ testing-progress.md
 # Generated panel preview artifacts
 preview/preview.html
 dist-panel/
+
+# Visual snapshot output (npm run snapshots)
+/visual-snapshots/

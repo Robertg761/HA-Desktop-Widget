@@ -149,7 +149,7 @@ function renderHotkeysTab() {
       item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('No hotkey set'))}" data-entity-id="${escapedEntityId}">
+                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}">
                     ${dropdownHTML}
                     <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
                 </div>

@@ -1,0 +1,96 @@
+name: Visual snapshots
+
+# Screenshots of the real app on Windows, macOS and Linux, uploaded as artifacts,
+# so layout and theming can be checked per OS without installing a build.
+# Each OS produces <os>-<scene>-page.png (web contents) and <os>-<scene>-screen.png
+# (the real screen around the window: acrylic, vibrancy, shadows, native fonts).
+# See scripts/visual-snapshots/run.cjs. Informational only: nothing is compared.
+#
+# Caveat: windows-latest is Windows Server 2022, which has no acrylic backdrop
+# (that needs Windows 11), so Windows screen captures show the solid fallback.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'styles.css'
+      - 'dashboard-workflows.css'
+      - 'renderer.js'
+      - 'main.js'
+      - 'preload.js'
+      - 'src/**'
+      - 'packages/widget-renderer/**'
+      - 'fonts/**'
+      - 'scripts/visual-snapshots/**'
+      - '.github/workflows/visual-snapshots.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-snapshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshots:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The snapshot runner drives the app over CDP with Node's global WebSocket (Node 22+).
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install native build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb imagemagick
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      # Electron downloads its binary on first use rather than at install time; fetch it now so
+      # the Linux sandbox helper below exists and the snapshot timeouts don't include a download.
+      - name: Download Electron
+        run: node -e "require('electron')"
+
+      - name: Take snapshots (Linux)
+        timeout-minutes: 8
+        if: runner.os == 'Linux'
+        run: |
+          # The npm-installed Electron's sandbox helper lacks the setuid bit.
+          sandbox=node_modules/electron/dist/chrome-sandbox
+          if [ -f "$sandbox" ]; then
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+          fi
+          xvfb-run -a -s "-screen 0 1280x900x24" dbus-run-session -- \
+            node scripts/visual-snapshots/run.cjs visual-snapshots
+
+      - name: Take snapshots (Windows, macOS)
+        timeout-minutes: 8
+        if: runner.os != 'Linux'
+        run: node scripts/visual-snapshots/run.cjs visual-snapshots
+
+      - name: Upload snapshots
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: visual-snapshots-${{ runner.os }}
+          path: visual-snapshots/
+          if-no-files-found: warn
+          retention-days: 14

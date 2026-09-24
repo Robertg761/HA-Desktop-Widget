@@ -142,7 +142,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
           : showUnsupportedState
             ? 'Desktop pin not supported yet'
             : showUnavailableState
-              ? 'Bedroom Light is unavailable'
+              ? 'Bedroom Light'
               : showMissingState
                 ? 'Pinned entity not found'
                 : showWaitingState
@@ -155,7 +155,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
           : showUnsupportedState
             ? `The ${entityDomain} domain does not have a desktop-pin profile yet.`
             : showUnavailableState
-              ? 'Latest Home Assistant data reports this entity as unavailable right now.'
+              ? "Home Assistant can't reach it right now."
               : showMissingState
                 ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
                 : showWaitingState
@@ -492,10 +492,8 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
 
     expect(emptyState?.dataset.state).toBe('unavailable');
-    expect(title?.textContent).toBe('Bedroom Light is unavailable');
-    expect(copy?.textContent).toBe(
-      'Latest Home Assistant data reports this entity as unavailable right now.'
-    );
+    expect(title?.textContent).toBe('Bedroom Light');
+    expect(copy?.textContent).toBe("Home Assistant can't reach it right now.");
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
   });

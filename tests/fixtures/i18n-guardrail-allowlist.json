@@ -1,4 +1,1 @@
-[
-  "index.html|html-placeholder|input#custom-color-hex|\"#RRGGBB\"",
-  "src/ui.js|showToast|`${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`"
-]
+[]

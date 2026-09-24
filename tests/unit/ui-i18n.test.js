@@ -109,6 +109,8 @@ jest.mock('../../src/weather-icons.js', () => ({
   normalizeWeatherCondition: jest.requireActual('../../src/weather-icons.js')
     .normalizeWeatherCondition,
   WEATHER_LABELS: jest.requireActual('../../src/weather-icons.js').WEATHER_LABELS,
+  getWeatherConditionLabel: jest.requireActual('../../src/weather-icons.js')
+    .getWeatherConditionLabel,
   renderWeatherIcon: jest.fn((element, condition) => {
     element.replaceChildren();
     element.dataset.weatherCondition = condition;
@@ -387,7 +389,7 @@ describe('ui.js translations and number formatting', () => {
     expect(tile('light.desk').querySelector('.control-state').textContent).toBe('Aus');
     ui.toggleReorganizeMode();
     const toggle = tile('light.desk').querySelector('.desktop-pin-quick-toggle');
-    expect(toggle.textContent).toBe('Anheften');
+    expect(toggle.getAttribute('aria-label')).toBe('Anheften');
     expect(toggle.title).toBe('Auf dem Desktop anheften');
     ui.toggleReorganizeMode();
   });

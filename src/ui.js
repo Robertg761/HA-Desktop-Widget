@@ -21,7 +21,19 @@ import {
   translateDocument,
 } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
-import { normalizeWeatherCondition, renderWeatherIcon, WEATHER_LABELS } from './weather-icons.js';
+import {
+  getWeatherConditionLabel,
+  normalizeWeatherCondition,
+  renderWeatherIcon,
+} from './weather-icons.js';
+import {
+  createLineIcon,
+  entityIconMarkup,
+  lineIconMarkup,
+  renderEntityIcon,
+  setLineIconContent,
+} from './entity-icons.js';
+import { animateEnter, pulse, syncSlidingIndicator } from './motion.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import {
@@ -126,7 +138,8 @@ const SENSOR_HISTORY_REFRESH_THROTTLE_MS = 5 * 60 * 1000;
 const SENSOR_SPARKLINE_SVG_NS = 'http://www.w3.org/2000/svg';
 const SENSOR_TILE_SPARKLINE_WIDTH = 96;
 const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
-const SENSOR_TILE_GAUGE_WIDTH = 96;
+// A near-square box so the arc, not the tile width, sets the dial size and the reading fits inside it.
+const SENSOR_TILE_GAUGE_WIDTH = 80;
 const SENSOR_TILE_GAUGE_HEIGHT = 32;
 const SENSOR_TILE_GAUGE_STROKE_WIDTH = 6;
 const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
@@ -669,14 +682,22 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   const tabs = config.customTabs || [];
   const reorganizing = isReorganizeMode;
 
-  tabBar.innerHTML = '';
+  // Clear everything but the sliding pill: the bar is rebuilt on every switch (often twice, once
+  // for the optimistic update and once for the saved config), and replacing the pill would cut
+  // its slide short.
+  [...tabBar.children].forEach((child) => {
+    if (!child.classList.contains('sliding-indicator')) child.remove();
+  });
   tabBar.classList.toggle('reorganize', reorganizing);
 
   // In normal mode, only surface tabs once there is more than one page.
   // In reorganize mode, always show the bar so pages can be created/renamed.
   const shouldShow = reorganizing || tabs.length > 1;
   tabBar.classList.toggle('hidden', !shouldShow);
-  if (!shouldShow) return;
+  if (!shouldShow) {
+    syncSlidingIndicator(tabBar, null);
+    return;
+  }
 
   tabs.forEach((tab) => {
     const isActive = tab.id === config.activeTabId;
@@ -757,6 +778,12 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     });
     tabBar.appendChild(addBtn);
   }
+
+  // A pill slides between pages; reorganize mode keeps its own editing highlight.
+  syncSlidingIndicator(
+    tabBar,
+    reorganizing ? null : tabBar.querySelector('.quick-access-tab-link.active')
+  );
 }
 
 function beginInlineTabRename(tabId, buttonEl) {
@@ -1610,7 +1637,7 @@ function toggleReorganizeMode() {
       quickAccessOrderChanged = false;
       container.classList.add('reorganize-mode');
       if (btn) {
-        setIconContent(btn, 'check', { size: 18 });
+        setLineIconContent(btn, 'check');
         btn.classList.add('reorganize-active');
         btn.title = t('Save & Exit Reorganize Mode (ESC)');
       }
@@ -1651,7 +1678,7 @@ function toggleReorganizeMode() {
       closeAddPageModal();
       container.classList.remove('reorganize-mode');
       if (btn) {
-        setIconContent(btn, 'dragHandle', { size: 18 });
+        setLineIconContent(btn, 'grip-vertical');
         btn.classList.remove('reorganize-active');
         btn.title = t('Reorganize Quick Access');
       }
@@ -2458,7 +2485,11 @@ function updateEntityInUI(entity, options = {}) {
             '.tile-primary-button',
           ].find((selector) => focused.matches(selector))
         : null;
+      const wasActive = item.dataset.active === 'true';
       item.replaceWith(newControl);
+      if (isQuickAccessTile && !wasActive && newControl.dataset.active === 'true') {
+        pulse(newControl.querySelector('.control-icon'));
+      }
 
       // If in reorganize mode, add buttons to the newly created element
       // Note: SortableJS automatically handles drag behavior for all children
@@ -2518,10 +2549,94 @@ function isQuickAccessTileActive(entity) {
   }
 }
 
+const QUICK_ACCESS_OPENING_DEVICE_CLASSES = new Set(['door', 'garage_door', 'opening', 'window']);
+
+/**
+ * The dim status line under a Quick Access tile's name, for the tiles whose layout does not
+ * already render one (sensors, timers, lights, climate, media, todo and calendar do). Action
+ * tiles (scenes, buttons, idle scripts) have no lasting state worth a line, so they get ''.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {string}
+ */
+function getQuickAccessTileStateText(entity) {
+  const entityState = typeof entity?.state === 'string' ? entity.state.toLowerCase() : '';
+  const domain = getEntityDomain(entity?.entity_id);
+  if (!domain) return '';
+  if (entityState === 'unavailable') return t('Unavailable');
+  if (entityState === 'unknown') return t('Unknown');
+
+  switch (domain) {
+    case 'scene':
+    case 'button':
+    case 'input_button':
+      return '';
+    case 'script':
+      return entityState === 'on' ? t('Active') : '';
+    case 'binary_sensor': {
+      const deviceClass = entity.attributes?.device_class;
+      if (QUICK_ACCESS_OPENING_DEVICE_CLASSES.has(deviceClass)) {
+        return entityState === 'on' ? t('Open') : t('Closed');
+      }
+      if (deviceClass === 'moisture') return entityState === 'on' ? t('Wet') : t('Dry');
+      if (deviceClass === 'lock') return entityState === 'on' ? t('Unlocked') : t('Locked');
+      return utils.getEntityDisplayState(entity);
+    }
+    case 'lock':
+      if (entityState === 'locked') return t('Locked');
+      if (entityState === 'unlocked') return t('Unlocked');
+      return utils.getEntityDisplayState(entity);
+    case 'cover':
+      if (entityState === 'open') return t('Open');
+      if (entityState === 'closed') return t('Closed');
+      if (entityState === 'opening') return t('Opening');
+      if (entityState === 'closing') return t('Closing');
+      return utils.getEntityDisplayState(entity);
+    case 'person':
+    case 'device_tracker':
+      if (entityState === 'home') return t('Home');
+      if (entityState === 'not_home') return t('Away');
+      return utils.getEntityDisplayState(entity);
+    case 'camera':
+      if (entityState === 'idle') return t('Idle');
+      return utils.getEntityDisplayState(entity);
+    default:
+      if (entityState === 'on') return t('On');
+      if (entityState === 'off') return t('Off');
+      return utils.getEntityDisplayState(entity);
+  }
+}
+
+/**
+ * Set, replace or drop a tile's plain status line in place.
+ * @param {HTMLElement} div - The tile.
+ * @param {string} text - Status text; '' removes the line.
+ */
+function setQuickAccessTileStateLine(div, text) {
+  const info = div?.querySelector(':scope > .control-info');
+  if (!info) return;
+  let stateEl = info.querySelector(':scope > .control-state');
+  if (!text) {
+    stateEl?.remove();
+    return;
+  }
+  if (!stateEl) {
+    stateEl = document.createElement('div');
+    stateEl.className = 'control-state';
+    info.appendChild(stateEl);
+  }
+  if (stateEl.textContent !== text) stateEl.textContent = text;
+}
+
 function applyQuickAccessTileActiveState(element, entity) {
   if (!element) return;
+  const wasActive = element.dataset.active === 'true';
+  // An entity Home Assistant reports as unavailable keeps its tile, drawn dimmed.
+  if (entity?.state === 'unavailable') element.dataset.unavailable = 'true';
+  else delete element.dataset.unavailable;
   if (isQuickAccessTileActive(entity)) {
     element.dataset.active = 'true';
+    // Only a tile already on screen that just turned on; new tiles arrive as they are.
+    if (!wasActive && element.isConnected) pulse(element.querySelector('.control-icon'));
     return;
   }
   delete element.dataset.active;
@@ -3996,9 +4111,16 @@ function showComparisonGraphModal(graphId) {
   deleteBtn.className = 'btn btn-danger';
   deleteBtn.textContent = t('Delete graph');
   footer.appendChild(deleteBtn);
+  // Changes save as they are made; Done just says so and closes.
+  const doneBtn = document.createElement('button');
+  doneBtn.type = 'button';
+  doneBtn.className = 'btn btn-primary';
+  doneBtn.textContent = t('Done');
+  footer.appendChild(doneBtn);
   body.appendChild(footer);
 
   const modalCloseBtn = modal.querySelector('.close-btn');
+  doneBtn.addEventListener('click', () => modalCloseBtn?.click());
   let graphMutationInFlight = false;
   const setGraphMutationInFlight = (inFlight) => {
     graphMutationInFlight = inFlight;
@@ -4007,6 +4129,7 @@ function showComparisonGraphModal(graphId) {
       widthSelect,
       search,
       deleteBtn,
+      doneBtn,
       modalCloseBtn,
       ...list.querySelectorAll('button'),
     ].forEach((control) => {
@@ -4160,7 +4283,7 @@ function showComparisonGraphModal(graphId) {
 
       const icon = document.createElement('span');
       icon.className = 'entity-icon';
-      icon.textContent = utils.getEntityIcon(entity);
+      renderEntityIcon(icon, entity);
 
       const info = document.createElement('div');
       info.className = 'entity-item-info';
@@ -5048,7 +5171,7 @@ function createDesktopPinLightControlElement(entity) {
   div.innerHTML = `
     <div class="desktop-pin-light-shell">
       <div class="desktop-pin-light-topline">
-        <div class="desktop-pin-light-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+        <div class="desktop-pin-light-glyph">${entityIconMarkup(entity)}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
           <div class="desktop-pin-light-status">${utils.escapeHtml(
@@ -5366,7 +5489,8 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   }
 
   root.querySelectorAll('.desktop-pin-climate-mode').forEach((button) => {
-    const isActive = button.dataset.mode === mode;
+    // Mode buttons carry their mode in data-action (see createDesktopPinButtonMarkup).
+    const isActive = button.dataset.action === mode;
     button.dataset.active = isActive ? 'true' : 'false';
     button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
@@ -5446,7 +5570,7 @@ function createDesktopPinClimateControlElement(entity) {
         ${
           climateValue.canSetTemperature
             ? `<div class="desktop-pin-panel-slider-row ${renderProfile.showSliderLabels ? '' : 'desktop-pin-panel-slider-row-solo'}">
-          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Cool'))}</span>` : ''}
+          ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(translateInContext('Color temperature: Cool', 'Cool'))}</span>` : ''}
           <input class="desktop-pin-panel-slider desktop-pin-climate-slider" type="range" min="${climateValue.minTemp}" max="${climateValue.maxTemp}" step="${climateValue.targetTempStep}" value="${climateValue.targetTemp}" aria-label="${escapeHtmlAttribute(t('Target temperature'))}" />
           ${renderProfile.showSliderLabels ? `<span class="desktop-pin-panel-slider-label">${utils.escapeHtml(t('Warm'))}</span>` : ''}
         </div>`
@@ -5687,7 +5811,7 @@ function createDesktopPinFanControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(fanKpiText)}</div>
         </div>
         ${
@@ -5894,7 +6018,7 @@ function createDesktopPinCoverControlElement(entity) {
             )
             .join('')}
         </div>`
-            : `<div class="desktop-pin-panel-caption">${utils.escapeHtml(t('No position or movement controls advertised'))}</div>`
+            : `<div class="desktop-pin-panel-caption">${utils.escapeHtml(t("This cover can't be moved from here."))}</div>`
         }
       </div>
     </div>
@@ -6062,7 +6186,8 @@ function createDesktopPinMediaControlElement(entity) {
         statusText: mediaValue.playing
           ? renderProfile.statusText.playing
           : renderProfile.statusText.paused,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-media-kpi">${utils.escapeHtml(mediaValue.playing ? renderProfile.headerKpi.playing : renderProfile.headerKpi.paused)}</div>`,
+        // The status line already says Playing or Paused; a second "Live"/"On" note repeated it.
+        asideMarkup: '',
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-media-copy">
@@ -6417,7 +6542,7 @@ function createDesktopPinSceneControlElement(entity) {
     <div class="desktop-pin-scene-shell">
       <div class="desktop-pin-scene-body">
         <div class="desktop-pin-scene-hero">
-          <div class="desktop-pin-scene-emoji">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-scene-emoji">${entityIconMarkup(entity)}</div>
         </div>
         <div class="desktop-pin-scene-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</div>
       </div>
@@ -6480,7 +6605,7 @@ function updateExistingDesktopPinSceneControl(root, entity) {
   applyDesktopPinSceneSizing(root, layoutProfile.width, layoutProfile.height, domain);
 
   const emoji = root.querySelector('.desktop-pin-scene-emoji');
-  if (emoji) emoji.textContent = utils.getEntityIcon(entity);
+  if (emoji) renderEntityIcon(emoji, entity);
 
   const name = root.querySelector('.desktop-pin-scene-name');
   if (name) name.textContent = utils.getEntityDisplayName(entity);
@@ -6502,7 +6627,7 @@ function createDesktopPinToggleEntityControlElement(entity) {
       ? t('Compact action tile')
       : t('Compact {{domain}} controls', { domain: utils.getEntityTypeDescription(entity) }),
   });
-  const icon = utils.escapeHtml(utils.getEntityIcon(entity));
+  const icon = entityIconMarkup(entity);
   const actionLabel = isSceneLike
     ? t('Run')
     : isLock
@@ -6518,7 +6643,10 @@ function createDesktopPinToggleEntityControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText,
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? t('Ready') : actionLabel)}</div>`,
+        // The button below already names the action, so only scenes get a header note.
+        asideMarkup: isSceneLike
+          ? `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Ready'))}</div>`
+          : '',
       })}
       <div class="desktop-pin-panel-body desktop-pin-toggle-body">
         <div class="desktop-pin-panel-meter">
@@ -6572,12 +6700,13 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = isSceneLike ? t('Tap to trigger') : displayState;
 
-  const kpis = root.querySelectorAll('.desktop-pin-panel-kpi');
-  if (kpis[0]) kpis[0].textContent = isSceneLike ? t('Ready') : actionLabel;
-  if (kpis[1]) kpis[1].textContent = isSceneLike ? t('Run') : displayState;
+  const headerKpi = root.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi');
+  const meterKpi = root.querySelector('.desktop-pin-panel-meter .desktop-pin-panel-kpi');
+  if (headerKpi) headerKpi.textContent = t('Ready');
+  if (meterKpi) meterKpi.textContent = isSceneLike ? t('Run') : displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const action = root.querySelector('.desktop-pin-toggle-action');
   if (action) {
@@ -6600,11 +6729,11 @@ function createDesktopPinCameraControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityDisplayState(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Live'))}</div>`,
+        asideMarkup: '',
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter desktop-pin-camera-preview">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-caption">${utils.escapeHtml(t('Open camera feed'))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
@@ -6638,7 +6767,7 @@ function updateExistingDesktopPinCameraControl(root, entity) {
   if (status) status.textContent = utils.getEntityDisplayState(entity);
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   return true;
 }
@@ -6656,11 +6785,11 @@ function createDesktopPinSensorControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(isBinary ? getLocalizedEntityStateLabel(entity.state) : '')}</div>`,
+        asideMarkup: '',
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(value)}</div>
         </div>
       </div>
@@ -6687,11 +6816,8 @@ function updateExistingDesktopPinSensorControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = isBinary ? getLocalizedEntityStateLabel(entity.state) : '';
-
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = utils.getEntityDisplayState(entity);
@@ -6796,7 +6922,7 @@ function applyDesktopPinTimerVisualState(root, entity) {
   // states that are not — paused, finished, idle.
   const badge = root.querySelector('.desktop-pin-timer-badge');
   if (badge) {
-    badge.textContent = getDesktopPinTimerStatusLabel(entity);
+    badge.textContent = t(getDesktopPinTimerStatusLabel(entity));
     badge.classList.toggle('hidden', isRunning);
   }
 
@@ -6903,7 +7029,7 @@ function createDesktopPinActionControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(ctaLabel)}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-action-actions">
@@ -6950,7 +7076,7 @@ function updateExistingDesktopPinActionControl(root, entity) {
   if (kpi) kpi.textContent = t('Ready');
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = ctaLabel;
@@ -7038,7 +7164,7 @@ function createDesktopPinNumericControlElement(entity) {
 
   const meterMarkup = `
     <div class="desktop-pin-panel-meter">
-      <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+      <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
       <div class="desktop-pin-panel-value">${utils.escapeHtml(formatDesktopPinNumericValue(spec.value, entity, { spec }))}</div>
     </div>
   `;
@@ -7141,7 +7267,7 @@ function updateExistingDesktopPinNumericControl(root, entity) {
   if (kpi) kpi.textContent = formattedValue;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = formattedValue;
@@ -7227,7 +7353,7 @@ function createDesktopPinEnumControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(enumState.currentOption || t('Unknown'))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-enum-actions">
@@ -7284,7 +7410,7 @@ function updateExistingDesktopPinEnumControl(root, entity) {
   if (kpi) kpi.textContent = enumState.currentOption || t('Unknown');
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = enumState.currentOption || t('Unknown');
@@ -7307,13 +7433,13 @@ function createDesktopPinPresenceControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-presence-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-presence-focus',
-            label: t('Focus Main'),
+            label: t('Open widget'),
             ariaLabel: t('Focus main widget for {{name}}', {
               name: utils.getEntityDisplayName(entity),
             }),
@@ -7351,7 +7477,7 @@ function updateExistingDesktopPinPresenceControl(root, entity) {
   if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = displayState;
@@ -7401,7 +7527,7 @@ function createDesktopPinWeatherControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(temperatureValue)}</div>
         </div>
         <div class="desktop-pin-weather-stats">
@@ -7410,7 +7536,7 @@ function createDesktopPinWeatherControlElement(entity) {
         <div class="desktop-pin-panel-actions desktop-pin-weather-actions">
           ${createDesktopPinButtonMarkup({
             className: 'desktop-pin-panel-button desktop-pin-weather-focus',
-            label: t('Focus Main'),
+            label: t('Open widget'),
             ariaLabel: t('Focus main widget for {{name}}', {
               name: utils.getEntityDisplayName(entity),
             }),
@@ -7456,7 +7582,7 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   if (kpi) kpi.textContent = temperatureValue;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = temperatureValue;
@@ -7489,7 +7615,7 @@ function getDesktopPinVacuumActionConfig(entity) {
     serviceName,
   });
   const focusAction = {
-    label: t('Focus Main'),
+    label: t('Open widget'),
     ariaLabel: t('Focus main widget for {{name}}', { name }),
     type: 'focus-main',
   };
@@ -7536,6 +7662,28 @@ function getDesktopPinVacuumActionConfig(entity) {
   };
 }
 
+// The action config carries translated labels and aria-labels (see getDesktopPinVacuumActionConfig).
+function getDesktopPinVacuumActionButtonsMarkup(actionConfig) {
+  return `
+    ${createDesktopPinButtonMarkup({
+      className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+      label: actionConfig.primary.label,
+      ariaLabel: actionConfig.primary.ariaLabel,
+      action: 'primary',
+    })}
+    ${
+      actionConfig.secondary
+        ? createDesktopPinButtonMarkup({
+            className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
+            label: actionConfig.secondary.label,
+            ariaLabel: actionConfig.secondary.ariaLabel,
+            action: 'secondary',
+          })
+        : ''
+    }
+  `;
+}
+
 function runDesktopPinVacuumAction(entity, actionConfig) {
   if (!entity?.entity_id || !actionConfig) return;
   if (actionConfig.type === 'focus-main') {
@@ -7561,26 +7709,11 @@ function createDesktopPinVacuumControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${utils.escapeHtml(utils.getEntityIcon(entity))}</div>
+          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-vacuum-actions">
-          ${createDesktopPinButtonMarkup({
-            className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-            label: actionConfig.primary.label,
-            ariaLabel: actionConfig.primary.ariaLabel,
-            action: 'primary',
-          })}
-          ${
-            actionConfig.secondary
-              ? createDesktopPinButtonMarkup({
-                  className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-                  label: actionConfig.secondary.label,
-                  ariaLabel: actionConfig.secondary.ariaLabel,
-                  action: 'secondary',
-                })
-              : ''
-          }
+          ${getDesktopPinVacuumActionButtonsMarkup(actionConfig)}
         </div>
       </div>
     </div>
@@ -7619,31 +7752,14 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
   if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = displayState;
 
   const actions = root.querySelector('.desktop-pin-vacuum-actions');
   if (actions) {
-    actions.innerHTML = `
-      ${createDesktopPinButtonMarkup({
-        className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-        label: actionConfig.primary.label,
-        ariaLabel: actionConfig.primary.ariaLabel,
-        action: 'primary',
-      })}
-      ${
-        actionConfig.secondary
-          ? createDesktopPinButtonMarkup({
-              className: 'desktop-pin-panel-button desktop-pin-vacuum-action',
-              label: actionConfig.secondary.label,
-              ariaLabel: actionConfig.secondary.ariaLabel,
-              action: 'secondary',
-            })
-          : ''
-      }
-    `;
+    actions.innerHTML = getDesktopPinVacuumActionButtonsMarkup(actionConfig);
     actions.querySelectorAll('.desktop-pin-vacuum-action').forEach((button) => {
       bindDesktopPinButton(button, () => {
         const config =
@@ -7678,7 +7794,7 @@ function updateExistingDesktopPinFallbackControl(root, entity) {
   if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) glyph.textContent = utils.getEntityIcon(entity);
+  if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = displayState;
@@ -7781,11 +7897,14 @@ function syncQuickAccessControlButton(control, entityId) {
     : supportProfile.supported
       ? t('Pin to desktop')
       : getDesktopPinUnsupportedMessage(resolvedEntityId);
-  button.textContent = isPinned
-    ? t('Pinned')
-    : supportProfile.supported
-      ? t('Pin')
-      : t('Unsupported');
+  // An icon rather than a word: "Pinned" in German or French ran under the edit buttons.
+  const label = isPinned ? t('Pinned') : supportProfile.supported ? t('Pin') : t('Unsupported');
+  button.setAttribute('aria-label', label);
+  const iconName = isPinned || supportProfile.supported ? 'pin' : 'pin-off';
+  if (button.dataset.icon !== iconName) {
+    button.innerHTML = lineIconMarkup(iconName);
+    button.dataset.icon = iconName;
+  }
 }
 
 function focusQuickAccessPinToggle(entityId) {
@@ -7999,6 +8118,29 @@ function prefetchQuickAccessSensorHistory(entityIds) {
   }
 }
 
+// The page the grid last showed, so a page switch can slide the tiles in from the side of the
+// tab that was picked, and whether the one-time entrance has played.
+let lastRenderedQuickAccessPage = null;
+let quickAccessEntrancePlayed = false;
+
+function playQuickAccessPageMotion(container, config) {
+  const tabs = config.customTabs || [];
+  const index = tabs.findIndex((tab) => tab.id === config.activeTabId);
+  const previous = lastRenderedQuickAccessPage;
+  lastRenderedQuickAccessPage = { id: config.activeTabId, index };
+  if (isReorganizeMode || !container.children.length) return;
+
+  if (previous && previous.id !== config.activeTabId) {
+    animateEnter(container.children, { direction: index >= previous.index ? 1 : -1 });
+    return;
+  }
+  // The first time real tiles appear, let them rise in once.
+  if (!quickAccessEntrancePlayed && Object.keys(state.STATES || {}).length > 0) {
+    quickAccessEntrancePlayed = true;
+    animateEnter(container.children, { direction: 0 });
+  }
+}
+
 function renderQuickControls() {
   try {
     const container = document.getElementById('quick-controls');
@@ -8105,6 +8247,7 @@ function renderQuickControls() {
     }
     // After insertion, so the grid's real column count is known.
     applyComparisonGraphSpans(container);
+    playQuickAccessPageMotion(container, config);
     setupQuickAccessGridKeyboardNavigation();
     syncQuickAccessRovingTabIndex();
     refreshVisibleEntityCache();
@@ -8274,8 +8417,9 @@ function getDesktopPinFallbackDescriptor(
       state: 'unavailable',
       label,
       kicker: t('Unavailable'),
-      title: t('{{name}} is unavailable', { name: label }),
-      detail: t('Latest Home Assistant data reports this entity as unavailable right now.'),
+      // The kicker already says "Unavailable"; the name and one plain sentence fit a small pin.
+      title: label,
+      detail: t("Home Assistant can't reach it right now."),
       showFocusMain: true,
       canOpen: false,
     };
@@ -8692,7 +8836,10 @@ function createControlElement(entity, options = {}) {
         if (!shouldBlockInteraction(div))
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
-      div.title = `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`;
+      div.title = t('{{name}}: {{state}}', {
+        name: utils.getEntityDisplayName(entity),
+        state: utils.getEntityDisplayState(entity),
+      });
     } else if (isTimer) {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
@@ -8747,7 +8894,6 @@ function createControlElement(entity, options = {}) {
       div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
     }
 
-    const icon = utils.escapeHtml(utils.getEntityIcon(entity));
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
 
@@ -8757,7 +8903,10 @@ function createControlElement(entity, options = {}) {
 
       if (sensorDisplay) {
         div.classList.add('sensor-entity', 'sensor-numeric-entity');
-        div.title = `${utils.getEntityDisplayName(entity)}: ${sensorDisplay.text}`;
+        div.title = t('{{name}}: {{state}}', {
+          name: utils.getEntityDisplayName(entity),
+          state: sensorDisplay.text,
+        });
         const sensorLabel = escapeHtmlAttribute(sensorDisplay.text);
         stateDisplay = `
         <div class="control-state control-sensor-readout" aria-label="${sensorLabel}">
@@ -8789,12 +8938,17 @@ function createControlElement(entity, options = {}) {
     } else if (domain === 'calendar') {
       div.classList.add('calendar-entity');
       stateDisplay = renderCalendarTileStateMarkup(entity);
+    } else if (!hasCameraPreview) {
+      const stateText = getQuickAccessTileStateText(entity);
+      if (stateText) {
+        stateDisplay = `<div class="control-state">${utils.escapeHtml(stateText)}</div>`;
+      }
     }
 
     // Special layout for timer entities
     if (isTimer) {
       div.innerHTML = `
-        <div class="control-icon timer-icon">${icon}</div>
+        <div class="control-icon timer-icon"></div>
         <div class="control-info timer-layout">
           <div class="control-name">${name}</div>
           ${stateDisplay}
@@ -8805,7 +8959,7 @@ function createControlElement(entity, options = {}) {
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player layout will be handled in setupMediaPlayerControls
       div.innerHTML = `
-        <div class="control-icon">${icon}</div>
+        <div class="control-icon"></div>
         <div class="control-info">
           <div class="control-name">${name}</div>
           ${stateDisplay}
@@ -8819,13 +8973,13 @@ function createControlElement(entity, options = {}) {
           <img class="camera-tile-preview-image" data-camera-buffer-active="true" data-camera-buffer-loaded="false" alt="" decoding="async">
           <img class="camera-tile-preview-image" data-camera-buffer-active="false" data-camera-buffer-loaded="false" alt="" decoding="async">
           <div class="camera-tile-fallback">
-            <div class="control-icon">${icon}</div>
+            <div class="control-icon"></div>
           </div>
           <div class="camera-tile-scrim"></div>
         </div>
         <div class="camera-tile-preview-badge" aria-hidden="true">
           <span class="camera-tile-preview-dot"></span>
-          <span class="camera-tile-preview-badge-label">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Live' : 'Snapshot'))}</span>
+          <span class="camera-tile-preview-badge-label">${utils.escapeHtml(hasLiveCameraPreview ? t('Live') : t('Snapshot'))}</span>
         </div>
         <div class="camera-tile-copy">
           <div class="control-name">${name}</div>
@@ -8836,13 +8990,15 @@ function createControlElement(entity, options = {}) {
       div.dataset.cameraPreviewRefresh = cameraPreviewRefresh;
     } else {
       div.innerHTML = `
-        <div class="control-icon">${icon}</div>
+        <div class="control-icon"></div>
         <div class="control-info">
           <div class="control-name">${name}</div>
           ${stateDisplay}
         </div>
       `;
     }
+
+    div.querySelectorAll('.control-icon').forEach((iconEl) => renderEntityIcon(iconEl, entity));
 
     if (['light', 'climate', 'fan', 'cover', 'media_player'].includes(domain)) {
       // Sibling native buttons expose both actions without nesting a button inside role=button.
@@ -8854,7 +9010,8 @@ function createControlElement(entity, options = {}) {
       const details = document.createElement('button');
       details.type = 'button';
       details.className = 'tile-details-button';
-      details.textContent = t('Controls');
+      details.title = t('Controls');
+      details.appendChild(createLineIcon('sliders-horizontal'));
       details.setAttribute(
         'aria-label',
         t('Controls for {{name}}', { name: utils.getEntityDisplayName(entity) })
@@ -8922,7 +9079,7 @@ function createUnavailableElement(entityId) {
     });
 
     div.innerHTML = `
-      <div class="control-icon unavailable-icon">⚠️</div>
+      <div class="control-icon unavailable-icon" data-icon-kind="line">${lineIconMarkup('triangle-alert')}</div>
       <div class="control-info">
         <div class="control-name">${utils.escapeHtml(displayName)}</div>
         <div class="control-state unavailable-state"></div>
@@ -9209,7 +9366,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   const isTimer = displayEntity.entity_id.startsWith('timer.') || isTimerSensor;
   const domain = getEntityDomain(displayEntity.entity_id);
   const icon = div.querySelector('.control-icon');
-  if (icon) icon.textContent = utils.getEntityIcon(displayEntity);
+  if (icon) renderEntityIcon(icon, displayEntity);
 
   const name = div.querySelector('.control-name');
   if (name) name.textContent = utils.getEntityDisplayName(displayEntity);
@@ -9225,8 +9382,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
         showSensorDetails(state.STATES?.[displayEntity.entity_id] || displayEntity);
     };
     div.title = sensorDisplay
-      ? `${utils.getEntityDisplayName(displayEntity)}: ${sensorDisplay.text}`
-      : `${utils.getEntityDisplayName(displayEntity)}: ${utils.getEntityDisplayState(displayEntity)}`;
+      ? t('{{name}}: {{state}}', {
+          name: utils.getEntityDisplayName(displayEntity),
+          state: sensorDisplay.text,
+        })
+      : t('{{name}}: {{state}}', {
+          name: utils.getEntityDisplayName(displayEntity),
+          state: utils.getEntityDisplayState(displayEntity),
+        });
     if (sensorDisplay) {
       div.classList.add('sensor-numeric-entity');
       if (stateEl) stateEl.setAttribute('aria-label', sensorDisplay.text);
@@ -9305,6 +9468,8 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
     if (expectsPreview) {
       camera.mountCameraPreview(div, displayEntity.entity_id, cameraPreviewRefresh);
+    } else {
+      setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
     }
     return true;
   }
@@ -9336,6 +9501,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
     return true;
   }
 
+  setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
   div.onclick = () => {
     if (!shouldBlockInteraction(div))
@@ -9365,7 +9531,7 @@ function showSensorDetails(entity) {
 
       const icon = document.createElement('div');
       icon.className = 'sensor-detail-icon';
-      icon.textContent = utils.getEntityIcon(entity);
+      renderEntityIcon(icon, entity);
 
       const readout = document.createElement('div');
       readout.className = 'sensor-detail-readout';
@@ -9399,7 +9565,10 @@ function showSensorDetails(entity) {
     }
 
     uiUtils.showToast(
-      `${utils.getEntityDisplayName(entity)}: ${utils.getEntityDisplayState(entity)}`,
+      t('{{name}}: {{state}}', {
+        name: utils.getEntityDisplayName(entity),
+        state: utils.getEntityDisplayState(entity),
+      }),
       'info',
       3000
     );
@@ -9426,6 +9595,56 @@ function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' }
       if (modal.isConnected) uiUtils.trapFocus(modal);
     }, 0);
   }
+}
+
+/**
+ * An entity Home Assistant reports as unavailable keeps its pop-up (so its name and last values
+ * stay readable) but says so up front and disables the controls, instead of showing "Off" and
+ * sliders that would only fail. Dialogs that follow live state call this again after each update,
+ * so the note and disabled controls also clear when the entity comes back.
+ */
+function showUnavailableDialogState(modal, entity) {
+  if (!modal) return;
+  if (entity?.state !== 'unavailable') {
+    if (!modal.classList.contains('entity-unavailable')) return;
+    modal.classList.remove('entity-unavailable');
+    modal.querySelector('.dialog-unavailable-note')?.remove();
+    // Only re-enable what this disabled; controls a device can't use stay disabled.
+    modal.querySelectorAll('[data-unavailable-disabled]').forEach((control) => {
+      control.disabled = false;
+      delete control.dataset.unavailableDisabled;
+    });
+    return;
+  }
+  const body = modal.querySelector('.modal-body');
+  if (!body) return;
+  if (!modal.classList.contains('entity-unavailable')) {
+    modal.classList.add('entity-unavailable');
+    const note = document.createElement('div');
+    note.className = 'dialog-unavailable-note';
+    note.setAttribute('role', 'status');
+    note.innerHTML = `
+    <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
+    <span class="dialog-unavailable-note-text">
+      <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
+      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Close this and try again once it's back."))}</span>
+    </span>`;
+    body.prepend(note);
+  }
+  modal
+    .querySelectorAll(
+      '.modal-body input, .modal-body button, .modal-body select, .modal-footer .btn-primary'
+    )
+    .forEach((control) => {
+      if (control.disabled) return;
+      control.disabled = true;
+      control.dataset.unavailableDisabled = 'true';
+    });
+  modal
+    .querySelectorAll('#brightness-value-large, #fan-speed-value, #cover-position-value')
+    .forEach((value) => {
+      value.textContent = t('Unavailable');
+    });
 }
 
 function releaseAccessibleDialogModal(modal) {
@@ -10284,7 +10503,7 @@ function showMediaDetail(entity) {
               !supportsSeek &&
               !supportsAnyPlaybackToggle &&
               !mediaCapabilities.canNextTrack
-                ? `<span class="control-capability-note">${utils.escapeHtml(t('This media player does not advertise transport controls.'))}</span>`
+                ? `<span class="control-capability-note">${utils.escapeHtml(t("This player can't be controlled from here."))}</span>`
                 : ''
             }
           </div>
@@ -11124,13 +11343,6 @@ function updateWeatherFromHA() {
   }
 }
 
-// Home Assistant reports conditions as ids ("partlycloudy"); show the translated label instead.
-function getWeatherConditionLabel(condition) {
-  if (!condition) return '--';
-  const label = WEATHER_LABELS?.[normalizeWeatherCondition(condition)];
-  return label ? t(label) : condition;
-}
-
 function getWeatherEffectForState(condition) {
   if (!condition) return null;
   const cond = condition.toLowerCase();
@@ -11265,12 +11477,11 @@ function populateWeatherEntitiesList() {
       item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       item.dataset.weatherEntityId = entityId;
 
-      const icon = utils.getEntityIcon(entity);
       const displayName = utils.getEntityDisplayName(entity);
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon" aria-hidden="true">${utils.escapeHtml(icon)}</span>
+          <span class="entity-icon" aria-hidden="true">${entityIconMarkup(entity)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
@@ -11443,7 +11654,7 @@ function updateMediaTile() {
             img.src = proxyUrl;
             img.alt = t('Album art');
             img.onerror = function () {
-              this.parentElement.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+              this.parentElement.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
               lastMediaTileArtworkSrc = '';
             };
             artworkContainer.innerHTML = '';
@@ -11451,7 +11662,7 @@ function updateMediaTile() {
             lastMediaTileArtworkSrc = proxyUrl;
           }
         } else if (lastMediaTileArtworkSrc !== '') {
-          artworkContainer.innerHTML = '<div class="media-tile-artwork-placeholder">🎵</div>';
+          artworkContainer.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
           lastMediaTileArtworkSrc = '';
         }
       }
@@ -11540,39 +11751,31 @@ function callMediaTileService(action) {
 function showNoConnectionMessage() {
   try {
     const container = document.getElementById('quick-controls');
-    if (container) {
-      // Check if configuration needs setup
-      // An OAuth setup without a token is configured but waiting on its authorization; the
-      // main window's connection panel explains that, so it never gets setup instructions.
-      if (
-        !state.CONFIG ||
-        !state.CONFIG.homeAssistant ||
-        (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
-          state.CONFIG.homeAssistant.authMethod !== 'oauth')
-      ) {
-        container.innerHTML = `
-          <div class="status-message">
-            <h3>⚙️ ${utils.escapeHtml(t('Setup Required'))}</h3>
-            <p>${utils.escapeHtml(t('Your Home Assistant connection needs to be configured.'))}</p>
-            <p>${utils.escapeHtml(t('Click the settings button (⚙️) in the top right to:'))}</p>
-            <ul style="margin: 10px 0; padding-left: 20px;">
-              <li>${utils.escapeHtml(t('Set your Home Assistant URL'))}</li>
-              <li>${utils.escapeHtml(t('Add your Long-Lived Access Token'))}</li>
-            </ul>
-            <p><strong>${utils.escapeHtml(t('Status:'))}</strong> ${utils.escapeHtml(t('Configuration incomplete'))}</p>
-          </div>`;
-      } else {
-        container.innerHTML = `
-          <div class="status-message">
-            <h3>🔄 ${utils.escapeHtml(t('Connecting to Home Assistant'))}</h3>
-            <p>${utils.escapeHtml(t('Attempting to connect to: {{url}}', { url: state.CONFIG.homeAssistant.url }))}</p>
-            <p><strong>${utils.escapeHtml(t('Status:'))}</strong> ${utils.escapeHtml(t('Connecting...'))}</p>
-            <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">
-              ${utils.escapeHtml(t('If this persists, check your Home Assistant URL and token in settings.'))}
-            </p>
-          </div>`;
-      }
-    }
+    if (!container) return;
+    // An OAuth setup without a token is configured but waiting on its authorization; the
+    // main window's connection panel explains that, so it never gets setup instructions.
+    const needsSetup =
+      !state.CONFIG ||
+      !state.CONFIG.homeAssistant ||
+      (state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN' &&
+        state.CONFIG.homeAssistant.authMethod !== 'oauth');
+    const title = needsSetup ? t('Set up your connection') : t('Connecting to Home Assistant...');
+    const detail = needsSetup
+      ? t(
+          'Connect your Home Assistant server to start building a compact control panel for your desktop.'
+        )
+      : t('If this takes a while, check the Home Assistant URL and sign-in in Settings.');
+    container.innerHTML = `
+      <div class="status-message${needsSetup ? '' : ' is-connecting'}" role="status">
+        <span class="status-message-icon" aria-hidden="true">${lineIconMarkup(needsSetup ? 'settings' : 'refresh-cw')}</span>
+        <h3 class="status-message-title">${utils.escapeHtml(title)}</h3>
+        ${needsSetup ? '' : `<p class="status-message-url">${utils.escapeHtml(state.CONFIG.homeAssistant.url || '')}</p>`}
+        <p class="status-message-detail">${utils.escapeHtml(detail)}</p>
+        <button type="button" class="btn btn-secondary status-message-action">${utils.escapeHtml(t('Open Settings'))}</button>
+      </div>`;
+    container
+      .querySelector('.status-message-action')
+      ?.addEventListener('click', () => document.getElementById('settings-btn')?.click());
   } catch (error) {
     console.error('Error showing no connection message:', error);
   }
@@ -11815,7 +12018,7 @@ function showBrightnessSlider(light) {
         <div class="modal-body">
           <div class="brightness-content">
             <div class="brightness-icon-wrapper">
-              <div class="brightness-icon" id="brightness-icon">💡</div>
+              <div class="brightness-icon" id="brightness-icon">${lineIconMarkup('lightbulb')}</div>
             </div>
             <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : utils.escapeHtml(t(light.state === 'on' ? 'On' : 'Off'))}</div>
             <div class="brightness-label">${utils.escapeHtml(t(canSetBrightness ? 'Brightness' : 'State'))}</div>
@@ -11907,12 +12110,14 @@ function showBrightnessSlider(light) {
 
     // Update turn off/on button text
     const updateTurnButton = () => {
-      if (!canSetBrightness && valueLarge) valueLarge.textContent = t(lightIsOn ? 'On' : 'Off');
+      if (!canSetBrightness && valueLarge) valueLarge.textContent = lightIsOn ? t('On') : t('Off');
       if (turnOffBtn) {
         turnOffBtn.textContent = lightIsOn ? t('Turn Off') : t('Turn On');
       }
     };
     updateTurnButton();
+    // After updateTurnButton, which would otherwise write "Off" over "Unavailable".
+    showUnavailableDialogState(modal, light);
 
     // Close handlers
     let isClosing = false;
@@ -11939,24 +12144,17 @@ function showBrightnessSlider(light) {
     setTimeout(() => modal.classList.add('modal-open'), 10);
 
     // Update icon and accent based on brightness
+    // One bulb whose glow follows the level (see .brightness-icon in styles.css); off swaps in
+    // the struck-through bulb.
     const updateIconAndAccent = (value) => {
       if (!icon) return;
-      if (value === 0) {
-        icon.textContent = '💤';
-        icon.className = 'brightness-icon brightness-off';
-      } else if (value <= 25) {
-        icon.textContent = '🌑';
-        icon.className = 'brightness-icon brightness-low';
-      } else if (value <= 50) {
-        icon.textContent = '🌓';
-        icon.className = 'brightness-icon brightness-mid';
-      } else if (value <= 75) {
-        icon.textContent = '🌕';
-        icon.className = 'brightness-icon brightness-high';
-      } else {
-        icon.textContent = '☀️';
-        icon.className = 'brightness-icon brightness-max';
-      }
+      const iconName = value === 0 ? 'lightbulb-off' : 'lightbulb';
+      if (icon.firstElementChild?.dataset.icon !== iconName) setLineIconContent(icon, iconName);
+      if (value === 0) icon.className = 'brightness-icon brightness-off';
+      else if (value <= 25) icon.className = 'brightness-icon brightness-low';
+      else if (value <= 50) icon.className = 'brightness-icon brightness-mid';
+      else if (value <= 75) icon.className = 'brightness-icon brightness-high';
+      else icon.className = 'brightness-icon brightness-max';
     };
 
     // Slider behavior with debounce
@@ -12137,6 +12335,11 @@ function showBrightnessSlider(light) {
         return;
       }
       if (!nextEntity) return;
+      syncLightControls(nextEntity);
+      // After the values and turn button, which would otherwise write over "Unavailable".
+      showUnavailableDialogState(modal, nextEntity);
+    };
+    const syncLightControls = (nextEntity) => {
       // Only a state pushed while a command is in flight can reflect it; replay that one later.
       missedLiveUpdate = lightCommandsInFlight > 0;
       if (hasPendingLightCommand()) return;
@@ -12376,7 +12579,7 @@ function showClimateControls(climateEntity) {
                 value="${targetTemp}"
                 id="climate-slider"
                 class="climate-slider"
-                aria-label="${escapeHtmlAttribute(t('Target Temperature'))}"
+                aria-label="${escapeHtmlAttribute(t('Target temperature'))}"
               />
               <div class="climate-slider-labels">
                 <span>${formatNumber(minTemp)}${tempUnit}</span>
@@ -12448,18 +12651,18 @@ function showClimateControls(climateEntity) {
     const fanButtonsContainer = modal.querySelector('#climate-fan-buttons');
     const presetButtonsContainer = modal.querySelector('#climate-preset-buttons');
 
-    // Helper function to get mode icons
+    // Line icon names for the HVAC modes.
     function getModeIcon(mode) {
       const icons = {
-        off: '⏻',
-        heat: '🔥',
-        cool: '❄️',
-        auto: '🔄',
-        heat_cool: '🔄',
-        fan_only: '💨',
-        dry: '💧',
+        off: 'power',
+        heat: 'flame',
+        cool: 'snowflake',
+        auto: 'refresh-cw',
+        heat_cool: 'refresh-cw',
+        fan_only: 'fan',
+        dry: 'droplet',
       };
-      return icons[mode] || '⚙️';
+      return icons[mode] || 'settings';
     }
 
     function formatModeLabel(mode) {
@@ -12483,7 +12686,7 @@ function showClimateControls(climateEntity) {
 
         const icon = document.createElement('span');
         icon.className = 'climate-mode-icon';
-        icon.textContent = getModeIcon(modeValue);
+        icon.appendChild(createLineIcon(getModeIcon(modeValue)));
         button.appendChild(icon);
 
         const label = document.createElement('span');
@@ -12524,6 +12727,8 @@ function showClimateControls(climateEntity) {
     );
     const fanModeButtons = modal.querySelectorAll('.climate-fan-mode-btn');
     const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
+    // After the mode, fan-mode and preset buttons exist, so they are disabled too.
+    showUnavailableDialogState(modal, climateEntity);
     let confirmedTargetTemp = targetTemp;
     let confirmedMode = currentMode;
     let confirmedFanMode = currentFanMode;
@@ -12604,6 +12809,7 @@ function showClimateControls(climateEntity) {
             }
           }
         }
+        showUnavailableDialogState(modal, nextEntity);
       }
     });
     if (closeBtn) closeBtn.onclick = closeModal;
@@ -12756,7 +12962,7 @@ function showFanControls(fanEntity) {
         <div class="modal-body">
           <div class="fan-content">
             <div class="fan-icon-wrapper">
-              <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">💨</div>
+              <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
             <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
             <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
@@ -12782,18 +12988,24 @@ function showFanControls(fanEntity) {
               <button class="fan-preset-btn" data-speed="66">${utils.escapeHtml(t('Medium'))}</button>
               <button class="fan-preset-btn" data-speed="100">${utils.escapeHtml(t('High'))}</button>
             </div>`
-                : `<p class="control-capability-note">${utils.escapeHtml(t('This fan does not advertise percentage control.'))}</p>`
+                : `<p class="control-capability-note">${utils.escapeHtml(t('This fan only turns on and off.'))}</p>`
             }
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="fan-cancel">${utils.escapeHtml(t('Close'))}</button>
+          ${
+            capabilities.canSetPercentage
+              ? ''
+              : `<button class="btn btn-primary" id="fan-power">${utils.escapeHtml(isOn ? t('Turn Off') : t('Turn On'))}</button>`
+          }
         </div>
       </div>
     `;
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'fan-title' });
+    showUnavailableDialogState(modal, fanEntity);
 
     const slider = modal.querySelector('#fan-slider');
     const speedValue = modal.querySelector('#fan-speed-value');
@@ -12834,6 +13046,13 @@ function showFanControls(fanEntity) {
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
+    const powerBtn = modal.querySelector('#fan-power');
+    if (powerBtn) {
+      powerBtn.onclick = () => {
+        toggleEntity(state.STATES?.[fanEntity.entity_id] || fanEntity);
+        closeModal();
+      };
+    }
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
     });
@@ -12884,6 +13103,14 @@ function showFanControls(fanEntity) {
         return;
       }
       if (!nextEntity) return;
+      syncFanControls(nextEntity);
+      // After the values, which would otherwise write over "Unavailable".
+      showUnavailableDialogState(modal, nextEntity);
+    };
+    const syncFanControls = (nextEntity) => {
+      if (powerBtn) {
+        powerBtn.textContent = nextEntity.state === 'on' ? t('Turn Off') : t('Turn On');
+      }
       missedLiveUpdate = fanCommandsInFlight > 0;
       if (missedLiveUpdate || speedDebounceTimer) return;
       const percentage = Number(nextEntity.attributes?.percentage);
@@ -12930,10 +13157,18 @@ function showCoverControls(coverEntity) {
   try {
     const capabilities = getDesktopPinCapabilities(coverEntity);
     const availableActions = [
-      capabilities.canClose ? { action: 'close_cover', icon: '⬇', label: t('Close') } : null,
-      capabilities.canStop ? { action: 'stop_cover', icon: '⏸', label: t('Stop') } : null,
+      capabilities.canClose
+        ? { action: 'close_cover', icon: lineIconMarkup('chevron-down'), label: t('Close') }
+        : null,
+      capabilities.canStop
+        ? { action: 'stop_cover', icon: lineIconMarkup('pause'), label: t('Stop') }
+        : null,
       capabilities.canOpen
-        ? { action: 'open_cover', icon: '⬆', label: translateInContext('Action: Open', 'Open') }
+        ? {
+            action: 'open_cover',
+            icon: lineIconMarkup('chevron-up'),
+            label: translateInContext('Action: Open', 'Open'),
+          }
         : null,
     ].filter(Boolean);
     const name = utils.escapeHtml(utils.getEntityDisplayName(coverEntity));
@@ -12955,7 +13190,7 @@ function showCoverControls(coverEntity) {
           <div class="cover-content">
             <div class="cover-visual">
               <div class="cover-icon-container">
-                <div class="cover-icon" id="cover-icon">🪟</div>
+                <div class="cover-icon" id="cover-icon">${entityIconMarkup(coverEntity)}</div>
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
@@ -12973,7 +13208,7 @@ function showCoverControls(coverEntity) {
                 value="${currentPosition}"
                 id="cover-slider"
                 class="cover-slider"
-                aria-label="${escapeHtmlAttribute(t('Cover Position'))}"
+                aria-label="${escapeHtmlAttribute(t('Cover position'))}"
               />
               <div class="cover-slider-labels">
                 <span>${utils.escapeHtml(t('Closed'))}</span>
@@ -12996,7 +13231,7 @@ function showCoverControls(coverEntity) {
                 )
                 .join('')}
             </div>`
-                : `<p class="control-capability-note">${utils.escapeHtml(t('This cover does not advertise movement controls.'))}</p>`
+                : `<p class="control-capability-note">${utils.escapeHtml(t("This cover can't be moved from here."))}</p>`
             }
           </div>
         </div>
@@ -13008,6 +13243,7 @@ function showCoverControls(coverEntity) {
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'cover-title' });
+    showUnavailableDialogState(modal, coverEntity);
 
     const slider = modal.querySelector('#cover-slider');
     const positionValue = modal.querySelector('#cover-position-value');
@@ -13130,6 +13366,11 @@ function showCoverControls(coverEntity) {
         return;
       }
       if (!nextEntity) return;
+      syncCoverControls(nextEntity);
+      // After the values, which would otherwise write over "Unavailable".
+      showUnavailableDialogState(modal, nextEntity);
+    };
+    const syncCoverControls = (nextEntity) => {
       missedLiveUpdate = coverCommandsInFlight > 0;
       if (missedLiveUpdate || positionDebounceTimer) return;
       if (!slider) {
@@ -13200,6 +13441,13 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
         });
 
       list.innerHTML = '';
+      if (!scoredEntities.length) {
+        const empty = document.createElement('p');
+        empty.className = 'entity-selector-empty';
+        empty.textContent = t('No matching entities');
+        list.appendChild(empty);
+        return;
+      }
 
       scoredEntities.forEach(({ entity }) => {
         const item = document.createElement('div');
@@ -13213,7 +13461,7 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
 
         const icon = document.createElement('span');
         icon.className = 'entity-icon';
-        icon.textContent = utils.getEntityIcon(entity);
+        renderEntityIcon(icon, entity);
 
         const info = document.createElement('div');
         info.className = 'entity-item-info';
@@ -13231,6 +13479,8 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
         info.appendChild(id);
         main.appendChild(icon);
         main.appendChild(info);
+
+        item.classList.toggle('is-added', !!isInActiveView && !isOverlayDemo);
 
         const actions = document.createElement('div');
         actions.className = 'entity-item-actions quick-access-entity-actions';
@@ -13308,8 +13558,14 @@ function initUpdateUI() {
     // Set current version
     const currentVersionEl = document.getElementById('current-version');
     if (currentVersionEl) {
-      currentVersionEl.textContent = `v${version}`;
+      currentVersionEl.textContent = version;
     }
+
+    // The button labels are owned here (ids on the i18n guardrail's dynamic list).
+    const checkUpdatesLabel = document.getElementById('check-updates-text');
+    if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('Check for updates');
+    const installUpdateLabel = document.getElementById('install-update-text');
+    if (installUpdateLabel) installUpdateLabel.textContent = t('Install update');
 
     // Wire up check for updates button
     const checkUpdatesBtn = document.getElementById('check-updates-btn');
@@ -13449,7 +13705,7 @@ function initUpdateUI() {
             );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
-              installUpdateBtn.textContent = t('Install Update');
+              installUpdateBtn.textContent = t('Install update');
               installUpdateBtn.classList.remove('hidden');
             }
             if (updateProgress) updateProgress.classList.add('hidden');
