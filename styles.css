@@ -6579,7 +6579,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 }
 
 body.density-compact #quick-controls .control-item.camera-preview-tile {
-  min-height: 78px;
+  min-height: 72px;
   padding: 0;
 }
 
@@ -14369,4 +14369,88 @@ select option {
   border-radius: var(--radius-full);
   background: rgba(var(--accent-rgb), 0.18);
   box-shadow: none;
+}
+
+/* ============================================
+   UNIFORM TILE HEIGHT
+   Every standard Quick Access tile is exactly one row tall (96px, 72px in
+   compact density), so rows line up however the tiles are mixed. Only the
+   tiles sized by their content, comparison graphs and media players, are
+   exempt. Tiles whose content used to push past the row (number sensors
+   with a graph, gauge or extra-large value) are tightened to fit.
+   ============================================ */
+
+#quick-controls {
+  --qa-tile-height: 96px;
+}
+
+body.density-compact #quick-controls {
+  --qa-tile-height: 72px;
+}
+
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
+  height: var(--qa-tile-height);
+  min-height: var(--qa-tile-height);
+}
+
+/* Number sensors: a slightly smaller icon and tighter spacing, with the graph
+   band trimmed so icon, name, value and graph fit one row. */
+#quick-controls .control-item.sensor-numeric-entity {
+  gap: 4px;
+  padding: 10px 8px 0;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-icon {
+  font-size: var(--font-size-xl);
+  min-height: var(--font-size-xl);
+  margin-bottom: 0;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-name {
+  margin-bottom: 2px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-info {
+  padding-bottom: 16px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
+  bottom: 2px;
+  height: 14px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] .control-info {
+  padding-bottom: 8px;
+}
+
+/* A gauge is the tile's picture, so it stands in for the icon. */
+#quick-controls .control-item.sensor-numeric-entity[data-chart-type='gauge'] .control-icon {
+  display: none;
+}
+
+#quick-controls .control-item.sensor-numeric-entity[data-chart-type='gauge'] .control-info {
+  padding-bottom: 30px;
+}
+
+/* Compact rows are 72px: the value carries the tile, so the icon steps aside. */
+body.density-compact
+  #quick-controls
+  .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+body.density-compact #quick-controls .control-item.sensor-numeric-entity .control-icon {
+  display: none;
+}
+
+body.density-compact
+  #quick-controls
+  .control-item.sensor-numeric-entity[data-chart-type='gauge']
+  .control-info {
+  padding-bottom: 22px;
+}
+
+body.density-compact #quick-controls .control-item.sensor-numeric-entity .control-sensor-gauge {
+  height: 24px;
 }
