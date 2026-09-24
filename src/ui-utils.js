@@ -1164,8 +1164,7 @@ function getConnectionStatusSummary(connected) {
 function getConnectionStatusDetail(statusElement) {
   const explicitDetail = statusElement?.dataset?.statusDetail?.trim();
   if (explicitDetail) return explicitDetail;
-  const summary = statusElement?.dataset?.statusSummary || '';
-  if (summary === t('Connected to Home Assistant')) return t('Real-time updates active.');
+  if (statusElement?.classList?.contains('connected')) return t('Real-time updates active.');
   return t('Disconnected from Home Assistant. Retrying automatically.');
 }
 
@@ -1189,8 +1188,10 @@ function showConnectionStatusTooltip(target, { pinned = false } = {}) {
   const tooltip = ensureConnectionStatusTooltip();
   const titleEl = tooltip.querySelector('.connection-status-tooltip-title');
   const detailEl = tooltip.querySelector('.connection-status-tooltip-detail');
-  const summary =
-    target.dataset.statusSummary || target.title || t('Disconnected from Home Assistant');
+  // Built from the connection state each time, so the tooltip follows a language change.
+  const summary = target.dataset.statusSummary
+    ? getConnectionStatusSummary(target.classList.contains('connected'))
+    : target.title || t('Disconnected from Home Assistant');
   const detail = getConnectionStatusDetail(target);
   if (titleEl) titleEl.textContent = summary;
   if (detailEl) detailEl.textContent = detail;

@@ -13127,6 +13127,14 @@ function toggleQuickAccess(entityId) {
   }
 }
 
+let updateStatusRender = null;
+
+// Re-renders the Settings update status line in the current language.
+function relocalizeUpdateStatus() {
+  const updateStatusText = document.getElementById('update-status-text');
+  if (updateStatusText && updateStatusRender) updateStatusText.textContent = updateStatusRender();
+}
+
 function initUpdateUI() {
   try {
     // Use version injected by Vite at build time
@@ -13146,6 +13154,11 @@ function initUpdateUI() {
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
     let portableDownloadUrl = null;
+    // Keep how the status line was produced so a language change can re-render it.
+    const showUpdateStatus = (render) => {
+      updateStatusRender = render;
+      if (updateStatusText) updateStatusText.textContent = render();
+    };
 
     // Enable the check button
     if (checkUpdatesBtn) {
@@ -13153,22 +13166,19 @@ function initUpdateUI() {
       checkUpdatesBtn.onclick = async () => {
         // Disable button and show checking status
         if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-        if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
+        showUpdateStatus(() => t('Checking for updates...'));
 
         try {
           const result = await window.electronAPI.checkForUpdates();
           if (result.status === 'dev') {
             // In development mode, auto-updater doesn't work
-            if (updateStatusText)
-              updateStatusText.textContent = t('Auto-updates only work in packaged builds');
+            showUpdateStatus(() => t('Auto-updates only work in packaged builds'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
           } else if (result.status === 'portable' || result.status === 'manual') {
             portableDownloadUrl = result.downloadUrl || null;
-            if (updateStatusText) {
-              const baseMessage =
-                result.message || t('Portable builds do not support in-app updates.');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(
+              () => result.message || t('Portable builds do not support in-app updates.')
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
@@ -13182,21 +13192,17 @@ function initUpdateUI() {
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'none') {
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const baseMessage = result.message || t('You are up to date!');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(() => result.message || t('You are up to date!'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'error') {
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const baseMessage = t('Error: {{error}}', {
+            showUpdateStatus(() =>
+              t('Error: {{error}}', {
                 error: result.error || t('Unknown error'),
-              });
-              updateStatusText.textContent = baseMessage;
-            }
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13205,7 +13211,7 @@ function initUpdateUI() {
           // The button will be re-enabled by the event handlers
         } catch (error) {
           console.error('Error checking for updates:', error);
-          if (updateStatusText) updateStatusText.textContent = t('Error checking for updates');
+          showUpdateStatus(() => t('Error checking for updates'));
           if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
         }
       };
@@ -13234,7 +13240,7 @@ function initUpdateUI() {
         switch (data.status) {
           case 'checking':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('Checking for updates...');
+            showUpdateStatus(() => t('Checking for updates...'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13242,17 +13248,16 @@ function initUpdateUI() {
 
           case 'available':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = t('Update available: v{{version}}', { version });
-            }
+            showUpdateStatus(() =>
+              t('Update available: v{{version}}', { version: data.info?.version || 'unknown' })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (updateProgress) updateProgress.classList.remove('hidden');
             break;
 
           case 'none':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('You are up to date!');
+            showUpdateStatus(() => t('You are up to date!'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13260,7 +13265,7 @@ function initUpdateUI() {
 
           case 'downloading':
             portableDownloadUrl = null;
-            if (updateStatusText) updateStatusText.textContent = t('Downloading update...');
+            showUpdateStatus(() => t('Downloading update...'));
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
             if (updateProgress) updateProgress.classList.remove('hidden');
             if (data.progress) {
@@ -13272,10 +13277,11 @@ function initUpdateUI() {
 
           case 'downloaded':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              const version = data.info?.version || 'unknown';
-              updateStatusText.textContent = t('Update v{{version}} ready to install', { version });
-            }
+            showUpdateStatus(() =>
+              t('Update v{{version}} ready to install', {
+                version: data.info?.version || 'unknown',
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               installUpdateBtn.textContent = t('Install Update');
@@ -13286,11 +13292,11 @@ function initUpdateUI() {
 
           case 'error':
             portableDownloadUrl = null;
-            if (updateStatusText) {
-              updateStatusText.textContent = t('Error: {{error}}', {
+            showUpdateStatus(() =>
+              t('Error: {{error}}', {
                 error: data.error || t('Unknown error'),
-              });
-            }
+              })
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -13299,11 +13305,9 @@ function initUpdateUI() {
           case 'portable':
           case 'manual':
             portableDownloadUrl = data.downloadUrl || null;
-            if (updateStatusText) {
-              const baseMessage =
-                data.message || t('Portable builds do not support in-app updates.');
-              updateStatusText.textContent = baseMessage;
-            }
+            showUpdateStatus(
+              () => data.message || t('Portable builds do not support in-app updates.')
+            );
             if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
@@ -13326,7 +13330,7 @@ function initUpdateUI() {
     }
 
     // Initialize with ready status
-    if (updateStatusText) updateStatusText.textContent = t('Ready to check for updates');
+    showUpdateStatus(() => t('Ready to check for updates'));
   } catch (error) {
     console.error('Error initializing update UI:', error);
   }
@@ -13377,6 +13381,7 @@ export {
   populateWeatherEntitiesList,
   selectWeatherEntity,
   initUpdateUI,
+  relocalizeUpdateStatus,
   updateTimeDisplay,
   startTimeTicker,
   stopTimeTicker,

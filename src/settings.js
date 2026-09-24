@@ -3926,6 +3926,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     renderProfileSyncWarning();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
     renderUpdateButtonLabels();
+    settingsUiHooks?.relocalizeUpdateStatus?.();
     syncWeatherEffectsAvailability();
     if (hasDraftColorPreview || isCustomEditorActive) {
       // Rebuilding the swatches would reset the custom color draft; relabel only.
@@ -3984,6 +3985,7 @@ function observeSettingsLocale() {
  * @param {Function} [uiHooks.exitReorganizeMode] - Called to exit any active reorganize mode before opening settings.
  * @param {Function} [uiHooks.showToast] - Called to display transient messages (signature: (message, type, durationMs) => void).
  * @param {Function} [uiHooks.initUpdateUI] - Called after DOM fields are populated so the renderer can perform any additional UI initialization.
+ * @param {Function} [uiHooks.relocalizeUpdateStatus] - Called after a language change to re-render the update status line.
  * @param {Function} [uiHooks.renderActiveTab] - Called after save to fully re-render the active UI tab when available.
  * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.

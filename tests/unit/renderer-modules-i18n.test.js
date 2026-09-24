@@ -159,6 +159,24 @@ describe('weather states and newer domains', () => {
   });
 });
 
+describe('icon labels', () => {
+  it('relabel built-in icon names when the document is translated again', () => {
+    const { Icons } = require('../../src/icons.js');
+    const container = document.createElement('div');
+    container.appendChild(Icons.close());
+    container.appendChild(Icons.waterDrop());
+    container.appendChild(Icons.close({ ariaLabel: 'Close dialog' }));
+    i18n.setLocaleBootstrap({
+      activeLocale: 'de',
+      messages: { Close: 'Schließen', Humidity: 'Luftfeuchtigkeit' },
+    });
+    i18n.translateDocument(container);
+    expect(
+      [...container.querySelectorAll('svg')].map((svg) => svg.getAttribute('aria-label'))
+    ).toEqual(['Schließen', 'Luftfeuchtigkeit', 'Close dialog']);
+  });
+});
+
 describe('action buttons that share their English word with a state', () => {
   it('label Clear buttons with the verb key, not the binary sensor "Clear" state', () => {
     const fs = require('fs');

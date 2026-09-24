@@ -1808,6 +1808,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
       expect(secondUnsubscribe).not.toHaveBeenCalled();
     });
+
+    it('re-renders the update status line in a new language', () => {
+      const i18n = require('../../src/i18n.js');
+      document.body.insertAdjacentHTML('beforeend', '<span id="update-status-text"></span>');
+      let onUpdate = null;
+      mockElectronAPI.onAutoUpdate = jest.fn((callback) => {
+        onUpdate = callback;
+        return jest.fn();
+      });
+      const status = document.getElementById('update-status-text');
+      try {
+        ui.initUpdateUI();
+        expect(status.textContent).toBe('Ready to check for updates');
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            'Ready to check for updates': 'Bereit zur Suche nach Updates',
+            'You are up to date!': 'Du bist auf dem neuesten Stand!',
+          },
+        });
+        ui.relocalizeUpdateStatus();
+        expect(status.textContent).toBe('Bereit zur Suche nach Updates');
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        onUpdate({ status: 'none' });
+        expect(status.textContent).toBe('You are up to date!');
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'You are up to date!': 'Du bist auf dem neuesten Stand!' },
+        });
+        ui.relocalizeUpdateStatus();
+        expect(status.textContent).toBe('Du bist auf dem neuesten Stand!');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        status.remove();
+      }
+    });
   });
 
   // ==============================================================================

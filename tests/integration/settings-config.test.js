@@ -3572,6 +3572,16 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('asks the update UI to re-render its status line after a language change', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      const relocalizeUpdateStatus = jest.fn();
+      await settings.openSettings({ initUpdateUI: jest.fn(), relocalizeUpdateStatus });
+      relocalizeUpdateStatus.mockClear();
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await Promise.resolve();
+      expect(relocalizeUpdateStatus).toHaveBeenCalled();
+    });
+
     test('translates the profile sync status line', () => {
       settings.handleProfileSyncStatusUpdate(
         buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'success', lastSyncAt: null })
