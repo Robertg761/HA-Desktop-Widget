@@ -3,7 +3,8 @@ import websocket from './websocket.js';
 import { escapeHtml, escapeHtmlAttribute, getEntityDisplayName } from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { closeModal as closeModalAnimated, showToast } from './ui-utils.js';
-import { formatDateTime, t } from './i18n.js';
+import { formatDateTime, formatTime, t } from './i18n.js';
+import { lineIconMarkup } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
 const CAMERA_PREVIEW_REFRESH_OPTIONS = Object.freeze([
@@ -44,6 +45,33 @@ let cameraPreviewObserver = null;
 let cameraPreviewSequence = 0;
 let cameraPreviewLifecycleInstalled = false;
 let activeExpandedCameraPreview = null;
+
+const CAMERA_STATE_LABELS = {
+  idle: 'Idle',
+  recording: 'Recording',
+  streaming: 'Streaming',
+  unavailable: 'Unavailable',
+  unknown: 'Unknown',
+};
+
+/** Home Assistant camera states ("idle", "streaming") as a translated, capitalised label. */
+function getCameraStateLabel(value) {
+  const key = CAMERA_STATE_LABELS[String(value || '').toLowerCase()];
+  if (key) return t(key);
+  const text = String(value || '');
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : t('Unknown');
+}
+
+/** "Updated 11:22 AM" today, or with the date once the frame is older than today. */
+function getCameraUpdatedLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const sameDay = date.toDateString() === new Date().toDateString();
+  const time = sameDay
+    ? formatTime(date, { hour: 'numeric', minute: '2-digit' })
+    : formatDateTime(date, { dateStyle: 'medium', timeStyle: 'short' });
+  return t('Updated {{time}}', { time });
+}
 
 function normalizeCameraPreviewRefresh(value) {
   if (typeof value !== 'string') return 'off';
@@ -1237,20 +1265,26 @@ async function openCamera(cameraId, options = {}) {
           <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
-          <div style="position: relative;">
+          <div class="camera-viewer">
             <img alt="${escapeHtmlAttribute(getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
               ${escapeHtml(t('Loading live stream...'))}
             </div>
+            <div class="camera-viewer-message" id="camera-viewer-message" hidden>
+              <span class="camera-viewer-message-icon" aria-hidden="true">${lineIconMarkup('cctv')}</span>
+              <span>${escapeHtml(t('Preview unavailable'))}</span>
+            </div>
           </div>
-          <div style="margin-top: 12px; display:flex; gap:8px;">
-            <button class="btn btn-secondary" id="snapshot-btn">${escapeHtml(t('Snapshot'))}</button>
-            <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
-          </div>
-          <div class="camera-info">
-            <p><strong>${escapeHtml(t('Status:'))}</strong> ${escapeHtml(camera.state)}</p>
-            <p><strong>${escapeHtml(t('Last Updated:'))}</strong> ${escapeHtml(formatDateTime(camera.last_updated))}</p>
+          <div class="camera-toolbar">
+            <p class="camera-info">
+              <span class="camera-info-state">${escapeHtml(getCameraStateLabel(camera.state))}</span>
+              <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last Updated:'))} ${escapeHtmlAttribute(formatDateTime(camera.last_updated))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
+            </p>
+            <div class="camera-mode-buttons">
+              <button class="btn btn-secondary" id="snapshot-btn">${escapeHtml(t('Snapshot'))}</button>
+              <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1272,6 +1306,12 @@ async function openCamera(cameraId, options = {}) {
     const snapshotBtn = modal.querySelector('#snapshot-btn');
     const liveBtn = modal.querySelector('#live-btn');
     const loadingEl = modal.querySelector('#camera-loading');
+    const messageEl = modal.querySelector('#camera-viewer-message');
+    // A failed frame shows a calm message in the viewer instead of a broken-image icon.
+    const showFrameMessage = (show) => {
+      if (messageEl) messageEl.hidden = !show;
+      if (img) img.classList.toggle('camera-img-failed', show);
+    };
     const closeBtn = modal.querySelector('.close-btn');
     let isLive = false;
     let isStartingLive = false;
@@ -1329,11 +1369,12 @@ async function openCamera(cameraId, options = {}) {
       img.onload = () => {
         if (closed || generation !== streamGeneration) return;
         showLoading(false);
+        showFrameMessage(false);
       };
       img.onerror = () => {
         if (closed || generation !== streamGeneration) return;
         showLoading(false);
-        showToast(t('Could not load camera snapshot'), 'error', 2500);
+        showFrameMessage(true);
       };
       img.src = getRendererHost().resolveMediaUrl({
         kind: 'camera_snapshot',
@@ -1365,6 +1406,7 @@ async function openCamera(cameraId, options = {}) {
           showLoading(false);
           return;
         }
+        const viewer = modalBody.querySelector('.camera-viewer') || modalBody;
         let video = modalBody.querySelector('video.camera-video');
         if (!video) {
           video = document.createElement('video');
@@ -1375,7 +1417,8 @@ async function openCamera(cameraId, options = {}) {
           video.controls = false;
           video.style.width = '100%';
           video.style.height = 'auto';
-          modalBody.insertBefore(video, modalBody.firstChild);
+          viewer.insertBefore(video, viewer.firstChild);
+          showFrameMessage(false);
         }
 
         if (HlsLib && HlsLib.isSupported()) {

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.23",
+  "version": "1.2.24",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -674,6 +674,21 @@
     "What the main window shows.": "Lo que muestra la ventana principal.",
     "Keyboard shortcuts for the widget and your entities.": "Atajos de teclado para el widget y tus entidades.",
     "Desktop notifications when entities change.": "Notificaciones de escritorio cuando cambian las entidades.",
-    "Updates, sync, diagnostics and support.": "Actualizaciones, sincronización, diagnóstico y soporte."
+    "Updates, sync, diagnostics and support.": "Actualizaciones, sincronización, diagnóstico y soporte.",
+    "Home Assistant can't reach it right now. The controls come back when it reconnects.": "Home Assistant no puede acceder a él ahora mismo. Los controles volverán cuando se reconecte.",
+    "This fan only turns on and off.": "Este ventilador solo se enciende y se apaga.",
+    "This player can't be controlled from here.": "Este reproductor no se puede controlar desde aquí.",
+    "This cover can't be moved from here.": "Esta cubierta no se puede mover desde aquí.",
+    "Set up your connection": "Configura tu conexión",
+    "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "Si tarda, revisa la URL de Home Assistant y el inicio de sesión en Ajustes.",
+    "Updated {{time}}": "Actualizado {{time}}",
+    "Recording": "Grabando",
+    "Streaming": "Transmitiendo",
+    "Search entities...": "Buscar entidades...",
+    "Edit alert": "Editar alerta",
+    "Add alert": "Añadir alerta",
+    "Fan Speed": "Velocidad del ventilador",
+    "State": "Estado",
+    "Brightness": "Brillo"
   }
 }

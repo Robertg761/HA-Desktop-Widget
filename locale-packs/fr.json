@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.23",
+  "version": "1.2.24",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -674,6 +674,21 @@
     "What the main window shows.": "Ce qu'affiche la fenêtre principale.",
     "Keyboard shortcuts for the widget and your entities.": "Raccourcis clavier pour le widget et vos entités.",
     "Desktop notifications when entities change.": "Notifications de bureau quand des entités changent.",
-    "Updates, sync, diagnostics and support.": "Mises à jour, synchronisation, diagnostic et soutien."
+    "Updates, sync, diagnostics and support.": "Mises à jour, synchronisation, diagnostic et soutien.",
+    "Home Assistant can't reach it right now. The controls come back when it reconnects.": "Home Assistant ne peut pas le joindre pour le moment. Les commandes reviendront dès qu'il se reconnectera.",
+    "This fan only turns on and off.": "Ce ventilateur peut seulement être allumé ou éteint.",
+    "This player can't be controlled from here.": "Ce lecteur ne peut pas être contrôlé d'ici.",
+    "This cover can't be moved from here.": "Ce volet ne peut pas être déplacé d'ici.",
+    "Set up your connection": "Configurez votre connexion",
+    "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "Si cela prend du temps, vérifiez l'URL de Home Assistant et la connexion dans les paramètres.",
+    "Updated {{time}}": "Mis à jour {{time}}",
+    "Recording": "Enregistrement",
+    "Streaming": "Diffusion",
+    "Search entities...": "Rechercher des entités...",
+    "Edit alert": "Modifier l'alerte",
+    "Add alert": "Ajouter une alerte",
+    "Fan Speed": "Vitesse du ventilateur",
+    "State": "État",
+    "Brightness": "Luminosité"
   }
 }

@@ -5330,7 +5330,7 @@ function populateAlertEntityPicker() {
           </div>
         </div>
         <button class="entity-selector-btn ${hasAlert ? 'edit' : 'add'}" data-entity-id="${utils.escapeHtmlAttribute(entityId)}">
-          ${hasAlert ? '⚙️ Edit Alert' : '+ Add Alert'}
+          ${utils.escapeHtml(t(hasAlert ? 'Edit alert' : 'Add alert'))}
         </button>
       `;
 

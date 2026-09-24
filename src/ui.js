@@ -9181,6 +9181,38 @@ function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' }
   }
 }
 
+/**
+ * An entity Home Assistant reports as unavailable keeps its pop-up (so its name and last values
+ * stay readable) but says so up front and disables the controls, instead of showing "Off" and
+ * sliders that would only fail.
+ */
+function showUnavailableDialogState(modal, entity) {
+  if (!modal || entity?.state !== 'unavailable') return;
+  const body = modal.querySelector('.modal-body');
+  if (!body) return;
+  modal.classList.add('entity-unavailable');
+  const note = document.createElement('div');
+  note.className = 'dialog-unavailable-note';
+  note.setAttribute('role', 'status');
+  note.innerHTML = `
+    <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
+    <span class="dialog-unavailable-note-text">
+      <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
+      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. The controls come back when it reconnects."))}</span>
+    </span>`;
+  body.prepend(note);
+  modal
+    .querySelectorAll(
+      '.modal-body input, .modal-body button, .modal-body select, .modal-footer .btn-primary'
+    )
+    .forEach((control) => {
+      control.disabled = true;
+    });
+  modal.querySelectorAll('#brightness-value-large, #fan-speed-value').forEach((value) => {
+    value.textContent = t('Unavailable');
+  });
+}
+
 function releaseAccessibleDialogModal(modal) {
   if (typeof uiUtils.releaseFocusTrap === 'function') {
     uiUtils.releaseFocusTrap(modal);
@@ -10019,7 +10051,7 @@ function showMediaDetail(entity) {
               !supportsSeek &&
               !supportsAnyPlaybackToggle &&
               !mediaCapabilities.canNextTrack
-                ? '<span class="control-capability-note">This media player does not advertise transport controls.</span>'
+                ? `<span class="control-capability-note">${utils.escapeHtml(t("This player can't be controlled from here."))}</span>`
                 : ''
             }
           </div>
@@ -11231,36 +11263,28 @@ function callMediaTileService(action) {
 function showNoConnectionMessage() {
   try {
     const container = document.getElementById('quick-controls');
-    if (container) {
-      // Check if configuration needs setup
-      if (
-        !state.CONFIG ||
-        !state.CONFIG.homeAssistant ||
-        state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN'
-      ) {
-        container.innerHTML = `
-          <div class="status-message">
-            <h3>⚙️ Setup Required</h3>
-            <p>Your Home Assistant connection needs to be configured.</p>
-            <p>Click the settings button (⚙️) in the top right to:</p>
-            <ul style="margin: 10px 0; padding-left: 20px;">
-              <li>Set your Home Assistant URL</li>
-              <li>Add your Long-Lived Access Token</li>
-            </ul>
-            <p><strong>Status:</strong> Configuration incomplete</p>
-          </div>`;
-      } else {
-        container.innerHTML = `
-          <div class="status-message">
-            <h3>🔄 Connecting to Home Assistant</h3>
-            <p>Attempting to connect to: ${utils.escapeHtml(state.CONFIG.homeAssistant.url)}</p>
-            <p><strong>Status:</strong> Connecting...</p>
-            <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">
-              If this persists, check your Home Assistant URL and token in settings.
-            </p>
-          </div>`;
-      }
-    }
+    if (!container) return;
+    const needsSetup =
+      !state.CONFIG ||
+      !state.CONFIG.homeAssistant ||
+      state.CONFIG.homeAssistant.token === 'YOUR_LONG_LIVED_ACCESS_TOKEN';
+    const title = needsSetup ? t('Set up your connection') : t('Connecting to Home Assistant...');
+    const detail = needsSetup
+      ? t(
+          'Connect your Home Assistant server to start building a compact control panel for your desktop.'
+        )
+      : t('If this takes a while, check the Home Assistant URL and sign-in in Settings.');
+    container.innerHTML = `
+      <div class="status-message${needsSetup ? '' : ' is-connecting'}" role="status">
+        <span class="status-message-icon" aria-hidden="true">${lineIconMarkup(needsSetup ? 'settings' : 'refresh-cw')}</span>
+        <h3 class="status-message-title">${utils.escapeHtml(title)}</h3>
+        ${needsSetup ? '' : `<p class="status-message-url">${utils.escapeHtml(state.CONFIG.homeAssistant.url || '')}</p>`}
+        <p class="status-message-detail">${utils.escapeHtml(detail)}</p>
+        <button type="button" class="btn btn-secondary status-message-action">${utils.escapeHtml(t('Open Settings'))}</button>
+      </div>`;
+    container
+      .querySelector('.status-message-action')
+      ?.addEventListener('click', () => document.getElementById('settings-btn')?.click());
   } catch (error) {
     console.error('Error showing no connection message:', error);
   }
@@ -11543,6 +11567,7 @@ function showBrightnessSlider(light) {
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'brightness-title' });
+    showUnavailableDialogState(modal, light);
 
     const slider = modal.querySelector('#brightness-slider');
     const valueLarge = modal.querySelector('#brightness-value-large');
@@ -12023,6 +12048,7 @@ function showClimateControls(climateEntity) {
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'climate-title' });
+    showUnavailableDialogState(modal, climateEntity);
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
@@ -12304,8 +12330,8 @@ function showFanControls(fanEntity) {
             <div class="fan-icon-wrapper">
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
-            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : isOn ? 'On' : 'Off'}</div>
-            <div class="fan-speed-label">${capabilities.canSetPercentage ? 'Fan Speed' : 'State'}</div>
+            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : t(isOn ? 'On' : 'Off')}</div>
+            <div class="fan-speed-label">${t(capabilities.canSetPercentage ? 'Fan Speed' : 'State')}</div>
 
             ${
               capabilities.canSetPercentage
@@ -12328,18 +12354,24 @@ function showFanControls(fanEntity) {
               <button class="fan-preset-btn" data-speed="66">Medium</button>
               <button class="fan-preset-btn" data-speed="100">High</button>
             </div>`
-                : '<p class="control-capability-note">This fan does not advertise percentage control.</p>'
+                : `<p class="control-capability-note">${utils.escapeHtml(t('This fan only turns on and off.'))}</p>`
             }
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="fan-cancel">Close</button>
+          <button class="btn btn-secondary" id="fan-cancel">${utils.escapeHtml(t('Close'))}</button>
+          ${
+            capabilities.canSetPercentage
+              ? ''
+              : `<button class="btn btn-primary" id="fan-power">${utils.escapeHtml(t(isOn ? 'Turn Off' : 'Turn On'))}</button>`
+          }
         </div>
       </div>
     `;
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'fan-title' });
+    showUnavailableDialogState(modal, fanEntity);
 
     const slider = modal.querySelector('#fan-slider');
     const speedValue = modal.querySelector('#fan-speed-value');
@@ -12363,6 +12395,13 @@ function showFanControls(fanEntity) {
     };
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
+    const powerBtn = modal.querySelector('#fan-power');
+    if (powerBtn) {
+      powerBtn.onclick = () => {
+        toggleEntity(fanEntity);
+        closeModal();
+      };
+    }
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
     });
@@ -12499,7 +12538,7 @@ function showCoverControls(coverEntity) {
                 )
                 .join('')}
             </div>`
-                : '<p class="control-capability-note">This cover does not advertise movement controls.</p>'
+                : `<p class="control-capability-note">${utils.escapeHtml(t("This cover can't be moved from here."))}</p>`
             }
           </div>
         </div>
@@ -12511,6 +12550,7 @@ function showCoverControls(coverEntity) {
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
     activateAccessibleDialogModal(modal, { titleIdPrefix: 'cover-title' });
+    showUnavailableDialogState(modal, coverEntity);
 
     const slider = modal.querySelector('#cover-slider');
     const positionValue = modal.querySelector('#cover-position-value');
@@ -12660,6 +12700,13 @@ function populateQuickControlsList() {
         });
 
       list.innerHTML = '';
+      if (!scoredEntities.length) {
+        const empty = document.createElement('p');
+        empty.className = 'entity-selector-empty';
+        empty.textContent = t('No matching entities');
+        list.appendChild(empty);
+        return;
+      }
 
       scoredEntities.forEach(({ entity }) => {
         const item = document.createElement('div');
@@ -12691,6 +12738,8 @@ function populateQuickControlsList() {
         info.appendChild(id);
         main.appendChild(icon);
         main.appendChild(info);
+
+        item.classList.toggle('is-added', !!isInActiveView && !isOverlayDemo);
 
         const actions = document.createElement('div');
         actions.className = 'entity-item-actions quick-access-entity-actions';

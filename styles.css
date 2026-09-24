@@ -183,6 +183,11 @@ html {
   --accent: #64b5f6;
   --accent-rgb: 100, 181, 246;
   --accent-hover: #90caf9;
+  /* Text on an accent fill; ui-utils picks black or white per accent. */
+  --on-accent: #0a0c10;
+  /* Accent used as text. The light theme darkens it so labels and links clear 4.5:1 on white. */
+  --accent-text: var(--accent);
+  --accent-text-hover: var(--accent-hover);
   --accent-bg: rgba(var(--accent-rgb), 0.15);
   --primary: #64b5f6;
   --primary-hover: #90caf9;
@@ -407,6 +412,14 @@ html {
   --transition-slower: var(--duration-slower) var(--ease-in-out);
 }
 
+/* Secondary lines on tiles and rows (state lines, captions, help text). Mixed from the text
+   colour on body, where the Omarchy palette overrides it; the light theme uses stronger mixes to
+   stay above 4.5:1 on white panes. */
+body {
+  --text-dim: color-mix(in srgb, var(--text-primary) 58%, transparent);
+  --text-faint: color-mix(in srgb, var(--text-primary) 50%, transparent);
+}
+
 /* Light Theme (Glassmorphism) */
 .theme-light {
   /* Base Colors */
@@ -425,6 +438,8 @@ html {
      sat at ~2.8:1, well under the 4.5:1 WCAG AA floor for body text. */
   --text-tertiary: #6b6b70;
   --muted-text: #808080;
+  --text-dim: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  --text-faint: color-mix(in srgb, var(--text-primary) 62%, transparent);
 
   /* Surfaces */
   --surface-1: rgba(250, 250, 255, 0.8);
@@ -448,6 +463,8 @@ html {
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
+  --accent-text: color-mix(in srgb, var(--accent) 62%, #000);
+  --accent-text-hover: color-mix(in srgb, var(--accent) 50%, #000);
 
   /* Tiles: white panes on the pale glass, edged just enough to separate. */
   --tile-bg: rgba(255, 255, 255, 0.5);
@@ -1068,7 +1085,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   isolation: isolate;
   padding: 0;
-  text-align: left;
+  text-align: start;
   background:
     radial-gradient(
       circle at top left,
@@ -1116,7 +1133,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .control-item.desktop-pin-light-control {
   align-items: stretch;
   justify-content: stretch;
-  text-align: left;
+  text-align: start;
 }
 
 .desktop-pin-light-shell {
@@ -1607,7 +1624,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   overflow: hidden;
   isolation: isolate;
   padding: var(--desktop-pin-panel-pad);
-  text-align: left;
+  text-align: start;
   background:
     radial-gradient(circle at top left, rgba(var(--desktop-pin-tint-rgb), 0.15), transparent 70%),
     linear-gradient(155deg, rgba(16, 20, 28, 0.8), rgba(10, 12, 18, 0.9));
@@ -2777,7 +2794,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .connection-status-tooltip-detail {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   line-height: 1.4;
 }
@@ -2823,7 +2840,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   position: relative;
   width: 28px;
   min-width: 28px;
-  color: var(--accent);
+  color: var(--accent-text);
   opacity: 0.9;
 }
 
@@ -2833,7 +2850,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .notification-bell-btn:hover {
   background: var(--accent-bg);
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
 }
 
 .notification-bell-icon {
@@ -2862,7 +2879,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 #settings-btn:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 #settings-btn svg {
@@ -3025,7 +3042,7 @@ body.first-run-active .widget-content > * {
 
 .media-tile-artist {
   font-size: var(--font-size-sm);
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3042,7 +3059,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-time {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--muted-text);
   font-variant-numeric: tabular-nums;
   min-width: 26px;
@@ -3114,7 +3131,7 @@ body.first-run-active .widget-content > * {
   justify-content: center;
   cursor: pointer;
   transition: var(--transition-base);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-2xl);
   padding: 0;
   outline: none;
@@ -3127,7 +3144,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.45));
 }
 
@@ -3139,7 +3156,7 @@ body.first-run-active .widget-content > * {
   width: 32px;
   height: 32px;
   min-width: 32px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .media-tile-btn-play svg {
@@ -3148,7 +3165,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-btn-play:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.6));
 }
 
@@ -3158,7 +3175,7 @@ body.first-run-active .widget-content > * {
 
 /* Playing: the same steady glow an active tile's icon gets. */
 .media-tile-btn-play.playing {
-  color: var(--accent);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
@@ -3245,7 +3262,7 @@ body.first-run-active .widget-content > * {
 .section-btn {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
   cursor: pointer;
   padding: 4px;
   border-radius: var(--radius-md);
@@ -3281,7 +3298,7 @@ body.first-run-active .widget-content > * {
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3295,7 +3312,7 @@ body.first-run-active .widget-content > * {
 /* Reorganize button active state */
 .section-btn.reorganize-active {
   background: var(--accent-bg);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow:
     0 0 0 1px var(--accent),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -3303,7 +3320,7 @@ body.first-run-active .widget-content > * {
 
 .section-btn.reorganize-active:hover {
   background: rgba(var(--accent-rgb), 0.25);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow:
     0 0 0 1px var(--accent),
     inset 0 1px 0 rgba(255, 255, 255, 0.15),
@@ -3332,7 +3349,7 @@ body.first-run-active .widget-content > * {
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  color: var(--text-faint);
   font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
@@ -3371,7 +3388,7 @@ body.first-run-active .widget-content > * {
 
 .quick-access-header .section-buttons {
   flex: 0 0 auto;
-  margin-left: auto; /* keep the reorganize/manage buttons pinned to the right */
+  margin-inline-start: auto; /* keep the reorganize/manage buttons pinned to the right */
 }
 
 .quick-access-header .quick-access-tabs {
@@ -3406,7 +3423,7 @@ body.first-run-active .widget-content > * {
   background: rgba(var(--accent-rgb), 0.14);
   box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
   border-radius: var(--radius-md);
-  padding-right: 2px;
+  padding-inline-end: 2px;
 }
 
 /* In reorganize mode the wrapper owns the active highlight. */
@@ -3482,7 +3499,7 @@ body.first-run-active .widget-content > * {
 
 .qa-tab-add:hover {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-bg);
 }
 
@@ -3512,7 +3529,7 @@ body.first-run-active .widget-content > * {
 .add-page-modal .qa-add-chip:focus-visible {
   border-color: var(--accent);
   background: var(--accent-bg);
-  color: var(--accent);
+  color: var(--accent-text);
   outline: none;
 }
 
@@ -3739,7 +3756,7 @@ body.first-run-active .widget-content > * {
 
 .control-item.unavailable-entity .unavailable-state {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-style: italic;
 }
 
@@ -3769,7 +3786,7 @@ body.first-run-active .widget-content > * {
 .control-item[data-state='unlocked'] .control-icon,
 .control-item[data-state='home'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.75));
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .control-item[data-state='locked'] .control-icon {
@@ -3885,7 +3902,7 @@ body.first-run-active .widget-content > * {
 }
 
 .entity-item .entity-id {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -3982,7 +3999,7 @@ body.first-run-active .widget-content > * {
 }
 
 .entity-selector-type {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 500;
   background: var(--accent-bg);
   padding: 2px 6px;
@@ -4530,7 +4547,7 @@ body.first-run-active .widget-content > * {
   align-items: center;
   gap: 4px;
   font-size: var(--font-size-xs-plus);
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
@@ -4598,7 +4615,7 @@ body.theme-light .status-card.time-card .date-display {
 
 .status-card.time-card .date-display {
   font-size: var(--font-size-xs-plus);
-  color: var(--accent);
+  color: var(--accent-text);
   text-align: center;
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
@@ -4790,7 +4807,7 @@ body.theme-light .status-card.time-card .date-display {
 }
 
 .primary-cards-pagination [role='status'] {
-  margin-right: auto;
+  margin-inline-end: auto;
   color: var(--muted-text);
 }
 
@@ -4830,7 +4847,7 @@ body.theme-light .status-card.time-card .date-display {
   font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.3px;
-  color: var(--accent);
+  color: var(--accent-text);
   background: rgb(var(--accent-rgb) / 14%);
   border: 1px solid rgb(var(--accent-rgb) / 28%);
   border-radius: var(--radius-full);
@@ -4874,7 +4891,7 @@ body.theme-light .status-card.time-card .date-display {
   width: 170px;
   min-height: 30px;
   padding: 6px 8px;
-  text-align: left;
+  text-align: start;
   font-size: var(--font-size-base);
   line-height: 1.2;
 }
@@ -4914,7 +4931,7 @@ body.theme-light .status-card.time-card .date-display {
   gap: 8px;
   max-height: min(52vh, 380px);
   overflow-y: auto;
-  padding-right: 2px;
+  padding-inline-end: 2px;
 }
 
 .custom-entity-icon-choice {
@@ -4988,18 +5005,18 @@ body.theme-light .status-card.time-card .date-display {
 .sensor-value .value {
   font-size: var(--font-size-6xl);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   display: block;
 }
 
 .sensor-value .unit {
   font-size: var(--font-size-lg);
   color: var(--text-secondary);
-  margin-left: 8px;
+  margin-inline-start: 8px;
 }
 
 .sensor-info {
-  text-align: left;
+  text-align: start;
   background: var(--surface-1);
   padding: 16px;
   border-radius: var(--radius-md);
@@ -5102,7 +5119,7 @@ body.theme-light .status-card.time-card .date-display {
 .brightness-value-large {
   font-size: var(--font-size-5xl);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   text-align: center;
   min-width: 100px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -5286,7 +5303,7 @@ body.theme-light .status-card.time-card .date-display {
 }
 
 .brightness-control-heading span:last-child {
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5475,7 +5492,7 @@ body.theme-light .status-card.time-card .date-display {
 .climate-temp-value-large {
   font-size: var(--font-size-4xl);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5631,7 +5648,7 @@ body.theme-light .status-card.time-card .date-display {
 .climate-preset-mode-btn.active {
   background: var(--accent-bg);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
 }
 
@@ -5738,7 +5755,7 @@ body.theme-light .status-card.time-card .date-display {
 .fan-speed-value {
   font-size: var(--font-size-6xl);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5948,7 +5965,7 @@ body.theme-light .status-card.time-card .date-display {
 .cover-position-value {
   font-size: var(--font-size-6xl);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -6187,7 +6204,7 @@ body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
 }
 
 body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
-  color: var(--accent);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
@@ -6397,7 +6414,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   z-index: 2;
   min-width: 0;
   padding: 28px 10px 9px;
-  text-align: left;
+  text-align: start;
   pointer-events: none;
 }
 
@@ -6416,10 +6433,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   min-height: 0;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.66);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-weight: 500;
   line-height: 1.2;
-  text-align: left;
+  text-align: start;
   text-overflow: ellipsis;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
@@ -6428,7 +6445,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 .camera-tile-preview-badge {
   position: absolute;
   top: 7px;
-  right: 7px;
+  inset-inline-end: 7px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -6547,7 +6564,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
     [data-camera-preview-state='unavailable']
   )
   .camera-tile-preview-status {
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
   text-shadow: none;
 }
 
@@ -6784,7 +6801,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-status {
   overflow: hidden;
   color: rgba(255, 255, 255, 0.62);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-weight: 550;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -6799,7 +6816,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.76);
   font: inherit;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-weight: 650;
   line-height: 1;
   transition:
@@ -6891,7 +6908,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .control-state {
   font-size: var(--font-size-xs-plus);
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -6952,7 +6969,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   line-height: 1;
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
@@ -7086,7 +7103,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .comparison-graph-title {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold, 600);
   color: var(--text-primary);
   overflow: hidden;
@@ -7095,7 +7112,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .comparison-graph-range {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--text-tertiary);
   flex-shrink: 0;
 }
@@ -7156,7 +7173,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   align-items: center;
   gap: 5px;
   min-width: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
 }
 
 /* Identity comes from the swatch beside the text, never from colouring the text itself —
@@ -7203,7 +7220,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(var(--blur-sm, 6px));
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   white-space: nowrap;
 }
 
@@ -7371,7 +7388,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 #quick-controls .control-item.calendar-entity .calendar-next-event {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   line-height: 1.2;
   color: var(--text-secondary);
 }
@@ -7395,7 +7412,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .entity-state {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--muted-text);
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -7410,7 +7427,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .entity-value {
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .entity-toggle {
@@ -7674,7 +7691,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .settings-card-header .settings-card-icon svg {
@@ -7855,7 +7872,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .close-btn:hover {
   background: var(--accent-bg);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
   transform: scale(1.05);
   box-shadow: var(--shadow-md), var(--glow-focus);
 }
@@ -7946,7 +7963,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .persistent-notification-time {
   margin-top: var(--space-2);
   color: var(--text-tertiary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   line-height: var(--line-height-tight);
 }
 
@@ -8008,7 +8025,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .sensor-detail-icon {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-3xl);
   line-height: 1;
 }
@@ -8036,7 +8053,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .sensor-detail-sparkline {
   height: 120px;
-  color: var(--accent);
+  color: var(--accent-text);
   opacity: 0.82;
   border: 1px solid rgba(var(--accent-rgb), 0.16);
   border-radius: var(--radius-md);
@@ -8197,7 +8214,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border: 1px solid var(--border-color);
   position: relative;
   transition: var(--transition-base);
-  margin-right: var(--space-3);
+  margin-inline-end: var(--space-3);
   outline: none;
   cursor: pointer;
   flex-shrink: 0;
@@ -8403,7 +8420,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .color-target-note {
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   line-height: 1.35;
 }
 
@@ -8430,7 +8447,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   -webkit-appearance: none;
   transition: var(--transition-base);
   box-shadow: var(--shadow-sm);
-  text-align: left;
+  text-align: start;
   justify-content: center;
   aspect-ratio: 1 / 1;
   position: relative;
@@ -8542,7 +8559,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .theme-tooltip-note {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   line-height: 1.4;
 }
@@ -8563,15 +8580,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-color-field-label {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   line-height: 1.2;
 }
 
 .custom-editor-save-lock-hint {
   border-left: 3px solid rgba(var(--accent-rgb), 0.6);
-  padding-left: var(--space-3);
-  color: var(--accent);
+  padding-inline-start: var(--space-3);
+  color: var(--accent-text);
 }
 
 #custom-color-picker {
@@ -8662,7 +8679,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -8734,22 +8751,22 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-base);
   cursor: pointer;
   transition: var(--transition-base);
-  border-left: 3px solid transparent;
+  border-inline-start: 3px solid transparent;
 }
 
 .custom-dropdown-option:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-left-color: var(--accent);
+  background: var(--tile-bg-hover);
+  border-inline-start-color: var(--accent);
 }
 
 .custom-dropdown-option.selected {
   background: var(--accent-bg);
-  border-left-color: var(--accent);
-  color: var(--accent);
+  border-inline-start-color: var(--accent);
+  color: var(--accent-text);
 }
 
 .custom-dropdown-option:active {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--accent-bg);
 }
 
 /* Custom scrollbar for dropdown menu */
@@ -8762,12 +8779,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--border-color);
   border-radius: var(--radius-sm);
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--border-hover);
 }
 
 /* Settings: keep primary media dropdown within scroll flow to avoid clipping */
@@ -8838,7 +8855,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .btn-primary {
   background: var(--accent);
-  color: #000;
+  color: var(--on-accent);
   border-color: transparent;
   font-weight: var(--font-weight-semibold);
   box-shadow: none;
@@ -8859,14 +8876,14 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .btn-secondary {
   background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: rgba(var(--accent-rgb), 0.45);
   box-shadow: none;
 }
 
 .btn-secondary:hover {
   background: rgba(var(--accent-rgb), 0.18);
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   border-color: var(--accent);
   box-shadow: none;
 }
@@ -8943,7 +8960,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   gap: var(--space-2);
   width: fit-content;
   padding: var(--space-2) var(--space-3);
-  margin-left: calc(var(--space-3) * -1);
+  margin-inline-start: calc(var(--space-3) * -1);
   border-radius: var(--radius-md);
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
@@ -8987,7 +9004,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
    than continuing the card above it. */
 .settings-details-body {
   margin-top: var(--space-4);
-  padding-left: var(--space-3);
+  padding-inline-start: var(--space-3);
 }
 
 .settings-details-body > .form-group:first-child {
@@ -9073,7 +9090,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .connection-test-status[data-status='pending'],
 .first-run-status[data-status='pending'] {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .first-run-onboarding {
@@ -9108,8 +9125,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .first-run-step-label {
   margin-bottom: 10px;
-  color: var(--accent);
-  font-size: var(--font-size-xs);
+  color: var(--accent-text);
+  font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
 }
@@ -9166,7 +9183,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .first-run-actions .btn:first-child {
-  margin-right: auto;
+  margin-inline-end: auto;
 }
 
 .widget-state-panel {
@@ -9270,12 +9287,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .profile-sync-warning a {
-  color: var(--warning-hover);
+  color: var(--accent-text);
   text-decoration: underline;
 }
 
 .profile-sync-warning a:hover {
-  color: var(--warning);
+  color: var(--accent-text-hover);
 }
 
 /* Sync setups that look healthy but share nothing, so this has to read as a
@@ -9393,7 +9410,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .update-status.checking {
   background: rgba(var(--accent-rgb), 0.1);
   border-color: rgba(var(--accent-rgb), 0.3);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .update-status.available {
@@ -9459,7 +9476,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .progress-text {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   color: var(--muted-text);
   text-align: center;
 }
@@ -9526,7 +9543,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding: var(--space-4) var(--space-5);
   min-width: 200px;
   max-width: min(420px, 90vw);
-  text-align: left;
+  text-align: start;
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(var(--bg-blur));
   -webkit-backdrop-filter: blur(var(--bg-blur));
@@ -9587,7 +9604,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .toast.info .toast-icon {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Light-theme status glyphs. The dark-theme hues (--success #81c784,
@@ -9741,7 +9758,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-sm);
   margin: 4px 0;
   transition: all var(--transition-base);
@@ -9755,14 +9772,14 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 /* Reorganize button active state */
 .section-btn.active {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--on-accent);
 }
 
 /* Remove button in reorganize mode - with glassmorphism */
 .reorganize-mode .control-item .remove-btn {
   position: absolute;
   top: 8px;
-  right: 8px;
+  inset-inline-end: 8px;
   width: 24px;
   height: 24px;
   background: rgba(211, 47, 47, 0.95);
@@ -9866,7 +9883,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .reorganize-mode .control-item .rename-btn {
   position: absolute;
   top: 8px;
-  right: 38px;
+  inset-inline-end: 38px;
   width: 24px;
   height: 24px;
   background: rgba(25, 118, 210, 0.95);
@@ -9908,7 +9925,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .reorganize-mode .control-item .desktop-pin-quick-toggle {
   position: absolute;
   top: 8px;
-  left: 8px;
+  inset-inline-start: 8px;
   z-index: 20;
   min-width: 0;
   padding: 4px 8px;
@@ -9942,7 +9959,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle[data-active='true'] {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: rgba(var(--accent-rgb), 0.38);
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.24), rgba(var(--accent-rgb), 0.08));
 }
@@ -10051,7 +10068,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .rename-modal .form-group {
@@ -10111,7 +10128,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .rename-modal .btn-primary {
   background: var(--accent);
-  color: #000;
+  color: var(--on-accent);
 }
 
 .rename-modal .btn-primary:hover {
@@ -10590,13 +10607,13 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-2xl);
   outline: none;
 }
 
 .media-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   transform: scale(1.2);
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
 }
@@ -10620,7 +10637,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   width: 32px;
   height: 32px;
   min-width: 32px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .play-pause-btn svg {
@@ -10629,7 +10646,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .play-pause-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   transform: scale(1.25);
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
 }
@@ -10640,7 +10657,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 /* Add subtle glow when playing */
 .play-pause-btn.playing {
-  color: var(--accent);
+  color: var(--accent-text);
   animation: iconGlow 2s ease-in-out infinite;
 }
 
@@ -10651,12 +10668,12 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .play-pause-btn.is-active,
 .media-player-entity[data-media-playing='true'] .play-pause-btn {
-  color: var(--accent);
+  color: var(--accent-text);
   animation: iconGlow 2s ease-in-out infinite;
 }
 
 .media-player-entity[data-media-playing='true'] .play-pause-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   transform: scale(1.25);
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
 }
@@ -10763,10 +10780,10 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .brightness-value {
   min-width: 50px;
-  text-align: right;
+  text-align: end;
   font-size: var(--font-size-lg);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Camera Modal */
@@ -10860,8 +10877,8 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-volume-value {
-  text-align: right;
-  color: var(--accent);
+  text-align: end;
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -10914,7 +10931,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-mute-toggle.active {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
   background: var(--accent-bg);
 }
@@ -10939,7 +10956,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   justify-content: center;
   cursor: pointer;
   transition: var(--transition-base);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-2xl);
   line-height: 1;
   padding: 0 !important;
@@ -10953,7 +10970,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-detail-controls .btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   transform: scale(1.2);
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
   background: transparent !important;
@@ -10982,7 +10999,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-detail-controls .btn:disabled:hover {
-  color: var(--accent);
+  color: var(--accent-text);
   transform: none;
   filter: none;
 }
@@ -10996,7 +11013,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   width: 56px;
   height: 56px;
   min-width: 56px;
-  color: var(--accent);
+  color: var(--accent-text);
   background: transparent !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -11009,7 +11026,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-detail-controls .play-pause-btn:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   transform: scale(1.25);
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
   background: transparent !important;
@@ -11028,7 +11045,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 /* Add subtle glow when playing */
 .media-detail-controls .play-pause-btn.playing {
-  color: var(--accent);
+  color: var(--accent-text);
   animation: iconGlow 2s ease-in-out infinite;
   background: transparent !important;
   box-shadow: none !important;
@@ -11142,7 +11159,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  text-align: left;
+  text-align: start;
   transition:
     background-color var(--transition-fast),
     color var(--transition-fast);
@@ -11383,7 +11400,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   flex-shrink: 0;
   border: 1px solid rgba(var(--accent-rgb), 0.45);
   background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent);
+  color: var(--accent-text);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-md);
@@ -11396,7 +11413,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .btn-clear-hotkey:hover {
   background: rgba(var(--accent-rgb), 0.18);
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   border-color: var(--accent);
   transform: scale(1.1);
 }
@@ -11411,7 +11428,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-lg);
   min-height: 24px;
 }
@@ -11530,7 +11547,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .hotkey-type,
 .alert-type {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 500;
   background: var(--accent-bg);
   padding: 2px 6px;
@@ -11575,7 +11592,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 .alert-badge {
   display: inline-block;
   font-size: var(--font-size-base);
-  margin-left: 8px;
+  margin-inline-start: 8px;
   opacity: 0.8;
   transition: opacity var(--transition-base);
 }
@@ -11628,7 +11645,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 .hotkey-btn.primary,
 .alert-btn.primary {
   background: var(--primary);
-  color: white;
+  color: var(--on-accent);
 }
 
 .hotkey-btn.primary:hover,
@@ -11714,7 +11731,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .alert-config-form {
@@ -11777,7 +11794,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Hotkey input capture styling */
@@ -11819,7 +11836,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .modifier-btn.active {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -11872,7 +11889,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .radio-option:has(input:checked) .radio-label strong {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Existing Alerts List */
@@ -11926,7 +11943,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .existing-alert-type {
   background: var(--accent-bg);
-  color: var(--accent);
+  color: var(--accent-text);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-weight: 500;
@@ -11959,13 +11976,13 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .existing-alert-btn.edit {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 
 .existing-alert-btn.edit:hover {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 
 .existing-alert-btn.remove {
@@ -12037,7 +12054,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .existing-hotkey-type {
   background: var(--accent-bg);
-  color: var(--accent);
+  color: var(--accent-text);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-weight: 500;
@@ -12076,13 +12093,13 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .existing-hotkey-btn.edit {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 
 .existing-hotkey-btn.edit:hover {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 
 .existing-hotkey-btn.remove {
@@ -12177,7 +12194,7 @@ body.linux-performance-mode .modal-content {
   top: -40px;
   left: 0;
   background: var(--accent);
-  color: #000;
+  color: var(--on-accent);
   padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-md);
   font-weight: var(--font-weight-semibold);
@@ -12438,7 +12455,7 @@ label.disabled {
   padding: 8px 12px;
   background: transparent;
   color: var(--text-primary);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -12652,7 +12669,7 @@ label.disabled {
 .donate-amount-chip.selected {
   background: var(--accent-bg);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .donate-secure-note {
@@ -12749,7 +12766,7 @@ body.high-contrast :focus-visible {
 .tile-details-button {
   position: absolute;
   top: 5px;
-  right: 5px;
+  inset-inline-end: 5px;
   z-index: 2;
   display: grid;
   place-items: center;
@@ -12759,7 +12776,7 @@ body.high-contrast :focus-visible {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  color: var(--text-faint);
   font-size: var(--font-size-sm);
   cursor: pointer;
   transition:
@@ -12767,6 +12784,13 @@ body.high-contrast :focus-visible {
     color var(--transition-fast),
     border-color var(--transition-fast);
   -webkit-app-region: no-drag;
+}
+
+/* A few invisible pixels around the small button so it is easier to hit. */
+.tile-details-button::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
 }
 
 .tile-details-button:hover,
@@ -13001,7 +13025,7 @@ body.software-glass.frosted-glass .modal-content {
 .rename-modal .btn-primary {
   background: var(--accent);
   border-color: transparent;
-  color: #0a0c10;
+  color: var(--on-accent);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -13014,13 +13038,13 @@ body.software-glass.frosted-glass .modal-content {
 .btn-secondary {
   background: rgba(var(--accent-rgb), 0.12);
   border-color: rgba(var(--accent-rgb), 0.35);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .btn-secondary:hover {
   background: rgba(var(--accent-rgb), 0.2);
   border-color: rgba(var(--accent-rgb), 0.55);
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
 }
 
 .btn-secondary[id*='cancel'],
@@ -13064,7 +13088,7 @@ body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*=
 }
 
 .fan-icon {
-  color: var(--accent);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.55));
 }
 
@@ -13135,7 +13159,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  color: var(--text-faint);
 }
 
 .brightness-content {
@@ -13158,7 +13182,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 
 .sensor-detail-icon {
   display: flex;
-  color: var(--accent);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.5));
 }
 
@@ -13304,7 +13328,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .climate-mode-btn.active .climate-mode-icon {
-  color: var(--accent);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
@@ -13359,7 +13383,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .entity-selector-btn.edit {
   background: rgba(var(--accent-rgb), 0.14);
   border-color: rgba(var(--accent-rgb), 0.35);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .entity-selector-btn.add:hover,
@@ -13367,28 +13391,34 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   background: rgba(var(--accent-rgb), 0.22);
 }
 
+/* Remove stays quiet until it is pointed at: a list of added entities shouldn't read as a column
+   of red warnings. */
 .entity-selector-btn.remove {
   background: transparent;
-  border-color: rgba(239, 83, 80, 0.4);
-  color: #ff8a80;
+  border-color: var(--tile-border-hover);
+  color: var(--text-dim);
 }
 
-.entity-selector-btn.remove:hover {
+.entity-selector-btn.remove:hover,
+.entity-selector-btn.remove:focus-visible {
   background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: #ff8a80;
 }
 
 body.theme-light .entity-selector-btn.add,
 body.theme-light .entity-selector-btn.edit {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
+  color: var(--accent-text);
 }
 
-body.theme-light .entity-selector-btn.remove {
+body.theme-light .entity-selector-btn.remove:hover,
+body.theme-light .entity-selector-btn.remove:focus-visible {
   color: #c62828;
 }
 
 .alert-badge {
   display: inline-flex;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* --- Home Assistant notifications --- */
@@ -13530,7 +13560,7 @@ select option {
   text-align: center;
   white-space: normal;
   overflow: visible;
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
 }
 
 #settings-modal .tab-link-icon {
@@ -13544,7 +13574,7 @@ select option {
 
 #settings-modal .tab-link-label {
   max-width: 100%;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
   line-height: 1.15;
@@ -13558,7 +13588,7 @@ select option {
 }
 
 #settings-modal .tab-link.active .tab-link-icon {
-  color: var(--accent);
+  color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
@@ -13608,7 +13638,7 @@ select option {
 .settings-page-description {
   margin-top: 2px;
   font-size: var(--font-size-sm);
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
 }
 
 /* --- Groups: caption, then a pane of rows --- */
@@ -13627,7 +13657,7 @@ select option {
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  color: var(--text-faint);
 }
 
 .settings-group-caption-row {
@@ -13687,7 +13717,7 @@ select option {
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
 }
 
 #settings-modal .settings-card-header .settings-card-icon {
@@ -13782,7 +13812,7 @@ select option {
 
 .setting-slider-value {
   min-width: 30px;
-  text-align: right;
+  text-align: end;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
@@ -13794,7 +13824,7 @@ select option {
   margin-top: 3px;
   font-size: var(--font-size-sm);
   line-height: 1.4;
-  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  color: var(--text-faint);
 }
 
 #settings-modal .setting-text > .form-help:first-of-type {
@@ -13810,7 +13840,7 @@ select option {
 
 #settings-modal .form-group input[type='checkbox'] {
   flex-shrink: 0;
-  margin-right: 0;
+  margin-inline-end: 0;
   width: 38px;
   height: 22px;
   border-color: transparent;
@@ -13819,7 +13849,7 @@ select option {
 }
 
 #settings-modal .form-group label:has(input[type='checkbox']) input[type='checkbox'] {
-  margin-right: 10px;
+  margin-inline-end: 10px;
 }
 
 #settings-modal .form-group input[type='checkbox']::after {
@@ -13853,7 +13883,7 @@ select option {
 }
 
 #settings-modal .form-group > label:has(> input[type='checkbox']) input[type='checkbox'] {
-  margin-right: 0;
+  margin-inline-end: 0;
 }
 
 /* --- Segmented controls (theme mode, primary cards) --- */
@@ -13942,7 +13972,7 @@ select option {
   content: '';
   width: 8px;
   height: 8px;
-  margin-right: 4px;
+  margin-inline-end: 4px;
   border-right: 1.75px solid currentColor;
   border-bottom: 1.75px solid currentColor;
   opacity: 0.6;
@@ -14078,7 +14108,7 @@ select option {
   font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
 }
 
 #settings-modal .custom-color-field input {
@@ -14144,7 +14174,7 @@ select option {
 #settings-modal .preset-hotkey-row .setting-label {
   width: 100%;
   font-size: var(--font-size-sm);
-  color: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  color: var(--text-dim);
 }
 
 #settings-modal .btn-link {
@@ -14152,7 +14182,7 @@ select option {
   padding: 2px 6px;
   border: none;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
 }
@@ -14443,4 +14473,335 @@ body.density-compact
 
 body.density-compact #quick-controls .control-item.sensor-numeric-entity .control-sensor-gauge {
   height: 46px;
+}
+
+/* ==========================================================================
+   EMPTY, UNAVAILABLE AND ERROR STATES
+   ========================================================================== */
+
+/* Plain-language notes inside pop-ups ("This fan only turns on and off."). */
+.control-capability-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Quick Access before the first connection, or while it is still connecting. */
+#quick-controls .status-message {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--tile-border-hover);
+  border-radius: var(--radius-tile);
+  text-align: center;
+}
+
+.status-message-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--space-1);
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-size: var(--font-size-icon);
+}
+
+.status-message.is-connecting .status-message-icon svg {
+  animation: status-message-spin 1.6s linear infinite;
+}
+
+@keyframes status-message-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-message-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.status-message-url {
+  margin: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs-plus);
+  overflow-wrap: anywhere;
+}
+
+.status-message-detail {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.status-message-action {
+  margin-top: var(--space-2);
+}
+
+/* Camera viewer: a fixed 16:9 frame, so a slow or failed feed doesn't collapse the dialog to a
+   thin black bar or show a broken-image icon. */
+.camera-modal .camera-viewer {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.camera-modal .camera-viewer > :is(.camera-stream, .camera-video) {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  background: transparent;
+  object-fit: contain;
+}
+
+.camera-modal .camera-img:not([src]),
+.camera-modal .camera-img.camera-img-failed {
+  visibility: hidden;
+}
+
+.camera-modal .camera-loading {
+  border-radius: 0;
+  background: color-mix(in srgb, rgb(var(--window-bg-rgb)) 70%, transparent);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.camera-modal .camera-loading .spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+  border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
+  border-top-color: var(--accent);
+  margin-bottom: var(--space-2);
+}
+
+.camera-viewer-message {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.camera-viewer-message[hidden] {
+  display: none;
+}
+
+.camera-viewer-message-icon {
+  color: var(--text-faint);
+  font-size: var(--font-size-2xl);
+}
+
+.camera-modal .camera-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.camera-modal .camera-info {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--font-size-sm);
+}
+
+.camera-info-state {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.camera-info-updated {
+  color: var(--text-dim);
+  font-size: var(--font-size-xs-plus);
+}
+
+.camera-mode-buttons {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+}
+
+/* Manage Quick Access: one scrolling list under a fixed search box, with the secondary
+   "comparison graph" action moved to the footer. */
+#quick-controls-modal .quick-controls-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow: hidden;
+}
+
+#quick-controls-modal .quick-controls-target-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  font-style: normal;
+}
+
+#quick-controls-modal .quick-controls-search-group {
+  margin: 0;
+}
+
+#quick-controls-modal .entity-selector-list {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: none;
+  overflow-y: auto;
+}
+
+#quick-controls-modal .entity-item.is-added .entity-icon {
+  color: var(--accent-text);
+}
+
+#quick-controls-modal .quick-controls-footer {
+  justify-content: flex-start;
+}
+
+.entity-selector-empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* Pop-up for an entity Home Assistant reports as unavailable. */
+.dialog-unavailable-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
+  background: var(--tile-bg);
+  text-align: start;
+}
+
+.dialog-unavailable-note-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: var(--font-size-lg);
+}
+
+.dialog-unavailable-note-text {
+  display: grid;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.dialog-unavailable-note-text strong {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dialog-unavailable-note-text span {
+  color: var(--text-dim);
+}
+
+.modal.entity-unavailable :is(.brightness-icon, .fan-icon, .cover-icon, .climate-icon) {
+  color: var(--text-faint);
+  background: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.modal.entity-unavailable :is(.brightness-value-large, .fan-speed-value) {
+  color: var(--text-dim);
+  font-size: var(--font-size-2xl);
+}
+
+/* The note already says why; a "State" caption and capability notes would only repeat it. */
+.modal.entity-unavailable :is(.brightness-label, .fan-speed-label, .control-capability-note) {
+  display: none;
+}
+
+.modal.entity-unavailable :is(.modal-body, .modal-footer) :is(input, button):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   RIGHT-TO-LEFT AND FORCED COLOURS
+   ========================================================================== */
+
+/* Switches slide their knob with a physical translateX; mirroring the whole control keeps
+   "on" at the reading end in Arabic without duplicating every knob rule. */
+[dir='rtl'] .form-group input[type='checkbox'],
+[dir='rtl'] .entity-toggle {
+  transform: scaleX(-1);
+}
+
+/* Windows High Contrast replaces backgrounds with system colours, which erases the accent fills
+   that mark "on" tiles, selected tabs and switches. Draw those states with outlines instead. */
+@media (forced-colors: active) {
+  .sliding-indicator {
+    background: none;
+    border: 2px solid Highlight;
+  }
+
+  #quick-controls .control-item[data-active='true'],
+  .segmented-option.active,
+  .tab-link.active,
+  .quick-access-tab.active {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .form-group input[type='checkbox'],
+  .entity-toggle {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .form-group input[type='checkbox']::after,
+  .entity-toggle::after {
+    background: CanvasText;
+    box-shadow: none;
+  }
+
+  .form-group input[type='checkbox']:checked,
+  .entity-toggle.active {
+    background: Highlight;
+  }
+
+  .form-group input[type='checkbox']:checked::after,
+  .entity-toggle.active::after {
+    background: HighlightText;
+  }
+
+  .entity-line-icon {
+    stroke: currentColor;
+  }
 }

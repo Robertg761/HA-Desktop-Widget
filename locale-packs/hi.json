@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.23",
+  "version": "1.2.24",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -674,6 +674,21 @@
     "What the main window shows.": "मुख्य विंडो में क्या दिखता है।",
     "Keyboard shortcuts for the widget and your entities.": "विजेट और आपकी एंटिटी के लिए कीबोर्ड शॉर्टकट।",
     "Desktop notifications when entities change.": "एंटिटी बदलने पर डेस्कटॉप सूचनाएँ।",
-    "Updates, sync, diagnostics and support.": "अपडेट, सिंक, निदान और सहायता।"
+    "Updates, sync, diagnostics and support.": "अपडेट, सिंक, निदान और सहायता।",
+    "Home Assistant can't reach it right now. The controls come back when it reconnects.": "Home Assistant अभी इससे संपर्क नहीं कर पा रहा है। दोबारा कनेक्ट होने पर कंट्रोल लौट आएँगे।",
+    "This fan only turns on and off.": "यह पंखा केवल चालू और बंद होता है।",
+    "This player can't be controlled from here.": "इस प्लेयर को यहाँ से नियंत्रित नहीं किया जा सकता।",
+    "This cover can't be moved from here.": "इस कवर को यहाँ से नहीं हिलाया जा सकता।",
+    "Set up your connection": "अपना कनेक्शन सेट करें",
+    "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "अगर इसमें समय लगे, तो सेटिंग्स में Home Assistant URL और साइन-इन जाँचें।",
+    "Updated {{time}}": "{{time}} पर अपडेट किया गया",
+    "Recording": "रिकॉर्डिंग",
+    "Streaming": "स्ट्रीमिंग",
+    "Search entities...": "एंटिटी खोजें...",
+    "Edit alert": "अलर्ट संपादित करें",
+    "Add alert": "अलर्ट जोड़ें",
+    "Fan Speed": "पंखे की गति",
+    "State": "स्थिति",
+    "Brightness": "चमक"
   }
 }

@@ -139,6 +139,22 @@ function mixRgb(base, mixin, amount) {
   };
 }
 
+/**
+ * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
+ * more (WCAG relative luminance), so a dark custom accent still gets readable button labels.
+ * @param {{r:number, g:number, b:number}} rgb - Background colour.
+ * @returns {string} '#0a0c10' or '#ffffff'.
+ */
+function getReadableTextColor(rgb) {
+  const linear = (channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  const luminance = 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+  // Contrast with white is 1.05 / (L + 0.05); with #0a0c10 (L ≈ 0.0037) it is (L + 0.05) / 0.0537.
+  return 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.0537 ? '#ffffff' : '#0a0c10';
+}
+
 function mapWindowOpacityToBackgroundAlpha(opacity) {
   const normalized = (opacity - 0.5) / 0.5;
   const curvedOpacity = Math.pow(Math.max(0, Math.min(1, normalized)), BACKGROUND_OPACITY_CURVE);
@@ -322,6 +338,7 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--accent', normalizedColor);
   root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
   root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+  root.style.setProperty('--on-accent', getReadableTextColor(rgb));
   root.style.setProperty('--primary', normalizedColor);
   root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
@@ -1343,6 +1360,7 @@ export {
   setStatus,
   showConfirm,
   hexToRgb,
+  getReadableTextColor,
   miredsToKelvin,
   hasSupportedFeature,
   __forceAnimatedModalTransitions,

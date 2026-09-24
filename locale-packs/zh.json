@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.23",
+  "version": "1.2.24",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -674,6 +674,21 @@
     "What the main window shows.": "主窗口显示的内容。",
     "Keyboard shortcuts for the widget and your entities.": "小部件和实体的键盘快捷键。",
     "Desktop notifications when entities change.": "实体变化时的桌面通知。",
-    "Updates, sync, diagnostics and support.": "更新、同步、诊断和支持。"
+    "Updates, sync, diagnostics and support.": "更新、同步、诊断和支持。",
+    "Home Assistant can't reach it right now. The controls come back when it reconnects.": "Home Assistant 目前无法连接到它。重新连接后即可恢复控制。",
+    "This fan only turns on and off.": "此风扇只能打开和关闭。",
+    "This player can't be controlled from here.": "无法从此处控制此播放器。",
+    "This cover can't be moved from here.": "无法从此处移动此遮盖物。",
+    "Set up your connection": "设置连接",
+    "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "如果耗时较长，请在设置中检查 Home Assistant URL 和登录信息。",
+    "Updated {{time}}": "更新于 {{time}}",
+    "Recording": "录制中",
+    "Streaming": "直播中",
+    "Search entities...": "搜索实体...",
+    "Edit alert": "编辑提醒",
+    "Add alert": "添加提醒",
+    "Fan Speed": "风扇速度",
+    "State": "状态",
+    "Brightness": "亮度"
   }
 }

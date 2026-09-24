@@ -667,5 +667,20 @@
   "Keyboard shortcuts for the widget and your entities.": "Tastenkürzel für das Widget und deine Entitäten.",
   "Desktop notifications when entities change.": "Desktop-Benachrichtigungen, wenn sich Entitäten ändern.",
   "Updates, sync, diagnostics and support.": "Updates, Synchronisierung, Diagnose und Unterstützung.",
-  "Mode": "Modus"
+  "Mode": "Modus",
+  "Home Assistant can't reach it right now. The controls come back when it reconnects.": "Home Assistant kann es gerade nicht erreichen. Die Steuerung ist wieder da, sobald es sich neu verbindet.",
+  "This fan only turns on and off.": "Dieser Ventilator lässt sich nur ein- und ausschalten.",
+  "This player can't be controlled from here.": "Dieser Player lässt sich von hier aus nicht steuern.",
+  "This cover can't be moved from here.": "Diese Abdeckung lässt sich von hier aus nicht bewegen.",
+  "Set up your connection": "Verbindung einrichten",
+  "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "Wenn das länger dauert, prüfe die Home-Assistant-URL und die Anmeldung in den Einstellungen.",
+  "Updated {{time}}": "Aktualisiert {{time}}",
+  "Recording": "Aufnahme",
+  "Streaming": "Streamt",
+  "Search entities...": "Entitäten suchen...",
+  "Edit alert": "Warnung bearbeiten",
+  "Add alert": "Warnung hinzufügen",
+  "Fan Speed": "Lüftergeschwindigkeit",
+  "State": "Zustand",
+  "Brightness": "Helligkeit"
 }

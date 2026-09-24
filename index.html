@@ -1922,7 +1922,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="quick-controls-title">Manage Quick Access</h2>
+          <h2 id="quick-controls-title" data-i18n="Manage Quick Access">Manage Quick Access</h2>
           <button
             id="close-quick-controls"
             class="close-btn"
@@ -1933,30 +1933,31 @@
             ×
           </button>
         </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <button type="button" id="add-comparison-graph-btn" class="btn btn-secondary">
-              <span data-i18n="Add comparison graph">Add comparison graph</span>
-            </button>
-            <div class="form-help" data-i18n="Plot several sensors on one chart to compare them.">
-              Plot several sensors on one chart to compare them.
-            </div>
-          </div>
-          <div class="form-group">
+        <div class="modal-body quick-controls-modal-body">
+          <div id="quick-controls-target-hint" class="quick-controls-target-hint"></div>
+          <div class="form-group quick-controls-search-group">
             <input
               type="text"
               id="quick-controls-search"
               placeholder="Search entities..."
+              data-i18n-placeholder="Search entities..."
               class="form-control"
             />
           </div>
-          <div class="form-group">
-            <label>Available Entities for Quick Access:</label>
-            <div id="quick-controls-target-hint" class="form-help quick-controls-target-hint"></div>
-            <div id="quick-controls-list" class="entity-selector-list">
-              <!-- Available entities will be loaded here -->
-            </div>
+          <div id="quick-controls-list" class="entity-selector-list">
+            <!-- Available entities will be loaded here -->
           </div>
+        </div>
+        <div class="modal-footer quick-controls-footer">
+          <button
+            type="button"
+            id="add-comparison-graph-btn"
+            class="btn btn-secondary"
+            title="Plot several sensors on one chart to compare them."
+            data-i18n-title="Plot several sensors on one chart to compare them."
+          >
+            <span data-i18n="Add comparison graph">Add comparison graph</span>
+          </button>
         </div>
       </div>
     </div>

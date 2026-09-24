@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.23",
+  "version": "1.2.24",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -674,6 +674,21 @@
     "What the main window shows.": "ما تعرضه النافذة الرئيسية.",
     "Keyboard shortcuts for the widget and your entities.": "اختصارات لوحة المفاتيح للأداة وكياناتك.",
     "Desktop notifications when entities change.": "إشعارات سطح المكتب عند تغيّر الكيانات.",
-    "Updates, sync, diagnostics and support.": "التحديثات والمزامنة والتشخيص والدعم."
+    "Updates, sync, diagnostics and support.": "التحديثات والمزامنة والتشخيص والدعم.",
+    "Home Assistant can't reach it right now. The controls come back when it reconnects.": "لا يستطيع Home Assistant الوصول إليه حاليًا. ستعود عناصر التحكم عند إعادة الاتصال.",
+    "This fan only turns on and off.": "هذه المروحة تعمل وتتوقف فقط.",
+    "This player can't be controlled from here.": "لا يمكن التحكم في هذا المشغل من هنا.",
+    "This cover can't be moved from here.": "لا يمكن تحريك هذا الغطاء من هنا.",
+    "Set up your connection": "إعداد الاتصال",
+    "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "إذا استغرق ذلك وقتًا، فتحقق من عنوان Home Assistant وتسجيل الدخول في الإعدادات.",
+    "Updated {{time}}": "تم التحديث {{time}}",
+    "Recording": "جارٍ التسجيل",
+    "Streaming": "جارٍ البث",
+    "Search entities...": "البحث عن الكيانات...",
+    "Edit alert": "تعديل التنبيه",
+    "Add alert": "إضافة تنبيه",
+    "Fan Speed": "سرعة المروحة",
+    "State": "الحالة",
+    "Brightness": "السطوع"
   }
 }

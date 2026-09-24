@@ -667,5 +667,20 @@
   "Keyboard shortcuts for the widget and your entities.": "Keyboard shortcuts for the widget and your entities.",
   "Desktop notifications when entities change.": "Desktop notifications when entities change.",
   "Updates, sync, diagnostics and support.": "Updates, sync, diagnostics and support.",
-  "Mode": "Mode"
+  "Mode": "Mode",
+  "Home Assistant can't reach it right now. The controls come back when it reconnects.": "Home Assistant can't reach it right now. The controls come back when it reconnects.",
+  "This fan only turns on and off.": "This fan only turns on and off.",
+  "This player can't be controlled from here.": "This player can't be controlled from here.",
+  "This cover can't be moved from here.": "This cover can't be moved from here.",
+  "Set up your connection": "Set up your connection",
+  "If this takes a while, check the Home Assistant URL and sign-in in Settings.": "If this takes a while, check the Home Assistant URL and sign-in in Settings.",
+  "Updated {{time}}": "Updated {{time}}",
+  "Recording": "Recording",
+  "Streaming": "Streaming",
+  "Search entities...": "Search entities...",
+  "Edit alert": "Edit alert",
+  "Add alert": "Add alert",
+  "Fan Speed": "Fan Speed",
+  "State": "State",
+  "Brightness": "Brightness"
 }
