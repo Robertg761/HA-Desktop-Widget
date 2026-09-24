@@ -292,6 +292,7 @@ const {
   getDesktopPinDomain,
   normalizeDesktopPinContentMinBounds,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
+  getDesktopPinWindowBounds: getDesktopPinWindowBoundsInWorkArea,
 } = require('./src/desktop-pin-bounds.js');
 const {
   resolveDesktopPinProfile,
@@ -1875,14 +1876,11 @@ function clampDesktopPinBounds(
   const x = Number.isFinite(Number(bounds.x)) ? Math.round(Number(bounds.x)) : cascadeOrigin.x;
   const y = Number.isFinite(Number(bounds.y)) ? Math.round(Number(bounds.y)) : cascadeOrigin.y;
 
-  const display = electronScreen.getDisplayMatching({ x, y, width, height });
-  const workArea = display?.workArea ||
-    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
   const clampedBounds = clampDesktopPinBoundsWithWorkArea(bounds, {
     entityId,
     contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
     fallbackOrigin: cascadeOrigin,
-    workArea,
+    workArea: getDesktopPinWorkArea({ x, y, width, height }),
     previousBounds,
   });
   if (usesCompositorOwnedPlacement) {
@@ -1899,16 +1897,51 @@ function clampDesktopPinBounds(
   return clampedBounds;
 }
 
+function getDesktopPinWorkArea(bounds) {
+  const display = electronScreen.getDisplayMatching(bounds);
+  return (
+    display?.workArea ||
+    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 }
+  );
+}
+
+/**
+ * Native window bounds for a pin's saved bounds. Saved sizes are at 100% "Text and control
+ * size"; the window is scaled by the current setting so the zoomed content still fits.
+ */
+function getDesktopPinWindowBounds(entityId, pinBounds) {
+  const scale = config?.ui?.scale;
+  const windowBounds = getDesktopPinWindowBoundsInWorkArea(pinBounds, {
+    entityId,
+    contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
+    fallbackOrigin: getDesktopPinCascadeOrigin(0),
+    workArea: getDesktopPinWorkArea(pinBounds),
+    scale,
+  });
+  if (usesCompositorOwnedPlacement) {
+    windowBounds.x = pinBounds.x;
+    windowBounds.y = pinBounds.y;
+  }
+  return windowBounds;
+}
+
+// Moving a pin only changes its position; its saved size stays the 100% size.
+function getDesktopPinBoundsFromWindow(entityId, pinWindow) {
+  const { x, y } = pinWindow.getBounds();
+  return getDesktopPinBounds(entityId, { ...config?.desktopPins?.[entityId], x, y });
+}
+
 function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
   if (!targetWindow || targetWindow.isDestroyed() || !nextBounds) return;
   try {
     targetWindow.__desktopPinApplyingBounds = true;
+    const windowBounds = getDesktopPinWindowBounds(targetWindow.__desktopPinEntityId, nextBounds);
     if (usesCompositorOwnedPlacement) {
-      targetWindow.setSize(nextBounds.width, nextBounds.height);
+      targetWindow.setSize(windowBounds.width, windowBounds.height);
     } else {
-      targetWindow.setBounds(nextBounds);
+      targetWindow.setBounds(windowBounds);
     }
-    applyDesktopPinWindowShape(targetWindow, nextBounds);
+    applyDesktopPinWindowShape(targetWindow, windowBounds);
     if (isLayerShellChildProcess) placeLayerWindow(targetWindow);
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
@@ -2494,14 +2527,17 @@ function createDesktopPinWindow(entityId, options = {}) {
   );
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = pinBounds;
+  const windowBounds = getDesktopPinWindowBounds(normalizedEntityId, pinBounds);
 
   const iconPath = getAppIconPath(__dirname);
   const transparencyOptions = getWindowTransparencyOptions(config);
-  const pinPositionOptions = usesCompositorOwnedPlacement ? {} : { x: pinBounds.x, y: pinBounds.y };
+  const pinPositionOptions = usesCompositorOwnedPlacement
+    ? {}
+    : { x: windowBounds.x, y: windowBounds.y };
   const windowOptions = {
     ...pinPositionOptions,
-    width: pinBounds.width,
-    height: pinBounds.height,
+    width: windowBounds.width,
+    height: windowBounds.height,
     transparent: transparencyOptions.transparent,
     backgroundColor: transparencyOptions.backgroundColor,
     frame: false,
@@ -2562,7 +2598,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   } catch (error) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
-  applyDesktopPinWindowShape(pinWindow, pinBounds);
+  applyDesktopPinWindowShape(pinWindow, windowBounds);
   applyDesktopPinWindowEffects(pinWindow, config);
   wireWindowEffectsRefresh(pinWindow, () => config, false);
   applyDesktopPinEditModeToWindow(pinWindow);
@@ -2578,9 +2614,9 @@ function createDesktopPinWindow(entityId, options = {}) {
     if (pinWindow.__desktopPinSaveTimer) {
       clearTimeout(pinWindow.__desktopPinSaveTimer);
     }
-    pinWindow.__desktopPinPendingBounds = getDesktopPinBounds(
+    pinWindow.__desktopPinPendingBounds = getDesktopPinBoundsFromWindow(
       normalizedEntityId,
-      pinWindow.getBounds()
+      pinWindow
     );
     pinWindow.__desktopPinSaveTimer = setTimeout(() => {
       pinWindow.__desktopPinSaveTimer = null;
@@ -2588,7 +2624,7 @@ function createDesktopPinWindow(entityId, options = {}) {
       if (!desktopPinEditMode) return;
       const nextBounds =
         pinWindow.__desktopPinPendingBounds ||
-        getDesktopPinBounds(normalizedEntityId, pinWindow.getBounds());
+        getDesktopPinBoundsFromWindow(normalizedEntityId, pinWindow);
       pinWindow.__desktopPinPendingBounds = null;
       runBackgroundConfigMutation(() => {
         config.desktopPins = config.desktopPins || {};
@@ -2668,12 +2704,15 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
       return;
     }
 
+    // A "Text and control size" change arrives here too: the saved bounds stay the same and the
+    // window is resized to the new scale.
     const currentBounds = window.getBounds();
+    const windowBounds = getDesktopPinWindowBounds(entityId, bounds);
     const boundsChanged =
-      currentBounds.x !== bounds.x ||
-      currentBounds.y !== bounds.y ||
-      currentBounds.width !== bounds.width ||
-      currentBounds.height !== bounds.height;
+      currentBounds.x !== windowBounds.x ||
+      currentBounds.y !== windowBounds.y ||
+      currentBounds.width !== windowBounds.width ||
+      currentBounds.height !== windowBounds.height;
 
     if (boundsChanged) {
       applyDesktopPinBoundsToWindow(window, bounds);
@@ -10227,7 +10266,7 @@ function capturePendingWindowBoundsForShutdown() {
     if (!pinWindow.__desktopPinSaveTimer && !pinWindow.__desktopPinPendingBounds) return;
     if (!usesCompositorOwnedPlacement) {
       const bounds =
-        pinWindow.__desktopPinPendingBounds || getDesktopPinBounds(entityId, pinWindow.getBounds());
+        pinWindow.__desktopPinPendingBounds || getDesktopPinBoundsFromWindow(entityId, pinWindow);
       config.desktopPins = config.desktopPins || {};
       config.desktopPins[entityId] = bounds;
       changed = true;

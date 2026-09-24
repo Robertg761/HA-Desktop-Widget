@@ -5354,7 +5354,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
-    it('converts scene minimum sizes to native pixels at increased interface scale', async () => {
+    it('reports scene minimum sizes at 100% for main to scale at increased interface scale', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);
       state.CONFIG.ui = { ...state.CONFIG.ui, scale: 1.5 };
@@ -5367,8 +5367,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.renderDesktopPinnedTile('scene.relax', scene);
       await flushDesktopPinSceneMinSync();
       expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalledWith('scene.relax', {
-        width: 146,
-        height: 125,
+        width: 97,
+        height: 83,
       });
       jest.useRealTimers();
     });
