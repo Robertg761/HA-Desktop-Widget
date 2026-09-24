@@ -228,8 +228,8 @@ function setCustomThemes(customColors = []) {
       id = `${CUSTOM_THEME_ID_PREFIX}${color.slice(1).toLowerCase()}-${index + 1}`;
     }
 
-    const name =
-      typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `Custom ${color}`;
+    const hasName = typeof entry.name === 'string' && !!entry.name.trim();
+    const name = hasName ? entry.name.trim() : `Custom ${color}`;
     const createdAt =
       typeof entry.createdAt === 'string' && entry.createdAt.trim() ? entry.createdAt : nowIso;
     const updatedAt =
@@ -241,6 +241,7 @@ function setCustomThemes(customColors = []) {
       color,
       description: 'Saved custom color',
       isCustom: true,
+      hasDefaultName: !hasName,
       createdAt,
       updatedAt,
     });
@@ -257,7 +258,20 @@ function setCustomThemes(customColors = []) {
  * @returns {Array<{id: string, name: string, color: string, description?: string, rgb: string|null}>} An array of accent theme objects; each includes original theme properties and an `rgb` string in the form `"r, g, b"` when `color` could be parsed, or `null` otherwise.
  */
 function getAccentThemes() {
-  return getAllThemes().map(toThemeWithRgb);
+  return getAllThemes().map((theme) => toThemeWithRgb(localizeTheme(theme)));
+}
+
+// Theme names and descriptions are stored in English and translated whenever the list is read,
+// so a language change applies to them too. Names the user gave a custom color stay as typed.
+function localizeTheme(theme) {
+  if (!theme.isCustom) {
+    return { ...theme, name: t(theme.name), description: t(theme.description) };
+  }
+  return {
+    ...theme,
+    name: theme.hasDefaultName ? t('Custom {{color}}', { color: theme.color }) : theme.name,
+    description: t(theme.description),
+  };
 }
 
 /**

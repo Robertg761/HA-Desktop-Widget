@@ -1,4 +1,124 @@
 import state from './state.js';
+import { t, formatNumber, formatNumericState } from './i18n.js';
+
+// Display names for raw Home Assistant states. The English names are the same as STATE_NAMES in
+// src/tray-entities.cjs (a unit test keeps the two in step), so both share one set of translation
+// keys. This package cannot import that CommonJS module, hence the copy.
+const HA_STATE_NAMES = Object.freeze({
+  on: 'On',
+  off: 'Off',
+  home: 'Home',
+  not_home: 'Away',
+  open: 'Open',
+  opening: 'Opening',
+  closed: 'Closed',
+  closing: 'Closing',
+  stopped: 'Stopped',
+  locked: 'Locked',
+  unlocked: 'Unlocked',
+  locking: 'Locking',
+  unlocking: 'Unlocking',
+  jammed: 'Jammed',
+  playing: 'Playing',
+  paused: 'Paused',
+  idle: 'Idle',
+  standby: 'Standby',
+  buffering: 'Buffering',
+  active: 'Active',
+  cleaning: 'Cleaning',
+  docked: 'Docked',
+  returning: 'Returning',
+  error: 'Error',
+  heat: 'Heating',
+  cool: 'Cooling',
+  heat_cool: 'Automatic',
+  auto: 'Automatic',
+  dry: 'Drying',
+  fan_only: 'Fan',
+  disarmed: 'Disarmed',
+  armed_home: 'Armed at home',
+  armed_away: 'Armed away',
+  armed_night: 'Armed at night',
+  armed_vacation: 'Armed on vacation',
+  armed_custom_bypass: 'Armed',
+  arming: 'Arming',
+  pending: 'Pending',
+  triggered: 'Alarm',
+  charging: 'Charging',
+  discharging: 'Discharging',
+  not_charging: 'Not charging',
+  full: 'Full',
+  running: 'Running',
+  unavailable: 'Unavailable',
+  unknown: 'Unknown',
+});
+
+// Names for the entity domains a tile can show. Anything else falls back to the domain id in
+// title case, as before. Their translation keys carry a "Domain: " prefix because bare nouns such
+// as "Light", "Lock" or "Update" are already keys with other meanings (a theme, verbs).
+const HA_DOMAIN_NAMES = Object.freeze({
+  alarm_control_panel: 'Alarm Control Panel',
+  automation: 'Automation',
+  binary_sensor: 'Binary Sensor',
+  button: 'Button',
+  calendar: 'Calendar',
+  camera: 'Camera',
+  climate: 'Climate',
+  counter: 'Counter',
+  cover: 'Cover',
+  device_tracker: 'Device Tracker',
+  fan: 'Fan',
+  humidifier: 'Humidifier',
+  input_boolean: 'Input Boolean',
+  input_button: 'Input Button',
+  input_number: 'Input Number',
+  input_select: 'Input Select',
+  input_text: 'Input Text',
+  light: 'Light',
+  lock: 'Lock',
+  media_player: 'Media Player',
+  number: 'Number',
+  person: 'Person',
+  remote: 'Remote',
+  scene: 'Scene',
+  script: 'Script',
+  select: 'Select',
+  sensor: 'Sensor',
+  siren: 'Siren',
+  switch: 'Switch',
+  timer: 'Timer',
+  update: 'Update',
+  vacuum: 'Vacuum',
+  valve: 'Valve',
+  water_heater: 'Water Heater',
+  weather: 'Weather',
+});
+
+const TIMER_STATUS_NAMES = Object.freeze({
+  idle: 'Idle',
+  running: 'Running',
+  paused: 'Paused',
+  finished: 'Finished',
+  unavailable: 'Unavailable',
+});
+
+/**
+ * Localized display name for a raw Home Assistant state ("on" -> "On", "not_home" -> "Away").
+ * States without a known name keep their text with the first letter capitalized.
+ * @param {string} value - The raw state.
+ * @returns {string} - The label to show.
+ */
+function getLocalizedStateName(value) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return t('Unknown');
+  const key = raw.toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(HA_STATE_NAMES, key)) return t(HA_STATE_NAMES[key]);
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function isUnavailableOrUnknownState(value) {
+  return value === 'unavailable' || value === 'unknown';
+}
 const graphemeSegmenter =
   typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -88,7 +208,7 @@ function normalizeEntityIconGlyph(icon) {
 
 function getEntityDisplayName(entity) {
   try {
-    if (!entity) return 'Unknown';
+    if (!entity) return t('Unknown');
 
     // Check for custom name first
     const customName = state.CONFIG?.customEntityNames?.[entity.entity_id];
@@ -98,18 +218,25 @@ function getEntityDisplayName(entity) {
     return entity.attributes?.friendly_name || entity.entity_id;
   } catch (error) {
     console.error('Error getting entity display name:', error);
-    return 'Unknown';
+    return t('Unknown');
   }
 }
 
 function getEntityTypeDescription(entity) {
   try {
-    if (!entity) return 'Unknown';
+    if (!entity) return t('Unknown');
     const domain = entity.entity_id.split('.')[0];
+    if (Object.prototype.hasOwnProperty.call(HA_DOMAIN_NAMES, domain)) {
+      const name = HA_DOMAIN_NAMES[domain];
+      const key = `Domain: ${name}`;
+      const label = t(key);
+      // t() hands back the key itself when no catalog has it; English shows the plain name.
+      return label === key ? name : label;
+    }
     return domain.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   } catch (error) {
     console.error('Error getting entity type description:', error);
-    return 'Unknown';
+    return t('Unknown');
   }
 }
 
@@ -273,7 +400,7 @@ function getSearchScore(text, query) {
 
 function getEntityDisplayState(entity) {
   try {
-    if (!entity) return 'Unknown';
+    if (!entity) return t('Unknown');
 
     // Check if sensor is a timer (has timer-related attributes, timer in name, or timestamp as state)
     const hasTimerAttributes =
@@ -311,18 +438,23 @@ function getEntityDisplayState(entity) {
 
     // For sensors, return the actual value with unit
     if (entity.entity_id.startsWith('sensor.')) {
+      if (isUnavailableOrUnknownState(entity.state)) return getLocalizedStateName(entity.state);
       const unit = entity.attributes?.unit_of_measurement || '';
-      return unit ? `${entity.state} ${unit}` : entity.state;
+      // Like Home Assistant, only format measurements; a bare "2026" or "01234" stays as sent.
+      const value =
+        unit || entity.attributes?.state_class ? formatNumericState(entity.state) : entity.state;
+      return unit ? `${value} ${unit}` : value;
     }
 
     // For binary sensors
     if (entity.entity_id.startsWith('binary_sensor.')) {
-      return entity.state === 'on' ? 'Detected' : 'Clear';
+      if (isUnavailableOrUnknownState(entity.state)) return getLocalizedStateName(entity.state);
+      return entity.state === 'on' ? t('Detected') : t('Clear');
     }
 
     // For scenes - just show "Ready" or hide the state
     if (entity.entity_id.startsWith('scene.')) {
-      return 'Ready';
+      return t('Ready');
     }
 
     // For lights with brightness
@@ -338,14 +470,14 @@ function getEntityDisplayState(entity) {
     // For climate
     if (entity.entity_id.startsWith('climate.')) {
       const temp = entity.attributes?.current_temperature || entity.attributes?.temperature;
-      if (temp) return `${temp}°`;
+      if (temp) return `${formatNumber(temp)}°`;
     }
 
-    // Default: capitalize first letter
-    return entity.state.charAt(0).toUpperCase() + entity.state.slice(1);
+    // Default: the localized state name, or the raw state with its first letter capitalized
+    return getLocalizedStateName(entity.state);
   } catch (error) {
     console.error('Error getting entity display state:', error);
-    return 'Unknown';
+    return t('Unknown');
   }
 }
 
@@ -448,37 +580,49 @@ function getTimerRemainingFraction(entity) {
 }
 
 /**
- * Short, human-readable run status for a timer entity ("Running", "Paused", ...).
- * Never returns a raw timestamp, so it is safe to show as a compact badge.
+ * Run state of a timer entity, for logic that must not depend on the display language.
+ * @param {object} entity - The timer (or timer-like sensor) entity.
+ * @returns {'idle'|'running'|'paused'|'finished'|'unavailable'|'other'} - The run state.
+ */
+function getTimerRunState(entity) {
+  if (!entity?.entity_id) return 'idle';
+
+  const rawState = typeof entity.state === 'string' ? entity.state.trim() : '';
+  const normalizedState = rawState.toLowerCase();
+  if (normalizedState === 'unavailable') return 'unavailable';
+  if (!rawState || normalizedState === 'unknown') return 'idle';
+
+  if (entity.entity_id.startsWith('sensor.')) {
+    const finishesAt = resolveTimerFinishesAt(entity);
+    if (finishesAt) {
+      return new Date(finishesAt).getTime() > Date.now() ? 'running' : 'finished';
+    }
+    // A bare date state says nothing about whether the timer is running.
+    if (/^\d{4}-\d{2}-\d{2}/.test(rawState)) return 'idle';
+    return 'other';
+  }
+
+  if (normalizedState === 'active') return 'running';
+  if (normalizedState === 'paused') return 'paused';
+  if (normalizedState === 'idle') return 'idle';
+  return 'other';
+}
+
+/**
+ * Short, human-readable run status for a timer entity ("Running", "Paused", ...), in the
+ * active language. Never returns a raw timestamp, so it is safe to show as a compact badge.
+ * Compare getTimerRunState() instead of this label in logic.
  * @param {object} entity - The timer (or timer-like sensor) entity.
  * @returns {string} - The status label.
  */
 function getTimerStatusLabel(entity) {
   try {
-    if (!entity?.entity_id) return 'Idle';
-
-    const rawState = typeof entity.state === 'string' ? entity.state.trim() : '';
-    const normalizedState = rawState.toLowerCase();
-    if (normalizedState === 'unavailable') return 'Unavailable';
-    if (!rawState || normalizedState === 'unknown') return 'Idle';
-
-    if (entity.entity_id.startsWith('sensor.')) {
-      const finishesAt = resolveTimerFinishesAt(entity);
-      if (finishesAt) {
-        return new Date(finishesAt).getTime() > Date.now() ? 'Running' : 'Finished';
-      }
-      // A bare date state says nothing about whether the timer is running.
-      if (/^\d{4}-\d{2}-\d{2}/.test(rawState)) return 'Idle';
-      return rawState.charAt(0).toUpperCase() + rawState.slice(1);
-    }
-
-    if (normalizedState === 'active') return 'Running';
-    if (normalizedState === 'paused') return 'Paused';
-    if (normalizedState === 'idle') return 'Idle';
-    return rawState.charAt(0).toUpperCase() + rawState.slice(1);
+    const runState = getTimerRunState(entity);
+    if (runState !== 'other') return t(TIMER_STATUS_NAMES[runState]);
+    return getLocalizedStateName(entity.state);
   } catch (error) {
     console.error('Error getting timer status label:', error);
-    return 'Idle';
+    return t('Idle');
   }
 }
 
@@ -495,7 +639,7 @@ function getTimerDisplay(entity) {
         const now = Date.now();
 
         if (endTime <= now) {
-          return 'Finished';
+          return t('Finished');
         }
 
         const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
@@ -510,12 +654,14 @@ function getTimerDisplay(entity) {
       }
 
       // If no end time found, just return the state
-      return entity.state;
+      return Object.prototype.hasOwnProperty.call(HA_STATE_NAMES, entity.state)
+        ? t(HA_STATE_NAMES[entity.state])
+        : entity.state;
     }
 
     // Handle timer.* entities
     if (entity.state === 'idle') {
-      return 'Idle';
+      return t('Idle');
     }
 
     if (entity.state === 'paused') {
@@ -537,7 +683,7 @@ function getTimerDisplay(entity) {
       return remaining.substring(0, 5); // Fallback to HH:MM
     }
 
-    return entity.state.charAt(0).toUpperCase() + entity.state.slice(1);
+    return getLocalizedStateName(entity.state);
   } catch (error) {
     console.error('Error getting timer display:', error);
     return '--:--';
@@ -894,6 +1040,9 @@ export {
   getEntityDisplayState,
   getTimerDisplay,
   getTimerStatusLabel,
+  getTimerRunState,
+  getLocalizedStateName,
+  HA_STATE_NAMES,
   getTimerRemainingSeconds,
   getTimerRemainingFraction,
   escapeHtml,

@@ -883,7 +883,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty {
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
-  content: 'Drag or resize';
+  content: attr(data-edit-hint);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -4690,7 +4690,6 @@ body.first-run-active .widget-content > * {
 .weather-condition {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  text-transform: capitalize;
   line-height: 1.2;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -5857,7 +5856,6 @@ body.first-run-active .widget-content > * {
 .climate-mode-label {
   font-size: var(--font-size-sm);
   font-weight: 500;
-  text-transform: capitalize;
 }
 
 .climate-modal {

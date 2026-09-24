@@ -8,6 +8,8 @@
  * value alone. This module holds only the pure logic; ui.js owns the DOM.
  */
 
+import { formatNumber } from './i18n.js';
+
 export const SENSOR_TILE_CHART_TYPE_DEFAULT = 'line';
 
 export const SENSOR_TILE_CHART_OPTIONS = Object.freeze([
@@ -238,16 +240,18 @@ export function buildGaugeArc({ width, height, fraction, strokeWidth = 6 }) {
 }
 
 /**
- * Compact label for a gauge bound: "0", "100", "1.5k", "-30".
+ * Compact label for a gauge bound in the active language: "0", "100", "1.5k", "-30" ("1,5k" in
+ * German). Display only; never parse it back.
  */
 export function formatGaugeBoundLabel(value) {
   const numeric = toFiniteNumber(value);
   if (numeric === null) return '';
   const magnitude = Math.abs(numeric);
-  const trim = (text) => text.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-  if (magnitude >= 1e6) return `${trim((numeric / 1e6).toFixed(1))}M`;
-  if (magnitude >= 1e4) return `${trim((numeric / 1e3).toFixed(1))}k`;
-  if (magnitude >= 100) return String(Math.round(numeric));
-  if (magnitude >= 10) return trim(numeric.toFixed(1));
-  return trim(numeric.toFixed(2));
+  const format = (number, maximumFractionDigits) =>
+    formatNumber(number, { maximumFractionDigits, useGrouping: false });
+  if (magnitude >= 1e6) return `${format(numeric / 1e6, 1)}M`;
+  if (magnitude >= 1e4) return `${format(numeric / 1e3, 1)}k`;
+  if (magnitude >= 100) return format(Math.round(numeric), 0);
+  if (magnitude >= 10) return format(numeric, 1);
+  return format(numeric, 2);
 }

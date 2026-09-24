@@ -240,6 +240,51 @@ describe('command palette recents', () => {
     expect(stored.join()).not.toContain('secret');
   });
 
+  it('shows commands, labels, and entity states in the active language', () => {
+    const { palette, paletteState } = load();
+    const i18n = require('../../src/i18n.js');
+    try {
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Turn off {{name}}': '{{name}} ausschalten',
+          'Switch to {{name}}': 'Zu {{name}} wechseln',
+          'Search entities, commands, and pages': 'Entitäten, Befehle und Seiten suchen',
+          'Close command palette': 'Befehlspalette schließen',
+          On: 'An',
+          'Domain: Light': 'Licht',
+        },
+      });
+      paletteState.setStates({ 'light.bed_light': bedLight('on') });
+      palette.openCommandPalette();
+
+      expect(resultNames()).toEqual(
+        expect.arrayContaining(['Bed Light ausschalten', 'Zu Kitchen wechseln'])
+      );
+      const input = document.querySelector('.command-palette-input');
+      expect(input.placeholder).toBe('Entitäten, Befehle und Seiten suchen');
+      expect(document.querySelector('.command-palette-close').getAttribute('aria-label')).toBe(
+        'Befehlspalette schließen'
+      );
+      const states = [...document.querySelectorAll('.command-palette-result-state')].map(
+        (element) => element.textContent
+      );
+      expect(states).toContain('An');
+      const types = [...document.querySelectorAll('.command-palette-result-domain')].map(
+        (element) => element.textContent
+      );
+      expect(types).toContain('Licht');
+
+      // The shell is reused, so a language change must reach it on the next open.
+      palette.closeCommandPalette();
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      palette.openCommandPalette();
+      expect(input.placeholder).toBe('Search entities, commands, and pages');
+    } finally {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    }
+  });
+
   it('does not offer switching to the page already on screen', () => {
     const { palette, paletteState } = load();
     paletteState.setStates({});
