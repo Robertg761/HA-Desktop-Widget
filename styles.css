@@ -13705,6 +13705,10 @@ select option {
   font-size: var(--font-size-sm);
 }
 
+.setting-row > .btn {
+  flex-shrink: 0;
+}
+
 .setting-row-stacked {
   flex-direction: column;
   align-items: stretch;
