@@ -1130,6 +1130,32 @@ describe('Camera Module', () => {
       expect(image.getAttribute('alt')).toBe('');
     });
 
+    it('shows the preview status in the current language when the expanded view opens', async () => {
+      const i18n = require('../../src/i18n.js');
+      const tile = createPreviewTile();
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = {
+        'camera.front_door': sampleStates['camera.front_door'],
+      };
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      pendingImage(tile).onerror();
+      try {
+        // The language changes after the status was set.
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'Preview unavailable': 'Vorschau nicht verfügbar' },
+        });
+        await camera.openCamera('camera.front_door', { sourceTile: tile });
+        expect(document.querySelector('.camera-expanded-preview-status').textContent).toBe(
+          'Vorschau nicht verfügbar'
+        );
+      } finally {
+        document.querySelector('.camera-expanded-preview-close')?.click();
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('closes the expanded view, not the dialog under it, on Escape with focus on the page', async () => {
       const uiUtils = jest.requireActual('../../src/ui-utils.js');
       const settings = document.createElement('div');

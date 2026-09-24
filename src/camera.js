@@ -119,7 +119,8 @@ function setCameraPreviewState(record, previewState, statusText, tileStatusText 
   const translatedStatus = statusText ? t(statusText) : '';
   const translatedTileStatus = tileStatusText ? t(tileStatusText) : '';
   record.previewState = previewState;
-  record.statusText = translatedStatus;
+  // Kept untranslated: the expanded view opened later may be in another language.
+  record.statusText = statusText || '';
   record.tile.dataset.cameraPreviewState = previewState;
   const status = record.tile.querySelector('.camera-tile-preview-status');
   if (status) status.textContent = translatedTileStatus;
@@ -1035,7 +1036,7 @@ function openExpandedCameraPreview(record, camera) {
       </header>
       <div class="camera-expanded-preview-stage"></div>
       <footer class="camera-expanded-preview-footer">
-        <span class="camera-expanded-preview-status" role="status">${escapeHtml(record.statusText || t('Loading preview…'))}</span>
+        <span class="camera-expanded-preview-status" role="status">${escapeHtml(t(record.statusText || 'Loading preview…'))}</span>
         ${
           record.previewMode === 'live'
             ? `<button type="button" class="camera-expanded-preview-reconnect" aria-label="${escapeHtmlAttribute(t('Reconnect camera'))}">${escapeHtml(t('Reconnect'))}</button>`
