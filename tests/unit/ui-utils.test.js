@@ -96,6 +96,24 @@ describe('UI Utilities', () => {
       uiUtils.__forceAnimatedModalTransitions(false);
     });
 
+    it('stacks toasts above an open dialog footer and back at the bottom once it closes', () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = '<div class="modal-content"><div class="modal-footer"></div></div>';
+      document.body.appendChild(modal);
+      const footer = modal.querySelector('.modal-footer');
+      footer.getClientRects = () => [{}];
+      footer.getBoundingClientRect = () => ({ top: window.innerHeight - 60 });
+
+      uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
+      expect(toastContainer.style.bottom).toBe('68px');
+
+      modal.classList.add('hidden');
+      uiUtils.showToast('Saved', 'success', 2000);
+      expect(toastContainer.style.bottom).toBe('');
+      modal.remove();
+    });
+
     it('should display toast with message', () => {
       uiUtils.showToast('Test message', 'success', 2000);
 

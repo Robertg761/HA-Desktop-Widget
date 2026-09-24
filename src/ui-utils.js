@@ -722,10 +722,28 @@ function dismissToast(toast) {
  * @param {number} [timeout=2000] - Time in milliseconds before the toast begins animating out.
  * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
  */
+// Toasts sit at the bottom of the window, where an open dialog keeps its footer buttons (Close,
+// Save, Turn On). While a dialog is open, stack them just above its footer instead.
+const TOAST_FOOTER_GAP_PX = 8;
+function placeToastContainer(container) {
+  const footerTops = Array.from(
+    document.querySelectorAll('.modal:not(.hidden):not(.modal-closing) .modal-footer')
+  )
+    .filter((footer) => footer.getClientRects().length > 0)
+    .map((footer) => footer.getBoundingClientRect().top);
+  if (!footerTops.length) {
+    container.style.removeProperty('bottom');
+    return;
+  }
+  const bottom = Math.max(0, window.innerHeight - Math.min(...footerTops)) + TOAST_FOOTER_GAP_PX;
+  container.style.bottom = `${Math.round(bottom)}px`;
+}
+
 function showToast(message, type = 'success', timeout = 2000) {
   try {
     const container = document.getElementById('toast-container');
     if (!container) return undefined;
+    placeToastContainer(container);
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
 
