@@ -465,6 +465,19 @@ describe('ui.js translations and number formatting', () => {
     ).toBe('الآن \u206623°C\u2069');
   });
 
+  it('relabels the weather card icons when the primary cards are drawn in a new language', () => {
+    // Icons carry the key of their built-in label (see icons.js).
+    document.getElementById('weather-card').innerHTML =
+      '<span class="detail-icon-humidity"><svg aria-label="Humidity" data-i18n-aria-label="Humidity"></svg></span>';
+    state.setConfig({ ...state.CONFIG, primaryCards: ['weather', 'time'] });
+    ui.renderPrimaryCards();
+    useGerman({ Humidity: 'Luftfeuchtigkeit' });
+    ui.renderPrimaryCards();
+    expect(
+      document.querySelector('#weather-card .detail-icon-humidity svg').getAttribute('aria-label')
+    ).toBe('Luftfeuchtigkeit');
+  });
+
   it('names the weather condition on a weather desktop pin', () => {
     useGerman({ Rainy: 'Regnerisch' });
     const weather = entity('weather.home', 'rainy', { temperature: 12.5, humidity: 80 });

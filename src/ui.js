@@ -11,7 +11,15 @@ import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
-import { formatDate, formatNumber, formatTime, getLocaleState, isolateLtr, t } from './i18n.js';
+import {
+  formatDate,
+  formatNumber,
+  formatTime,
+  getLocaleState,
+  isolateLtr,
+  t,
+  translateDocument,
+} from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import { normalizeWeatherCondition, renderWeatherIcon, WEATHER_LABELS } from './weather-icons.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
@@ -1491,6 +1499,8 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('weather-card');
     cardEl.title = t('Long-press to configure weather');
     cardEl.innerHTML = weatherCardTemplate || '';
+    // The markup was saved in the startup language; relabel its icons for the current one.
+    translateDocument(cardEl);
     return;
   }
 
@@ -1499,6 +1509,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('time-card');
     cardEl.title = t('Current time');
     cardEl.innerHTML = timeCardTemplate || '';
+    translateDocument(cardEl);
     return;
   }
 
