@@ -24,8 +24,24 @@ function canAnimate(element) {
   return !!element && typeof element.animate === 'function' && !prefersReducedMotion();
 }
 
-/** An element's box relative to its container's scrollable content. */
+/**
+ * An element's box relative to its container's content, from layout offsets rather than
+ * getBoundingClientRect: the offsets ignore transforms, so a bar measured while its dialog is
+ * still scaling in (the settings modal opens at 95%) gets its real size, not a shrunken one.
+ * Falls back to client rects when the container is not in the element's offset-parent chain.
+ */
 function rectWithin(container, element) {
+  let x = 0;
+  let y = 0;
+  let node = element;
+  while (node && node !== container) {
+    x += node.offsetLeft;
+    y += node.offsetTop;
+    node = node.offsetParent;
+  }
+  if (node === container) {
+    return { x, y, width: element.offsetWidth, height: element.offsetHeight };
+  }
   const outer = container.getBoundingClientRect();
   const inner = element.getBoundingClientRect();
   return {

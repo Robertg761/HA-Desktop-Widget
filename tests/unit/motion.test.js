@@ -73,6 +73,28 @@ describe('motion helpers', () => {
     expect(frames[1].transform).toBe('translate(70px, 4px)');
   });
 
+  test('measures from layout offsets, so a dialog still scaling in does not shrink the pill', () => {
+    const bar = document.createElement('div');
+    const item = document.createElement('button');
+    bar.appendChild(item);
+    document.body.appendChild(bar);
+    // Client rects as seen at 95% scale mid-animation, which the pill must ignore.
+    setRect(bar, { x: 10, y: 10, width: 285, height: 38 });
+    setRect(item, { x: 14, y: 14, width: 79, height: 53 });
+    Object.defineProperties(item, {
+      offsetParent: { value: bar },
+      offsetLeft: { value: 4 },
+      offsetTop: { value: 10 },
+      offsetWidth: { value: 83 },
+      offsetHeight: { value: 56 },
+    });
+
+    const pill = syncSlidingIndicator(bar, item);
+    expect(pill.style.transform).toBe('translate(4px, 10px)');
+    expect(pill.style.width).toBe('83px');
+    expect(pill.style.height).toBe('56px');
+  });
+
   test('does not animate when the selection has not moved', () => {
     const { bar, first } = buildBar();
     syncSlidingIndicator(bar, first);
