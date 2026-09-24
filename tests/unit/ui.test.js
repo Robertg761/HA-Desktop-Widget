@@ -402,6 +402,50 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ]);
     });
 
+    it('says the first page was updated and lands focus on it after filling it', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      state.setStates({
+        'light.stove': { entity_id: 'light.stove', state: 'off', attributes: {} },
+      });
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
+      expect(uiUtils.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
+      // The launcher (the empty-dashboard button) is gone; focus lands on the new page's tile.
+      expect(document.activeElement).not.toBe(document.body);
+      expect(
+        document.activeElement.closest('[data-entity-id="light.stove"]') ||
+          document.activeElement.closest('#quick-controls')
+      ).not.toBeNull();
+    });
+
+    it('says when the device search matches nothing, then brings the hint back', async () => {
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const status = document.querySelector('.room-dashboard [role="status"]');
+      const hint = status.textContent;
+      const search = document.querySelector('.room-device-search');
+
+      search.value = 'nothing like this';
+      search.dispatchEvent(new Event('input'));
+      expect(status.textContent).toBe('No matching entities found.');
+
+      search.value = 'sto';
+      search.dispatchEvent(new Event('input'));
+      expect(status.textContent).toBe(hint);
+    });
+
     it('makes a quick pick choose the matching room, not just the name', async () => {
       registryResponses();
       ui.showAddPageModal({ starter: true });
@@ -6230,6 +6274,29 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       // Inactive pages carry no per-page controls.
       const inactive = tabBar.querySelector('.quick-access-tab:not(.active)');
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
+    });
+
+    it('moves focus to the page now shown after deleting a page', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'bedroom'
+      );
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      const deleteButton = tabBar.querySelector('.qa-tab-delete');
+      deleteButton.focus();
+      deleteButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['default']);
+      expect(document.activeElement).toBe(
+        tabBar.querySelector('.quick-access-tab-link[data-tab="default"]')
+      );
     });
 
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {

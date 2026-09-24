@@ -401,6 +401,7 @@
     "Page added": "Seite hinzugefügt",
     "Page renamed": "Seite umbenannt",
     "Page deleted": "Seite gelöscht",
+    "Page updated": "Seite aktualisiert",
     "Delete \"{{name}}\"? Its entities will be removed from this page.": "„{{name}}“ löschen? Die Entitäten werden von dieser Seite entfernt.",
     "Adding to: {{name}}": "Hinzufügen zu: {{name}}",
     "Living Room": "Wohnzimmer",

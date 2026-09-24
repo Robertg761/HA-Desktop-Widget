@@ -384,6 +384,7 @@
     "Page added": "页面已添加",
     "Page renamed": "页面已重命名",
     "Page deleted": "页面已删除",
+    "Page updated": "页面已更新",
     "Delete \"{{name}}\"? Its entities will be removed from this page.": "删除“{{name}}”？其中的实体将从此页面移除。",
     "Adding to: {{name}}": "正在添加到：{{name}}",
     "Living Room": "客厅",

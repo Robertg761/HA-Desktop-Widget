@@ -814,24 +814,41 @@ async function deleteQuickAccessPage(tabId) {
   if (!confirmed) return;
 
   const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
-  const result = await setQuickAccessConfig(nextConfig);
+  const pending = setQuickAccessConfig(nextConfig);
+  // The deleted page's tab took the focused button with it.
+  focusActiveQuickAccessPage();
+  const result = await pending;
   if (result.success) {
     uiUtils.showToast(t('Page deleted'), 'info', 1600);
   }
+}
+
+// After the control that changed the pages is gone (a deleted tab, a closed starter), keep
+// keyboard focus on the page now on screen: its tab when the tab bar shows, else its first tile.
+function focusActiveQuickAccessPage() {
+  setTimeout(() => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const target =
+      document.querySelector('#quick-access-tabs:not(.hidden) .quick-access-tab-link.active') ||
+      document.querySelector(
+        '#quick-controls button:not([disabled]), #quick-controls [tabindex]:not([tabindex="-1"])'
+      );
+    target?.focus();
+  }, 0);
 }
 
 function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } = {}) {
   // First-run setup starts from the empty default page; fill that page rather than leaving it
   // empty beside the new one, still inviting the user to set up a page.
   const activePage = fillEmptyPage ? getActiveQuickAccessTab(state.CONFIG) : null;
-  const nextConfig =
-    activePage && !activePage.entityIds.length
-      ? renameQuickAccessView(state.CONFIG, activePage.id, name)
-      : addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
+  const fillsActivePage = !!activePage && !activePage.entityIds.length;
+  const nextConfig = fillsActivePage
+    ? renameQuickAccessView(state.CONFIG, activePage.id, name)
+    : addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
   nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
-      uiUtils.showToast(t('Page added'), 'success', 1600);
+      uiUtils.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
     }
     return result;
   });
@@ -910,12 +927,22 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.setAttribute('aria-label', t('Search devices'));
   const filterDevices = () => {
     const query = deviceSearch.value.trim().toLocaleLowerCase();
-    roomEntities.querySelectorAll('label').forEach((label) => {
+    const labels = [...roomEntities.querySelectorAll('label')];
+    labels.forEach((label) => {
       label.hidden = !`${label.textContent} ${label.querySelector('input').value}`
         .toLocaleLowerCase()
         .includes(query);
     });
+    // Say so when the search hides every device, and bring the previous hint back after.
+    if (labels.length && labels.every((label) => label.hidden)) {
+      statusBeforeNoMatches ??= roomStatus.textContent;
+      roomStatus.textContent = t('No matching entities found.');
+    } else if (statusBeforeNoMatches !== null) {
+      roomStatus.textContent = statusBeforeNoMatches;
+      statusBeforeNoMatches = null;
+    }
   };
+  let statusBeforeNoMatches = null;
   deviceSearch.addEventListener('input', filterDevices);
   deviceSearch.hidden = true;
   roomGroup.insertBefore(deviceSearch, roomEntities);
@@ -1030,6 +1057,7 @@ function showAddPageModal({ starter = false } = {}) {
     if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
     preview.replaceChildren();
+    statusBeforeNoMatches = null;
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       deviceSearch.hidden = true;
@@ -1096,7 +1124,10 @@ function showAddPageModal({ starter = false } = {}) {
   const restoreLauncherFocus = () => {
     setTimeout(() => {
       if (document.activeElement && document.activeElement !== document.body) return;
-      document.querySelector('.qa-tab-add')?.focus();
+      const addPage = document.querySelector('.qa-tab-add');
+      // Outside reorganize mode (the first-run starter) there is no Add page control.
+      if (addPage) addPage.focus();
+      else focusActiveQuickAccessPage();
     }, 0);
   };
   const closeOptions = { remove: true, releaseFocus: true, onClosed: restoreLauncherFocus };

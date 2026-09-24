@@ -384,6 +384,7 @@
     "Page added": "पेज जोड़ा गया",
     "Page renamed": "पेज का नाम बदला गया",
     "Page deleted": "पेज हटाया गया",
+    "Page updated": "पेज अपडेट किया गया",
     "Delete \"{{name}}\"? Its entities will be removed from this page.": "\"{{name}}\" हटाएं? इसकी एंटिटी इस पेज से हटा दी जाएंगी।",
     "Adding to: {{name}}": "इसमें जोड़ा जा रहा है: {{name}}",
     "Living Room": "बैठक",

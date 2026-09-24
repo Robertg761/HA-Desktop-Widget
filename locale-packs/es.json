@@ -384,6 +384,7 @@
     "Page added": "Página añadida",
     "Page renamed": "Página renombrada",
     "Page deleted": "Página eliminada",
+    "Page updated": "Página actualizada",
     "Delete \"{{name}}\"? Its entities will be removed from this page.": "¿Eliminar «{{name}}»? Sus entidades se quitarán de esta página.",
     "Adding to: {{name}}": "Añadiendo a: {{name}}",
     "Living Room": "Salón",

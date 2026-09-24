@@ -384,6 +384,7 @@
     "Page added": "تمت إضافة الصفحة",
     "Page renamed": "تمت إعادة تسمية الصفحة",
     "Page deleted": "تم حذف الصفحة",
+    "Page updated": "تم تحديث الصفحة",
     "Delete \"{{name}}\"? Its entities will be removed from this page.": "حذف «{{name}}»؟ ستتم إزالة كياناته من هذه الصفحة.",
     "Adding to: {{name}}": "الإضافة إلى: {{name}}",
     "Living Room": "غرفة المعيشة",
