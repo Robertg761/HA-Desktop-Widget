@@ -2,7 +2,7 @@
 // latest GitHub release (version label and direct download links).
 
 export const REPO = 'Robertg761/HA-Desktop-Widget';
-const FALLBACK_TAG = 'v3.10.0';
+const FALLBACK_TAG = 'v3.11.0';
 
 const ASSET_PATTERNS = {
   'win-setup': /win-x64-Setup\.exe$/,

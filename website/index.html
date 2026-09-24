@@ -90,36 +90,74 @@
             <div class="widget-head">
               <button class="conn" id="conn-dot" aria-label="Show connection details" title="Connection details"><span></span></button>
               <span class="widget-title">Home Assistant</span>
-              <span class="widget-meta" id="conn-meta">v3.10.0</span>
+              <span class="widget-meta" id="conn-meta"></span>
+              <span class="win-ctrls" aria-hidden="true"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-gear"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-minus"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-x"/></svg></span>
             </div>
-            <div class="widget-top">
-              <div class="card card-weather">
-                <svg class="ico ico-lg" aria-hidden="true"><use href="/assets/icons.svg#i-cloudsun"/></svg>
-                <div>
-                  <div class="wx-temp">4°</div>
+
+            <div class="primary">
+              <div class="pc-weather">
+                <span class="wx-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-cloud"/></svg></span>
+                <div class="wx-main">
+                  <div class="wx-temp">4°C</div>
                   <div class="wx-cond">Cloudy</div>
+                  <div class="wx-chips"><span><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-drop"/></svg>81%</span><span><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-wind"/></svg>12 km/h</span></div>
                 </div>
               </div>
-              <div class="card card-clock">
+              <div class="pc-clock">
                 <time class="clock-time" id="clock-time">--:--</time>
                 <div class="clock-date" id="clock-date"></div>
               </div>
             </div>
-            <p class="qa-label">Quick access</p>
+
+            <div class="media">
+              <span class="media-art"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-music"/></svg></span>
+              <div class="media-info">
+                <div class="media-title">Midnight City</div>
+                <div class="media-artist">M83</div>
+              </div>
+              <div class="media-progress" aria-hidden="true">
+                <span id="media-pos">1:22</span>
+                <span class="media-track"><span id="media-bar"></span></span>
+                <span>4:03</span>
+              </div>
+              <div class="media-ctrls">
+                <button data-skip="back" aria-label="Previous"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-skip-back"/></svg></button>
+                <button id="media-play" class="media-play" aria-label="Pause"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-pause"/></svg></button>
+                <button data-skip="next" aria-label="Next"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-skip-fwd"/></svg></button>
+              </div>
+            </div>
+
+            <div class="pages-row">
+              <div class="page-tabs" role="tablist" aria-label="Quick Access pages">
+                <button role="tab" data-page="home" class="is-on" aria-selected="true">Home</button>
+                <button role="tab" data-page="bedroom" aria-selected="false">Bedroom</button>
+              </div>
+              <span class="row-ctrls" aria-hidden="true"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-undo"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-grip"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-plus"/></svg></span>
+            </div>
             <div class="qa-grid" id="qa-grid"></div>
 
-            <div class="bright-pop" id="bright-pop" role="dialog" aria-modal="true" aria-label="Brightness" hidden>
+            <div class="bright-pop" id="bright-pop" role="dialog" aria-modal="true" aria-labelledby="bright-name" hidden>
               <div class="bright-card">
-                <div class="bright-name" id="bright-name"></div>
-                <div class="bright-value" id="bright-value">80%</div>
-                <input type="range" min="1" max="100" value="80" id="bright-slider" aria-label="Brightness">
-                <div class="bright-presets">
-                  <button data-preset="25">25%</button>
-                  <button data-preset="50">50%</button>
-                  <button data-preset="75">75%</button>
-                  <button data-preset="100">100%</button>
+                <div class="bright-head">
+                  <span id="bright-name"></span>
+                  <button class="bright-x" data-close-bright aria-label="Close"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-x"/></svg></button>
                 </div>
-                <button class="bright-close" id="bright-close">Done</button>
+                <div class="bright-body">
+                  <span class="bright-bulb"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-bulb"/></svg></span>
+                  <div class="bright-value" id="bright-value">80%</div>
+                  <div class="bright-label">Brightness</div>
+                  <input type="range" min="1" max="100" value="80" id="bright-slider" aria-label="Brightness">
+                  <div class="bright-presets">
+                    <button data-preset="25">25%</button>
+                    <button data-preset="50">50%</button>
+                    <button data-preset="75">75%</button>
+                    <button data-preset="100">100%</button>
+                  </div>
+                </div>
+                <div class="bright-foot">
+                  <button class="bright-btn" data-close-bright>Close</button>
+                  <button class="bright-btn bright-primary" id="bright-power">Turn off</button>
+                </div>
               </div>
             </div>
           </div>
@@ -238,16 +276,16 @@
       </header>
       <div class="shots">
         <figure class="shot reveal">
-          <div class="shot-frame"><img src="/assets/Main_View.png" alt="Main view with weather, clock, media controls and quick access tiles" loading="lazy" width="502" height="563"></div>
-          <figcaption><strong>Main view</strong>Weather, clock, media and your tiles.</figcaption>
+          <div class="shot-frame"><img src="/assets/Main_View.png" alt="Main view with weather, clock, media controls and Quick Access tiles" loading="lazy" width="500" height="760"></div>
+          <figcaption><strong>Main view</strong>Weather, time, media and your devices.</figcaption>
         </figure>
         <figure class="shot reveal">
-          <div class="shot-frame"><img src="/assets/Edit_View.png" alt="Reorganize mode with editable tiles" loading="lazy" width="498" height="564"></div>
-          <figcaption><strong>Reorganize mode</strong>Drag, rename and remove tiles.</figcaption>
+          <div class="shot-frame"><img src="/assets/Light_Adjust.png" alt="Brightness controls for a desk lamp with presets" loading="lazy" width="500" height="760"></div>
+          <figcaption><strong>Light controls</strong>Brightness with one-click presets.</figcaption>
         </figure>
         <figure class="shot reveal">
-          <div class="shot-frame"><img src="/assets/Personalization_Tab.png" alt="Personalization settings with color themes, accents and window opacity" loading="lazy" width="511" height="586"></div>
-          <figcaption><strong>Personalization</strong>Accents, backgrounds and opacity.</figcaption>
+          <div class="shot-frame"><img src="/assets/Settings_Appearance.png" alt="Appearance settings with theme mode and accent colors" loading="lazy" width="500" height="760"></div>
+          <figcaption><strong>Settings</strong>Themes, colors and glass, your way.</figcaption>
         </figure>
       </div>
     </section>
@@ -297,7 +335,7 @@
       <div class="footer-brand">
         <img src="/assets/icon.png" alt="" width="20" height="20">
         <span>HA Desktop Widget</span>
-        <span class="footer-version" data-version>v3.10.0</span>
+        <span class="footer-version" data-version>v3.11.0</span>
       </div>
       <nav class="footer-links" aria-label="Project links">
         <a href="/download">Download</a>
