@@ -373,9 +373,12 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
     it('explains an unreachable server in the reconnect prompt', async () => {
       await loadRenderer({ config: reauthConfig() });
-      const error = new Error('Could not reach Home Assistant at that URL');
-      error.result = { success: false, code: 'OAUTH_SERVER_UNREACHABLE' };
-      mockElectronAPI.startHomeAssistantOAuth.mockRejectedValue(error);
+      // The shape main returns through the preload bridge.
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValue({
+        success: false,
+        code: 'OAUTH_SERVER_UNREACHABLE',
+        error: 'Could not reach Home Assistant at that URL',
+      });
 
       findButton('Reconnect with Home Assistant').click();
       await flushAsync();

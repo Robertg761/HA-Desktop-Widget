@@ -726,9 +726,11 @@ describe('Settings + Config Integration', () => {
     test('explains an unreachable URL before any browser opens', async () => {
       await settings.openSettings();
       document.getElementById('ha-url').value = 'http://127.0.0.1:1';
-      const unreachable = new Error('Could not reach Home Assistant at that URL');
-      unreachable.result = { success: false, code: 'OAUTH_SERVER_UNREACHABLE' };
-      mockElectronAPI.startHomeAssistantOAuth.mockRejectedValueOnce(unreachable);
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: false,
+        code: 'OAUTH_SERVER_UNREACHABLE',
+        error: 'Could not reach Home Assistant at that URL',
+      });
 
       document.getElementById('connect-ha-oauth-btn').click();
       await Promise.resolve();
@@ -739,6 +741,24 @@ describe('Settings + Config Integration', () => {
         'Could not reach Home Assistant at that URL.'
       );
       expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(false);
+    });
+
+    test('reports a pairing canceled through the preload bridge as canceled', async () => {
+      await settings.openSettings();
+      document.getElementById('ha-url').value = 'https://ha.example.test';
+      mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+        success: false,
+        code: 'OAUTH_AUTHORIZATION_CANCELED',
+        error: 'Home Assistant authorization was canceled',
+      });
+
+      document.getElementById('connect-ha-oauth-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const status = document.getElementById('ha-oauth-status');
+      expect(status.textContent).toBe('Home Assistant authorization canceled');
     });
 
     test('the waiting indicator is not duplicated across status updates', async () => {

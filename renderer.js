@@ -39,7 +39,12 @@ import {
   isClimateDemoConfig,
   isClimateDemoOverlayConfig,
 } from '@dev-climate-demo';
-import { getConnectionIdentity, isConfigured, normalizeBaseUrl } from './src/connection.js';
+import {
+  getConnectionIdentity,
+  isConfigured,
+  normalizeBaseUrl,
+  startHomeAssistantPairing,
+} from './src/connection.js';
 import { renderConnectionStatus, setConnectionStatusBusy } from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
@@ -647,7 +652,7 @@ async function reauthorizeHomeAssistant() {
   oauthReauthorization = { pending: true, error: '' };
   renderMainWidgetState();
   try {
-    const result = await window.electronAPI.startHomeAssistantOAuth(url);
+    const result = await startHomeAssistantPairing(window.electronAPI, url);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     oauthAuthRecoveryAttempted = false;
     // A running widget reconnects from main's config broadcast for the new authorization.
@@ -1052,7 +1057,7 @@ async function finishFirstRunWizard() {
       return;
     }
     setWizardStatus(t('Opening Home Assistant for authorization...'), 'pending');
-    const result = await window.electronAPI.startHomeAssistantOAuth(normalizedUrl);
+    const result = await startHomeAssistantPairing(window.electronAPI, normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
     if (hasDashboardEntities()) {

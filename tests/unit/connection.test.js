@@ -3,6 +3,7 @@ const {
   getConnectionIdentity,
   isConfigured,
   normalizeBaseUrl,
+  startHomeAssistantPairing,
 } = require('../../src/connection');
 
 describe('connection helpers', () => {
@@ -79,6 +80,29 @@ describe('connection helpers', () => {
       ).not.toBe(
         getConnectionIdentity({ homeAssistant: { url: 'http://ha.local:8123', token: 'b' } })
       );
+    });
+  });
+
+  describe('startHomeAssistantPairing', () => {
+    test('re-attaches the failure code on the renderer side of the bridge', async () => {
+      const api = {
+        startHomeAssistantOAuth: jest.fn(async () => ({
+          success: false,
+          code: 'OAUTH_AUTHORIZATION_CANCELED',
+          error: 'Home Assistant authorization was canceled',
+        })),
+      };
+      await expect(startHomeAssistantPairing(api, 'http://ha.local:8123')).rejects.toMatchObject({
+        message: 'Home Assistant authorization was canceled',
+        result: { code: 'OAUTH_AUTHORIZATION_CANCELED' },
+      });
+    });
+
+    test('returns a successful pairing', async () => {
+      const result = { success: true, config: { homeAssistant: {} } };
+      const api = { startHomeAssistantOAuth: jest.fn(async () => result) };
+      await expect(startHomeAssistantPairing(api, 'http://ha.local:8123')).resolves.toBe(result);
+      expect(api.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
     });
   });
 

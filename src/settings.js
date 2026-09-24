@@ -31,6 +31,7 @@ import {
   classifyConnectionError,
   isPlaceholderOrEmptyToken,
   normalizeBaseUrl,
+  startHomeAssistantPairing,
 } from './connection.js';
 
 const BUILTIN_LANGUAGE_OPTIONS = new Set(['auto', 'en', 'de']);
@@ -4455,7 +4456,7 @@ async function startHomeAssistantOAuthFromSettings() {
   setHomeAssistantOAuthBusy(true, { cancellable: true });
   setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
   try {
-    const result = await window.electronAPI.startHomeAssistantOAuth(validation.url);
+    const result = await startHomeAssistantPairing(window.electronAPI, validation.url);
     applyPersistedConfigResponse(result.config);
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || validation.url;
     updateHomeAssistantAuthUi();
