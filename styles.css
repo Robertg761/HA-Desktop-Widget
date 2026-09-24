@@ -181,6 +181,8 @@ html {
   --accent-rgb: 100, 181, 246;
   --accent-hover: #90caf9;
   --accent-bg: rgba(var(--accent-rgb), 0.15);
+  /* Keyboard focus outlines and focus borders. */
+  --focus-ring: var(--accent);
   --primary: #64b5f6;
   --primary-hover: #90caf9;
 
@@ -445,6 +447,9 @@ html {
   --settings-modal-panel-rgb: 255, 255, 255;
   --settings-modal-panel-alpha: 0.9;
   --desktop-pin-ink-rgb: 0, 0, 0;
+  /* Light accents sit near 2:1 on white; darkening the ring to 55% keeps it at least 3:1 against
+     the light surfaces for any accent, even a user's custom white. */
+  --focus-ring: color-mix(in srgb, var(--accent) 55%, #000);
 
   /* Shadows (lighter for light theme) */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -2848,7 +2853,7 @@ body.theme-light:not(.high-contrast)
 }
 
 .connection-indicator:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -3271,7 +3276,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
@@ -3509,7 +3514,7 @@ body.first-run-active .widget-content > * {
 }
 
 .quick-access-tabs .tab-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -3665,7 +3670,7 @@ body.first-run-active .widget-content > * {
 
 .add-page-modal .qa-add-chip:hover,
 .add-page-modal .qa-add-chip:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--accent-bg);
   color: var(--accent);
   outline: none;
@@ -3753,7 +3758,7 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--shadow-sm), var(--glow-focus);
 }
@@ -5132,7 +5137,7 @@ body.first-run-active .widget-content > * {
 
 .custom-entity-icon-choice:hover,
 .custom-entity-icon-choice:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: rgb(var(--accent-rgb) / 14%);
 }
 
@@ -5562,7 +5567,7 @@ body.first-run-active .widget-content > * {
 
 .light-color-swatch:hover,
 .light-color-swatch:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   transform: translateY(-1px) scale(1.06);
   outline: none;
   box-shadow:
@@ -7843,7 +7848,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #settings-modal input[type='text']:focus-visible,
 #settings-modal input[type='password']:focus-visible,
 #settings-modal select:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
   outline: none;
 }
@@ -7997,7 +8002,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .close-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--shadow-sm), var(--glow-focus);
 }
@@ -8306,7 +8311,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--glass-elevated);
   box-shadow:
     var(--glow-focus),
@@ -8409,7 +8414,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .section-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -8490,7 +8495,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .color-target-option:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -8581,7 +8586,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .theme-option:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -8743,7 +8748,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #custom-color-hex:focus,
 #custom-color-name-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: var(--glow-focus);
 }
 
@@ -8812,7 +8817,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .custom-dropdown-trigger:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--glass-elevated);
   box-shadow:
     var(--glow-focus),
@@ -8966,7 +8971,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow:
     var(--glow-focus),
@@ -9116,7 +9121,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .settings-details > summary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -9284,7 +9289,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .first-run-content input:focus-visible {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.22);
 }
 
@@ -10226,7 +10231,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .rename-modal input:focus,
 .rename-modal select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
 }
 
@@ -10762,7 +10767,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .media-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
@@ -11129,8 +11134,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   -webkit-backdrop-filter: none !important;
 }
 
+/* The buttons have no border or background of their own, so focus needs a visible outline. */
 .media-detail-controls .btn:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .media-detail-controls .btn:disabled {
@@ -11320,7 +11327,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 #settings-modal .tab-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -11836,7 +11843,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .hotkey-input:focus,
 .alert-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
@@ -11944,7 +11951,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 /* Hotkey input capture styling */
 #hotkey-input:focus {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
@@ -12363,7 +12370,7 @@ select:focus-visible,
 textarea:focus-visible,
 [role='button']:focus-visible,
 [tabindex]:not([tabindex='-1']):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
@@ -12783,7 +12790,7 @@ label.disabled {
 }
 
 .donate-frequency-option input[type='radio']:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -12882,6 +12889,7 @@ body.high-contrast {
   --settings-modal-panel-rgb: 32, 32, 32 !important;
   --settings-modal-panel-alpha: 1 !important;
   --desktop-pin-ink-rgb: 255, 255, 255 !important;
+  --focus-ring: #fff !important;
   color: #fff;
   color-scheme: dark;
 }
@@ -12981,7 +12989,7 @@ body.high-contrast .tile-primary-button,
 /* The tile clips anything outside it, so the ring sits inside the button. Scoped to the tile so it
    outranks the global [tabindex]:not([tabindex='-1']):focus-visible rule, which pushes it outside. */
 .control-item .tile-primary-button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -3px;
 }
 

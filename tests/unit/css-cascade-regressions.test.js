@@ -63,6 +63,66 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
+  describe('keyboard focus ring colour', () => {
+    const uiUtils = require('../../src/ui-utils.js');
+    const focusMarkup = `
+      <div id="quick-controls"><div class="control-item">
+        <button class="tile-primary-button" tabindex="0" data-focus-visible></button>
+      </div></div>
+      <div class="status-card primary-entity-card"><div class="control-item" data-primary-card="true">
+        <button class="tile-primary-button" tabindex="0" data-focus-visible></button>
+      </div></div>
+      <div class="control-item" role="button" tabindex="0" data-focus-visible></div>
+      <button class="btn btn-secondary" data-focus-visible>Save</button>
+      <button class="close-btn" data-focus-visible></button>
+      <a href="#" data-focus-visible>Link</a>
+      <div class="media-detail-controls"><button class="btn" data-focus-visible></button></div>
+      <div class="form-group"><input type="text" data-focus data-focus-visible></div>`;
+    // Outlines carry the ring; text fields show focus through their border instead.
+    const ringColor = (element) =>
+      element.matches('input')
+        ? resolvedValue(element, 'border-color')
+        : resolvedValue(element, 'outline').replace(/^\S+\s+\S+\s+/, '');
+
+    afterEach(() => {
+      document.documentElement.removeAttribute('style');
+    });
+
+    it.each([
+      ...uiUtils.getAccentThemes().map((theme) => [theme.id, theme.color]),
+      ['custom white', '#ffffff'],
+    ])('reaches 3:1 on light surfaces with the %s accent', (_, accent) => {
+      render(THEMES.light, focusMarkup);
+      uiUtils.applyAccentThemeFromColor(accent);
+      const surfaces = ['#ffffff', `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`];
+
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        const color = ringColor(element);
+        for (const surface of surfaces) {
+          expect({
+            element: element.className,
+            contrast: contrastRatio(color, surface) >= 3,
+          }).toEqual({ element: element.className, contrast: true });
+        }
+      }
+    });
+
+    it('keeps the accent itself in the dark theme and white under the readable preset', () => {
+      render(THEMES.dark, focusMarkup);
+      uiUtils.applyAccentThemeFromColor('#64b5f6');
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        expect(parseColor(ringColor(element))).toEqual(parseColor('#64b5f6'));
+      }
+
+      // The preset draws a white outline on everything, text fields included.
+      document.body.className = THEMES['readable light'];
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        const outline = resolvedValue(element, 'outline').replace(/^\S+\s+\S+\s+/, '');
+        expect(parseColor(outline)).toEqual([255, 255, 255, 1]);
+      }
+    });
+  });
+
   describe('hidden rows in workflow pick lists', () => {
     it('hides device rows filtered out by the starter search', () => {
       render(
