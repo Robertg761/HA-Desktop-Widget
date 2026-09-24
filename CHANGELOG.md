@@ -72,10 +72,16 @@ Assistant connection carry over unchanged.
   every minute.
 - The Primary Cards picker shows 50 entities per page and waits for a pause in typing before
   filtering.
+- Desktop pins grow with the text and control size setting.
+- In the command palette, unlock and disarm commands only appear when you type them, and choosing
+  a lock or alarm panel itself highlights its command instead of acting on it.
+- Primary buttons keep their accent color in the readable preset, so selected choices stand out.
 - Light-theme keyboard focus rings are darker, so they stay visible on white.
 
 ### Fixed
 
+- On Linux, moving or resizing the widget or a desktop pin is now saved. Before, only Hyprland's
+  desktop-layer mode saved positions.
 - Home Assistant authorization refreshes, about every 25 minutes, no longer cancel alerts that are
   waiting on a condition duration, reset alert cooldowns, or reconnect the widget.
 - Expired or revoked Home Assistant authorization now shows a "Reconnect with Home Assistant"
@@ -84,6 +90,9 @@ Assistant connection carry over unchanged.
   reconnects.
 - Starting the widget while Home Assistant is down shows the disconnected state and recovers on
   its own.
+- Waking the computer or reconnecting to a network no longer tells Home Assistant authorization
+  users to configure a token, and a saved authorization that can't be read asks you to reconnect
+  instead of retrying forever.
 - First-run setup checks the URL before it continues and before it opens the browser, so an
   unreachable address fails right away. Leaving setup for Settings cancels a waiting
   authorization, and pairing with a different URL starts over. Setup skips the room step when you
@@ -93,6 +102,13 @@ Assistant connection carry over unchanged.
   the weather picker, and the setup wizard keeps focus and accepts Enter.
 - Copy report in connection diagnostics and Copy in the Hyprland shortcuts panel copy to the
   clipboard.
+- Escape closes the command palette, hotkey capture, or camera preview on top instead of the dialog
+  underneath, and notifications no longer cover a dialog's buttons.
+- Heating and cooling sliders keep the value you are dragging while Home Assistant updates.
+- Calendar tiles read event times in Home Assistant's time zone, and calendar and history times no
+  longer show seconds.
+- Right-to-left languages keep numbers, units, and media controls in reading order.
+- The weather card opens its entity picker from the keyboard, and the picker shows weather icons.
 - Device search in the room picker filters the list.
 - The fan dialog keeps your latest speed when an earlier request fails.
 - Seek buttons appear only for media players that support seeking.
