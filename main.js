@@ -18,6 +18,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const nodeCrypto = require('crypto');
 const { pathToFileURL, fileURLToPath } = require('url');
 
@@ -8314,6 +8315,29 @@ ipcMain.handle('get-app-version', (event) => {
   const sender = authorizeIpcSender(event, 'get-app-version');
   if (!sender) return rejectUnauthorizedIpc('get-app-version');
   return app.getVersion();
+});
+
+// For the diagnostics report: the system and its version, never the computer or user name.
+function describeOperatingSystem() {
+  const info = { platform: os.platform(), release: os.release() };
+  if (info.platform === 'linux') {
+    try {
+      const prettyName = /^PRETTY_NAME=(.*)$/m
+        .exec(fs.readFileSync('/etc/os-release', 'utf8'))?.[1]
+        ?.trim()
+        .replace(/^(["'])(.*)\1$/, '$2');
+      if (prettyName) info.distro = prettyName.slice(0, 128);
+    } catch {
+      // Not every distribution ships /etc/os-release; the kernel release still identifies it.
+    }
+  }
+  return info;
+}
+
+ipcMain.handle('get-os-info', (event) => {
+  const sender = authorizeIpcSender(event, 'get-os-info');
+  if (!sender) return rejectUnauthorizedIpc('get-os-info');
+  return describeOperatingSystem();
 });
 
 // Log file viewer functionality

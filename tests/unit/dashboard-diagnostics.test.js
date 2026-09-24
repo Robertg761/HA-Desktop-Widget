@@ -46,6 +46,29 @@ test('diagnostics record lifecycle events without copying sensitive server or er
   delete window.electronAPI;
 });
 
+test('diagnostics name the operating system and its version from the main process', async () => {
+  jest.resetModules();
+  const {
+    initializeDashboardTools: initialize,
+    diagnosticsReport: report,
+  } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  window.electronAPI = {
+    platform: 'linux',
+    getOsInfo: jest.fn(async () => ({
+      platform: 'linux',
+      release: '6.8.0-45-generic',
+      distro: 'Ubuntu 24.04.1 LTS',
+    })),
+  };
+  initialize();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(report().os).toBe('Ubuntu 24.04.1 LTS (linux 6.8.0-45-generic)');
+  currentSocket.removeAllListeners();
+  delete window.electronAPI;
+});
+
 test('diagnostics tell a timed-out connection from a closed one', () => {
   jest.resetModules();
   const {
