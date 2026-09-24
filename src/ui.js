@@ -2601,6 +2601,56 @@ function getEventDateValue(value) {
   return null;
 }
 
+const timeZoneFormatters = new Map();
+// How far a time zone's wall clock is ahead of UTC at an instant, in milliseconds.
+function getTimeZoneOffset(instant, timeZone) {
+  let formatter = timeZoneFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+    });
+    timeZoneFormatters.set(timeZone, formatter);
+  }
+  const parts = Object.fromEntries(
+    formatter.formatToParts(instant).map(({ type, value }) => [type, Number(value)])
+  );
+  const wallClock = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return wallClock - (instant - (((instant % 1000) + 1000) % 1000));
+}
+
+// Calendar entities report start_time as Home Assistant's wall-clock time without an offset. Read
+// it in Home Assistant's time zone, so a computer set to another zone still shows the right time.
+// Times with an offset, and everything before get_config arrives, parse as usual.
+function parseHomeAssistantDateTime(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  const timeZone = state.TIME_ZONE;
+  if (!match || !timeZone) return new Date(value);
+  const [, year, month, day, hour, minute, second = '0'] = match.map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, hour, minute, second);
+  try {
+    // Twice, so a time next to a daylight-saving change uses the offset in force at that time.
+    let instant = wallClock - getTimeZoneOffset(wallClock, timeZone);
+    instant = wallClock - getTimeZoneOffset(instant, timeZone);
+    return new Date(instant);
+  } catch {
+    return new Date(value);
+  }
+}
+
 function parseCalendarDate(value) {
   const dateValue = getEventDateValue(value);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue || '')) return null;
@@ -2616,7 +2666,7 @@ function formatEventTime(date) {
 function formatDateTimeValue(value, { timeOnly = false } = {}) {
   const dateValue = getEventDateValue(value);
   if (!dateValue) return '--';
-  const date = new Date(dateValue);
+  const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
   return timeOnly ? formatEventTime(date) : `${formatDate(date)} ${formatEventTime(date)}`;
 }
@@ -2626,7 +2676,7 @@ function formatCalendarTileStart(startTime, { allDay = false } = {}) {
   if (!dateValue) return '';
   // Calendar entities report all-day events as a midnight start_time plus all_day: true.
   if (allDay || parseCalendarDate(dateValue)) return t('All day');
-  const date = new Date(dateValue);
+  const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
   return formatEventTime(date);
 }
@@ -2644,8 +2694,8 @@ function formatCalendarEventRange(event) {
   }
   const startValue = event?.start || event?.start_time;
   const endValue = event?.end || event?.end_time;
-  const startAt = new Date(getEventDateValue(startValue) || NaN);
-  const endAt = new Date(getEventDateValue(endValue) || NaN);
+  const startAt = parseHomeAssistantDateTime(getEventDateValue(startValue) || NaN);
+  const endAt = parseHomeAssistantDateTime(getEventDateValue(endValue) || NaN);
   // An event that ends the same day shows its date once.
   const sameDay =
     !Number.isNaN(startAt.getTime()) &&

@@ -225,6 +225,32 @@ describe('tile and device dialog polish', () => {
       );
     });
 
+    it.each([
+      ['Asia/Tokyo', '2026-09-23 20:00:00', '2026-09-23T11:00:00Z'],
+      // Just after the spring-forward change, the new offset applies.
+      ['America/New_York', '2026-03-08 03:30:00', '2026-03-08T07:30:00Z'],
+      ['America/New_York', '2026-03-07 23:30:00', '2026-03-08T04:30:00Z'],
+    ])(
+      "reads start times in Home Assistant's time zone (%s %s)",
+      (timeZone, startTime, instant) => {
+        state.setTimeZone(timeZone);
+        try {
+          renderTiles([
+            entity('calendar.work', 'on', { message: 'Standup', start_time: startTime }),
+          ]);
+          const expected = new Date(instant).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          expect(tile('calendar.work').querySelector('.calendar-next-event').textContent).toBe(
+            `Standup · ${expected}`
+          );
+        } finally {
+          state.setTimeZone(null);
+        }
+      }
+    );
+
     it('shows timed events without seconds in the active locale', () => {
       const start = '2026-09-23 20:23:50';
       renderTiles([entity('calendar.work', 'on', { message: 'Standup', start_time: start })]);

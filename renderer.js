@@ -2122,6 +2122,10 @@ websocket.on('message', (msg) => {
         } else if (msg.id === getConfigId) {
           // get_config response
           log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
+          const previousTimeZone = state.TIME_ZONE;
+          state.setTimeZone(msg.result?.time_zone);
+          // Calendar tiles read Home Assistant's offset-less times in its zone.
+          if (state.TIME_ZONE !== previousTimeZone && !IS_SPECIAL_PIN_MODE) ui.renderActiveTab();
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
             state.setUnitSystem(msg.result.unit_system);
