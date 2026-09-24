@@ -6169,7 +6169,7 @@ body.theme-light .status-card.time-card .date-display {
 
 /* Quick Access tiles share one height, so the grid reads as an even field of panes. */
 #quick-controls .control-item {
-  min-height: 96px;
+  min-height: 104px;
 }
 
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
@@ -6280,7 +6280,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 /* Camera visuals are opt-in per Quick Access tile. Live streams are torn down when
    hidden; expanding a preview reuses the same image element and stream connection. */
 #quick-controls .control-item.camera-preview-tile {
-  min-height: 96px;
+  min-height: 104px;
   padding: 0;
   align-items: stretch;
   justify-content: flex-end;
@@ -6579,7 +6579,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 }
 
 body.density-compact #quick-controls .control-item.camera-preview-tile {
-  min-height: 72px;
+  min-height: 78px;
   padding: 0;
 }
 
@@ -6941,7 +6941,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: var(--font-display);
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.03em;
   line-height: 1;
@@ -7303,47 +7303,39 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
    Auto default handled by the base .control-sensor-value rule above). Each rung
    must be visibly bigger than the one below it, value AND unit, or the setting
    reads as broken:
-     small 16/8 · normal 18/10 · large 24/12 (= Auto) · extra-large 28/14.
-   The compact-height ladder near the bottom of this file re-steps the values
-   down to 16/18/20/24 and keeps the same unit ladder. */
-#quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] {
-  min-height: 66px;
-}
-
+     small 14/10 · normal 16/11 · large 18/12 (= Auto) · extra-large 24/14.
+   Values sit close to the other tiles' text; only Extra Large makes a number
+   the tile's headline. Narrow windows cap Extra Large at 20. */
 #quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] .control-sensor-value {
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-base);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-value-size='small'] .control-sensor-unit {
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
 }
 
 #quick-controls
   .control-item.sensor-numeric-entity[data-value-size='normal']
   .control-sensor-value {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-value-size='normal'] .control-sensor-unit {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-value-size='large'] .control-sensor-value {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-lg);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-value-size='large'] .control-sensor-unit {
   font-size: var(--font-size-sm);
 }
 
-#quick-controls .control-item.sensor-numeric-entity[data-value-size='extra-large'] {
-  min-height: 80px;
-}
-
 #quick-controls
   .control-item.sensor-numeric-entity[data-value-size='extra-large']
   .control-sensor-value {
-  font-size: var(--font-size-2xl-plus);
+  font-size: var(--font-size-2xl);
 }
 
 #quick-controls
@@ -10268,43 +10260,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     min-height: 68px;
   }
 
-  #quick-controls .control-item.sensor-numeric-entity .control-sensor-value {
-    font-size: var(--font-size-xl);
-  }
-
   #quick-controls .control-item.sensor-numeric-entity .control-sensor-unit {
     font-size: var(--font-size-xs);
   }
 
-  /* Compact re-step of the per-tile value-size ladder: 16/18/20/24 instead of
-     16/18/24/28, so the top of the ladder gives back the height a short window
-     does not have. Still strictly increasing, so the setting keeps working.
-     The unit ladder (8/10/12/14) is deliberately NOT re-stepped here — the
-     per-size rules outside this media query are more specific than the base
-     .control-sensor-unit rule above, and re-capping extra-large would make it
-     tie with large. */
-  #quick-controls
-    .control-item.sensor-numeric-entity[data-value-size='small']
-    .control-sensor-value {
-    font-size: var(--font-size-md);
-  }
-
-  #quick-controls
-    .control-item.sensor-numeric-entity[data-value-size='normal']
-    .control-sensor-value {
-    font-size: var(--font-size-lg);
-  }
-
-  #quick-controls
-    .control-item.sensor-numeric-entity[data-value-size='large']
-    .control-sensor-value {
-    font-size: var(--font-size-xl);
-  }
-
+  /* Narrow windows keep the value ladder but cap Extra Large at 20, so the
+     top rung does not crowd a tile only ~80px wide. Still strictly increasing
+     (14/16/18/20), so the setting keeps working. */
   #quick-controls
     .control-item.sensor-numeric-entity[data-value-size='extra-large']
     .control-sensor-value {
-    font-size: var(--font-size-2xl);
+    font-size: var(--font-size-xl);
   }
 }
 
@@ -14373,19 +14339,20 @@ select option {
 
 /* ============================================
    UNIFORM TILE HEIGHT
-   Every standard Quick Access tile is exactly one row tall (96px, 72px in
+   Every standard Quick Access tile is exactly one row tall (104px, 78px in
    compact density), so rows line up however the tiles are mixed. Only the
    tiles sized by their content, comparison graphs and media players, are
-   exempt. Tiles whose content used to push past the row (number sensors
-   with a graph, gauge or extra-large value) are tightened to fit.
+   exempt. Number sensors follow the same anatomy as every other tile (icon,
+   name, then the value where the state line would be), with a faint graph
+   along the bottom; a gauge tile draws its value inside the arc.
    ============================================ */
 
 #quick-controls {
-  --qa-tile-height: 96px;
+  --qa-tile-height: 104px;
 }
 
 body.density-compact #quick-controls {
-  --qa-tile-height: 72px;
+  --qa-tile-height: 78px;
 }
 
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
@@ -14393,51 +14360,74 @@ body.density-compact #quick-controls {
   min-height: var(--qa-tile-height);
 }
 
-/* Number sensors: a slightly smaller icon and tighter spacing, with the graph
-   band trimmed so icon, name, value and graph fit one row. */
 #quick-controls .control-item.sensor-numeric-entity {
-  gap: 4px;
+  gap: 6px;
   padding: 10px 8px 0;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-icon {
-  font-size: var(--font-size-xl);
-  min-height: var(--font-size-xl);
   margin-bottom: 0;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-readout {
+  min-height: 0;
+  gap: 2px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-info {
-  padding-bottom: 16px;
+  padding-bottom: 20px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
-  bottom: 2px;
+  bottom: 4px;
   height: 14px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] .control-info {
-  padding-bottom: 8px;
+  padding-bottom: 10px;
 }
 
-/* A gauge is the tile's picture, so it stands in for the icon. */
+/* Gauge: the arc is the tile's picture, so it stands in for the icon, and the
+   value sits inside it like a dial reading instead of stacked above it. */
+#quick-controls .control-item.sensor-numeric-entity[data-chart-type='gauge'] {
+  padding-top: 8px;
+}
+
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='gauge'] .control-icon {
   display: none;
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='gauge'] .control-info {
-  padding-bottom: 30px;
+  padding-bottom: 10px;
 }
 
-/* Compact rows are 72px: the value carries the tile, so the icon steps aside. */
+#quick-controls
+  .control-item.sensor-numeric-entity[data-chart-type='gauge']
+  .control-sensor-readout {
+  margin-top: 28px;
+}
+
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-gauge {
+  bottom: 4px;
+  height: 56px;
+}
+
+/* The arc's end labels are drawn in gauge units, which the tile scales up. */
+#quick-controls .control-sensor-gauge-bound {
+  font-size: calc(var(--font-size-3xs) * 0.8);
+  fill: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+
+/* Compact rows: the value carries the tile, so the icon steps aside. */
 body.density-compact
   #quick-controls
   .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
-  padding-top: 5px;
-  padding-bottom: 5px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 body.density-compact #quick-controls .control-item.sensor-numeric-entity .control-icon {
@@ -14447,10 +14437,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 body.density-compact
   #quick-controls
   .control-item.sensor-numeric-entity[data-chart-type='gauge']
-  .control-info {
-  padding-bottom: 22px;
+  .control-sensor-readout {
+  margin-top: 18px;
 }
 
 body.density-compact #quick-controls .control-item.sensor-numeric-entity .control-sensor-gauge {
-  height: 24px;
+  height: 46px;
 }

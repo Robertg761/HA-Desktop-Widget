@@ -123,7 +123,8 @@ const SENSOR_HISTORY_REFRESH_THROTTLE_MS = 5 * 60 * 1000;
 const SENSOR_SPARKLINE_SVG_NS = 'http://www.w3.org/2000/svg';
 const SENSOR_TILE_SPARKLINE_WIDTH = 96;
 const SENSOR_TILE_SPARKLINE_HEIGHT = 24;
-const SENSOR_TILE_GAUGE_WIDTH = 96;
+// A near-square box so the arc, not the tile width, sets the dial size and the reading fits inside it.
+const SENSOR_TILE_GAUGE_WIDTH = 80;
 const SENSOR_TILE_GAUGE_HEIGHT = 32;
 const SENSOR_TILE_GAUGE_STROKE_WIDTH = 6;
 const SENSOR_DETAIL_SPARKLINE_WIDTH = 420;
