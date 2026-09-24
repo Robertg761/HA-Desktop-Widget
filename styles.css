@@ -1229,7 +1229,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: translateY(-1px);
   background: rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-color: rgba(var(--desktop-pin-ink-rgb), 0.15);
-  outline: none;
+}
+
+/* Pins are small and clip at their edges, so the ring is drawn inside the button. */
+.desktop-pin-light-power:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .desktop-pin-light-brightness {
@@ -1312,6 +1317,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-slider:focus {
   outline: none;
+}
+
+/* The slider is a transparent overlay on the track, so the ring hugs the track. */
+.desktop-pin-light-slider:focus-visible {
+  border-radius: var(--radius-full);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
 .desktop-pin-light-slider::-webkit-slider-runnable-track {
@@ -1458,7 +1470,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: translateY(-1px);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.35);
   background: rgba(var(--desktop-pin-tint-rgb), 0.1);
-  outline: none;
+}
+
+.desktop-pin-light-preset:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .desktop-pin-light-control[data-state='off'] .desktop-pin-light-brightness {
@@ -1987,7 +2003,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 10px 20px rgba(0, 0, 0, 0.2);
-  outline: none;
+}
+
+.desktop-pin-panel-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .desktop-pin-media-copy {
@@ -2233,6 +2253,23 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-toggle-body .desktop-pin-panel-actions {
   grid-template-columns: 1fr;
+}
+
+/* Stacked, the glyph and the state need about 63px, more than the middle panel gets below the
+   default pin height (42px at the 156x122 minimum), which cut the state off at the bottom. Short
+   pins put them side by side. */
+@media (max-height: 142px) {
+  .desktop-pin-toggle-body .desktop-pin-panel-meter {
+    grid-auto-flow: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .desktop-pin-toggle-body .desktop-pin-panel-glyph {
+    width: 24px;
+    height: 24px;
+  }
 }
 
 .desktop-pin-climate-modes {
@@ -3618,9 +3655,11 @@ body.first-run-active .widget-content > * {
   font-weight: var(--font-weight-medium);
 }
 
+/* The tab strip clips anything outside the field, so the ring is drawn over its border. */
 .qa-tab-rename-input:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.35);
+  border-color: var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .qa-tab-add {
@@ -3673,7 +3712,11 @@ body.first-run-active .widget-content > * {
   border-color: var(--focus-ring);
   background: var(--accent-bg);
   color: var(--accent);
-  outline: none;
+}
+
+.add-page-modal .qa-add-chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .quick-controls-target-hint {
@@ -6702,6 +6745,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .camera-expanded-preview {
+  /* The viewer stays dark in every theme, so its focus ring keeps the (light) accent rather than
+     the light theme's darkened ring. */
+  --focus-ring: var(--accent);
   position: fixed;
   inset: 0;
   z-index: var(--z-modal-backdrop);
@@ -6829,7 +6875,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-close:hover,
 .camera-expanded-preview-close:focus-visible {
   border-color: rgba(255, 255, 255, 0.22);
-  outline: none;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   transform: scale(1.04);
@@ -6922,9 +6967,14 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview-reconnect:hover,
 .camera-expanded-preview-reconnect:focus-visible {
   border-color: rgba(var(--accent-rgb), 0.42);
-  outline: none;
   background: rgba(var(--accent-rgb), 0.14);
   color: #fff;
+}
+
+.camera-expanded-preview-close:focus-visible,
+.camera-expanded-preview-reconnect:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .camera-expanded-preview-reconnect:disabled {
@@ -8382,7 +8432,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .form-group input[type='checkbox']:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
   box-shadow: var(--glow-focus);
 }
 
@@ -10082,7 +10133,8 @@ body.widget-state-active #quick-controls .status-message {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-full);
   background: rgba(12, 18, 32, 0.92);
-  color: var(--text-secondary);
+  /* The pill stays dark in every theme, so its label keeps the dark theme's colours. */
+  color: #b0b0b0;
   font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -10098,14 +10150,18 @@ body.widget-state-active #quick-controls .status-message {
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle:hover,
 .reorganize-mode .control-item .desktop-pin-quick-toggle:focus-visible {
-  color: var(--text-primary);
+  color: #f5f5f5;
   border-color: rgba(var(--accent-rgb), 0.42);
   background: rgba(14, 22, 40, 0.98);
   transform: scale(1.06);
   box-shadow:
     0 10px 20px rgba(0, 0, 0, 0.36),
     0 0 0 2px rgba(var(--accent-rgb), 0.16);
-  outline: none;
+}
+
+.reorganize-mode .control-item .desktop-pin-quick-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .reorganize-mode .control-item .desktop-pin-quick-toggle[data-active='true'] {
@@ -12614,7 +12670,11 @@ label.disabled {
   border-color: rgba(var(--accent-rgb), 0.4);
   background: rgba(var(--accent-rgb), 0.14);
   color: var(--text-primary);
-  outline: none;
+}
+
+.command-palette-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .command-palette-results {
@@ -12645,7 +12705,14 @@ label.disabled {
 .command-palette-result:focus-visible {
   border-color: rgba(var(--accent-rgb), 0.38);
   background: rgba(var(--accent-rgb), 0.14);
-  outline: none;
+}
+
+/* Arrow keys move the highlight while focus stays in the search field, so the highlighted row
+   carries the ring then. It sits inside the row to stay clear of the scrolling list's edge. */
+.command-palette-panel:has(.command-palette-input:focus) .command-palette-result.highlighted,
+.command-palette-result:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .command-palette-result-icon {

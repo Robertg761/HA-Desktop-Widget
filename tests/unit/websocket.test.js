@@ -146,7 +146,7 @@ describe('WebSocket Manager', () => {
       expect(wsManager.isConnected()).toBe(false);
       expect(wsManager.ws).toBeNull();
       expect(closed).toHaveBeenCalledTimes(1);
-      expect(closed).toHaveBeenCalledWith({ intentional: false });
+      expect(closed).toHaveBeenCalledWith({ intentional: false, reason: 'timeout' });
     });
 
     test('requires a matching pong and starts the next heartbeat after acknowledgment', () => {
@@ -170,6 +170,7 @@ describe('WebSocket Manager', () => {
       jest.advanceTimersByTime(15000);
       expect(wsManager.ws).toBeNull();
       expect(closed).toHaveBeenCalledTimes(1);
+      expect(closed).toHaveBeenCalledWith({ intentional: false, reason: 'timeout' });
     });
 
     test('authentication rejection cannot be overwritten by a close-time transport error', () => {
@@ -563,7 +564,10 @@ describe('WebSocket Manager', () => {
       // Fast-forward time by 15 seconds
       jest.advanceTimersByTime(15000);
 
-      await expect(promise).rejects.toThrow('WebSocket request timeout');
+      await expect(promise).rejects.toMatchObject({
+        message: 'WebSocket request timeout',
+        code: 'timeout',
+      });
 
       jest.useRealTimers();
     });

@@ -78,7 +78,10 @@ class WebSocketManager extends EventEmitter {
     this.healthTimer = setTimeout(() => {
       if (this.ws !== socket || !this.isAuthenticated) return;
       this.heartbeatId = this.wsId++;
-      this.healthTimer = setTimeout(() => this.failConnection(socket), CONNECTION_TIMEOUT_MS);
+      this.healthTimer = setTimeout(
+        () => this.failConnection(socket, 'timeout'),
+        CONNECTION_TIMEOUT_MS
+      );
       try {
         socket.send(JSON.stringify({ id: this.heartbeatId, type: 'ping' }));
       } catch {
@@ -87,7 +90,8 @@ class WebSocketManager extends EventEmitter {
     }, HEARTBEAT_INTERVAL_MS);
   }
 
-  failConnection(socket) {
+  // reason 'timeout' tells diagnostics the server stopped answering rather than closing.
+  failConnection(socket, reason = '') {
     if (!socket || this.ws !== socket) return;
     this.clearHealthCheck();
     this.rejectPendingRequestsForSocket(socket, new Error('Home Assistant connection lost'));
@@ -99,7 +103,7 @@ class WebSocketManager extends EventEmitter {
     } catch {
       // The socket is already detached; recovery must not depend on a close event.
     }
-    this.emit('close', { intentional: false });
+    this.emit('close', reason ? { intentional: false, reason } : { intentional: false });
   }
 
   clearPendingRequest(id) {
@@ -179,7 +183,10 @@ class WebSocketManager extends EventEmitter {
       ws.__intentionalClose = false;
       this.ws = ws;
       this.isAuthenticated = false;
-      this.healthTimer = setTimeout(() => this.failConnection(ws), CONNECTION_TIMEOUT_MS);
+      this.healthTimer = setTimeout(
+        () => this.failConnection(ws, 'timeout'),
+        CONNECTION_TIMEOUT_MS
+      );
 
       ws.onopen = () => {
         if (this.ws !== ws) return;
@@ -300,7 +307,9 @@ class WebSocketManager extends EventEmitter {
           const timedOut = this.clearPendingRequest(id);
           if (!timedOut) return;
           // Reject without emitting a global error to avoid log spam for optional calls
-          timedOut.reject(new Error('WebSocket request timeout'));
+          const timeoutError = new Error('WebSocket request timeout');
+          timeoutError.code = 'timeout';
+          timedOut.reject(timeoutError);
         }, WS_REQUEST_TIMEOUT_MS);
         try {
           socket.send(JSON.stringify(msg));

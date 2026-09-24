@@ -132,6 +132,42 @@ describe('main-process Home Assistant authorization recovery', () => {
     expect(context.broadcastDesktopPinConfigUpdate).toHaveBeenCalled();
   });
 
+  it('keeps the failure code for the renderer when a refresh fails while offline', async () => {
+    const context = {
+      config: { homeAssistant: { authMethod: 'oauth', oauthStatus: 'connected' } },
+      HOME_ASSISTANT_OAUTH_RETRY_MS: 60_000,
+      getHomeAssistantOAuthClient: () => ({
+        refresh: () =>
+          Promise.reject(
+            Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8123'), {
+              code: 'OAUTH_TOKEN_NETWORK',
+            })
+          ),
+      }),
+      scheduleHomeAssistantOAuthRefresh: jest.fn(),
+      pushConfigToRenderer: jest.fn(),
+      broadcastDesktopPinConfigUpdate: jest.fn(),
+    };
+    vm.runInNewContext(extractBlock('async function refreshHomeAssistantOAuthSession'), context);
+    await vm.runInNewContext('refreshHomeAssistantOAuthSession()', context);
+
+    expect(context.config.homeAssistant).toMatchObject({
+      oauthStatus: 'offline',
+      oauthLastError: 'connect ECONNREFUSED 127.0.0.1:8123',
+      oauthLastErrorCode: 'OAUTH_TOKEN_NETWORK',
+    });
+    expect(context.scheduleHomeAssistantOAuthRefresh).toHaveBeenCalledWith(null, 60_000);
+  });
+
+  it('never saves the runtime authorization error fields', () => {
+    const saveSource = mainSource.slice(
+      mainSource.indexOf('const configToSave = JSON.parse(JSON.stringify(config));'),
+      mainSource.indexOf('if (preserveRecoveryToken) {')
+    );
+    expect(saveSource).toContain('delete configToSave.homeAssistant.oauthLastError;');
+    expect(saveSource).toContain('delete configToSave.homeAssistant.oauthLastErrorCode;');
+  });
+
   it('refreshes on request when Home Assistant rejects the access token', async () => {
     const { context, handlers } = createContext({ authMethod: 'oauth', oauthStatus: 'connected' });
     await expect(handlers['refresh-home-assistant-oauth']({})).resolves.toEqual({

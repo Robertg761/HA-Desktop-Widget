@@ -45,7 +45,12 @@ import {
   normalizeBaseUrl,
   startHomeAssistantPairing,
 } from './src/connection.js';
-import { renderConnectionStatus, setConnectionStatusBusy } from './src/connection-status.js';
+import {
+  describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
+  setConnectionStatusBusy,
+} from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
 if (window.electronAPI) {
@@ -327,18 +332,8 @@ function setOAuthRestoreStatus() {
   setDisconnectedStatus(
     homeAssistant.oauthStatus === 'restoring'
       ? t('Restoring Home Assistant authorization...')
-      : homeAssistant.oauthLastError ||
-          t('Home Assistant is offline. Authorization will retry automatically.')
+      : describeHomeAssistantOAuthRefreshError(homeAssistant)
   );
-}
-
-function describeOAuthPairingError(error) {
-  if (error?.result?.code === 'OAUTH_SERVER_UNREACHABLE') {
-    return t('Could not reach Home Assistant at that URL.');
-  }
-  return t('Could not connect to Home Assistant. {{error}}', {
-    error: error?.message || t('Unknown error'),
-  });
 }
 
 function hasDesktopPinsConfigured() {
@@ -668,7 +663,7 @@ async function reauthorizeHomeAssistant() {
   } catch (error) {
     if (error?.result?.code !== 'OAUTH_AUTHORIZATION_CANCELED') {
       log.error('Failed to reconnect Home Assistant authorization:', error);
-      oauthReauthorization.error = describeOAuthPairingError(error);
+      oauthReauthorization.error = describeHomeAssistantOAuthFailure(error);
     }
   } finally {
     oauthReauthorization.pending = false;
@@ -1109,7 +1104,7 @@ async function finishFirstRunWizard() {
     if (firstRunWizard?.cancelRequested) {
       setWizardStatus('', '');
     } else {
-      const message = describeOAuthPairingError(error);
+      const message = describeHomeAssistantOAuthFailure(error);
       log.error('Failed to finish first-run setup:', error);
       setWizardStatus(message, 'error');
       uiUtils.showToast(message, 'error', 6000);
@@ -1409,15 +1404,26 @@ const QUICK_ACCESS_CONFIG_KEYS = [
   'favoriteEntities',
   'comparisonGraphs',
 ];
+// Main replaces the OAuth access token about every half hour. The token, its expiry and the
+// authorization id are connection state that the config-updated handler reconnects on by itself;
+// on their own they need no theme, locale or tile refresh.
+const OAUTH_RUNTIME_CONNECTION_KEYS = ['token', 'oauthExpiresAt', 'oauthAuthorizationId'];
 // The config as of the previous applyRendererConfig call. Persistence paths in ui.js and
 // settings.js store their result in state before the echo arrives, so state alone cannot tell
 // whether the appearance pass has already run for it.
 let lastAppliedRendererConfig = null;
 
+function withoutOAuthRuntimeConnection(config) {
+  if (config?.homeAssistant?.authMethod !== 'oauth') return config;
+  const homeAssistant = { ...config.homeAssistant };
+  OAUTH_RUNTIME_CONNECTION_KEYS.forEach((key) => delete homeAssistant[key]);
+  return { ...config, homeAssistant };
+}
+
 function describeRendererConfigChange(renderedConfig, appliedConfig, nextConfig) {
   const serialize = (config, quickAccess) =>
     JSON.stringify(
-      Object.entries(config || {})
+      Object.entries(withoutOAuthRuntimeConnection(config) || {})
         .filter(([key]) => QUICK_ACCESS_CONFIG_KEYS.includes(key) === quickAccess)
         .sort(([a], [b]) => a.localeCompare(b))
     );
@@ -1917,7 +1923,9 @@ websocket.on('message', (msg) => {
             websocket.failConnection(snapshotSocket);
           }
         })
-        .catch(() => websocket.failConnection(snapshotSocket));
+        .catch((error) =>
+          websocket.failConnection(snapshotSocket, error?.code === 'timeout' ? 'timeout' : '')
+        );
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
       configReq.catch((err) => {
@@ -2583,6 +2591,15 @@ async function init() {
   }
 }
 
+// Disabling a toggle while main applies it drops keyboard focus to the page. Put it back unless
+// the user has moved on meanwhile.
+function reenableSettingsToggle(toggle, hadFocus) {
+  toggle.disabled = false;
+  if (hadFocus && (!document.activeElement || document.activeElement === document.body)) {
+    toggle.focus();
+  }
+}
+
 /**
  * Attach event listeners and wire up interactive UI controls, modals, and settings handlers.
  *
@@ -2877,6 +2894,7 @@ function wireUI() {
         const requestedEnabled = !!e.target.checked;
         const previousEnabled = !!state.CONFIG.globalHotkeys?.enabled;
         const hotkeysSection = document.getElementById('hotkeys-section');
+        const hadFocus = document.activeElement === e.target;
         e.target.disabled = true;
         try {
           const success = await hotkeys.toggleHotkeys(requestedEnabled);
@@ -2886,7 +2904,7 @@ function wireUI() {
             hotkeysSection.style.display = appliedEnabled ? 'block' : 'none';
           }
         } finally {
-          e.target.disabled = false;
+          reenableSettingsToggle(e.target, hadFocus);
         }
       };
     }
@@ -2897,6 +2915,7 @@ function wireUI() {
         const requestedEnabled = !!e.target.checked;
         const previousEnabled = !!state.CONFIG.entityAlerts?.enabled;
         const alertsSection = document.getElementById('alerts-section');
+        const hadFocus = document.activeElement === e.target;
         e.target.disabled = true;
         try {
           const success = await alerts.toggleAlerts(requestedEnabled);
@@ -2909,7 +2928,7 @@ function wireUI() {
             settings.renderAlertsListInline();
           }
         } finally {
-          e.target.disabled = false;
+          reenableSettingsToggle(e.target, hadFocus);
         }
       };
     }

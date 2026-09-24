@@ -123,6 +123,132 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('controls that turned their focus outline off', () => {
+    const uiUtils = require('../../src/ui-utils.js');
+    // Each of these once replaced the ring with a faint translucent border or glow (or nothing).
+    const controlMarkup = `
+      <div class="command-palette-panel">
+        <input class="command-palette-input" data-focus>
+        <div class="command-palette-results">
+          <button class="command-palette-result highlighted"></button>
+          <button class="command-palette-result" data-focus-visible></button>
+        </div>
+      </div>
+      <button class="command-palette-close" data-focus-visible></button>
+      <div class="reorganize-mode"><div class="control-item">
+        <button class="desktop-pin-quick-toggle" data-focus-visible>Pin</button>
+      </div></div>
+      <input class="qa-tab-rename-input" type="text" data-focus data-focus-visible>
+      <div class="add-page-modal"><button class="qa-add-chip" data-focus-visible></button></div>
+      <div class="form-group"><input type="checkbox" data-focus data-focus-visible></div>
+      <button class="desktop-pin-light-power" data-focus-visible></button>
+      <input class="desktop-pin-light-slider" type="range" data-focus data-focus-visible>
+      <button class="desktop-pin-light-preset" data-focus-visible></button>
+      <button class="desktop-pin-panel-button" data-focus-visible></button>`;
+    const cameraMarkup = `
+      <div class="camera-expanded-preview"><div class="camera-expanded-preview-footer">
+        <button class="camera-expanded-preview-close" data-focus-visible></button>
+        <button class="camera-expanded-preview-reconnect" data-focus-visible></button>
+      </div></div>`;
+    const ring = (element) => {
+      const [width, style, ...color] = (resolvedValue(element, 'outline') || '').split(/\s+/);
+      return { width: parseFloat(width), style, color: color.join(' ') };
+    };
+    const rows = () =>
+      [...document.querySelectorAll('.command-palette-result, [data-focus-visible]')].filter(
+        (element, index, all) => all.indexOf(element) === index
+      );
+
+    afterEach(() => {
+      document.documentElement.removeAttribute('style');
+    });
+
+    it.each([
+      ...uiUtils.getAccentThemes().map((theme) => [theme.id, theme.color]),
+      ['custom white', '#ffffff'],
+    ])('draws a solid 3:1 ring in the light theme with the %s accent', (_, accent) => {
+      render(THEMES.light, controlMarkup + cameraMarkup);
+      uiUtils.applyAccentThemeFromColor(accent);
+      const lightSurfaces = ['#ffffff', `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`];
+      // The camera viewer stays dark in every theme.
+      const cameraSurface = 'rgb(13, 18, 25)';
+
+      for (const element of rows()) {
+        const { width, style, color } = ring(element);
+        const surfaces = element.closest('.camera-expanded-preview')
+          ? [cameraSurface]
+          : lightSurfaces;
+        for (const surface of surfaces) {
+          expect({
+            element: element.className || element.type,
+            ring: width >= 2 && style === 'solid' && contrastRatio(color, surface) >= 3,
+          }).toEqual({ element: element.className || element.type, ring: true });
+        }
+      }
+    });
+
+    it('uses the accent in the dark theme and white under the readable preset', () => {
+      render(THEMES.dark, controlMarkup + cameraMarkup);
+      uiUtils.applyAccentThemeFromColor('#64b5f6');
+      for (const element of rows()) {
+        const { width, style, color } = ring(element);
+        expect({
+          element: element.className || element.type,
+          width,
+          style,
+          color: parseColor(color),
+        }).toEqual({
+          element: element.className || element.type,
+          width: 2,
+          style: 'solid',
+          color: parseColor('#64b5f6'),
+        });
+      }
+
+      document.body.className = THEMES['readable light'];
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        expect(parseColor(ring(element).color)).toEqual([255, 255, 255, 1]);
+      }
+    });
+
+    it.each(THEME_CASES)('keeps the Pin label readable on its dark pill (%s)', (_, theme) => {
+      render(
+        theme,
+        `<div class="reorganize-mode"><div class="control-item">
+          <button class="desktop-pin-quick-toggle">Pin</button>
+          <button class="desktop-pin-quick-toggle" data-hover>Pin</button>
+          <button class="desktop-pin-quick-toggle" data-focus-visible>Pin</button>
+        </div></div>`
+      );
+      for (const toggle of document.querySelectorAll('.desktop-pin-quick-toggle')) {
+        const pill = resolvedValue(toggle, 'background');
+        expect(contrastRatio(resolvedValue(toggle, 'color'), pill)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('rings the highlighted palette row only while the search field has focus', () => {
+      const palette = (inputState) => `
+        <div class="command-palette-panel">
+          <input class="command-palette-input" ${inputState}>
+          <button class="command-palette-close" data-focus-visible></button>
+          <div class="command-palette-results">
+            <button class="command-palette-result highlighted"></button>
+            <button class="command-palette-result" data-hover></button>
+          </div>
+        </div>`;
+      render(THEMES.dark, palette('data-focus'));
+      const [highlighted, hovered] = document.querySelectorAll('.command-palette-result');
+      expect(ring(highlighted).style).toBe('solid');
+      expect(ring(hovered).style).not.toBe('solid');
+
+      // Tabbing on to the close button leaves one ring, on the button.
+      render(THEMES.dark, palette(''));
+      expect(ring(document.querySelector('.command-palette-result.highlighted')).style).not.toBe(
+        'solid'
+      );
+    });
+  });
+
   describe('hidden rows in workflow pick lists', () => {
     it('hides device rows filtered out by the starter search', () => {
       render(
@@ -238,6 +364,53 @@ describe('stylesheet cascade regressions', () => {
         expect(resolvedValue(part('copy'), 'display', options)).toBe('none');
       }
       expect(resolvedValue(part('actions'), 'display', options)).toBe('flex');
+    });
+  });
+
+  describe('switch desktop pin state', () => {
+    const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
+    const renderSwitchPin = (layout) =>
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-toggle-control"
+            data-layout="${layout}">
+            <div class="desktop-pin-panel-shell">
+              <div class="desktop-pin-panel-body desktop-pin-toggle-body">
+                <div class="desktop-pin-panel-meter">
+                  <div class="desktop-pin-panel-glyph"></div>
+                  <div class="desktop-pin-panel-kpi">Off</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div></div>`
+      );
+
+    // At the 156x122 minimum the middle panel is about 40px tall (measured in a real pin window).
+    it.each(['compact', 'micro'])('fits the glyph and state in a 156x122 %s pin', (layout) => {
+      renderSwitchPin(layout);
+      const options = { viewport: { width: 156, height: 122 } };
+      const meter = document.querySelector('.desktop-pin-panel-meter');
+      const glyph = toPx(
+        resolvedValue(document.querySelector('.desktop-pin-panel-glyph'), 'height', options)
+      );
+      const padding = toPx(resolvedValue(meter, 'padding', options).split(/\s+/)[0]);
+      // The state's line box: at least 14px type at line-height 0.95.
+      const state = 14 * 0.95;
+      const gap = toPx(resolvedValue(meter, 'gap', options));
+      const sideBySide = resolvedValue(meter, 'grid-auto-flow', options) === 'column';
+      const content = sideBySide ? Math.max(glyph, state) : glyph + gap + state;
+
+      expect(content + 2 * padding + 2).toBeLessThanOrEqual(40);
+    });
+
+    it('keeps the glyph above the state in the default 168x148 pin', () => {
+      renderSwitchPin('compact');
+      const meter = document.querySelector('.desktop-pin-panel-meter');
+      expect(
+        resolvedValue(meter, 'grid-auto-flow', { viewport: { width: 168, height: 148 } })
+      ).not.toBe('column');
     });
   });
 

@@ -4429,6 +4429,7 @@ function buildConfigSnapshotForSave() {
     delete configToSave.homeAssistant.tokenEncrypted;
     delete configToSave.homeAssistant.oauthExpiresAt;
     delete configToSave.homeAssistant.oauthLastError;
+    delete configToSave.homeAssistant.oauthLastErrorCode;
     delete configToSave.homeAssistant.oauthAuthorizationId;
     delete configToSave.tokenResetReason;
   }
@@ -6512,6 +6513,7 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
     desktopCompanion: { ...(config?.desktopCompanion || {}) },
   };
   delete nextConfig.homeAssistant.oauthLastError;
+  delete nextConfig.homeAssistant.oauthLastErrorCode;
   delete nextConfig.tokenResetReason;
   config = nextConfig;
   ensureDesktopCompanionIdentity();
@@ -6548,6 +6550,8 @@ async function refreshHomeAssistantOAuthSession() {
     config.homeAssistant.oauthStatus =
       error?.code === 'OAUTH_INVALID_GRANT' ? 'reauth_required' : 'offline';
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
+    // The renderer shows a translated message for known codes; the text is the fallback.
+    config.homeAssistant.oauthLastErrorCode = String(error?.code || '');
     if (error?.code === 'OAUTH_INVALID_GRANT') {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
       delete config.homeAssistant.oauthAuthorizationId;

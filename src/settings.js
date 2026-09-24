@@ -20,7 +20,12 @@ import {
   copyTextToClipboard,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
-import { renderConnectionStatus, setConnectionStatusBusy } from './connection-status.js';
+import {
+  describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
+  setConnectionStatusBusy,
+} from './connection-status.js';
 import * as utils from './utils.js';
 import {
   PRIMARY_CARD_DEFAULTS,
@@ -4156,6 +4161,7 @@ function getHomeAssistantAuthState(homeAssistant) {
     homeAssistant.authMethod || '',
     homeAssistant.oauthStatus || '',
     homeAssistant.oauthLastError || '',
+    homeAssistant.oauthLastErrorCode || '',
   ]);
 }
 
@@ -4197,11 +4203,7 @@ function updateHomeAssistantAuthUi() {
       'error'
     );
   } else {
-    setHomeAssistantOAuthStatus(
-      homeAssistant.oauthLastError ||
-        t('Home Assistant is offline. Authorization will retry automatically.'),
-      'error'
-    );
+    setHomeAssistantOAuthStatus(describeHomeAssistantOAuthRefreshError(homeAssistant), 'error');
   }
 }
 
@@ -4243,13 +4245,8 @@ async function startHomeAssistantOAuthFromSettings() {
       if (state.CONFIG?.homeAssistant?.oauthStatus !== 'connected') {
         setHomeAssistantOAuthStatus(t('Home Assistant authorization canceled'), 'pending');
       }
-    } else if (error?.result?.code === 'OAUTH_SERVER_UNREACHABLE') {
-      setHomeAssistantOAuthStatus(t('Could not reach Home Assistant at that URL.'), 'error');
     } else {
-      setHomeAssistantOAuthStatus(
-        error?.message || t('Home Assistant authorization failed'),
-        'error'
-      );
+      setHomeAssistantOAuthStatus(describeHomeAssistantOAuthFailure(error), 'error');
     }
   } finally {
     setHomeAssistantOAuthBusy(false);
@@ -4276,8 +4273,18 @@ async function disconnectHomeAssistantOAuthFromSettings() {
     const result = await window.electronAPI.disconnectHomeAssistantOAuth();
     applyPersistedConfigResponse(result.config);
     updateHomeAssistantAuthUi();
-    if (result.warning) showToast(result.warning, 'warning', 5000);
-    else showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+    // The warning is main-process English; it always means the remote revocation is unconfirmed.
+    if (result.warning) {
+      showToast(
+        t(
+          'Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.'
+        ),
+        'warning',
+        5000
+      );
+    } else {
+      showToast(t('Home Assistant authorization disconnected'), 'success', 2600);
+    }
   } catch (error) {
     setHomeAssistantOAuthStatus(error?.message || t('Could not disconnect authorization'), 'error');
   } finally {
