@@ -199,6 +199,13 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
       dismissToast: jest.fn(),
+      closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
+      trapFocus: jest.fn((...args) =>
+        jest.requireActual('../../src/ui-utils.js').trapFocus(...args)
+      ),
+      releaseFocusTrap: jest.fn((...args) =>
+        jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
+      ),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
