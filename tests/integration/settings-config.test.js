@@ -627,6 +627,41 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('offers Retry, not a new sign-in, while Home Assistant is only offline', async () => {
+      state.CONFIG.homeAssistant = {
+        url: 'https://ha.example.test',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'oauth',
+        oauthStatus: 'offline',
+        oauthLastError: 'connect ECONNREFUSED',
+        oauthLastErrorCode: 'OAUTH_TOKEN_NETWORK',
+      };
+      await settings.openSettings();
+      const button = document.getElementById('connect-ha-oauth-btn');
+      const status = document.getElementById('ha-oauth-status');
+      expect(button.textContent).toBe('Retry');
+      expect(status.textContent).toBe(
+        'Home Assistant is offline. Authorization will retry automatically.'
+      );
+
+      mockElectronAPI.refreshHomeAssistantOAuth.mockResolvedValueOnce({
+        success: true,
+        oauthStatus: 'offline',
+      });
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.startHomeAssistantOAuth).not.toHaveBeenCalled();
+      expect(button.textContent).toBe('Retry');
+
+      // Another server typed into the URL field needs a new authorization.
+      const url = document.getElementById('ha-url');
+      url.value = 'https://other.example.test';
+      url.dispatchEvent(new Event('input'));
+      expect(button.textContent).toBe('Reconnect with Home Assistant');
+    });
+
     test('connect button delegates OAuth pairing to the main process', async () => {
       await settings.openSettings();
       document.getElementById('ha-url').value = 'https://ha.example.test';

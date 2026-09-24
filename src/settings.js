@@ -4376,20 +4376,41 @@ function getHomeAssistantAuthState(homeAssistant) {
   ]);
 }
 
+// While Home Assistant is only unreachable, the saved authorization is still good: the button
+// retries restoring it instead of suggesting a new sign-in. A URL edited to another server still
+// pairs with that server.
+function getHomeAssistantConnectAction() {
+  const homeAssistant = state.CONFIG?.homeAssistant || {};
+  if (homeAssistant.authMethod !== 'oauth') return 'connect';
+  const typedUrl = normalizeBaseUrl(document.getElementById('ha-url')?.value || '');
+  const sameServer = !typedUrl || typedUrl === normalizeBaseUrl(homeAssistant.url || '');
+  return ['offline', 'restoring'].includes(homeAssistant.oauthStatus) && sameServer
+    ? 'retry'
+    : 'reconnect';
+}
+
+function updateHomeAssistantConnectButton() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  if (!connectButton) return;
+  const action = getHomeAssistantConnectAction();
+  connectButton.dataset.action = action;
+  connectButton.textContent =
+    action === 'retry'
+      ? t('Retry')
+      : action === 'reconnect'
+        ? t('Reconnect with Home Assistant')
+        : t('Connect with Home Assistant');
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
   renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
-  const connectButton = document.getElementById('connect-ha-oauth-btn');
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
   const legacySettings = document.getElementById('legacy-ha-token-settings');
 
-  if (connectButton) {
-    connectButton.textContent = usesOAuth
-      ? t('Reconnect with Home Assistant')
-      : t('Connect with Home Assistant');
-  }
+  updateHomeAssistantConnectButton();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -4431,6 +4452,19 @@ function refreshHomeAssistantAuthStatus() {
   )
     return;
   updateHomeAssistantAuthUi();
+}
+
+async function retryHomeAssistantOAuthFromSettings() {
+  setHomeAssistantOAuthBusy(true);
+  setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
+  try {
+    await window.electronAPI.refreshHomeAssistantOAuth();
+  } catch (error) {
+    log.warn('Retrying Home Assistant authorization failed:', error);
+  } finally {
+    setHomeAssistantOAuthBusy(false);
+    updateHomeAssistantAuthUi();
+  }
 }
 
 async function startHomeAssistantOAuthFromSettings() {
@@ -4513,8 +4547,13 @@ function bindHomeAssistantOAuthUi() {
     cancelButton.dataset.initialized = 'true';
   }
   if (connectButton && connectButton.dataset.initialized !== 'true') {
-    connectButton.addEventListener('click', () => void startHomeAssistantOAuthFromSettings());
+    connectButton.addEventListener('click', () =>
+      getHomeAssistantConnectAction() === 'retry'
+        ? void retryHomeAssistantOAuthFromSettings()
+        : void startHomeAssistantOAuthFromSettings()
+    );
     connectButton.dataset.initialized = 'true';
+    document.getElementById('ha-url')?.addEventListener('input', updateHomeAssistantConnectButton);
   }
   if (disconnectButton && disconnectButton.dataset.initialized !== 'true') {
     disconnectButton.addEventListener(
