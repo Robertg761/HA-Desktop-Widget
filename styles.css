@@ -896,8 +896,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
   font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
+  text-align: center;
   text-transform: uppercase;
-  white-space: nowrap;
+  /* Wraps inside the pin instead of running off it ("Verschieben oder Größe ändern"). */
+  width: max-content;
+  max-width: calc(100% - 16px);
   pointer-events: none;
 }
 
@@ -2316,8 +2319,20 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   justify-content: center;
 }
 
+/* Three verbs share the smallest pins. Equal thirds in capitals cannot hold "Schließen", so the
+   buttons take their label's width in sentence case and fall back to an ellipsis (with a title). */
 .desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+}
+
+.desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-cover-action {
+  flex: 1 1 auto;
+  padding-inline: 4px;
+  overflow: hidden;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-media-copy {
@@ -9978,7 +9993,7 @@ body.widget-state-active #quick-controls .status-message {
 .reorganize-mode .control-item .remove-btn {
   position: absolute;
   top: 8px;
-  right: 8px;
+  inset-inline-end: 8px;
   width: 24px;
   height: 24px;
   background: rgba(211, 47, 47, 0.95);
@@ -10082,7 +10097,7 @@ body.widget-state-active #quick-controls .status-message {
 .reorganize-mode .control-item .rename-btn {
   position: absolute;
   top: 8px;
-  right: 38px;
+  inset-inline-end: 38px;
   width: 24px;
   height: 24px;
   background: rgba(25, 118, 210, 0.95);
@@ -10124,9 +10139,13 @@ body.widget-state-active #quick-controls .status-message {
 .reorganize-mode .control-item .desktop-pin-quick-toggle {
   position: absolute;
   top: 8px;
-  left: 8px;
+  inset-inline-start: 8px;
   z-index: 20;
   min-width: 0;
+  /* Stops short of the rename and remove buttons; a longer label ("Nicht unterstützt") ends in
+     an ellipsis and the title explains it. */
+  max-width: calc(100% - 74px);
+  overflow: hidden;
   padding: 4px 8px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-full);
@@ -10135,8 +10154,9 @@ body.widget-state-active #quick-controls .status-message {
   color: #b0b0b0;
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition: all var(--transition-base);
   backdrop-filter: blur(18px) saturate(170%);
@@ -11473,8 +11493,9 @@ body.widget-state-active #quick-controls .status-message {
   flex-wrap: wrap;
 }
 
+/* The field gets its own row: "Not set (click Set Hotkey)" runs long in most languages. */
 #popup-hotkey-input {
-  flex: 1 1 200px;
+  flex: 1 1 100%;
   min-width: 200px;
   text-align: center;
   font-family: var(--font-mono);
@@ -11485,6 +11506,13 @@ body.widget-state-active #quick-controls .status-message {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-color);
+}
+
+/* The saved hotkey and the "Not set" hint are placeholders; read them as text, not as code. */
+#popup-hotkey-input::placeholder {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0;
 }
 
 .help-text {
@@ -12756,9 +12784,10 @@ label.disabled {
 
 .command-palette-result-domain {
   flex: none;
-  max-width: 120px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-full);
   padding: 2px 8px;

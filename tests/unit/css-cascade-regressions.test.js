@@ -585,4 +585,52 @@ describe('stylesheet cascade regressions', () => {
       expect(minimumButtons + minimumGap * (buttons.length - 1)).toBeLessThanOrEqual(rowWidth);
     });
   });
+
+  describe('longer translations fit their controls', () => {
+    it('sizes the smallest cover pin buttons to their labels, in sentence case', () => {
+      render(
+        '',
+        `<div class="desktop-pin-panel-control desktop-pin-cover-control" data-dense-variant="tight">
+          <div class="desktop-pin-panel-actions">
+            <button class="desktop-pin-panel-button desktop-pin-cover-action">Schließen</button>
+          </div>
+        </div>`
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display')).toBe(
+        'flex'
+      );
+      const button = document.querySelector('.desktop-pin-cover-action');
+      expect(resolvedValue(button, 'flex')).toBe('1 1 auto');
+      expect(resolvedValue(button, 'text-transform')).toBe('none');
+      expect(resolvedValue(button, 'text-overflow')).toBe('ellipsis');
+    });
+
+    it('keeps reorganize-mode pin badges clear of the rename and remove buttons', () => {
+      render(
+        '',
+        `<div id="quick-controls" class="reorganize-mode"><div class="control-item">
+          <button class="desktop-pin-quick-toggle">Nicht unterstützt</button>
+          <button class="rename-btn"></button><button class="remove-btn"></button>
+        </div></div>`
+      );
+      const badge = document.querySelector('.desktop-pin-quick-toggle');
+      // Remove (24px at 8px) and rename (24px at 38px) take the last 62px of the tile.
+      expect(resolvedValue(badge, 'max-width')).toBe('calc(100% - 74px)');
+      expect(resolvedValue(badge, 'white-space')).toBe('nowrap');
+      expect(resolvedValue(badge, 'text-overflow')).toBe('ellipsis');
+      expect(resolvedValue(badge, 'text-transform')).toBeFalsy();
+    });
+
+    it('gives the popup hotkey field a row of its own and the command palette pill one line', () => {
+      render(
+        '',
+        `<div class="popup-hotkey-config"><input id="popup-hotkey-input"></div>
+        <span class="command-palette-result-domain">Geräte-Tracker</span>`
+      );
+      expect(resolvedValue(document.getElementById('popup-hotkey-input'), 'flex')).toBe('1 1 100%');
+      expect(
+        resolvedValue(document.querySelector('.command-palette-result-domain'), 'white-space')
+      ).toBe('nowrap');
+    });
+  });
 });
