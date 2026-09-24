@@ -541,6 +541,81 @@ describe('tile and device dialog polish', () => {
     expect(document.querySelector('#fan-speed-value').textContent).toBe('67%');
   });
 
+  describe('live device dialogs', () => {
+    // Every dialog subscribes to its entity while open and must let go once closed.
+    const trackSubscriptions = () => {
+      const subscribe = state.subscribeEntity;
+      const unsubscribes = [];
+      jest.spyOn(state, 'subscribeEntity').mockImplementation((entityId, listener) => {
+        const unsubscribe = jest.fn(subscribe(entityId, listener));
+        unsubscribes.push(unsubscribe);
+        return unsubscribe;
+      });
+      return unsubscribes;
+    };
+
+    it('updates the light dialog on state changes and stops after close', () => {
+      const unsubscribes = trackSubscriptions();
+      const light = (brightness) =>
+        entity('light.desk', 'on', { brightness, supported_color_modes: ['brightness'] });
+      state.setStates({ 'light.desk': light(128) });
+      ui.openEntityDetailModal(light(128));
+      const value = document.querySelector('#brightness-value-large');
+      expect(value.textContent).toBe('50%');
+
+      state.setEntityState(light(255));
+      expect(value.textContent).toBe('100%');
+      expect(document.querySelector('#brightness-slider').value).toBe('100');
+
+      document.querySelector('#brightness-close').click();
+      jest.runOnlyPendingTimers();
+      expect(unsubscribes).toHaveLength(1);
+      expect(unsubscribes[0]).toHaveBeenCalled();
+      state.setEntityState(light(26));
+      expect(value.textContent).toBe('100%');
+    });
+
+    it('updates the cover dialog on state changes and stops after close', () => {
+      const unsubscribes = trackSubscriptions();
+      const cover = (position) =>
+        entity('cover.blind', 'open', { current_position: position, supported_features: 15 });
+      state.setStates({ 'cover.blind': cover(40) });
+      ui.openEntityDetailModal(cover(40));
+      const value = document.querySelector('#cover-position-value');
+      expect(value.textContent).toBe('40%');
+
+      state.setEntityState(cover(75));
+      expect(value.textContent).toBe('75%');
+      expect(document.querySelector('#cover-slider').value).toBe('75');
+
+      document.querySelector('#cover-close').click();
+      jest.runOnlyPendingTimers();
+      expect(unsubscribes).toHaveLength(1);
+      expect(unsubscribes[0]).toHaveBeenCalled();
+      state.setEntityState(cover(10));
+      expect(value.textContent).toBe('75%');
+    });
+
+    it('updates the fan dialog on state changes and stops after close', () => {
+      const unsubscribes = trackSubscriptions();
+      const fan = (percentage) =>
+        entity('fan.ceiling', 'on', { percentage, supported_features: 1 });
+      state.setStates({ 'fan.ceiling': fan(33) });
+      ui.openEntityDetailModal(fan(33));
+      const value = document.querySelector('#fan-speed-value');
+
+      state.setEntityState(fan(67));
+      expect(value.textContent).toBe('67%');
+
+      document.querySelector('#fan-close').click();
+      jest.runOnlyPendingTimers();
+      expect(unsubscribes).toHaveLength(1);
+      expect(unsubscribes[0]).toHaveBeenCalled();
+      state.setEntityState(fan(100));
+      expect(value.textContent).toBe('67%');
+    });
+  });
+
   it('follows fan speed changes made outside the dialog', () => {
     const fan = entity('fan.ceiling', 'on', { percentage: 33, supported_features: 1 });
     state.setStates({ [fan.entity_id]: fan });
